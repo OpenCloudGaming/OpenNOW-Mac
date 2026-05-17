@@ -113,14 +113,14 @@ static NSAttributedString *OPNOutlinedControllerStoreText(NSString *text) {
 static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) {
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
     style.lineBreakMode = NSLineBreakByWordWrapping;
-    style.lineSpacing = 5.0;
+    style.lineSpacing = 3.0;
     NSShadow *shadow = [[NSShadow alloc] init];
     shadow.shadowColor = OpnColor(0x000000, 0.82);
     shadow.shadowBlurRadius = 9.0;
     shadow.shadowOffset = NSMakeSize(0.0, 1.0);
     return [[NSAttributedString alloc] initWithString:text ?: @""
                                            attributes:@{
-        NSFontAttributeName: [NSFont systemFontOfSize:17.0 weight:NSFontWeightRegular],
+        NSFontAttributeName: [NSFont systemFontOfSize:14.5 weight:NSFontWeightRegular],
         NSForegroundColorAttributeName: NSColor.whiteColor,
         NSShadowAttributeName: shadow,
         NSParagraphStyleAttributeName: style,
@@ -534,7 +534,8 @@ static NSString *OPNPromptLetter(NSString *button, OPNControllerPromptStyle styl
         if ([button isEqualToString:@"favorite"]) return @"F";
         if ([button isEqualToString:@"store"]) return @"S";
         if ([button isEqualToString:@"back"]) return @"Esc";
-        if ([button isEqualToString:@"category"]) return @"↑↓";
+        if ([button isEqualToString:@"browse"]) return @"Tab";
+        if ([button isEqualToString:@"home"]) return @"Home";
         if ([button isEqualToString:@"categorySwitch"]) return @"Tab";
     }
     if ([button isEqualToString:@"primary"]) return style == OPNControllerPromptStyleNintendo ? @"A" : @"A";
@@ -542,6 +543,8 @@ static NSString *OPNPromptLetter(NSString *button, OPNControllerPromptStyle styl
     if ([button isEqualToString:@"store"]) return style == OPNControllerPromptStyleNintendo ? @"Y" : @"X";
     if ([button isEqualToString:@"back"]) return style == OPNControllerPromptStyleNintendo ? @"B" : @"B";
     if ([button isEqualToString:@"categorySwitch"]) return @"LB/RB";
+    if ([button isEqualToString:@"browse"]) return @"D-Pad";
+    if ([button isEqualToString:@"home"]) return @"Menu";
     return @"";
 }
 
@@ -549,7 +552,8 @@ static void OPNStrokePath(NSBezierPath *path, NSColor *color, CGFloat width);
 
 static NSImage *OPNKeyboardPromptIcon(NSString *button) {
     NSString *label = OPNPromptLetter(button, OPNControllerPromptStyleKeyboard);
-    NSSize size = [label isEqualToString:@"Esc"] || [label isEqualToString:@"Tab"] ? NSMakeSize(38.0, 24.0) : NSMakeSize(30.0, 24.0);
+    BOOL wideKey = [label isEqualToString:@"Esc"] || [label isEqualToString:@"Tab"] || [label isEqualToString:@"Home"];
+    NSSize size = wideKey ? NSMakeSize([label isEqualToString:@"Home"] ? 48.0 : 38.0, 24.0) : NSMakeSize(30.0, 24.0);
     NSImage *image = [[NSImage alloc] initWithSize:size];
     [image lockFocus];
     NSRect rect = NSMakeRect(0.8, 2.5, size.width - 1.6, 19.0);
@@ -560,7 +564,7 @@ static NSImage *OPNKeyboardPromptIcon(NSString *button) {
     NSMutableParagraphStyle *center = [[NSMutableParagraphStyle alloc] init];
     center.alignment = NSTextAlignmentCenter;
     [label drawInRect:NSMakeRect(0.0, 6.0, size.width, 14.0) withAttributes:@{
-        NSFontAttributeName: [NSFont systemFontOfSize:[label isEqualToString:@"Esc"] || [label isEqualToString:@"Tab"] ? 10.0 : 12.0 weight:NSFontWeightBold],
+        NSFontAttributeName: [NSFont systemFontOfSize:wideKey ? 10.0 : 12.0 weight:NSFontWeightBold],
         NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.88),
         NSParagraphStyleAttributeName: center,
     }];
@@ -607,7 +611,7 @@ static NSImage *OPNControllerPromptIcon(NSString *button, OPNControllerPromptSty
     NSColor *fillColor = style == OPNControllerPromptStylePlayStation ? OpnColor(0xFFFFFF, 0.035) : OpnColor(0xEAFBF0, 0.14);
     NSRect iconRect = NSMakeRect(2.5, 2.5, 19.0, 19.0);
 
-    if ([button isEqualToString:@"category"]) {
+    if ([button isEqualToString:@"browse"]) {
         NSBezierPath *pad = [NSBezierPath bezierPathWithRoundedRect:iconRect xRadius:5.0 yRadius:5.0];
         [OpnColor(0xEAFBF0, 0.08) setFill];
         [pad fill];
@@ -624,6 +628,16 @@ static NSImage *OPNControllerPromptIcon(NSString *button, OPNControllerPromptSty
         [down moveToPoint:NSMakePoint(12.0, 18.0)];
         [down lineToPoint:NSMakePoint(15.5, 14.0)];
         OPNStrokePath(down, strokeColor, 1.6);
+    } else if ([button isEqualToString:@"home"]) {
+        NSBezierPath *roof = [NSBezierPath bezierPath];
+        [roof moveToPoint:NSMakePoint(5.0, 12.0)];
+        [roof lineToPoint:NSMakePoint(12.0, 5.5)];
+        [roof lineToPoint:NSMakePoint(19.0, 12.0)];
+        OPNStrokePath(roof, strokeColor, 1.8);
+        NSBezierPath *house = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(7.0, 11.0, 10.0, 8.0) xRadius:1.6 yRadius:1.6];
+        [fillColor setFill];
+        [house fill];
+        OPNStrokePath(house, strokeColor, 1.6);
     } else if (style == OPNControllerPromptStylePlayStation) {
         if ([button isEqualToString:@"primary"]) {
             NSBezierPath *cross = [NSBezierPath bezierPath];
@@ -1060,7 +1074,7 @@ static NSImage *OPNControllerPromptIcon(NSString *button, OPNControllerPromptSty
     if (self.mode != OPNControllerPromptModeHome) [items addObject:@{@"button": @"favorite", @"title": @"Favorite"}];
     if (self.includeStore) [items addObject:@{@"button": @"store", @"title": @"Store"}];
     if (self.includeCategorySwitch) [items addObject:@{@"button": @"categorySwitch", @"title": @"Category"}];
-    [items addObject:@{@"button": @"category", @"title": self.mode == OPNControllerPromptModeHome ? @"Browse" : @"Home"}];
+    [items addObject:self.mode == OPNControllerPromptModeHome ? @{@"button": @"browse", @"title": @"Browse"} : @{@"button": @"home", @"title": @"Home"}];
     if (self.includeBack) [items addObject:@{@"button": @"back", @"title": @"Back"}];
     return items;
 }
@@ -1301,7 +1315,7 @@ using namespace OPN;
         [_controllerDetailView addSubview:_controllerDetailStatsLabel];
 
         _controllerDetailFeaturesLabel = OpnLabel(@"", NSZeroRect, 14.0, OpnColor(kTextMuted), NSFontWeightRegular);
-        _controllerDetailFeaturesLabel.maximumNumberOfLines = 6;
+        _controllerDetailFeaturesLabel.maximumNumberOfLines = 8;
         [_controllerDetailView addSubview:_controllerDetailFeaturesLabel];
 
         _controllerGameHubView = [[OPNControllerGameHubView alloc] initWithFrame:NSZeroRect];
@@ -2269,17 +2283,17 @@ using namespace OPN;
     BOOL showStreamPip = controllerMode && self.streamPipContentView != nil;
     CGFloat availableGameHubHeight = MAX(0.0, detailHeight - kControllerGameHubVerticalReserve);
     BOOL showGameHub = controllerMode && !showStreamPip && self.cardViews.count > 0 && detailWidth >= 820.0 && availableGameHubHeight >= 300.0;
-    CGFloat gameHubWidth = showGameHub ? MIN(520.0, MAX(380.0, detailWidth * 0.32)) : 0.0;
-    CGFloat gameHubHeight = showGameHub ? MIN(430.0, availableGameHubHeight) : 0.0;
+    CGFloat gameHubWidth = showGameHub ? MIN(430.0, MAX(340.0, detailWidth * 0.28)) : 0.0;
+    CGFloat gameHubHeight = showGameHub ? MIN(360.0, availableGameHubHeight) : 0.0;
     CGFloat gameHubX = detailWidth - gameHubWidth - 64.0;
-    CGFloat gameHubY = showGameHub ? MAX(32.0, floor((detailHeight - gameHubHeight) * 0.42)) : 0.0;
-    CGFloat rightContextInset = showGameHub ? gameHubWidth + 104.0 : 0.0;
+    CGFloat gameHubY = showGameHub ? MAX(28.0, floor((detailHeight - gameHubHeight) * 0.34)) : 0.0;
+    CGFloat rightContextInset = showGameHub ? gameHubWidth + 84.0 : 0.0;
     CGFloat heroWidth = MAX(260.0, detailWidth - 128.0 - rightContextInset);
     self.controllerDetailStatsLabel.hidden = YES;
     self.controllerDetailStatsLabel.frame = NSZeroRect;
     CGFloat featuresY = 42.0;
     self.controllerDetailFeaturesLabel.hidden = NO;
-    self.controllerDetailFeaturesLabel.frame = NSMakeRect(heroX + 2.0, featuresY, MIN(760.0, heroWidth), MAX(0.0, detailHeight - featuresY - 102.0));
+    self.controllerDetailFeaturesLabel.frame = NSMakeRect(heroX + 2.0, featuresY, MIN(900.0, heroWidth), MAX(0.0, detailHeight - featuresY - 94.0));
     self.controllerPromptBarView.frame = NSMakeRect(heroX + 2.0, MAX(188.0, detailHeight - 62.0), heroWidth, 36.0);
     self.controllerGameHubView.hidden = !showGameHub;
     if (showGameHub) {
@@ -3072,7 +3086,7 @@ using namespace OPN;
     [self addSubview:overlay];
     [[OPNCoreAnimationCoordinator sharedCoordinator] animateCardLayer:panel.layer
                                                     metadataContainer:self.controllerDetailView
-                                                      backgroundLayer:nil
+                                                      backgroundLayer:self.controllerDetailBackgroundView.layer
                                                              expanded:YES
                                                           accentColor:card.artworkAccentColor ?: OpnColor(OPNControllerAccentRGB())];
 }
@@ -3140,6 +3154,17 @@ using namespace OPN;
             if (self.isLastPlayedFocused) [self setLastPlayedFocused:NO];
             if (!self.controllerCategoryOverviewVisible) [self returnToControllerCategoryOverview];
             return;
+        case 48:
+            if (self.controllerCategoryOverviewVisible) {
+                [self openFocusedCategory];
+            } else {
+                [self cycleCategoryBy:1];
+            }
+            return;
+        case 115:
+            if (self.isLastPlayedFocused) [self setLastPlayedFocused:NO];
+            if (!self.controllerCategoryOverviewVisible) [self returnToControllerCategoryOverview];
+            return;
         default:
             break;
     }
@@ -3152,6 +3177,11 @@ using namespace OPN;
         return;
     }
     if ([chars isEqualToString:@"b"]) {
+        if (self.isLastPlayedFocused) [self setLastPlayedFocused:NO];
+        if (!self.controllerCategoryOverviewVisible) [self returnToControllerCategoryOverview];
+        return;
+    }
+    if ([chars isEqualToString:@"h"]) {
         if (self.isLastPlayedFocused) [self setLastPlayedFocused:NO];
         if (!self.controllerCategoryOverviewVisible) [self returnToControllerCategoryOverview];
         return;

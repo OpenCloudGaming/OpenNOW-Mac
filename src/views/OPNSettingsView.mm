@@ -274,7 +274,6 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
 @property (nonatomic, assign) BOOL suppressInputWhenInactive;
 @property (nonatomic, strong) NSTextField *posterSizeValueLabel;
 @property (nonatomic, strong) NSTextField *controllerGridSizeValueLabel;
-@property (nonatomic, strong) NSTextField *backgroundTintValueLabel;
 @property (nonatomic, strong) NSTextField *accentRedValueLabel;
 @property (nonatomic, strong) NSTextField *accentGreenValueLabel;
 @property (nonatomic, strong) NSTextField *accentBlueValueLabel;
@@ -1002,33 +1001,6 @@ using namespace OPN;
     derivedAccentHint.maximumNumberOfLines = 2;
     [panel addSubview:derivedAccentHint];
 
-    [panel addSubview:[self rowLabel:@"Background Tint" y:386.0]];
-    NSSlider *backgroundTintSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(controlX, 380.0, MIN(300.0, controlWidth - 72.0), 28.0)];
-    backgroundTintSlider.minValue = 0.0;
-    backgroundTintSlider.maxValue = 100.0;
-    backgroundTintSlider.doubleValue = OpnBackgroundTintStrength() * 100.0;
-    backgroundTintSlider.continuous = YES;
-    backgroundTintSlider.target = self;
-    backgroundTintSlider.action = @selector(backgroundTintSliderChanged:);
-    [panel addSubview:backgroundTintSlider];
-    [self registerControllerFocusableControl:backgroundTintSlider];
-
-    self.backgroundTintValueLabel = OpnLabel([NSString stringWithFormat:@"%.0f%%", backgroundTintSlider.doubleValue],
-                                             NSMakeRect(controlX + MIN(312.0, controlWidth - 60.0), 384.0, 60.0, 22.0),
-                                             12.0,
-                                             OpnColor(kTextSecondary),
-                                             NSFontWeightSemibold,
-                                             NSTextAlignmentRight);
-    [panel addSubview:self.backgroundTintValueLabel];
-
-    NSTextField *tintHint = OpnLabel(@"Lower values keep the animated background brighter. Set to 0% to remove the dark tint.",
-                                     NSMakeRect(controlX, 418.0, controlWidth, 38.0),
-                                     12.0,
-                                     OpnColor(kTextMuted),
-                                     NSFontWeightRegular);
-    tintHint.maximumNumberOfLines = 2;
-    [panel addSubview:tintHint];
-
     [panel addSubview:[self rowLabel:@"Stream Library Shortcut" y:480.0]];
     CGFloat shortcutButtonWidth = MIN(300.0, MAX(170.0, controlWidth - 112.0));
     NSButton *shortcutButton = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 470.0, shortcutButtonWidth, 38.0)];
@@ -1431,11 +1403,6 @@ using namespace OPN;
 
 - (void)derivedAccentToggleChanged:(NSButton *)sender {
     OpnSetDerivedAccentColorsEnabled(sender.state == NSControlStateValueOn);
-}
-
-- (void)backgroundTintSliderChanged:(NSSlider *)sender {
-    OpnSetBackgroundTintStrength((CGFloat)sender.doubleValue / 100.0);
-    self.backgroundTintValueLabel.stringValue = [NSString stringWithFormat:@"%.0f%%", sender.doubleValue];
 }
 
 - (void)controllerModeToggleChanged:(NSButton *)sender {

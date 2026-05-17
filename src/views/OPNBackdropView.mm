@@ -387,7 +387,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         _storeNavFrame = NSZeroRect;
         _libraryNavFrame = NSZeroRect;
         _settingsNavFrame = NSZeroRect;
-        _accountFrame = NSMakeRect(NSWidth(self.bounds) - 304.0, 10.0, 284.0, 92.0);
+        _accountFrame = NSMakeRect(NSWidth(self.bounds) - 284.0, 12.0, 268.0, 82.0);
     }
     BOOL showTabs = showNavigation && !controllerMode;
     BOOL showStore = showTabs;
@@ -451,12 +451,12 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         NSRectFill(NSMakeRect(0, navHeight - 1.0, NSWidth(bounds), 1));
     }
 
-    NSImage *logo = OPNHeaderLogoImage();
+    NSImage *logo = controllerMode ? nil : OPNHeaderLogoImage();
     if (logo) {
-        CGFloat logoHeight = controllerMode ? 69.3 : 49.5;
+        CGFloat logoHeight = controllerMode ? 34.0 : 49.5;
         CGFloat aspect = logo.size.height > 0 ? logo.size.width / logo.size.height : 1.0;
-        CGFloat logoWidth = MIN(controllerMode ? 297.0 : 217.8, logoHeight * aspect);
-        NSRect logoRect = controllerMode ? NSMakeRect(28.0, 18.0, logoWidth, logoHeight) : NSMakeRect(28.0, 7.25, logoWidth, logoHeight);
+        CGFloat logoWidth = MIN(controllerMode ? 146.0 : 217.8, logoHeight * aspect);
+        NSRect logoRect = controllerMode ? NSMakeRect(28.0, 29.0, logoWidth, logoHeight) : NSMakeRect(28.0, 7.25, logoWidth, logoHeight);
         [logo drawInRect:logoRect
                 fromRect:NSZeroRect
                operation:NSCompositingOperationSourceOver
@@ -504,9 +504,9 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     }
 
     NSString *remaining = self.remainingPlayTime.length > 0 ? self.remainingPlayTime : @"--";
-    CGFloat controllerStatsWidth = 292.0;
-    CGFloat controllerStatsX = NSWidth(bounds) - controllerStatsWidth - 28.0;
-    NSRect planRect = controllerMode ? NSMakeRect(controllerStatsX, 72.0, 132.0, 26.0) : NSMakeRect(NSWidth(bounds) - 294, 11.0, 108, 26);
+    CGFloat controllerStatsWidth = 252.0;
+    CGFloat controllerStatsX = NSWidth(bounds) - controllerStatsWidth - 24.0;
+    NSRect planRect = controllerMode ? NSMakeRect(controllerStatsX, 66.0, 116.0, 24.0) : NSMakeRect(NSWidth(bounds) - 294, 11.0, 108, 26);
     NSBezierPath *planPill = [NSBezierPath bezierPathWithRoundedRect:planRect xRadius:14 yRadius:14];
     [controllerMode ? OpnColor([self resolvedControllerAccentRGB], 0.075) : OpnColor(0xFFFFFF, 0.075) setFill];
     [planPill fill];
@@ -517,7 +517,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     }
     NSMutableParagraphStyle *remainingStyle = [[NSMutableParagraphStyle alloc] init];
     remainingStyle.alignment = NSTextAlignmentCenter;
-    NSMutableDictionary<NSAttributedStringKey, id> *remainingAttrs = [OpnTextStyle(12, OpnColor(kTextSecondary), NSFontWeightSemibold) mutableCopy];
+    NSMutableDictionary<NSAttributedStringKey, id> *remainingAttrs = [OpnTextStyle(controllerMode ? 11.0 : 12.0, OpnColor(kTextSecondary), NSFontWeightSemibold) mutableCopy];
     remainingAttrs[NSParagraphStyleAttributeName] = remainingStyle;
     [remaining drawInRect:NSInsetRect(planRect, 0, 5)
               withAttributes:remainingAttrs];
@@ -527,10 +527,10 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     gameCountStyle.alignment = controllerMode ? NSTextAlignmentRight : NSTextAlignmentCenter;
     NSMutableDictionary<NSAttributedStringKey, id> *gameCountAttrs = [OpnTextStyle(10, OpnColor(kTextMuted), NSFontWeightMedium) mutableCopy];
     gameCountAttrs[NSParagraphStyleAttributeName] = gameCountStyle;
-    [gameCount drawInRect:controllerMode ? NSMakeRect(NSMaxX(planRect) + 14.0, 78.0, 146.0, 14.0) : NSMakeRect(NSMinX(planRect), 40.0, NSWidth(planRect), 14)
+    [gameCount drawInRect:controllerMode ? NSMakeRect(NSMaxX(planRect) + 10.0, 71.0, 112.0, 14.0) : NSMakeRect(NSMinX(planRect), 40.0, NSWidth(planRect), 14)
           withAttributes:gameCountAttrs];
 
-    NSRect avatarRect = controllerMode ? NSMakeRect(NSWidth(bounds) - 292.0, 18.0, 30.0, 30.0) : NSMakeRect(NSWidth(bounds) - 164, 17.0, 30, 30);
+    NSRect avatarRect = controllerMode ? NSMakeRect(controllerStatsX, 18.0, 28.0, 28.0) : NSMakeRect(NSWidth(bounds) - 164, 17.0, 30, 30);
     NSBezierPath *avatar = [NSBezierPath bezierPathWithOvalInRect:avatarRect];
 
     NSString *name = self.accountName.length > 0 ? self.accountName : @"User";
@@ -552,15 +552,15 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         avatarStyle.alignment = NSTextAlignmentCenter;
         NSMutableDictionary<NSAttributedStringKey, id> *avatarAttrs = [OpnTextStyle(13, OpnColor([self resolvedControllerAccentBlackRGB:0.88]), NSFontWeightBold) mutableCopy];
         avatarAttrs[NSParagraphStyleAttributeName] = avatarStyle;
-        [initial drawInRect:NSMakeRect(NSMinX(avatarRect), NSMinY(avatarRect) + 7, 30, 16) withAttributes:avatarAttrs];
+        [initial drawInRect:NSMakeRect(NSMinX(avatarRect), NSMinY(avatarRect) + 7, NSWidth(avatarRect), 16) withAttributes:avatarAttrs];
     }
 
     if (controllerMode) {
         NSMutableParagraphStyle *accountTextStyle = [[NSMutableParagraphStyle alloc] init];
-        accountTextStyle.alignment = NSTextAlignmentCenter;
+        accountTextStyle.alignment = NSTextAlignmentLeft;
         NSMutableDictionary<NSAttributedStringKey, id> *nameAttrs = [OpnTextStyle(12, OpnColor(kTextPrimary), NSFontWeightSemibold) mutableCopy];
         nameAttrs[NSParagraphStyleAttributeName] = accountTextStyle;
-        [name drawInRect:NSMakeRect(NSWidth(bounds) - 252.0, 17.0, 200.0, 17.0) withAttributes:nameAttrs];
+        [name drawInRect:NSMakeRect(NSMaxX(avatarRect) + 10.0, 17.0, 164.0, 17.0) withAttributes:nameAttrs];
     } else {
         [name drawInRect:NSMakeRect(NSWidth(bounds) - 124, 16.0, 72, 17)
            withAttributes:OpnTextStyle(12, OpnColor(kTextPrimary), NSFontWeightSemibold)];
@@ -568,19 +568,19 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     NSString *status = self.accountStatus.length > 0 ? self.accountStatus : @"Signed in";
     if (controllerMode) {
         NSMutableParagraphStyle *statusTextStyle = [[NSMutableParagraphStyle alloc] init];
-        statusTextStyle.alignment = NSTextAlignmentCenter;
+        statusTextStyle.alignment = NSTextAlignmentLeft;
         NSMutableDictionary<NSAttributedStringKey, id> *statusAttrs = [OpnTextStyle(10, OpnColor(kTextMuted), NSFontWeightRegular) mutableCopy];
         statusAttrs[NSParagraphStyleAttributeName] = statusTextStyle;
-        [status drawInRect:NSMakeRect(NSWidth(bounds) - 252.0, 33.0, 200.0, 14.0) withAttributes:statusAttrs];
+        [status drawInRect:NSMakeRect(NSMaxX(avatarRect) + 10.0, 33.0, 164.0, 14.0) withAttributes:statusAttrs];
     } else {
         [status drawInRect:NSMakeRect(NSWidth(bounds) - 124, 32.0, 72, 14)
                 withAttributes:OpnTextStyle(10, OpnColor(kTextMuted), NSFontWeightRegular)];
     }
 
-    _accountFrame = controllerMode ? NSMakeRect(NSWidth(bounds) - 304.0, 10.0, 284.0, 92.0) : NSMakeRect(NSWidth(bounds) - 174, 9.0, 154, 48);
+    _accountFrame = controllerMode ? NSMakeRect(controllerStatsX - 8.0, 12.0, controllerStatsWidth + 16.0, 82.0) : NSMakeRect(NSWidth(bounds) - 174, 9.0, 154, 48);
     NSBezierPath *chevron = [NSBezierPath bezierPath];
-    CGFloat chevronX = controllerMode ? NSWidth(bounds) - 36.0 : NSWidth(bounds) - 36.0;
-    CGFloat chevronY = controllerMode ? 31.0 : 28.0;
+    CGFloat chevronX = controllerMode ? NSWidth(bounds) - 34.0 : NSWidth(bounds) - 36.0;
+    CGFloat chevronY = controllerMode ? 28.0 : 28.0;
     [chevron moveToPoint:NSMakePoint(chevronX - 4.0, chevronY - 2.0)];
     [chevron lineToPoint:NSMakePoint(chevronX, chevronY + 2.0)];
     [chevron lineToPoint:NSMakePoint(chevronX + 4.0, chevronY - 2.0)];
