@@ -30,6 +30,7 @@ endif
 CXXFLAGS := $(ARCHFLAGS) $(OPTFLAGS) -std=c++20 -Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Wno-gnu-conditional-omitted-operand -fobjc-arc -Isrc $(WEBRTC_CFLAGS)
 LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS)
 TEST_SRC := tests/backend_tests.mm
+TEST_HEADERS := tests/doctest.h
 TEST_DEPS := src/streaming/OPNStreamBackend.mm src/auth/OPNAuthService.mm
 TEST_BIN := $(BUILD_DIR)/backend_tests
 
@@ -41,7 +42,7 @@ $(BIN): $(SRC)
 	mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(SRC) $(LDFLAGS) -o $(BIN)
 
-$(TEST_BIN): $(TEST_SRC) $(TEST_DEPS)
+$(TEST_BIN): $(TEST_SRC) $(TEST_HEADERS) $(TEST_DEPS)
 	mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(TEST_SRC) $(TEST_DEPS) $(LDFLAGS) -Wl,-undefined,dynamic_lookup -framework Foundation -o $(TEST_BIN)
 
