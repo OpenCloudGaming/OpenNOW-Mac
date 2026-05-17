@@ -1,4 +1,4 @@
-vendor-analysis/
+vendor/
 graphify-out/
 .vscode/settings.json
 
