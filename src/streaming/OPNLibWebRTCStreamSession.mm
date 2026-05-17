@@ -1068,7 +1068,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.fps = settings.fps;
         m_latestStats.videoDecoder = "libwebrtc";
         m_latestStats.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "OPNPacedVideoRenderer"
+            ? "CVDisplayLink"
             : "RTCMTLNSVideoView";
         m_latestStats.videoPipelineMode = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
             ? "libwebrtc CVDisplayLink pacing"
@@ -1797,7 +1797,7 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
     parsed.videoDecoder = "libwebrtc";
     if (parsed.videoSink.empty()) {
         parsed.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "OPNPacedVideoRenderer"
+            ? "CVDisplayLink"
             : "RTCMTLNSVideoView";
     }
     if (parsed.videoPipelineMode.empty()) {
@@ -2096,7 +2096,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
                 OPNPacedVideoRenderer *pacedRenderer = [[OPNPacedVideoRenderer alloc] initWithFrame:parentView.bounds targetFps:_owner->TargetFps() owner:_owner];
                 videoView = pacedRenderer;
                 videoRenderer = pacedRenderer;
-                _owner->SetVideoRendererState("OPNPacedVideoRenderer", "libwebrtc CVDisplayLink pacing");
+                _owner->SetVideoRendererState("CVDisplayLink", "libwebrtc CVDisplayLink pacing");
             } else {
                 RTCMTLNSVideoView *metalView = [[RTCMTLNSVideoView alloc] initWithFrame:parentView.bounds];
                 videoView = metalView;
