@@ -767,7 +767,7 @@ static NSImage *OPNControllerPromptIcon(NSString *button, OPNControllerPromptSty
         _countLabel.layer.borderColor = OpnColor(0xFFFFFF, 0.13).CGColor;
         [self addSubview:_countLabel];
 
-        NSString *kindText = [_categoryId hasPrefix:@"system:"] ? @"SETTINGS" : @"STORE";
+        NSString *kindText = [_categoryId isEqualToString:@"system:exit"] ? @"EXIT" : ([_categoryId isEqualToString:@"system:restart"] ? @"RESTART" : ([_categoryId hasPrefix:@"system:"] ? @"SETTINGS" : @"STORE"));
         _kindLabel = OpnLabel(kindText, NSZeroRect, 10.0, OpnColor(OPN::kBrandGreen), NSFontWeightBold, NSTextAlignmentCenter);
         _kindLabel.hidden = ![_categoryId hasPrefix:@"store:"] && ![_categoryId hasPrefix:@"system:"];
         _kindLabel.wantsLayer = YES;
@@ -1715,13 +1715,14 @@ using namespace OPN;
         matchingGames.push_back(game);
     }
 
-    NSInteger sampleCount = MIN(limit, (NSInteger)matchingGames.size());
-    for (NSInteger i = 0; i < sampleCount; i++) {
-        size_t index = (size_t)i;
-        size_t remaining = matchingGames.size() - index;
-        size_t randomOffset = remaining > 1 ? (size_t)arc4random_uniform((uint32_t)remaining) : 0;
-        std::swap(matchingGames[index], matchingGames[index + randomOffset]);
-        games.push_back(matchingGames[index]);
+    std::stable_sort(matchingGames.begin(), matchingGames.end(), [](const OPN::GameInfo &lhs, const OPN::GameInfo &rhs) {
+        if (lhs.isInLibrary != rhs.isInLibrary) return lhs.isInLibrary;
+        return false;
+    });
+
+    NSInteger thumbnailCount = MIN(limit, (NSInteger)matchingGames.size());
+    for (NSInteger i = 0; i < thumbnailCount; i++) {
+        games.push_back(matchingGames[(size_t)i]);
     }
     return games;
 }
@@ -2014,7 +2015,7 @@ using namespace OPN;
     {
         std::vector<OPN::GameInfo> emptyGames;
         OPNControllerCategoryCardView *settingsCard = [[OPNControllerCategoryCardView alloc] initWithFrame:NSMakeRect(nextX, cardY, cardWidth, cardHeight)
-                                                                                                       title:@"Interface Settings"
+                                                                                                       title:@"Settings"
                                                                                                   categoryId:@"system:interface-settings"
                                                                                                    gameCount:1
                                                                                                       games:emptyGames];
@@ -2031,6 +2032,42 @@ using namespace OPN;
         [self.gridContentView addSubview:settingsCard];
         [self.categoryCardViews addObject:settingsCard];
         nextX = NSMaxX(settingsCard.frame) + spacing;
+
+        OPNControllerCategoryCardView *restartCard = [[OPNControllerCategoryCardView alloc] initWithFrame:NSMakeRect(nextX, cardY, cardWidth, cardHeight)
+                                                                                                     title:@"Restart"
+                                                                                                categoryId:@"system:restart"
+                                                                                                 gameCount:1
+                                                                                                    games:emptyGames];
+        __weak OPNControllerCategoryCardView *weakRestartCard = restartCard;
+        restartCard.onSelect = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            OPNControllerCategoryCardView *strongCard = weakRestartCard;
+            if (!strongSelf || !strongCard) return;
+            NSUInteger cardIndex = [strongSelf.categoryCardViews indexOfObject:strongCard];
+            if (cardIndex != NSNotFound) [strongSelf focusCategoryAtIndex:(NSInteger)cardIndex + [strongSelf controllerOverviewCategoryOffset] scrollIntoView:NO];
+            [strongSelf openFocusedCategory];
+        };
+        [self.gridContentView addSubview:restartCard];
+        [self.categoryCardViews addObject:restartCard];
+        nextX = NSMaxX(restartCard.frame) + spacing;
+
+        OPNControllerCategoryCardView *exitCard = [[OPNControllerCategoryCardView alloc] initWithFrame:NSMakeRect(nextX, cardY, cardWidth, cardHeight)
+                                                                                                  title:@"Exit"
+                                                                                             categoryId:@"system:exit"
+                                                                                              gameCount:1
+                                                                                                 games:emptyGames];
+        __weak OPNControllerCategoryCardView *weakExitCard = exitCard;
+        exitCard.onSelect = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            OPNControllerCategoryCardView *strongCard = weakExitCard;
+            if (!strongSelf || !strongCard) return;
+            NSUInteger cardIndex = [strongSelf.categoryCardViews indexOfObject:strongCard];
+            if (cardIndex != NSNotFound) [strongSelf focusCategoryAtIndex:(NSInteger)cardIndex + [strongSelf controllerOverviewCategoryOffset] scrollIntoView:NO];
+            [strongSelf openFocusedCategory];
+        };
+        [self.gridContentView addSubview:exitCard];
+        [self.categoryCardViews addObject:exitCard];
+        nextX = NSMaxX(exitCard.frame) + spacing;
     }
 
     self.gridContentView.frame = NSMakeRect(0.0,
@@ -2578,6 +2615,16 @@ using namespace OPN;
     if ([card.categoryId isEqualToString:@"system:interface-settings"]) {
         if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
         if (self.onInterfaceSettingsRequested) self.onInterfaceSettingsRequested();
+        return;
+    }
+    if ([card.categoryId isEqualToString:@"system:restart"]) {
+        if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
+        if (self.onRestartRequested) self.onRestartRequested();
+        return;
+    }
+    if ([card.categoryId isEqualToString:@"system:exit"]) {
+        if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneBack);
+        if (self.onExitRequested) self.onExitRequested();
         return;
     }
     self.selectedCategoryId = card.categoryId.length > 0 ? card.categoryId : @"all";

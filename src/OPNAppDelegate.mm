@@ -56,6 +56,7 @@
 - (void)returnToActiveStreamFromLibraryOverlay;
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen;
 - (void)attachActiveStreamPictureInPictureIfNeeded;
+- (void)restartApplication;
 - (void)loadStorePanelsWithRetry:(BOOL)canRetry;
 - (void)refreshGameLibraryInBackground;
 - (void)fetchGameLibraryWithRetry:(BOOL)canRetry
@@ -98,7 +99,7 @@ static void OPNConfigureResizableWindow(NSWindow *window, NSSize minSize, NSSize
 
 static void OPNConfigureLibraryWindow(NSWindow *window) {
     OPNConfigureResizableWindow(window,
-                                NSMakeSize(720.0, 480.0),
+                                NSMakeSize(OPN::kWindowMinWidth, OPN::kWindowMinHeight),
                                 OPNResizableWindowMaxSize());
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     window.backgroundColor = OpnColor(OPN::kBackground);
@@ -106,7 +107,7 @@ static void OPNConfigureLibraryWindow(NSWindow *window) {
 
 static void OPNConfigureStreamWindow(NSWindow *window) {
     OPNConfigureResizableWindow(window,
-                                NSMakeSize(640.0, 360.0),
+                                NSMakeSize(OPN::kWindowMinWidth, OPN::kWindowMinHeight),
                                 OPNResizableWindowMaxSize());
 }
 
@@ -360,6 +361,35 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [NSUserDefaults.standardUserDefaults setBool:OPNWindowIsFullScreen(self.window)
                                           forKey:OPNMainWindowWasFullScreenKey];
     [NSUserDefaults.standardUserDefaults synchronize];
+}
+
+- (void)restartApplication {
+    [self.window saveFrameUsingName:OPNMainWindowFrameAutosaveName];
+    [self saveWindowPresentation];
+
+    NSTask *task = [[NSTask alloc] init];
+    NSURL *bundleURL = NSBundle.mainBundle.bundleURL;
+    if ([bundleURL.pathExtension.lowercaseString isEqualToString:@"app"]) {
+        task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/open"];
+        task.arguments = @[@"-n", bundleURL.path];
+    } else {
+        NSString *executablePath = NSProcessInfo.processInfo.arguments.firstObject;
+        if (executablePath.length == 0) executablePath = NSBundle.mainBundle.executablePath;
+        if (executablePath.length > 0 && !executablePath.absolutePath) {
+            executablePath = [NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:executablePath];
+        }
+        task.executableURL = executablePath.length > 0 ? [NSURL fileURLWithPath:executablePath] : nil;
+        task.arguments = @[];
+        task.currentDirectoryURL = [NSURL fileURLWithPath:NSFileManager.defaultManager.currentDirectoryPath isDirectory:YES];
+    }
+
+    NSError *launchError = nil;
+    BOOL launched = task.executableURL != nil && [task launchAndReturnError:&launchError];
+    if (!launched) NSLog(@"[AppDelegate] Restart launch failed: %@", launchError.localizedDescription ?: @"unknown error");
+
+    if (launched) {
+        [NSApp terminate:self];
+    }
 }
 
 - (void)windowFullScreenStateChanged:(NSNotification *)notification {
@@ -848,6 +878,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf transitionToScreen:AuthScreen::Settings];
+            };
+
+            catalog.onExitRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [NSApp terminate:strongSelf];
+            };
+
+            catalog.onRestartRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf restartApplication];
             };
 
             catalog.onSelectGame = ^(const GameInfo &game, int variantIndex) {

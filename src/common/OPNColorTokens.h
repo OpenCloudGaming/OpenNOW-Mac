@@ -26,8 +26,10 @@ constexpr unsigned kOverlay          = 0x000000;
 constexpr unsigned kLinkBlue         = 0x0A84FF;
 constexpr unsigned kBlack            = 0x000000;
 
-constexpr CGFloat kWindowWidth = 1024.0;
-constexpr CGFloat kWindowHeight = 768.0;
+constexpr CGFloat kWindowMinWidth = 1280.0;
+constexpr CGFloat kWindowMinHeight = 720.0;
+constexpr CGFloat kWindowWidth = kWindowMinWidth;
+constexpr CGFloat kWindowHeight = kWindowMinHeight;
 constexpr CGFloat kCardX = 183.0;
 constexpr CGFloat kCardY = 148.0;
 constexpr CGFloat kCardWidth = 658.0;
