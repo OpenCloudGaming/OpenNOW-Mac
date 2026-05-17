@@ -31,6 +31,8 @@
 @property (nonatomic, assign) BOOL adVisible;
 @property (nonatomic, assign) BOOL adStartReported;
 @property (nonatomic, assign) BOOL adFinishReported;
+- (BOOL)shouldShowQueueBadge;
+- (BOOL)messageRepresentsQueue;
 - (void)applyAccentColors;
 @end
 
@@ -111,17 +113,17 @@
             [_dotLayers addObject:dot];
         }
 
-        _messageLabel = OpnLabel(_message, NSZeroRect, 14.0, OpnColor(OPN::kTextPrimary), NSFontWeightMedium, NSTextAlignmentCenter);
+        _messageLabel = OpnLabel(_message, NSZeroRect, 15.0, OpnColor(OPN::kTextPrimary), NSFontWeightSemibold, NSTextAlignmentCenter);
         _messageLabel.maximumNumberOfLines = 2;
         [self addSubview:_messageLabel];
 
-        _queuePositionLabel = OpnLabel(@"", NSZeroRect, 13.0, OpnColor(OPN::kBrandGreen), NSFontWeightSemibold, NSTextAlignmentCenter);
+        _queuePositionLabel = OpnLabel(@"", NSZeroRect, 12.0, OpnColor(OPN::kBrandGreen), NSFontWeightBold, NSTextAlignmentCenter);
         _queuePositionLabel.hidden = YES;
         _queuePositionLabel.wantsLayer = YES;
-        _queuePositionLabel.layer.backgroundColor = OpnColor(0x0A1624, 0.72).CGColor;
-        _queuePositionLabel.layer.cornerRadius = 12.0;
+        _queuePositionLabel.layer.backgroundColor = OpnColor(0x07140F, 0.92).CGColor;
+        _queuePositionLabel.layer.cornerRadius = 14.0;
         _queuePositionLabel.layer.borderWidth = 1.0;
-        _queuePositionLabel.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.22).CGColor;
+        _queuePositionLabel.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.36).CGColor;
         [self addSubview:_queuePositionLabel];
 
         _adContainerView = [[NSView alloc] initWithFrame:NSZeroRect];
@@ -178,7 +180,7 @@
         dot.shadowColor = OpnColor(OPN::kBrandGreen, 1.0).CGColor;
     }
     self.queuePositionLabel.textColor = OpnColor(OPN::kBrandGreen);
-    self.queuePositionLabel.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.22).CGColor;
+    self.queuePositionLabel.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.36).CGColor;
     self.adChipLabel.textColor = OpnColor(OPN::kBrandGreen);
     [self restyleStepIndicators];
 }
@@ -188,6 +190,8 @@
 - (void)setMessage:(NSString *)message {
     _message = [message copy] ?: @"Loading...";
     self.messageLabel.stringValue = _message;
+    self.queuePositionLabel.hidden = ![self shouldShowQueueBadge];
+    [self setNeedsLayout:YES];
 }
 
 - (void)setSteps:(NSArray<NSString *> *)steps {
@@ -213,8 +217,8 @@
 
 - (void)setQueuePosition:(NSInteger)queuePosition {
     _queuePosition = MAX(0, queuePosition);
-    if (_queuePosition > 0) {
-        self.queuePositionLabel.stringValue = [NSString stringWithFormat:@"Queue Position #%ld", (long)_queuePosition];
+    if ([self shouldShowQueueBadge]) {
+        self.queuePositionLabel.stringValue = [NSString stringWithFormat:@"QUEUE  #%ld", (long)_queuePosition];
         self.queuePositionLabel.hidden = NO;
     } else {
         self.queuePositionLabel.stringValue = @"";
@@ -225,6 +229,25 @@
 
 - (void)updateQueuePosition:(NSInteger)queuePosition {
     self.queuePosition = queuePosition;
+}
+
+- (BOOL)shouldShowQueueBadge {
+    if (self.queuePosition <= 0) return NO;
+    if ([self messageRepresentsQueue]) return NO;
+    NSString *lowerMessage = self.message.lowercaseString ?: @"";
+    if ([lowerMessage containsString:@"previous session"] ||
+        [lowerMessage containsString:@"cleanup"] ||
+        [lowerMessage containsString:@"storage"] ||
+        [lowerMessage containsString:@"setting up"] ||
+        [lowerMessage containsString:@"cloud rig"]) {
+        return NO;
+    }
+    return YES;
+}
+
+- (BOOL)messageRepresentsQueue {
+    NSString *lowerMessage = self.message.lowercaseString ?: @"";
+    return [lowerMessage containsString:@"queue"] || [lowerMessage containsString:@"position"];
 }
 
 - (void)setLoadingChromeHidden:(BOOL)hidden {
@@ -399,14 +422,15 @@
     CGFloat height = NSHeight(self.bounds);
     BOOL hasSteps = self.stepIndicatorLayers.count > 0;
     CGFloat panelWidth = MIN(hasSteps ? 540.0 : 460.0, MAX(320.0, width - 48.0));
-    CGFloat panelHeight = self.adVisible ? 460.0 : (hasSteps ? 318.0 : 276.0);
+    BOOL showQueueBadge = !self.queuePositionLabel.hidden;
+    CGFloat panelHeight = self.adVisible ? 460.0 : (hasSteps ? 338.0 : 296.0);
     panelHeight = MIN(panelHeight, MAX(252.0, height - 48.0));
     CGFloat panelX = floor((width - panelWidth) * 0.5);
     CGFloat panelY = floor((height - panelHeight) * 0.5);
     NSRect panelRect = NSMakeRect(panelX, panelY, panelWidth, panelHeight);
     CGFloat centerX = NSMidX(panelRect);
     CGFloat orbitSize = MIN(108.0, MAX(80.0, panelWidth * 0.22));
-    CGFloat orbitY = panelY + 40.0;
+    CGFloat orbitY = panelY + 34.0;
     NSRect orbitRect = NSMakeRect(centerX - orbitSize * 0.5, orbitY, orbitSize, orbitSize);
 
     self.panelLayer.frame = panelRect;
@@ -425,7 +449,7 @@
     self.sparkLayer.cornerRadius = 4.0;
 
     CGFloat barWidth = MIN(148.0, panelWidth - 96.0);
-    CGFloat barY = orbitY + orbitSize + 28.0;
+    CGFloat barY = orbitY + orbitSize + 26.0;
     for (NSUInteger i = 0; i < self.barLayers.count; i++) {
         CALayer *bar = self.barLayers[i];
         CGFloat fraction = 1.0 - (CGFloat)i * 0.16;
@@ -438,9 +462,9 @@
     for (NSUInteger i = 0; i < self.dotLayers.count; i++) {
         self.dotLayers[i].frame = NSMakeRect(dotStart + (CGFloat)i * 13.0, barY + 45.0, 5.0, 5.0);
     }
-    self.messageLabel.frame = NSMakeRect(panelX + 36.0, barY + 64.0, MAX(80.0, panelWidth - 72.0), 38.0);
-    if (!self.queuePositionLabel.hidden) {
-        self.queuePositionLabel.frame = NSMakeRect(centerX - 92.0, barY + 105.0, 184.0, 26.0);
+    self.messageLabel.frame = NSMakeRect(panelX + 36.0, barY + 66.0, MAX(80.0, panelWidth - 72.0), 42.0);
+    if (showQueueBadge && ![self messageRepresentsQueue]) {
+        self.queuePositionLabel.frame = NSMakeRect(centerX - 54.0, barY + 114.0, 108.0, 28.0);
     }
 
     if (self.adVisible) {
@@ -451,18 +475,17 @@
         self.adContainerView.frame = NSMakeRect(panelX + adInset, adY, panelWidth - adInset * 2.0, adHeight);
         CGFloat adWidth = NSWidth(self.adContainerView.bounds);
         CGFloat queueBadgeWidth = 192.0;
-        BOOL showQueueBadge = !self.queuePositionLabel.hidden;
         CGFloat mediaHeight = MIN(190.0, MAX(120.0, adHeight * 0.54));
         self.adPlayerView.frame = NSMakeRect(18.0, 18.0, adWidth - 36.0, mediaHeight);
         self.adChipLabel.frame = NSMakeRect(20.0, mediaHeight + 32.0, adWidth - 40.0, 18.0);
         self.adTitleLabel.frame = NSMakeRect(20.0, mediaHeight + 54.0, adWidth - 40.0 - (showQueueBadge ? queueBadgeWidth + 14.0 : 0.0), 54.0);
         self.adMessageLabel.frame = NSMakeRect(20.0, mediaHeight + 112.0, adWidth - 40.0, 56.0);
         self.messageLabel.frame = NSMakeRect(panelX + 36.0, NSMaxY(panelRect) - 52.0, MAX(80.0, panelWidth - 72.0), 24.0);
-        if (showQueueBadge) {
-            self.queuePositionLabel.frame = NSMakeRect(centerX - queueBadgeWidth * 0.5,
+        if (showQueueBadge && ![self messageRepresentsQueue]) {
+            self.queuePositionLabel.frame = NSMakeRect(centerX - 54.0,
                                                        NSMaxY(self.adContainerView.frame) + 10.0,
-                                                       queueBadgeWidth,
-                                                       26.0);
+                                                       108.0,
+                                                       28.0);
         }
     }
 
@@ -472,7 +495,7 @@
         CGFloat railWidth = MIN(240.0, panelWidth - 112.0);
         CGFloat segmentWidth = floor((railWidth - gap * (CGFloat)(stepCount - 1)) / (CGFloat)stepCount);
         CGFloat segmentX = centerX - railWidth * 0.5;
-        CGFloat segmentY = barY + 116.0;
+        CGFloat segmentY = showQueueBadge && ![self messageRepresentsQueue] ? barY + 154.0 : barY + 126.0;
         for (NSUInteger i = 0; i < stepCount; i++) {
             self.stepIndicatorLayers[i].frame = NSMakeRect(segmentX + (segmentWidth + gap) * (CGFloat)i,
                                                            segmentY,

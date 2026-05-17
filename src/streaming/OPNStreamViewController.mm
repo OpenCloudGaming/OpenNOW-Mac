@@ -984,7 +984,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             self->_activeSessionInfo = sessionInfoCopy;
             self->_hasActiveSessionInfo = YES;
         }
-        [self.loadingView updateQueuePosition:sessionInfoCopy.queuePosition];
+        NSInteger visibleQueuePosition = sessionInfoCopy.progressState == OPN::SessionProgressState::InQueue
+            ? sessionInfoCopy.queuePosition
+            : 0;
+        [self.loadingView updateQueuePosition:visibleQueuePosition];
         if (sessionInfoCopy.adState.isAdsRequired) {
             [self.loadingView updateAdState:sessionInfoCopy.adState];
         } else {

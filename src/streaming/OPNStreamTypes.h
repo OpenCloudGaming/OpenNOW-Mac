@@ -75,11 +75,21 @@ struct SessionAdState {
     std::vector<SessionAdInfo> sessionAds;
 };
 
+enum class SessionProgressState {
+    Unknown = 0,
+    Connecting,
+    InQueue,
+    PreviousSessionCleanup,
+    WaitingForStorage,
+    SettingUp,
+};
+
 struct SessionInfo {
     std::string sessionId;
     int status = 0;
     int queuePosition = 0;
     int seatSetupStep = 0;
+    SessionProgressState progressState = SessionProgressState::Unknown;
     std::string zone;
     std::string streamingBaseUrl;
     std::string serverIp;

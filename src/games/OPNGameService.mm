@@ -1276,8 +1276,32 @@ static bool IsSessionReadyStatus(int status) {
     return status == 2 || status == 3;
 }
 
-static bool IsSessionActivelyQueued(const SessionInfo &session) {
-    return session.status == 1 && (session.queuePosition > 0 || session.seatSetupStep > 0 || session.adState.isAdsRequired);
+static bool IsSessionLaunchProgressPending(const SessionInfo &session) {
+    if (session.status != 1) return false;
+    if (session.adState.isAdsRequired || session.queuePosition > 0 || session.seatSetupStep > 0) return true;
+    return session.progressState == SessionProgressState::Connecting ||
+           session.progressState == SessionProgressState::InQueue ||
+           session.progressState == SessionProgressState::PreviousSessionCleanup ||
+           session.progressState == SessionProgressState::WaitingForStorage ||
+           session.progressState == SessionProgressState::SettingUp;
+}
+
+static SessionInfo SessionWithoutQueueBadge(SessionInfo session) {
+    session.queuePosition = 0;
+    return session;
+}
+
+static std::string QueueProgressMessage(int queuePosition) {
+    if (queuePosition > 2) {
+        return std::to_string(queuePosition - 1) + " gamers ahead of you.";
+    }
+    if (queuePosition == 2) {
+        return "1 gamer ahead of you.";
+    }
+    if (queuePosition == 1) {
+        return "You're next in queue.";
+    }
+    return "Waiting in queue...";
 }
 
 static std::string ProgressMessageForSession(const SessionInfo &session) {
@@ -1285,11 +1309,27 @@ static std::string ProgressMessageForSession(const SessionInfo &session) {
         if (!session.adState.message.empty()) return session.adState.message;
         return session.adState.isQueuePaused ? "Session queue paused for ads." : "Ad playback is required while waiting in queue.";
     }
-    if (session.queuePosition > 0) {
-        return "Position #" + std::to_string(session.queuePosition) + " in queue.";
+    if (session.status == 6) {
+        return "Previous session is ending. Waiting for GeForce NOW to finish cleanup...";
     }
-    if (session.seatSetupStep > 0) {
-        return "Setting up cloud rig...";
+
+    switch (session.progressState) {
+        case SessionProgressState::PreviousSessionCleanup:
+            return "Previous session is ending. Waiting for GeForce NOW to finish cleanup...";
+        case SessionProgressState::WaitingForStorage:
+            return "Waiting for cloud storage to be ready...";
+        case SessionProgressState::InQueue:
+            return QueueProgressMessage(session.queuePosition);
+        case SessionProgressState::Connecting:
+            return "Connecting to GeForce NOW...";
+        case SessionProgressState::SettingUp:
+            return "Setting up cloud rig...";
+        case SessionProgressState::Unknown:
+            break;
+    }
+
+    if (session.queuePosition > 0) {
+        return QueueProgressMessage(session.queuePosition);
     }
     return "Waiting for cloud session...";
 }
@@ -1331,15 +1371,26 @@ static void ReportLaunchProgress(const LaunchProgressCallback &progress, const S
     });
 }
 
-static void PollSessionReady(std::string sessionId,
-                              std::string serverIp,
-                              LaunchProgressCallback progress,
-                              LaunchCallback completion) {
-    __block int retries = 0;
-    const int maxRetries = 60;
-    __block bool lastPollWasActiveQueue = false;
+static void ReportTeardownProgress(const LaunchProgressCallback &progress, const SessionInfo &session = SessionInfo{}) {
+    if (!progress) return;
+    LaunchProgressCallback progressCopy = progress;
+    SessionInfo cleanupInfo = SessionWithoutQueueBadge(session);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (progressCopy) progressCopy("Previous session is ending. Waiting for GeForce NOW to finish cleanup...", cleanupInfo);
+    });
+}
 
-    __block void (^pollBlock)(void);
+static void PollSessionReady(std::string sessionId,
+                               std::string serverIp,
+                               int appId,
+                               LaunchProgressCallback progress,
+                               LaunchCallback completion) {
+    (void)appId;
+    auto retries = std::make_shared<int>(0);
+    const int maxRetries = 60;
+    auto lastPollWasPendingProgress = std::make_shared<bool>(false);
+
+    auto pollBlock = std::make_shared<std::function<void()>>();
 
     void (^poller)(bool, const SessionInfo &, const std::string &) = ^(bool ok, const SessionInfo &pollInfo, const std::string &pollErr) {
         (void)pollErr;
@@ -1349,14 +1400,14 @@ static void PollSessionReady(std::string sessionId,
             DispatchLaunchCompletion(completion, true, pollInfo, "", "");
             return;
         }
-        if (ok) {
-            ReportLaunchProgress(progress, pollInfo);
-            lastPollWasActiveQueue = IsSessionActivelyQueued(pollInfo);
-        } else {
-            lastPollWasActiveQueue = false;
-        }
         if (ok && pollInfo.status == 6) {
-            ReportLaunchProgress(progress, "Previous session is ending. Waiting for GeForce NOW to finish cleanup...");
+            ReportTeardownProgress(progress, pollInfo);
+            *lastPollWasPendingProgress = true;
+        } else if (ok) {
+            ReportLaunchProgress(progress, pollInfo);
+            *lastPollWasPendingProgress = IsSessionLaunchProgressPending(pollInfo);
+        } else {
+            *lastPollWasPendingProgress = false;
         }
 
         if (ok && pollInfo.status > 3 && pollInfo.status != 6) {
@@ -1364,24 +1415,26 @@ static void PollSessionReady(std::string sessionId,
             return;
         }
 
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), pollBlock);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (*pollBlock) (*pollBlock)();
+        });
     };
 
-    pollBlock = ^{
-        if (retries >= maxRetries && !lastPollWasActiveQueue) {
+    *pollBlock = [=] {
+        if (*retries >= maxRetries && !*lastPollWasPendingProgress) {
             DispatchLaunchCompletion(completion, false, SessionInfo{}, "", "Session poll timeout");
             return;
         }
-        if (retries >= maxRetries && lastPollWasActiveQueue) {
-            retries = 0;
+        if (*retries >= maxRetries && *lastPollWasPendingProgress) {
+            *retries = 0;
         }
-        retries++;
+        (*retries)++;
         SessionManager::Shared().PollSession(sessionId, serverIp,
             [poller](bool ok, const SessionInfo &info, const std::string &err) {
                 poller(ok, info, err);
             });
     };
-    pollBlock();
+    (*pollBlock)();
 }
 
 static void WaitForSessionTeardown(std::string sessionId,
@@ -1498,7 +1551,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && s.status == 1 && !s.serverIp.empty()) {
             NSLog(@"[GameService] Polling existing session %s", s.sessionId.c_str());
-            PollSessionReady(s.sessionId, s.serverIp, progress, completion);
+            PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
     }
@@ -1506,7 +1559,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
     for (const auto &s : sessions) {
         if (s.status == 1 && !s.sessionId.empty() && !s.serverIp.empty()) {
             NSLog(@"[GameService] Polling existing queued session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
-            PollSessionReady(s.sessionId, s.serverIp, progress, completion);
+            PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
     }
@@ -1559,8 +1612,9 @@ void GameService::LaunchGame(const std::string &appId,
                         DispatchLaunchCompletion(completion, true, info, "", "");
                         return;
                     }
+                    const int appIdNumber = atoi(appId.c_str());
                     ReportLaunchProgress(progress, info);
-                    PollSessionReady(info.sessionId, info.serverIp, progress, completion);
+                    PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
                 });
             return;
         }
@@ -1584,8 +1638,9 @@ void GameService::LaunchGame(const std::string &appId,
                     DispatchLaunchCompletion(completion, true, info, "", "");
                     return;
                 }
+                const int appIdNumber = atoi(appId.c_str());
                 ReportLaunchProgress(progress, info);
-                PollSessionReady(info.sessionId, info.serverIp, progress, completion);
+                PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
             });
     });
 }

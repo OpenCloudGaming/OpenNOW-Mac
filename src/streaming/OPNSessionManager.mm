@@ -69,6 +69,21 @@ static int IntValue(id value, int fallback = 0) {
     return fallback;
 }
 
+static OPN::SessionProgressState ProgressStateForSeatSetupStep(int seatSetupStep, int queuePosition) {
+    switch (seatSetupStep) {
+        case 0:
+            return queuePosition > 0 ? OPN::SessionProgressState::InQueue : OPN::SessionProgressState::Connecting;
+        case 1:
+            return OPN::SessionProgressState::InQueue;
+        case 5:
+            return OPN::SessionProgressState::PreviousSessionCleanup;
+        case 6:
+            return OPN::SessionProgressState::WaitingForStorage;
+        default:
+            return OPN::SessionProgressState::SettingUp;
+    }
+}
+
 static bool BoolValue(id value, bool fallback = false) {
     if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value boolValue];
     if ([value isKindOfClass:[NSString class]]) {
@@ -185,6 +200,7 @@ static void ParseQueueProgress(NSDictionary *session, OPN::SessionInfo &info) {
     if (info.seatSetupStep == 0 && progressInfo) {
         info.seatSetupStep = IntValue(progressInfo[@"seatSetupStep"]);
     }
+    info.progressState = ProgressStateForSeatSetupStep(info.seatSetupStep, info.queuePosition);
 }
 
 static int AdMediaProfileRank(const std::string &profile) {
