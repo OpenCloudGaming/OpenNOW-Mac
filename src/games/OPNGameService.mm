@@ -1,4 +1,5 @@
 #include "OPNGameService.h"
+#include "OPNGameDataCache.h"
 #include "streaming/OPNSessionManager.h"
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamSession.h"
@@ -457,8 +458,16 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
     std::string token = m_accessToken;
     CatalogBrowseCallback callback = completion;
     NSLog(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
+    std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
+    int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
+    std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
+    CatalogBrowseResult cachedResult;
+    if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
+        NSLog(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
+        callback(true, cachedResult, "");
+    }
 
-    GetServerVpcId(token, [this, callback, searchQuery, sortId, filterIds, fetchCount](const std::string &vpcId) {
+    GetServerVpcId(token, [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         std::string requestedSearch = searchQuery;
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
@@ -478,7 +487,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         )";
 
         postGraphQlJson(definitionsQuery, @{@"locale": @"en_US"},
-            [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount](NSDictionary *definitionsData, NSString *definitionsError) {
+            [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
                     NSLog(@"[GameService] catalog definitions failed error=%@", definitionsError);
                     callback(false, CatalogBrowseResult{}, [definitionsError UTF8String]);
@@ -713,6 +722,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         blockResult->totalCount = std::max(blockResult->totalCount, (int)blockResult->games.size());
                         if (appIdsNeedingMetadata.count == 0) {
                             NSLog(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
+                            GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                             callback(true, *blockResult, "");
                             return;
                         }
@@ -752,6 +762,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     if (game.nvidiaTech.empty()) game.nvidiaTech = metadataGame.nvidiaTech;
                                 }
                                 NSLog(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
+                                GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                                 callback(true, *blockResult, "");
                         };
 

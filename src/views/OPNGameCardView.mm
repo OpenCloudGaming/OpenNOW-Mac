@@ -2,6 +2,7 @@
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNCoreAnimationCoordinator.h"
 #import "../common/OPNUIHelpers.h"
+#include "../games/OPNGameDataCache.h"
 #include <QuartzCore/QuartzCore.h>
 
 static const CGFloat gCardWidth = 220.0;
@@ -402,6 +403,29 @@ using namespace OPN;
     }
 
     NSString *urlStr = urlStrings[index];
+    NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlStr);
+    if (cachedData.length > 0) {
+        NSImage *cachedImage = [[NSImage alloc] initWithData:cachedData];
+        if (cachedImage) {
+            NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
+            NSLog(@"[GameCard] image cache hit title=%@ bytes=%lu url=%@", title, (unsigned long)cachedData.length, urlStr);
+            self.imageView.image = cachedImage;
+            NSRect imageRect = NSMakeRect(0.0, 0.0, cachedImage.size.width, cachedImage.size.height);
+            CGImageRef cgImage = [cachedImage CGImageForProposedRect:&imageRect context:nil hints:nil];
+            if (cgImage) {
+                __weak __typeof__(self) weakSelf = self;
+                [[OPNCoreAnimationCoordinator sharedCoordinator] extractDominantColorFromImage:cgImage
+                                                                                       cacheKey:urlStr
+                                                                                     completion:^(NSColor *color) {
+                    __typeof__(self) completedSelf = weakSelf;
+                    if (!completedSelf || !color) return;
+                    completedSelf.artworkAccentColor = color;
+                    if (completedSelf.onArtworkAccentColorChanged) completedSelf.onArtworkAccentColorChanged(color);
+                }];
+            }
+            return;
+        }
+    }
     NSURL *url = [NSURL URLWithString:urlStr];
     if (!url) {
         NSLog(@"[GameCard] invalid image URL index=%lu url=%@", (unsigned long)index, urlStr);
@@ -433,6 +457,7 @@ using namespace OPN;
                 });
                 return;
             }
+            OPN::GameDataCache::Shared().SaveImage(urlStr, data);
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
