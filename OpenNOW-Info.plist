@@ -6,10 +6,10 @@
 	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>OpenNOW</string>
-	<key>CFBundleIdentifier</key>
-	<string>io.github.opencloudgaming.opennow</string>
 	<key>CFBundleIconFile</key>
 	<string>logo-mac</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.opencloudgaming.opennow</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.2</string>
+	<string>0.1.3</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>5</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
