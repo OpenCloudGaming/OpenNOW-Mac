@@ -34,5 +34,6 @@ class IStreamSession;
 - (void)releasePointerLock;
 
 @property (nonatomic, copy) void (^onGuideButtonPressed)(void);
+@property (nonatomic, copy) void (^onUserActivity)(void);
 
 @end

@@ -25,6 +25,8 @@
 static constexpr NSInteger OPNMaxAutomaticRecoveryAttempts = 2;
 static constexpr NSTimeInterval OPNStableRecoveryResetInterval = 15.0;
 static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
+static constexpr NSTimeInterval OPNStreamInactivityTimeoutInterval = 10.0 * 60.0;
+static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 
 @interface OPNQuitGameOverlayView : NSView
 @property (nonatomic, copy) void (^onCancel)(void);
@@ -64,6 +66,7 @@ static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
 @property (nonatomic, strong) OPNStatsOverlayView *statsOverlay;
 @property (nonatomic, strong) OPNShortcutLegendView *shortcutLegendOverlay;
 @property (nonatomic, strong) NSTimer *statsRefreshTimer;
+@property (nonatomic, strong) NSTimer *inactivityTimer;
 @property (nonatomic, assign) std::string gameTitle;
 @property (nonatomic, assign) std::string appId;
 @property (nonatomic, assign) std::string apiToken;
@@ -77,9 +80,14 @@ static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
 @property (nonatomic, assign) CFTimeInterval launchStartTime;
 @property (nonatomic, assign) os_signpost_id_t launchSignpostId;
 - (void)finishLaunchMeasurementWithSuccess:(BOOL)success reason:(NSString *)reason;
+- (void)recordStreamUserActivity;
+- (void)startInactivityTimer;
+- (void)stopInactivityTimer;
+- (void)checkInactivityTimer:(NSTimer *)timer;
+- (void)endStreamFromInactivityTimeout;
 - (void)connectWithSessionInfo:(const OPN::SessionInfo &)sessionInfo
-                       settings:(const OPN::StreamSettings &)settings
-               launchGeneration:(NSUInteger)launchGeneration;
+                        settings:(const OPN::StreamSettings &)settings
+                launchGeneration:(NSUInteger)launchGeneration;
 @end
 
 static os_log_t OPNStreamPerformanceLog() {
@@ -757,6 +765,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _hasActiveSessionInfo;
     BOOL _remoteStopRequested;
     NSView *_connectedToast;
+    CFTimeInterval _lastStreamActivityTime;
 }
 
 - (instancetype)initWithGameTitle:(const std::string &)title
@@ -808,6 +817,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _stableResetGeneration = 0;
         _remoteIceGraceTimer = nullptr;
         _connectedToast = nil;
+        _lastStreamActivityTime = 0;
     }
     return self;
 }
@@ -835,7 +845,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     view.onGuideButtonPressed = ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf->_streamEnded) return;
+        [strongSelf recordStreamUserActivity];
         if (strongSelf.onControllerLibraryRequested) strongSelf.onControllerLibraryRequested();
+    };
+    view.onUserActivity = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->_streamEnded) return;
+        [strongSelf recordStreamUserActivity];
     };
     [self.streamView setStreamSession:_session];
     [self.streamView setRecordingGameTitle:[NSString stringWithUTF8String:_gameTitle.c_str()]];
@@ -1407,6 +1423,44 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     });
 }
 
+- (void)recordStreamUserActivity {
+    _lastStreamActivityTime = CACurrentMediaTime();
+}
+
+- (void)startInactivityTimer {
+    [self stopInactivityTimer];
+    [self recordStreamUserActivity];
+    self.inactivityTimer = [NSTimer scheduledTimerWithTimeInterval:OPNStreamInactivityCheckInterval
+                                                            target:self
+                                                          selector:@selector(checkInactivityTimer:)
+                                                          userInfo:nil
+                                                           repeats:YES];
+}
+
+- (void)stopInactivityTimer {
+    [self.inactivityTimer invalidate];
+    self.inactivityTimer = nil;
+}
+
+- (void)checkInactivityTimer:(NSTimer *)timer {
+    (void)timer;
+    if (_streamEnded || !_connectedOnce || _recovering) return;
+    if (_lastStreamActivityTime <= 0) {
+        [self recordStreamUserActivity];
+        return;
+    }
+    if (CACurrentMediaTime() - _lastStreamActivityTime < OPNStreamInactivityTimeoutInterval) return;
+    [self endStreamFromInactivityTimeout];
+}
+
+- (void)endStreamFromInactivityTimeout {
+    if (_streamEnded) return;
+    OPN::LogInfo(@"[StreamVC] Stream ended due to user inactivity");
+    OPN::AppendLogEvent(@"[StreamVC] Stream ended due to user inactivity");
+    [self requestRemoteStopForActiveSession];
+    [self endStreamWithSuccess:NO errorMessage:"Session ended due to inactivity."];
+}
+
 - (void)endStreamFromUserQuit {
     if (_streamEnded) return;
     [self requestRemoteStopForActiveSession];
@@ -1627,6 +1681,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     [s2 finishLaunchMeasurementWithSuccess:YES reason:@"connected"];
                     [s2.streamView setStreamSession:s2->_session];
                     [s2.streamView takeFocus];
+                    [s2 startInactivityTimer];
                     [s2 showConnectedToastWithResolution:negotiatedSettings.resolution fps:negotiatedSettings.fps bitrate:negotiatedSettings.maxBitrateMbps codec:negotiatedSettings.codec];
                     [s2 updateStatsOverlay];
                     [s2 scheduleRecoveryAttemptResetForLaunchGeneration:launchGeneration];
@@ -1912,6 +1967,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     _stableResetGeneration++;
     _recovering = NO;
     [self cancelRemoteIceGraceTimer];
+    [self stopInactivityTimer];
     [self removeQuitShortcutMonitor];
     [self dismissQuitGameOverlayAndRefocus:NO];
     [self stopStatsRefreshTimer];

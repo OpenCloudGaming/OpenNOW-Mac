@@ -788,12 +788,17 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     return isPrimaryKey || isConfiguredModifier || _pushToTalkMicEnabled;
 }
 
+- (void)notifyUserActivity {
+    if (self.onUserActivity) self.onUserActivity();
+}
+
 - (void)handleKeyEvent:(NSEvent *)event {
     if (!_streamSession) return;
     if (![self streamWindowAcceptsInput]) {
         [self resetInputStateAfterSuppression];
         return;
     }
+    [self notifyUserActivity];
     bool down = event.type == NSEventTypeKeyDown;
     if ([self handlePushToTalkKeyEvent:event down:down]) {
         return;
@@ -823,6 +828,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
         [self resetInputStateAfterSuppression];
         return;
     }
+    [self notifyUserActivity];
 
     switch (event.type) {
         case NSEventTypeMouseMoved:
@@ -966,6 +972,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 
     if (_modifierDown[event.keyCode] == down) return;
     _modifierDown[event.keyCode] = down;
+    [self notifyUserActivity];
     if ([self handlePushToTalkFlagsChanged:event]) {
         return;
     }
@@ -1278,6 +1285,7 @@ static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::
         BOOL keepalive = (now - _lastGamepadSend[i]) >= 1.0;
         if (changed || keepalive) {
             _streamSession->SendGamepadState(state, _gamepadBitmap);
+            if (changed) [self notifyUserActivity];
             _previousPads[i].known = true;
             _previousPads[i].state = state;
             _lastGamepadSend[i] = now;
