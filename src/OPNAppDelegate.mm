@@ -1211,6 +1211,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.catalogView) return;
 
     NSInteger requestGeneration = ++self.catalogBrowseGeneration;
+    NSLog(@"[CatalogBrowse] request start generation=%ld search=%@ sort=%@ filters=%lu retryAttempt=%ld", (long)requestGeneration, searchQuery ?: @"", sortId ?: @"", (unsigned long)filterIds.size(), (long)retryAttempt);
     std::string accountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
@@ -1226,8 +1227,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [weakSelf, accountIdentifier, canRetry, requestGeneration, searchQuery, sortId, filterIds, retryAttempt]
         (bool success, const CatalogBrowseResult &result, const std::string &error) {
             __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || requestGeneration != strongSelf.catalogBrowseGeneration) return;
-            if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) return;
+            NSLog(@"[CatalogBrowse] callback generation=%ld success=%d games=%lu total=%d returned=%d supported=%d hasNext=%d error=%s", (long)requestGeneration, success, (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.hasNextPage, error.c_str());
+            if (!strongSelf || requestGeneration != strongSelf.catalogBrowseGeneration) {
+                NSLog(@"[CatalogBrowse] callback ignored stale/nil generation=%ld current=%ld", (long)requestGeneration, strongSelf ? (long)strongSelf.catalogBrowseGeneration : -1L);
+                return;
+            }
+            if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) {
+                NSLog(@"[CatalogBrowse] callback ignored account mismatch generation=%ld", (long)requestGeneration);
+                return;
+            }
 
             if (!success && canRetry && error.find("401") != std::string::npos) {
                 AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
