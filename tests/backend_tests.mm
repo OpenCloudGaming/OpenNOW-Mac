@@ -54,3 +54,80 @@ TEST_CASE("ParseOAuthSession") {
     CHECK_EQ(session.email, "test@example.com");
     CHECK_EQ(session.membershipTier, "Premium");
 }
+
+TEST_CASE("ParseQueryStringEmptyAndNil") {
+    NSDictionary *empty = OPN::AuthService::parseQueryString(@"");
+    CHECK_EQ(static_cast<int>(empty.count), 0);
+
+    NSDictionary *nilValue = OPN::AuthService::parseQueryString(nil);
+    CHECK_EQ(static_cast<int>(nilValue.count), 0);
+}
+
+TEST_CASE("AuthSessionClearAndValidity") {
+    OPN::AuthSession session;
+    session.accessToken = "token";
+    session.clientToken = "client";
+    session.accessTokenExpiry = OPN::AuthSession::CurrentEpochMs() + 100000;
+    session.clientTokenExpiry = OPN::AuthSession::CurrentEpochMs() + 100000;
+    session.userId = "user123";
+    session.displayName = "Tester";
+    session.email = "tester@example.com";
+    session.membershipTier = "Premium";
+
+    CHECK(session.HasAccessToken());
+    CHECK(session.IsAccessTokenValid());
+    CHECK(session.IsClientTokenValid());
+
+    session.Clear();
+    CHECK(!session.HasAccessToken());
+    CHECK(!session.IsAccessTokenValid());
+    CHECK(!session.IsClientTokenValid());
+    CHECK_EQ(session.userId, "");
+    CHECK_EQ(session.displayName, "");
+    CHECK_EQ(session.email, "");
+    CHECK_EQ(session.membershipTier, "");
+}
+
+TEST_CASE("ParseOAuthSessionWithoutIdToken") {
+    NSDictionary *json = @{
+        @"access_token": @"abc123",
+        @"refresh_token": @"refresh-token",
+        @"expires_in": @"3600"
+    };
+
+    OPN::AuthSession session = OPN::AuthService::ParseOAuthSession(json);
+    CHECK_EQ(session.accessToken, "abc123");
+    CHECK_EQ(session.refreshToken, "refresh-token");
+    CHECK(session.HasAccessToken());
+    CHECK_EQ(session.idToken, "");
+    CHECK_EQ(session.userId, "");
+    CHECK_EQ(session.displayName, "");
+    CHECK_EQ(session.email, "");
+    CHECK_EQ(session.membershipTier, "");
+}
+
+TEST_CASE("ParseOAuthSessionMissingMembershipTierDefaultsToFree") {
+    NSString *header = @"eyJhbGciOiJub25lIn0";
+    NSString *payload = @"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJuYW1lIjoiVGVzdCBVc2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjo5OTk5OTk5OTk5fQ";
+    NSString *idToken = [NSString stringWithFormat:@"%@.%@.signature", header, payload];
+
+    NSDictionary *json = @{
+        @"access_token": @"abc123",
+        @"id_token": idToken,
+        @"expires_in": @"3600"
+    };
+
+    OPN::AuthSession session = OPN::AuthService::ParseOAuthSession(json);
+    CHECK_EQ(session.membershipTier, "Free");
+}
+
+TEST_CASE("StreamWebRTCBackendNameDefaultCase") {
+    std::string name = OPN::StreamWebRTCBackendName(static_cast<OPN::StreamWebRTCBackend>(0xFF));
+    CHECK_EQ(name, "libwebrtc");
+}
+
+TEST_CASE("AuthSessionCurrentEpochMsMonotonic") {
+    int64_t before = OPN::AuthSession::CurrentEpochMs();
+    int64_t after = OPN::AuthSession::CurrentEpochMs();
+    CHECK(after >= before);
+}
