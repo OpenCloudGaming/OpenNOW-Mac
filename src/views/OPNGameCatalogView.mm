@@ -18,6 +18,7 @@ static const CGFloat kToolbarHeight = 82.0;
 static const CGFloat kControllerRailSelectorOverlap = 22.0;
 static const CGFloat kControllerRailDetailOverlap = 22.0;
 static const CGFloat kControllerGameHubVerticalReserve = 96.0;
+static const CGFloat kControllerGameHubPreferredHeight = 430.0;
 static NSString *const OPNFavoriteGameIdsDefaultsKey = @"OpenNOW.Library.FavoriteGameIds";
 
 static unsigned OPNControllerAccentRGB(void) {
@@ -1007,6 +1008,9 @@ static NSImage *OPNControllerPromptIcon(NSString *button, OPNControllerPromptSty
     [panelGradient drawInBezierPath:panel angle:-18.0];
     OPNStrokePath(panel, OpnColor(0xFFFFFF, 0.15), 1.0);
 
+    [NSGraphicsContext saveGraphicsState];
+    [panel addClip];
+
     NSRect glowRect = NSMakeRect(22.0, 20.0, 72.0, 4.0);
     NSBezierPath *glow = [NSBezierPath bezierPathWithRoundedRect:glowRect xRadius:2.0 yRadius:2.0];
     [OpnColor(self.accentRGB, 0.86) setFill];
@@ -1036,6 +1040,7 @@ static NSImage *OPNControllerPromptIcon(NSString *button, OPNControllerPromptSty
     [self drawStatusRowWithTitle:@"CONTROLS" value:self.controlInfo y:rowY + 92.0];
     [self drawStatusRowWithTitle:@"CURRENT STORE" value:self.currentStoreInfo y:rowY + 138.0];
     [self drawStatusRowWithTitle:@"STORES" value:self.storeInfo y:rowY + 184.0];
+    [NSGraphicsContext restoreGraphicsState];
 }
 
 @end
@@ -2321,7 +2326,7 @@ using namespace OPN;
     CGFloat availableGameHubHeight = MAX(0.0, detailHeight - kControllerGameHubVerticalReserve);
     BOOL showGameHub = controllerMode && !showStreamPip && self.cardViews.count > 0 && detailWidth >= 820.0 && availableGameHubHeight >= 300.0;
     CGFloat gameHubWidth = showGameHub ? MIN(430.0, MAX(340.0, detailWidth * 0.28)) : 0.0;
-    CGFloat gameHubHeight = showGameHub ? MIN(360.0, availableGameHubHeight) : 0.0;
+    CGFloat gameHubHeight = showGameHub ? MIN(kControllerGameHubPreferredHeight, availableGameHubHeight) : 0.0;
     CGFloat gameHubX = detailWidth - gameHubWidth - 64.0;
     CGFloat gameHubY = showGameHub ? MAX(28.0, floor((detailHeight - gameHubHeight) * 0.34)) : 0.0;
     CGFloat rightContextInset = showGameHub ? gameHubWidth + 84.0 : 0.0;

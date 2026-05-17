@@ -306,14 +306,16 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         [ribbon stroke];
     }
 
-    CGFloat streamY = height * 0.46;
     CGFloat travelWidth = width + 180.0;
     for (NSInteger i = 0; i < 54; i++) {
         CGFloat seed = (CGFloat)i;
-        CGFloat lane = ((NSInteger)i % 7) - 3.0;
+        CGFloat verticalStep = (CGFloat)((i * 17) % 54) / 53.0;
+        CGFloat verticalJitter = ([self unitHashForSeed:37 index:(NSUInteger)i] - 0.5) * height * 0.055;
         CGFloat speed = 38.0 + (CGFloat)(i % 5) * 8.0;
         CGFloat x = fmod(seed * 131.0 + phase * speed, MAX(1.0, travelWidth)) - 90.0;
-        CGFloat y = streamY + lane * 9.0 + sin(phase * (1.0 + seed * 0.017) + seed * 0.71) * 8.0;
+        CGFloat y = height * (0.14 + verticalStep * 0.72)
+            + verticalJitter
+            + sin(phase * (0.82 + seed * 0.013) + seed * 0.71) * 7.0;
         CGFloat shimmer = 0.5 + 0.5 * sin(phase * (2.2 + (CGFloat)(i % 4) * 0.28) + seed);
         CGFloat radius = 2.0 + (CGFloat)(i % 4) * 0.75 + shimmer * 1.6;
         CGFloat alpha = 0.047 + shimmer * 0.142;
