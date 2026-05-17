@@ -16,8 +16,19 @@ OpenNOW is a native macOS cloud gaming client built with AppKit, Objective-C++, 
 
 - macOS with AppKit/Cocoa support
 - `clang++` with C++20 and Objective-C ARC support
+- `cmake` for building Sentry Native
 - Apple Command Line Tools or Xcode toolchain
 - `WebRTC.framework` or `WebRTC.xcframework` in `third_party/webrtc-official`
+
+## Sentry Native
+
+Install the latest Sentry Native release before building with crash reporting enabled:
+
+```sh
+scripts/install-sentry-native.sh
+```
+
+The installer writes the SDK to `third_party/sentry-native/install`. To send a one-time verification message during launch, run with `OPN_SENTRY_VERIFY=1`.
 
 ## Build & Run
 

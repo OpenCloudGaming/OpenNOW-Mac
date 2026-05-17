@@ -155,7 +155,10 @@ static NSString *OPNGravatarURLStringForEmail(const std::string &email) {
 
     const char *utf8 = normalized.UTF8String;
     unsigned char digest[CC_MD5_DIGEST_LENGTH];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     CC_MD5(utf8, (CC_LONG)strlen(utf8), digest);
+#pragma clang diagnostic pop
     NSMutableString *hash = [NSMutableString stringWithCapacity:CC_MD5_DIGEST_LENGTH * 2];
     for (NSUInteger i = 0; i < CC_MD5_DIGEST_LENGTH; i++) {
         [hash appendFormat:@"%02x", digest[i]];
