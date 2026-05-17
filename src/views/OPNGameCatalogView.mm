@@ -244,140 +244,6 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
 
 @end
 
-@interface OPNControllerElectricBackgroundView : NSView
-@property (nonatomic, strong) NSTimer *animationTimer;
-@property (nonatomic, assign) CFTimeInterval animationStartTime;
-@property (nonatomic, assign) unsigned accentRGB;
-@end
-
-@implementation OPNControllerElectricBackgroundView
-
-- (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.wantsLayer = YES;
-        _accentRGB = OPNControllerAccentRGB();
-        _animationStartTime = CACurrentMediaTime();
-    }
-    return self;
-}
-
-- (void)setAccentRGB:(unsigned)accentRGB {
-    accentRGB &= 0xFFFFFF;
-    if (_accentRGB == accentRGB) return;
-    _accentRGB = accentRGB;
-    [self setNeedsDisplay:YES];
-}
-
-- (unsigned)accentSoftRGB {
-    return OpnBlendRGB(self.accentRGB, 0xFFFFFF, 0.42);
-}
-
-- (unsigned)accentBlackRGB:(CGFloat)blackMix {
-    return OpnBlendRGB(self.accentRGB, 0x000000, blackMix);
-}
-
-- (void)dealloc {
-    [self.animationTimer invalidate];
-}
-
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    if (self.window) {
-        if (!self.animationTimer) {
-            self.animationTimer = [NSTimer timerWithTimeInterval:(1.0 / 30.0)
-                                                          target:self
-                                                        selector:@selector(animationTick:)
-                                                        userInfo:nil
-                                                         repeats:YES];
-            [NSRunLoop.mainRunLoop addTimer:self.animationTimer forMode:NSRunLoopCommonModes];
-        }
-    } else {
-        [self.animationTimer invalidate];
-        self.animationTimer = nil;
-    }
-}
-
-- (void)animationTick:(NSTimer *)timer {
-    (void)timer;
-    if (!self.hidden && self.window) [self setNeedsDisplay:YES];
-}
-
-- (BOOL)isFlipped { return YES; }
-
-- (CGFloat)unitHashForSeed:(NSUInteger)seed index:(NSUInteger)index {
-    uint32_t value = (uint32_t)(seed * 1103515245u + index * 12345u + 0x9E3779B9u);
-    value ^= value >> 16;
-    value *= 0x7FEB352Du;
-    value ^= value >> 15;
-    return (CGFloat)(value % 10000u) / 10000.0;
-}
-
-- (NSPoint)pointOnBoltFrom:(NSPoint)start to:(NSPoint)end t:(CGFloat)t seed:(NSUInteger)seed {
-    CGFloat dx = end.x - start.x;
-    CGFloat dy = end.y - start.y;
-    CGFloat normalX = -dy;
-    CGFloat normalY = dx;
-    CGFloat normalLength = MAX(1.0, hypot(normalX, normalY));
-    normalX /= normalLength;
-    normalY /= normalLength;
-    NSUInteger bucket = (NSUInteger)floor(t * 18.0);
-    CGFloat hash = [self unitHashForSeed:seed index:bucket + 3];
-    CGFloat envelope = sin(t * 3.14159);
-    CGFloat offset = (hash - 0.5) * 58.0 * envelope;
-    return NSMakePoint(start.x + dx * t + normalX * offset,
-                       start.y + dy * t + normalY * offset);
-}
-
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    NSRect bounds = self.bounds;
-    CGFloat phase = (CGFloat)(CACurrentMediaTime() - self.animationStartTime);
-    NSGradient *base = [[NSGradient alloc] initWithColors:@[
-        OpnColor([self accentBlackRGB:0.95], 1.0),
-        OpnColor([self accentBlackRGB:0.90], 1.0),
-        OpnColor([self accentBlackRGB:0.97], 1.0),
-    ]];
-    [base drawInRect:bounds angle:88.0];
-
-    CGFloat width = NSWidth(bounds);
-    CGFloat height = NSHeight(bounds);
-
-    for (NSInteger band = 0; band < 9; band++) {
-        CGFloat yBase = height * (0.12 + (CGFloat)band * 0.092);
-        NSBezierPath *ribbon = [NSBezierPath bezierPath];
-        [ribbon moveToPoint:NSMakePoint(-120.0, yBase)];
-        for (NSInteger point = 0; point <= 28; point++) {
-            CGFloat t = (CGFloat)point / 28.0;
-            CGFloat x = t * (width + 240.0) - 120.0;
-            CGFloat drift = phase * (0.28 + (CGFloat)band * 0.018);
-            CGFloat y = yBase
-                + sin(t * 5.8 + (CGFloat)band * 0.72 + drift) * (20.0 + (CGFloat)band * 1.6)
-                + sin(t * 13.0 - phase * 0.20 + (CGFloat)band) * 5.0;
-            [ribbon lineToPoint:NSMakePoint(x, y)];
-        }
-        NSColor *stroke = band % 3 == 0 ? OpnColor(0xFFFFFF, 0.030) : OpnColor([self accentSoftRGB], 0.038);
-        [stroke setStroke];
-        ribbon.lineWidth = band == 4 ? 2.4 : 1.1;
-        [ribbon stroke];
-    }
-
-    for (NSInteger i = 0; i < 72; i++) {
-        CGFloat x = fmod((CGFloat)(i * 97) + phase * (8.0 + (CGFloat)(i % 5)), MAX(1.0, width));
-        CGFloat y = fmod((CGFloat)(i * 43) + sin(phase * 0.24 + (CGFloat)i) * 18.0, MAX(1.0, height));
-        CGFloat radius = 0.7 + (CGFloat)(i % 3) * 0.32;
-        NSBezierPath *spark = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x, y, radius, radius)];
-        [OpnColor(i % 5 == 0 ? 0xFFFFFF : [self accentSoftRGB], i % 5 == 0 ? 0.10 : 0.07) setFill];
-        [spark fill];
-    }
-
-    NSGradient *vignette = [[NSGradient alloc] initWithStartingColor:OpnColor([self accentBlackRGB:0.90], 0.0)
-                                                        endingColor:OpnColor([self accentBlackRGB:0.99], 0.42)];
-    [vignette drawInRect:bounds angle:-90.0];
-}
-
-@end
-
 @class OPNControllerPromptBarView;
 @class OPNControllerGameHubView;
 @class OPNControllerCategoryCardView;
@@ -412,7 +278,6 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 @property (nonatomic, copy) NSArray<NSDictionary<NSString *, NSString *> *> *categoryItems;
 @property (nonatomic, copy) NSString *selectedCategoryId;
 @property (nonatomic, strong) NSMutableSet<NSString *> *favoriteGameIds;
-@property (nonatomic, strong) OPNControllerElectricBackgroundView *controllerElectricBackgroundView;
 @property (nonatomic, strong) NSView *controllerDetailView;
 @property (nonatomic, strong) OPNControllerPreviewBackgroundView *controllerDetailBackgroundView;
 @property (nonatomic, strong) NSTextField *controllerDetailStatsLabel;
@@ -1266,10 +1131,6 @@ using namespace OPN;
         self.layer.opaque = NO;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
 
-        _controllerElectricBackgroundView = [[OPNControllerElectricBackgroundView alloc] initWithFrame:self.bounds];
-        _controllerElectricBackgroundView.hidden = YES;
-        [self addSubview:_controllerElectricBackgroundView];
-
         _controllerDetailBackgroundView = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:self.bounds];
         _controllerDetailBackgroundView.hidden = YES;
         _controllerDetailBackgroundView.wantsLayer = YES;
@@ -1585,7 +1446,6 @@ using namespace OPN;
     self.controllerDetailGradientLayer.opacity = 0.0;
     self.controllerDetailAccentLayer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.86).CGColor;
     self.layer.backgroundColor = NSColor.clearColor.CGColor;
-    [self.controllerElectricBackgroundView setNeedsDisplay:YES];
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
@@ -2290,8 +2150,6 @@ using namespace OPN;
     CGFloat height = NSHeight(self.bounds);
     BOOL controllerMode = OpnControllerModeEnabled();
     CGFloat controllerNavHeight = 118.0;
-    self.controllerElectricBackgroundView.hidden = !controllerMode;
-    self.controllerElectricBackgroundView.frame = self.bounds;
     self.scrollView.hasVerticalScroller = !controllerMode;
     self.scrollView.hasHorizontalScroller = NO;
     self.scrollView.drawsBackground = NO;
@@ -2923,8 +2781,8 @@ using namespace OPN;
     NSColor *cardAccentColor = card.artworkAccentColor;
     NSColor *detailAccentColor = cardAccentColor ?: OpnColor(OPNControllerAccentRGB());
     NSColor *detailAccentSoftColor = cardAccentColor ?: OpnColor(OPNControllerAccentSoftRGB());
-    self.controllerElectricBackgroundView.accentRGB = OPNRGBFromColor(cardAccentColor, OPNControllerAccentRGB());
-    if (self.onFocusedArtworkAccentChanged) self.onFocusedArtworkAccentChanged(self.controllerElectricBackgroundView.accentRGB);
+    unsigned detailAccentRGB = OPNRGBFromColor(cardAccentColor, OPNControllerAccentRGB());
+    if (self.onFocusedArtworkAccentChanged) self.onFocusedArtworkAccentChanged(detailAccentRGB);
     CATransition *fade = [CATransition animation];
     fade.type = kCATransitionFade;
     fade.duration = 0.18;
@@ -2939,7 +2797,7 @@ using namespace OPN;
     self.controllerDetailGradientLayer.opacity = 0.0;
     self.controllerDetailAccentLayer.backgroundColor = [detailAccentSoftColor colorWithAlphaComponent:0.90].CGColor;
     self.controllerDetailView.layer.shadowColor = detailAccentColor.CGColor;
-    self.controllerGameHubView.accentRGB = self.controllerElectricBackgroundView.accentRGB;
+    self.controllerGameHubView.accentRGB = detailAccentRGB;
     [CATransaction commit];
     if (!card) {
         self.controllerDetailBackgroundView.image = nil;
@@ -3214,7 +3072,7 @@ using namespace OPN;
     [self addSubview:overlay];
     [[OPNCoreAnimationCoordinator sharedCoordinator] animateCardLayer:panel.layer
                                                     metadataContainer:self.controllerDetailView
-                                                      backgroundLayer:self.controllerElectricBackgroundView.layer
+                                                      backgroundLayer:nil
                                                              expanded:YES
                                                           accentColor:card.artworkAccentColor ?: OpnColor(OPNControllerAccentRGB())];
 }
