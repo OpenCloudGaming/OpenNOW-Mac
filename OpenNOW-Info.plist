@@ -8,6 +8,8 @@
 	<string>OpenNOW</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.opencloudgaming.opennow</string>
+	<key>CFBundleIconFile</key>
+	<string>logo-mac</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

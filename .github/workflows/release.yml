@@ -89,12 +89,26 @@ jobs:
           cp build/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
           cp assets/logo.png "${app_path}/Contents/Resources/logo.png"
           cp assets/logo-mac.png "${app_path}/Contents/Resources/logo-mac.png"
+          iconset_path="dist/logo-mac.iconset"
+          mkdir -p "${iconset_path}"
+          sips -z 16 16 assets/logo-mac.png --out "${iconset_path}/icon_16x16.png"
+          sips -z 32 32 assets/logo-mac.png --out "${iconset_path}/icon_16x16@2x.png"
+          sips -z 32 32 assets/logo-mac.png --out "${iconset_path}/icon_32x32.png"
+          sips -z 64 64 assets/logo-mac.png --out "${iconset_path}/icon_32x32@2x.png"
+          sips -z 128 128 assets/logo-mac.png --out "${iconset_path}/icon_128x128.png"
+          sips -z 256 256 assets/logo-mac.png --out "${iconset_path}/icon_128x128@2x.png"
+          sips -z 256 256 assets/logo-mac.png --out "${iconset_path}/icon_256x256.png"
+          sips -z 512 512 assets/logo-mac.png --out "${iconset_path}/icon_256x256@2x.png"
+          sips -z 512 512 assets/logo-mac.png --out "${iconset_path}/icon_512x512.png"
+          cp assets/logo-mac.png "${iconset_path}/icon_512x512@2x.png"
+          iconutil -c icns "${iconset_path}" -o "${app_path}/Contents/Resources/logo-mac.icns"
           chmod +x "${app_path}/Contents/MacOS/OpenNOW"
           if [[ -d third_party/webrtc-official/WebRTC.framework ]]; then
             cp -R third_party/webrtc-official/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
           elif [[ -d third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework ]]; then
             cp -R third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
           fi
+          codesign --force --deep --sign - "${app_path}"
           ditto -c -k --keepParent "${app_path}" "dist/${RELEASE_ARCHIVE}"
 
       - name: Commit version bump and tag
