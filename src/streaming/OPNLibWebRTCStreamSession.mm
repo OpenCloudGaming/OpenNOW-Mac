@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -1443,27 +1444,32 @@ void LibWebRTCStreamSession::RefreshAudioDevices() {
     id audioSession = audioSessionClass ? [audioSessionClass performSelector:@selector(sharedInstance)] : nil;
     if (!audioSession) return;
 
-    const BOOL wasManualAudio = [audioSession respondsToSelector:@selector(useManualAudio)] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, @selector(useManualAudio)) : NO;
-    const BOOL wasAudioEnabled = [audioSession respondsToSelector:@selector(isAudioEnabled)] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, @selector(isAudioEnabled)) : YES;
+    SEL useManualAudioSelector = NSSelectorFromString(@"useManualAudio");
+    SEL isAudioEnabledSelector = NSSelectorFromString(@"isAudioEnabled");
+    SEL setUseManualAudioSelector = NSSelectorFromString(@"setUseManualAudio:");
+    SEL setIsAudioEnabledSelector = NSSelectorFromString(@"setIsAudioEnabled:");
 
-    if ([audioSession respondsToSelector:@selector(setUseManualAudio:)]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, @selector(setUseManualAudio:), YES);
+    const BOOL wasManualAudio = [audioSession respondsToSelector:useManualAudioSelector] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, useManualAudioSelector) : NO;
+    const BOOL wasAudioEnabled = [audioSession respondsToSelector:isAudioEnabledSelector] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, isAudioEnabledSelector) : YES;
+
+    if ([audioSession respondsToSelector:setUseManualAudioSelector]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, setUseManualAudioSelector, YES);
     }
-    if ([audioSession respondsToSelector:@selector(setIsAudioEnabled:)]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, @selector(setIsAudioEnabled:), NO);
+    if ([audioSession respondsToSelector:setIsAudioEnabledSelector]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, setIsAudioEnabledSelector, NO);
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         if (!this->m_impl) return;
         id activeAudioSession = audioSessionClass ? [audioSessionClass performSelector:@selector(sharedInstance)] : nil;
         if (!activeAudioSession) return;
-        if ([activeAudioSession respondsToSelector:@selector(setIsAudioEnabled:)]) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, @selector(setIsAudioEnabled:), YES);
+        if ([activeAudioSession respondsToSelector:setIsAudioEnabledSelector]) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setIsAudioEnabledSelector, YES);
         }
-        if ([activeAudioSession respondsToSelector:@selector(setUseManualAudio:)]) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, @selector(setUseManualAudio:), wasManualAudio);
+        if ([activeAudioSession respondsToSelector:setUseManualAudioSelector]) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setUseManualAudioSelector, wasManualAudio);
         }
         if (wasManualAudio && !wasAudioEnabled) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, @selector(setIsAudioEnabled:), NO);
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setIsAudioEnabledSelector, NO);
         }
         OPNLibWebRTCSessionImpl *activeImpl = OPNImplFromOpaque(this->m_impl);
         if (activeImpl.remoteAudioTrack) {
@@ -1482,9 +1488,16 @@ void LibWebRTCStreamSession::RefreshAudioDevices() {
 }
 
 void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     bool expected = false;
-    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, true)) return;
+    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, true)) {
+#pragma clang diagnostic pop
+        return;
+    }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     m_defaultInputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice);
     m_defaultOutputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice);
 
@@ -1513,12 +1526,20 @@ void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
           outputStatus,
           m_defaultInputDevice,
           m_defaultOutputDevice);
+#pragma clang diagnostic pop
 }
 
 void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     bool expected = true;
-    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, false)) return;
+    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, false)) {
+#pragma clang diagnostic pop
+        return;
+    }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     AudioObjectPropertyAddress devicesAddress = {
         kAudioHardwarePropertyDevices,
         kAudioObjectPropertyScopeGlobal,
@@ -1541,6 +1562,7 @@ void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
     m_defaultInputDevice = kAudioObjectUnknown;
     m_defaultOutputDevice = kAudioObjectUnknown;
     NSLog(@"[LibWebRTC] audio device monitoring stopped");
+#pragma clang diagnostic pop
 }
 
 void LibWebRTCStreamSession::HandleAudioDeviceChange() {
