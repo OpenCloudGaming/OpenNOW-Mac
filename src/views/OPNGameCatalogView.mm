@@ -2255,7 +2255,7 @@ using namespace OPN;
         self.controllerGameHubView.hidden = YES;
         self.controllerPromptBarView.hidden = YES;
         self.scrollView.hasVerticalScroller = NO;
-        self.scrollView.hasHorizontalScroller = YES;
+        self.scrollView.hasHorizontalScroller = NO;
         CGFloat gridY = controllerNavHeight + 48.0;
         self.scrollView.frame = NSMakeRect(0.0, gridY, width, MAX(0.0, height - gridY - 78.0));
         self.statusLabel.frame = NSMakeRect(28.0, gridY + NSHeight(self.scrollView.frame) + 10.0, width - 56.0, 24.0);
