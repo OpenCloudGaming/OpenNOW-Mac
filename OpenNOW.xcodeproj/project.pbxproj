@@ -126,6 +126,10 @@
 			isa = PBXBuildFile;
 			fileRef = A2847DD23C73CB01927B8B6D;
 		};
+		4A06F3F6B2094450A5049F2A /* CoreVideo.framework in PBXBuildFile */ = {
+			isa = PBXBuildFile;
+			fileRef = 7F6085DF1B7645F2A9C98D41;
+		};
 		20E194CFFBA3687D0A48D383 /* OPNPremiumBackdrop.metal in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 56C01BA183847B38981C01FD;
@@ -252,6 +256,13 @@
 			lastKnownFileType = wrapper.framework;
 			name = CoreMedia.framework;
 			path = System/Library/Frameworks/CoreMedia.framework;
+			sourceTree = SDKROOT;
+		};
+		7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework in PBXFileReference */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.framework;
+			name = CoreVideo.framework;
+			path = System/Library/Frameworks/CoreVideo.framework;
 			sourceTree = SDKROOT;
 		};
 		0B6DBC7A2FACE85A3A7C62CF /* GameController.framework in PBXFileReference */ = {
@@ -746,6 +757,7 @@
 				B7F49677C78ABB1ED6E07C13 /* AVFoundation.framework in PBXBuildFile */,
 				8953374293462F57B5DE59CF /* AVKit.framework in PBXBuildFile */,
 				9AFDB0810ACB8B82728142E5 /* CoreMedia.framework in PBXBuildFile */,
+				4A06F3F6B2094450A5049F2A /* CoreVideo.framework in PBXBuildFile */,
 				57557463BAE573CB78603B2B /* OpenGL.framework in PBXBuildFile */,
 				D4D1FDD046EF74604BF789F3 /* GameController.framework in PBXBuildFile */,
 				56330183F7065F54C2D88C7F /* ApplicationServices.framework in PBXBuildFile */,

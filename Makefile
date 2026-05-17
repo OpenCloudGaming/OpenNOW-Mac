@@ -28,7 +28,7 @@ WEBRTC_LIBS :=
 endif
 
 CXXFLAGS := $(ARCHFLAGS) $(OPTFLAGS) -std=c++20 -Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Wno-gnu-conditional-omitted-operand -fobjc-arc -Isrc $(WEBRTC_CFLAGS)
-LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS)
+LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework CoreVideo -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS)
 TEST_SRC := tests/backend_tests.mm
 TEST_HEADERS := tests/doctest.h
 TEST_DEPS := src/streaming/OPNStreamBackend.mm src/auth/OPNAuthService.mm

@@ -2,7 +2,9 @@
 #include "OPNStreamPreferences.h"
 
 #import <CoreAudio/CoreAudio.h>
+#import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include <algorithm>
 #include <cctype>
@@ -714,16 +716,31 @@ class LibWebRTCStreamSession;
 
 @interface OPNPacedVideoRenderer : NSView <RTCVideoRenderer>
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner;
+- (void)displayLinkFired;
 @end
 
 @interface OPNPacedVideoRenderer ()
 @property(nonatomic, strong) RTCMTLNSVideoView *videoView;
-@property(nonatomic, strong) NSTimer *displayTimer;
+@property(nonatomic, assign) CVDisplayLinkRef displayLink;
 @property(nonatomic, strong) RTCVideoFrame *pendingFrame;
 @property(nonatomic, assign) BOOL hasPendingFrame;
+@property(nonatomic, assign) BOOL renderScheduled;
 @property(nonatomic, assign) int targetFps;
+@property(nonatomic, assign) CFTimeInterval targetFrameInterval;
+@property(nonatomic, assign) CFTimeInterval lastDisplayTime;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 @end
+
+static CVReturn OPNPacedVideoRendererDisplayLinkCallback(CVDisplayLinkRef,
+                                                          const CVTimeStamp *,
+                                                          const CVTimeStamp *,
+                                                          CVOptionFlags,
+                                                          CVOptionFlags *,
+                                                          void *displayLinkContext) {
+    OPNPacedVideoRenderer *renderer = (__bridge OPNPacedVideoRenderer *)displayLinkContext;
+    [renderer displayLinkFired];
+    return kCVReturnSuccess;
+}
 
 @implementation OPNPacedVideoRenderer
 
@@ -731,6 +748,7 @@ class LibWebRTCStreamSession;
     self = [super initWithFrame:frame];
     if (self) {
         _targetFps = MAX(30, MIN(targetFps, 120));
+        _targetFrameInterval = 1.0 / (CFTimeInterval)_targetFps;
         _owner = owner;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
@@ -740,15 +758,22 @@ class LibWebRTCStreamSession;
         _videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
         [self addSubview:_videoView];
 
-        NSTimeInterval interval = 1.0 / (NSTimeInterval)_targetFps;
-        _displayTimer = [NSTimer timerWithTimeInterval:interval target:self selector:@selector(displayTimerFired:) userInfo:nil repeats:YES];
-        [NSRunLoop.mainRunLoop addTimer:_displayTimer forMode:NSRunLoopCommonModes];
+        CVDisplayLinkRef displayLink = nil;
+        if (CVDisplayLinkCreateWithActiveCGDisplays(&displayLink) == kCVReturnSuccess && displayLink) {
+            CVDisplayLinkSetOutputCallback(displayLink, OPNPacedVideoRendererDisplayLinkCallback, (__bridge void *)self);
+            CVDisplayLinkStart(displayLink);
+            _displayLink = displayLink;
+        }
     }
     return self;
 }
 
 - (void)dealloc {
-    [_displayTimer invalidate];
+    if (_displayLink) {
+        CVDisplayLinkStop(_displayLink);
+        CVDisplayLinkRelease(_displayLink);
+        _displayLink = nil;
+    }
 }
 
 - (void)layout {
@@ -774,13 +799,31 @@ class LibWebRTCStreamSession;
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.videoView renderFrame:nil];
         });
+    } else if (!self.displayLink) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self renderPendingFrame];
+        });
     }
 }
 
-- (void)displayTimerFired:(NSTimer *)timer {
-    (void)timer;
+- (void)displayLinkFired {
+    const CFTimeInterval now = CACurrentMediaTime();
+    @synchronized (self) {
+        if (!self.hasPendingFrame || self.renderScheduled) return;
+        if (self.lastDisplayTime > 0.0 && now - self.lastDisplayTime < self.targetFrameInterval * 0.85) return;
+        self.lastDisplayTime = now;
+        self.renderScheduled = YES;
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self renderPendingFrame];
+    });
+}
+
+- (void)renderPendingFrame {
     RTCVideoFrame *frame = nil;
     @synchronized (self) {
+        self.renderScheduled = NO;
         if (!self.hasPendingFrame) return;
         frame = self.pendingFrame;
         self.pendingFrame = nil;
@@ -1027,7 +1070,9 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
             ? "OPNPacedVideoRenderer"
             : "RTCMTLNSVideoView";
-        m_latestStats.videoPipelineMode = "libwebrtc negotiating";
+        m_latestStats.videoPipelineMode = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
+            ? "libwebrtc CVDisplayLink pacing"
+            : "libwebrtc direct display";
         m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
         m_previousBytesReceived = 0;
@@ -1755,6 +1800,11 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
             ? "OPNPacedVideoRenderer"
             : "RTCMTLNSVideoView";
     }
+    if (parsed.videoPipelineMode.empty()) {
+        parsed.videoPipelineMode = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
+            ? "libwebrtc CVDisplayLink pacing"
+            : "libwebrtc direct display";
+    }
 
     std::string inboundCodecId;
     uint64_t selectedVideoScore = 0;
@@ -2046,7 +2096,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
                 OPNPacedVideoRenderer *pacedRenderer = [[OPNPacedVideoRenderer alloc] initWithFrame:parentView.bounds targetFps:_owner->TargetFps() owner:_owner];
                 videoView = pacedRenderer;
                 videoRenderer = pacedRenderer;
-                _owner->SetVideoRendererState("OPNPacedVideoRenderer", "libwebrtc paced renderer");
+                _owner->SetVideoRendererState("OPNPacedVideoRenderer", "libwebrtc CVDisplayLink pacing");
             } else {
                 RTCMTLNSVideoView *metalView = [[RTCMTLNSVideoView alloc] initWithFrame:parentView.bounds];
                 videoView = metalView;
