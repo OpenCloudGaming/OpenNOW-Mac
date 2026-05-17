@@ -27,14 +27,24 @@ endif
 
 CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Wno-gnu-conditional-omitted-operand -fobjc-arc -Isrc $(WEBRTC_CFLAGS)
 LDFLAGS := -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS)
+TEST_SRC := tests/backend_tests.mm
+TEST_DEPS := src/streaming/OPNStreamBackend.mm src/auth/OPNAuthService.mm
+TEST_BIN := $(BUILD_DIR)/backend_tests
 
-.PHONY: all run clean qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
+.PHONY: all run clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
 
 all: $(BIN)
 
 $(BIN): $(SRC)
 	mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(SRC) $(LDFLAGS) -o $(BIN)
+
+$(TEST_BIN): $(TEST_SRC) $(TEST_DEPS)
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(TEST_SRC) $(TEST_DEPS) $(LDFLAGS) -Wl,-undefined,dynamic_lookup -framework Foundation -o $(TEST_BIN)
+
+test: $(TEST_BIN)
+	./$(TEST_BIN)
 
 run: $(BIN)
 	./$(BIN)
