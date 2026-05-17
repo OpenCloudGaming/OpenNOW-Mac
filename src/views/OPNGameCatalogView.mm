@@ -3063,10 +3063,14 @@ using namespace OPN;
     uint16_t buttons = OPNCatalogGamepadButtons();
     uint16_t pressed = buttons & (uint16_t)~self.previousGamepadButtons;
     CFTimeInterval now = CACurrentMediaTime();
+    const uint16_t moveMask = (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8);
+    uint16_t moves = buttons & moveMask;
+    uint16_t pressedMoves = pressed & moveMask;
     BOOL repeatMove = (now - self.lastGamepadMoveTime) > 0.22;
-    uint16_t moves = buttons & ((1u << 5) | (1u << 6) | (1u << 7) | (1u << 8));
-    if (moves && repeatMove) {
-        pressed |= moves;
+    if (pressedMoves && !repeatMove) {
+        pressed &= (uint16_t)~moveMask;
+    } else if (moves && repeatMove) {
+        pressed = (uint16_t)(pressed | moves);
         self.lastGamepadMoveTime = now;
     }
     if (pressed & (1u << 0)) {
