@@ -147,6 +147,8 @@ void InitializeSentry() {
         if (!releaseName.empty()) {
             sentry_options_set_release(options, releaseName.c_str());
         }
+        
+        sentry_options_set_enable_logs(options, 1);
 
         int initResult = sentry_init(options);
         if (initResult != 0) {
