@@ -62,6 +62,37 @@ static std::string OPNSentryReleaseName() {
     return OPNUtf8String(release);
 }
 
+static NSString *OPNSentryStringByReplacingMatches(NSString *message, NSString *pattern, NSString *replacement) {
+    if (message.length == 0) return @"";
+
+    NSError *error = nil;
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:pattern
+                                                                                options:NSRegularExpressionCaseInsensitive
+                                                                                  error:&error];
+    if (!expression) return message;
+
+    NSRange fullRange = NSMakeRange(0, message.length);
+    return [expression stringByReplacingMatchesInString:message
+                                                options:0
+                                                  range:fullRange
+                                           withTemplate:replacement];
+}
+
+static NSString *OPNSanitizedSentryMessage(NSString *message) {
+    if (message.length == 0) return @"";
+
+    NSString *sanitized = message;
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", @"[redacted-email]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"\\b(?:\\+?\\d[\\d .()\\-]{7,}\\d)\\b", @"[redacted-phone]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", @"[redacted-ip]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"\\b[0-9A-F]{8}-[0-9A-F]{4}-[1-5][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}\\b", @"[redacted-id]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"\\b[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\b", @"[redacted-token]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"(?i)(bearer|basic)\\s+[^\\s,;]+", @"$1 [redacted-token]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"(?i)((?:access|refresh|id)?_?token|authorization|password|secret|api[_-]?key|session[_-]?id)([=:]\\s*|\\\"\\s*:\\s*\\\")[^\\s,;\\}\"]+", @"$1$2[redacted-secret]");
+    sanitized = OPNSentryStringByReplacingMatches(sanitized, @"/Users/[^/\\s]+", @"/Users/[redacted-user]");
+    return sanitized;
+}
+
 static NSString *OPNSentryDatabasePath() {
     NSError *error = nil;
     NSURL *cacheURL = [NSFileManager.defaultManager URLForDirectory:NSCachesDirectory
@@ -190,15 +221,17 @@ void LogInfo(NSString *format, ...) {
 
 #if OPN_SENTRY_ENABLED
     if (OPNSentryInitialized) {
+        NSString *sentryMessage = OPNSanitizedSentryMessage(message);
+        const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
         if (OPNShouldSendStructuredInfoLog()) {
-            log_return_value_t result = sentry_log_info("%s", utf8Message);
+            log_return_value_t result = sentry_log_info("%s", sentryUtf8Message);
             if (result != SENTRY_LOG_RETURN_SUCCESS) {
                 OPNSentryStructuredInfoLogsDisabled.store(true);
                 std::fprintf(stderr, "[Sentry] sentry_log_info returned %s; local logging continues\n", OPNSentryLogReturnName(result));
             }
         }
         if (OPNUploadInfoLogsAsEvents()) {
-            OPNCaptureSentryMessage(SENTRY_LEVEL_INFO, utf8Message);
+            OPNCaptureSentryMessage(SENTRY_LEVEL_INFO, sentryUtf8Message);
         }
     }
 #endif
@@ -215,11 +248,13 @@ void LogError(NSString *format, ...) {
 
 #if OPN_SENTRY_ENABLED
     if (OPNSentryInitialized) {
-        log_return_value_t result = sentry_log_error("%s", utf8Message);
+        NSString *sentryMessage = OPNSanitizedSentryMessage(message);
+        const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
+        log_return_value_t result = sentry_log_error("%s", sentryUtf8Message);
         if (result != SENTRY_LOG_RETURN_SUCCESS) {
             std::fprintf(stderr, "[Sentry] sentry_log_error returned %s\n", OPNSentryLogReturnName(result));
         }
-        OPNCaptureSentryMessage(SENTRY_LEVEL_ERROR, utf8Message);
+        OPNCaptureSentryMessage(SENTRY_LEVEL_ERROR, sentryUtf8Message);
         if (OPNFlushErrorsImmediately()) {
             sentry_flush(2000);
         }
