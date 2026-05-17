@@ -23,7 +23,6 @@ void OpnSetBackgroundAnimationEnabled(BOOL enabled);
 BOOL OpnDerivedAccentColorsEnabled(void);
 void OpnSetDerivedAccentColorsEnabled(BOOL enabled);
 CGFloat OpnBackgroundTintStrength(void);
-void OpnSetBackgroundTintStrength(CGFloat strength);
 uint16_t OpnControllerLibraryShortcutMask(void);
 void OpnSetControllerLibraryShortcutMask(uint16_t mask);
 

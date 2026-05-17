@@ -11,6 +11,8 @@
 @property (nonatomic, copy) void (^onFocusedArtworkAccentChanged)(unsigned accentRGB);
 @property (nonatomic, copy) void (^onStreamPictureInPictureSelected)(void);
 @property (nonatomic, copy) void (^onInterfaceSettingsRequested)(void);
+@property (nonatomic, copy) void (^onRestartRequested)(void);
+@property (nonatomic, copy) void (^onExitRequested)(void);
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games;

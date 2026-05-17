@@ -1,4 +1,5 @@
 #include "OPNGameService.h"
+#include "OPNGameDataCache.h"
 #include "streaming/OPNSessionManager.h"
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamSession.h"
@@ -456,13 +457,23 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                      CatalogBrowseCallback completion) {
     std::string token = m_accessToken;
     CatalogBrowseCallback callback = completion;
+    NSLog(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
+    std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
+    int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
+    std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
+    CatalogBrowseResult cachedResult;
+    if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
+        NSLog(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
+        callback(true, cachedResult, "");
+    }
 
-    GetServerVpcId(token, [this, callback, searchQuery, sortId, filterIds, fetchCount](const std::string &vpcId) {
+    GetServerVpcId(token, [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         std::string requestedSearch = searchQuery;
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
         std::vector<std::string> requestedFilterIds = filterIds;
         int requestedFetchCount = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
+        NSLog(@"[GameService] BrowseCatalogGames vpc=%s requestedFetchCount=%d", vpcId.c_str(), requestedFetchCount);
 
         std::string definitionsQuery = R"(
         query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
@@ -476,8 +487,9 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         )";
 
         postGraphQlJson(definitionsQuery, @{@"locale": @"en_US"},
-            [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount](NSDictionary *definitionsData, NSString *definitionsError) {
+            [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
+                    NSLog(@"[GameService] catalog definitions failed error=%@", definitionsError);
                     callback(false, CatalogBrowseResult{}, [definitionsError UTF8String]);
                     return;
                 }
@@ -656,9 +668,10 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                     if (trimmedSearch.length > 0) vars[@"searchString"] = trimmedSearch;
 
                     auto keepPaginationAlive = weakFetchPage.lock();
-                    service->postGraphQlJson(selectedQuery, vars, ^(NSDictionary *data, NSString *error) {
+                 service->postGraphQlJson(selectedQuery, vars, ^(NSDictionary *data, NSString *error) {
                         (void)keepPaginationAlive;
                         if (error.length > 0) {
+                            NSLog(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
                             callback(false, CatalogBrowseResult{}, [error UTF8String]);
                             return;
                         }
@@ -677,6 +690,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         blockResult->totalCount = [pageInfo isKindOfClass:[NSDictionary class]] ? SafeInt(pageInfo[@"totalCount"]) : blockResult->totalCount;
                         blockResult->hasNextPage = hasNextPage;
                         if (endCursor.length > 0) blockResult->endCursor = [endCursor UTF8String];
+                        NSLog(@"[GameService] catalog page=%ld items=%lu collected=%lu returned=%d total=%d hasNext=%d", (long)*page, (unsigned long)([items isKindOfClass:[NSArray class]] ? items.count : 0), (unsigned long)collectedApps.count, blockResult->numberReturned, blockResult->totalCount, hasNextPage);
 
                         (*page)++;
                         if (hasNextPage && endCursor.length > 0 && *page < kMaxCatalogPages) {
@@ -701,20 +715,26 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                 }
                                 blockResult->games.push_back(g);
+                                NSLog(@"[GameService] parsed catalog game title=%s id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", g.title.c_str(), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
                             }
                         }
                         blockResult->numberSupported = std::max(blockResult->numberSupported, (int)blockResult->games.size());
                         blockResult->totalCount = std::max(blockResult->totalCount, (int)blockResult->games.size());
                         if (appIdsNeedingMetadata.count == 0) {
+                            NSLog(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
+                            GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                             callback(true, *blockResult, "");
                             return;
                         }
+                        NSLog(@"[GameService] metadata enrichment start ids=%lu chunks=%lu", (unsigned long)appIdsNeedingMetadata.count, (unsigned long)((appIdsNeedingMetadata.count + 40 - 1) / 40));
 
                         NSMutableDictionary<NSString *, NSDictionary *> *metadataById = [NSMutableDictionary dictionary];
                         NSUInteger chunkSize = 40;
                         NSUInteger totalChunks = (appIdsNeedingMetadata.count + chunkSize - 1) / chunkSize;
                         __block NSUInteger completedChunks = 0;
                         auto mergeAndFinish = ^{
+                                NSUInteger enrichedDescriptions = 0;
+                                NSUInteger enrichedImages = 0;
                                 for (OPN::GameInfo &game : blockResult->games) {
                                     if (game.uuid.empty()) continue;
                                     NSString *uuid = [NSString stringWithUTF8String:game.uuid.c_str()];
@@ -723,6 +743,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     GameInfo metadataGame = service->parseGameItem(metadataApp);
                                     if (!metadataGame.description.empty()) {
                                         game.description = metadataGame.description;
+                                        enrichedDescriptions++;
                                     }
                                     if (game.genres.empty() && !metadataGame.genres.empty()) {
                                         game.genres = metadataGame.genres;
@@ -733,12 +754,15 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     if (game.developerName.empty()) game.developerName = metadataGame.developerName;
                                     if (game.publisherName.empty()) game.publisherName = metadataGame.publisherName;
                                     if (!metadataGame.screenshotUrls.empty()) game.screenshotUrls = metadataGame.screenshotUrls;
+                                    if (!metadataGame.imageUrl.empty() || !metadataGame.heroImageUrl.empty()) enrichedImages++;
                                     if (game.maxLocalPlayers <= 0) game.maxLocalPlayers = metadataGame.maxLocalPlayers;
                                     if (game.maxOnlinePlayers <= 0) game.maxOnlinePlayers = metadataGame.maxOnlinePlayers;
                                     if (game.supportedControls.empty()) game.supportedControls = metadataGame.supportedControls;
                                     if (game.contentRatings.empty()) game.contentRatings = metadataGame.contentRatings;
                                     if (game.nvidiaTech.empty()) game.nvidiaTech = metadataGame.nvidiaTech;
                                 }
+                                NSLog(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
+                                GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                                 callback(true, *blockResult, "");
                         };
 
@@ -758,6 +782,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     NSDictionary *apps = metaData[@"apps"];
                                     NSArray *metadataItems = [apps isKindOfClass:[NSDictionary class]] ? apps[@"items"] : nil;
                                     if ([metadataItems isKindOfClass:[NSArray class]]) {
+                                        NSLog(@"[GameService] metadata chunk returned start=%lu count=%lu", (unsigned long)start, (unsigned long)metadataItems.count);
                                         for (NSDictionary *metadataApp in metadataItems) {
                                             if (![metadataApp isKindOfClass:[NSDictionary class]]) continue;
                                             NSString *appId = SafeStr(metadataApp[@"id"]);

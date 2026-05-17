@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - OpenNOW-Info.plist
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix, for example 0.2.0"
+        required: true
+        type: string
+      build:
+        description: "Bundle build number. Defaults to the GitHub run number."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build And Publish Release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version
+        shell: zsh
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          build="${{ inputs.build }}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            current_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" OpenNOW-Info.plist)"
+            if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              print -u2 "Current bundle version must be MAJOR.MINOR.PATCH for automatic releases"
+              exit 1
+            fi
+            version="${match[1]}.${match[2]}.$((match[3] + 1))"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            print -u2 "Version must be semantic, for example 0.2.0"
+            exit 1
+          fi
+          if [[ -z "$build" ]]; then
+            build="${GITHUB_RUN_NUMBER}"
+          fi
+          if [[ ! "$build" =~ ^[0-9]+$ ]]; then
+            print -u2 "Build must be a positive integer"
+            exit 1
+          fi
+          if git rev-parse "v${version}" >/dev/null 2>&1; then
+            print -u2 "Tag v${version} already exists"
+            exit 1
+          fi
+          {
+            print "RELEASE_VERSION=${version}"
+            print "RELEASE_BUILD=${build}"
+            print "RELEASE_TAG=v${version}"
+            print "RELEASE_ARCHIVE=OpenNOW-${version}-macOS.zip"
+          } >> "$GITHUB_ENV"
+
+      - name: Bump bundle version
+        shell: zsh
+        run: |
+          set -euo pipefail
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${RELEASE_VERSION}" OpenNOW-Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${RELEASE_BUILD}" OpenNOW-Info.plist
+
+      - name: Build release binary
+        shell: zsh
+        run: make clean all OPTFLAGS="-O3 -DNDEBUG" ARCHFLAGS="-arch arm64"
+
+      - name: Package app bundle
+        shell: zsh
+        run: |
+          set -euo pipefail
+          app_path="dist/OpenNOW.app"
+          rm -rf dist
+          mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Frameworks"
+          cp OpenNOW-Info.plist "${app_path}/Contents/Info.plist"
+          cp build/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
+          chmod +x "${app_path}/Contents/MacOS/OpenNOW"
+          if [[ -d third_party/webrtc-official/WebRTC.framework ]]; then
+            cp -R third_party/webrtc-official/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
+          elif [[ -d third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework ]]; then
+            cp -R third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
+          fi
+          ditto -c -k --keepParent "${app_path}" "dist/${RELEASE_ARCHIVE}"
+
+      - name: Commit version bump and tag
+        shell: zsh
+        run: |
+          set -euo pipefail
+          export GIT_AUTHOR_NAME="github-actions[bot]"
+          export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="github-actions[bot]"
+          export GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          git add OpenNOW-Info.plist
+          git commit -m "chore: release ${RELEASE_TAG}"
+          git tag -a "${RELEASE_TAG}" -m "OpenNOW ${RELEASE_TAG}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "${RELEASE_TAG}"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: OpenNOW ${{ env.RELEASE_TAG }}
+          generate_release_notes: true
+          files: dist/${{ env.RELEASE_ARCHIVE }}

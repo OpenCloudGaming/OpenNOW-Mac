@@ -14,14 +14,13 @@ static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFu
 static NSString *const OPNControllerModeDefaultsKey = @"OpenNOW.Interface.ControllerMode";
 static NSString *const OPNBackgroundAnimationDefaultsKey = @"OpenNOW.Interface.BackgroundAnimation";
 static NSString *const OPNDerivedAccentColorsDefaultsKey = @"OpenNOW.Interface.DerivedAccentColors";
-static NSString *const OPNBackgroundTintStrengthDefaultsKey = @"OpenNOW.Interface.BackgroundTintStrength";
 static NSString *const OPNControllerLibraryShortcutDefaultsKey = @"OpenNOW.Interface.ControllerLibraryShortcut";
 static const CGFloat OPNMinimumPosterSizeScale = 0.80;
 static const CGFloat OPNMaximumPosterSizeScale = 1.30;
 static const CGFloat OPNMinimumControllerGridItemScale = 0.80;
 static const CGFloat OPNMaximumControllerGridItemScale = 1.40;
 static const unsigned OPNDefaultAccentRGB = 0x7CF1B1;
-static const CGFloat OPNDefaultBackgroundTintStrength = 0.32;
+static const CGFloat OPNBackgroundTintStrength = 0.85;
 static const uint16_t OPNDefaultControllerLibraryShortcutMask = 0x0010 | 0x0020;
 
 static int OPNClampedColorByte(NSInteger value) {
@@ -139,19 +138,7 @@ void OpnSetDerivedAccentColorsEnabled(BOOL enabled) {
 }
 
 CGFloat OpnBackgroundTintStrength(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNBackgroundTintStrengthDefaultsKey];
-    CGFloat strength = [stored respondsToSelector:@selector(doubleValue)] ? (CGFloat)[stored doubleValue] : OPNDefaultBackgroundTintStrength;
-    if (!std::isfinite(strength)) strength = OPNDefaultBackgroundTintStrength;
-    return MAX(0.0, MIN(strength, 1.0));
-}
-
-void OpnSetBackgroundTintStrength(CGFloat strength) {
-    if (!std::isfinite(strength)) strength = OPNDefaultBackgroundTintStrength;
-    CGFloat clampedStrength = MAX(0.0, MIN(strength, 1.0));
-    if (std::fabs(clampedStrength - OpnBackgroundTintStrength()) < 0.001) return;
-    [NSUserDefaults.standardUserDefaults setDouble:clampedStrength forKey:OPNBackgroundTintStrengthDefaultsKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
+    return OPNBackgroundTintStrength;
 }
 
 uint16_t OpnControllerLibraryShortcutMask(void) {

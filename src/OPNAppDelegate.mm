@@ -56,6 +56,7 @@
 - (void)returnToActiveStreamFromLibraryOverlay;
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen;
 - (void)attachActiveStreamPictureInPictureIfNeeded;
+- (void)restartApplication;
 - (void)loadStorePanelsWithRetry:(BOOL)canRetry;
 - (void)refreshGameLibraryInBackground;
 - (void)fetchGameLibraryWithRetry:(BOOL)canRetry
@@ -98,7 +99,7 @@ static void OPNConfigureResizableWindow(NSWindow *window, NSSize minSize, NSSize
 
 static void OPNConfigureLibraryWindow(NSWindow *window) {
     OPNConfigureResizableWindow(window,
-                                NSMakeSize(720.0, 480.0),
+                                NSMakeSize(OPN::kWindowMinWidth, OPN::kWindowMinHeight),
                                 OPNResizableWindowMaxSize());
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     window.backgroundColor = OpnColor(OPN::kBackground);
@@ -106,7 +107,7 @@ static void OPNConfigureLibraryWindow(NSWindow *window) {
 
 static void OPNConfigureStreamWindow(NSWindow *window) {
     OPNConfigureResizableWindow(window,
-                                NSMakeSize(640.0, 360.0),
+                                NSMakeSize(OPN::kWindowMinWidth, OPN::kWindowMinHeight),
                                 OPNResizableWindowMaxSize());
 }
 
@@ -360,6 +361,35 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [NSUserDefaults.standardUserDefaults setBool:OPNWindowIsFullScreen(self.window)
                                           forKey:OPNMainWindowWasFullScreenKey];
     [NSUserDefaults.standardUserDefaults synchronize];
+}
+
+- (void)restartApplication {
+    [self.window saveFrameUsingName:OPNMainWindowFrameAutosaveName];
+    [self saveWindowPresentation];
+
+    NSTask *task = [[NSTask alloc] init];
+    NSURL *bundleURL = NSBundle.mainBundle.bundleURL;
+    if ([bundleURL.pathExtension.lowercaseString isEqualToString:@"app"]) {
+        task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/open"];
+        task.arguments = @[@"-n", bundleURL.path];
+    } else {
+        NSString *executablePath = NSProcessInfo.processInfo.arguments.firstObject;
+        if (executablePath.length == 0) executablePath = NSBundle.mainBundle.executablePath;
+        if (executablePath.length > 0 && !executablePath.absolutePath) {
+            executablePath = [NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:executablePath];
+        }
+        task.executableURL = executablePath.length > 0 ? [NSURL fileURLWithPath:executablePath] : nil;
+        task.arguments = @[];
+        task.currentDirectoryURL = [NSURL fileURLWithPath:NSFileManager.defaultManager.currentDirectoryPath isDirectory:YES];
+    }
+
+    NSError *launchError = nil;
+    BOOL launched = task.executableURL != nil && [task launchAndReturnError:&launchError];
+    if (!launched) NSLog(@"[AppDelegate] Restart launch failed: %@", launchError.localizedDescription ?: @"unknown error");
+
+    if (launched) {
+        [NSApp terminate:self];
+    }
 }
 
 - (void)windowFullScreenStateChanged:(NSNotification *)notification {
@@ -850,6 +880,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 [strongSelf transitionToScreen:AuthScreen::Settings];
             };
 
+            catalog.onExitRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [NSApp terminate:strongSelf];
+            };
+
+            catalog.onRestartRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf restartApplication];
+            };
+
             catalog.onSelectGame = ^(const GameInfo &game, int variantIndex) {
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
@@ -1211,6 +1253,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.catalogView) return;
 
     NSInteger requestGeneration = ++self.catalogBrowseGeneration;
+    NSLog(@"[CatalogBrowse] request start generation=%ld search=%@ sort=%@ filters=%lu retryAttempt=%ld", (long)requestGeneration, searchQuery ?: @"", sortId ?: @"", (unsigned long)filterIds.size(), (long)retryAttempt);
     std::string accountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
@@ -1226,8 +1269,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [weakSelf, accountIdentifier, canRetry, requestGeneration, searchQuery, sortId, filterIds, retryAttempt]
         (bool success, const CatalogBrowseResult &result, const std::string &error) {
             __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || requestGeneration != strongSelf.catalogBrowseGeneration) return;
-            if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) return;
+            NSLog(@"[CatalogBrowse] callback generation=%ld success=%d games=%lu total=%d returned=%d supported=%d hasNext=%d error=%s", (long)requestGeneration, success, (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.hasNextPage, error.c_str());
+            if (!strongSelf || requestGeneration != strongSelf.catalogBrowseGeneration) {
+                NSLog(@"[CatalogBrowse] callback ignored stale/nil generation=%ld current=%ld", (long)requestGeneration, strongSelf ? (long)strongSelf.catalogBrowseGeneration : -1L);
+                return;
+            }
+            if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) {
+                NSLog(@"[CatalogBrowse] callback ignored account mismatch generation=%ld", (long)requestGeneration);
+                return;
+            }
 
             if (!success && canRetry && error.find("401") != std::string::npos) {
                 AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
