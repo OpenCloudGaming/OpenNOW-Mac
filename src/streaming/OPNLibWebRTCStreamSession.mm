@@ -1,5 +1,4 @@
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNStreamPreferences.h"
 #include "common/OPNSentry.h"
 
 #import <CoreAudio/CoreAudio.h>
@@ -23,6 +22,7 @@
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #import <WebRTC/WebRTC.h>
+#import <MetalKit/MetalKit.h>
 #endif
 
 namespace OPN {
@@ -715,76 +715,47 @@ class LibWebRTCStreamSession;
 @property(nonatomic, strong) RTCRtpSender *localMicrophoneSender;
 @end
 
-@interface OPNPacedVideoRenderer : NSView <RTCVideoRenderer>
+@interface OPNMetalVideoView : NSView <RTCVideoRenderer>
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner;
-- (void)displayLinkFired;
 @end
 
-@interface OPNPacedVideoRenderer ()
+@interface OPNMetalVideoView ()
 @property(nonatomic, strong) RTCMTLNSVideoView *videoView;
-@property(nonatomic, assign) CVDisplayLinkRef displayLink;
-@property(nonatomic, strong) RTCVideoFrame *pendingFrame;
-@property(nonatomic, assign) BOOL hasPendingFrame;
-@property(nonatomic, assign) BOOL renderScheduled;
 @property(nonatomic, assign) int targetFps;
-@property(nonatomic, assign) CFTimeInterval targetFrameInterval;
-@property(nonatomic, assign) CFTimeInterval lastDisplayTime;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+- (void)tuneMetalViewsInView:(NSView *)view;
 @end
 
-static CVReturn OPNPacedVideoRendererDisplayLinkCallback(CVDisplayLinkRef,
-                                                          const CVTimeStamp *,
-                                                          const CVTimeStamp *,
-                                                          CVOptionFlags,
-                                                          CVOptionFlags *,
-                                                          void *displayLinkContext) {
-    OPNPacedVideoRenderer *renderer = (__bridge OPNPacedVideoRenderer *)displayLinkContext;
-    [renderer displayLinkFired];
-    return kCVReturnSuccess;
-}
-
-@implementation OPNPacedVideoRenderer
+@implementation OPNMetalVideoView
 
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner {
     self = [super initWithFrame:frame];
     if (self) {
-        _targetFps = MAX(30, MIN(targetFps, 120));
-        _targetFrameInterval = 1.0 / (CFTimeInterval)_targetFps;
         _owner = owner;
+        _targetFps = MAX(30, MIN(targetFps, 240));
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
+
         _videoView = [[RTCMTLNSVideoView alloc] initWithFrame:self.bounds];
         _videoView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         _videoView.wantsLayer = YES;
         _videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
         [self addSubview:_videoView];
-
-        CVDisplayLinkRef displayLink = nil;
-        if (CVDisplayLinkCreateWithActiveCGDisplays(&displayLink) == kCVReturnSuccess && displayLink) {
-            CVDisplayLinkSetOutputCallback(displayLink, OPNPacedVideoRendererDisplayLinkCallback, (__bridge void *)self);
-            CVDisplayLinkStart(displayLink);
-            _displayLink = displayLink;
-        }
+        [self tuneMetalViewsInView:_videoView];
     }
     return self;
-}
-
-- (void)dealloc {
-    if (_displayLink) {
-        CVDisplayLinkStop(_displayLink);
-        CVDisplayLinkRelease(_displayLink);
-        _displayLink = nil;
-    }
 }
 
 - (void)layout {
     [super layout];
     self.videoView.frame = self.bounds;
+    [self tuneMetalViewsInView:self.videoView];
 }
 
 - (void)setSize:(CGSize)size {
+    [self.videoView setSize:size];
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self.videoView setSize:size];
+        [self tuneMetalViewsInView:self.videoView];
     });
 }
 
@@ -792,45 +763,21 @@ static CVReturn OPNPacedVideoRendererDisplayLinkCallback(CVDisplayLinkRef,
     if (frame && self.owner) {
         self.owner->HandleVideoFrame((__bridge void *)frame);
     }
-    @synchronized (self) {
-        self.pendingFrame = frame;
-        self.hasPendingFrame = frame != nil;
-    }
-    if (!frame) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.videoView renderFrame:nil];
-        });
-    } else if (!self.displayLink) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self renderPendingFrame];
-        });
-    }
-}
-
-- (void)displayLinkFired {
-    const CFTimeInterval now = CACurrentMediaTime();
-    @synchronized (self) {
-        if (!self.hasPendingFrame || self.renderScheduled) return;
-        if (self.lastDisplayTime > 0.0 && now - self.lastDisplayTime < self.targetFrameInterval * 0.85) return;
-        self.lastDisplayTime = now;
-        self.renderScheduled = YES;
-    }
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self renderPendingFrame];
-    });
-}
-
-- (void)renderPendingFrame {
-    RTCVideoFrame *frame = nil;
-    @synchronized (self) {
-        self.renderScheduled = NO;
-        if (!self.hasPendingFrame) return;
-        frame = self.pendingFrame;
-        self.pendingFrame = nil;
-        self.hasPendingFrame = NO;
-    }
     [self.videoView renderFrame:frame];
+}
+
+- (void)tuneMetalViewsInView:(NSView *)view {
+    if (!view) return;
+    if ([view isKindOfClass:MTKView.class]) {
+        MTKView *metalView = (MTKView *)view;
+        metalView.paused = NO;
+        metalView.enableSetNeedsDisplay = NO;
+        metalView.preferredFramesPerSecond = self.targetFps;
+        metalView.layerContentsPlacement = NSViewLayerContentsPlacementScaleProportionallyToFit;
+    }
+    for (NSView *subview in view.subviews) {
+        [self tuneMetalViewsInView:subview];
+    }
 }
 
 @end
@@ -1068,12 +1015,8 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.codec = settings.codec;
         m_latestStats.fps = settings.fps;
         m_latestStats.videoDecoder = "libwebrtc";
-        m_latestStats.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "CVDisplayLink"
-            : "RTCMTLNSVideoView";
-        m_latestStats.videoPipelineMode = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "libwebrtc CVDisplayLink pacing"
-            : "libwebrtc direct display";
+        m_latestStats.videoSink = "OPNMetalVideoView";
+        m_latestStats.videoPipelineMode = "libwebrtc Metal display";
         m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
         m_previousBytesReceived = 0;
@@ -1797,14 +1740,10 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
     parsed.timestampMs = OPNMonotonicMs();
     parsed.videoDecoder = "libwebrtc";
     if (parsed.videoSink.empty()) {
-        parsed.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "CVDisplayLink"
-            : "RTCMTLNSVideoView";
+        parsed.videoSink = "OPNMetalVideoView";
     }
     if (parsed.videoPipelineMode.empty()) {
-        parsed.videoPipelineMode = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "libwebrtc CVDisplayLink pacing"
-            : "libwebrtc direct display";
+        parsed.videoPipelineMode = "libwebrtc Metal display";
     }
 
     std::string inboundCodecId;
@@ -1955,8 +1894,7 @@ double LibWebRTCStreamSession::GameVolume() const {
 }
 
 int LibWebRTCStreamSession::TargetFps() const {
-    StreamPreferenceProfile profile = LoadStreamPreferenceProfile();
-    return profile.rendererPacingFps > 0 ? profile.rendererPacingFps : (m_settings.fps > 0 ? m_settings.fps : 60);
+    return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
 }
 
 void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, const std::string &pipelineMode) {
@@ -2090,20 +2028,12 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
             }
             [self.remoteVideoView removeFromSuperview];
 
-            const bool usePacedRenderer = _owner && OPN::OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true);
-            NSView *videoView = nil;
-            id<RTCVideoRenderer> videoRenderer = nil;
-            if (usePacedRenderer) {
-                OPNPacedVideoRenderer *pacedRenderer = [[OPNPacedVideoRenderer alloc] initWithFrame:parentView.bounds targetFps:_owner->TargetFps() owner:_owner];
-                videoView = pacedRenderer;
-                videoRenderer = pacedRenderer;
-                _owner->SetVideoRendererState("CVDisplayLink", "libwebrtc CVDisplayLink pacing");
-            } else {
-                RTCMTLNSVideoView *metalView = [[RTCMTLNSVideoView alloc] initWithFrame:parentView.bounds];
-                videoView = metalView;
-                videoRenderer = metalView;
-                _owner->SetVideoRendererState("RTCMTLNSVideoView", "");
-            }
+            OPNMetalVideoView *metalView = [[OPNMetalVideoView alloc] initWithFrame:parentView.bounds
+                                                                          targetFps:_owner->TargetFps()
+                                                                              owner:_owner];
+            NSView *videoView = metalView;
+            id<RTCVideoRenderer> videoRenderer = metalView;
+            _owner->SetVideoRendererState("OPNMetalVideoView", "libwebrtc Metal display");
             videoView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             videoView.wantsLayer = YES;
             videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
@@ -2113,7 +2043,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
             self.remoteVideoTrack = videoTrack;
             self.remoteVideoView = videoView;
             self.remoteVideoRenderer = videoRenderer;
-            OPN::LogInfo(@"[LibWebRTC] Remote video renderer attached to native view=%p paced=%d", (__bridge void *)parentView, usePacedRenderer);
+            OPN::LogInfo(@"[LibWebRTC] Remote video renderer attached to native view=%p metal=1 targetFps=%d", (__bridge void *)parentView, _owner->TargetFps());
         });
     } else if ([rtpReceiver.track.kind isEqualToString:kRTCMediaStreamTrackKindAudio]) {
         RTCAudioTrack *audioTrack = (RTCAudioTrack *)rtpReceiver.track;

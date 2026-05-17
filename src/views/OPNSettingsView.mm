@@ -267,7 +267,6 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
 @property (nonatomic, assign) NSInteger selectedCodec;
 @property (nonatomic, assign) NSInteger selectedBitrate;
 @property (nonatomic, assign) NSInteger selectedColorDepth;
-@property (nonatomic, assign) NSInteger selectedRendererPacing;
 @property (nonatomic, assign) NSInteger selectedMicrophoneMode;
 @property (nonatomic, assign) NSInteger selectedMicrophoneDevice;
 @property (nonatomic, assign) BOOL enableL4S;
@@ -327,7 +326,6 @@ using namespace OPN;
         _selectedCodec = profile.codecIndex;
         _selectedBitrate = profile.bitrateIndex;
         _selectedColorDepth = profile.colorQualityIndex;
-        _selectedRendererPacing = profile.rendererPacingIndex;
         _selectedMicrophoneMode = profile.microphoneMode == "push-to-talk" ? 1 : (profile.microphoneMode == "voice-activity" ? 2 : 0);
         _selectedMicrophoneDevice = 0;
         _enableL4S = profile.enableL4S;
@@ -691,7 +689,7 @@ using namespace OPN;
     CGFloat panelWidth = MAX(320.0, self.contentAreaWidth > 0 ? self.contentAreaWidth : 720.0);
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
-    NSView *video = [self panelWithTitle:@"Video" height:760.0];
+    NSView *video = [self panelWithTitle:@"Video" height:642.0];
     [video addSubview:[self rowLabel:@"Aspect Ratio" y:112.0]];
     NSMutableArray<NSString *> *aspectTitles = [NSMutableArray array];
     for (const OPN::StreamAspectOption &option : OPN::StreamAspectOptions()) {
@@ -728,19 +726,6 @@ using namespace OPN;
     [video addSubview:[self rowLabel:@"Color Depth" y:492.0]];
     [self addOptionGroupTo:video group:7 titles:colorDepthTitles selected:self.selectedColorDepth y:482.0 widths:@[@112.0, @112.0, @124.0, @124.0]];
 
-    NSMutableArray<NSString *> *rendererPacingTitles = [NSMutableArray array];
-    for (int fps : OPN::StreamRendererPacingOptions()) {
-        [rendererPacingTitles addObject:[NSString stringWithFormat:@"%d", fps]];
-    }
-    [video addSubview:[self rowLabel:@"Advanced: Renderer Pacing" y:582.0]];
-    [self addOptionGroupTo:video group:10 titles:rendererPacingTitles selected:self.selectedRendererPacing y:572.0 widths:@[@62.0, @62.0, @62.0]];
-    NSTextField *pacingHint = OpnLabel(@"Advanced experimental renderer timing. Do not change unless you know what it does; incorrect values can make motion look worse.",
-                                       NSMakeRect(controlX, 614.0, controlWidth, 34.0),
-                                       12.0,
-                                       OpnColor(kTextMuted),
-                                       NSFontWeightRegular);
-    pacingHint.maximumNumberOfLines = 2;
-    [video addSubview:pacingHint];
     [self.documentView addSubview:video];
 }
 
@@ -1274,7 +1259,6 @@ using namespace OPN;
         case 7: OPN::SaveStreamColorQualityIndex((int)index); break;
         case 8: OPN::SaveStreamBitrateIndex((int)index); break;
         case 9: [self applyPerformanceProfile:index]; break;
-        case 10: OPN::SaveStreamRendererPacingIndex((int)index); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
@@ -1284,7 +1268,6 @@ using namespace OPN;
     self.selectedCodec = profile.codecIndex;
     self.selectedBitrate = profile.bitrateIndex;
     self.selectedColorDepth = profile.colorQualityIndex;
-    self.selectedRendererPacing = profile.rendererPacingIndex;
     self.enableL4S = profile.enableL4S;
     [self rebuildContent];
 }

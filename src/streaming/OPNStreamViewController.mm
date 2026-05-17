@@ -224,6 +224,23 @@ static OPN::StreamResolutionOption OPNPowerSaverResolution(const OPN::StreamPref
     return {width, height};
 }
 
+static OPN::StreamResolutionOption OPNEffectiveStreamResolution(const OPN::StreamPreferenceProfile &profile,
+                                                                 const OPNDisplayStreamProfile &displayProfile) {
+    if (profile.enablePowerSaver) return OPNPowerSaverResolution(profile);
+
+    const bool usingDefaultResolutionProfile = profile.aspectIndex == 1 && profile.resolutionIndex == 2;
+    if (usingDefaultResolutionProfile && displayProfile.streamWidth > 0 && displayProfile.streamHeight > 0) {
+        return {displayProfile.streamWidth, displayProfile.streamHeight};
+    }
+    return profile.resolution;
+}
+
+static double OPNAspectRatioForResolution(const OPN::StreamResolutionOption &resolution, double fallbackAspectRatio) {
+    if (resolution.width <= 0 || resolution.height <= 0) return fallbackAspectRatio;
+    double aspect = (double)resolution.width / (double)resolution.height;
+    return std::isfinite(aspect) && aspect > 0.1 ? aspect : fallbackAspectRatio;
+}
+
 static int OPNEffectiveMaxBitrateMbps(const OPN::StreamPreferenceProfile &profile) {
     if (profile.enablePowerSaver) return std::min(profile.maxBitrateMbps, 15);
     return profile.maxBitrateMbps;
@@ -1861,9 +1878,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPNDisplayStreamProfile displayProfile = ResolveDisplayStreamProfile(self.view.window);
     OPN::StreamPreferenceProfile streamProfile = OPN::LoadStreamPreferenceProfile();
-    OPN::StreamResolutionOption effectiveResolution = streamProfile.enablePowerSaver
-        ? OPNPowerSaverResolution(streamProfile)
-        : streamProfile.resolution;
+    OPN::StreamResolutionOption effectiveResolution = OPNEffectiveStreamResolution(streamProfile, displayProfile);
     OPN::StreamSettings settings;
     settings.resolution = effectiveResolution.Value();
     settings.fps = streamProfile.enablePowerSaver ? std::min(streamProfile.fps, 30) : streamProfile.fps;
@@ -1879,7 +1894,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.microphoneVolume = streamProfile.microphoneVolume;
     settings.accountLinked = _accountLinked;
     settings.selectedStore = _selectedStore;
-    [self.streamView setVideoAspectRatio:(CGFloat)streamProfile.AspectRatio()];
+    [self.streamView setVideoAspectRatio:(CGFloat)OPNAspectRatioForResolution(effectiveResolution, streamProfile.AspectRatio())];
     [self.streamView setSuppressInputWhenWindowInactive:streamProfile.suppressInputWhenInactive ? YES : NO];
     [self.streamView setMaxBitrateMbps:settings.maxBitrateMbps];
     [self.streamView setMicrophoneMode:settings.microphoneMode

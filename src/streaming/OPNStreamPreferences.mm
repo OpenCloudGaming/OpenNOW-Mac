@@ -13,7 +13,6 @@ static NSString *const kFpsIndexKey = @"OpenNOW.Stream.FpsIndex";
 static NSString *const kCodecIndexKey = @"OpenNOW.Stream.CodecIndex";
 static NSString *const kBitrateIndexKey = @"OpenNOW.Stream.BitrateIndex";
 static NSString *const kColorQualityIndexKey = @"OpenNOW.Stream.ColorQualityIndex";
-static NSString *const kRendererPacingIndexKey = @"OpenNOW.Stream.RendererPacingIndex";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
@@ -90,11 +89,6 @@ const std::vector<StreamColorQualityOption> &StreamColorQualityOptions() {
         {"10-bit 4:2:0", "10bit_420"},
         {"10-bit 4:4:4", "10bit_444"},
     };
-    return options;
-}
-
-const std::vector<int> &StreamRendererPacingOptions() {
-    static const std::vector<int> options = {30, 60, 120};
     return options;
 }
 
@@ -353,10 +347,6 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.colorQualityIndex = ClampedStoredInteger(kColorQualityIndexKey, 0, (int)colorQualityOptions.size());
     profile.colorQuality = colorQualityOptions[(size_t)profile.colorQualityIndex];
 
-    const auto &rendererPacingOptions = StreamRendererPacingOptions();
-    profile.rendererPacingIndex = ClampedStoredInteger(kRendererPacingIndexKey, 1, (int)rendererPacingOptions.size());
-    profile.rendererPacingFps = rendererPacingOptions[(size_t)profile.rendererPacingIndex];
-
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
     profile.enablePowerSaver = [NSUserDefaults.standardUserDefaults boolForKey:kPowerSaverEnabledKey];
     id suppressInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kSuppressInputWhenInactiveKey];
@@ -579,11 +569,6 @@ void SaveStreamBitrateIndex(int bitrateIndex) {
 void SaveStreamColorQualityIndex(int colorQualityIndex) {
     int clamped = std::max(0, std::min(colorQualityIndex, (int)StreamColorQualityOptions().size() - 1));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kColorQualityIndexKey];
-}
-
-void SaveStreamRendererPacingIndex(int rendererPacingIndex) {
-    int clamped = std::max(0, std::min(rendererPacingIndex, (int)StreamRendererPacingOptions().size() - 1));
-    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kRendererPacingIndexKey];
 }
 
 void SaveStreamL4SEnabled(bool enabled) {
