@@ -1,6 +1,7 @@
 vendor-analysis/
 graphify-out/
 third_party/
+.vscode/settings.json
 
 # macOS and Xcode artifacts
 .DS_Store
