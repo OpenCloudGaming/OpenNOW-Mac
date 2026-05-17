@@ -4,6 +4,7 @@
 #import "../common/OPNUIHelpers.h"
 #include "../games/OPNGameDataCache.h"
 #include <QuartzCore/QuartzCore.h>
+#include "common/OPNSentry.h"
 
 static const CGFloat gCardWidth = 220.0;
 static const CGFloat gControllerCardWidth = 164.0;
@@ -386,9 +387,9 @@ using namespace OPN;
     }
     NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
     NSString *gameId = self.gameData.id.empty() ? @"" : [NSString stringWithUTF8String:self.gameData.id.c_str()];
-    NSLog(@"[GameCard] image candidates title=%@ id=%@ hero=%d primary=%d steam=%d total=%lu", title, gameId, heroUrl.length > 0, primaryUrl.length > 0, steamUrl.length > 0, (unsigned long)urlStrings.count);
+    OPN::LogInfo(@"[GameCard] image candidates title=%@ id=%@ hero=%d primary=%d steam=%d total=%lu", title, gameId, heroUrl.length > 0, primaryUrl.length > 0, steamUrl.length > 0, (unsigned long)urlStrings.count);
     if (urlStrings.count == 0) {
-        NSLog(@"[GameCard] no image candidates title=%@ id=%@ variants=%lu", title, gameId, (unsigned long)self.gameData.variants.size());
+        OPN::LogInfo(@"[GameCard] no image candidates title=%@ id=%@ variants=%lu", title, gameId, (unsigned long)self.gameData.variants.size());
         return;
     }
 
@@ -398,7 +399,7 @@ using namespace OPN;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index {
     if (index >= urlStrings.count) {
         NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-        NSLog(@"[GameCard] all image candidates failed title=%@", title);
+        OPN::LogError(@"[GameCard] all image candidates failed title=%@", title);
         return;
     }
 
@@ -408,7 +409,7 @@ using namespace OPN;
         NSImage *cachedImage = [[NSImage alloc] initWithData:cachedData];
         if (cachedImage) {
             NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-            NSLog(@"[GameCard] image cache hit title=%@ bytes=%lu url=%@", title, (unsigned long)cachedData.length, urlStr);
+            OPN::LogInfo(@"[GameCard] image cache hit title=%@ bytes=%lu url=%@", title, (unsigned long)cachedData.length, urlStr);
             self.imageView.image = cachedImage;
             NSRect imageRect = NSMakeRect(0.0, 0.0, cachedImage.size.width, cachedImage.size.height);
             CGImageRef cgImage = [cachedImage CGImageForProposedRect:&imageRect context:nil hints:nil];
@@ -428,12 +429,12 @@ using namespace OPN;
     }
     NSURL *url = [NSURL URLWithString:urlStr];
     if (!url) {
-        NSLog(@"[GameCard] invalid image URL index=%lu url=%@", (unsigned long)index, urlStr);
+        OPN::LogError(@"[GameCard] invalid image URL index=%lu url=%@", (unsigned long)index, urlStr);
         [self loadImageFromCandidates:urlStrings index:index + 1];
         return;
     }
     NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-    NSLog(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
+    OPN::LogInfo(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
 
     __weak __typeof__(self) weakSelf = self;
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
@@ -441,7 +442,7 @@ using namespace OPN;
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
             if (error || !data || (http && http.statusCode >= 400)) {
-                NSLog(@"[GameCard] image request failed title=%@ index=%lu status=%ld error=%@ url=%@", title, (unsigned long)index + 1, (long)(http ? http.statusCode : 0), error.localizedDescription ?: @"", urlStr);
+                OPN::LogError(@"[GameCard] image request failed title=%@ index=%lu status=%ld error=%@ url=%@", title, (unsigned long)index + 1, (long)(http ? http.statusCode : 0), error.localizedDescription ?: @"", urlStr);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     __typeof__(self) strongSelf = weakSelf;
                     [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
@@ -450,7 +451,7 @@ using namespace OPN;
             }
             NSImage *img = [[NSImage alloc] initWithData:data];
             if (!img) {
-                NSLog(@"[GameCard] image decode failed title=%@ index=%lu bytes=%lu url=%@", title, (unsigned long)index + 1, (unsigned long)data.length, urlStr);
+                OPN::LogError(@"[GameCard] image decode failed title=%@ index=%lu bytes=%lu url=%@", title, (unsigned long)index + 1, (unsigned long)data.length, urlStr);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     __typeof__(self) strongSelf = weakSelf;
                     [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
@@ -461,7 +462,7 @@ using namespace OPN;
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                NSLog(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, img.size.width, img.size.height, urlStr);
+                OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, img.size.width, img.size.height, urlStr);
                 strongSelf.imageView.image = img;
                 NSRect imageRect = NSMakeRect(0.0, 0.0, img.size.width, img.size.height);
                 CGImageRef cgImage = [img CGImageForProposedRect:&imageRect context:nil hints:nil];

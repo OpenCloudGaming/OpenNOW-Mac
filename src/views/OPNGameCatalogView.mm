@@ -10,6 +10,7 @@
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
 #include <cmath>
+#include "common/OPNSentry.h"
 
 static const CGFloat kGridPadding = 28.0;
 static const CGFloat kCardSpacing = 18.0;
@@ -1564,7 +1565,7 @@ using namespace OPN;
 }
 
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result {
-    NSLog(@"[CatalogView] setCatalogBrowseResult games=%lu total=%d returned=%d supported=%d selectedSort=%s filters=%lu currentCards=%lu", (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.selectedSortId.c_str(), (unsigned long)result.selectedFilterIds.size(), (unsigned long)self.cardViews.count);
+    OPN::LogInfo(@"[CatalogView] setCatalogBrowseResult games=%lu total=%d returned=%d supported=%d selectedSort=%s filters=%lu currentCards=%lu", (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.selectedSortId.c_str(), (unsigned long)result.selectedFilterIds.size(), (unsigned long)self.cardViews.count);
     _allGames = result.games;
     for (OPNGameCardView *card in self.cardViews) {
         NSString *identifier = [self favoriteIdentifierForGame:card.game];
@@ -1577,7 +1578,7 @@ using namespace OPN;
             break;
         }
         NSString *title = OPNCatalogString(card.game.title, @"<untitled>");
-        NSLog(@"[CatalogView] existing card metadata refresh title=%@ identifier=%@ updated=%d", title, identifier ?: @"", updated);
+        OPN::LogInfo(@"[CatalogView] existing card metadata refresh title=%@ identifier=%@ updated=%d", title, identifier ?: @"", updated);
     }
     self.catalogFilterGroups = result.filterGroups;
     self.catalogSortOptions = result.sortOptions;
@@ -1813,7 +1814,7 @@ using namespace OPN;
 }
 
 - (void)renderGrid {
-    NSLog(@"[CatalogView] renderGrid begin controller=%d overview=%d category=%@ allGames=%lu renderedLimit=%ld focused=%ld", OpnControllerModeEnabled(), self.controllerCategoryOverviewVisible, self.selectedCategoryId, (unsigned long)self.allGames.size(), (long)self.controllerRenderedGameCount, (long)self.focusedCardIndex);
+    OPN::LogInfo(@"[CatalogView] renderGrid begin controller=%d overview=%d category=%@ allGames=%lu renderedLimit=%ld focused=%ld", OpnControllerModeEnabled(), self.controllerCategoryOverviewVisible, self.selectedCategoryId, (unsigned long)self.allGames.size(), (long)self.controllerRenderedGameCount, (long)self.focusedCardIndex);
     for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
     [_cardViews removeAllObjects];
     [self.categoryCardViews removeAllObjects];
@@ -1843,7 +1844,7 @@ using namespace OPN;
     if (controllerMode) {
         if (self.controllerRenderedGameCount <= 0) self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
         renderLimit = MIN((NSInteger)displayGames.size(), MAX([self controllerInitialRenderedGameCount], self.controllerRenderedGameCount));
-        NSLog(@"[CatalogView] controller render window category=%@ display=%lu initial=%ld renderLimit=%ld scrollWidth=%.1f", self.selectedCategoryId, (unsigned long)displayGames.size(), (long)[self controllerInitialRenderedGameCount], (long)renderLimit, NSWidth(self.scrollView.frame));
+        OPN::LogInfo(@"[CatalogView] controller render window category=%@ display=%lu initial=%ld renderLimit=%ld scrollWidth=%.1f", self.selectedCategoryId, (unsigned long)displayGames.size(), (long)[self controllerInitialRenderedGameCount], (long)renderLimit, NSWidth(self.scrollView.frame));
     }
 
     NSInteger col = 0;
@@ -1854,7 +1855,7 @@ using namespace OPN;
         CGFloat x = controllerMode ? xStart + visibleCount * (cardWidth + gridSpacing) : xStart + col * (cardWidth + gridSpacing);
         NSRect cardFrame = NSMakeRect(x, yPos, cardWidth, cardHeight);
         OPNGameCardView *card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:game];
-        NSLog(@"[CatalogView] create card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)visibleCount, OPNCatalogString(game.title, @"<untitled>"), OPNCatalogString(game.id, @""), OPNCatalogString(game.uuid, @""), !game.description.empty(), (unsigned long)game.featureLabels.size(), !game.imageUrl.empty(), !game.heroImageUrl.empty(), (unsigned long)game.variants.size());
+        OPN::LogInfo(@"[CatalogView] create card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)visibleCount, OPNCatalogString(game.title, @"<untitled>"), OPNCatalogString(game.id, @""), OPNCatalogString(game.uuid, @""), !game.description.empty(), (unsigned long)game.featureLabels.size(), !game.imageUrl.empty(), !game.heroImageUrl.empty(), (unsigned long)game.variants.size());
         GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
         __weak OPNGameCardView *weakCard = card;
@@ -1909,7 +1910,7 @@ using namespace OPN;
     [self focusCardAtIndex:self.focusedCardIndex scrollIntoView:NO];
     [self updateControllerDetailContent];
     [self layoutCatalogSubviews];
-    NSLog(@"[CatalogView] renderGrid end cards=%lu totalDisplay=%ld contentWidth=%.1f focused=%ld", (unsigned long)self.cardViews.count, (long)totalVisibleCount, NSWidth(self.gridContentView.frame), (long)self.focusedCardIndex);
+    OPN::LogInfo(@"[CatalogView] renderGrid end cards=%lu totalDisplay=%ld contentWidth=%.1f focused=%ld", (unsigned long)self.cardViews.count, (long)totalVisibleCount, NSWidth(self.gridContentView.frame), (long)self.focusedCardIndex);
 }
 
 - (void)renderControllerCategoryOverview {
@@ -2701,13 +2702,13 @@ using namespace OPN;
     CGFloat usableWidth = MAX(cardWidth, availableWidth - railInset * 2.0);
     NSInteger count = (NSInteger)ceil((usableWidth + spacing) / MAX(1.0, cardWidth + spacing));
     NSInteger result = MAX(1, count + 1);
-    NSLog(@"[CatalogView] initial render count availableWidth=%.1f usable=%.1f card=%.1f spacing=%.1f result=%ld", availableWidth, usableWidth, cardWidth, spacing, (long)result);
+    OPN::LogInfo(@"[CatalogView] initial render count availableWidth=%.1f usable=%.1f card=%.1f spacing=%.1f result=%ld", availableWidth, usableWidth, cardWidth, spacing, (long)result);
     return result;
 }
 
 - (BOOL)appendControllerGameCardAtIndex:(NSInteger)index {
     if (index < 0 || index >= self.controllerDisplayGameCount || index != (NSInteger)self.cardViews.count) {
-        NSLog(@"[CatalogView] append skipped index=%ld cardCount=%lu display=%ld rendered=%ld", (long)index, (unsigned long)self.cardViews.count, (long)self.controllerDisplayGameCount, (long)self.controllerRenderedGameCount);
+        OPN::LogInfo(@"[CatalogView] append skipped index=%ld cardCount=%lu display=%ld rendered=%ld", (long)index, (unsigned long)self.cardViews.count, (long)self.controllerDisplayGameCount, (long)self.controllerRenderedGameCount);
         return NO;
     }
 
@@ -2724,10 +2725,10 @@ using namespace OPN;
         currentIndex++;
     }
     if (!foundGameToAppend) {
-        NSLog(@"[CatalogView] append failed no matching game index=%ld category=%@ display=%ld", (long)index, self.selectedCategoryId, (long)self.controllerDisplayGameCount);
+        OPN::LogError(@"[CatalogView] append failed no matching game index=%ld category=%@ display=%ld", (long)index, self.selectedCategoryId, (long)self.controllerDisplayGameCount);
         return NO;
     }
-    NSLog(@"[CatalogView] append card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)index, OPNCatalogString(gameToAppend.title, @"<untitled>"), OPNCatalogString(gameToAppend.id, @""), OPNCatalogString(gameToAppend.uuid, @""), !gameToAppend.description.empty(), (unsigned long)gameToAppend.featureLabels.size(), !gameToAppend.imageUrl.empty(), !gameToAppend.heroImageUrl.empty(), (unsigned long)gameToAppend.variants.size());
+    OPN::LogInfo(@"[CatalogView] append card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)index, OPNCatalogString(gameToAppend.title, @"<untitled>"), OPNCatalogString(gameToAppend.id, @""), OPNCatalogString(gameToAppend.uuid, @""), !gameToAppend.description.empty(), (unsigned long)gameToAppend.featureLabels.size(), !gameToAppend.imageUrl.empty(), !gameToAppend.heroImageUrl.empty(), (unsigned long)gameToAppend.variants.size());
 
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
@@ -2771,17 +2772,17 @@ using namespace OPN;
                                             0.0,
                                             MAX(totalWidth, NSWidth(self.scrollView.frame)),
                                             MAX(totalHeight, NSHeight(self.scrollView.frame)));
-    NSLog(@"[CatalogView] append complete cards=%lu rendered=%ld contentWidth=%.1f", (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, NSWidth(self.gridContentView.frame));
+    OPN::LogInfo(@"[CatalogView] append complete cards=%lu rendered=%ld contentWidth=%.1f", (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, NSWidth(self.gridContentView.frame));
     return YES;
 }
 
 - (BOOL)preloadControllerGameIfNeededForIndex:(NSInteger)index direction:(NSInteger)direction {
     if (!OpnControllerModeEnabled() || self.controllerCategoryOverviewVisible) return NO;
     if (direction <= 0 || index < (NSInteger)self.cardViews.count || self.controllerRenderedGameCount >= self.controllerDisplayGameCount) {
-        NSLog(@"[CatalogView] edge preload skipped target=%ld dir=%ld cards=%lu rendered=%ld display=%ld", (long)index, (long)direction, (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, (long)self.controllerDisplayGameCount);
+        OPN::LogInfo(@"[CatalogView] edge preload skipped target=%ld dir=%ld cards=%lu rendered=%ld display=%ld", (long)index, (long)direction, (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, (long)self.controllerDisplayGameCount);
         return NO;
     }
-    NSLog(@"[CatalogView] edge preload target=%ld dir=%ld", (long)index, (long)direction);
+    OPN::LogInfo(@"[CatalogView] edge preload target=%ld dir=%ld", (long)index, (long)direction);
     BOOL appended = NO;
     appended = [self appendControllerGameCardAtIndex:(NSInteger)self.cardViews.count];
     return appended;
@@ -2790,7 +2791,7 @@ using namespace OPN;
 - (void)preloadControllerNeighborForDirection:(NSInteger)direction {
     if (!OpnControllerModeEnabled() || self.controllerCategoryOverviewVisible || direction <= 0) return;
     NSInteger nextIndex = self.focusedCardIndex + 1;
-    NSLog(@"[CatalogView] neighbor preload check focused=%ld next=%ld cards=%lu rendered=%ld display=%ld", (long)self.focusedCardIndex, (long)nextIndex, (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, (long)self.controllerDisplayGameCount);
+    OPN::LogInfo(@"[CatalogView] neighbor preload check focused=%ld next=%ld cards=%lu rendered=%ld display=%ld", (long)self.focusedCardIndex, (long)nextIndex, (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, (long)self.controllerDisplayGameCount);
     if (nextIndex >= (NSInteger)self.cardViews.count - 1 && self.controllerRenderedGameCount < self.controllerDisplayGameCount) {
         [self appendControllerGameCardAtIndex:(NSInteger)self.cardViews.count];
     }
@@ -2823,10 +2824,10 @@ using namespace OPN;
         return;
     }
     NSInteger next = self.focusedCardIndex + rows * MAX(1, self.gridColumnCount) + columns;
-    NSLog(@"[CatalogView] moveFocus rows=%ld cols=%ld current=%ld next=%ld cards=%lu rendered=%ld display=%ld", (long)rows, (long)columns, (long)self.focusedCardIndex, (long)next, (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, (long)self.controllerDisplayGameCount);
+    OPN::LogInfo(@"[CatalogView] moveFocus rows=%ld cols=%ld current=%ld next=%ld cards=%lu rendered=%ld display=%ld", (long)rows, (long)columns, (long)self.focusedCardIndex, (long)next, (unsigned long)self.cardViews.count, (long)self.controllerRenderedGameCount, (long)self.controllerDisplayGameCount);
     if ([self preloadControllerGameIfNeededForIndex:next direction:columns]) {
         next = self.focusedCardIndex + rows * MAX(1, self.gridColumnCount) + columns;
-        NSLog(@"[CatalogView] moveFocus recalculated after edge preload next=%ld cards=%lu", (long)next, (unsigned long)self.cardViews.count);
+        OPN::LogInfo(@"[CatalogView] moveFocus recalculated after edge preload next=%ld cards=%lu", (long)next, (unsigned long)self.cardViews.count);
     }
     [self focusCardAtIndex:next scrollIntoView:YES];
     [self preloadControllerNeighborForDirection:columns];

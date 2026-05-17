@@ -1,4 +1,5 @@
 #include "OPNLogCapture.h"
+#include "common/OPNSentry.h"
 
 #import <AppKit/AppKit.h>
 #include <fcntl.h>
@@ -98,7 +99,7 @@ void CopyCapturedLogToClipboard(NSString *reason) {
     NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
     [pasteboard clearContents];
     [pasteboard setString:log forType:NSPasteboardTypeString];
-    NSLog(@"[LogCapture] Copied captured log to clipboard (%lu chars)", (unsigned long)log.length);
+    OPN::LogInfo(@"[LogCapture] Copied captured log to clipboard (%lu chars)", (unsigned long)log.length);
 }
 
 NSString *CapturedLogPath() {

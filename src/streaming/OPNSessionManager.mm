@@ -1,5 +1,6 @@
 
 #include "OPNSessionManager.h"
+#include "common/OPNSentry.h"
 #include "OPNStreamTypes.h"
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonCrypto.h>
@@ -174,7 +175,7 @@ static void ParseStreamProfile(NSDictionary *session, OPN::NegotiatedStreamProfi
     if (chromaFormat) profile.chromaFormat = [chromaFormat intValue];
     if (profile.bitDepth >= 0 || profile.chromaFormat >= 0) {
         profile.colorQuality = ColorQualityFromFeatures(profile.bitDepth, profile.chromaFormat);
-        NSLog(@"[SessionManager] Finalized stream features bitDepth=%d chromaFormat=%d color=%s",
+        OPN::LogInfo(@"[SessionManager] Finalized stream features bitDepth=%d chromaFormat=%d color=%s",
               profile.bitDepth,
               profile.chromaFormat,
               profile.colorQuality.c_str());
@@ -298,7 +299,7 @@ static void MergeSessionAdState(OPN::SessionAdState &target, const OPN::SessionA
 }
 
 static void LogPollSessionSummary(NSInteger httpStatus, const OPN::SessionInfo &info) {
-    NSLog(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d server=%s signaling=%s gpu=%s color=%s ads=%s",
+    OPN::LogInfo(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d server=%s signaling=%s gpu=%s color=%s ads=%s",
           (long)httpStatus,
           info.sessionId.empty() ? "(empty)" : info.sessionId.c_str(),
           info.status,
@@ -434,9 +435,9 @@ void SessionManager::CreateSession(const std::string &appId,
 
     bool hdrEnabled = false;
 
-    int timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
+    NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
 
-    NSLog(@"[SessionManager] CreateSession called with appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s",
+    OPN::LogInfo(@"[SessionManager] CreateSession called with appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s",
           appId.c_str(),
           settings.codec.c_str(),
           settings.colorQuality.c_str(),
@@ -444,9 +445,9 @@ void SessionManager::CreateSession(const std::string &appId,
           settings.enableL4S ? "on" : "off");
 
     NSString *appIdStr = [NSString stringWithUTF8String:appId.c_str()];
-    NSLog(@"[SessionManager] appIdStr=%@", appIdStr);
+    OPN::LogInfo(@"[SessionManager] appIdStr=%@", appIdStr);
     if (!appIdStr) {
-        NSLog(@"[SessionManager] WARNING: appIdStr is nil!");
+        OPN::LogInfo(@"[SessionManager] WARNING: appIdStr is nil!");
         appIdStr = @"";
     }
 
@@ -536,7 +537,7 @@ void SessionManager::CreateSession(const std::string &appId,
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     NSString *bodyStr = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
     if (VerboseSessionHttpLoggingEnabled()) {
-        NSLog(@"[SessionManager] HTTP Body: %@", bodyStr);
+        OPN::LogInfo(@"[SessionManager] HTTP Body: %@", bodyStr);
     }
     req.HTTPBody = bodyData;
 
@@ -557,7 +558,7 @@ void SessionManager::CreateSession(const std::string &appId,
 
             NSString *createBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
             if (VerboseSessionHttpLoggingEnabled()) {
-                NSLog(@"[SessionManager] CreateSession response: %@", createBody);
+                OPN::LogInfo(@"[SessionManager] CreateSession response: %@", createBody);
             }
 
             NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
@@ -682,7 +683,7 @@ void SessionManager::CreateSession(const std::string &appId,
         NSString *ctrlIp = [ctrlInfo[@"ip"] isKindOfClass:[NSString class]] ? ctrlInfo[@"ip"] : nil;
         if (ctrlIp.length > 0 && info.serverIp.empty()) {
             info.serverIp = [ctrlIp UTF8String];
-            NSLog(@"[SessionManager] Using sessionControlInfo zone: %s", info.serverIp.c_str());
+            OPN::LogInfo(@"[SessionManager] Using sessionControlInfo zone: %s", info.serverIp.c_str());
         }
 
         info.clientId = clientId;
@@ -729,7 +730,7 @@ void SessionManager::PollSession(const std::string &sessionId,
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         NSString *rawBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if (VerboseSessionHttpLoggingEnabled()) {
-            NSLog(@"[PollSession] Raw response: HTTP %ld body=%@", (long)http.statusCode, rawBody);
+            OPN::LogInfo(@"[PollSession] Raw response: HTTP %ld body=%@", (long)http.statusCode, rawBody);
         }
         if (http.statusCode != 200) {
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, rawBody] UTF8String]);
@@ -1279,7 +1280,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     if (!sid) sid = @"";
     if (!sip) sip = @"";
 
-    NSLog(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
+    OPN::LogInfo(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
           sid,
           sip,
           appId.c_str(),
@@ -1289,7 +1290,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
           settings.enableL4S ? "on" : "off",
           recoveryMode);
 
-    int timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
+    NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
     NSString *subSessionId = [NSString stringWithUTF8String:RandomUUID().c_str()];
 
     NSDictionary *payload = @{
@@ -1347,18 +1348,18 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                           sip, sid, layout, lang];
 
     if (sip.length == 0) {
-        NSLog(@"[ClaimSession] ERROR: serverIp is empty, cannot construct URL");
+        OPN::LogError(@"[ClaimSession] ERROR: serverIp is empty, cannot construct URL");
         completion(false, SessionInfo{}, "No server IP for claim");
         return;
     }
 
     __block int preClaimStatus = 0;
     NSString *validationUrlStr = [NSString stringWithFormat:@"https://%@/v2/session/%@", sip, sid];
-    NSLog(@"[ClaimSession] Validation GET %@", validationUrlStr);
+    OPN::LogInfo(@"[ClaimSession] Validation GET %@", validationUrlStr);
 
     NSURL *validationURL = [NSURL URLWithString:validationUrlStr];
     if (!validationURL) {
-        NSLog(@"[ClaimSession] ERROR: invalid validation URL: %@", validationUrlStr);
+        OPN::LogError(@"[ClaimSession] ERROR: invalid validation URL: %@", validationUrlStr);
         completion(false, SessionInfo{}, "Invalid validation URL");
         return;
     }
@@ -1380,16 +1381,16 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     [[[NSURLSession sharedSession] dataTaskWithRequest:validationReq completionHandler:^(NSData *vData, NSURLResponse *vResp, NSError *vErr) {
         (void)vResp;
         if (vErr) {
-            NSLog(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
+            OPN::LogError(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
         } else if (vData) {
             NSDictionary *vJson = [NSJSONSerialization JSONObjectWithData:vData options:0 error:nil];
             NSDictionary *vSession = DictionaryValue(vJson[@"session"]);
             if (vSession) {
                 preClaimStatus = [vSession[@"status"] intValue];
-                NSLog(@"[ClaimSession] Pre-claim validation status=%d", preClaimStatus);
+                OPN::LogInfo(@"[ClaimSession] Pre-claim validation status=%d", preClaimStatus);
             }
         } else {
-            NSLog(@"[ClaimSession] Validation request returned no data and no error");
+            OPN::LogError(@"[ClaimSession] Validation request returned no data and no error");
         }
 
         if (preClaimStatus == 1) {
@@ -1398,12 +1399,12 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         }
 
         if (recoveryMode && (preClaimStatus == 2 || preClaimStatus == 3)) {
-            NSLog(@"[ClaimSession] Recovery mode with ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
+            OPN::LogInfo(@"[ClaimSession] Recovery mode with ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
             this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
             return;
         }
 
-        NSLog(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
+        OPN::LogInfo(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
         NSMutableURLRequest *claimReq = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:claimUrl]];
         claimReq.timeoutInterval = 15;
         claimReq.HTTPMethod = @"PUT";
@@ -1424,16 +1425,16 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         [[[NSURLSession sharedSession] dataTaskWithRequest:claimReq completionHandler:^(NSData *cData, NSURLResponse *cResp, NSError *cErr) {
             if (cErr || !cData) {
                 NSString *errDesc = cErr ? [cErr localizedDescription] : @"No data";
-                NSLog(@"[ClaimSession] PUT failed: %@", errDesc);
+                OPN::LogError(@"[ClaimSession] PUT failed: %@", errDesc);
                 cb(false, SessionInfo{}, [errDesc UTF8String]);
                 return;
             }
             NSHTTPURLResponse *cHttp = (NSHTTPURLResponse *)cResp;
             NSString *cBody = [[NSString alloc] initWithData:cData encoding:NSUTF8StringEncoding];
             if (VerboseSessionHttpLoggingEnabled()) {
-                NSLog(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);
+                OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);
             } else {
-                NSLog(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
+                OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
             }
             if (cHttp.statusCode != 200) {
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim HTTP %ld: %@", (long)cHttp.statusCode, cBody] UTF8String]);
@@ -1445,7 +1446,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             NSNumber *cSc = cReqStatus[@"statusCode"];
             if (!cSc || cSc.integerValue != 1) {
                 NSString *desc = cReqStatus[@"statusDescription"] ?: @"unknown";
-                NSLog(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
+                OPN::LogError(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim API error %@: %@", cSc, desc] UTF8String]);
                 return;
             }

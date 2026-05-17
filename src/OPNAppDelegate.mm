@@ -21,6 +21,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include "common/OPNSentry.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) OPNBackdropView *rootView;
@@ -388,7 +389,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     NSError *launchError = nil;
     BOOL launched = task.executableURL != nil && [task launchAndReturnError:&launchError];
-    if (!launched) NSLog(@"[AppDelegate] Restart launch failed: %@", launchError.localizedDescription ?: @"unknown error");
+    if (!launched) OPN::LogError(@"[AppDelegate] Restart launch failed: %@", launchError.localizedDescription ?: @"unknown error");
 
     if (launched) {
         [NSApp terminate:self];
@@ -414,7 +415,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
 
     if (self.streamingController) {
-        NSLog(@"[AppDelegate] Ignoring game launch while stream is active: title=%s, id=%s", game.title.c_str(), game.id.c_str());
+        OPN::LogInfo(@"[AppDelegate] Ignoring game launch while stream is active: title=%s, id=%s", game.title.c_str(), game.id.c_str());
         return;
     }
 
@@ -422,7 +423,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.storeView = nil;
     self.settingsView = nil;
 
-    NSLog(@"[AppDelegate] Game selected: title=%s, id=%s, uuid=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), game.uuid.c_str(), variantIndex);
+    OPN::LogInfo(@"[AppDelegate] Game selected: title=%s, id=%s, uuid=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), game.uuid.c_str(), variantIndex);
 
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
@@ -435,13 +436,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         effectiveAppId = variant.id;
         selectedStore = variant.appStore;
         accountLinked = OPNChooseAccountLinked(game, &variant);
-        NSLog(@"[AppDelegate] Variant: id=%s, store=%s, status=%s, accountLinked=%d",
+        OPN::LogInfo(@"[AppDelegate] Variant: id=%s, store=%s, status=%s, accountLinked=%d",
               variant.id.c_str(), variant.appStore.c_str(), variant.serviceStatus.c_str(), accountLinked);
     }
     if (effectiveAppId.empty()) {
         effectiveAppId = game.launchAppId.empty() ? game.id : game.launchAppId;
     }
-    NSLog(@"[AppDelegate] Using appId=%s, store=%s, accountLinked=%d",
+    OPN::LogInfo(@"[AppDelegate] Using appId=%s, store=%s, accountLinked=%d",
           effectiveAppId.c_str(), selectedStore.c_str(), accountLinked);
 
     OPNStreamViewController *streamVC =
@@ -460,7 +461,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (!strongSelf) return;
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
-            NSLog(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
+            OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
             strongSelf.streamLibraryOverlayActive = NO;
             [strongSelf transitionToScreen:returnScreen];
             strongSelf.streamingController = nil;
@@ -497,7 +498,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             }
         });
     }
-    NSLog(@"[AppDelegate] Window setup complete");
+    OPN::LogInfo(@"[AppDelegate] Window setup complete");
 }
 
 - (void)showLibraryOverlayForActiveStream {
@@ -577,7 +578,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) return;
             if (strongSelf.streamingController || strongSelf.currentScreen != screen) return;
             if (!ok) {
-                NSLog(@"[AppDelegate] Active session probe failed: %s", errorCopy.c_str());
+                OPN::LogError(@"[AppDelegate] Active session probe failed: %s", errorCopy.c_str());
                 return;
             }
 
@@ -636,7 +637,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [streamVC prepareForLibraryPictureInPicture];
             [strongSelf attachActiveStreamPictureInPictureIfNeeded];
             [streamVC startStreamIfNeeded];
-            NSLog(@"[AppDelegate] Silently resuming active session %s for appId=%d", activeSession.sessionId.c_str(), activeSession.appId);
+            OPN::LogInfo(@"[AppDelegate] Silently resuming active session %s for appId=%d", activeSession.sessionId.c_str(), activeSession.appId);
         });
     });
 }
@@ -1000,7 +1001,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || !strongSelf.rootView) return;
         if (!success) {
-            NSLog(@"[AppDelegate] Subscription fetch failed: %s", error.c_str());
+            OPN::LogError(@"[AppDelegate] Subscription fetch failed: %s", error.c_str());
             return;
         }
         strongSelf.rootView.accountStatus = OPNDisplayTier(subscription.membershipTier);
@@ -1256,7 +1257,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.catalogView) return;
 
     NSInteger requestGeneration = ++self.catalogBrowseGeneration;
-    NSLog(@"[CatalogBrowse] request start generation=%ld search=%@ sort=%@ filters=%lu retryAttempt=%ld", (long)requestGeneration, searchQuery ?: @"", sortId ?: @"", (unsigned long)filterIds.size(), (long)retryAttempt);
+    OPN::LogInfo(@"[CatalogBrowse] request start generation=%ld search=%@ sort=%@ filters=%lu retryAttempt=%ld", (long)requestGeneration, searchQuery ?: @"", sortId ?: @"", (unsigned long)filterIds.size(), (long)retryAttempt);
     std::string accountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
@@ -1272,13 +1273,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [weakSelf, accountIdentifier, canRetry, requestGeneration, searchQuery, sortId, filterIds, retryAttempt]
         (bool success, const CatalogBrowseResult &result, const std::string &error) {
             __typeof__(self) strongSelf = weakSelf;
-            NSLog(@"[CatalogBrowse] callback generation=%ld success=%d games=%lu total=%d returned=%d supported=%d hasNext=%d error=%s", (long)requestGeneration, success, (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.hasNextPage, error.c_str());
+            if (success) {
+                OPN::LogInfo(@"[CatalogBrowse] callback generation=%ld success=%d games=%lu total=%d returned=%d supported=%d hasNext=%d error=%s", (long)requestGeneration, success, (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.hasNextPage, error.c_str());
+            } else {
+                OPN::LogError(@"[CatalogBrowse] callback generation=%ld success=%d games=%lu total=%d returned=%d supported=%d hasNext=%d error=%s", (long)requestGeneration, success, (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.hasNextPage, error.c_str());
+            }
             if (!strongSelf || requestGeneration != strongSelf.catalogBrowseGeneration) {
-                NSLog(@"[CatalogBrowse] callback ignored stale/nil generation=%ld current=%ld", (long)requestGeneration, strongSelf ? (long)strongSelf.catalogBrowseGeneration : -1L);
+                OPN::LogInfo(@"[CatalogBrowse] callback ignored stale/nil generation=%ld current=%ld", (long)requestGeneration, strongSelf ? (long)strongSelf.catalogBrowseGeneration : -1L);
                 return;
             }
             if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) {
-                NSLog(@"[CatalogBrowse] callback ignored account mismatch generation=%ld", (long)requestGeneration);
+                OPN::LogInfo(@"[CatalogBrowse] callback ignored account mismatch generation=%ld", (long)requestGeneration);
                 return;
             }
 
@@ -1303,7 +1308,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 if (canRetry && OPNIsTransientNetworkLostError(error) && retryAttempt < 10) {
                     NSInteger nextAttempt = retryAttempt + 1;
                     NSTimeInterval delay = pow(2.0, (double)retryAttempt);
-                    NSLog(@"[AppDelegate] Catalog browse network lost; retry %ld/10 in %.0fs", (long)nextAttempt, delay);
+                    OPN::LogError(@"[AppDelegate] Catalog browse network lost; retry %ld/10 in %.0fs", (long)nextAttempt, delay);
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                         __typeof__(self) retrySelf = weakSelf;
                         if (!retrySelf || requestGeneration != retrySelf.catalogBrowseGeneration) return;

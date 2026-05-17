@@ -1,6 +1,9 @@
 #include "OPNSentry.h"
 
 #import <Foundation/Foundation.h>
+#include <atomic>
+#include <cstdarg>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 
@@ -13,12 +16,29 @@
 
 namespace OPN {
 
+namespace {
+
+static NSString *OPNFormattedLogMessage(NSString *format, va_list arguments) {
+    if (format.length == 0) return @"";
+    return [[NSString alloc] initWithFormat:format arguments:arguments] ?: @"";
+}
+
+static const char *OPNLogMessageUtf8(NSString *message) {
+    const char *utf8 = message.UTF8String;
+    return utf8 ? utf8 : "";
+}
+
+}
+
 #if OPN_SENTRY_ENABLED
 namespace {
 
-static constexpr const char *OPNDefaultSentryDsn = "https://47a6752be389eabd7ed3b088ca89c0b3@o4509317113184256.ingest.us.sentry.io/4511406320320512";
+static constexpr const char *OPNDefaultSentryDsn = "https://26e9dba9cb293d4ca2afceb73dd13b74@o4509317113184256.ingest.us.sentry.io/4511406450868224";
 static constexpr const char *OPNSentryLoggerName = "opennow";
+static constexpr unsigned int OPNMaxStructuredInfoLogsPerRun = 128;
 static bool OPNSentryInitialized = false;
+static std::atomic<unsigned int> OPNSentryStructuredInfoLogCount{0};
+static std::atomic<bool> OPNSentryStructuredInfoLogsDisabled{false};
 
 static NSString *OPNInfoString(NSString *key, NSString *fallback) {
     id value = NSBundle.mainBundle.infoDictionary[key];
@@ -50,7 +70,7 @@ static NSString *OPNSentryDatabasePath() {
                                                              create:YES
                                                               error:&error];
     if (!cacheURL) {
-        NSLog(@"[Sentry] Unable to resolve cache directory: %@", error.localizedDescription ?: @"unknown error");
+        OPN::LogError(@"[Sentry] Unable to resolve cache directory: %@", error.localizedDescription ?: @"unknown error");
         return nil;
     }
 
@@ -61,7 +81,7 @@ static NSString *OPNSentryDatabasePath() {
                                 withIntermediateDirectories:YES
                                                  attributes:nil
                                                       error:&error]) {
-        NSLog(@"[Sentry] Unable to create database directory: %@", error.localizedDescription ?: @"unknown error");
+        OPN::LogError(@"[Sentry] Unable to create database directory: %@", error.localizedDescription ?: @"unknown error");
         return nil;
     }
     return databaseURL.path;
@@ -110,6 +130,47 @@ static bool OPNSentryEnvironmentFlagEnabled(const char *name) {
     return value && value[0] == '1' && value[1] == '\0';
 }
 
+static bool OPNShouldInitializeSentry() {
+    return !OPNSentryEnvironmentFlagEnabled("OPN_DISABLE_SENTRY");
+}
+
+static bool OPNUploadInfoLogsAsEvents() {
+    return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_INFO_EVENTS");
+}
+
+static bool OPNUploadStructuredInfoLogs() {
+    return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_INFO_LOGS");
+}
+
+static bool OPNFlushErrorsImmediately() {
+    return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_FLUSH_ERRORS");
+}
+
+static bool OPNShouldSendStructuredInfoLog() {
+    if (!OPNUploadStructuredInfoLogs()) return false;
+    if (OPNSentryStructuredInfoLogsDisabled.load()) return false;
+    unsigned int previousCount = OPNSentryStructuredInfoLogCount.fetch_add(1);
+    if (previousCount < OPNMaxStructuredInfoLogsPerRun) return true;
+    if (previousCount == OPNMaxStructuredInfoLogsPerRun) {
+        std::fprintf(stderr, "[Sentry] structured info log limit reached; local logging continues\n");
+    }
+    return false;
+}
+
+static const char *OPNSentryLogReturnName(log_return_value_t value) {
+    switch (value) {
+        case SENTRY_LOG_RETURN_SUCCESS: return "success";
+        case SENTRY_LOG_RETURN_DISCARD: return "discard";
+        case SENTRY_LOG_RETURN_FAILED: return "failed";
+        case SENTRY_LOG_RETURN_DISABLED: return "disabled";
+    }
+    return "unknown";
+}
+
+static void OPNCaptureSentryMessage(sentry_level_t level, const char *message) {
+    sentry_capture_event(sentry_value_new_message_event(level, OPNSentryLoggerName, message));
+}
+
 static void OPNCaptureSentryVerificationMessageIfRequested() {
     if (!OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) return;
     sentry_capture_event(sentry_value_new_message_event(SENTRY_LEVEL_INFO, OPNSentryLoggerName, "It works!"));
@@ -118,13 +179,63 @@ static void OPNCaptureSentryVerificationMessageIfRequested() {
 }
 #endif
 
+void LogInfo(NSString *format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+    NSString *message = OPNFormattedLogMessage(format, arguments);
+    va_end(arguments);
+    const char *utf8Message = OPNLogMessageUtf8(message);
+
+    std::fprintf(stderr, "%s\n", utf8Message);
+
+#if OPN_SENTRY_ENABLED
+    if (OPNSentryInitialized) {
+        if (OPNShouldSendStructuredInfoLog()) {
+            log_return_value_t result = sentry_log_info("%s", utf8Message);
+            if (result != SENTRY_LOG_RETURN_SUCCESS) {
+                OPNSentryStructuredInfoLogsDisabled.store(true);
+                std::fprintf(stderr, "[Sentry] sentry_log_info returned %s; local logging continues\n", OPNSentryLogReturnName(result));
+            }
+        }
+        if (OPNUploadInfoLogsAsEvents()) {
+            OPNCaptureSentryMessage(SENTRY_LEVEL_INFO, utf8Message);
+        }
+    }
+#endif
+}
+
+void LogError(NSString *format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+    NSString *message = OPNFormattedLogMessage(format, arguments);
+    va_end(arguments);
+    const char *utf8Message = OPNLogMessageUtf8(message);
+
+    std::fprintf(stderr, "%s\n", utf8Message);
+
+#if OPN_SENTRY_ENABLED
+    if (OPNSentryInitialized) {
+        log_return_value_t result = sentry_log_error("%s", utf8Message);
+        if (result != SENTRY_LOG_RETURN_SUCCESS) {
+            std::fprintf(stderr, "[Sentry] sentry_log_error returned %s\n", OPNSentryLogReturnName(result));
+        }
+        OPNCaptureSentryMessage(SENTRY_LEVEL_ERROR, utf8Message);
+        if (OPNFlushErrorsImmediately()) {
+            sentry_flush(2000);
+        }
+    }
+#endif
+}
+
 void InitializeSentry() {
 #if OPN_SENTRY_ENABLED
+    if (!OPNShouldInitializeSentry()) return;
+
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         sentry_options_t *options = sentry_options_new();
         if (!options) {
-            NSLog(@"[Sentry] Unable to allocate Sentry options");
+            OPN::LogError(@"[Sentry] Unable to allocate Sentry options");
             return;
         }
 
@@ -147,16 +258,22 @@ void InitializeSentry() {
         if (!releaseName.empty()) {
             sentry_options_set_release(options, releaseName.c_str());
         }
-        
+
+        sentry_options_set_debug(options, OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_DEBUG") ? 1 : 0);
         sentry_options_set_enable_logs(options, 1);
 
         int initResult = sentry_init(options);
         if (initResult != 0) {
-            NSLog(@"[Sentry] sentry_init failed with code %d", initResult);
+            OPN::LogError(@"[Sentry] sentry_init failed with code %d", initResult);
             return;
         }
         OPNSentryInitialized = true;
         OPNCaptureSentryVerificationMessageIfRequested();
+        if (OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) {
+            log_return_value_t result = sentry_log_info("%s", "OpenNOW Sentry structured logs are enabled");
+            std::fprintf(stderr, "[Sentry] verification log returned %s\n", OPNSentryLogReturnName(result));
+            sentry_flush(5000);
+        }
     });
 #endif
 }
@@ -167,7 +284,7 @@ void CloseSentry() {
     OPNSentryInitialized = false;
     int closeResult = sentry_close();
     if (closeResult != 0) {
-        NSLog(@"[Sentry] sentry_close dumped %d envelope(s)", closeResult);
+        OPN::LogInfo(@"[Sentry] sentry_close dumped %d envelope(s)", closeResult);
     }
 #endif
 }

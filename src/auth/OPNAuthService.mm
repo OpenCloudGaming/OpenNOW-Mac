@@ -1,4 +1,5 @@
 #include "OPNAuthService.h"
+#include "common/OPNSentry.h"
 
 #include <CommonCrypto/CommonCrypto.h>
 #include <AppKit/NSWorkspace.h>
@@ -195,7 +196,7 @@ void AuthService::FetchClientToken(const std::string &accessToken,
         [NSURL URLWithString:@"https://login.nvidia.com/client_token"]];
     req.HTTPMethod = @"GET";
     req.timeoutInterval = 10.0;
-    NSLog(@"[OpenNOW] FetchClientToken: accessToken length=%zu", accessToken.size());
+    OPN::LogInfo(@"[OpenNOW] FetchClientToken: accessToken length=%zu", accessToken.size());
     [req setValue:[NSString stringWithFormat:@"Bearer %s", accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
     [req setValue:@"https://nvfile" forHTTPHeaderField:@"Origin"];
     [req setValue:@"application/json, text/plain, */*" forHTTPHeaderField:@"Accept"];

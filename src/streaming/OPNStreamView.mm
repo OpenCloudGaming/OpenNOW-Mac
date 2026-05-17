@@ -4,6 +4,7 @@
 #include "OPNStreamPreferences.h"
 #include "../common/OPNUIHelpers.h"
 #import "OPNStreamRecordingManager.h"
+#include "common/OPNSentry.h"
 
 #import <GameController/GameController.h>
 #import <ApplicationServices/ApplicationServices.h>
@@ -413,7 +414,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 
 - (BOOL)toggleMicrophoneEnabledShortcut {
     if (_microphoneMode == "disabled") {
-        NSLog(@"[StreamView] Command-M ignored because microphone is disabled in settings");
+        OPN::LogInfo(@"[StreamView] Command-M ignored because microphone is disabled in settings");
         return NO;
     }
     _microphoneShortcutEnabled = !_microphoneShortcutEnabled;
@@ -423,7 +424,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     } else {
         [self applyMicrophoneShortcutState];
     }
-    NSLog(@"[StreamView] Microphone shortcut toggled %s", _microphoneShortcutEnabled ? "on" : "off");
+    OPN::LogInfo(@"[StreamView] Microphone shortcut toggled %s", _microphoneShortcutEnabled ? "on" : "off");
     return YES;
 }
 
@@ -802,7 +803,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 
     auto mapping = OPN::Input::MapMacKeyCode((uint16_t)event.keyCode);
     if (!mapping) {
-        NSLog(@"[StreamView] No OPN key mapping for mac keyCode=%hu", (unsigned short)event.keyCode);
+        OPN::LogInfo(@"[StreamView] No OPN key mapping for mac keyCode=%hu", (unsigned short)event.keyCode);
         return;
     }
 
@@ -977,7 +978,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     CGAssociateMouseAndMouseCursorPosition(false);
     CGDisplayHideCursor(kCGDirectMainDisplay);
     _cursorCaptured = YES;
-    NSLog(@"[StreamView] Stream pointer locker active");
+    OPN::LogInfo(@"[StreamView] Stream pointer locker active");
 }
 
 - (void)releasePressedMouseButtons {
@@ -1009,7 +1010,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     CGAssociateMouseAndMouseCursorPosition(true);
     CGDisplayShowCursor(kCGDirectMainDisplay);
     _cursorCaptured = NO;
-    NSLog(@"[StreamView] Stream pointer locker armed");
+    OPN::LogInfo(@"[StreamView] Stream pointer locker armed");
 }
 
 - (void)releasePointerLock {
@@ -1030,7 +1031,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
         if (!strongSelf) return;
         [strongSelf releaseCursorCapture];
         [strongSelf cancelEscapeHoldTimer];
-        NSLog(@"[StreamView] ESC held for 3s; pointer capture released");
+        OPN::LogInfo(@"[StreamView] ESC held for 3s; pointer capture released");
     });
     dispatch_resume(_escapeHoldTimer);
 }
@@ -1100,13 +1101,13 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     } else {
         [self registerGuideButtonHandlersForConnectedControllers];
     }
-    NSLog(@"[StreamView] GameController connected");
+    OPN::LogInfo(@"[StreamView] GameController connected");
     [self startGamepadPolling];
 }
 
 - (void)controllerDidDisconnect:(NSNotification *)notification {
     (void)notification;
-    NSLog(@"[StreamView] GameController disconnected");
+    OPN::LogInfo(@"[StreamView] GameController disconnected");
     [self pollGamepads];
     if (GCController.controllers.count == 0) {
         [self stopGamepadPolling];
@@ -1184,7 +1185,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     }
     [self resetInputStateAfterSuppression];
     [self releaseCursorCapture];
-    NSLog(@"[StreamView] GameController Home/Guide requested library overlay");
+    OPN::LogInfo(@"[StreamView] GameController Home/Guide requested library overlay");
     self.onGuideButtonPressed();
     return YES;
 }

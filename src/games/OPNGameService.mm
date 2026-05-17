@@ -7,6 +7,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include "common/OPNSentry.h"
 
 namespace OPN {
 
@@ -457,13 +458,13 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                      CatalogBrowseCallback completion) {
     std::string token = m_accessToken;
     CatalogBrowseCallback callback = completion;
-    NSLog(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
+    OPN::LogInfo(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
     std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
     int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
     std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
     CatalogBrowseResult cachedResult;
     if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
-        NSLog(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
+        OPN::LogInfo(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
         callback(true, cachedResult, "");
     }
 
@@ -473,7 +474,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
         std::vector<std::string> requestedFilterIds = filterIds;
         int requestedFetchCount = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
-        NSLog(@"[GameService] BrowseCatalogGames vpc=%s requestedFetchCount=%d", vpcId.c_str(), requestedFetchCount);
+        OPN::LogInfo(@"[GameService] BrowseCatalogGames vpc=%s requestedFetchCount=%d", vpcId.c_str(), requestedFetchCount);
 
         std::string definitionsQuery = R"(
         query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
@@ -489,7 +490,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         postGraphQlJson(definitionsQuery, @{@"locale": @"en_US"},
             [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
-                    NSLog(@"[GameService] catalog definitions failed error=%@", definitionsError);
+                    OPN::LogError(@"[GameService] catalog definitions failed error=%@", definitionsError);
                     callback(false, CatalogBrowseResult{}, [definitionsError UTF8String]);
                     return;
                 }
@@ -671,7 +672,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                  service->postGraphQlJson(selectedQuery, vars, ^(NSDictionary *data, NSString *error) {
                         (void)keepPaginationAlive;
                         if (error.length > 0) {
-                            NSLog(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
+                            OPN::LogError(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
                             callback(false, CatalogBrowseResult{}, [error UTF8String]);
                             return;
                         }
@@ -690,7 +691,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         blockResult->totalCount = [pageInfo isKindOfClass:[NSDictionary class]] ? SafeInt(pageInfo[@"totalCount"]) : blockResult->totalCount;
                         blockResult->hasNextPage = hasNextPage;
                         if (endCursor.length > 0) blockResult->endCursor = [endCursor UTF8String];
-                        NSLog(@"[GameService] catalog page=%ld items=%lu collected=%lu returned=%d total=%d hasNext=%d", (long)*page, (unsigned long)([items isKindOfClass:[NSArray class]] ? items.count : 0), (unsigned long)collectedApps.count, blockResult->numberReturned, blockResult->totalCount, hasNextPage);
+                        OPN::LogInfo(@"[GameService] catalog page=%ld items=%lu collected=%lu returned=%d total=%d hasNext=%d", (long)*page, (unsigned long)([items isKindOfClass:[NSArray class]] ? items.count : 0), (unsigned long)collectedApps.count, blockResult->numberReturned, blockResult->totalCount, hasNextPage);
 
                         (*page)++;
                         if (hasNextPage && endCursor.length > 0 && *page < kMaxCatalogPages) {
@@ -715,18 +716,18 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                 }
                                 blockResult->games.push_back(g);
-                                NSLog(@"[GameService] parsed catalog game title=%s id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", g.title.c_str(), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
+                                OPN::LogInfo(@"[GameService] parsed catalog game title=%s id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", g.title.c_str(), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
                             }
                         }
                         blockResult->numberSupported = std::max(blockResult->numberSupported, (int)blockResult->games.size());
                         blockResult->totalCount = std::max(blockResult->totalCount, (int)blockResult->games.size());
                         if (appIdsNeedingMetadata.count == 0) {
-                            NSLog(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
+                            OPN::LogInfo(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
                             GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                             callback(true, *blockResult, "");
                             return;
                         }
-                        NSLog(@"[GameService] metadata enrichment start ids=%lu chunks=%lu", (unsigned long)appIdsNeedingMetadata.count, (unsigned long)((appIdsNeedingMetadata.count + 40 - 1) / 40));
+                        OPN::LogInfo(@"[GameService] metadata enrichment start ids=%lu chunks=%lu", (unsigned long)appIdsNeedingMetadata.count, (unsigned long)((appIdsNeedingMetadata.count + 40 - 1) / 40));
 
                         NSMutableDictionary<NSString *, NSDictionary *> *metadataById = [NSMutableDictionary dictionary];
                         NSUInteger chunkSize = 40;
@@ -761,7 +762,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     if (game.contentRatings.empty()) game.contentRatings = metadataGame.contentRatings;
                                     if (game.nvidiaTech.empty()) game.nvidiaTech = metadataGame.nvidiaTech;
                                 }
-                                NSLog(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
+                                OPN::LogInfo(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
                                 GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                                 callback(true, *blockResult, "");
                         };
@@ -777,12 +778,12 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                             service->postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], metaVars,
                                 ^(NSDictionary *metaData, NSString *metaError) {
                                     if (metaError.length > 0) {
-                                        NSLog(@"[GameService] appMetaData enrichment failed: %@", metaError);
+                                        OPN::LogError(@"[GameService] appMetaData enrichment failed: %@", metaError);
                                     }
                                     NSDictionary *apps = metaData[@"apps"];
                                     NSArray *metadataItems = [apps isKindOfClass:[NSDictionary class]] ? apps[@"items"] : nil;
                                     if ([metadataItems isKindOfClass:[NSArray class]]) {
-                                        NSLog(@"[GameService] metadata chunk returned start=%lu count=%lu", (unsigned long)start, (unsigned long)metadataItems.count);
+                                        OPN::LogInfo(@"[GameService] metadata chunk returned start=%lu count=%lu", (unsigned long)start, (unsigned long)metadataItems.count);
                                         for (NSDictionary *metadataApp in metadataItems) {
                                             if (![metadataApp isKindOfClass:[NSDictionary class]]) continue;
                                             NSString *appId = SafeStr(metadataApp[@"id"]);
@@ -1472,7 +1473,7 @@ static void WaitForSessionTeardown(std::string sessionId,
         SessionManager::Shared().GetActiveSessions([sessionId, appId, completion, timer, polling](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             *polling = false;
             if (!ok) {
-                NSLog(@"[GameService] Teardown wait active-session poll failed: %s", error.c_str());
+                OPN::LogError(@"[GameService] Teardown wait active-session poll failed: %s", error.c_str());
                 return;
             }
 
@@ -1513,7 +1514,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && IsSessionReadyStatus(s.status) && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Claiming session %s status=%d", s.sessionId.c_str(), s.status);
+            OPN::LogInfo(@"[GameService] Claiming session %s status=%d", s.sessionId.c_str(), s.status);
             SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
                 [completion](bool success, const SessionInfo &info, const std::string &err) {
                     DispatchLaunchCompletion(completion, success, info, "", err);
@@ -1524,7 +1525,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (IsSessionReadyStatus(s.status) && !s.sessionId.empty() && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Claiming existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
+            OPN::LogInfo(@"[GameService] Claiming existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
             SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
                 [completion](bool success, const SessionInfo &info, const std::string &err) {
                     DispatchLaunchCompletion(completion, success, info, "", err);
@@ -1535,7 +1536,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && s.status == 6) {
-            NSLog(@"[GameService] Waiting for previous session %s to finish teardown", s.sessionId.c_str());
+            OPN::LogInfo(@"[GameService] Waiting for previous session %s to finish teardown", s.sessionId.c_str());
             WaitForSessionTeardown(s.sessionId, appIdNum, progress,
                 [appId, internalTitle, settings, recoveryMode, progress, completion](bool teardownComplete, const std::string &teardownError) {
                     if (!teardownComplete) {
@@ -1550,7 +1551,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && s.status == 1 && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Polling existing session %s", s.sessionId.c_str());
+            OPN::LogInfo(@"[GameService] Polling existing session %s", s.sessionId.c_str());
             PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
@@ -1558,7 +1559,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.status == 1 && !s.sessionId.empty() && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Polling existing queued session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
+            OPN::LogInfo(@"[GameService] Polling existing queued session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
             PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
@@ -1575,7 +1576,7 @@ static bool RetryExistingSessionAfterLimitError(const std::string &error,
                                                 const LaunchProgressCallback &progress,
                                                 const LaunchCallback &completion) {
     if (!IsSessionLimitExceededError(error)) return false;
-    NSLog(@"[GameService] SESSION_LIMIT_EXCEEDED; retrying existing session lookup");
+    OPN::LogError(@"[GameService] SESSION_LIMIT_EXCEEDED; retrying existing session lookup");
     SessionManager::Shared().GetActiveSessions([appId, internalTitle, settings, recoveryMode, progress, completion, error](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &) {
         if (ok && TryUseExistingSession(sessions, appId, internalTitle, settings, recoveryMode, progress, completion)) {
             return;
@@ -1591,13 +1592,13 @@ void GameService::LaunchGame(const std::string &appId,
                               bool recoveryMode,
                               LaunchProgressCallback progress,
                               LaunchCallback completion) {
-    NSLog(@"[GameService] LaunchGame called with appId=%s recovery=%d", appId.c_str(), recoveryMode);
+    OPN::LogInfo(@"[GameService] LaunchGame called with appId=%s recovery=%d", appId.c_str(), recoveryMode);
     SessionManager::Shared().SetAccessToken(m_accessToken);
 
     SessionManager::Shared().GetActiveSessions([appId, internalTitle, settings, recoveryMode, progress, completion](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
         (void)error;
         if (!ok) {
-            NSLog(@"[GameService] GetActiveSessions failed, falling through to CreateSession");
+            OPN::LogError(@"[GameService] GetActiveSessions failed, falling through to CreateSession");
             SessionManager::Shared().CreateSession(appId, internalTitle, settings,
                 [appId, internalTitle, settings, recoveryMode, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
                     if (!success) {
@@ -1623,7 +1624,7 @@ void GameService::LaunchGame(const std::string &appId,
             return;
         }
 
-        NSLog(@"[GameService] Creating new session");
+        OPN::LogInfo(@"[GameService] Creating new session");
         SessionManager::Shared().CreateSession(appId, internalTitle, settings,
             [appId, internalTitle, settings, recoveryMode, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
                 if (!success) {
