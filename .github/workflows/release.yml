@@ -1,6 +1,11 @@
 name: Release
 
 on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - OpenNOW-Info.plist
   workflow_dispatch:
     inputs:
       version:
@@ -32,6 +37,14 @@ jobs:
           set -euo pipefail
           version="${{ inputs.version }}"
           build="${{ inputs.build }}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            current_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" OpenNOW-Info.plist)"
+            if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              print -u2 "Current bundle version must be MAJOR.MINOR.PATCH for automatic releases"
+              exit 1
+            fi
+            version="${match[1]}.${match[2]}.$((match[3] + 1))"
+          fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             print -u2 "Version must be semantic, for example 0.2.0"
             exit 1
