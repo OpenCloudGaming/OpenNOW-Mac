@@ -25,6 +25,7 @@
 static constexpr NSInteger OPNMaxAutomaticRecoveryAttempts = 2;
 static constexpr NSTimeInterval OPNStableRecoveryResetInterval = 15.0;
 static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
+static constexpr NSTimeInterval OPNStreamIdleDeviceInputInterval = 5.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityTimeoutInterval = 10.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 
@@ -84,6 +85,9 @@ static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 - (void)startInactivityTimer;
 - (void)stopInactivityTimer;
 - (void)checkInactivityTimer:(NSTimer *)timer;
+- (void)toggleIdleDeviceInputMode;
+- (void)showAntiAFKNoticeEnabled:(BOOL)enabled;
+- (void)sendRandomIdleDeviceInputIfNeededAtTime:(CFTimeInterval)now;
 - (void)endStreamFromInactivityTimeout;
 - (void)connectWithSessionInfo:(const OPN::SessionInfo &)sessionInfo
                         settings:(const OPN::StreamSettings &)settings
@@ -325,6 +329,12 @@ static BOOL OPNIsCommandLEvent(NSEvent *event) {
     return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"l"];
 }
 
+static BOOL OPNIsCommandKEvent(NSEvent *event) {
+    if (!event || event.type != NSEventTypeKeyDown) return NO;
+    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
+    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"k"];
+}
+
 static std::string OPNLowercaseCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     return value;
@@ -535,8 +545,8 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
         _titleLabel = OPNQuitLabel(@"Shortcuts", 18.0, NSFontWeightSemibold, OPNQuitColor(0.96, 0.97, 0.99, 1.0), NSTextAlignmentLeft);
         [self addSubview:_titleLabel];
 
-        NSArray<NSString *> *shortcuts = @[@"Command-H", @"Command-G", @"Command-R", @"Command-N", @"Command-M", @"Command-L", @"Command-Q", @"Hold Esc"];
-        NSArray<NSString *> *descriptions = @[@"Toggle this legend", @"Audio HUD", @"Record stream", @"Stats HUD", @"Toggle microphone", @"Copy logs", @"Quit stream", @"Release pointer"];
+        NSArray<NSString *> *shortcuts = @[@"Command-H", @"Command-G", @"Command-R", @"Command-N", @"Command-M", @"Command-K", @"Command-L", @"Command-Q", @"Hold Esc"];
+        NSArray<NSString *> *descriptions = @[@"Toggle this legend", @"Audio HUD", @"Record stream", @"Stats HUD", @"Toggle microphone", @"Anti-AFK", @"Copy logs", @"Quit stream", @"Release pointer"];
         NSMutableArray<NSTextField *> *shortcutLabels = [NSMutableArray arrayWithCapacity:shortcuts.count];
         NSMutableArray<NSTextField *> *descriptionLabels = [NSMutableArray arrayWithCapacity:descriptions.count];
         for (NSUInteger i = 0; i < shortcuts.count; i++) {
@@ -766,6 +776,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _remoteStopRequested;
     NSView *_connectedToast;
     CFTimeInterval _lastStreamActivityTime;
+    CFTimeInterval _lastIdleDeviceInputTime;
+    BOOL _idleDeviceInputEnabled;
 }
 
 - (instancetype)initWithGameTitle:(const std::string &)title
@@ -818,6 +830,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _remoteIceGraceTimer = nullptr;
         _connectedToast = nil;
         _lastStreamActivityTime = 0;
+        _lastIdleDeviceInputTime = 0;
+        _idleDeviceInputEnabled = NO;
     }
     return self;
 }
@@ -1064,6 +1078,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 	        [strongSelf copyCurrentLogToClipboardFromShortcut];
 	        return (NSEvent *)nil;
 	    }
+	    if (OPNIsCommandKEvent(event)) {
+	        [strongSelf toggleIdleDeviceInputMode];
+	        return (NSEvent *)nil;
+	    }
 	    return event;
 	}];
 }
@@ -1132,7 +1150,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (NSRect)shortcutLegendFrame {
     CGFloat width = MIN(328.0, MAX(276.0, NSWidth(self.view.bounds) - 36.0));
-    CGFloat height = 282.0;
+    CGFloat height = 310.0;
     return NSMakeRect(floor(NSWidth(self.view.bounds) - width - 18.0),
                       floor((NSHeight(self.view.bounds) - height) / 2.0),
                       width,
@@ -1169,6 +1187,46 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         toast.animator.alphaValue = 1.0;
     } completionHandler:^{
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1800 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (self->_connectedToast != toast) return;
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.22;
+                toast.animator.alphaValue = 0.0;
+            } completionHandler:^{
+                if (self->_connectedToast == toast) self->_connectedToast = nil;
+                [toast removeFromSuperview];
+            }];
+        });
+    }];
+}
+
+- (void)showAntiAFKNoticeEnabled:(BOOL)enabled {
+    [_connectedToast removeFromSuperview];
+
+    CGFloat width = MIN(320.0, MAX(260.0, NSWidth(self.view.bounds) - 36.0));
+    NSView *toast = [[NSView alloc] initWithFrame:NSMakeRect(floor((NSWidth(self.view.bounds) - width) / 2.0),
+                                                             24.0,
+                                                             width,
+                                                             58.0)];
+    toast.wantsLayer = YES;
+    toast.layer.cornerRadius = 16.0;
+    toast.layer.backgroundColor = OPNQuitColor(0.05, 0.07, 0.06, 0.88).CGColor;
+    toast.layer.borderWidth = 1.0;
+    toast.layer.borderColor = (enabled ? OPNQuitColor(0.35, 0.95, 0.56, 0.30) : OPNQuitColor(0.95, 0.68, 0.35, 0.30)).CGColor;
+    toast.alphaValue = 0.0;
+
+    NSString *titleText = enabled ? @"Anti-AFK Enabled" : @"Anti-AFK Disabled";
+    NSColor *titleColor = enabled ? OPNQuitColor(0.88, 1.0, 0.92, 1.0) : OPNQuitColor(1.0, 0.90, 0.78, 1.0);
+    NSTextField *title = OPNStatsText(titleText, 15.0, NSFontWeightSemibold, titleColor, NSTextAlignmentCenter);
+    title.frame = NSMakeRect(18.0, 19.0, width - 36.0, 20.0);
+    [toast addSubview:title];
+
+    _connectedToast = toast;
+    [self.view addSubview:toast positioned:NSWindowAbove relativeTo:nil];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.16;
+        toast.animator.alphaValue = 1.0;
+    } completionHandler:^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             if (self->_connectedToast != toast) return;
             [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
                 context.duration = 0.22;
@@ -1425,6 +1483,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)recordStreamUserActivity {
     _lastStreamActivityTime = CACurrentMediaTime();
+    _lastIdleDeviceInputTime = 0;
 }
 
 - (void)startInactivityTimer {
@@ -1449,8 +1508,40 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         [self recordStreamUserActivity];
         return;
     }
-    if (CACurrentMediaTime() - _lastStreamActivityTime < OPNStreamInactivityTimeoutInterval) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (_idleDeviceInputEnabled) {
+        [self sendRandomIdleDeviceInputIfNeededAtTime:now];
+        return;
+    }
+    if (now - _lastStreamActivityTime < OPNStreamInactivityTimeoutInterval) return;
     [self endStreamFromInactivityTimeout];
+}
+
+- (void)toggleIdleDeviceInputMode {
+    if (_streamEnded) return;
+    _idleDeviceInputEnabled = !_idleDeviceInputEnabled;
+    [self recordStreamUserActivity];
+    [self showAntiAFKNoticeEnabled:_idleDeviceInputEnabled];
+    OPN::LogInfo(@"[StreamVC] Idle device input mode %@; inactivity timeout %@",
+                 _idleDeviceInputEnabled ? @"enabled" : @"disabled",
+                 _idleDeviceInputEnabled ? @"disabled" : @"enabled");
+}
+
+- (void)sendRandomIdleDeviceInputIfNeededAtTime:(CFTimeInterval)now {
+    if (!_session || !_session->InputReady()) return;
+    if (now - _lastStreamActivityTime < OPNStreamIdleDeviceInputInterval) return;
+    if (_lastIdleDeviceInputTime > 0 && now - _lastIdleDeviceInputTime < OPNStreamIdleDeviceInputInterval) return;
+
+    static const int16_t deltas[][2] = {
+        {1, 0},
+        {-1, 0},
+        {0, 1},
+        {0, -1},
+    };
+    uint32_t index = arc4random_uniform((uint32_t)(sizeof(deltas) / sizeof(deltas[0])));
+    _session->SendMouseMove(deltas[index][0], deltas[index][1]);
+    _lastIdleDeviceInputTime = now;
+    OPN::LogInfo(@"[StreamVC] Sent idle device input after %.1fs without user activity", now - _lastStreamActivityTime);
 }
 
 - (void)endStreamFromInactivityTimeout {
@@ -1966,6 +2057,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     _launchGeneration++;
     _stableResetGeneration++;
     _recovering = NO;
+    _idleDeviceInputEnabled = NO;
     [self cancelRemoteIceGraceTimer];
     [self stopInactivityTimer];
     [self removeQuitShortcutMonitor];
