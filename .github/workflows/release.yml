@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
 
       - name: Validate release version
-        shell: zsh
+        shell: bash
         run: |
           set -euo pipefail
           version="${{ inputs.version }}"
@@ -40,46 +40,46 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             current_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" OpenNOW-Info.plist)"
             if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              print -u2 "Current bundle version must be MAJOR.MINOR.PATCH for automatic releases"
+              echo "Current bundle version must be MAJOR.MINOR.PATCH for automatic releases" >&2
               exit 1
             fi
-            version="${match[1]}.${match[2]}.$((match[3] + 1))"
+            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            print -u2 "Version must be semantic, for example 0.2.0"
+            echo "Version must be semantic, for example 0.2.0" >&2
             exit 1
           fi
           if [[ -z "$build" ]]; then
             build="${GITHUB_RUN_NUMBER}"
           fi
           if [[ ! "$build" =~ ^[0-9]+$ ]]; then
-            print -u2 "Build must be a positive integer"
+            echo "Build must be a positive integer" >&2
             exit 1
           fi
           if git rev-parse "v${version}" >/dev/null 2>&1; then
-            print -u2 "Tag v${version} already exists"
+            echo "Tag v${version} already exists" >&2
             exit 1
           fi
           {
-            print "RELEASE_VERSION=${version}"
-            print "RELEASE_BUILD=${build}"
-            print "RELEASE_TAG=v${version}"
-            print "RELEASE_ARCHIVE=OpenNOW-${version}-macOS.zip"
+            printf 'RELEASE_VERSION=%s\n' "${version}"
+            printf 'RELEASE_BUILD=%s\n' "${build}"
+            printf 'RELEASE_TAG=v%s\n' "${version}"
+            printf 'RELEASE_ARCHIVE=OpenNOW-%s-macOS.zip\n' "${version}"
           } >> "$GITHUB_ENV"
 
       - name: Bump bundle version
-        shell: zsh
+        shell: bash
         run: |
           set -euo pipefail
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${RELEASE_VERSION}" OpenNOW-Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${RELEASE_BUILD}" OpenNOW-Info.plist
 
       - name: Build release binary
-        shell: zsh
+        shell: bash
         run: make clean all OPTFLAGS="-O3 -DNDEBUG" ARCHFLAGS="-arch arm64"
 
       - name: Package app bundle
-        shell: zsh
+        shell: bash
         run: |
           set -euo pipefail
           app_path="dist/OpenNOW.app"
@@ -96,7 +96,7 @@ jobs:
           ditto -c -k --keepParent "${app_path}" "dist/${RELEASE_ARCHIVE}"
 
       - name: Commit version bump and tag
-        shell: zsh
+        shell: bash
         run: |
           set -euo pipefail
           export GIT_AUTHOR_NAME="github-actions[bot]"
