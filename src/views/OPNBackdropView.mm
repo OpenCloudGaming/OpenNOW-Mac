@@ -87,9 +87,17 @@ static NSImage *OPNHeaderLogoImage(void) {
     static NSImage *logo = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSString *bundlePath = [NSBundle.mainBundle pathForResource:@"logo" ofType:@"png"];
-        NSString *relativePath = @"assets/logo.png";
-        logo = [[NSImage alloc] initWithContentsOfFile:bundlePath ?: relativePath];
+        NSArray<NSString *> *paths = @[
+            [NSBundle.mainBundle pathForResource:@"logo-mac" ofType:@"png"] ?: @"",
+            [NSBundle.mainBundle pathForResource:@"logo" ofType:@"png"] ?: @"",
+            @"assets/logo-mac.png",
+            @"assets/logo.png",
+        ];
+        for (NSString *path in paths) {
+            if (path.length == 0) continue;
+            logo = [[NSImage alloc] initWithContentsOfFile:path];
+            if (logo) break;
+        }
     });
     return logo;
 }

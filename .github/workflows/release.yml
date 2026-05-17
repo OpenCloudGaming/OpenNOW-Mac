@@ -84,9 +84,11 @@ jobs:
           set -euo pipefail
           app_path="dist/OpenNOW.app"
           rm -rf dist
-          mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Frameworks"
+          mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Frameworks" "${app_path}/Contents/Resources"
           cp OpenNOW-Info.plist "${app_path}/Contents/Info.plist"
           cp build/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
+          cp assets/logo.png "${app_path}/Contents/Resources/logo.png"
+          cp assets/logo-mac.png "${app_path}/Contents/Resources/logo-mac.png"
           chmod +x "${app_path}/Contents/MacOS/OpenNOW"
           if [[ -d third_party/webrtc-official/WebRTC.framework ]]; then
             cp -R third_party/webrtc-official/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
