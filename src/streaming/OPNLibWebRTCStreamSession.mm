@@ -22,6 +22,7 @@
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #import <WebRTC/WebRTC.h>
+#import <WebRTC/RTCCVPixelBuffer.h>
 #import <MetalKit/MetalKit.h>
 #endif
 
@@ -715,15 +716,35 @@ class LibWebRTCStreamSession;
 @property(nonatomic, strong) RTCRtpSender *localMicrophoneSender;
 @end
 
-@interface OPNMetalVideoView : NSView <RTCVideoRenderer>
+@protocol OPNRTCMetalRenderer <NSObject>
+- (BOOL)addRenderingDestination:(__kindof MTKView *)view;
+- (void)drawFrame:(RTCVideoFrame *)frame;
+@end
+
+@interface OPNMetalVideoView : NSView <RTCVideoRenderer, MTKViewDelegate>
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner;
 @end
 
 @interface OPNMetalVideoView ()
-@property(nonatomic, strong) RTCMTLNSVideoView *videoView;
+@property(nonatomic, strong) MTKView *metalView;
+@property(nonatomic, strong) RTCVideoFrame *videoFrame;
+@property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererNV12;
+@property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererRGB;
+@property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererI420;
 @property(nonatomic, assign) int targetFps;
+@property(nonatomic, assign) uint64_t frameSerial;
+@property(nonatomic, assign) uint64_t lastDrawnFrameSerial;
+@property(nonatomic, assign) BOOL drawScheduled;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
-- (void)tuneMetalViewsInView:(NSView *)view;
+- (void)scheduleDraw;
+- (id<OPNRTCMetalRenderer>)newRendererNamed:(NSString *)className fallback:(NSString **)fallback;
+- (id<OPNRTCMetalRenderer>)i420RendererWithFallback:(NSString **)fallback;
+- (id<OPNRTCMetalRenderer>)rendererForFrame:(RTCVideoFrame *)frame
+                                pixelFormat:(NSString **)pixelFormat
+                                 renderMode:(NSString **)renderMode
+                                frameSource:(NSString **)frameSource
+                                 renderPath:(NSString **)renderPath
+                                   fallback:(NSString **)fallback;
 @end
 
 @implementation OPNMetalVideoView
@@ -733,29 +754,35 @@ class LibWebRTCStreamSession;
     if (self) {
         _owner = owner;
         _targetFps = MAX(30, MIN(targetFps, 240));
+        _frameSerial = 0;
+        _lastDrawnFrameSerial = 0;
+        _drawScheduled = NO;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
 
-        _videoView = [[RTCMTLNSVideoView alloc] initWithFrame:self.bounds];
-        _videoView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        _videoView.wantsLayer = YES;
-        _videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
-        [self addSubview:_videoView];
-        [self tuneMetalViewsInView:_videoView];
+        _metalView = [[MTKView alloc] initWithFrame:self.bounds device:MTLCreateSystemDefaultDevice()];
+        _metalView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _metalView.framebufferOnly = YES;
+        _metalView.autoResizeDrawable = NO;
+        _metalView.paused = NO;
+        _metalView.enableSetNeedsDisplay = NO;
+        _metalView.preferredFramesPerSecond = _targetFps;
+        _metalView.delegate = self;
+        _metalView.layerContentsPlacement = NSViewLayerContentsPlacementScaleProportionallyToFit;
+        [self addSubview:_metalView];
     }
     return self;
 }
 
 - (void)layout {
     [super layout];
-    self.videoView.frame = self.bounds;
-    [self tuneMetalViewsInView:self.videoView];
+    self.metalView.frame = self.bounds;
 }
 
 - (void)setSize:(CGSize)size {
-    [self.videoView setSize:size];
+    if (size.width <= 0.0 || size.height <= 0.0) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self tuneMetalViewsInView:self.videoView];
+        self.metalView.drawableSize = size;
     });
 }
 
@@ -763,21 +790,144 @@ class LibWebRTCStreamSession;
     if (frame && self.owner) {
         self.owner->HandleVideoFrame((__bridge void *)frame);
     }
-    [self.videoView renderFrame:frame];
+    if (!frame) return;
+    BOOL shouldScheduleDraw = NO;
+    @synchronized (self) {
+        self.videoFrame = frame;
+        self.frameSerial++;
+        shouldScheduleDraw = !self.drawScheduled;
+        self.drawScheduled = YES;
+    }
+    if (shouldScheduleDraw) {
+        [self scheduleDraw];
+    }
 }
 
-- (void)tuneMetalViewsInView:(NSView *)view {
-    if (!view) return;
-    if ([view isKindOfClass:MTKView.class]) {
-        MTKView *metalView = (MTKView *)view;
-        metalView.paused = NO;
-        metalView.enableSetNeedsDisplay = NO;
-        metalView.preferredFramesPerSecond = self.targetFps;
-        metalView.layerContentsPlacement = NSViewLayerContentsPlacementScaleProportionallyToFit;
+- (void)scheduleDraw {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            @synchronized (self) {
+                self.drawScheduled = NO;
+            }
+            if (self.metalView) {
+                [self.metalView draw];
+            }
+        }
+    });
+}
+
+- (void)drawInMTKView:(MTKView *)view {
+    if (view != self.metalView) return;
+    RTCVideoFrame *frame = nil;
+    uint64_t drawSerial = 0;
+    @synchronized (self) {
+        frame = self.videoFrame;
+        drawSerial = self.frameSerial;
     }
-    for (NSView *subview in view.subviews) {
-        [self tuneMetalViewsInView:subview];
+    if (!frame || frame.width <= 0 || frame.height <= 0 || drawSerial == 0 || drawSerial == self.lastDrawnFrameSerial) return;
+
+    NSString *pixelFormat = @"unknown";
+    NSString *renderMode = @"I420";
+    NSString *frameSource = @"unknown";
+    NSString *renderPath = @"RTCMTLI420Renderer";
+    NSString *fallback = @"";
+    id<OPNRTCMetalRenderer> renderer = [self rendererForFrame:frame
+                                                  pixelFormat:&pixelFormat
+                                                   renderMode:&renderMode
+                                                  frameSource:&frameSource
+                                                   renderPath:&renderPath
+                                                     fallback:&fallback];
+    if (!renderer) {
+        fallback = @"renderer unavailable";
+    } else {
+        [renderer drawFrame:frame];
+        self.lastDrawnFrameSerial = drawSerial;
     }
+    if (self.owner) {
+        self.owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
+                                              OPN::OPNNSStringToString(renderMode),
+                                              OPN::OPNNSStringToString(frameSource),
+                                              OPN::OPNNSStringToString(renderPath),
+                                              OPN::OPNNSStringToString(fallback));
+    }
+}
+
+- (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size {
+    (void)view;
+    (void)size;
+}
+
+- (id<OPNRTCMetalRenderer>)newRendererNamed:(NSString *)className fallback:(NSString **)fallback {
+    Class rendererClass = NSClassFromString(className);
+    if (!rendererClass) {
+        if (fallback) *fallback = [NSString stringWithFormat:@"%@ unavailable", className];
+        return nil;
+    }
+    id<OPNRTCMetalRenderer> renderer = (id<OPNRTCMetalRenderer>)[[rendererClass alloc] init];
+    if (![renderer addRenderingDestination:self.metalView]) {
+        if (fallback) *fallback = [NSString stringWithFormat:@"%@ rejected MTKView", className];
+        return nil;
+    }
+    self.metalView.paused = NO;
+    self.metalView.enableSetNeedsDisplay = NO;
+    self.metalView.preferredFramesPerSecond = self.targetFps;
+    return renderer;
+}
+
+- (id<OPNRTCMetalRenderer>)i420RendererWithFallback:(NSString **)fallback {
+    if (!self.rendererI420) {
+        self.rendererI420 = [self newRendererNamed:@"RTCMTLI420Renderer" fallback:fallback];
+    }
+    return self.rendererI420;
+}
+
+- (id<OPNRTCMetalRenderer>)rendererForFrame:(RTCVideoFrame *)frame
+                                pixelFormat:(NSString **)pixelFormat
+                                 renderMode:(NSString **)renderMode
+                                frameSource:(NSString **)frameSource
+                                 renderPath:(NSString **)renderPath
+                                   fallback:(NSString **)fallback {
+    if ([frame.buffer isKindOfClass:RTCCVPixelBuffer.class]) {
+        if (frameSource) *frameSource = @"CVPixelBuffer";
+        RTCCVPixelBuffer *buffer = (RTCCVPixelBuffer *)frame.buffer;
+        OSType format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer);
+        BOOL isNV12 = format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
+        BOOL isRGB = format == kCVPixelFormatType_32BGRA || format == kCVPixelFormatType_32ARGB;
+        if (pixelFormat) {
+            if (format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) *pixelFormat = @"420v/NV12";
+            else if (format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) *pixelFormat = @"420f/NV12";
+            else if (format == kCVPixelFormatType_32BGRA) *pixelFormat = @"BGRA";
+            else if (format == kCVPixelFormatType_32ARGB) *pixelFormat = @"ARGB";
+            else *pixelFormat = [NSString stringWithFormat:@"0x%08x", (unsigned int)format];
+        }
+        if (isNV12) {
+            NSString *localFallback = @"";
+            if (!self.rendererNV12) self.rendererNV12 = [self newRendererNamed:@"RTCMTLNV12Renderer" fallback:&localFallback];
+            if (self.rendererNV12) {
+                if (renderMode) *renderMode = @"NV12";
+                if (renderPath) *renderPath = @"RTCMTLNV12Renderer";
+                return self.rendererNV12;
+            }
+            if (fallback) *fallback = localFallback.length > 0 ? localFallback : @"NV12 unavailable; using I420";
+        } else if (isRGB) {
+            NSString *localFallback = @"";
+            if (!self.rendererRGB) self.rendererRGB = [self newRendererNamed:@"RTCMTLRGBRenderer" fallback:&localFallback];
+            if (self.rendererRGB) {
+                if (renderMode) *renderMode = @"RGB";
+                if (renderPath) *renderPath = @"RTCMTLRGBRenderer";
+                return self.rendererRGB;
+            }
+            if (fallback) *fallback = localFallback.length > 0 ? localFallback : @"RGB unavailable; using I420";
+        } else if (fallback) {
+            *fallback = @"unsupported CVPixelBuffer; using I420";
+        }
+    } else {
+        if (frameSource) *frameSource = NSStringFromClass([frame.buffer class]) ?: @"unknown";
+        if (pixelFormat) *pixelFormat = @"I420";
+    }
+    if (renderMode) *renderMode = @"I420";
+    if (renderPath) *renderPath = @"RTCMTLI420Renderer";
+    return [self i420RendererWithFallback:fallback];
 }
 
 @end
@@ -1017,6 +1167,11 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.videoDecoder = "libwebrtc";
         m_latestStats.videoSink = "OPNMetalVideoView";
         m_latestStats.videoPipelineMode = "libwebrtc Metal display";
+        m_latestStats.videoPixelFormat = "pending";
+        m_latestStats.videoRenderMode = "pending";
+        m_latestStats.videoFrameSource = "pending";
+        m_latestStats.videoRenderPath = "pending";
+        m_latestStats.videoRendererFallback = "";
         m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
         m_previousBytesReceived = 0;
@@ -1903,6 +2058,19 @@ void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, cons
     if (!pipelineMode.empty()) {
         m_latestStats.videoPipelineMode = pipelineMode;
     }
+}
+
+void LibWebRTCStreamSession::SetVideoRenderDiagnostics(const std::string &pixelFormat,
+                                                       const std::string &renderMode,
+                                                       const std::string &frameSource,
+                                                       const std::string &renderPath,
+                                                       const std::string &fallback) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_latestStats.videoPixelFormat = pixelFormat;
+    m_latestStats.videoRenderMode = renderMode;
+    m_latestStats.videoFrameSource = frameSource;
+    m_latestStats.videoRenderPath = renderPath;
+    m_latestStats.videoRendererFallback = fallback;
 }
 
 void LibWebRTCStreamSession::StartInputHeartbeat() {

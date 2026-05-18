@@ -55,6 +55,11 @@ public:
     double GameVolume() const;
     int TargetFps() const;
     void SetVideoRendererState(const std::string &sink, const std::string &pipelineMode);
+    void SetVideoRenderDiagnostics(const std::string &pixelFormat,
+                                   const std::string &renderMode,
+                                   const std::string &frameSource,
+                                   const std::string &renderPath,
+                                   const std::string &fallback);
 
 private:
     void HandleStatsReport(void *report);

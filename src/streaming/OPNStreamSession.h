@@ -41,6 +41,11 @@ struct StreamStats {
     std::string videoDecoder;
     std::string videoSink;
     std::string videoPipelineMode;
+    std::string videoPixelFormat;
+    std::string videoRenderMode;
+    std::string videoFrameSource;
+    std::string videoRenderPath;
+    std::string videoRendererFallback;
     int fps = 0;
 };
 

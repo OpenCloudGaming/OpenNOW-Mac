@@ -53,6 +53,11 @@ static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
         decodeTimeMs:(double)decodeTimeMs
                  sink:(NSString *)sink
         pipelineMode:(NSString *)pipelineMode
+          pixelFormat:(NSString *)pixelFormat
+           renderMode:(NSString *)renderMode
+          frameSource:(NSString *)frameSource
+           renderPath:(NSString *)renderPath
+     rendererFallback:(NSString *)rendererFallback
         webrtcBackend:(NSString *)webrtcBackend
        framesReceived:(uint64_t)framesReceived
         framesDecoded:(uint64_t)framesDecoded
@@ -618,7 +623,7 @@ static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weig
 static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
     style.alignment = NSTextAlignmentCenter;
-    style.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    style.lineBreakMode = NSLineBreakByTruncatingTail;
     return [[NSAttributedString alloc] initWithString:text ?: @""
                                            attributes:@{
         NSFontAttributeName: [NSFont monospacedSystemFontOfSize:12.0 weight:NSFontWeightSemibold],
@@ -666,8 +671,8 @@ static NSString *OPNStatsZoneName(NSString *zone) {
         [self.layer addSublayer:_textTintLayer];
 
         _statsLineLabel = OPNStatsText(@"", 12.0, NSFontWeightSemibold, NSColor.clearColor, NSTextAlignmentCenter);
-        _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
-        _statsLineLabel.maximumNumberOfLines = 1;
+        _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        _statsLineLabel.maximumNumberOfLines = 4;
         _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
         [self addSubview:_statsLineLabel];
     }
@@ -702,6 +707,11 @@ static NSString *OPNStatsZoneName(NSString *zone) {
             decodeTimeMs:(double)decodeTimeMs
                      sink:(NSString *)sink
             pipelineMode:(NSString *)pipelineMode
+              pixelFormat:(NSString *)pixelFormat
+               renderMode:(NSString *)renderMode
+              frameSource:(NSString *)frameSource
+               renderPath:(NSString *)renderPath
+         rendererFallback:(NSString *)rendererFallback
             webrtcBackend:(NSString *)webrtcBackend
            framesReceived:(uint64_t)framesReceived
              framesDecoded:(uint64_t)framesDecoded
@@ -736,25 +746,34 @@ static NSString *OPNStatsZoneName(NSString *zone) {
     NSString *renderText = @"pending";
     if (framesReceived > 0 || framesDecoded > 0 || framesDropped > 0) {
         NSString *fpsText = renderFps >= 0.0 ? [NSString stringWithFormat:@"%.0f fps ", renderFps] : @"";
-        NSString *sinkText = sink.length > 0 ? [NSString stringWithFormat:@" %@", sink] : @"";
-        renderText = [NSString stringWithFormat:@"%@%llu drop%@",
+        NSString *modeText = renderMode.length > 0 ? renderMode : @"pending";
+        renderText = [NSString stringWithFormat:@"%@%@ drop %llu",
                       fpsText,
-                      (unsigned long long)framesDropped,
-                      sinkText];
+                      modeText,
+                      (unsigned long long)framesDropped];
     } else if (sink.length > 0 && pipelineMode.length > 0) {
         renderText = [NSString stringWithFormat:@"%@/%@", sink, pipelineMode];
     }
-    NSArray<NSString *> *parts = @[
+    NSString *sourceText = frameSource.length > 0 ? frameSource : @"pending";
+    NSString *pixelText = pixelFormat.length > 0 ? pixelFormat : @"pending";
+    NSString *pathText = renderPath.length > 0 ? renderPath : @"pending";
+    NSString *backendText = webrtcBackend.length > 0 ? webrtcBackend : @"pending";
+    NSString *fallbackText = rendererFallback.length > 0 ? rendererFallback : @"none";
+    NSArray<NSString *> *lines = @[
         [NSString stringWithFormat:@"Latency %@", latencyText],
         [NSString stringWithFormat:@"Jitter %@", jitterText],
         [NSString stringWithFormat:@"Bitrate %@", bitrateText],
         [NSString stringWithFormat:@"Loss %@", lossText],
-        [NSString stringWithFormat:@"Stream %@", streamText],
-        [NSString stringWithFormat:@"Server %@", serverText],
-        [NSString stringWithFormat:@"Decode %@", decodeText],
-        [NSString stringWithFormat:@"Frames %@", renderText],
     ];
-    _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine([parts componentsJoinedByString:@"  |  "]);
+    NSArray<NSString *> *detailLines = @[
+        [NSString stringWithFormat:@"Stream %@ | Decode %@ | Server %@", streamText, decodeText, serverText],
+        [NSString stringWithFormat:@"Render %@ via %@ | Pixel %@/%@", renderText, sink.length > 0 ? sink : @"pending", pixelText, sourceText],
+        [NSString stringWithFormat:@"Path %@ | Fallback %@ | Backend %@", pathText, fallbackText, backendText],
+    ];
+    NSString *networkLine = [lines componentsJoinedByString:@" | "];
+    NSArray<NSString *> *allLines = [@[networkLine] arrayByAddingObjectsFromArray:detailLines];
+    NSString *statsText = [allLines componentsJoinedByString:@"\n"];
+    _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(statsText);
 }
 
 @end
@@ -1123,7 +1142,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (NSRect)statsOverlayFrame {
     CGFloat width = MAX(0.0, NSWidth(self.view.bounds) - 32.0);
-    CGFloat height = 26.0;
+    CGFloat height = 78.0;
     return NSMakeRect(16.0,
                       floor(NSHeight(self.view.bounds) - height - 10.0),
                       width,
@@ -1301,6 +1320,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     NSString *decoder = [NSString stringWithUTF8String:stats.videoDecoder.c_str()];
     NSString *sink = [NSString stringWithUTF8String:stats.videoSink.c_str()];
     NSString *pipelineMode = [NSString stringWithUTF8String:stats.videoPipelineMode.c_str()];
+    NSString *pixelFormat = [NSString stringWithUTF8String:stats.videoPixelFormat.c_str()];
+    NSString *renderMode = [NSString stringWithUTF8String:stats.videoRenderMode.c_str()];
+    NSString *frameSource = [NSString stringWithUTF8String:stats.videoFrameSource.c_str()];
+    NSString *renderPath = [NSString stringWithUTF8String:stats.videoRenderPath.c_str()];
+    NSString *rendererFallback = [NSString stringWithUTF8String:stats.videoRendererFallback.c_str()];
     NSString *webrtcBackend = [NSString stringWithUTF8String:_webRTCBackendName.c_str()];
     [self.statsOverlay updateLatencyMs:latencyMs
                                jitterMs:jitterMs
@@ -1315,9 +1339,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                      zone:zone
                                   decoder:decoder
                              decodeTimeMs:stats.decodeTimeMs
-                                      sink:sink
-                              pipelineMode:pipelineMode
-                              webrtcBackend:webrtcBackend
+                                       sink:sink
+                               pipelineMode:pipelineMode
+                                pixelFormat:pixelFormat
+                                 renderMode:renderMode
+                                frameSource:frameSource
+                                 renderPath:renderPath
+                           rendererFallback:rendererFallback
+                               webrtcBackend:webrtcBackend
                             framesReceived:stats.framesReceived
                              framesDecoded:stats.framesDecoded
                              framesDropped:stats.framesDropped];
