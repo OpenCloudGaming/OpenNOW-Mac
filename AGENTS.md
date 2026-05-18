@@ -11,6 +11,7 @@ Before executing any task, you must strictly follow this sequence:
 **Step 3: Blueprint.** Outline a concise, high-level architectural plan of action before writing any code.
 **Step 4: Execution.** Deliver complete, production-ready code. You are strictly forbidden from using snippets, placeholders (e.g., `TODO`, `pass`, `...`), or stubs. 
 **Step 5: Autonomy.** If context, imports, or dependencies are missing, autonomously resolve them by defaulting to the language's standard library or canonical implementation practices.
+**Step 6: Commit.** If a git repo exists, commit only related changes.
 
 # Coding Standards
 

@@ -22,6 +22,73 @@ static const CGFloat kControllerGameHubVerticalReserve = 96.0;
 static const CGFloat kControllerGameHubPreferredHeight = 430.0;
 static NSString *const OPNFavoriteGameIdsDefaultsKey = @"OpenNOW.Library.FavoriteGameIds";
 
+typedef struct {
+    CGFloat scale;
+    CGFloat topInset;
+    CGFloat bottomInset;
+    CGFloat contentInset;
+    CGFloat heroY;
+    CGFloat heroHeight;
+    CGFloat rowTitleY;
+    CGFloat rowTitleWidth;
+    CGFloat rowTitleHeight;
+    CGFloat rowTitleFontSize;
+    CGFloat countX;
+    CGFloat countY;
+    CGFloat countWidth;
+    CGFloat countHeight;
+    CGFloat countFontSize;
+    CGFloat cardY;
+    CGFloat cardSize;
+    CGFloat cardSpacing;
+    NSInteger visibleCardCount;
+    CGFloat contentHeight;
+} OPNControllerLibraryMetrics;
+
+static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat width, CGFloat height) {
+    CGFloat safeWidth = MAX(1.0, width);
+    CGFloat safeHeight = MAX(1.0, height);
+    CGFloat scale = MIN(safeWidth / 1280.0, safeHeight / 720.0);
+    CGFloat topInset = safeHeight * (120.0 / 720.0);
+    CGFloat bottomInset = safeHeight * (72.0 / 720.0);
+    CGFloat contentInset = safeWidth * (52.0 / 1280.0);
+    CGFloat heroY = safeHeight * (2.0 / 720.0);
+    CGFloat heroHeight = safeHeight * (270.0 / 720.0);
+    CGFloat rowGap = safeHeight * (18.0 / 720.0);
+    CGFloat rowTitleHeight = safeHeight * (34.0 / 720.0);
+    CGFloat rowTitleY = heroY + heroHeight + rowGap;
+    CGFloat cardY = rowTitleY + rowTitleHeight + safeHeight * (12.0 / 720.0);
+    CGFloat cardSpacing = safeWidth * (18.0 / 1280.0);
+    CGFloat availableRailWidth = MAX(1.0, safeWidth - contentInset * 2.0);
+    CGFloat visibleRailHeight = MAX(1.0, safeHeight - topInset - bottomInset);
+    CGFloat verticalCardSize = floor(MAX(1.0, visibleRailHeight - cardY - safeHeight * (20.0 / 720.0)));
+    CGFloat cardSize = floor(MAX(1.0, verticalCardSize));
+    NSInteger visibleCardCount = MAX(1, (NSInteger)floor((availableRailWidth + cardSpacing) / MAX(1.0, cardSize + cardSpacing)));
+    OPNControllerLibraryMetrics metrics = {
+        scale,
+        topInset,
+        bottomInset,
+        contentInset,
+        heroY,
+        heroHeight,
+        rowTitleY,
+        safeWidth * (170.0 / 1280.0),
+        rowTitleHeight,
+        safeHeight * (26.0 / 720.0),
+        contentInset + safeWidth * (158.0 / 1280.0),
+        rowTitleY + safeHeight * (8.0 / 720.0),
+        safeWidth * (110.0 / 1280.0),
+        safeHeight * (18.0 / 720.0),
+        safeHeight * (14.0 / 720.0),
+        cardY,
+        cardSize,
+        cardSpacing,
+        visibleCardCount,
+        cardY + cardSize + safeHeight * (24.0 / 720.0)
+    };
+    return metrics;
+}
+
 static unsigned OPNControllerAccentRGB(void) {
     return OpnCurrentAccentRGB();
 }
@@ -139,6 +206,7 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
 @interface OPNControllerPreviewBackgroundView : NSView
 @property (nonatomic, strong) NSImage *image;
 @property (nonatomic, assign) CGFloat cornerRadius;
+@property (nonatomic, assign) BOOL rightAlignImageToHeight;
 @end
 
 @implementation OPNControllerPreviewBackgroundView
@@ -174,16 +242,21 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
         CGFloat imageAspect = self.image.size.width / self.image.size.height;
         CGFloat boundsAspect = NSWidth(bounds) / MAX(1.0, NSHeight(bounds));
         NSRect sourceRect = NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height);
-        if (imageAspect > boundsAspect) {
+        if (self.rightAlignImageToHeight) {
+            CGFloat drawWidth = NSHeight(bounds) * imageAspect;
+            NSRect drawRect = NSMakeRect(NSMaxX(bounds) - drawWidth, NSMinY(bounds), drawWidth, NSHeight(bounds));
+            [self.image drawInRect:drawRect fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+        } else if (imageAspect > boundsAspect) {
             CGFloat sourceWidth = self.image.size.height * boundsAspect;
             sourceRect.origin.x = floor((self.image.size.width - sourceWidth) * 0.5);
             sourceRect.size.width = sourceWidth;
+            [self.image drawInRect:bounds fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
         } else {
             CGFloat sourceHeight = self.image.size.width / boundsAspect;
             sourceRect.origin.y = floor((self.image.size.height - sourceHeight) * 0.5);
             sourceRect.size.height = sourceHeight;
+            [self.image drawInRect:bounds fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
         }
-        [self.image drawInRect:bounds fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
     }
 
     [OpnColor(0x020406, 0.23) setFill];
@@ -291,6 +364,8 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 @property (nonatomic, strong) NSTextField *controllerHomeTitleLabel;
 @property (nonatomic, strong) NSTextField *controllerHomeSubtitleLabel;
 @property (nonatomic, strong) NSTextField *controllerSectionLabel;
+@property (nonatomic, strong) NSView *controllerLibraryRailView;
+@property (nonatomic, strong) NSMutableArray<NSView *> *controllerHeroViews;
 @property (nonatomic, strong) NSView *streamPipContainerView;
 @property (nonatomic, strong) NSView *streamPipHostView;
 @property (nonatomic, strong) NSTextField *streamPipTitleLabel;
@@ -325,14 +400,20 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 @property (nonatomic, assign) BOOL controllerCategoryOverviewVisible;
 @property (nonatomic, assign) NSInteger controllerRenderedGameCount;
 @property (nonatomic, assign) NSInteger controllerDisplayGameCount;
+@property (nonatomic, assign) CGFloat controllerLibraryRailContentWidth;
+@property (nonatomic, assign) CGFloat controllerLibraryRailOffsetX;
+@property (nonatomic, assign) NSInteger controllerLibraryWindowStartIndex;
+@property (nonatomic, assign) NSInteger controllerLibraryVisibleStartIndex;
 @property (nonatomic, assign) NSInteger gridColumnCount;
 @property (nonatomic, strong) NSView *detailsOverlayView;
 @property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
 @property (nonatomic, strong) NSTimer *controllerDetailBackgroundTimer;
+@property (nonatomic, strong) NSTimer *controllerHeroRotationTimer;
 @property (nonatomic, copy) NSArray<NSString *> *controllerDetailBackgroundURLs;
 @property (nonatomic, copy) NSString *controllerDetailBackgroundURL;
 @property (nonatomic, copy) NSString *controllerDetailBackgroundGameId;
 @property (nonatomic, assign) NSInteger controllerDetailBackgroundIndex;
+@property (nonatomic, assign) NSInteger controllerHeroIndex;
 @property (nonatomic, assign) uint16_t previousGamepadButtons;
 @property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 - (void)stopGamepadNavigation;
@@ -346,6 +427,18 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 - (const OPN::GameInfo *)currentLastPlayedGame;
 - (int)preferredVariantIndexForGame:(const OPN::GameInfo &)game;
 - (void)renderControllerCategoryOverview;
+- (void)renderControllerLibrary;
+- (void)renderControllerHero;
+- (void)renderControllerLibraryRail;
+- (void)scrollControllerLibraryRailToCardAtIndex:(NSInteger)index animated:(BOOL)animated;
+- (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
+- (void)loadControllerHeroImageForView:(OPNControllerPreviewBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (std::vector<OPN::GameInfo>)controllerFeaturedGamesFromDisplayGames:(const std::vector<OPN::GameInfo> &)displayGames;
+- (void)startControllerHeroRotationIfNeeded;
+- (void)stopControllerHeroRotation;
+- (void)controllerHeroRotationTimerFired:(NSTimer *)timer;
+- (void)controllerHeroResumeClicked:(id)sender;
+- (void)controllerHeroMoreInfoClicked:(id)sender;
 - (void)updateLastPlayedPanel;
 - (void)loadLastPlayedImageFromCandidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index expectedURL:(NSString *)expectedURL;
 - (void)focusCategoryAtIndex:(NSInteger)index scrollIntoView:(BOOL)scrollIntoView;
@@ -437,6 +530,24 @@ static NSArray<NSString *> *OPNControllerCategoryBackgroundCandidates(const OPN:
     if (urls.count > 0) return urls;
     for (NSString *fallback in OPNControllerCategoryArtworkCandidates(game)) {
         if (fallback.length > 0 && ![urls containsObject:fallback]) [urls addObject:fallback];
+    }
+    return urls;
+}
+
+static NSArray<NSString *> *OPNControllerHeroBackgroundCandidates(const OPN::GameInfo &game) {
+    NSMutableArray<NSString *> *urls = [NSMutableArray array];
+    auto marqueeImages = game.imageUrlsByType.find("MARQUEE_HERO_IMAGE");
+    if (marqueeImages != game.imageUrlsByType.end()) {
+        for (const std::string &value : marqueeImages->second) {
+            NSString *candidate = OPNCatalogString(value, @"");
+            if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
+        }
+    }
+    for (NSString *candidate in OPNControllerCategoryArtworkCandidates(game)) {
+        if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
+    }
+    for (NSString *candidate in OPNControllerCategoryBackgroundCandidates(game)) {
+        if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
     }
     return urls;
 }
@@ -1132,6 +1243,7 @@ using namespace OPN;
     if (self) {
         _cardViews = [NSMutableArray array];
         _categoryCardViews = [NSMutableArray array];
+        _controllerHeroViews = [NSMutableArray array];
         _categoryButtons = [NSMutableArray array];
         _categoryItems = @[];
         _selectedCategoryId = @"all";
@@ -1145,6 +1257,11 @@ using namespace OPN;
         _controllerCategoryOverviewVisible = YES;
         _controllerRenderedGameCount = 0;
         _controllerDisplayGameCount = 0;
+        _controllerLibraryRailContentWidth = 0.0;
+        _controllerLibraryRailOffsetX = 0.0;
+        _controllerLibraryWindowStartIndex = 0;
+        _controllerLibraryVisibleStartIndex = 0;
+        _controllerHeroIndex = 0;
         _lastPlayedImageAspectRatio = 16.0 / 9.0;
         _gridColumnCount = 1;
         self.wantsLayer = YES;
@@ -1443,6 +1560,7 @@ using namespace OPN;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self stopGamepadNavigation];
     [self stopControllerDetailBackgroundRotation];
+    [self stopControllerHeroRotation];
 }
 
 - (void)viewDidMoveToWindow {
@@ -1450,9 +1568,11 @@ using namespace OPN;
     if (self.window) {
         [self startGamepadNavigationIfNeeded];
         [self startControllerDetailBackgroundRotationIfNeeded];
+        [self startControllerHeroRotationIfNeeded];
     } else {
         [self stopGamepadNavigation];
         [self stopControllerDetailBackgroundRotation];
+        [self stopControllerHeroRotation];
     }
 }
 
@@ -1820,8 +1940,8 @@ using namespace OPN;
     [self.categoryCardViews removeAllObjects];
 
     BOOL controllerMode = OpnControllerModeEnabled();
-    if (controllerMode && self.controllerCategoryOverviewVisible) {
-        [self renderControllerCategoryOverview];
+    if (controllerMode) {
+        [self renderControllerLibrary];
         return;
     }
 
@@ -2091,10 +2211,386 @@ using namespace OPN;
     [self layoutCatalogSubviews];
 }
 
+- (void)renderControllerLibrary {
+    self.controllerCategoryOverviewVisible = NO;
+    self.controllerOverviewSpecialTileKind = OPNControllerOverviewSpecialTileNone;
+    self.streamPipContainerView.hidden = self.streamPipContentView == nil;
+    self.lastPlayedPanelView.hidden = YES;
+
+    CGFloat width = MAX(1.0, NSWidth(self.bounds));
+    CGFloat contentInset = 52.0;
+    NSClipView *clipView = self.scrollView.contentView;
+    if (clipView.bounds.origin.x != 0.0) {
+        [clipView scrollToPoint:NSMakePoint(0.0, clipView.bounds.origin.y)];
+        [self.scrollView reflectScrolledClipView:clipView];
+    }
+    CGFloat height = MAX(1.0, NSHeight(self.bounds));
+    OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(width, height);
+    contentInset = metrics.contentInset;
+
+    std::vector<OPN::GameInfo> displayGames;
+    for (const OPN::GameInfo &game : _allGames) {
+        if ([self game:game matchesCategory:@"library"]) displayGames.push_back(game);
+    }
+    if (displayGames.empty()) {
+        for (const OPN::GameInfo &game : _allGames) displayGames.push_back(game);
+    }
+    self.controllerDisplayGameCount = (NSInteger)displayGames.size();
+    if (self.focusedCardIndex < 0 && !displayGames.empty()) self.focusedCardIndex = 0;
+    if (self.focusedCardIndex >= (NSInteger)displayGames.size()) self.focusedCardIndex = (NSInteger)displayGames.size() - 1;
+
+    [self renderControllerHero];
+
+    NSTextField *title = OpnLabel(@"My Library", NSMakeRect(contentInset, metrics.rowTitleY, metrics.rowTitleWidth, metrics.rowTitleHeight), metrics.rowTitleFontSize, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
+    [self.gridContentView addSubview:title];
+    NSString *countText = [NSString stringWithFormat:@"%ld games", (long)displayGames.size()];
+    NSTextField *count = OpnLabel(countText, NSMakeRect(metrics.countX, metrics.countY, metrics.countWidth, metrics.countHeight), metrics.countFontSize, OpnColor(OPN::kTextMuted), NSFontWeightRegular);
+    [self.gridContentView addSubview:count];
+
+    self.gameCountLabel.stringValue = countText;
+    if (self.onGameCountChanged) self.onGameCountChanged((NSInteger)displayGames.size());
+    self.statusLabel.stringValue = displayGames.empty() ? @"No games found." : @"";
+    [self renderControllerLibraryRail];
+    [self focusCardAtIndex:self.focusedCardIndex scrollIntoView:NO];
+    [self scrollControllerLibraryRailToCardAtIndex:self.focusedCardIndex animated:NO];
+    [self startControllerHeroRotationIfNeeded];
+    [self layoutCatalogSubviews];
+}
+
+- (void)renderControllerHero {
+    for (NSView *view in [self.controllerHeroViews copy]) {
+        [view removeFromSuperview];
+    }
+    [self.controllerHeroViews removeAllObjects];
+
+    CGFloat width = MAX(1.0, NSWidth(self.bounds));
+    CGFloat height = MAX(1.0, NSHeight(self.bounds));
+    OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(width, height);
+    CGFloat contentInset = metrics.contentInset;
+
+    std::vector<OPN::GameInfo> displayGames;
+    for (const OPN::GameInfo &game : _allGames) {
+        if ([self game:game matchesCategory:@"library"]) displayGames.push_back(game);
+    }
+    if (displayGames.empty()) {
+        for (const OPN::GameInfo &game : _allGames) displayGames.push_back(game);
+    }
+    std::vector<OPN::GameInfo> featuredGames = [self controllerFeaturedGamesFromDisplayGames:displayGames];
+    if (featuredGames.empty()) {
+        [self stopControllerHeroRotation];
+        return;
+    }
+    if (self.controllerHeroIndex >= (NSInteger)featuredGames.size()) self.controllerHeroIndex = 0;
+    NSInteger heroIndex = MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1));
+    [self addControllerHeroForGame:featuredGames[(size_t)heroIndex]
+                             frame:NSMakeRect(contentInset, metrics.heroY, width - contentInset * 2.0, metrics.heroHeight)
+                       activeIndex:heroIndex
+                       totalCount:(NSInteger)featuredGames.size()];
+}
+
+- (void)renderControllerLibraryRail {
+    if (!OpnControllerModeEnabled()) return;
+
+    CGFloat width = MAX(1.0, NSWidth(self.bounds));
+    CGFloat height = MAX(1.0, NSHeight(self.bounds));
+    OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(width, height);
+    CGFloat contentInset = metrics.contentInset;
+    CGFloat cardWidth = metrics.cardSize;
+    CGFloat cardHeight = metrics.cardSize;
+
+    std::vector<OPN::GameInfo> displayGames;
+    for (const OPN::GameInfo &game : _allGames) {
+        if ([self game:game matchesCategory:@"library"]) displayGames.push_back(game);
+    }
+    if (displayGames.empty()) {
+        for (const OPN::GameInfo &game : _allGames) displayGames.push_back(game);
+    }
+    NSInteger totalGames = (NSInteger)displayGames.size();
+    self.controllerDisplayGameCount = totalGames;
+    if (self.focusedCardIndex < 0 && totalGames > 0) self.focusedCardIndex = 0;
+    if (self.focusedCardIndex >= totalGames) self.focusedCardIndex = totalGames - 1;
+
+    NSInteger visibleStart = 0;
+    if (totalGames > metrics.visibleCardCount) {
+        visibleStart = MAX(0, MIN(self.controllerLibraryVisibleStartIndex, totalGames - metrics.visibleCardCount));
+        if (self.focusedCardIndex < visibleStart) {
+            visibleStart = self.focusedCardIndex;
+        } else if (self.focusedCardIndex >= visibleStart + metrics.visibleCardCount) {
+            visibleStart = self.focusedCardIndex - metrics.visibleCardCount + 1;
+        }
+        visibleStart = MAX(0, MIN(visibleStart, totalGames - metrics.visibleCardCount));
+    }
+    self.controllerLibraryVisibleStartIndex = visibleStart;
+    NSInteger renderStart = MAX(0, visibleStart - 1);
+    NSInteger renderEnd = MIN(totalGames, visibleStart + metrics.visibleCardCount + 1);
+    self.controllerLibraryWindowStartIndex = renderStart;
+    self.controllerRenderedGameCount = MAX(0, renderEnd - renderStart);
+
+    [self.controllerLibraryRailView removeFromSuperview];
+    [self.cardViews removeAllObjects];
+    NSView *railView = [[OPNFlippedGridDocumentView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, metrics.contentHeight)];
+    railView.wantsLayer = YES;
+    railView.layer.backgroundColor = NSColor.clearColor.CGColor;
+    self.controllerLibraryRailView = railView;
+    [self.gridContentView addSubview:railView];
+
+    for (NSInteger index = renderStart; index < renderEnd; index++) {
+        const OPN::GameInfo &game = displayGames[(size_t)index];
+        CGFloat x = contentInset + index * (cardWidth + metrics.cardSpacing);
+        OPNGameCardView *card = [[OPNGameCardView alloc] initWithFrame:NSMakeRect(x, metrics.cardY, cardWidth, cardHeight) game:game];
+        card.controllerFocused = index == self.focusedCardIndex;
+        GameInfo gameCopy = game;
+        __weak __typeof__(self) weakSelf = self;
+        __weak OPNGameCardView *weakCard = card;
+        card.onPlay = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            OPNGameCardView *strongCard = weakCard;
+            if (!strongSelf || !strongCard) return;
+            NSUInteger cardIndex = [strongSelf.cardViews indexOfObject:strongCard];
+            if (cardIndex != NSNotFound) [strongSelf focusCardAtIndex:strongSelf.controllerLibraryWindowStartIndex + (NSInteger)cardIndex scrollIntoView:NO];
+            if (strongSelf.onSelectGame) strongSelf.onSelectGame(gameCopy, strongCard.selectedVariantIndex >= 0 ? strongCard.selectedVariantIndex : 0);
+        };
+        card.onArtworkAccentColorChanged = ^(NSColor *color) {
+            (void)color;
+            __typeof__(self) strongSelf = weakSelf;
+            OPNGameCardView *strongCard = weakCard;
+            if (!strongSelf || !strongCard) return;
+            NSUInteger cardIndex = [strongSelf.cardViews indexOfObject:strongCard];
+            if (cardIndex == NSNotFound || strongSelf.controllerLibraryWindowStartIndex + (NSInteger)cardIndex != strongSelf.focusedCardIndex) return;
+            [strongSelf updateControllerDetailContent];
+        };
+        [railView addSubview:card];
+        [self.cardViews addObject:card];
+    }
+
+    CGFloat contentWidth = totalGames == 0 ? width : contentInset * 2.0 + totalGames * cardWidth + MAX(0, totalGames - 1) * metrics.cardSpacing;
+    self.controllerLibraryRailContentWidth = MAX(width, contentWidth);
+    railView.frame = NSMakeRect(-self.controllerLibraryRailOffsetX, 0.0, self.controllerLibraryRailContentWidth, metrics.contentHeight);
+    self.gridContentView.frame = NSMakeRect(0.0, 0.0, width, MAX(metrics.contentHeight, NSHeight(self.scrollView.frame)));
+}
+
+- (void)scrollControllerLibraryRailToCardAtIndex:(NSInteger)index animated:(BOOL)animated {
+    if (!OpnControllerModeEnabled() || self.controllerCategoryOverviewVisible || !self.controllerLibraryRailView || self.cardViews.count == 0) return;
+    NSInteger clamped = MAX(0, MIN(index, self.controllerDisplayGameCount - 1));
+    NSInteger localIndex = clamped - self.controllerLibraryWindowStartIndex;
+    if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) return;
+    CGFloat visibleWidth = NSWidth(self.scrollView.contentView.bounds);
+    if (visibleWidth <= 1.0) visibleWidth = NSWidth(self.scrollView.frame);
+    OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(MAX(1.0, NSWidth(self.bounds)), MAX(1.0, NSHeight(self.bounds)));
+    CGFloat targetX = self.controllerLibraryVisibleStartIndex * (metrics.cardSize + metrics.cardSpacing);
+    CGFloat maxX = MAX(0.0, self.controllerLibraryRailContentWidth - visibleWidth);
+    targetX = MAX(0.0, MIN(targetX, maxX));
+    self.controllerLibraryRailOffsetX = targetX;
+    NSRect railFrame = self.controllerLibraryRailView.frame;
+    railFrame.origin.x = -targetX;
+    railFrame.size.width = self.controllerLibraryRailContentWidth;
+    if (animated) {
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.24;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            self.controllerLibraryRailView.animator.frame = railFrame;
+        } completionHandler:nil];
+    } else {
+        self.controllerLibraryRailView.frame = railFrame;
+    }
+}
+
+- (std::vector<OPN::GameInfo>)controllerFeaturedGamesFromDisplayGames:(const std::vector<OPN::GameInfo> &)displayGames {
+    std::vector<OPN::GameInfo> featuredGames;
+    NSInteger limit = MIN((NSInteger)displayGames.size(), 5);
+    for (NSInteger index = 0; index < limit; index++) {
+        featuredGames.push_back(displayGames[(size_t)index]);
+    }
+    return featuredGames;
+}
+
+- (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
+    OPNControllerPreviewBackgroundView *hero = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:frame];
+    CGFloat heroHeight = MAX(1.0, NSHeight(frame));
+    CGFloat heroWidth = MAX(1.0, NSWidth(frame));
+    CGFloat cornerRadius = heroHeight * (18.0 / 270.0);
+    CGFloat leftInset = heroWidth * (68.0 / 1176.0);
+    CGFloat storeRingSize = heroHeight * (19.0 / 270.0);
+    CGFloat storeRingBorder = heroHeight * (4.0 / 270.0);
+    CGFloat buttonWidth = heroWidth * (150.0 / 1176.0);
+    CGFloat buttonHeight = heroHeight * (34.0 / 270.0);
+    CGFloat buttonGap = heroWidth * (16.0 / 1176.0);
+    CGFloat titleFontSize = heroHeight * (34.0 / 270.0);
+    CGFloat descriptionFontSize = heroHeight * (12.0 / 270.0);
+    CGFloat actionFontSize = heroHeight * (14.0 / 270.0);
+    hero.cornerRadius = cornerRadius;
+    hero.rightAlignImageToHeight = YES;
+    hero.wantsLayer = YES;
+    hero.layer.cornerRadius = cornerRadius;
+    hero.layer.masksToBounds = YES;
+    hero.layer.borderWidth = heroHeight * (1.0 / 270.0);
+    hero.layer.borderColor = OpnColor(0xFFFFFF, 0.14).CGColor;
+    [self.gridContentView addSubview:hero];
+    [self.controllerHeroViews addObject:hero];
+    [self loadControllerHeroImageForView:hero candidates:OPNControllerHeroBackgroundCandidates(game) index:0];
+
+    NSView *leftShade = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame), NSMinY(frame), NSWidth(frame), NSHeight(frame))];
+    leftShade.wantsLayer = YES;
+    leftShade.layer.cornerRadius = cornerRadius;
+    leftShade.layer.masksToBounds = YES;
+    CAGradientLayer *shade = [CAGradientLayer layer];
+    shade.frame = leftShade.bounds;
+    shade.startPoint = CGPointMake(0.0, 0.5);
+    shade.endPoint = CGPointMake(1.0, 0.5);
+    shade.colors = @[(id)OpnColor(0x020406, 0.94).CGColor,
+                     (id)OpnColor(0x020406, 0.86).CGColor,
+                     (id)OpnColor(0x020406, 0.42).CGColor,
+                     (id)OpnColor(0x020406, 0.0).CGColor];
+    shade.locations = @[@0.0, @0.42, @0.58, @0.76];
+    [leftShade.layer addSublayer:shade];
+    [self.gridContentView addSubview:leftShade];
+    [self.controllerHeroViews addObject:leftShade];
+
+    NSString *store = @"";
+    if (!game.variants.empty()) store = OPNStoreCategoryTitle(OPNCatalogString(game.variants.front().appStore, @""));
+    if (store.length == 0 && !game.availableStores.empty()) store = OPNStoreCategoryTitle(OPNCatalogString(game.availableStores.front(), @""));
+
+    NSView *storeRing = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (46.0 / 270.0), storeRingSize, storeRingSize)];
+    storeRing.wantsLayer = YES;
+    storeRing.layer.cornerRadius = storeRingSize * 0.5;
+    storeRing.layer.borderWidth = storeRingBorder;
+    storeRing.layer.borderColor = OpnColor(OPN::kBrandGreen).CGColor;
+    storeRing.layer.backgroundColor = NSColor.clearColor.CGColor;
+    [self.gridContentView addSubview:storeRing];
+    [self.controllerHeroViews addObject:storeRing];
+
+    NSTextField *storeLabel = OpnLabel(store.length > 0 ? store : @"Cloud Game", NSMakeRect(NSMinX(storeRing.frame) + storeRingSize + heroWidth * (11.0 / 1176.0), NSMinY(frame) + heroHeight * (43.0 / 270.0), heroWidth * (180.0 / 1176.0), heroHeight * (22.0 / 270.0)), heroHeight * (16.0 / 270.0), OpnColor(0xFFFFFF, 0.92), NSFontWeightSemibold);
+    [self.gridContentView addSubview:storeLabel];
+    [self.controllerHeroViews addObject:storeLabel];
+
+    NSTextField *title = OpnLabel(OPNCatalogString(game.title, @"Untitled Game"), NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (86.0 / 270.0), heroWidth * 0.58, heroHeight * (62.0 / 270.0)), titleFontSize, OpnColor(0xFFFFFF), NSFontWeightBlack);
+    title.lineBreakMode = NSLineBreakByWordWrapping;
+    title.maximumNumberOfLines = 2;
+    [self.gridContentView addSubview:title];
+    [self.controllerHeroViews addObject:title];
+
+    NSString *description = OPNCatalogString(game.description, @"");
+    if (description.length == 0) description = OPNCatalogJoinedStrings(game.featureLabels, @"Ready to play from your cloud library.");
+    NSTextField *descriptionLabel = OpnLabel(description, NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (158.0 / 270.0), heroWidth * 0.46, heroHeight * (30.0 / 270.0)), descriptionFontSize, OpnColor(0xFFFFFF, 0.84), NSFontWeightRegular);
+    descriptionLabel.maximumNumberOfLines = 2;
+    [self.gridContentView addSubview:descriptionLabel];
+    [self.controllerHeroViews addObject:descriptionLabel];
+
+    NSButton *resume = OpnButton(@">  Resume", NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (204.0 / 270.0), buttonWidth, buttonHeight), OpnColor(OPN::kBrandGreen, 0.96), OpnColor(0x06110A));
+    resume.font = [NSFont systemFontOfSize:actionFontSize weight:NSFontWeightBold];
+    resume.layer.cornerRadius = buttonHeight * (12.0 / 34.0);
+    resume.target = self;
+    resume.action = @selector(controllerHeroResumeClicked:);
+    [self.gridContentView addSubview:resume];
+    [self.controllerHeroViews addObject:resume];
+
+    NSButton *more = OpnButton(@"i  More Info", NSMakeRect(NSMaxX(resume.frame) + buttonGap, NSMinY(resume.frame), buttonWidth, buttonHeight), OpnColor(0x15181D, 0.86), OpnColor(0xFFFFFF), true, OpnColor(0xFFFFFF, 0.08));
+    more.font = [NSFont systemFontOfSize:actionFontSize weight:NSFontWeightMedium];
+    more.layer.cornerRadius = resume.layer.cornerRadius;
+    more.target = self;
+    more.action = @selector(controllerHeroMoreInfoClicked:);
+    [self.gridContentView addSubview:more];
+    [self.controllerHeroViews addObject:more];
+
+    CGFloat dotSpacing = heroWidth * (24.0 / 1176.0);
+    CGFloat activeDotWidth = heroWidth * (22.0 / 1176.0);
+    CGFloat inactiveDotWidth = heroWidth * (14.0 / 1176.0);
+    CGFloat dotHeight = heroHeight * (5.0 / 270.0);
+    CGFloat dotWidth = totalCount > 0 ? (totalCount - 1) * dotSpacing + activeDotWidth : 0.0;
+    CGFloat dotX = NSMidX(frame) - dotWidth * 0.5;
+    CGFloat dotY = NSMaxY(frame) + heroHeight * (14.0 / 270.0);
+    for (NSInteger index = 0; index < totalCount; index++) {
+        BOOL active = index == activeIndex;
+        NSRect dotRect = active ? NSMakeRect(dotX + index * dotSpacing, dotY, activeDotWidth, dotHeight) : NSMakeRect(dotX + index * dotSpacing + (activeDotWidth - inactiveDotWidth) * 0.5, dotY, inactiveDotWidth, dotHeight);
+        NSBezierPath *dot = [NSBezierPath bezierPathWithRoundedRect:dotRect xRadius:dotHeight * 0.5 yRadius:dotHeight * 0.5];
+        [active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.18) setFill];
+        [dot fill];
+    }
+}
+
+- (void)loadControllerHeroImageForView:(OPNControllerPreviewBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+    if (!view || index >= candidates.count) return;
+    NSURL *url = [NSURL URLWithString:candidates[index]];
+    if (!url) {
+        [self loadControllerHeroImageForView:view candidates:candidates index:index + 1];
+        return;
+    }
+    __weak __typeof__(self) weakSelf = self;
+    __weak OPNControllerPreviewBackgroundView *weakView = view;
+    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+        if (error || !data || (http && http.statusCode >= 400)) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                OPNControllerPreviewBackgroundView *strongView = weakView;
+                if (strongSelf && strongView.superview) [strongSelf loadControllerHeroImageForView:strongView candidates:candidates index:index + 1];
+            });
+            return;
+        }
+        NSImage *image = [[NSImage alloc] initWithData:data];
+        if (!image) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            OPNControllerPreviewBackgroundView *strongView = weakView;
+            if (strongView.superview) strongView.image = image;
+        });
+    }] resume];
+}
+
+- (void)startControllerHeroRotationIfNeeded {
+    if (!self.window || !OpnControllerModeEnabled() || self.controllerDisplayGameCount <= 1) {
+        [self stopControllerHeroRotation];
+        return;
+    }
+    if (self.controllerHeroRotationTimer) return;
+    self.controllerHeroRotationTimer = [NSTimer timerWithTimeInterval:8.0
+                                                               target:self
+                                                             selector:@selector(controllerHeroRotationTimerFired:)
+                                                             userInfo:nil
+                                                              repeats:YES];
+    [NSRunLoop.mainRunLoop addTimer:self.controllerHeroRotationTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopControllerHeroRotation {
+    [self.controllerHeroRotationTimer invalidate];
+    self.controllerHeroRotationTimer = nil;
+}
+
+- (void)controllerHeroRotationTimerFired:(NSTimer *)timer {
+    (void)timer;
+    if (!self.window || !OpnControllerModeEnabled() || self.controllerDisplayGameCount <= 1) {
+        [self stopControllerHeroRotation];
+        return;
+    }
+    NSInteger featuredCount = MIN(self.controllerDisplayGameCount, 5);
+    if (featuredCount <= 1) return;
+    self.controllerHeroIndex = (self.controllerHeroIndex + 1) % featuredCount;
+    [self renderControllerHero];
+}
+
+- (void)controllerHeroResumeClicked:(id)sender {
+    (void)sender;
+    NSInteger targetIndex = MAX(0, MIN(self.controllerHeroIndex, self.controllerDisplayGameCount - 1));
+    if (self.controllerDisplayGameCount > 0) [self focusCardAtIndex:targetIndex scrollIntoView:YES];
+    [self launchFocusedGame];
+}
+
+- (void)controllerHeroMoreInfoClicked:(id)sender {
+    (void)sender;
+    NSInteger targetIndex = MAX(0, MIN(self.controllerHeroIndex, self.controllerDisplayGameCount - 1));
+    if (self.controllerDisplayGameCount > 0) [self focusCardAtIndex:targetIndex scrollIntoView:YES];
+    [self openFocusedGameDetails];
+}
+
 - (void)scrollLibraryToTop {
     NSClipView *clipView = self.scrollView.contentView;
     [clipView scrollToPoint:NSMakePoint(0, 0)];
     [self.scrollView reflectScrolledClipView:clipView];
+    self.controllerLibraryRailOffsetX = 0.0;
+    if (self.controllerLibraryRailView) {
+        NSRect railFrame = self.controllerLibraryRailView.frame;
+        railFrame.origin.x = 0.0;
+        self.controllerLibraryRailView.frame = railFrame;
+    }
 }
 
 - (void)sortClicked:(NSButton *)sender {
@@ -2234,13 +2730,37 @@ using namespace OPN;
     self.gameCountLabel.frame = NSMakeRect(0, 0, 0, 0);
     self.gameCountLabel.hidden = YES;
     self.signOutButton.frame = NSMakeRect(width - 116, kNavHeight + 13, 92, 30);
-    BOOL categoryOverview = controllerMode && self.controllerCategoryOverviewVisible;
+    BOOL categoryOverview = NO;
     self.controllerBottomPromptBarView.hidden = !controllerMode;
     self.controllerBottomPromptBarView.mode = categoryOverview ? OPNControllerPromptModeHome : OPNControllerPromptModeGame;
     self.controllerBottomPromptBarView.includeStore = !categoryOverview;
     self.controllerBottomPromptBarView.includeBack = !categoryOverview;
     self.controllerBottomPromptBarView.includeCategorySwitch = !categoryOverview && self.categoryItems.count > 1;
-    self.controllerBottomPromptBarView.frame = NSMakeRect(64.0, MAX(12.0, height - 52.0), MAX(0.0, width - 128.0), 36.0);
+    OPNControllerLibraryMetrics controllerMetrics = OPNControllerLibraryMetricsForSize(width, height);
+    self.controllerBottomPromptBarView.frame = NSMakeRect(controllerMetrics.contentInset * (64.0 / 52.0), height - controllerMetrics.bottomInset + height * (20.0 / 720.0), MAX(0.0, width - controllerMetrics.contentInset * (128.0 / 52.0)), height * (36.0 / 720.0));
+    if (controllerMode) {
+        self.searchField.hidden = YES;
+        self.filterButton.hidden = YES;
+        self.sortButton.hidden = YES;
+        self.categoryBarView.hidden = YES;
+        self.controllerHomeEyebrowLabel.hidden = YES;
+        self.controllerHomeTitleLabel.hidden = YES;
+        self.controllerHomeSubtitleLabel.hidden = YES;
+        self.controllerSectionLabel.hidden = YES;
+        self.controllerDetailView.hidden = YES;
+        self.controllerDetailBackgroundView.hidden = YES;
+        self.controllerGameHubView.hidden = YES;
+        self.controllerPromptBarView.hidden = YES;
+        self.scrollView.hasVerticalScroller = NO;
+        self.scrollView.hasHorizontalScroller = NO;
+        CGFloat gridY = controllerMetrics.topInset;
+        self.scrollView.frame = NSMakeRect(0.0, gridY, width, MAX(0.0, height - gridY - controllerMetrics.bottomInset));
+        self.statusLabel.frame = NSMakeRect(width * (28.0 / 1280.0), gridY + height * (120.0 / 720.0), width - width * (56.0 / 1280.0), height * (24.0 / 720.0));
+        self.loadingView.frame = self.bounds;
+        self.detailsOverlayView.frame = self.bounds;
+        [self stopControllerDetailBackgroundRotation];
+        return;
+    }
     self.controllerHomeEyebrowLabel.hidden = !categoryOverview;
     self.controllerHomeTitleLabel.hidden = !categoryOverview;
     self.controllerHomeSubtitleLabel.hidden = !categoryOverview;
@@ -2396,16 +2916,28 @@ using namespace OPN;
 }
 
 - (void)focusCardAtIndex:(NSInteger)index scrollIntoView:(BOOL)scrollIntoView {
-    if (self.cardViews.count == 0) {
+    NSInteger controllerItemCount = OpnControllerModeEnabled() ? self.controllerDisplayGameCount : (NSInteger)self.cardViews.count;
+    if (controllerItemCount == 0) {
         self.focusedCardIndex = -1;
         return;
     }
     [self setStreamPipFocused:NO];
     NSInteger previousIndex = self.focusedCardIndex;
-    NSInteger clamped = MAX(0, MIN(index, (NSInteger)self.cardViews.count - 1));
+    NSInteger clamped = MAX(0, MIN(index, controllerItemCount - 1));
     self.focusedCardIndex = clamped;
+    if (OpnControllerModeEnabled() && (clamped < self.controllerLibraryWindowStartIndex || clamped >= self.controllerLibraryWindowStartIndex + (NSInteger)self.cardViews.count)) {
+        [self renderControllerLibraryRail];
+        [self scrollControllerLibraryRailToCardAtIndex:clamped animated:scrollIntoView];
+        [self updateControllerDetailContent];
+        return;
+    }
+    OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(MAX(1.0, NSWidth(self.bounds)), MAX(1.0, NSHeight(self.bounds)));
+    if (OpnControllerModeEnabled() && (clamped < self.controllerLibraryVisibleStartIndex || clamped >= self.controllerLibraryVisibleStartIndex + metrics.visibleCardCount)) {
+        [self renderControllerLibraryRail];
+    }
     for (NSUInteger i = 0; i < self.cardViews.count; i++) {
-        BOOL selected = OpnControllerModeEnabled() && (NSInteger)i == clamped;
+        NSInteger globalIndex = OpnControllerModeEnabled() ? self.controllerLibraryWindowStartIndex + (NSInteger)i : (NSInteger)i;
+        BOOL selected = OpnControllerModeEnabled() && globalIndex == clamped;
         self.cardViews[i].controllerFocused = selected;
         self.cardViews[i].alphaValue = 1.0;
     }
@@ -2414,16 +2946,15 @@ using namespace OPN;
     }
     [self updateControllerDetailContent];
     if (!scrollIntoView) return;
-    OPNGameCardView *card = self.cardViews[(NSUInteger)clamped];
+    NSInteger localIndex = OpnControllerModeEnabled() ? clamped - self.controllerLibraryWindowStartIndex : clamped;
+    if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) return;
+    OPNGameCardView *card = self.cardViews[(NSUInteger)localIndex];
     NSRect visibleRect = self.scrollView.contentView.bounds;
     NSRect targetRect = NSInsetRect(card.frame, -24.0, -24.0);
     if (OpnControllerModeEnabled()) {
-        NSSize contentSize = self.gridContentView.frame.size;
-        CGFloat targetX = NSMidX(card.frame) - NSWidth(visibleRect) * 0.5;
-        targetX = MAX(0.0, MIN(targetX, MAX(0.0, contentSize.width - NSWidth(visibleRect))));
-        [[OPNCoreAnimationCoordinator sharedCoordinator] springScrollClipView:self.scrollView.contentView
-                                                                          toX:targetX
-                                                                     velocity:0.0];
+        [self.scrollView.contentView scrollToPoint:NSMakePoint(0.0, visibleRect.origin.y)];
+        [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
+        [self scrollControllerLibraryRailToCardAtIndex:clamped animated:YES];
         return;
     }
     if (!NSContainsRect(visibleRect, targetRect)) {
@@ -2690,8 +3221,9 @@ using namespace OPN;
 }
 
 - (OPNGameCardView *)focusedCard {
-    if (self.focusedCardIndex < 0 || self.focusedCardIndex >= (NSInteger)self.cardViews.count) return nil;
-    return self.cardViews[(NSUInteger)self.focusedCardIndex];
+    NSInteger localIndex = OpnControllerModeEnabled() ? self.focusedCardIndex - self.controllerLibraryWindowStartIndex : self.focusedCardIndex;
+    if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) return nil;
+    return self.cardViews[(NSUInteger)localIndex];
 }
 
 - (NSInteger)controllerInitialRenderedGameCount {
@@ -2821,6 +3353,21 @@ using namespace OPN;
             [self setStreamPipFocused:NO];
             OpnPlayConsoleTone(OPNConsoleToneMove);
         }
+        return;
+    }
+    if (OpnControllerModeEnabled()) {
+        if (self.controllerDisplayGameCount <= 0) return;
+        NSInteger next = self.focusedCardIndex + columns;
+        next = MAX(0, MIN(next, self.controllerDisplayGameCount - 1));
+        if (next == self.focusedCardIndex) return;
+        self.focusedCardIndex = next;
+        OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(MAX(1.0, NSWidth(self.bounds)), MAX(1.0, NSHeight(self.bounds)));
+        BOOL crossedVisibleWindow = next < self.controllerLibraryVisibleStartIndex || next >= self.controllerLibraryVisibleStartIndex + metrics.visibleCardCount;
+        BOOL crossedRenderedWindow = next < self.controllerLibraryWindowStartIndex || next >= self.controllerLibraryWindowStartIndex + (NSInteger)self.cardViews.count;
+        if (crossedVisibleWindow || crossedRenderedWindow) {
+            [self renderControllerLibraryRail];
+        }
+        [self focusCardAtIndex:next scrollIntoView:YES];
         return;
     }
     NSInteger next = self.focusedCardIndex + rows * MAX(1, self.gridColumnCount) + columns;

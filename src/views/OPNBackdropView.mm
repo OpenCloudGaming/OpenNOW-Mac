@@ -211,6 +211,11 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 }
 
 - (void)startControllerBackgroundAnimationIfNeeded {
+    if (OpnControllerModeEnabled()) {
+        [_backgroundAnimationTimer invalidate];
+        _backgroundAnimationTimer = nil;
+        return;
+    }
     if (!OpnControllerModeEnabled() || !OpnBackgroundAnimationEnabled() || _backgroundAnimationTimer || !self.window) return;
     _backgroundAnimationTimer = [NSTimer timerWithTimeInterval:(1.0 / 60.0)
                                                         target:self
@@ -394,12 +399,14 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         _settingsNavFrame = NSMakeRect(NSMaxX(_libraryNavFrame) + spacing, 18.0, settingsWidth, 28.0);
         _accountFrame = NSMakeRect(NSWidth(self.bounds) - 174.0, 9.0, 154.0, 48.0);
     } else if (showNavigation && controllerMode) {
-        _storeNavFrame = NSZeroRect;
-        _libraryNavFrame = NSZeroRect;
-        _settingsNavFrame = NSZeroRect;
+        CGFloat navY = 44.0;
+        CGFloat centerX = floor(NSWidth(self.bounds) * 0.50 - 210.0);
+        _libraryNavFrame = NSMakeRect(centerX, navY, 128.0, 42.0);
+        _storeNavFrame = NSMakeRect(NSMaxX(_libraryNavFrame) + 34.0, navY, 112.0, 42.0);
+        _settingsNavFrame = NSMakeRect(NSMaxX(_storeNavFrame) + 196.0, navY, 150.0, 42.0);
         _accountFrame = NSMakeRect(NSWidth(self.bounds) - 284.0, 12.0, 268.0, 82.0);
     }
-    BOOL showTabs = showNavigation && !controllerMode;
+    BOOL showTabs = showNavigation;
     BOOL showStore = showTabs;
     _storeButton.frame = showStore && !NSEqualRects(_storeNavFrame, NSZeroRect) ? _storeNavFrame : NSZeroRect;
     _libraryButton.frame = showTabs && !NSEqualRects(_libraryNavFrame, NSZeroRect) ? _libraryNavFrame : NSZeroRect;
@@ -426,7 +433,8 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     NSRectFill(bounds);
 
     if (controllerMode) {
-        [self drawControllerElectricBackgroundInRect:bounds];
+        [NSColor.blackColor setFill];
+        NSRectFill(bounds);
     } else {
         NSGradient *edgeWash = [[NSGradient alloc] initWithColors:@[
             OpnColor(kBackgroundB, 0.94),
@@ -459,6 +467,42 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         NSRectFill(navRect);
         [OpnColor(0xFFFFFF, 0.08) setFill];
         NSRectFill(NSMakeRect(0, navHeight - 1.0, NSWidth(bounds), 1));
+    }
+
+    if (controllerMode) {
+        NSRect markRect = NSMakeRect(52.0, 48.0, 46.0, 46.0);
+        NSBezierPath *mark = [NSBezierPath bezierPathWithRoundedRect:markRect xRadius:11.0 yRadius:11.0];
+        NSGradient *markGradient = [[NSGradient alloc] initWithStartingColor:OpnColor(0x61F07A)
+                                                             endingColor:OpnColor(0x25D35F)];
+        [markGradient drawInBezierPath:mark angle:270.0];
+        NSMutableParagraphStyle *boltStyle = [[NSMutableParagraphStyle alloc] init];
+        boltStyle.alignment = NSTextAlignmentCenter;
+        [@"S" drawInRect:NSMakeRect(NSMinX(markRect), NSMinY(markRect) + 8.0, NSWidth(markRect), 30.0)
+          withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:26.0 weight:NSFontWeightBlack],
+                           NSForegroundColorAttributeName: OpnColor(0x06110A),
+                           NSParagraphStyleAttributeName: boltStyle}];
+        [@"OpenNOW" drawInRect:NSMakeRect(NSMaxX(markRect) + 14.0, 54.0, 190.0, 34.0)
+                withAttributes:OpnTextStyle(27.0, OpnColor(kTextPrimary), NSFontWeightBlack)];
+
+        NSArray<NSDictionary<NSString *, id> *> *controllerItems = @[
+            @{@"title": @"Home", @"rect": [NSValue valueWithRect:NSMakeRect(NSMinX(_libraryNavFrame) - 150.0, 44.0, 120.0, 42.0)], @"active": @NO},
+            @{@"title": @"Library", @"rect": [NSValue valueWithRect:_libraryNavFrame], @"active": @(self.mode == OPNBackdropModeLibrary)},
+            @{@"title": @"Store", @"rect": [NSValue valueWithRect:_storeNavFrame], @"active": @(self.mode == OPNBackdropModeStore)},
+            @{@"title": @"Search", @"rect": [NSValue valueWithRect:NSMakeRect(NSMaxX(_storeNavFrame) + 34.0, 44.0, 128.0, 42.0)], @"active": @NO},
+            @{@"title": @"Settings", @"rect": [NSValue valueWithRect:NSMakeRect(NSMaxX(_storeNavFrame) + 196.0, 44.0, 150.0, 42.0)], @"active": @(self.mode == OPNBackdropModeSettings)},
+        ];
+        for (NSDictionary<NSString *, id> *item in controllerItems) {
+            NSRect itemRect = [item[@"rect"] rectValue];
+            BOOL active = [item[@"active"] boolValue];
+            NSColor *textColor = active ? OpnColor(kTextPrimary) : OpnColor(0xFFFFFF, 0.78);
+            [item[@"title"] drawInRect:NSMakeRect(NSMinX(itemRect), NSMinY(itemRect) + 8.0, NSWidth(itemRect), 24.0)
+                         withAttributes:OpnTextStyle(20.0, textColor, active ? NSFontWeightBold : NSFontWeightMedium)];
+            if (active) {
+                NSBezierPath *underline = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(NSMinX(itemRect) + 4.0, NSMaxY(itemRect) - 4.0, NSWidth(itemRect) - 12.0, 4.0) xRadius:2.0 yRadius:2.0];
+                [OpnColor(kBrandGreen) setFill];
+                [underline fill];
+            }
+        }
     }
 
     NSImage *logo = controllerMode ? nil : OPNHeaderLogoImage();

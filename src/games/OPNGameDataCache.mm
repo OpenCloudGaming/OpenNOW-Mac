@@ -32,6 +32,27 @@ static std::vector<std::string> OPNStringsFromArray(id value) {
     return result;
 }
 
+static NSDictionary *OPNImageMapToDictionary(const std::map<std::string, std::vector<std::string>> &imageMap) {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithCapacity:imageMap.size()];
+    for (const auto &entry : imageMap) {
+        if (entry.first.empty() || entry.second.empty()) continue;
+        dict[OPNStringFromStd(entry.first)] = OPNArrayFromStrings(entry.second);
+    }
+    return dict;
+}
+
+static std::map<std::string, std::vector<std::string>> OPNImageMapFromDictionary(id value) {
+    std::map<std::string, std::vector<std::string>> result;
+    NSDictionary *dict = [value isKindOfClass:[NSDictionary class]] ? (NSDictionary *)value : nil;
+    if (!dict) return result;
+    for (id key in dict) {
+        NSString *stringKey = [key isKindOfClass:[NSString class]] ? (NSString *)key : @"";
+        std::vector<std::string> urls = OPNStringsFromArray(dict[key]);
+        if (stringKey.length > 0 && !urls.empty()) result[[stringKey UTF8String]] = urls;
+    }
+    return result;
+}
+
 static NSString *OPNSHA256String(NSString *value) {
     NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
@@ -80,6 +101,7 @@ static NSDictionary *OPNGameToDictionary(const GameInfo &game) {
     if (!game.imageUrl.empty()) dict[@"im"] = OPNStringFromStd(game.imageUrl);
     if (!game.heroImageUrl.empty()) dict[@"he"] = OPNStringFromStd(game.heroImageUrl);
     if (!game.screenshotUrls.empty()) dict[@"sc"] = OPNArrayFromStrings(game.screenshotUrls);
+    if (!game.imageUrlsByType.empty()) dict[@"it"] = OPNImageMapToDictionary(game.imageUrlsByType);
     if (!game.genres.empty()) dict[@"g"] = OPNArrayFromStrings(game.genres);
     if (!game.featureLabels.empty()) dict[@"f"] = OPNArrayFromStrings(game.featureLabels);
     if (!game.supportedControls.empty()) dict[@"c"] = OPNArrayFromStrings(game.supportedControls);
@@ -114,6 +136,7 @@ static GameInfo OPNGameFromDictionary(id value) {
     game.imageUrl = OPNStdFromString(dict[@"im"]);
     game.heroImageUrl = OPNStdFromString(dict[@"he"]);
     game.screenshotUrls = OPNStringsFromArray(dict[@"sc"]);
+    game.imageUrlsByType = OPNImageMapFromDictionary(dict[@"it"]);
     game.genres = OPNStringsFromArray(dict[@"g"]);
     game.featureLabels = OPNStringsFromArray(dict[@"f"]);
     game.supportedControls = OPNStringsFromArray(dict[@"c"]);

@@ -190,11 +190,11 @@ static NSString *FirstSafeString(NSDictionary *dictionary, NSArray<NSString *> *
 
 static NSString *FirstLandscapeImageString(NSDictionary *images) {
     return FirstSafeString(images, @[
-        @"TV_BANNER",
+        @"MARQUEE_HERO_IMAGE",
         @"HERO_IMAGE",
-        @"WIDE_ART",
-        @"LANDSCAPE_IMAGE",
-        @"MARQUEE_IMAGE",
+        @"TV_BANNER",
+        @"FEATURE_IMAGE",
+        @"KEY_IMAGE",
         @"KEY_ART"
     ]);
 }
@@ -202,9 +202,7 @@ static NSString *FirstLandscapeImageString(NSDictionary *images) {
 static NSString *FirstPosterImageString(NSDictionary *images) {
     return FirstSafeString(images, @[
         @"GAME_BOX_ART",
-        @"BOX_ART",
-        @"POSTER_IMAGE",
-        @"POSTER",
+        @"KEY_IMAGE",
         @"KEY_ART"
     ]);
 }
@@ -230,6 +228,11 @@ static void AppendUniqueString(std::vector<std::string> &values, NSString *value
     if (value.length == 0) return;
     std::string text = [value UTF8String];
     if (std::find(values.begin(), values.end(), text) == values.end()) values.push_back(text);
+}
+
+static void AppendUniqueStdString(std::vector<std::string> &values, const std::string &value) {
+    if (value.empty()) return;
+    if (std::find(values.begin(), values.end(), value) == values.end()) values.push_back(value);
 }
 
 static void AppendStringValues(std::vector<std::string> &values, id rawValue) {
@@ -283,6 +286,22 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
 
     NSDictionary *images = app[@"images"];
     if (images && [images isKindOfClass:[NSDictionary class]]) {
+        for (id rawKey in images) {
+            NSString *key = [rawKey isKindOfClass:[NSString class]] ? (NSString *)rawKey : @"";
+            if (key.length == 0) continue;
+            id rawValue = images[key];
+            std::vector<std::string> urls;
+            if ([rawValue isKindOfClass:[NSString class]]) {
+                NSString *url = SafeStr(rawValue);
+                if (url.length > 0) AppendUniqueStdString(urls, OptimizeImageURL([url UTF8String], 1200));
+            } else if ([rawValue isKindOfClass:[NSArray class]]) {
+                for (id item in (NSArray *)rawValue) {
+                    NSString *url = SafeStr(item);
+                    if (url.length > 0) AppendUniqueStdString(urls, OptimizeImageURL([url UTF8String], 1200));
+                }
+            }
+            if (!urls.empty()) g.imageUrlsByType[[key UTF8String]] = urls;
+        }
         NSString *landscape = FirstLandscapeImageString(images);
         NSString *poster = FirstPosterImageString(images);
         NSString *primary = landscape ?: poster;
@@ -594,7 +613,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 items {
                     id
                     title
-                    images { KEY_ART GAME_BOX_ART TV_BANNER HERO_IMAGE SCREENSHOTS }
+                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE SCREENSHOTS }
                     variants {
                         id
                         appStore
@@ -633,7 +652,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 items {
                     id
                     title
-                    images { KEY_ART GAME_BOX_ART TV_BANNER HERO_IMAGE SCREENSHOTS }
+                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE SCREENSHOTS }
                     variants {
                         id
                         appStore
@@ -754,7 +773,10 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                     if (game.developerName.empty()) game.developerName = metadataGame.developerName;
                                     if (game.publisherName.empty()) game.publisherName = metadataGame.publisherName;
+                                    if (game.imageUrl.empty()) game.imageUrl = metadataGame.imageUrl;
+                                    if (game.heroImageUrl.empty()) game.heroImageUrl = metadataGame.heroImageUrl;
                                     if (!metadataGame.screenshotUrls.empty()) game.screenshotUrls = metadataGame.screenshotUrls;
+                                    if (!metadataGame.imageUrlsByType.empty()) game.imageUrlsByType = metadataGame.imageUrlsByType;
                                     if (!metadataGame.imageUrl.empty() || !metadataGame.heroImageUrl.empty()) enrichedImages++;
                                     if (game.maxLocalPlayers <= 0) game.maxLocalPlayers = metadataGame.maxLocalPlayers;
                                     if (game.maxOnlinePlayers <= 0) game.maxOnlinePlayers = metadataGame.maxOnlinePlayers;
@@ -1125,6 +1147,8 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
                                         merged.heroImageUrl = g.heroImageUrl;
                                     if (merged.screenshotUrls.empty() && !g.screenshotUrls.empty())
                                         merged.screenshotUrls = g.screenshotUrls;
+                                    if (merged.imageUrlsByType.empty() && !g.imageUrlsByType.empty())
+                                        merged.imageUrlsByType = g.imageUrlsByType;
                                     if (merged.description.empty() && !g.description.empty())
                                         merged.description = g.description;
                                     if (merged.variants.empty())
@@ -1159,6 +1183,11 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
                                     if (existing.imageUrl.empty()) existing.imageUrl = g.imageUrl;
                                     if (existing.heroImageUrl.empty()) existing.heroImageUrl = g.heroImageUrl;
                                     if (!g.screenshotUrls.empty()) existing.screenshotUrls = g.screenshotUrls;
+                                    for (const auto &imageEntry : g.imageUrlsByType) {
+                                        if (existing.imageUrlsByType.find(imageEntry.first) == existing.imageUrlsByType.end()) {
+                                            existing.imageUrlsByType[imageEntry.first] = imageEntry.second;
+                                        }
+                                    }
                                     if (existing.description.empty()) existing.description = g.description;
                                 }
                             }
