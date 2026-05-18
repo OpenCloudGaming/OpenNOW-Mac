@@ -78,6 +78,7 @@ private:
     void *m_inputHeartbeat = nullptr;
     void *m_statsTimer = nullptr;
     void *m_microphoneLevelTimer = nullptr;
+    void *m_audioDeviceMonitorContext = nullptr;
     std::atomic<bool> m_audioDeviceMonitoringActive{false};
     bool m_inputReady = false;
     bool m_reliableOpen = false;
@@ -85,6 +86,8 @@ private:
     bool m_statsRequestInFlight = false;
     bool m_microphoneLevelRequestInFlight = false;
     bool m_microphoneEnabled = false;
+    uint64_t m_audioDeviceChangeGeneration = 0;
+    int m_audioDeviceUnavailableRetryCount = 0;
     uint32_t m_defaultInputDevice = 0;
     uint32_t m_defaultOutputDevice = 0;
     double m_gameVolume = 1.0;

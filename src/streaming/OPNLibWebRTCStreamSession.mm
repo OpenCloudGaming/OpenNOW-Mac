@@ -26,6 +26,14 @@
 #import <MetalKit/MetalKit.h>
 #endif
 
+@interface OPNAudioDeviceMonitorContext : NSObject
+@property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+@property(nonatomic, assign, getter=isActive) BOOL active;
+@end
+
+@implementation OPNAudioDeviceMonitorContext
+@end
+
 namespace OPN {
 
 static constexpr int OPNPartialReliableInputLifetimeMs = 5;
@@ -48,10 +56,11 @@ static OSStatus OPNAudioDevicesChanged(AudioObjectID,
                                        UInt32,
                                        const AudioObjectPropertyAddress *,
                                        void *clientData) {
-    auto *session = static_cast<LibWebRTCStreamSession *>(clientData);
-    if (!session) return noErr;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        session->HandleAudioDeviceChange();
+    OPNAudioDeviceMonitorContext *context = (__bridge OPNAudioDeviceMonitorContext *)clientData;
+    if (!context.isActive || !context.owner) return noErr;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (!context.isActive || !context.owner) return;
+        context.owner->HandleAudioDeviceChange();
     });
     return noErr;
 }
@@ -1581,6 +1590,9 @@ void LibWebRTCStreamSession::HandleVideoFrame(void *frame) {
 
 void LibWebRTCStreamSession::RefreshAudioDevices() {
 #if defined(OPN_HAVE_LIBWEBRTC)
+    OPNAudioDeviceMonitorContext *monitorContext = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+    if (!monitorContext.isActive || !monitorContext.owner) return;
+
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.peerConnection) return;
 
@@ -1603,7 +1615,9 @@ void LibWebRTCStreamSession::RefreshAudioDevices() {
         ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, setIsAudioEnabledSelector, NO);
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (!this->m_impl) return;
+        if (!monitorContext.isActive || !monitorContext.owner) return;
+        LibWebRTCStreamSession *owner = monitorContext.owner;
+        if (!owner->m_impl) return;
         id activeAudioSession = audioSessionClass ? [audioSessionClass performSelector:@selector(sharedInstance)] : nil;
         if (!activeAudioSession) return;
         if ([activeAudioSession respondsToSelector:setIsAudioEnabledSelector]) {
@@ -1615,18 +1629,18 @@ void LibWebRTCStreamSession::RefreshAudioDevices() {
         if (wasManualAudio && !wasAudioEnabled) {
             ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setIsAudioEnabledSelector, NO);
         }
-        OPNLibWebRTCSessionImpl *activeImpl = OPNImplFromOpaque(this->m_impl);
+        OPNLibWebRTCSessionImpl *activeImpl = OPNImplFromOpaque(owner->m_impl);
         if (activeImpl.remoteAudioTrack) {
             activeImpl.remoteAudioTrack.isEnabled = YES;
-            activeImpl.remoteAudioTrack.source.volume = this->m_gameVolume;
+            activeImpl.remoteAudioTrack.source.volume = owner->m_gameVolume;
         }
         if (activeImpl.localMicrophoneTrack) {
-            activeImpl.localMicrophoneTrack.isEnabled = this->m_microphoneEnabled ? YES : NO;
-            activeImpl.localMicrophoneTrack.source.volume = this->m_microphoneVolumeLevel;
+            activeImpl.localMicrophoneTrack.isEnabled = owner->m_microphoneEnabled ? YES : NO;
+            activeImpl.localMicrophoneTrack.source.volume = owner->m_microphoneVolumeLevel;
         }
         OPN::LogInfo(@"[LibWebRTC] audio device refresh applied input=%u output=%u",
-              this->m_defaultInputDevice,
-              this->m_defaultOutputDevice);
+              owner->m_defaultInputDevice,
+              owner->m_defaultOutputDevice);
     });
 #endif
 }
@@ -1645,6 +1659,11 @@ void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
     m_defaultInputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice);
     m_defaultOutputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice);
 
+    OPNAudioDeviceMonitorContext *context = [[OPNAudioDeviceMonitorContext alloc] init];
+    context.owner = this;
+    context.active = YES;
+    m_audioDeviceMonitorContext = (__bridge_retained void *)context;
+
     AudioObjectPropertyAddress devicesAddress = {
         kAudioHardwarePropertyDevices,
         kAudioObjectPropertyScopeGlobal,
@@ -1661,9 +1680,9 @@ void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
         kAudioObjectPropertyElementMain,
     };
 
-    OSStatus devicesStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, this);
-    OSStatus inputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, this);
-    OSStatus outputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, this);
+    OSStatus devicesStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    OSStatus inputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    OSStatus outputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
     OPN::LogInfo(@"[LibWebRTC] audio device monitoring started devices=%d input=%d output=%d currentInput=%u currentOutput=%u",
           devicesStatus,
           inputStatus,
@@ -1700,9 +1719,18 @@ void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
         kAudioObjectPropertyElementMain,
     };
 
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, this);
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, this);
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, this);
+    OPNAudioDeviceMonitorContext *context = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+    context.active = NO;
+    context.owner = nullptr;
+
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    if (m_audioDeviceMonitorContext) {
+        OPNAudioDeviceMonitorContext *releasedContext = (__bridge_transfer OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+        (void)releasedContext;
+        m_audioDeviceMonitorContext = nullptr;
+    }
     m_defaultInputDevice = kAudioObjectUnknown;
     m_defaultOutputDevice = kAudioObjectUnknown;
     OPN::LogInfo(@"[LibWebRTC] audio device monitoring stopped");
@@ -1712,8 +1740,27 @@ void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
 void LibWebRTCStreamSession::HandleAudioDeviceChange() {
     if (!m_audioDeviceMonitoringActive.load()) return;
 
+    const uint64_t generation = ++m_audioDeviceChangeGeneration;
     const AudioDeviceID inputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice);
     const AudioDeviceID outputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice);
+    if (outputDevice == kAudioObjectUnknown) {
+        OPNAudioDeviceMonitorContext *monitorContext = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+        if (m_audioDeviceUnavailableRetryCount < 10) {
+            m_audioDeviceUnavailableRetryCount++;
+            OPN::LogInfo(@"[LibWebRTC] default output device unavailable during hotplug input=%u output=%u retry=%d", inputDevice, outputDevice, m_audioDeviceUnavailableRetryCount);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                if (!monitorContext.isActive || !monitorContext.owner) return;
+                if (monitorContext.owner->m_audioDeviceChangeGeneration != generation) return;
+                monitorContext.owner->HandleAudioDeviceChange();
+            });
+        } else {
+            OPN::LogError(@"[LibWebRTC] default output device remained unavailable after headset hotplug retries");
+        }
+        return;
+    }
+
+    m_audioDeviceUnavailableRetryCount = 0;
+
     const bool inputChanged = inputDevice != m_defaultInputDevice;
     const bool outputChanged = outputDevice != m_defaultOutputDevice;
     if (!inputChanged && !outputChanged) return;

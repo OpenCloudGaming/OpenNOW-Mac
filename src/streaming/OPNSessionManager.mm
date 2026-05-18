@@ -52,6 +52,12 @@ static NSString *StringValue(id value) {
     return [value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0 ? (NSString *)value : nil;
 }
 
+static NSString *StringFromStdString(const std::string &value, NSString *fallback = @"") {
+    if (value.empty()) return fallback ?: @"";
+    NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    return string ?: (fallback ?: @"");
+}
+
 static int PositiveIntValue(id value) {
     if ([value isKindOfClass:[NSNumber class]]) {
         int parsed = [(NSNumber *)value intValue];
@@ -444,15 +450,13 @@ void SessionManager::CreateSession(const std::string &appId,
           settings.maxBitrateMbps,
           settings.enableL4S ? "on" : "off");
 
-    NSString *appIdStr = [NSString stringWithUTF8String:appId.c_str()];
+    NSString *appIdStr = StringFromStdString(appId);
     OPN::LogInfo(@"[SessionManager] appIdStr=%@", appIdStr);
-    if (!appIdStr) {
-        OPN::LogInfo(@"[SessionManager] WARNING: appIdStr is nil!");
-        appIdStr = @"";
-    }
 
-    NSString *internalTitleStr = internalTitle.empty() ? @"" : [NSString stringWithUTF8String:internalTitle.c_str()];
-    if (!internalTitleStr) internalTitleStr = @"";
+    NSString *internalTitleStr = StringFromStdString(internalTitle);
+    NSString *deviceIdStr = StringFromStdString(deviceId);
+    NSString *subSessionIdStr = StringFromStdString(RandomUUID());
+    NSString *selectedStoreStr = settings.selectedStore.empty() ? @"unknown" : StringFromStdString(settings.selectedStore, @"unknown");
 
 
     NSDictionary *sessionRequestData = @{
@@ -462,7 +466,7 @@ void SessionManager::CreateSession(const std::string &appId,
         @"networkTestSessionId": [NSNull null],
         @"parentSessionId": [NSNull null],
         @"clientIdentification": @"GFN-PC",
-        @"deviceHashId": [NSString stringWithUTF8String:deviceId.c_str()],
+        @"deviceHashId": deviceIdStr,
         @"clientVersion": @"30.0",
         @"sdkVersion": @"1.0",
         @"streamerVersion": @1,
@@ -482,14 +486,14 @@ void SessionManager::CreateSession(const std::string &appId,
         @"useOps": @YES,
         @"audioMode": @2,
         @"metaData": @[
-            @{@"key": @"SubSessionId", @"value": [NSString stringWithUTF8String:RandomUUID().c_str()]},
+            @{@"key": @"SubSessionId", @"value": subSessionIdStr},
             @{@"key": @"wssignaling", @"value": @"1"},
             @{@"key": @"GSStreamerType", @"value": @"WebRTC"},
             @{@"key": @"networkType", @"value": @"Unknown"},
             @{@"key": @"ClientImeSupport", @"value": @"0"},
             @{@"key": @"clientPhysicalResolution", @"value": [NSString stringWithFormat:@"{\"horizontalPixels\":%d,\"verticalPixels\":%d}", w, h]},
             @{@"key": @"surroundAudioInfo", @"value": @"2"},
-            @{@"key": @"store", @"value": settings.selectedStore.empty() ? @"unknown" : [NSString stringWithUTF8String:settings.selectedStore.c_str()]},
+            @{@"key": @"store", @"value": selectedStoreStr},
         ],
         @"sdrHdrMode": hdrEnabled ? @1 : @0,
         @"clientDisplayHdrCapabilities": [NSNull null],
@@ -511,13 +515,17 @@ void SessionManager::CreateSession(const std::string &appId,
         @"sessionRequestData": sessionRequestData,
     };
 
-    NSString *layout = [NSString stringWithUTF8String:settings.keyboardLayout.c_str()];
-    NSString *lang = [NSString stringWithUTF8String:settings.gameLanguage.c_str()];
-    if (!layout) layout = @"us";
-    if (!lang) lang = @"en_US";
+    NSString *layout = StringFromStdString(settings.keyboardLayout, @"us");
+    NSString *lang = StringFromStdString(settings.gameLanguage, @"en_US");
+    NSString *baseUrlString = StringFromStdString(baseUrl);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session?keyboardLayout=%@&languageCode=%@",
-                        [NSString stringWithUTF8String:baseUrl.c_str()], layout, lang];
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
+                        baseUrlString, layout, lang];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    if (!url) {
+        completion(false, SessionInfo{}, "Invalid session create URL");
+        return;
+    }
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
     [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
     [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
@@ -531,7 +539,7 @@ void SessionManager::CreateSession(const std::string &appId,
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-make"];
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-model"];
     [req setValue:@"CHROME" forHTTPHeaderField:@"nv-browser-type"];
-    [req setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+    [req setValue:deviceIdStr forHTTPHeaderField:@"x-device-id"];
     [req setValue:@"https://play.geforcenow.com" forHTTPHeaderField:@"Origin"];
 
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
@@ -542,7 +550,7 @@ void SessionManager::CreateSession(const std::string &appId,
     req.HTTPBody = bodyData;
 
     SessionCreateCallback cb = completion;
-    NSString *baseUrlStr = [NSString stringWithUTF8String:baseUrl.c_str()];
+    NSString *baseUrlStr = baseUrlString;
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             if (error || !data) {
@@ -1275,10 +1283,8 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     std::string clientId = RandomUUID();
 
 
-    NSString *sid = [NSString stringWithUTF8String:sessionId.c_str()];
-    NSString *sip = [NSString stringWithUTF8String:serverIp.c_str()];
-    if (!sid) sid = @"";
-    if (!sip) sip = @"";
+    NSString *sid = StringFromStdString(sessionId);
+    NSString *sip = StringFromStdString(serverIp);
 
     OPN::LogInfo(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
           sid,
@@ -1291,7 +1297,10 @@ void SessionManager::ClaimSession(const std::string &sessionId,
           recoveryMode);
 
     NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
-    NSString *subSessionId = [NSString stringWithUTF8String:RandomUUID().c_str()];
+    NSString *subSessionId = StringFromStdString(RandomUUID());
+    NSString *deviceIdString = StringFromStdString(deviceId);
+    NSString *selectedStore = settings.selectedStore.empty() ? @"unknown" : StringFromStdString(settings.selectedStore, @"unknown");
+    NSString *appIdString = StringFromStdString(appId);
 
     NSDictionary *payload = @{
         @"action": @2,
@@ -1303,7 +1312,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             @"networkTestSessionId": [NSNull null],
             @"availableSupportedControllers": @[],
             @"clientVersion": @"30.0",
-            @"deviceHashId": [NSString stringWithUTF8String:deviceId.c_str()],
+            @"deviceHashId": deviceIdString,
             @"internalTitle": [NSNull null],
             @"clientPlatformName": @"windows",
             @"metaData": @[
@@ -1313,13 +1322,13 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                 @{@"key": @"networkType", @"value": @"Unknown"},
                 @{@"key": @"ClientImeSupport", @"value": @"0"},
                 @{@"key": @"surroundAudioInfo", @"value": @"2"},
-                @{@"key": @"store", @"value": settings.selectedStore.empty() ? @"unknown" : [NSString stringWithUTF8String:settings.selectedStore.c_str()]},
+                @{@"key": @"store", @"value": selectedStore},
             ],
             @"surroundAudioInfo": @0,
             @"clientTimezoneOffset": @(timezoneOffset),
             @"clientIdentification": @"GFN-PC",
             @"parentSessionId": [NSNull null],
-            @"appId": @([NSString stringWithUTF8String:appId.c_str()].intValue),
+            @"appId": @(appIdString.intValue),
             @"streamerVersion": @1,
             @"appLaunchMode": @1,
             @"sdkVersion": @"1.0",
@@ -1339,10 +1348,8 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         @"metaData": @[],
     };
 
-    NSString *layout = [NSString stringWithUTF8String:settings.keyboardLayout.c_str()];
-    NSString *lang = [NSString stringWithUTF8String:settings.gameLanguage.c_str()];
-    if (!layout) layout = @"us";
-    if (!lang) lang = @"en_US";
+    NSString *layout = StringFromStdString(settings.keyboardLayout, @"us");
+    NSString *lang = StringFromStdString(settings.gameLanguage, @"en_US");
 
     NSString *claimUrl = [NSString stringWithFormat:@"https://%@/v2/session/%@?keyboardLayout=%@&languageCode=%@",
                           sip, sid, layout, lang];
@@ -1374,7 +1381,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     [validationReq setValue:@"NVIDIA-CLASSIC" forHTTPHeaderField:@"nv-client-streamer"];
     [validationReq setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
     [validationReq setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
-    [validationReq setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+    [validationReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
 
     SessionCreateCallback cb = completion;
 
@@ -1405,7 +1412,12 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         }
 
         OPN::LogInfo(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
-        NSMutableURLRequest *claimReq = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:claimUrl]];
+        NSURL *claimURL = [NSURL URLWithString:claimUrl];
+        if (!claimURL) {
+            cb(false, SessionInfo{}, "Invalid claim URL");
+            return;
+        }
+        NSMutableURLRequest *claimReq = [NSMutableURLRequest requestWithURL:claimURL];
         claimReq.timeoutInterval = 15;
         claimReq.HTTPMethod = @"PUT";
         [claimReq setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
@@ -1419,7 +1431,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         [claimReq setValue:kNvClientVersion forHTTPHeaderField:@"nv-client-version"];
         [claimReq setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
         [claimReq setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
-        [claimReq setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+        [claimReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
         claimReq.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:claimReq completionHandler:^(NSData *cData, NSURLResponse *cResp, NSError *cErr) {

@@ -105,6 +105,12 @@ static os_log_t OPNStreamPerformanceLog() {
     return log;
 }
 
+static NSString *OPNStringFromStdString(const std::string &value, NSString *fallback = @"") {
+    if (value.empty()) return fallback ?: @"";
+    NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    return string ?: (fallback ?: @"");
+}
+
 static bool IsDottedIp(const std::string &value) {
     int dots = 0;
     int digits = 0;
@@ -907,7 +913,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         [strongSelf recordStreamUserActivity];
     };
     [self.streamView setStreamSession:_session];
-    [self.streamView setRecordingGameTitle:[NSString stringWithUTF8String:_gameTitle.c_str()]];
+    [self.streamView setRecordingGameTitle:OPNStringFromStdString(_gameTitle, @"Stream")];
     OPN::LogInfo(@"[StreamVC] loadView called, view=%p", (__bridge void *)view);
 }
 
@@ -1896,11 +1902,12 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             OPN::LogInfo(@"[StreamVC] Signaling Connect callback ignored for stale generation %lu", (unsigned long)launchGeneration);
             return;
         }
-        OPN::LogError(@"[StreamVC] Signaling Connect result: ok=%d, error=%s", ok, err.c_str());
         if (ok) {
+            OPN::LogInfo(@"[StreamVC] Signaling connected");
             [s setLaunchStep:2 message:@"Waiting for stream offer..."];
         }
         if (!ok) {
+            OPN::LogError(@"[StreamVC] Signaling Connect failed: %s", err.c_str());
             std::string errCopy = err;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!s || s->_streamEnded || s->_launchGeneration != launchGeneration) return;
@@ -2057,7 +2064,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         [weakSelf, launchGeneration](const std::string &message, const OPN::SessionInfo &progressSession) {
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
-            NSString *statusMessage = [NSString stringWithUTF8String:message.c_str()];
+            NSString *statusMessage = OPNStringFromStdString(message, @"Waiting for session cleanup...");
             [strongSelf setLaunchStep:0 message:statusMessage ?: @"Waiting for session cleanup..."];
             if (!progressSession.sessionId.empty()) {
                 [strongSelf updateLaunchAdState:progressSession];
@@ -2107,7 +2114,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     _streamEnded = YES;
     NSString *reason = success
         ? @"ended"
-        : (errorMessage.empty() ? @"failed" : [NSString stringWithUTF8String:errorMessage.c_str()]);
+        : (errorMessage.empty() ? @"failed" : OPNStringFromStdString(errorMessage, @"failed"));
     [self finishLaunchMeasurementWithSuccess:success reason:reason];
     if (!success) {
         NSString *message = reason.length > 0 ? reason : @"Stream failed";
