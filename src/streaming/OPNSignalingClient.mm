@@ -1,6 +1,8 @@
 #include "OPNSignalingClient.h"
 #include "common/OPNSentry.h"
 
+#include <errno.h>
+
 #import <Foundation/Foundation.h>
 
 
@@ -103,6 +105,13 @@ static NSString *SignalingConnectionErrorDescription(NSError *error, NSURL *url)
                                       error.localizedDescription ?: @"unknown error"];
 }
 
+static BOOL IsSocketNotConnectedError(NSError *error) {
+    if (!error) return NO;
+    if ([error.domain isEqualToString:NSPOSIXErrorDomain] && error.code == ENOTCONN) return YES;
+    NSError *underlyingError = error.userInfo[NSUnderlyingErrorKey];
+    return IsSocketNotConnectedError(underlyingError);
+}
+
 
 
 
@@ -173,7 +182,11 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
 
 
         if (m_didOpen) {
-            OPN::LogError(@"[Signaling] Post-connection error: %@", error);
+            if (IsSocketNotConnectedError(error)) {
+                OPN::LogInfo(@"[Signaling] Post-connection socket closed: %@", error.localizedDescription ?: @"unknown error");
+            } else {
+                OPN::LogError(@"[Signaling] Post-connection error: %@", error);
+            }
             return;
         }
         NSString *message = SignalingConnectionErrorDescription(error, url);
@@ -299,7 +312,11 @@ void SignalingClient::RearmReceiveHandler() {
         if (!blockSelf->IsCurrentGeneration(generation)) return;
 
         if (err) {
-            OPN::LogError(@"[Signaling] Receive error: %@", err);
+            if (IsSocketNotConnectedError(err)) {
+                OPN::LogInfo(@"[Signaling] Receive stopped after socket closed: %@", err.localizedDescription ?: @"unknown error");
+            } else {
+                OPN::LogError(@"[Signaling] Receive error: %@", err);
+            }
             return;
         }
 
