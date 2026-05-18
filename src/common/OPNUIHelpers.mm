@@ -101,7 +101,8 @@ void OpnSetAutoFullScreenEnabled(BOOL enabled) {
 }
 
 BOOL OpnControllerModeEnabled(void) {
-    return [NSUserDefaults.standardUserDefaults boolForKey:OPNControllerModeDefaultsKey];
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNControllerModeDefaultsKey];
+    return stored ? [NSUserDefaults.standardUserDefaults boolForKey:OPNControllerModeDefaultsKey] : YES;
 }
 
 void OpnSetControllerModeEnabled(BOOL enabled) {
