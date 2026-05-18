@@ -11,20 +11,20 @@ static const CGFloat gControllerCardWidth = 164.0;
 static const CGFloat gImageHeight = gCardWidth * 9.0 / 16.0;
 static const CGFloat gInfoHeight = 0.0;
 static unsigned OPNControllerAccentSoftRGB(void) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0xFFFFFF, 0.42);
+    return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
 }
 
 static unsigned OPNControllerAccentBlackRGB(CGFloat blackMix) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0x000000, blackMix);
+    return OpnBlendRGB(OPN::kBrandGreen, 0x000000, blackMix);
 }
 static CGFloat OPNScaledCardWidth(void) {
     if (OpnControllerModeEnabled()) return gControllerCardWidth;
-    return floor(gCardWidth * OpnPosterSizeScale());
+    return gCardWidth;
 }
 
 static CGFloat OPNScaledCardHeight(void) {
     if (OpnControllerModeEnabled()) return gControllerCardWidth;
-    return floor(gImageHeight * OpnPosterSizeScale());
+    return gImageHeight;
 }
 
 static NSString *OPNStorePrettyName(NSString *name) {
@@ -164,7 +164,6 @@ static NSString *OPNSteamArtworkURLForGame(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSButton *playButton;
 @property (nonatomic, strong) CALayer *reflectionLayer;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
-@property (nonatomic, strong, readwrite) NSColor *artworkAccentColor;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index;
 - (void)applyFocusStyle;
 - (void)updateCurrentStoreLogo;
@@ -299,7 +298,7 @@ using namespace OPN;
 
 - (void)applyFocusStyle {
     BOOL selected = self.controllerFocused;
-    NSColor *accentColor = self.artworkAccentColor ?: OpnColor(OPNControllerAccentSoftRGB());
+    NSColor *accentColor = OpnColor(OPNControllerAccentSoftRGB());
     self.playButton.hidden = OpnControllerModeEnabled() || !selected;
     [CATransaction begin];
     [CATransaction setAnimationDuration:0.22];
@@ -520,19 +519,6 @@ using namespace OPN;
             NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
             OPN::LogInfo(@"[GameCard] image cache hit title=%@ bytes=%lu url=%@", title, (unsigned long)cachedData.length, urlStr);
             self.imageView.image = cachedImage;
-            NSRect imageRect = NSMakeRect(0.0, 0.0, cachedImage.size.width, cachedImage.size.height);
-            CGImageRef cgImage = [cachedImage CGImageForProposedRect:&imageRect context:nil hints:nil];
-            if (cgImage) {
-                __weak __typeof__(self) weakSelf = self;
-                [[OPNCoreAnimationCoordinator sharedCoordinator] extractDominantColorFromImage:cgImage
-                                                                                       cacheKey:urlStr
-                                                                                     completion:^(NSColor *color) {
-                    __typeof__(self) completedSelf = weakSelf;
-                    if (!completedSelf || !color) return;
-                    completedSelf.artworkAccentColor = color;
-                    if (completedSelf.onArtworkAccentColorChanged) completedSelf.onArtworkAccentColorChanged(color);
-                }];
-            }
             return;
         }
     }
@@ -573,19 +559,6 @@ using namespace OPN;
                 if (!strongSelf) return;
                 OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, img.size.width, img.size.height, urlStr);
                 strongSelf.imageView.image = img;
-                NSRect imageRect = NSMakeRect(0.0, 0.0, img.size.width, img.size.height);
-                CGImageRef cgImage = [img CGImageForProposedRect:&imageRect context:nil hints:nil];
-                if (cgImage) {
-                    [[OPNCoreAnimationCoordinator sharedCoordinator] extractDominantColorFromImage:cgImage
-                                                                                           cacheKey:urlStr
-                                                                                         completion:^(NSColor *color) {
-                        __typeof__(self) completedSelf = weakSelf;
-                        if (!completedSelf || !color) return;
-                        completedSelf.artworkAccentColor = color;
-                        if (completedSelf.controllerFocused) [completedSelf applyFocusStyle];
-                        if (completedSelf.onArtworkAccentColorChanged) completedSelf.onArtworkAccentColorChanged(color);
-                    }];
-                }
             });
         }];
     [task resume];

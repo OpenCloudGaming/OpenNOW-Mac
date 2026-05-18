@@ -5,20 +5,8 @@
 
 NSString *const OPNInterfacePreferencesDidChangeNotification = @"OpenNOW.InterfacePreferencesDidChange";
 
-static NSString *const OPNAccentRedDefaultsKey = @"OpenNOW.Interface.AccentRed";
-static NSString *const OPNAccentGreenDefaultsKey = @"OpenNOW.Interface.AccentGreen";
-static NSString *const OPNAccentBlueDefaultsKey = @"OpenNOW.Interface.AccentBlue";
-static NSString *const OPNPosterSizeScaleDefaultsKey = @"OpenNOW.Interface.PosterSizeScale";
-static NSString *const OPNControllerGridItemScaleDefaultsKey = @"OpenNOW.Interface.ControllerGridItemScale";
 static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFullScreen";
 static NSString *const OPNControllerModeDefaultsKey = @"OpenNOW.Interface.ControllerMode";
-static NSString *const OPNBackgroundAnimationDefaultsKey = @"OpenNOW.Interface.BackgroundAnimation";
-static NSString *const OPNDerivedAccentColorsDefaultsKey = @"OpenNOW.Interface.DerivedAccentColors";
-static const CGFloat OPNMinimumPosterSizeScale = 0.80;
-static const CGFloat OPNMaximumPosterSizeScale = 1.30;
-static const CGFloat OPNMinimumControllerGridItemScale = 0.80;
-static const CGFloat OPNMaximumControllerGridItemScale = 1.40;
-static const unsigned OPNDefaultAccentRGB = 0x7CF1B1;
 static const CGFloat OPNBackgroundTintStrength = 0.85;
 
 static int OPNClampedColorByte(NSInteger value) {
@@ -31,62 +19,6 @@ unsigned OpnBlendRGB(unsigned rgb, unsigned target, CGFloat amount) {
     int g = (int)std::round(((rgb >> 8) & 0xFF) * (1.0 - amount) + ((target >> 8) & 0xFF) * amount);
     int b = (int)std::round((rgb & 0xFF) * (1.0 - amount) + (target & 0xFF) * amount);
     return ((unsigned)OPNClampedColorByte(r) << 16) | ((unsigned)OPNClampedColorByte(g) << 8) | (unsigned)OPNClampedColorByte(b);
-}
-
-unsigned OpnCurrentAccentRGB(void) {
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if (![defaults objectForKey:OPNAccentRedDefaultsKey] ||
-        ![defaults objectForKey:OPNAccentGreenDefaultsKey] ||
-        ![defaults objectForKey:OPNAccentBlueDefaultsKey]) {
-        return OPNDefaultAccentRGB;
-    }
-    int r = OPNClampedColorByte([defaults integerForKey:OPNAccentRedDefaultsKey]);
-    int g = OPNClampedColorByte([defaults integerForKey:OPNAccentGreenDefaultsKey]);
-    int b = OPNClampedColorByte([defaults integerForKey:OPNAccentBlueDefaultsKey]);
-    return ((unsigned)r << 16) | ((unsigned)g << 8) | (unsigned)b;
-}
-
-void OpnSetCurrentAccentRGB(unsigned rgb) {
-    rgb &= 0xFFFFFF;
-    if (rgb == OpnCurrentAccentRGB()) return;
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setInteger:(NSInteger)((rgb >> 16) & 0xFF) forKey:OPNAccentRedDefaultsKey];
-    [defaults setInteger:(NSInteger)((rgb >> 8) & 0xFF) forKey:OPNAccentGreenDefaultsKey];
-    [defaults setInteger:(NSInteger)(rgb & 0xFF) forKey:OPNAccentBlueDefaultsKey];
-    [defaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
-}
-
-CGFloat OpnPosterSizeScale(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNPosterSizeScaleDefaultsKey];
-    CGFloat scale = [stored respondsToSelector:@selector(doubleValue)] ? (CGFloat)[stored doubleValue] : 1.0;
-    if (!std::isfinite(scale)) scale = 1.0;
-    return MAX(OPNMinimumPosterSizeScale, MIN(scale, OPNMaximumPosterSizeScale));
-}
-
-void OpnSetPosterSizeScale(CGFloat scale) {
-    if (!std::isfinite(scale)) scale = 1.0;
-    CGFloat clampedScale = MAX(OPNMinimumPosterSizeScale, MIN(scale, OPNMaximumPosterSizeScale));
-    if (std::fabs(clampedScale - OpnPosterSizeScale()) < 0.001) return;
-    [NSUserDefaults.standardUserDefaults setDouble:clampedScale forKey:OPNPosterSizeScaleDefaultsKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
-}
-
-CGFloat OpnControllerGridItemScale(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNControllerGridItemScaleDefaultsKey];
-    CGFloat scale = [stored respondsToSelector:@selector(doubleValue)] ? (CGFloat)[stored doubleValue] : 1.0;
-    if (!std::isfinite(scale)) scale = 1.0;
-    return MAX(OPNMinimumControllerGridItemScale, MIN(scale, OPNMaximumControllerGridItemScale));
-}
-
-void OpnSetControllerGridItemScale(CGFloat scale) {
-    if (!std::isfinite(scale)) scale = 1.0;
-    CGFloat clampedScale = MAX(OPNMinimumControllerGridItemScale, MIN(scale, OPNMaximumControllerGridItemScale));
-    if (std::fabs(clampedScale - OpnControllerGridItemScale()) < 0.001) return;
-    [NSUserDefaults.standardUserDefaults setDouble:clampedScale forKey:OPNControllerGridItemScaleDefaultsKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
 }
 
 BOOL OpnAutoFullScreenEnabled(void) {
@@ -108,30 +40,6 @@ BOOL OpnControllerModeEnabled(void) {
 void OpnSetControllerModeEnabled(BOOL enabled) {
     if (enabled == OpnControllerModeEnabled()) return;
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:OPNControllerModeDefaultsKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
-}
-
-BOOL OpnBackgroundAnimationEnabled(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNBackgroundAnimationDefaultsKey];
-    return stored ? [NSUserDefaults.standardUserDefaults boolForKey:OPNBackgroundAnimationDefaultsKey] : YES;
-}
-
-void OpnSetBackgroundAnimationEnabled(BOOL enabled) {
-    if (enabled == OpnBackgroundAnimationEnabled()) return;
-    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:OPNBackgroundAnimationDefaultsKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
-}
-
-BOOL OpnDerivedAccentColorsEnabled(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNDerivedAccentColorsDefaultsKey];
-    return stored ? [NSUserDefaults.standardUserDefaults boolForKey:OPNDerivedAccentColorsDefaultsKey] : YES;
-}
-
-void OpnSetDerivedAccentColorsEnabled(BOOL enabled) {
-    if (enabled == OpnDerivedAccentColorsEnabled()) return;
-    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:OPNDerivedAccentColorsDefaultsKey];
     [NSUserDefaults.standardUserDefaults synchronize];
     [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
 }
@@ -252,18 +160,11 @@ void OpnPlayConsoleTone(OPNConsoleTone tone) {
 }
 
 static unsigned OpnResolvedInterfaceColor(unsigned rgb) {
-    unsigned accent = OpnCurrentAccentRGB();
     switch (rgb) {
-        case OPN::kBrandGreen: return accent;
-        case OPN::kBrandGreenHover: return OpnBlendRGB(accent, 0xFFFFFF, 0.16);
-        case OPN::kBrandGreenPress: return OpnBlendRGB(accent, 0x000000, 0.18);
-        case OPN::kAccentOn: {
-            CGFloat r = ((accent >> 16) & 0xFF) / 255.0;
-            CGFloat g = ((accent >> 8) & 0xFF) / 255.0;
-            CGFloat b = (accent & 0xFF) / 255.0;
-            CGFloat luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            return luminance >= 0.48 ? 0x06140A : 0xF7FFF9;
-        }
+        case OPN::kBrandGreen: return OPN::kBrandGreen;
+        case OPN::kBrandGreenHover: return OPN::kBrandGreenHover;
+        case OPN::kBrandGreenPress: return OPN::kBrandGreenPress;
+        case OPN::kAccentOn: return OPN::kAccentOn;
         default: break;
     }
     return rgb;

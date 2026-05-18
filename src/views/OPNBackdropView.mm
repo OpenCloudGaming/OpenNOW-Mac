@@ -72,15 +72,15 @@ static unsigned OPNControllerAccentSoftRGB(void);
 @end
 
 static unsigned OPNControllerAccentRGB(void) {
-    return OpnCurrentAccentRGB();
+    return OPN::kBrandGreen;
 }
 
 static unsigned OPNControllerAccentSoftRGB(void) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0xFFFFFF, 0.42);
+    return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
 }
 
 static unsigned OPNControllerAccentBlackRGB(CGFloat blackMix) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0x000000, blackMix);
+    return OpnBlendRGB(OPN::kBrandGreen, 0x000000, blackMix);
 }
 
 static NSImage *OPNHeaderLogoImage(void) {
@@ -208,9 +208,6 @@ static void OPNDrawReferenceHeaderNavItem(NSString *title, NSString *icon, CGFlo
     NSButton *_settingsButton;
     NSButton *_accountButton;
     NSView *_controllerAccountMenuView;
-    NSTimer *_backgroundAnimationTimer;
-    CFTimeInterval _backgroundAnimationStartTime;
-    unsigned _controllerAccentRGB;
 }
 
 static NSAttributedString *OPNMenuTitle(NSString *title, NSColor *color, NSFontWeight weight) {
@@ -238,8 +235,6 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         _libraryButton = [self navigationHitButtonWithAction:@selector(libraryButtonPressed:)];
         _settingsButton = [self navigationHitButtonWithAction:@selector(settingsButtonPressed:)];
         _accountButton = [self navigationHitButtonWithAction:@selector(accountButtonPressed:)];
-        _controllerAccentRGB = OPNControllerAccentRGB();
-        _backgroundAnimationStartTime = CACurrentMediaTime();
         [self addSubview:_storeButton];
         [self addSubview:_libraryButton];
         [self addSubview:_settingsButton];
@@ -254,38 +249,15 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [_backgroundAnimationTimer invalidate];
-}
-
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    if (self.window) {
-        [self startControllerBackgroundAnimationIfNeeded];
-    } else {
-        [_backgroundAnimationTimer invalidate];
-        _backgroundAnimationTimer = nil;
-    }
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
-    if (!OpnBackgroundAnimationEnabled()) {
-        [_backgroundAnimationTimer invalidate];
-        _backgroundAnimationTimer = nil;
-    }
-    [self setNeedsDisplay:YES];
-    [self startControllerBackgroundAnimationIfNeeded];
-}
-
-- (void)setControllerAccentRGB:(unsigned)controllerAccentRGB {
-    controllerAccentRGB &= 0xFFFFFF;
-    if (_controllerAccentRGB == controllerAccentRGB) return;
-    _controllerAccentRGB = controllerAccentRGB;
     [self setNeedsDisplay:YES];
 }
 
 - (unsigned)resolvedControllerAccentRGB {
-    return _controllerAccentRGB ? _controllerAccentRGB : OPNControllerAccentRGB();
+    return OPNControllerAccentRGB();
 }
 
 - (unsigned)resolvedControllerAccentSoftRGB {
@@ -294,31 +266,6 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 
 - (unsigned)resolvedControllerAccentBlackRGB:(CGFloat)blackMix {
     return OpnBlendRGB([self resolvedControllerAccentRGB], 0x000000, blackMix);
-}
-
-- (void)startControllerBackgroundAnimationIfNeeded {
-    if (OpnControllerModeEnabled()) {
-        [_backgroundAnimationTimer invalidate];
-        _backgroundAnimationTimer = nil;
-        return;
-    }
-    if (!OpnControllerModeEnabled() || !OpnBackgroundAnimationEnabled() || _backgroundAnimationTimer || !self.window) return;
-    _backgroundAnimationTimer = [NSTimer timerWithTimeInterval:(1.0 / 60.0)
-                                                        target:self
-                                                      selector:@selector(backgroundAnimationTick:)
-                                                      userInfo:nil
-                                                       repeats:YES];
-    [NSRunLoop.mainRunLoop addTimer:_backgroundAnimationTimer forMode:NSRunLoopCommonModes];
-}
-
-- (void)backgroundAnimationTick:(NSTimer *)timer {
-    (void)timer;
-    if (!OpnControllerModeEnabled() || !OpnBackgroundAnimationEnabled() || !self.window) {
-        [_backgroundAnimationTimer invalidate];
-        _backgroundAnimationTimer = nil;
-        return;
-    }
-    [self setNeedsDisplay:YES];
 }
 
 - (NSButton *)navigationHitButtonWithAction:(SEL)action {
@@ -366,8 +313,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 }
 
 - (void)drawControllerElectricBackgroundInRect:(NSRect)bounds {
-    BOOL animationEnabled = OpnBackgroundAnimationEnabled();
-    CGFloat phase = animationEnabled ? (CGFloat)(CACurrentMediaTime() - _backgroundAnimationStartTime) : 0.0;
+    CGFloat phase = 0.0;
     CGFloat tintStrength = OpnBackgroundTintStrength();
     CGFloat baseBlackA = 0.18 + 0.71 * tintStrength;
     CGFloat baseBlackB = 0.10 + 0.71 * tintStrength;
@@ -430,7 +376,6 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 - (void)setMode:(OPNBackdropMode)mode {
     _mode = mode;
     [self dismissControllerAccountMenu];
-    [self startControllerBackgroundAnimationIfNeeded];
     [self setNeedsDisplay:YES];
 }
 

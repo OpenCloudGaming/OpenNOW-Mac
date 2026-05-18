@@ -90,25 +90,15 @@ static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat wi
 }
 
 static unsigned OPNControllerAccentRGB(void) {
-    return OpnCurrentAccentRGB();
+    return OPN::kBrandGreen;
 }
 
 static unsigned OPNControllerAccentSoftRGB(void) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0xFFFFFF, 0.42);
+    return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
 }
 
 static unsigned OPNControllerAccentBlackRGB(CGFloat blackMix) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0x000000, blackMix);
-}
-
-static unsigned OPNRGBFromColor(NSColor *color, unsigned fallbackRGB) {
-    if (!color) return fallbackRGB;
-    NSColor *rgbColor = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-    if (!rgbColor) return fallbackRGB;
-    NSInteger red = (NSInteger)lrint(MAX(0.0, MIN(1.0, rgbColor.redComponent)) * 255.0);
-    NSInteger green = (NSInteger)lrint(MAX(0.0, MIN(1.0, rgbColor.greenComponent)) * 255.0);
-    NSInteger blue = (NSInteger)lrint(MAX(0.0, MIN(1.0, rgbColor.blueComponent)) * 255.0);
-    return ((unsigned)red << 16) | ((unsigned)green << 8) | (unsigned)blue;
+    return OpnBlendRGB(OPN::kBrandGreen, 0x000000, blackMix);
 }
 
 static NSString *OPNCatalogString(const std::string &value, NSString *fallback = @"") {
@@ -655,7 +645,6 @@ static NSString *OPNReferencePromptLetter(NSString *button) {
 @property (nonatomic, copy) NSString *controlInfo;
 @property (nonatomic, copy) NSString *currentStoreInfo;
 @property (nonatomic, copy) NSString *storeInfo;
-@property (nonatomic, assign) unsigned accentRGB;
 @end
 
 @interface OPNControllerCategoryCardView : NSView
@@ -855,7 +844,6 @@ static NSString *OPNReferencePromptLetter(NSString *button) {
     self = [super initWithFrame:frame];
     if (self) {
         self.wantsLayer = YES;
-        _accentRGB = OPNControllerAccentRGB();
         _gameTitle = @"";
         _genreSummary = @"";
         _launchStatus = @"";
@@ -869,13 +857,6 @@ static NSString *OPNReferencePromptLetter(NSString *button) {
 }
 
 - (BOOL)isFlipped { return YES; }
-
-- (void)setAccentRGB:(unsigned)accentRGB {
-    accentRGB &= 0xFFFFFF;
-    if (_accentRGB == accentRGB) return;
-    _accentRGB = accentRGB;
-    [self setNeedsDisplay:YES];
-}
 
 - (void)setGameTitle:(NSString *)gameTitle {
     _gameTitle = [gameTitle copy] ?: @"";
@@ -966,7 +947,7 @@ static NSString *OPNReferencePromptLetter(NSString *button) {
 
     NSRect glowRect = NSMakeRect(22.0, 20.0, 72.0, 4.0);
     NSBezierPath *glow = [NSBezierPath bezierPathWithRoundedRect:glowRect xRadius:2.0 yRadius:2.0];
-    [OpnColor(self.accentRGB, 0.86) setFill];
+    [OpnColor(OPNControllerAccentRGB(), 0.86) setFill];
     [glow fill];
 
     [@"GAME HUB" drawInRect:NSMakeRect(22.0, 34.0, NSWidth(bounds) - 44.0, 18.0)
@@ -979,7 +960,7 @@ static NSString *OPNReferencePromptLetter(NSString *button) {
     CGFloat playY = 126.0;
     NSRect playRect = NSMakeRect(22.0, playY, NSWidth(bounds) - 44.0, 54.0);
     NSBezierPath *play = [NSBezierPath bezierPathWithRoundedRect:playRect xRadius:20.0 yRadius:20.0];
-    NSGradient *playGradient = [[NSGradient alloc] initWithStartingColor:OpnColor(self.accentRGB, 0.92)
+    NSGradient *playGradient = [[NSGradient alloc] initWithStartingColor:OpnColor(OPNControllerAccentRGB(), 0.92)
                                                              endingColor:OpnColor(OPNControllerAccentSoftRGB(), 0.92)];
     [playGradient drawInBezierPath:play angle:0.0];
     [@"Play Now" drawInRect:NSMakeRect(NSMinX(playRect) + 18.0, NSMinY(playRect) + 15.0, NSWidth(playRect) * 0.48, 24.0)
@@ -1802,15 +1783,6 @@ using namespace OPN;
                 s.onSelectGame(gameCopy, variantIdx >= 0 ? variantIdx : 0);
             }
         };
-        card.onArtworkAccentColorChanged = ^(NSColor *color) {
-            (void)color;
-            __typeof__(self) s = weakSelf;
-            OPNGameCardView *c = weakCard;
-            if (!s || !c) return;
-            NSUInteger cardIndex = [s.cardViews indexOfObject:c];
-            if (cardIndex == NSNotFound || (NSInteger)cardIndex != s.focusedCardIndex) return;
-            [s updateControllerDetailContent];
-        };
         [_gridContentView addSubview:card];
         [_cardViews addObject:card];
 
@@ -1849,7 +1821,7 @@ using namespace OPN;
     BOOL showLastPlayedTile = !self.lastPlayedPanelView.hidden;
     self.controllerOverviewSpecialTileKind = showLastPlayedTile ? OPNControllerOverviewSpecialTileLastPlayed : OPNControllerOverviewSpecialTileNone;
 
-    CGFloat scale = OpnControllerGridItemScale();
+    CGFloat scale = 1.0;
     CGFloat spacing = floor(34.0 * scale);
     CGFloat cardWidth = floor(164.0 * scale);
     CGFloat cardHeight = floor(cardWidth * 178.0 / 220.0);
@@ -2138,15 +2110,6 @@ using namespace OPN;
             NSUInteger cardIndex = [strongSelf.cardViews indexOfObject:strongCard];
             if (cardIndex != NSNotFound) [strongSelf focusCardAtIndex:strongSelf.controllerLibraryWindowStartIndex + (NSInteger)cardIndex scrollIntoView:NO];
             if (strongSelf.onSelectGame) strongSelf.onSelectGame(gameCopy, strongCard.selectedVariantIndex >= 0 ? strongCard.selectedVariantIndex : 0);
-        };
-        card.onArtworkAccentColorChanged = ^(NSColor *color) {
-            (void)color;
-            __typeof__(self) strongSelf = weakSelf;
-            OPNGameCardView *strongCard = weakCard;
-            if (!strongSelf || !strongCard) return;
-            NSUInteger cardIndex = [strongSelf.cardViews indexOfObject:strongCard];
-            if (cardIndex == NSNotFound || strongSelf.controllerLibraryWindowStartIndex + (NSInteger)cardIndex != strongSelf.focusedCardIndex) return;
-            [strongSelf updateControllerDetailContent];
         };
         [railView addSubview:card];
         [self.cardViews addObject:card];
@@ -3071,15 +3034,6 @@ using namespace OPN;
             s.onSelectGame(gameCopy, variantIdx >= 0 ? variantIdx : 0);
         }
     };
-    card.onArtworkAccentColorChanged = ^(NSColor *color) {
-        (void)color;
-        __typeof__(self) s = weakSelf;
-        OPNGameCardView *c = weakCard;
-        if (!s || !c) return;
-        NSUInteger cardIndex = [s.cardViews indexOfObject:c];
-        if (cardIndex == NSNotFound || (NSInteger)cardIndex != s.focusedCardIndex) return;
-        [s updateControllerDetailContent];
-    };
     [self.gridContentView addSubview:card];
     [self.cardViews addObject:card];
     self.controllerRenderedGameCount = (NSInteger)self.cardViews.count;
@@ -3160,11 +3114,8 @@ using namespace OPN;
 - (void)updateControllerDetailContent {
     if (!OpnControllerModeEnabled()) return;
     OPNGameCardView *card = [self focusedCard];
-    NSColor *cardAccentColor = card.artworkAccentColor;
-    NSColor *detailAccentColor = cardAccentColor ?: OpnColor(OPNControllerAccentRGB());
-    NSColor *detailAccentSoftColor = cardAccentColor ?: OpnColor(OPNControllerAccentSoftRGB());
-    unsigned detailAccentRGB = OPNRGBFromColor(cardAccentColor, OPNControllerAccentRGB());
-    if (self.onFocusedArtworkAccentChanged) self.onFocusedArtworkAccentChanged(detailAccentRGB);
+    NSColor *detailAccentColor = OpnColor(OPNControllerAccentRGB());
+    NSColor *detailAccentSoftColor = OpnColor(OPNControllerAccentSoftRGB());
     CATransition *fade = [CATransition animation];
     fade.type = kCATransitionFade;
     fade.duration = 0.18;
@@ -3179,7 +3130,6 @@ using namespace OPN;
     self.controllerDetailGradientLayer.opacity = 0.0;
     self.controllerDetailAccentLayer.backgroundColor = [detailAccentSoftColor colorWithAlphaComponent:0.90].CGColor;
     self.controllerDetailView.layer.shadowColor = detailAccentColor.CGColor;
-    self.controllerGameHubView.accentRGB = detailAccentRGB;
     [CATransaction commit];
     if (!card) {
         self.controllerDetailBackgroundView.image = nil;
@@ -3456,7 +3406,7 @@ using namespace OPN;
                                                     metadataContainer:self.controllerDetailView
                                                       backgroundLayer:self.controllerDetailBackgroundView.layer
                                                              expanded:YES
-                                                          accentColor:card.artworkAccentColor ?: OpnColor(OPNControllerAccentRGB())];
+                                                          accentColor:OpnColor(OPNControllerAccentRGB())];
 }
 
 - (void)closeGameDetails {

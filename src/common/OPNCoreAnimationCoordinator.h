@@ -28,8 +28,4 @@
 
 - (void)configureMetalViewForProMotion:(MTKView *)metalView;
 
-- (void)extractDominantColorFromImage:(CGImageRef)image
-                              cacheKey:(NSString *)cacheKey
-                            completion:(void (^)(NSColor *color))completion;
-
 @end

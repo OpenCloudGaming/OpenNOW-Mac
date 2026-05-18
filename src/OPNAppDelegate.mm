@@ -410,8 +410,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self transitionToScreen:OPN::AuthScreen::Catalog];
         return;
     }
-    if (!self.rootView || OpnDerivedAccentColorsEnabled()) return;
-    self.rootView.controllerAccentRGB = OpnCurrentAccentRGB();
 }
 
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen {
@@ -797,12 +795,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf || !strongSelf.rootView) return;
                 strongSelf.rootView.gameCountText = [NSString stringWithFormat:@"%ld %@", (long)count, count == 1 ? @"game" : @"games"];
-            };
-
-            catalog.onFocusedArtworkAccentChanged = ^(unsigned accentRGB) {
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf || !strongSelf.rootView) return;
-                strongSelf.rootView.controllerAccentRGB = OpnDerivedAccentColorsEnabled() ? accentRGB : OpnCurrentAccentRGB();
             };
 
             catalog.onInterfaceSettingsRequested = ^{

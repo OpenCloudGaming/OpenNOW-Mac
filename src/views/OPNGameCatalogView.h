@@ -8,7 +8,6 @@
 @property (nonatomic, copy) void (^onSignOut)();
 @property (nonatomic, copy) void (^onGameCountChanged)(NSInteger count);
 @property (nonatomic, copy) void (^onCatalogBrowseRequested)(NSString *searchQuery, NSString *sortId, const std::vector<std::string> &filterIds);
-@property (nonatomic, copy) void (^onFocusedArtworkAccentChanged)(unsigned accentRGB);
 @property (nonatomic, copy) void (^onInterfaceSettingsRequested)(void);
 @property (nonatomic, copy) void (^onRestartRequested)(void);
 @property (nonatomic, copy) void (^onExitRequested)(void);

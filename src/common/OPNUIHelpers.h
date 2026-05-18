@@ -8,20 +8,10 @@ unsigned OpnBlendRGB(unsigned rgb, unsigned target, CGFloat amount);
 
 extern NSString *const OPNInterfacePreferencesDidChangeNotification;
 
-unsigned OpnCurrentAccentRGB(void);
-void OpnSetCurrentAccentRGB(unsigned rgb);
-CGFloat OpnPosterSizeScale(void);
-void OpnSetPosterSizeScale(CGFloat scale);
-CGFloat OpnControllerGridItemScale(void);
-void OpnSetControllerGridItemScale(CGFloat scale);
 BOOL OpnAutoFullScreenEnabled(void);
 void OpnSetAutoFullScreenEnabled(BOOL enabled);
 BOOL OpnControllerModeEnabled(void);
 void OpnSetControllerModeEnabled(BOOL enabled);
-BOOL OpnBackgroundAnimationEnabled(void);
-void OpnSetBackgroundAnimationEnabled(BOOL enabled);
-BOOL OpnDerivedAccentColorsEnabled(void);
-void OpnSetDerivedAccentColorsEnabled(BOOL enabled);
 CGFloat OpnBackgroundTintStrength(void);
 
 typedef NS_ENUM(NSInteger, OPNConsoleTone) {
