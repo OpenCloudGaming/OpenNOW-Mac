@@ -347,6 +347,7 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
 @property (nonatomic, strong) NSTextField *streamPipTitleLabel;
 @property (nonatomic, strong) NSTextField *streamPipHintLabel;
 @property (nonatomic, strong) NSButton *streamPipButton;
+@property (nonatomic, strong) OPNStoreGameTile *heroTile;
 @property (nonatomic, weak) NSView *streamPipContentView;
 @property (nonatomic, assign) NSInteger currentHeroIndex;
 @property (nonatomic, assign) NSInteger focusedRowIndex;
@@ -360,6 +361,8 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
 - (void)controllerDidConnect:(NSNotification *)notification;
 - (void)controllerDidDisconnect:(NSNotification *)notification;
 - (void)addControllerRailLabel:(NSString *)title y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
+- (OPNStoreGameTile *)configuredHeroGameTile:(const OPN::GameInfo &)game frame:(NSRect)frame;
+- (void)updateHeroTileOnly;
 @end
 
 @implementation OPNStoreView
@@ -588,7 +591,7 @@ using namespace OPN;
     NSInteger candidateCount = [self heroCandidateCount];
     if (candidateCount < 2) return;
     self.currentHeroIndex = (self.currentHeroIndex + 1) % candidateCount;
-    [self renderStore];
+    [self updateHeroTileOnly];
 }
 
 - (void)layout {
@@ -621,6 +624,7 @@ using namespace OPN;
 }
 
 - (void)renderStore {
+    self.heroTile = nil;
     for (NSView *view in [self.documentView.subviews copy]) {
         [view removeFromSuperview];
     }
@@ -749,7 +753,14 @@ using namespace OPN;
 
 - (void)addHeroGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
     NSRect heroRect = NSMakeRect(contentX, y, width, height);
-    OPNStoreGameTile *hero = [[OPNStoreGameTile alloc] initWithFrame:heroRect game:game prominent:YES];
+    OPNStoreGameTile *hero = [self configuredHeroGameTile:game frame:heroRect];
+    [self.documentView addSubview:hero];
+    self.heroTile = hero;
+    if (OpnControllerModeEnabled()) [self.rowCards addObject:[NSMutableArray arrayWithObject:hero]];
+}
+
+- (OPNStoreGameTile *)configuredHeroGameTile:(const GameInfo &)game frame:(NSRect)frame {
+    OPNStoreGameTile *hero = [[OPNStoreGameTile alloc] initWithFrame:frame game:game prominent:YES];
     hero.selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
     __weak __typeof__(self) weakSelf = self;
     __weak OPNStoreGameTile *weakHero = hero;
@@ -759,8 +770,26 @@ using namespace OPN;
         if (!strongSelf || !strongHero || !strongSelf.onSelectGame) return;
         strongSelf.onSelectGame(strongHero.game, strongHero.selectedVariantIndex);
     };
-    [self.documentView addSubview:hero];
-    if (OpnControllerModeEnabled()) [self.rowCards addObject:[NSMutableArray arrayWithObject:hero]];
+    return hero;
+}
+
+- (void)updateHeroTileOnly {
+    const GameInfo *heroGame = [self currentHeroGame];
+    if (!heroGame || !self.heroTile || self.heroTile.superview != self.documentView) {
+        [self renderStore];
+        return;
+    }
+
+    NSRect heroFrame = self.heroTile.frame;
+    OPNStoreGameTile *oldHero = self.heroTile;
+    OPNStoreGameTile *newHero = [self configuredHeroGameTile:*heroGame frame:heroFrame];
+    [self.documentView replaceSubview:oldHero with:newHero];
+    self.heroTile = newHero;
+
+    if (OpnControllerModeEnabled() && self.rowCards.count > 0) {
+        self.rowCards[0] = [NSMutableArray arrayWithObject:newHero];
+        [self updateFocusedTiles];
+    }
 }
 
 - (void)addSection:(const PanelSection &)section index:(NSInteger)sectionIndex y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {

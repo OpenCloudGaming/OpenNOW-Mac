@@ -10,10 +10,6 @@ static const CGFloat gCardWidth = 220.0;
 static const CGFloat gControllerCardWidth = 164.0;
 static const CGFloat gImageHeight = gCardWidth * 9.0 / 16.0;
 static const CGFloat gInfoHeight = 0.0;
-static unsigned OPNControllerAccentRGB(void) {
-    return OpnCurrentAccentRGB();
-}
-
 static unsigned OPNControllerAccentSoftRGB(void) {
     return OpnBlendRGB(OpnCurrentAccentRGB(), 0xFFFFFF, 0.42);
 }
@@ -89,7 +85,7 @@ static NSImage *OPNStoreIconImage(NSString *name) {
     }
     if (!image) return nil;
 
-    [image setTemplate:YES];
+    [image setTemplate:NO];
     cache[assetName] = image;
     return image;
 }
@@ -108,8 +104,8 @@ static NSString *OPNStoreIconGlyph(NSString *name) {
 
 static NSColor *OPNStoreIconColor(NSString *name, BOOL selected) {
     (void)name;
-    CGFloat alpha = selected ? 0.96 : 0.68;
-    return OpnColor(OPNControllerAccentSoftRGB(), alpha);
+    CGFloat alpha = selected ? 0.96 : 0.76;
+    return OpnColor(0xF4F5F7, alpha);
 }
 
 static NSFont *OPNStoreIconFont(NSString *glyph) {
@@ -331,7 +327,6 @@ using namespace OPN;
             chip.image = iconImage;
             chip.imagePosition = NSImageOnly;
             chip.imageScaling = NSImageScaleProportionallyDown;
-            chip.contentTintColor = OPNStoreIconColor(name, selected);
         } else {
             chip.attributedTitle = [[NSAttributedString alloc] initWithString:glyph
                                                                     attributes:@{
@@ -348,12 +343,12 @@ using namespace OPN;
         chip.toolTip = OPNStorePrettyName(name ?: @"");
 
         if (selected) {
-            chip.layer.backgroundColor = OpnColor(OPNControllerAccentRGB(), 0.18).CGColor;
+            chip.layer.backgroundColor = OpnColor(0x05070A, 0.62).CGColor;
             chip.layer.borderWidth = 1.0;
-            chip.layer.borderColor = OPNStoreIconColor(name, YES).CGColor;
+            chip.layer.borderColor = OpnColor(0xFFFFFF, 0.34).CGColor;
         } else {
-            chip.layer.backgroundColor = OpnColor(OPNControllerAccentRGB(), 0.08).CGColor;
-            chip.layer.borderColor = OpnColor(OPNControllerAccentRGB(), 0.14).CGColor;
+            chip.layer.backgroundColor = OpnColor(0x05070A, 0.34).CGColor;
+            chip.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
             chip.layer.borderWidth = 1;
         }
 
