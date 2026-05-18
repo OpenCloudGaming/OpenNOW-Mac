@@ -1740,7 +1740,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     NSString *message = [NSString stringWithFormat:@"Connection interrupted. Reconnecting (%ld/%ld)...",
                          (long)_recoveryAttempt,
                          (long)OPNMaxAutomaticRecoveryAttempts];
-    OPN::LogError(@"[StreamVC] Starting automatic recovery attempt %ld/%ld in %.2fs after error: %s",
+    OPN::LogInfo(@"[StreamVC] Starting automatic recovery attempt %ld/%ld in %.2fs after error: %s",
           (long)_recoveryAttempt,
           (long)OPNMaxAutomaticRecoveryAttempts,
           delay,
