@@ -92,6 +92,7 @@ static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 - (void)connectWithSessionInfo:(const OPN::SessionInfo &)sessionInfo
                         settings:(const OPN::StreamSettings &)settings
                 launchGeneration:(NSUInteger)launchGeneration;
+- (void)refreshStreamViewLayoutForCurrentContainer;
 @end
 
 static os_log_t OPNStreamPerformanceLog() {
@@ -904,9 +905,21 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)restoreFromLibraryPictureInPicture {
     self.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [self refreshStreamViewLayoutForCurrentContainer];
     [self.streamView setInputSuspendedForLibraryOverlay:NO];
     [self installQuitShortcutMonitor];
     [self.streamView takeFocus];
+}
+
+- (void)refreshStreamViewLayoutForCurrentContainer {
+    NSView *container = self.view.superview;
+    if (container && NSWidth(container.bounds) > 0.0 && NSHeight(container.bounds) > 0.0) {
+        self.view.frame = container.bounds;
+    }
+    self.streamView.frame = self.view.bounds;
+    [self.view setNeedsLayout:YES];
+    [self.streamView setNeedsLayout:YES];
+    [self.view layoutSubtreeIfNeeded];
 }
 
 - (void)viewDidLoad {
@@ -933,6 +946,9 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)viewDidLayout {
     [super viewDidLayout];
+    if (self.view.superview && !NSEqualRects(self.view.frame, self.view.superview.bounds)) {
+        [self refreshStreamViewLayoutForCurrentContainer];
+    }
     if (self.statsOverlay) {
         self.statsOverlay.frame = [self statsOverlayFrame];
     }
