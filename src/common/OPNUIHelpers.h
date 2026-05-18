@@ -23,8 +23,6 @@ void OpnSetBackgroundAnimationEnabled(BOOL enabled);
 BOOL OpnDerivedAccentColorsEnabled(void);
 void OpnSetDerivedAccentColorsEnabled(BOOL enabled);
 CGFloat OpnBackgroundTintStrength(void);
-uint16_t OpnControllerLibraryShortcutMask(void);
-void OpnSetControllerLibraryShortcutMask(uint16_t mask);
 
 typedef NS_ENUM(NSInteger, OPNConsoleTone) {
     OPNConsoleToneMove = 0,

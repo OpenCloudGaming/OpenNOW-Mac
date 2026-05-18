@@ -31,7 +31,6 @@
 @property (nonatomic, strong) OPNStreamViewController *streamingController;
 @property (nonatomic, copy) NSString *currentStreamTitle;
 @property (nonatomic, assign) OPN::AuthScreen activeStreamReturnScreen;
-@property (nonatomic, assign) BOOL streamLibraryOverlayActive;
 @property (nonatomic, strong) NSTimer *gameLibraryRefreshTimer;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> cachedGameLibrary;
 @property (nonatomic, assign) std::string cachedGameLibraryFingerprint;
@@ -53,10 +52,7 @@
 - (void)startGameLibraryRefreshTimer;
 - (void)stopGameLibraryRefreshTimer;
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen;
-- (void)showLibraryOverlayForActiveStream;
-- (void)returnToActiveStreamFromLibraryOverlay;
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen;
-- (void)attachActiveStreamPictureInPictureIfNeeded;
 - (void)restartApplication;
 - (void)loadStorePanelsWithRetry:(BOOL)canRetry;
 - (void)refreshGameLibraryInBackground;
@@ -102,6 +98,13 @@ static void OPNConfigureLibraryWindow(NSWindow *window) {
     OPNConfigureResizableWindow(window,
                                 NSMakeSize(OPN::kWindowMinWidth, OPN::kWindowMinHeight),
                                 OPNResizableWindowMaxSize());
+    window.styleMask = window.styleMask | NSWindowStyleMaskFullSizeContentView;
+    window.titleVisibility = NSWindowTitleHidden;
+    window.titlebarAppearsTransparent = YES;
+    window.movableByWindowBackground = YES;
+    [window standardWindowButton:NSWindowCloseButton].hidden = NO;
+    [window standardWindowButton:NSWindowMiniaturizeButton].hidden = NO;
+    [window standardWindowButton:NSWindowZoomButton].hidden = NO;
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     window.backgroundColor = OpnColor(OPN::kBackground);
 }
@@ -453,7 +456,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                                       selectedStore:selectedStore];
     self.currentStreamTitle = game.title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:game.title.c_str()];
     self.activeStreamReturnScreen = returnScreen;
-    self.streamLibraryOverlayActive = NO;
 
     __weak __typeof__(self) weakSelf = self;
     streamVC.onStreamEnd = ^(BOOL success, const std::string &error) {
@@ -462,20 +464,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
             OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
-            strongSelf.streamLibraryOverlayActive = NO;
             [strongSelf transitionToScreen:returnScreen];
             strongSelf.streamingController = nil;
             strongSelf.currentStreamTitle = nil;
             if (!success && !errorCopy.empty()) {
                 [strongSelf showError:errorCopy canRetry:YES];
             }
-        });
-    };
-    streamVC.onControllerLibraryRequested = ^{
-        __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf showLibraryOverlayForActiveStream];
         });
     };
 
@@ -499,55 +493,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         });
     }
     OPN::LogInfo(@"[AppDelegate] Window setup complete");
-}
-
-- (void)showLibraryOverlayForActiveStream {
-    if (!self.streamingController || self.streamLibraryOverlayActive) return;
-    self.streamLibraryOverlayActive = YES;
-    [self.streamingController prepareForLibraryPictureInPicture];
-    [self transitionToScreen:OPN::AuthScreen::Catalog];
-}
-
-- (void)returnToActiveStreamFromLibraryOverlay {
-    if (!self.streamingController) return;
-    NSRect preservedFrame = self.window.frame;
-    BOOL preserveFrame = !OPNWindowIsFullScreen(self.window);
-    NSView *streamView = [self.streamingController streamPictureInPictureView];
-    [streamView removeFromSuperview];
-    [self.streamingController setInitialViewFrame:self.window.contentView.bounds];
-    self.streamingController.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    OPNConfigureStreamWindow(self.window);
-    self.window.contentViewController = self.streamingController;
-    OpnDisableFocusHighlights(self.streamingController.view);
-    if (preserveFrame) {
-        [self.window setFrame:preservedFrame display:YES animate:NO];
-    }
-    self.streamLibraryOverlayActive = NO;
-    [self.streamingController restoreFromLibraryPictureInPicture];
-    [self.window makeKeyAndOrderFront:nil];
-}
-
-- (void)attachActiveStreamPictureInPictureIfNeeded {
-    if (!self.streamingController || !self.streamLibraryOverlayActive) return;
-    NSView *pipView = [self.streamingController streamPictureInPictureView];
-    NSString *title = self.currentStreamTitle ?: @"Current Stream";
-    if (self.currentScreen == OPN::AuthScreen::Catalog && self.catalogView) {
-        [self.catalogView setStreamPictureInPictureView:pipView title:title];
-        __weak __typeof__(self) weakSelf = self;
-        self.catalogView.onStreamPictureInPictureSelected = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf returnToActiveStreamFromLibraryOverlay];
-        };
-    } else if (self.currentScreen == OPN::AuthScreen::Store && self.storeView) {
-        [self.storeView setStreamPictureInPictureView:pipView title:title];
-        __weak __typeof__(self) weakSelf = self;
-        self.storeView.onStreamPictureInPictureSelected = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf returnToActiveStreamFromLibraryOverlay];
-        };
-    }
 }
 
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen {
@@ -604,38 +549,21 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                                                                        resumeServer:activeSession.serverIp];
             strongSelf.currentStreamTitle = streamTitle;
             strongSelf.activeStreamReturnScreen = screen;
-            strongSelf.streamLibraryOverlayActive = YES;
             __weak __typeof__(strongSelf) streamWeakSelf = strongSelf;
             streamVC.onStreamEnd = ^(BOOL success, const std::string &streamError) {
                 __typeof__(strongSelf) streamStrongSelf = streamWeakSelf;
                 if (!streamStrongSelf) return;
                 std::string errorCopy = streamError;
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    BOOL wasOverlayActive = streamStrongSelf.streamLibraryOverlayActive;
                     OPN::AuthScreen returnScreen = streamStrongSelf.activeStreamReturnScreen;
-                    streamStrongSelf.streamLibraryOverlayActive = NO;
                     streamStrongSelf.streamingController = nil;
                     streamStrongSelf.currentStreamTitle = nil;
-                    if (streamStrongSelf.catalogView) [streamStrongSelf.catalogView setStreamPictureInPictureView:nil title:nil];
-                    if (streamStrongSelf.storeView) [streamStrongSelf.storeView setStreamPictureInPictureView:nil title:nil];
-                    if (!wasOverlayActive) {
-                        [streamStrongSelf transitionToScreen:returnScreen];
-                        if (!success && !errorCopy.empty()) [streamStrongSelf showError:errorCopy canRetry:YES];
-                    }
-                });
-            };
-            streamVC.onControllerLibraryRequested = ^{
-                __typeof__(strongSelf) streamStrongSelf = streamWeakSelf;
-                if (!streamStrongSelf) return;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [streamStrongSelf showLibraryOverlayForActiveStream];
+                    [streamStrongSelf transitionToScreen:returnScreen];
+                    if (!success && !errorCopy.empty()) [streamStrongSelf showError:errorCopy canRetry:YES];
                 });
             };
             [streamVC setInitialViewFrame:strongSelf.window.contentView.bounds];
             strongSelf.streamingController = streamVC;
-            [streamVC streamPictureInPictureView];
-            [streamVC prepareForLibraryPictureInPicture];
-            [strongSelf attachActiveStreamPictureInPictureIfNeeded];
             [streamVC startStreamIfNeeded];
             OPN::LogInfo(@"[AppDelegate] Silently resuming active session %s for appId=%d", activeSession.sessionId.c_str(), activeSession.appId);
         });
@@ -826,7 +754,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self.contentContainer addSubview:store];
             OpnDisableFocusHighlights(store);
             self.window.title = @"OpenNOW - Store";
-            [self attachActiveStreamPictureInPictureIfNeeded];
             [self checkForActiveSessionResumeIfNeededForScreen:AuthScreen::Store];
             [self loadStorePanelsWithRetry:YES];
             break;
@@ -911,7 +838,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self.contentContainer addSubview:catalog];
             OpnDisableFocusHighlights(catalog);
             self.window.title = @"OpenNOW";
-            [self attachActiveStreamPictureInPictureIfNeeded];
             [self checkForActiveSessionResumeIfNeededForScreen:AuthScreen::Catalog];
 
 

@@ -112,6 +112,92 @@ static NSString *OPNCurrentHeaderTimeText(void) {
     return [[timeFormatter stringFromDate:NSDate.date] uppercaseString];
 }
 
+static void OPNStrokeRoundedPath(NSBezierPath *path, NSColor *color, CGFloat width) {
+    [color setStroke];
+    path.lineWidth = width;
+    path.lineCapStyle = NSLineCapStyleRound;
+    path.lineJoinStyle = NSLineJoinStyleRound;
+    [path stroke];
+}
+
+static void OPNDrawReferenceHeaderIcon(NSString *icon, NSRect rect, BOOL active, CGFloat scale, unsigned accentRGB) {
+    NSColor *color = active ? OpnColor(0xF4FFF6, 0.98) : OpnColor(0xEEF0F2, 0.80);
+    if ([icon isEqualToString:@"home"]) {
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        [path moveToPoint:NSMakePoint(NSMidX(rect), NSMinY(rect) + 2.0 * scale)];
+        [path lineToPoint:NSMakePoint(NSMinX(rect) + 3.0 * scale, NSMinY(rect) + 10.0 * scale)];
+        [path lineToPoint:NSMakePoint(NSMinX(rect) + 3.0 * scale, NSMaxY(rect) - 2.0 * scale)];
+        [path lineToPoint:NSMakePoint(NSMaxX(rect) - 3.0 * scale, NSMaxY(rect) - 2.0 * scale)];
+        [path lineToPoint:NSMakePoint(NSMaxX(rect) - 3.0 * scale, NSMinY(rect) + 10.0 * scale)];
+        [path closePath];
+        OPNStrokeRoundedPath(path, color, 2.0 * scale);
+        OPNStrokeRoundedPath([NSBezierPath bezierPathWithRect:NSMakeRect(NSMidX(rect) - 3.0 * scale, NSMaxY(rect) - 8.5 * scale, 6.0 * scale, 6.5 * scale)], color, 1.8 * scale);
+    } else if ([icon isEqualToString:@"library"]) {
+        for (NSInteger column = 0; column < 3; column++) {
+            CGFloat x = NSMinX(rect) + (3.0 + column * 7.0) * scale;
+            CGFloat top = NSMinY(rect) + (column == 1 ? 1.0 : 4.0) * scale;
+            NSBezierPath *line = [NSBezierPath bezierPath];
+            [line moveToPoint:NSMakePoint(x, top)];
+            [line lineToPoint:NSMakePoint(x, NSMaxY(rect) - 2.0 * scale)];
+            OPNStrokeRoundedPath(line, color, 2.2 * scale);
+        }
+        NSBezierPath *slash = [NSBezierPath bezierPath];
+        [slash moveToPoint:NSMakePoint(NSMinX(rect) + 23.0 * scale, NSMaxY(rect) - 3.0 * scale)];
+        [slash lineToPoint:NSMakePoint(NSMinX(rect) + 17.0 * scale, NSMinY(rect) + 4.0 * scale)];
+        OPNStrokeRoundedPath(slash, color, 2.2 * scale);
+    } else if ([icon isEqualToString:@"store"]) {
+        OPNStrokeRoundedPath([NSBezierPath bezierPathWithRoundedRect:NSMakeRect(NSMinX(rect) + 3.0 * scale, NSMinY(rect) + 8.0 * scale, 18.0 * scale, 15.0 * scale) xRadius:2.0 * scale yRadius:2.0 * scale], color, 2.0 * scale);
+        NSBezierPath *handle = [NSBezierPath bezierPath];
+        [handle moveToPoint:NSMakePoint(NSMinX(rect) + 8.0 * scale, NSMinY(rect) + 8.0 * scale)];
+        [handle curveToPoint:NSMakePoint(NSMinX(rect) + 16.0 * scale, NSMinY(rect) + 8.0 * scale)
+               controlPoint1:NSMakePoint(NSMinX(rect) + 8.0 * scale, NSMinY(rect) + 2.5 * scale)
+               controlPoint2:NSMakePoint(NSMinX(rect) + 16.0 * scale, NSMinY(rect) + 2.5 * scale)];
+        OPNStrokeRoundedPath(handle, color, 2.0 * scale);
+    } else if ([icon isEqualToString:@"search"]) {
+        OPNStrokeRoundedPath([NSBezierPath bezierPathWithOvalInRect:NSMakeRect(NSMinX(rect) + 2.0 * scale, NSMinY(rect) + 2.0 * scale, 15.0 * scale, 15.0 * scale)], color, 2.0 * scale);
+        NSBezierPath *handle = [NSBezierPath bezierPath];
+        [handle moveToPoint:NSMakePoint(NSMinX(rect) + 15.0 * scale, NSMinY(rect) + 15.0 * scale)];
+        [handle lineToPoint:NSMakePoint(NSMaxX(rect) - 2.0 * scale, NSMaxY(rect) - 2.0 * scale)];
+        OPNStrokeRoundedPath(handle, color, 2.2 * scale);
+    } else {
+        OPNStrokeRoundedPath([NSBezierPath bezierPathWithOvalInRect:NSInsetRect(rect, 5.0 * scale, 5.0 * scale)], color, 2.0 * scale);
+        OPNStrokeRoundedPath([NSBezierPath bezierPathWithOvalInRect:NSInsetRect(rect, 10.0 * scale, 10.0 * scale)], color, 1.8 * scale);
+        for (NSInteger i = 0; i < 8; i++) {
+            CGFloat angle = (CGFloat)i * (CGFloat)M_PI / 4.0;
+            NSBezierPath *tooth = [NSBezierPath bezierPath];
+            [tooth moveToPoint:NSMakePoint(NSMidX(rect) + cos(angle) * 9.0 * scale, NSMidY(rect) + sin(angle) * 9.0 * scale)];
+            [tooth lineToPoint:NSMakePoint(NSMidX(rect) + cos(angle) * 12.0 * scale, NSMidY(rect) + sin(angle) * 12.0 * scale)];
+            OPNStrokeRoundedPath(tooth, color, 2.0 * scale);
+        }
+    }
+    (void)accentRGB;
+}
+
+static void OPNDrawReferenceHeaderNavItem(NSString *title, NSString *icon, CGFloat centerX, BOOL active, CGFloat scale, unsigned accentRGB) {
+    CGFloat visualScale = scale * 0.82;
+    CGFloat itemY = 42.0 * scale;
+    if (active) {
+        NSGradient *glow = [[NSGradient alloc] initWithColorsAndLocations:
+            OpnColor(accentRGB, 0.0), 0.0,
+            OpnColor(accentRGB, 0.36), 0.52,
+            OpnColor(accentRGB, 0.0), 1.0,
+            nil];
+        [glow drawInRect:NSMakeRect(centerX - 50.0 * scale, 24.0 * scale, 100.0 * scale, 52.0 * scale) angle:0.0];
+    }
+    OPNDrawReferenceHeaderIcon(icon, NSMakeRect(centerX - 38.0 * scale, itemY + 2.0 * scale, 25.0 * visualScale, 25.0 * visualScale), active, visualScale, accentRGB);
+    NSDictionary<NSAttributedStringKey, id> *attrs = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:17.0 * visualScale weight:active ? NSFontWeightSemibold : NSFontWeightRegular],
+        NSForegroundColorAttributeName: active ? OpnColor(0xFFFFFF, 0.98) : OpnColor(0xE7E7EA, 0.82),
+    };
+    NSSize titleSize = [title sizeWithAttributes:attrs];
+    [title drawInRect:NSMakeRect(centerX - 7.0 * scale, itemY + 3.0 * scale, titleSize.width + 6.0 * scale, 22.0 * scale) withAttributes:attrs];
+    if (active) {
+        NSBezierPath *underline = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(centerX - 42.0 * scale, 76.0 * scale, 84.0 * scale, 3.0 * scale) xRadius:1.5 * scale yRadius:1.5 * scale];
+        [OpnColor(OpnBlendRGB(accentRGB, 0xFFFFFF, 0.42), 1.0) setFill];
+        [underline fill];
+    }
+}
+
 @implementation OPNBackdropView {
     NSRect _storeNavFrame;
     NSRect _libraryNavFrame;
@@ -399,12 +485,13 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         _settingsNavFrame = NSMakeRect(NSMaxX(_libraryNavFrame) + spacing, 18.0, settingsWidth, 28.0);
         _accountFrame = NSMakeRect(NSWidth(self.bounds) - 174.0, 9.0, 154.0, 48.0);
     } else if (showNavigation && controllerMode) {
-        CGFloat navY = 44.0;
-        CGFloat centerX = floor(NSWidth(self.bounds) * 0.50 - 210.0);
-        _libraryNavFrame = NSMakeRect(centerX, navY, 128.0, 42.0);
-        _storeNavFrame = NSMakeRect(NSMaxX(_libraryNavFrame) + 34.0, navY, 112.0, 42.0);
-        _settingsNavFrame = NSMakeRect(NSMaxX(_storeNavFrame) + 196.0, navY, 150.0, 42.0);
-        _accountFrame = NSMakeRect(NSWidth(self.bounds) - 284.0, 12.0, 268.0, 82.0);
+        CGFloat scale = MAX(0.70, MIN(1.0, MIN(NSWidth(self.bounds) / 1280.0, NSHeight(self.bounds) / 720.0)));
+        CGFloat navCenter = NSWidth(self.bounds) * 0.470;
+        CGFloat navY = 34.0 * scale;
+        _libraryNavFrame = NSMakeRect(navCenter - 94.0 * scale, navY, 112.0 * scale, 50.0 * scale);
+        _storeNavFrame = NSMakeRect(navCenter + 32.0 * scale, navY, 104.0 * scale, 50.0 * scale);
+        _settingsNavFrame = NSMakeRect(navCenter + 292.0 * scale, navY, 120.0 * scale, 50.0 * scale);
+        _accountFrame = NSMakeRect(NSWidth(self.bounds) - 278.0 * scale, 36.0 * scale, 258.0 * scale, 40.0 * scale);
     }
     BOOL showTabs = showNavigation;
     BOOL showStore = showTabs;
@@ -470,39 +557,83 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     }
 
     if (controllerMode) {
-        NSRect markRect = NSMakeRect(52.0, 48.0, 46.0, 46.0);
-        NSBezierPath *mark = [NSBezierPath bezierPathWithRoundedRect:markRect xRadius:11.0 yRadius:11.0];
-        NSGradient *markGradient = [[NSGradient alloc] initWithStartingColor:OpnColor(0x61F07A)
-                                                             endingColor:OpnColor(0x25D35F)];
-        [markGradient drawInBezierPath:mark angle:270.0];
-        NSMutableParagraphStyle *boltStyle = [[NSMutableParagraphStyle alloc] init];
-        boltStyle.alignment = NSTextAlignmentCenter;
-        [@"S" drawInRect:NSMakeRect(NSMinX(markRect), NSMinY(markRect) + 8.0, NSWidth(markRect), 30.0)
-          withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:26.0 weight:NSFontWeightBlack],
-                           NSForegroundColorAttributeName: OpnColor(0x06110A),
-                           NSParagraphStyleAttributeName: boltStyle}];
-        [@"OpenNOW" drawInRect:NSMakeRect(NSMaxX(markRect) + 14.0, 54.0, 190.0, 34.0)
-                withAttributes:OpnTextStyle(27.0, OpnColor(kTextPrimary), NSFontWeightBlack)];
+        CGFloat scale = MAX(0.70, MIN(1.0, MIN(NSWidth(bounds) / 1280.0, NSHeight(bounds) / 720.0)));
+        unsigned accentRGB = [self resolvedControllerAccentRGB];
+        NSGradient *headerFade = [[NSGradient alloc] initWithColorsAndLocations:
+            OpnColor(0x020304, 0.98), 0.0,
+            OpnColor(0x030506, 0.90), 0.68,
+            OpnColor(0x030506, 0.0), 1.0,
+            nil];
+        [headerFade drawInRect:navRect angle:-90.0];
 
-        NSArray<NSDictionary<NSString *, id> *> *controllerItems = @[
-            @{@"title": @"Home", @"rect": [NSValue valueWithRect:NSMakeRect(NSMinX(_libraryNavFrame) - 150.0, 44.0, 120.0, 42.0)], @"active": @NO},
-            @{@"title": @"Library", @"rect": [NSValue valueWithRect:_libraryNavFrame], @"active": @(self.mode == OPNBackdropModeLibrary)},
-            @{@"title": @"Store", @"rect": [NSValue valueWithRect:_storeNavFrame], @"active": @(self.mode == OPNBackdropModeStore)},
-            @{@"title": @"Search", @"rect": [NSValue valueWithRect:NSMakeRect(NSMaxX(_storeNavFrame) + 34.0, 44.0, 128.0, 42.0)], @"active": @NO},
-            @{@"title": @"Settings", @"rect": [NSValue valueWithRect:NSMakeRect(NSMaxX(_storeNavFrame) + 196.0, 44.0, 150.0, 42.0)], @"active": @(self.mode == OPNBackdropModeSettings)},
-        ];
-        for (NSDictionary<NSString *, id> *item in controllerItems) {
-            NSRect itemRect = [item[@"rect"] rectValue];
-            BOOL active = [item[@"active"] boolValue];
-            NSColor *textColor = active ? OpnColor(kTextPrimary) : OpnColor(0xFFFFFF, 0.78);
-            [item[@"title"] drawInRect:NSMakeRect(NSMinX(itemRect), NSMinY(itemRect) + 8.0, NSWidth(itemRect), 24.0)
-                         withAttributes:OpnTextStyle(20.0, textColor, active ? NSFontWeightBold : NSFontWeightMedium)];
-            if (active) {
-                NSBezierPath *underline = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(NSMinX(itemRect) + 4.0, NSMaxY(itemRect) - 4.0, NSWidth(itemRect) - 12.0, 4.0) xRadius:2.0 yRadius:2.0];
-                [OpnColor(kBrandGreen) setFill];
-                [underline fill];
+        NSRect logoRect = NSMakeRect(39.0 * scale, 37.0 * scale, 35.0 * scale, 35.0 * scale);
+        NSBezierPath *logo = [NSBezierPath bezierPathWithRoundedRect:logoRect xRadius:8.5 * scale yRadius:8.5 * scale];
+        [OpnColor(OpnBlendRGB(accentRGB, 0xFFFFFF, 0.42), 1.0) setFill];
+        [logo fill];
+        NSBezierPath *bolt = [NSBezierPath bezierPath];
+        [bolt moveToPoint:NSMakePoint(NSMinX(logoRect) + 20.0 * scale, NSMinY(logoRect) + 8.0 * scale)];
+        [bolt lineToPoint:NSMakePoint(NSMinX(logoRect) + 12.0 * scale, NSMinY(logoRect) + 18.0 * scale)];
+        [bolt lineToPoint:NSMakePoint(NSMinX(logoRect) + 22.0 * scale, NSMinY(logoRect) + 17.0 * scale)];
+        [bolt lineToPoint:NSMakePoint(NSMinX(logoRect) + 14.0 * scale, NSMinY(logoRect) + 28.0 * scale)];
+        OPNStrokeRoundedPath(bolt, OpnColor(0x07110A, 0.96), 3.0 * scale);
+        [@"OpenNOW" drawInRect:NSMakeRect(85.0 * scale, 39.5 * scale, 170.0 * scale, 34.0 * scale)
+                 withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:24.0 * scale weight:NSFontWeightBold],
+                                  NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.98)}];
+
+        CGFloat navCenter = NSWidth(bounds) * 0.470;
+        OPNDrawReferenceHeaderNavItem(@"Home", @"home", navCenter - 170.0 * scale, NO, scale, accentRGB);
+        OPNDrawReferenceHeaderNavItem(@"Library", @"library", navCenter - 45.0 * scale, self.mode == OPNBackdropModeLibrary, scale, accentRGB);
+        OPNDrawReferenceHeaderNavItem(@"Store", @"store", navCenter + 80.0 * scale, self.mode == OPNBackdropModeStore, scale, accentRGB);
+        OPNDrawReferenceHeaderNavItem(@"Search", @"search", navCenter + 205.0 * scale, NO, scale, accentRGB);
+        OPNDrawReferenceHeaderNavItem(@"Settings", @"settings", navCenter + 340.0 * scale, self.mode == OPNBackdropModeSettings, scale, accentRGB);
+
+        CGFloat chipX = NSWidth(bounds) - 278.0 * scale;
+        NSRect chipRect = NSMakeRect(chipX, 41.0 * scale, 122.0 * scale, 27.0 * scale);
+        NSBezierPath *chip = [NSBezierPath bezierPathWithRoundedRect:chipRect xRadius:13.5 * scale yRadius:13.5 * scale];
+        [OpnColor(0x06120A, 0.52) setFill];
+        [chip fill];
+        OPNStrokeRoundedPath(chip, OpnColor(accentRGB, 0.86), 1.0 * scale);
+        NSRect clockRect = NSMakeRect(chipX + 11.0 * scale, 47.0 * scale, 15.0 * scale, 15.0 * scale);
+        OPNStrokeRoundedPath([NSBezierPath bezierPathWithOvalInRect:clockRect], OpnColor(accentRGB, 0.98), 1.8 * scale);
+        NSBezierPath *clockHand = [NSBezierPath bezierPath];
+        [clockHand moveToPoint:NSMakePoint(NSMidX(clockRect), NSMidY(clockRect))];
+        [clockHand lineToPoint:NSMakePoint(NSMidX(clockRect) + 3.0 * scale, NSMidY(clockRect) - 5.0 * scale)];
+        OPNStrokeRoundedPath(clockHand, OpnColor(accentRGB, 0.98), 1.6 * scale);
+        NSString *remainingText = [self.remainingPlayTime.lowercaseString containsString:@"unlimited"] ? @"Unlimited time" : (self.remainingPlayTime.length > 0 ? self.remainingPlayTime : @"Unlimited time");
+        [remainingText drawInRect:NSMakeRect(chipX + 32.0 * scale, 45.0 * scale, 88.0 * scale, 18.0 * scale)
+                    withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:12.0 * scale weight:NSFontWeightMedium],
+                                     NSForegroundColorAttributeName: OpnColor(0xEDEFF0, 0.91)}];
+
+        CGFloat avatarX = NSWidth(bounds) - 135.0 * scale;
+        NSRect avatarRect = NSMakeRect(avatarX, 41.0 * scale, 27.0 * scale, 27.0 * scale);
+        NSBezierPath *avatar = [NSBezierPath bezierPathWithRoundedRect:avatarRect xRadius:5.0 * scale yRadius:5.0 * scale];
+        if (self.accountAvatarImage) {
+            [NSGraphicsContext saveGraphicsState];
+            [avatar addClip];
+            [self.accountAvatarImage drawInRect:avatarRect fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+            [NSGraphicsContext restoreGraphicsState];
+        } else {
+            NSGradient *gold = [[NSGradient alloc] initWithColorsAndLocations:OpnColor(0xFFF6BA), 0.0, OpnColor(0xC19120), 1.0, nil];
+            [gold drawInBezierPath:avatar angle:-45.0];
+            [OpnColor(0xFFFEE6, 0.95) setStroke];
+            for (NSInteger column = 0; column < 3; column++) {
+                for (NSInteger row = 0; row < 3; row++) {
+                    NSBezierPath *jewel = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(avatarX + (6.0 + column * 5.5) * scale, (46.0 + row * 5.5) * scale, 3.0 * scale, 3.0 * scale) xRadius:0.7 * scale yRadius:0.7 * scale];
+                    jewel.lineWidth = 0.9 * scale;
+                    [jewel stroke];
+                }
             }
         }
+        OPNStrokeRoundedPath(avatar, OpnColor(0xFFFFFF, 0.78), 1.0 * scale);
+        NSString *name = self.accountName.length > 0 ? self.accountName : @"ZortosMain";
+        NSString *status = self.accountStatus.length > 0 ? self.accountStatus.uppercaseString : @"FREE";
+        [name drawInRect:NSMakeRect(NSWidth(bounds) - 99.0 * scale, 40.0 * scale, 96.0 * scale, 17.0 * scale)
+          withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:13.0 * scale weight:NSFontWeightMedium],
+                           NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.95)}];
+        [status drawInRect:NSMakeRect(NSWidth(bounds) - 99.0 * scale, 57.0 * scale, 70.0 * scale, 13.0 * scale)
+            withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:10.0 * scale weight:NSFontWeightMedium],
+                             NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.70)}];
+        return;
     }
 
     NSImage *logo = controllerMode ? nil : OPNHeaderLogoImage();

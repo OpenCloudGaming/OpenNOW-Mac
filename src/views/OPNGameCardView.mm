@@ -90,6 +90,25 @@ static NSImage *OPNStoreIconImage(NSString *name) {
     return image;
 }
 
+static NSImage *OPNGreyscaleStoreIconImage(NSString *name) {
+    static NSMutableDictionary<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [NSMutableDictionary dictionary];
+    });
+
+    NSString *assetName = OPNStoreIconAssetName(name ?: @"");
+    NSImage *cached = cache[assetName];
+    if (cached) return cached;
+
+    NSImage *source = OPNStoreIconImage(name);
+    if (!source) return nil;
+    NSImage *templateImage = [source copy];
+    [templateImage setTemplate:YES];
+    cache[assetName] = templateImage;
+    return templateImage;
+}
+
 static NSString *OPNStoreIconGlyph(NSString *name) {
     NSString *upper = name.uppercaseString;
     if ([upper containsString:@"STEAM"]) return @"●";
@@ -139,6 +158,8 @@ static NSString *OPNSteamArtworkURLForGame(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSTextField *controllerStoreLabel;
 @property (nonatomic, strong) NSTextField *controllerTitleLabel;
 @property (nonatomic, strong) NSView *storeChipsContainer;
+@property (nonatomic, strong) NSView *currentStoreLogoContainer;
+@property (nonatomic, strong) NSImageView *currentStoreLogoView;
 @property (nonatomic, strong) NSTrackingArea *trackingArea;
 @property (nonatomic, strong) NSButton *playButton;
 @property (nonatomic, strong) CALayer *reflectionLayer;
@@ -146,6 +167,7 @@ static NSString *OPNSteamArtworkURLForGame(const OPN::GameInfo &game) {
 @property (nonatomic, strong, readwrite) NSColor *artworkAccentColor;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index;
 - (void)applyFocusStyle;
+- (void)updateCurrentStoreLogo;
 @end
 
 @implementation OPNGameCardView
@@ -196,6 +218,19 @@ using namespace OPN;
         _imageView.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
         [_contentView addSubview:_imageView];
 
+        _currentStoreLogoContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+        _currentStoreLogoContainer.wantsLayer = YES;
+        _currentStoreLogoContainer.layer.cornerRadius = 9.0;
+        _currentStoreLogoContainer.layer.backgroundColor = OpnColor(0x05070A, 0.62).CGColor;
+        _currentStoreLogoContainer.layer.borderWidth = 1.0;
+        _currentStoreLogoContainer.layer.borderColor = OpnColor(0xFFFFFF, 0.15).CGColor;
+        [_contentView addSubview:_currentStoreLogoContainer];
+
+        _currentStoreLogoView = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        _currentStoreLogoView.imageScaling = NSImageScaleProportionallyDown;
+        _currentStoreLogoView.contentTintColor = OpnColor(0xD7D8DC, 0.88);
+        [_currentStoreLogoContainer addSubview:_currentStoreLogoView];
+
         _controllerStoreLabel = OpnLabel(@"", NSZeroRect, 13.0, OpnColor(0xFFFFFF, 0.88), NSFontWeightMedium);
         _controllerStoreLabel.hidden = !OpnControllerModeEnabled();
         [_contentView addSubview:_controllerStoreLabel];
@@ -244,6 +279,7 @@ using namespace OPN;
         [_contentView addSubview:_storeChipsContainer];
         [self buildStoreChips];
         [self updateControllerLabels];
+        [self updateCurrentStoreLogo];
 
         [self loadImage];
 
@@ -306,17 +342,10 @@ using namespace OPN;
     self.contentView.layer.cornerRadius = cornerRadius;
     self.imageView.frame = self.bounds;
     if (OpnControllerModeEnabled()) {
-        CGFloat horizontalInset = width * (18.0 / 180.0);
-        CGFloat storeHeight = height * (18.0 / 180.0);
-        CGFloat titleHeight = height * (40.0 / 180.0);
-        CGFloat titleBottomInset = height * (10.0 / 180.0);
-        CGFloat labelWidth = MAX(0.0, width - horizontalInset * 2.0);
-        self.controllerStoreLabel.hidden = NO;
-        self.controllerTitleLabel.hidden = NO;
-        self.controllerStoreLabel.font = [NSFont systemFontOfSize:height * (13.0 / 180.0) weight:NSFontWeightMedium];
-        self.controllerTitleLabel.font = [NSFont systemFontOfSize:height * (15.0 / 180.0) weight:NSFontWeightBold];
-        self.controllerStoreLabel.frame = NSMakeRect(horizontalInset, MAX(0.0, height - titleHeight - storeHeight - titleBottomInset - height * (4.0 / 180.0)), labelWidth, storeHeight);
-        self.controllerTitleLabel.frame = NSMakeRect(horizontalInset, MAX(0.0, height - titleHeight - titleBottomInset), labelWidth, titleHeight);
+        self.controllerStoreLabel.hidden = YES;
+        self.controllerTitleLabel.hidden = YES;
+        self.controllerStoreLabel.frame = NSZeroRect;
+        self.controllerTitleLabel.frame = NSZeroRect;
     } else {
         self.controllerStoreLabel.hidden = YES;
         self.controllerTitleLabel.hidden = YES;
@@ -325,8 +354,31 @@ using namespace OPN;
     CGFloat playHeight = height * (34.0 / 180.0);
     self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, MAX(0.0, height - height * (52.0 / 180.0)), playWidth, playHeight);
     self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
+    CGFloat logoContainerSize = MAX(24.0, floor(width * (30.0 / 164.0)));
+    CGFloat logoMargin = MAX(8.0, floor(width * (9.0 / 164.0)));
+    self.currentStoreLogoContainer.frame = NSMakeRect(width - logoMargin - logoContainerSize,
+                                                      height - logoMargin - logoContainerSize,
+                                                      logoContainerSize,
+                                                      logoContainerSize);
+    self.currentStoreLogoContainer.layer.cornerRadius = logoContainerSize * 0.30;
+    CGFloat logoInset = logoContainerSize * 0.20;
+    self.currentStoreLogoView.frame = NSInsetRect(self.currentStoreLogoContainer.bounds, logoInset, logoInset);
     self.reflectionLayer.frame = NSMakeRect(width * (16.0 / 180.0), height - height * (10.0 / 180.0), MAX(1.0, width - width * (32.0 / 180.0)), height * (18.0 / 180.0));
     self.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:cornerRadius yRadius:cornerRadius].CGPath;
+}
+
+- (void)updateCurrentStoreLogo {
+    NSString *store = @"";
+    if (_selectedVariantIndex >= 0 && _selectedVariantIndex < (int)_gameData.variants.size()) {
+        store = [NSString stringWithUTF8String:_gameData.variants[(size_t)_selectedVariantIndex].appStore.c_str()];
+    } else if (!_gameData.availableStores.empty()) {
+        store = [NSString stringWithUTF8String:_gameData.availableStores.front().c_str()];
+    }
+
+    NSImage *icon = OPNGreyscaleStoreIconImage(store);
+    self.currentStoreLogoView.image = icon;
+    self.currentStoreLogoContainer.hidden = icon == nil || store.length == 0;
+    self.currentStoreLogoContainer.toolTip = store.length > 0 ? OPNStorePrettyName(store) : @"";
 }
 
 - (void)playClicked {
@@ -343,6 +395,7 @@ using namespace OPN;
     }
     [self buildStoreChips];
     [self updateControllerLabels];
+    [self updateCurrentStoreLogo];
 }
 
 - (void)buildStoreChips {
@@ -414,6 +467,7 @@ using namespace OPN;
     _selectedVariantIndex = index;
     [self buildStoreChips];
     [self updateControllerLabels];
+    [self updateCurrentStoreLogo];
 }
 
 - (void)loadImage {

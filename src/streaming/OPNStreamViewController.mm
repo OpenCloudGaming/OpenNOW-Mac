@@ -901,12 +901,6 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     self.view = view;
     self.streamView = view;
     __weak __typeof__(self) weakSelf = self;
-    view.onGuideButtonPressed = ^{
-        __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf->_streamEnded) return;
-        [strongSelf recordStreamUserActivity];
-        if (strongSelf.onControllerLibraryRequested) strongSelf.onControllerLibraryRequested();
-    };
     view.onUserActivity = ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf->_streamEnded) return;
@@ -915,25 +909,6 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self.streamView setStreamSession:_session];
     [self.streamView setRecordingGameTitle:OPNStringFromStdString(_gameTitle, @"Stream")];
     OPN::LogInfo(@"[StreamVC] loadView called, view=%p", (__bridge void *)view);
-}
-
-- (NSView *)streamPictureInPictureView {
-    return self.view;
-}
-
-- (void)prepareForLibraryPictureInPicture {
-    [self removeQuitShortcutMonitor];
-    [self dismissQuitGameOverlayAndRefocus:NO];
-    [self.streamView setInputSuspendedForLibraryOverlay:YES];
-    self.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-}
-
-- (void)restoreFromLibraryPictureInPicture {
-    self.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [self refreshStreamViewLayoutForCurrentContainer];
-    [self.streamView setInputSuspendedForLibraryOverlay:NO];
-    [self installQuitShortcutMonitor];
-    [self.streamView takeFocus];
 }
 
 - (void)refreshStreamViewLayoutForCurrentContainer {

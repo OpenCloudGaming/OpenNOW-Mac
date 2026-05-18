@@ -38,8 +38,6 @@ struct OPNPadSnapshot {
     OPN::Input::GamepadState state;
 };
 
-static constexpr CFTimeInterval OPNGuideButtonDebounceSeconds = 0.35;
-
 static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
 
 @interface OPNVideoSurfaceView : NSView
@@ -79,7 +77,6 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     BOOL _microphoneShortcutEnabled;
     BOOL _suppressInputWhenWindowInactive;
     BOOL _sidebarOpen;
-    BOOL _inputSuspendedForLibraryOverlay;
     double _gameVolume;
     double _microphoneVolumeLevel;
     double _microphoneLevel;
@@ -88,7 +85,6 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     int _maxBitrateMbps;
     OPNPadSnapshot _previousPads[GAMEPAD_MAX_CONTROLLERS];
     CFTimeInterval _lastGamepadSend[GAMEPAD_MAX_CONTROLLERS];
-    CFTimeInterval _lastGuideButtonDispatch;
 }
 @property (nonatomic, strong) OPNVideoSurfaceView *videoSurface;
 @property (nonatomic, strong) NSView *microphoneActiveOverlay;
@@ -129,7 +125,6 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         _microphoneShortcutEnabled = YES;
         _suppressInputWhenWindowInactive = YES;
         _sidebarOpen = NO;
-        _inputSuspendedForLibraryOverlay = NO;
         OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
         _gameVolume = profile.gameVolume;
         _microphoneVolumeLevel = profile.microphoneVolume;
@@ -155,7 +150,6 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         [self createMicrophoneActiveOverlay];
         [self createSidebarHUDWithProfile:profile];
         [self registerForControllerNotifications];
-        [self registerGuideButtonHandlersForConnectedControllers];
     }
     return self;
 }
@@ -504,19 +498,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     _suppressInputWhenWindowInactive = suppress;
 }
 
-- (void)setInputSuspendedForLibraryOverlay:(BOOL)suspended {
-    if (_inputSuspendedForLibraryOverlay == suspended) return;
-    _inputSuspendedForLibraryOverlay = suspended;
-    if (suspended) {
-        [self resetInputStateAfterSuppression];
-        [self releaseCursorCapture];
-    } else {
-        [self takeFocus];
-    }
-}
-
 - (BOOL)streamWindowAcceptsInput {
-    if (_inputSuspendedForLibraryOverlay) return NO;
     if (_sidebarOpen) return NO;
     if (!_suppressInputWhenWindowInactive) return YES;
     NSWindow *window = self.window;
@@ -1075,12 +1057,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 }
 
 - (void)controllerDidConnect:(NSNotification *)notification {
-    GCController *controller = [notification.object isKindOfClass:GCController.class] ? notification.object : nil;
-    if (controller) {
-        [self registerGuideButtonHandlersForController:controller];
-    } else {
-        [self registerGuideButtonHandlersForConnectedControllers];
-    }
+    (void)notification;
     OPN::LogInfo(@"[StreamView] GameController connected");
     [self startGamepadPolling];
 }
@@ -1107,67 +1084,6 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 - (void)stopGamepadPolling {
     [_gamepadTimer invalidate];
     _gamepadTimer = nil;
-}
-
-- (void)registerGuideButtonHandlersForConnectedControllers {
-    for (GCController *controller in GCController.controllers) {
-        [self registerGuideButtonHandlersForController:controller];
-    }
-}
-
-- (void)registerGuideButtonHandlersForController:(GCController *)controller {
-    if (!controller.extendedGamepad) return;
-
-    GCExtendedGamepad *pad = controller.extendedGamepad;
-    __weak OPNStreamView *weakSelf = self;
-    if (@available(macOS 11.0, *)) {
-        GCControllerButtonInput *homeButton = pad.buttonHome;
-        homeButton.pressedChangedHandler = ^(GCControllerButtonInput *button, float value, BOOL pressed) {
-            (void)button;
-            (void)value;
-            if (!pressed) return;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                OPNStreamView *strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf dispatchGuideButtonPressIfNeeded];
-            });
-        };
-    }
-
-    if (@available(macOS 13.0, *)) {
-        pad.valueDidChangeHandler = ^(GCPhysicalInputProfile *profile, GCControllerElement *element) {
-            if (![element.aliases containsObject:GCInputButtonHome]) return;
-            GCControllerButtonInput *homeButton = profile.buttons[GCInputButtonHome];
-            BOOL pressed = homeButton ? homeButton.isPressed : NO;
-            if (!pressed && [element isKindOfClass:GCControllerButtonInput.class]) {
-                pressed = ((GCControllerButtonInput *)element).isPressed;
-            }
-            if (!pressed) return;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                OPNStreamView *strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf dispatchGuideButtonPressIfNeeded];
-            });
-        };
-    }
-}
-
-- (BOOL)dispatchGuideButtonPressIfNeeded {
-    if (!_streamSession || !self.onGuideButtonPressed || _inputSuspendedForLibraryOverlay) return NO;
-
-    CFTimeInterval now = CACurrentMediaTime();
-    if (now - _lastGuideButtonDispatch < OPNGuideButtonDebounceSeconds) return YES;
-    _lastGuideButtonDispatch = now;
-
-    if (_sidebarOpen) {
-        _sidebarOpen = NO;
-        self.sidebarHUD.hidden = YES;
-    }
-    [self resetInputStateAfterSuppression];
-    [self releaseCursorCapture];
-    OPN::LogInfo(@"[StreamView] GameController Home/Guide requested library overlay");
-    self.onGuideButtonPressed();
-    return YES;
 }
 
 static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::GamepadState &b) {
@@ -1243,17 +1159,6 @@ static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::
         state.timestampUs = OPN::Input::TimestampUs();
 
         CFTimeInterval now = CACurrentMediaTime();
-        uint16_t libraryShortcutMask = OpnControllerLibraryShortcutMask();
-        BOOL guidePressed = (buttons & GAMEPAD_GUIDE) && (!_previousPads[i].known || !(_previousPads[i].state.buttons & GAMEPAD_GUIDE));
-        BOOL shortcutPressed = libraryShortcutMask != 0
-            && ((buttons & libraryShortcutMask) == libraryShortcutMask)
-            && (!_previousPads[i].known || ((_previousPads[i].state.buttons & libraryShortcutMask) != libraryShortcutMask));
-        if ((guidePressed || shortcutPressed) && self.onGuideButtonPressed) {
-            _previousPads[i].known = true;
-            _previousPads[i].state = state;
-            _lastGamepadSend[i] = now;
-            if ([self dispatchGuideButtonPressIfNeeded]) return;
-        }
         BOOL changed = !_previousPads[i].known || !OPNStateEquals(_previousPads[i].state, state);
         BOOL keepalive = (now - _lastGamepadSend[i]) >= 1.0;
         if (changed || keepalive) {

@@ -14,14 +14,12 @@ static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFu
 static NSString *const OPNControllerModeDefaultsKey = @"OpenNOW.Interface.ControllerMode";
 static NSString *const OPNBackgroundAnimationDefaultsKey = @"OpenNOW.Interface.BackgroundAnimation";
 static NSString *const OPNDerivedAccentColorsDefaultsKey = @"OpenNOW.Interface.DerivedAccentColors";
-static NSString *const OPNControllerLibraryShortcutDefaultsKey = @"OpenNOW.Interface.ControllerLibraryShortcut";
 static const CGFloat OPNMinimumPosterSizeScale = 0.80;
 static const CGFloat OPNMaximumPosterSizeScale = 1.30;
 static const CGFloat OPNMinimumControllerGridItemScale = 0.80;
 static const CGFloat OPNMaximumControllerGridItemScale = 1.40;
 static const unsigned OPNDefaultAccentRGB = 0x7CF1B1;
 static const CGFloat OPNBackgroundTintStrength = 0.85;
-static const uint16_t OPNDefaultControllerLibraryShortcutMask = 0x0010 | 0x0020;
 
 static int OPNClampedColorByte(NSInteger value) {
     return (int)MAX(0, MIN(value, 255));
@@ -139,20 +137,6 @@ void OpnSetDerivedAccentColorsEnabled(BOOL enabled) {
 
 CGFloat OpnBackgroundTintStrength(void) {
     return OPNBackgroundTintStrength;
-}
-
-uint16_t OpnControllerLibraryShortcutMask(void) {
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:OPNControllerLibraryShortcutDefaultsKey];
-    if (![stored respondsToSelector:@selector(integerValue)]) return OPNDefaultControllerLibraryShortcutMask;
-    NSInteger value = [stored integerValue];
-    return (uint16_t)MAX(0, MIN(value, 0xFFFF));
-}
-
-void OpnSetControllerLibraryShortcutMask(uint16_t mask) {
-    if (mask == OpnControllerLibraryShortcutMask()) return;
-    [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)mask forKey:OPNControllerLibraryShortcutDefaultsKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
 }
 
 static void OPNAppendLittleEndianUInt16(NSMutableData *data, uint16_t value) {
