@@ -73,6 +73,55 @@ static OSStatus OPNAudioDevicesChanged(AudioObjectID,
     return value ? std::string(value.UTF8String ?: "") : std::string();
 }
 
+static void OPNLockRTCAudioSession(id audioSession) {
+    SEL selector = NSSelectorFromString(@"lockForConfiguration");
+    if ([audioSession respondsToSelector:selector]) {
+        ((void (*)(id, SEL))objc_msgSend)(audioSession, selector);
+    }
+}
+
+static void OPNUnlockRTCAudioSession(id audioSession) {
+    SEL selector = NSSelectorFromString(@"unlockForConfiguration");
+    if ([audioSession respondsToSelector:selector]) {
+        ((void (*)(id, SEL))objc_msgSend)(audioSession, selector);
+    }
+}
+
+static void OPNSetRTCAudioSessionActive(id audioSession, BOOL active, NSString *phase) {
+    SEL selector = NSSelectorFromString(@"setActive:error:");
+    if (![audioSession respondsToSelector:selector]) return;
+
+    NSError *error = nil;
+    BOOL ok = ((BOOL (*)(id, SEL, BOOL, NSError **))objc_msgSend)(audioSession, selector, active, &error);
+    if (!ok || error) {
+        OPN::LogError(@"[LibWebRTC] RTCAudioSession setActive=%d failed during %@: %@", active, phase, error.localizedDescription ?: @"unknown error");
+    }
+}
+
+static void OPNResetRTCAudioSessionRouteToDefaults(id audioSession) {
+    OPNLockRTCAudioSession(audioSession);
+
+    SEL preferredInputSelector = NSSelectorFromString(@"setPreferredInput:error:");
+    if ([audioSession respondsToSelector:preferredInputSelector]) {
+        NSError *preferredInputError = nil;
+        BOOL ok = ((BOOL (*)(id, SEL, id, NSError **))objc_msgSend)(audioSession, preferredInputSelector, nil, &preferredInputError);
+        if (!ok || preferredInputError) {
+            OPN::LogError(@"[LibWebRTC] RTCAudioSession clear preferred input failed: %@", preferredInputError.localizedDescription ?: @"unknown error");
+        }
+    }
+
+    SEL outputOverrideSelector = NSSelectorFromString(@"overrideOutputAudioPort:error:");
+    if ([audioSession respondsToSelector:outputOverrideSelector]) {
+        NSError *outputOverrideError = nil;
+        BOOL ok = ((BOOL (*)(id, SEL, NSInteger, NSError **))objc_msgSend)(audioSession, outputOverrideSelector, 0, &outputOverrideError);
+        if (!ok || outputOverrideError) {
+            OPN::LogError(@"[LibWebRTC] RTCAudioSession clear output override failed: %@", outputOverrideError.localizedDescription ?: @"unknown error");
+        }
+    }
+
+    OPNUnlockRTCAudioSession(audioSession);
+}
+
 struct OPNLibWebRTCIceCredentials {
     std::string ufrag;
     std::string pwd;
@@ -1614,12 +1663,16 @@ void LibWebRTCStreamSession::RefreshAudioDevices() {
     if ([audioSession respondsToSelector:setIsAudioEnabledSelector]) {
         ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, setIsAudioEnabledSelector, NO);
     }
+    OPNResetRTCAudioSessionRouteToDefaults(audioSession);
+    OPNSetRTCAudioSessionActive(audioSession, NO, @"audio route refresh");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         if (!monitorContext.isActive || !monitorContext.owner) return;
         LibWebRTCStreamSession *owner = monitorContext.owner;
         if (!owner->m_impl) return;
         id activeAudioSession = audioSessionClass ? [audioSessionClass performSelector:@selector(sharedInstance)] : nil;
         if (!activeAudioSession) return;
+        OPNResetRTCAudioSessionRouteToDefaults(activeAudioSession);
+        OPNSetRTCAudioSessionActive(activeAudioSession, YES, @"audio route refresh");
         if ([activeAudioSession respondsToSelector:setIsAudioEnabledSelector]) {
             ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setIsAudioEnabledSelector, YES);
         }
