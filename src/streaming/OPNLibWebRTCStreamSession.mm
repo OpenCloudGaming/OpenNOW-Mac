@@ -27,7 +27,7 @@
 
 namespace OPN {
 
-static constexpr int OPNPartialReliableInputLifetimeMs = 8;
+static constexpr int OPNPartialReliableInputLifetimeMs = 5;
 
 static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector) {
     AudioDeviceID device = kAudioObjectUnknown;

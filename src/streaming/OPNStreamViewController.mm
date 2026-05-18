@@ -792,6 +792,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _hasActiveSessionInfo;
     BOOL _remoteStopRequested;
     NSView *_connectedToast;
+    id _latencyActivity;
     CFTimeInterval _lastStreamActivityTime;
     CFTimeInterval _lastIdleDeviceInputTime;
     BOOL _idleDeviceInputEnabled;
@@ -846,6 +847,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _stableResetGeneration = 0;
         _remoteIceGraceTimer = nullptr;
         _connectedToast = nil;
+        _latencyActivity = nil;
         _lastStreamActivityTime = 0;
         _lastIdleDeviceInputTime = 0;
         _idleDeviceInputEnabled = NO;
@@ -1466,6 +1468,20 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }
 }
 
+- (void)beginLatencyActivity {
+    if (_latencyActivity) return;
+    NSActivityOptions options = NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical;
+    _latencyActivity = [NSProcessInfo.processInfo beginActivityWithOptions:options reason:@"OpenNOW active cloud gaming stream"];
+    OPN::LogInfo(@"[StreamVC] Latency-critical stream activity started");
+}
+
+- (void)endLatencyActivity {
+    if (!_latencyActivity) return;
+    [NSProcessInfo.processInfo endActivity:_latencyActivity];
+    _latencyActivity = nil;
+    OPN::LogInfo(@"[StreamVC] Latency-critical stream activity ended");
+}
+
 - (void)requestRemoteStopForActiveSession {
     if (_remoteStopRequested) return;
     if (!_hasActiveSessionInfo) {
@@ -1785,6 +1801,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     [s2 cancelRemoteIceGraceTimer];
                     s2->_connectedOnce = YES;
                     s2->_recovering = NO;
+                    [s2 beginLatencyActivity];
                     [s2 setLaunchStep:5 message:@"Connected!"];
                     [s2 finishLaunchMeasurementWithSuccess:YES reason:@"connected"];
                     [s2.streamView setStreamSession:s2->_session];
@@ -2073,6 +2090,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     _stableResetGeneration++;
     _recovering = NO;
     _idleDeviceInputEnabled = NO;
+    [self endLatencyActivity];
     [self cancelRemoteIceGraceTimer];
     [self stopInactivityTimer];
     [self removeQuitShortcutMonitor];

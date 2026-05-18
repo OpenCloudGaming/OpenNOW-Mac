@@ -38,7 +38,6 @@ struct OPNPadSnapshot {
     OPN::Input::GamepadState state;
 };
 
-static constexpr NSTimeInterval OPNMouseCoalescingIntervalSeconds = 0.004;
 static constexpr CFTimeInterval OPNGuideButtonDebounceSeconds = 0.35;
 
 static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
@@ -67,7 +66,6 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     void *_attachedPipeline;
     OPN::IStreamSession *_streamSession;
     NSTimer *_gamepadTimer;
-    NSTimer *_mouseFlushTimer;
     dispatch_source_t _escapeHoldTimer;
     BOOL _cursorCaptured;
     uint8_t _mouseButtonsDown;
@@ -118,7 +116,6 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         _attachedPipeline = nullptr;
         _streamSession = nullptr;
         _gamepadTimer = nil;
-        _mouseFlushTimer = nil;
         _escapeHoldTimer = nil;
         _cursorCaptured = NO;
         _mouseButtonsDown = 0;
@@ -361,7 +358,6 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
         [self applyMicrophoneShortcutState];
     } else {
         [self stopGamepadPolling];
-        [self stopMouseFlushTimer];
         _pendingMouseDx = 0;
         _pendingMouseDy = 0;
         _pushToTalkPrimaryKeyDown = NO;
@@ -660,7 +656,6 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 
 - (void)resetInputStateAfterSuppression {
     [self cancelEscapeHoldTimer];
-    [self stopMouseFlushTimer];
     _pendingMouseDx = 0;
     _pendingMouseDy = 0;
     _pushToTalkPrimaryKeyDown = NO;
@@ -839,7 +834,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
                 break;
             }
             [self accumulateMouseDx:event.deltaX dy:event.deltaY];
-            [self startMouseFlushTimer];
+            [self flushPendingMouseMove];
             break;
         }
         case NSEventTypeLeftMouseDown:
@@ -1011,7 +1006,6 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 - (void)releaseCursorCapture {
     if (!_cursorCaptured) return;
     [self releasePressedMouseButtons];
-    [self stopMouseFlushTimer];
     _pendingMouseDx = 0;
     _pendingMouseDy = 0;
     CGAssociateMouseAndMouseCursorPosition(true);
@@ -1054,28 +1048,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     _pendingMouseDy += dy;
 }
 
-- (void)startMouseFlushTimer {
-    if (_mouseFlushTimer) return;
-    _mouseFlushTimer = [NSTimer scheduledTimerWithTimeInterval:OPNMouseCoalescingIntervalSeconds
-                                                        target:self
-                                                      selector:@selector(mouseFlushTimerFired:)
-                                                      userInfo:nil
-                                                       repeats:NO];
-}
-
-- (void)stopMouseFlushTimer {
-    [_mouseFlushTimer invalidate];
-    _mouseFlushTimer = nil;
-}
-
-- (void)mouseFlushTimerFired:(NSTimer *)timer {
-    if (timer != _mouseFlushTimer) return;
-    _mouseFlushTimer = nil;
-    [self flushPendingMouseMove];
-}
-
 - (void)flushPendingMouseMove {
-    [self stopMouseFlushTimer];
     if (!_streamSession || !_streamSession->InputReady() || ![self streamWindowAcceptsInput]) {
         _pendingMouseDx = 0;
         _pendingMouseDy = 0;
