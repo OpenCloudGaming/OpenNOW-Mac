@@ -22,6 +22,26 @@ static const CGFloat kControllerGameHubVerticalReserve = 96.0;
 static const CGFloat kControllerGameHubPreferredHeight = 430.0;
 static NSString *const OPNFavoriteGameIdsDefaultsKey = @"OpenNOW.Library.FavoriteGameIds";
 
+@interface OPNCatalogScrollView : NSScrollView
+@end
+
+@implementation OPNCatalogScrollView
+
+- (void)scrollWheel:(NSEvent *)event {
+    if (!OpnControllerModeEnabled()) {
+        [super scrollWheel:event];
+        return;
+    }
+
+    [super scrollWheel:event];
+    NSClipView *clipView = self.contentView;
+    if (clipView.bounds.origin.y == 0.0) return;
+    [clipView scrollToPoint:NSMakePoint(clipView.bounds.origin.x, 0.0)];
+    [self reflectScrolledClipView:clipView];
+}
+
+@end
+
 typedef struct {
     CGFloat scale;
     CGFloat topInset;
@@ -53,7 +73,7 @@ static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat wi
     CGFloat bottomInset = safeHeight * (72.0 / 720.0);
     CGFloat contentInset = safeWidth * (52.0 / 1280.0);
     CGFloat heroY = safeHeight * (2.0 / 720.0);
-    CGFloat heroHeight = safeHeight * (270.0 / 720.0);
+    CGFloat heroHeight = safeHeight * (280.0 / 720.0);
     CGFloat rowGap = safeHeight * (18.0 / 720.0);
     CGFloat rowTitleHeight = safeHeight * (34.0 / 720.0);
     CGFloat rowTitleY = heroY + heroHeight + rowGap;
@@ -1218,7 +1238,7 @@ using namespace OPN;
 
         CGFloat gridY = kNavHeight + kToolbarHeight;
         NSRect scrollFrame = NSMakeRect(0, gridY, frame.size.width, frame.size.height - gridY);
-        _scrollView = [[NSScrollView alloc] initWithFrame:scrollFrame];
+        _scrollView = [[OPNCatalogScrollView alloc] initWithFrame:scrollFrame];
         _scrollView.wantsLayer = YES;
         _scrollView.hasVerticalScroller = YES;
         _scrollView.hasHorizontalScroller = NO;
@@ -1982,7 +2002,7 @@ using namespace OPN;
     CGFloat contentInset = 52.0;
     NSClipView *clipView = self.scrollView.contentView;
     if (clipView.bounds.origin.x != 0.0) {
-        [clipView scrollToPoint:NSMakePoint(0.0, clipView.bounds.origin.y)];
+        [clipView scrollToPoint:NSMakePoint(0.0, 0.0)];
         [self.scrollView reflectScrolledClipView:clipView];
     }
     CGFloat height = MAX(1.0, NSHeight(self.bounds));
@@ -2213,23 +2233,6 @@ using namespace OPN;
     [leftShade.layer addSublayer:shade];
     [self.gridContentView addSubview:leftShade];
     [self.controllerHeroViews addObject:leftShade];
-
-    NSView *rightWash = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame), NSMinY(frame), NSWidth(frame), NSHeight(frame))];
-    rightWash.wantsLayer = YES;
-    rightWash.layer.cornerRadius = cornerRadius;
-    rightWash.layer.masksToBounds = YES;
-    CAGradientLayer *lightWash = [CAGradientLayer layer];
-    lightWash.frame = rightWash.bounds;
-    lightWash.startPoint = CGPointMake(0.0, 0.5);
-    lightWash.endPoint = CGPointMake(1.0, 0.5);
-    lightWash.colors = @[(id)OpnColor(0xFFFFFF, 0.0).CGColor,
-                         (id)OpnColor(0xFFFFFF, 0.0).CGColor,
-                         (id)OpnColor(0xDDEAFF, 0.10).CGColor,
-                         (id)OpnColor(0xFFFFFF, 0.18).CGColor];
-    lightWash.locations = @[@0.0, @0.58, @0.78, @1.0];
-    [rightWash.layer addSublayer:lightWash];
-    [self.gridContentView addSubview:rightWash];
-    [self.controllerHeroViews addObject:rightWash];
 
     NSString *store = @"";
     if (!game.variants.empty()) store = OPNStoreCategoryTitle(OPNCatalogString(game.variants.front().appStore, @""));
@@ -2502,6 +2505,7 @@ using namespace OPN;
     CGFloat controllerNavHeight = 118.0;
     self.scrollView.hasVerticalScroller = !controllerMode;
     self.scrollView.hasHorizontalScroller = NO;
+    self.scrollView.verticalScrollElasticity = controllerMode ? NSScrollElasticityNone : NSScrollElasticityAutomatic;
     self.scrollView.drawsBackground = NO;
     self.scrollView.layer.opaque = NO;
     self.scrollView.layer.backgroundColor = NSColor.clearColor.CGColor;
@@ -2732,7 +2736,7 @@ using namespace OPN;
     NSRect visibleRect = self.scrollView.contentView.bounds;
     NSRect targetRect = NSInsetRect(card.frame, -24.0, -24.0);
     if (OpnControllerModeEnabled()) {
-        [self.scrollView.contentView scrollToPoint:NSMakePoint(0.0, visibleRect.origin.y)];
+        [self.scrollView.contentView scrollToPoint:NSMakePoint(0.0, 0.0)];
         [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
         [self scrollControllerLibraryRailToCardAtIndex:clamped animated:YES];
         return;
@@ -2774,6 +2778,7 @@ using namespace OPN;
     }
     if (targetView) {
         [self.gridContentView scrollRectToVisible:NSInsetRect(targetView.frame, -18.0, -18.0)];
+        if (OpnControllerModeEnabled()) [self.scrollView.contentView scrollToPoint:NSMakePoint(self.scrollView.contentView.bounds.origin.x, 0.0)];
         [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
     }
 }
