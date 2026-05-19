@@ -1205,10 +1205,18 @@ std::string LibWebRTCStreamSession::AvailabilityDescription() {
 #endif
 }
 
-LibWebRTCStreamSession::LibWebRTCStreamSession() = default;
+LibWebRTCStreamSession::LibWebRTCStreamSession() {
+    dispatch_queue_t statsQueue = dispatch_queue_create("io.opencg.opennow.webrtc.stats", DISPATCH_QUEUE_SERIAL);
+    m_statsQueue = (__bridge_retained void *)statsQueue;
+}
 
 LibWebRTCStreamSession::~LibWebRTCStreamSession() {
     Stop();
+    if (m_statsQueue) {
+        dispatch_queue_t statsQueue = (__bridge_transfer dispatch_queue_t)m_statsQueue;
+        m_statsQueue = nullptr;
+        (void)statsQueue;
+    }
 }
 
 void LibWebRTCStreamSession::Start(const SessionInfo &session,
@@ -1835,7 +1843,8 @@ void LibWebRTCStreamSession::HandleAudioDeviceChange() {
 void LibWebRTCStreamSession::StartMicrophoneLevelPolling() {
 #if defined(OPN_HAVE_LIBWEBRTC)
     if (m_microphoneLevelTimer) return;
-    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_queue_t statsQueue = m_statsQueue ? (__bridge dispatch_queue_t)m_statsQueue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, statsQueue);
     if (!timer) return;
 
     m_microphoneLevelTimer = (__bridge_retained void *)timer;
@@ -1884,8 +1893,11 @@ void LibWebRTCStreamSession::RequestStats() {
         m_statsRequestInFlight = true;
     }
 
+    dispatch_queue_t statsQueue = m_statsQueue ? (__bridge dispatch_queue_t)m_statsQueue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
     [impl.peerConnection statisticsWithCompletionHandler:^(RTCStatisticsReport *report) {
-        this->HandleStatsReport((__bridge void *)report);
+        dispatch_async(statsQueue, ^{
+            this->HandleStatsReport((__bridge void *)report);
+        });
     }];
 #endif
 }

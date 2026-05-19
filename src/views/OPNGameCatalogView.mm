@@ -2032,6 +2032,8 @@ using namespace OPN;
 
 - (void)renderGrid {
     OPN::LogInfo(@"[CatalogView] renderGrid begin controller=%d overview=%d category=%@ allGames=%lu renderedLimit=%ld focused=%ld", OpnControllerModeEnabled(), self.controllerCategoryOverviewVisible, self.selectedCategoryId, (unsigned long)self.allGames.size(), (long)self.controllerRenderedGameCount, (long)self.focusedCardIndex);
+    NSArray<OPNGameCardView *> *reusableCards = [self.cardViews copy];
+    NSUInteger reusableCardIndex = 0;
     for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
     [_cardViews removeAllObjects];
     [self.categoryCardViews removeAllObjects];
@@ -2076,8 +2078,14 @@ using namespace OPN;
         auto &game = *it;
         CGFloat x = controllerMode ? xStart + visibleCount * (cardWidth + gridSpacing) : xStart + col * (cardWidth + gridSpacing);
         NSRect cardFrame = NSMakeRect(x, yPos, cardWidth, cardHeight);
-        OPNGameCardView *card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:game];
-        OPN::LogInfo(@"[CatalogView] create card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)visibleCount, OPNCatalogString(game.title, @"<untitled>"), OPNCatalogString(game.id, @""), OPNCatalogString(game.uuid, @""), !game.description.empty(), (unsigned long)game.featureLabels.size(), !game.imageUrl.empty(), !game.heroImageUrl.empty(), (unsigned long)game.variants.size());
+        OPNGameCardView *card = reusableCardIndex < reusableCards.count ? reusableCards[reusableCardIndex++] : nil;
+        if (card) {
+            card.frame = cardFrame;
+            [card updateGame:game];
+        } else {
+            card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:game];
+            OPN::LogInfo(@"[CatalogView] create card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)visibleCount, OPNCatalogString(game.title, @"<untitled>"), OPNCatalogString(game.id, @""), OPNCatalogString(game.uuid, @""), !game.description.empty(), (unsigned long)game.featureLabels.size(), !game.imageUrl.empty(), !game.heroImageUrl.empty(), (unsigned long)game.variants.size());
+        }
         GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
         __weak OPNGameCardView *weakCard = card;

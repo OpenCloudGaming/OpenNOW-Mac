@@ -151,6 +151,19 @@ static NSString *OPNSteamArtworkURLForGame(const OPN::GameInfo &game) {
     return [NSString stringWithFormat:@"https://cdn.cloudflare.steamstatic.com/steam/apps/%s/header.jpg", appId.c_str()];
 }
 
+static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
+    std::string signature = game.heroImageUrl + "\n" + game.imageUrl + "\n" + game.launchAppId;
+    for (const char *type : {"KEY_ART", "KEY_IMAGE"}) {
+        auto it = game.imageUrlsByType.find(type);
+        if (it == game.imageUrlsByType.end()) continue;
+        for (const std::string &value : it->second) {
+            signature += "\n";
+            signature += value;
+        }
+    }
+    return signature;
+}
+
 @interface OPNGameCardView () <CALayerDelegate>
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
@@ -164,7 +177,8 @@ static NSString *OPNSteamArtworkURLForGame(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSButton *playButton;
 @property (nonatomic, strong) CALayer *reflectionLayer;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
-- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index;
+@property (nonatomic, assign) NSUInteger imageLoadGeneration;
+- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
 - (void)updateCurrentStoreLogo;
 @end
@@ -386,6 +400,8 @@ using namespace OPN;
 
 - (void)updateGame:(const OPN::GameInfo &)game {
     int selectedVariant = _selectedVariantIndex;
+    const std::string previousImageSignature = OPNGameCardImageSignature(_gameData);
+    const std::string nextImageSignature = OPNGameCardImageSignature(game);
     _gameData = game;
     if (selectedVariant >= 0 && selectedVariant < (int)_gameData.variants.size()) {
         _selectedVariantIndex = selectedVariant;
@@ -395,6 +411,10 @@ using namespace OPN;
     [self buildStoreChips];
     [self updateControllerLabels];
     [self updateCurrentStoreLogo];
+    if (previousImageSignature != nextImageSignature) {
+        self.imageView.image = nil;
+        [self loadImage];
+    }
 }
 
 - (void)buildStoreChips {
@@ -501,10 +521,12 @@ using namespace OPN;
         return;
     }
 
-    [self loadImageFromCandidates:urlStrings index:0];
+    NSUInteger generation = ++self.imageLoadGeneration;
+    [self loadImageFromCandidates:urlStrings index:0 generation:generation];
 }
 
-- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index {
+- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation {
+    if (generation != self.imageLoadGeneration) return;
     if (index >= urlStrings.count) {
         NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
         OPN::LogError(@"[GameCard] all image candidates failed title=%@", title);
@@ -525,7 +547,7 @@ using namespace OPN;
     NSURL *url = [NSURL URLWithString:urlStr];
     if (!url) {
         OPN::LogError(@"[GameCard] invalid image URL index=%lu url=%@", (unsigned long)index, urlStr);
-        [self loadImageFromCandidates:urlStrings index:index + 1];
+        [self loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
         return;
     }
     NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
@@ -540,7 +562,7 @@ using namespace OPN;
                 OPN::LogError(@"[GameCard] image request failed title=%@ index=%lu status=%ld error=%@ url=%@", title, (unsigned long)index + 1, (long)(http ? http.statusCode : 0), error.localizedDescription ?: @"", urlStr);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     __typeof__(self) strongSelf = weakSelf;
-                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
+                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
                 });
                 return;
             }
@@ -549,14 +571,14 @@ using namespace OPN;
                 OPN::LogError(@"[GameCard] image decode failed title=%@ index=%lu bytes=%lu url=%@", title, (unsigned long)index + 1, (unsigned long)data.length, urlStr);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     __typeof__(self) strongSelf = weakSelf;
-                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
+                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
                 });
                 return;
             }
             OPN::GameDataCache::Shared().SaveImage(urlStr, data);
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
+                if (!strongSelf || strongSelf.imageLoadGeneration != generation) return;
                 OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, img.size.width, img.size.height, urlStr);
                 strongSelf.imageView.image = img;
             });

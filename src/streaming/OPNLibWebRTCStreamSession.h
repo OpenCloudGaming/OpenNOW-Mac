@@ -77,6 +77,7 @@ private:
     void *m_nativeWindow = nullptr;
     void *m_inputHeartbeat = nullptr;
     void *m_statsTimer = nullptr;
+    void *m_statsQueue = nullptr;
     void *m_microphoneLevelTimer = nullptr;
     void *m_audioDeviceMonitorContext = nullptr;
     std::atomic<bool> m_audioDeviceMonitoringActive{false};

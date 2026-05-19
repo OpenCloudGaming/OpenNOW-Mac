@@ -18,6 +18,11 @@ namespace OPN {
 
 namespace {
 
+static bool OPNEnvironmentFlagEnabled(const char *name) {
+    const char *value = std::getenv(name);
+    return value && value[0] == '1' && value[1] == '\0';
+}
+
 static NSString *OPNFormattedLogMessage(NSString *format, va_list arguments) {
     if (format.length == 0) return @"";
     return [[NSString alloc] initWithFormat:format arguments:arguments] ?: @"";
@@ -157,8 +162,7 @@ static NSString *OPNSentryHandlerPath() {
 }
 
 static bool OPNSentryEnvironmentFlagEnabled(const char *name) {
-    const char *value = std::getenv(name);
-    return value && value[0] == '1' && value[1] == '\0';
+    return OPNEnvironmentFlagEnabled(name);
 }
 
 static bool OPNShouldInitializeSentry() {
@@ -210,7 +214,17 @@ static void OPNCaptureSentryVerificationMessageIfRequested() {
 }
 #endif
 
+bool ShouldLogInfo() {
+#if defined(NDEBUG)
+    return OPNEnvironmentFlagEnabled("OPN_INFO_LOGS") || OPNEnvironmentFlagEnabled("OPN_DEBUG_LOGS");
+#else
+    return !OPNEnvironmentFlagEnabled("OPN_DISABLE_INFO_LOGS");
+#endif
+}
+
 void LogInfo(NSString *format, ...) {
+    if (!ShouldLogInfo()) return;
+
     va_list arguments;
     va_start(arguments, format);
     NSString *message = OPNFormattedLogMessage(format, arguments);
