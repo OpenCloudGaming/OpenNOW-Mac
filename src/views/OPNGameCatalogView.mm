@@ -614,9 +614,11 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 - (void)renderControllerCategoryOverview;
 - (void)renderControllerLibrary;
 - (void)renderControllerHero;
+- (void)renderControllerHeroAnimated:(BOOL)animated;
 - (void)renderControllerLibraryRail;
 - (void)scrollControllerLibraryRailToCardAtIndex:(NSInteger)index animated:(BOOL)animated;
 - (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
+- (void)animateControllerHeroIncomingViews:(NSArray<NSView *> *)incomingViews outgoingViews:(NSArray<NSView *> *)outgoingViews frame:(NSRect)frame;
 - (void)loadControllerHeroImageForView:(OPNControllerPreviewBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (std::vector<OPN::GameInfo>)controllerFeaturedGamesFromDisplayGames:(const std::vector<OPN::GameInfo> &)displayGames;
 - (const OPN::GameInfo *)currentControllerHeroGame;
@@ -2492,7 +2494,13 @@ using namespace OPN;
 }
 
 - (void)renderControllerHero {
-    for (NSView *view in [self.controllerHeroViews copy]) {
+    [self renderControllerHeroAnimated:NO];
+}
+
+- (void)renderControllerHeroAnimated:(BOOL)animated {
+    NSArray<NSView *> *outgoingViews = [self.controllerHeroViews copy];
+    for (NSView *view in outgoingViews) {
+        if (animated && view.superview) continue;
         [view removeFromSuperview];
     }
     [self.controllerHeroViews removeAllObjects];
@@ -2511,10 +2519,125 @@ using namespace OPN;
     NSInteger heroIndex = MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1));
     CGFloat availableHeroWidth = width - contentInset * 2.0;
     CGFloat heroWidth = MIN(availableHeroWidth, MAX(metrics.heroHeight, metrics.heroHeight * MAX(0.1, self.controllerHeroImageAspectRatio)));
+    NSRect heroFrame = NSMakeRect(contentInset + (availableHeroWidth - heroWidth) * 0.5, metrics.heroY, heroWidth, metrics.heroHeight);
     [self addControllerHeroForGame:featuredGames[(size_t)heroIndex]
-                             frame:NSMakeRect(contentInset + (availableHeroWidth - heroWidth) * 0.5, metrics.heroY, heroWidth, metrics.heroHeight)
-                       activeIndex:heroIndex
-                       totalCount:(NSInteger)featuredGames.size()];
+                             frame:heroFrame
+                      activeIndex:heroIndex
+                      totalCount:(NSInteger)featuredGames.size()];
+    if (animated && outgoingViews.count > 0) {
+        [self animateControllerHeroIncomingViews:[self.controllerHeroViews copy] outgoingViews:outgoingViews frame:heroFrame];
+    }
+}
+
+- (void)animateControllerHeroIncomingViews:(NSArray<NSView *> *)incomingViews outgoingViews:(NSArray<NSView *> *)outgoingViews frame:(NSRect)frame {
+    CGFloat heroWidth = MAX(1.0, NSWidth(frame));
+    CGFloat travel = MIN(heroWidth * 0.18, 150.0);
+    CFTimeInterval speedScale = 2.0;
+    CFTimeInterval now = CACurrentMediaTime();
+    CAMediaTimingFunction *ease = [OPNCoreAnimationCoordinator appleQuinticTimingFunction];
+
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+
+    for (NSView *view in outgoingViews) {
+        if (!view.layer) continue;
+        CALayer *layer = view.layer;
+        CALayer *presentationLayer = layer.presentationLayer;
+        CATransform3D currentTransform = presentationLayer ? presentationLayer.transform : layer.transform;
+        CGFloat currentOpacity = presentationLayer ? presentationLayer.opacity : layer.opacity;
+        CATransform3D exitTransform = CATransform3DIdentity;
+        exitTransform.m34 = -1.0 / 900.0;
+        exitTransform = CATransform3DTranslate(exitTransform, -travel, 0.0, -70.0);
+        exitTransform = CATransform3DScale(exitTransform, 0.965, 0.965, 1.0);
+        exitTransform = CATransform3DRotate(exitTransform, -0.045, 0.0, 1.0, 0.0);
+        layer.opacity = 0.0;
+        layer.transform = exitTransform;
+
+        CABasicAnimation *opacity = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        opacity.fromValue = @(currentOpacity);
+        opacity.toValue = @0.0;
+
+        CABasicAnimation *transform = [CABasicAnimation animationWithKeyPath:@"transform"];
+        transform.fromValue = [NSValue valueWithCATransform3D:currentTransform];
+        transform.toValue = [NSValue valueWithCATransform3D:exitTransform];
+
+        CAAnimationGroup *group = [CAAnimationGroup animation];
+        group.animations = @[opacity, transform];
+        group.duration = 0.42 * speedScale;
+        group.beginTime = now;
+        group.timingFunction = ease;
+        group.removedOnCompletion = YES;
+        [layer addAnimation:group forKey:@"opn.hero.deck.exit"];
+    }
+
+    for (NSUInteger index = 0; index < incomingViews.count; index++) {
+        NSView *view = incomingViews[index];
+        if (!view.layer) continue;
+        CALayer *layer = view.layer;
+        BOOL isActionElement = index >= 2;
+        CFTimeInterval delay = (isActionElement ? 0.06 + MIN((CGFloat)(index - 2), 3.0) * 0.035 : index * 0.025) * speedScale;
+        CATransform3D startTransform = CATransform3DIdentity;
+        startTransform.m34 = -1.0 / 900.0;
+        startTransform = CATransform3DTranslate(startTransform, travel, isActionElement ? 10.0 : 0.0, 82.0);
+        startTransform = CATransform3DScale(startTransform, isActionElement ? 1.035 : 1.055, isActionElement ? 1.035 : 1.055, 1.0);
+        startTransform = CATransform3DRotate(startTransform, 0.040, 0.0, 1.0, 0.0);
+        layer.opacity = 1.0;
+        layer.transform = CATransform3DIdentity;
+
+        CABasicAnimation *opacity = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        opacity.fromValue = @0.0;
+        opacity.toValue = @1.0;
+
+        CABasicAnimation *transform = [CABasicAnimation animationWithKeyPath:@"transform"];
+        transform.fromValue = [NSValue valueWithCATransform3D:startTransform];
+        transform.toValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
+
+        CAAnimationGroup *group = [CAAnimationGroup animation];
+        group.animations = @[opacity, transform];
+        group.duration = (isActionElement ? 0.55 : 0.62) * speedScale;
+        group.beginTime = now + delay;
+        group.timingFunction = ease;
+        group.removedOnCompletion = YES;
+        [layer addAnimation:group forKey:@"opn.hero.deck.enter"];
+    }
+
+    NSView *sweepView = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame) - heroWidth * 0.20, NSMinY(frame) - NSHeight(frame) * 0.20, heroWidth * 0.16, NSHeight(frame) * 1.40)];
+    sweepView.wantsLayer = YES;
+    sweepView.layer.anchorPoint = CGPointMake(0.5, 0.5);
+    sweepView.layer.position = CGPointMake(NSMidX(sweepView.frame), NSMidY(sweepView.frame));
+    sweepView.layer.transform = CATransform3DMakeRotation(-0.22, 0.0, 0.0, 1.0);
+    sweepView.layer.opacity = 0.0;
+    CAGradientLayer *sweepLayer = [CAGradientLayer layer];
+    sweepLayer.frame = sweepView.bounds;
+    sweepLayer.startPoint = CGPointMake(0.0, 0.5);
+    sweepLayer.endPoint = CGPointMake(1.0, 0.5);
+    sweepLayer.colors = @[(id)OpnColor(0x45F27C, 0.0).CGColor,
+                          (id)OpnColor(0x45F27C, 0.22).CGColor,
+                          (id)OpnColor(0xFFFFFF, 0.34).CGColor,
+                          (id)OpnColor(0x45F27C, 0.0).CGColor];
+    sweepLayer.locations = @[@0.0, @0.38, @0.52, @1.0];
+    [sweepView.layer addSublayer:sweepLayer];
+    [self.gridContentView addSubview:sweepView positioned:NSWindowAbove relativeTo:nil];
+
+    CABasicAnimation *sweepPosition = [CABasicAnimation animationWithKeyPath:@"position.x"];
+    sweepPosition.fromValue = @(NSMinX(frame) - heroWidth * 0.16);
+    sweepPosition.toValue = @(NSMaxX(frame) + heroWidth * 0.18);
+    CAKeyframeAnimation *sweepPulse = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+    sweepPulse.values = @[@0.0, @1.0, @0.68, @0.0];
+    sweepPulse.keyTimes = @[@0.0, @0.18, @0.72, @1.0];
+    CAAnimationGroup *sweepGroup = [CAAnimationGroup animation];
+    sweepGroup.animations = @[sweepPosition, sweepPulse];
+    sweepGroup.duration = 0.50 * speedScale;
+    sweepGroup.beginTime = now + 0.10 * speedScale;
+    sweepGroup.timingFunction = ease;
+    sweepGroup.removedOnCompletion = YES;
+    [sweepView.layer addAnimation:sweepGroup forKey:@"opn.hero.sweep"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.72 * speedScale * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [sweepView removeFromSuperview];
+        for (NSView *view in outgoingViews) [view removeFromSuperview];
+    });
+
+    [CATransaction commit];
 }
 
 - (void)renderControllerLibraryRail {
@@ -2792,7 +2915,7 @@ using namespace OPN;
     NSInteger featuredCount = (NSInteger)featuredGames.size();
     if (featuredCount <= 1) return;
     self.controllerHeroIndex = (self.controllerHeroIndex + 1) % featuredCount;
-    [self renderControllerHero];
+    [self renderControllerHeroAnimated:YES];
 }
 
 - (void)controllerHeroResumeClicked:(id)sender {
