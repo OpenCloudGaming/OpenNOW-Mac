@@ -538,6 +538,7 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 - (void)scrollLibraryToTop;
 - (void)requestCatalogBrowse;
 - (void)rebuildCategoryBar;
+- (NSString *)activeCategoryTitle;
 - (BOOL)game:(const OPN::GameInfo &)game matchesCategory:(NSString *)categoryId;
 - (void)cycleCategoryBy:(NSInteger)delta;
 - (NSInteger)gameCountForCategory:(NSString *)categoryId;
@@ -1739,6 +1740,17 @@ using namespace OPN;
     }
 }
 
+- (NSString *)activeCategoryTitle {
+    NSString *selectedCategoryId = self.selectedCategoryId.length > 0 ? self.selectedCategoryId : @"all";
+    for (NSDictionary<NSString *, NSString *> *item in self.categoryItems) {
+        if ([item[@"id"] isEqualToString:selectedCategoryId]) {
+            NSString *title = item[@"title"];
+            return title.length > 0 ? title : @"All";
+        }
+    }
+    return @"All";
+}
+
 - (void)categoryButtonClicked:(NSButton *)sender {
     NSString *categoryId = sender.identifier.length > 0 ? sender.identifier : @"all";
     if ([categoryId isEqualToString:self.selectedCategoryId]) return;
@@ -2320,10 +2332,15 @@ using namespace OPN;
 
     [self renderControllerHero];
 
-    NSTextField *title = OpnLabel(@"My Library", NSMakeRect(contentInset, metrics.rowTitleY, metrics.rowTitleWidth, metrics.rowTitleHeight), metrics.rowTitleFontSize, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
+    NSString *sectionTitle = [self activeCategoryTitle];
+    CGFloat maximumTitleWidth = MAX(metrics.rowTitleWidth, width - contentInset * 2.0 - metrics.countWidth - metrics.cardSpacing);
+    NSTextField *title = OpnLabel(sectionTitle, NSMakeRect(contentInset, metrics.rowTitleY, metrics.rowTitleWidth, metrics.rowTitleHeight), metrics.rowTitleFontSize, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
+    title.lineBreakMode = NSLineBreakByTruncatingTail;
+    CGFloat titleWidth = MIN(maximumTitleWidth, MAX(metrics.rowTitleWidth, ceil(title.intrinsicContentSize.width) + 8.0));
+    title.frame = NSMakeRect(contentInset, metrics.rowTitleY, titleWidth, metrics.rowTitleHeight);
     [self.gridContentView addSubview:title];
     NSString *countText = [NSString stringWithFormat:@"%ld %@", (long)displayGames.size(), displayGames.size() == 1 ? @"game" : @"games"];
-    NSTextField *count = OpnLabel(countText, NSMakeRect(metrics.countX, metrics.countY, metrics.countWidth, metrics.countHeight), metrics.countFontSize, OpnColor(OPN::kTextMuted), NSFontWeightRegular);
+    NSTextField *count = OpnLabel(countText, NSMakeRect(NSMaxX(title.frame) + metrics.cardSpacing * 0.6, metrics.countY, metrics.countWidth, metrics.countHeight), metrics.countFontSize, OpnColor(OPN::kTextMuted), NSFontWeightRegular);
     [self.gridContentView addSubview:count];
 
     self.gameCountLabel.stringValue = countText;
@@ -2902,14 +2919,7 @@ using namespace OPN;
     self.controllerDetailView.hidden = !controllerMode || self.cardViews.count == 0;
     self.controllerDetailBackgroundView.hidden = self.controllerDetailView.hidden;
     self.controllerDetailBackgroundView.frame = self.bounds;
-    NSString *sectionTitle = @"Library";
-    for (NSDictionary<NSString *, NSString *> *item in self.categoryItems) {
-        if ([item[@"id"] isEqualToString:self.selectedCategoryId]) {
-            sectionTitle = item[@"title"] ?: sectionTitle;
-            break;
-        }
-    }
-    self.controllerSectionLabel.stringValue = sectionTitle;
+    self.controllerSectionLabel.stringValue = [self activeCategoryTitle];
     self.controllerSectionLabel.frame = NSMakeRect(64.0, 42.0, MIN(620.0, width - 128.0), 26.0);
     self.controllerDetailView.frame = NSMakeRect(0.0, detailY, width, detailHeight);
     CGPathRef detailShadowPath = OpnCreateRoundedRectPath(self.controllerDetailView.bounds, 30.0, 30.0);

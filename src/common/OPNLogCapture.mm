@@ -7,6 +7,9 @@
 
 namespace OPN {
 
+static const unsigned long long kOPNMaxCapturedLogBytes = 2ull * 1024ull * 1024ull;
+static const unsigned long long kOPNTrimmedCapturedLogBytes = 1536ull * 1024ull;
+
 static NSString *OPNLogCapturePath() {
     NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"OpenNOW"];
     [NSFileManager.defaultManager createDirectoryAtPath:directory
@@ -16,13 +19,35 @@ static NSString *OPNLogCapturePath() {
     return [directory stringByAppendingPathComponent:@"OpenNOW-current.log"];
 }
 
+static NSData *OPNDataByKeepingTail(NSData *data, NSUInteger maximumLength) {
+    if (data.length <= maximumLength) return data;
+    return [data subdataWithRange:NSMakeRange(data.length - maximumLength, maximumLength)];
+}
+
+static void OPNTrimLogIfNeeded(NSString *path, NSUInteger incomingLength) {
+    NSDictionary<NSFileAttributeKey, id> *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    unsigned long long currentSize = [attributes fileSize];
+    if (currentSize + incomingLength <= kOPNMaxCapturedLogBytes) return;
+
+    NSData *existingData = [NSData dataWithContentsOfFile:path];
+    if (existingData.length == 0) return;
+
+    NSData *tailData = OPNDataByKeepingTail(existingData, (NSUInteger)kOPNTrimmedCapturedLogBytes);
+    NSString *marker = [NSString stringWithFormat:@"=== OpenNOW log trimmed at %@ to keep captured logs bounded ===\n", NSDate.date];
+    NSMutableData *trimmedData = [NSMutableData dataWithData:[marker dataUsingEncoding:NSUTF8StringEncoding]];
+    [trimmedData appendData:tailData];
+    [trimmedData writeToFile:path atomically:YES];
+}
+
 static void OPNAppendDataToLog(NSData *data) {
     if (data.length == 0) return;
+    data = OPNDataByKeepingTail(data, (NSUInteger)kOPNMaxCapturedLogBytes);
     NSString *path = OPNLogCapturePath();
     if (![NSFileManager.defaultManager fileExistsAtPath:path]) {
         [data writeToFile:path atomically:YES];
         return;
     }
+    OPNTrimLogIfNeeded(path, data.length);
     NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
     if (!handle) return;
     @try {
@@ -51,11 +76,11 @@ static BOOL OPNIsCoreGraphicsInvalidContextLine(NSString *line) {
     ]);
 }
 
-static BOOL OPNShouldIncludeCopiedLogLine(NSString *line) {
-    if (line.length == 0) return YES;
-    if (OPNIsCoreGraphicsInvalidContextLine(line)) return YES;
+static BOOL OPNIsKnownFrameworkNoiseLine(NSString *line) {
+    if (line.length == 0) return NO;
+    if (OPNIsCoreGraphicsInvalidContextLine(line)) return NO;
 
-    return !OPNLogLineContainsAny(line, @[
+    return OPNLogLineContainsAny(line, @[
         @"[StateRestoration] -[NSPersistentUIRemoteStorageClient readCrashData]",
         @"[connection] nw_endpoint_flow_failed_with_error",
         @"[connection] nw_connection_copy_protocol_metadata_internal",
@@ -72,6 +97,43 @@ static BOOL OPNShouldIncludeCopiedLogLine(NSString *line) {
         @"[plugin] AddInstanceForFactory",
         @"CoreSVG has logged an error",
     ]);
+}
+
+static BOOL OPNShouldIncludeCopiedLogLine(NSString *line) {
+    return !OPNIsKnownFrameworkNoiseLine(line);
+}
+
+static BOOL OPNShouldPersistCapturedLogLine(NSString *line) {
+    return !OPNIsKnownFrameworkNoiseLine(line);
+}
+
+static void OPNAppendCapturedLineToLog(NSData *lineData) {
+    if (lineData.length == 0) return;
+    NSString *line = [[NSString alloc] initWithData:lineData encoding:NSUTF8StringEncoding];
+    if (line && !OPNShouldPersistCapturedLogLine(line)) return;
+
+    NSMutableData *data = [lineData mutableCopy];
+    const char newline = '\n';
+    [data appendBytes:&newline length:sizeof(newline)];
+    OPNAppendDataToLog(data);
+}
+
+static void OPNAppendCapturedDataToLog(NSData *data, NSMutableData *pendingLine) {
+    if (data.length == 0) return;
+    [pendingLine appendData:data];
+
+    for (;;) {
+        const void *bytes = pendingLine.bytes;
+        NSRange newlineRange = [pendingLine rangeOfData:[NSData dataWithBytes:"\n" length:1]
+                                                options:0
+                                                  range:NSMakeRange(0, pendingLine.length)];
+        if (newlineRange.location == NSNotFound) return;
+
+        NSData *lineData = [NSData dataWithBytes:bytes length:newlineRange.location];
+        OPNAppendCapturedLineToLog(lineData);
+        NSUInteger consumedLength = newlineRange.location + newlineRange.length;
+        [pendingLine replaceBytesInRange:NSMakeRange(0, consumedLength) withBytes:nullptr length:0];
+    }
 }
 
 static NSString *OPNFilteredCopiedLog(NSString *rawLog, NSUInteger *filteredLineCount) {
@@ -107,9 +169,9 @@ static NSString *OPNFilteredCopiedLog(NSString *rawLog, NSUInteger *filteredLine
                                   repeatedInvalidContextLines == 1 ? @"" : @"s"];
     }
     if (skipped > 0) {
-        [filteredLog appendFormat:@"\n=== Filtered %lu known framework noise line%@ from clipboard copy; raw log remains on disk. ===\n",
-                                  (unsigned long)skipped,
-                                  skipped == 1 ? @"" : @"s"];
+        [filteredLog appendFormat:@"\n=== Filtered %lu known framework noise line%@ from clipboard copy. ===\n",
+                                   (unsigned long)skipped,
+                                   skipped == 1 ? @"" : @"s"];
     }
     if (filteredLineCount) *filteredLineCount = skipped;
     return filteredLog;
@@ -142,11 +204,12 @@ void StartLogCapture() {
         dispatch_queue_t queue = dispatch_queue_create("com.opennow.logcapture", DISPATCH_QUEUE_SERIAL);
         dispatch_async(queue, ^{
             char buffer[4096];
+            NSMutableData *pendingLine = [NSMutableData data];
             for (;;) {
                 ssize_t bytesRead = read(readFd, buffer, sizeof(buffer));
                 if (bytesRead <= 0) break;
                 NSData *data = [NSData dataWithBytes:buffer length:(NSUInteger)bytesRead];
-                OPNAppendDataToLog(data);
+                OPNAppendCapturedDataToLog(data, pendingLine);
                 ssize_t written = 0;
                 while (written < bytesRead) {
                     ssize_t n = write(stdoutCopy, buffer + written, (size_t)(bytesRead - written));
@@ -154,6 +217,7 @@ void StartLogCapture() {
                     written += n;
                 }
             }
+            OPNAppendCapturedLineToLog(pendingLine);
             close(readFd);
             close(stdoutCopy);
         });
