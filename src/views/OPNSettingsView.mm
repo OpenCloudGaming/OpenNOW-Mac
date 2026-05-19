@@ -208,6 +208,9 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
 - (void)startGamepadNavigationIfNeeded;
 - (void)stopGamepadNavigation;
 - (void)pollGamepadNavigation;
+- (void)installGamepadValueHandlers;
+- (void)controllerDidConnect:(NSNotification *)notification;
+- (void)controllerDidDisconnect:(NSNotification *)notification;
 @end
 
 static OSStatus OPNSettingsAudioDevicesChanged(AudioObjectID, UInt32, const AudioObjectPropertyAddress *, void *clientData) {
@@ -272,6 +275,14 @@ using namespace OPN;
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(streamRegionsUpdated:)
                                                      name:@"OpenNOW.StreamRegionsUpdated"
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(controllerDidConnect:)
+                                                     name:GCControllerDidConnectNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(controllerDidDisconnect:)
+                                                     name:GCControllerDidDisconnectNotification
                                                    object:nil];
         [self startAudioDeviceMonitoring];
 
@@ -1130,12 +1141,28 @@ using namespace OPN;
 }
 
 - (void)startGamepadNavigationIfNeeded {
-    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || !OPNSettingsGamepadNavigationActive(self)) return;
-    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
+    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNSettingsGamepadNavigationActive(self)) return;
+    [self installGamepadValueHandlers];
+    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:0.12
                                                                    target:self
                                                                  selector:@selector(pollGamepadNavigation)
                                                                  userInfo:nil
                                                                   repeats:YES];
+}
+
+- (void)installGamepadValueHandlers {
+    __weak __typeof__(self) weakSelf = self;
+    for (GCController *controller in [GCController controllers]) {
+        GCExtendedGamepad *gamepad = controller.extendedGamepad;
+        if (!gamepad) continue;
+        gamepad.valueChangedHandler = ^(GCExtendedGamepad *, GCControllerElement *) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || !OPNSettingsGamepadNavigationActive(strongSelf)) return;
+                [strongSelf pollGamepadNavigation];
+            });
+        };
+    }
 }
 
 - (void)stopGamepadNavigation {
@@ -1144,8 +1171,18 @@ using namespace OPN;
     self.previousGamepadButtons = 0;
 }
 
+- (void)controllerDidConnect:(NSNotification *)notification {
+    (void)notification;
+    [self startGamepadNavigationIfNeeded];
+}
+
+- (void)controllerDidDisconnect:(NSNotification *)notification {
+    (void)notification;
+    if ([GCController controllers].count == 0) [self stopGamepadNavigation];
+}
+
 - (void)pollGamepadNavigation {
-    if (!OpnControllerModeEnabled() || !OPNSettingsGamepadNavigationActive(self)) {
+    if (!OpnControllerModeEnabled() || [GCController controllers].count == 0 || !OPNSettingsGamepadNavigationActive(self)) {
         [self stopGamepadNavigation];
         return;
     }

@@ -13,6 +13,29 @@
 namespace OPN {
 
 
+static dispatch_queue_t GameServiceWorkQueue() {
+    static dispatch_queue_t queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = dispatch_queue_create("com.opennow.game-service.work", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
+static void DispatchCatalogBrowseCallback(const CatalogBrowseCallback &completion,
+                                          bool success,
+                                          const CatalogBrowseResult &result,
+                                          const std::string &error) {
+    if (!completion) return;
+    CatalogBrowseCallback completionCopy = completion;
+    CatalogBrowseResult resultCopy = result;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, resultCopy, errorCopy);
+    });
+}
+
+
 static NSString *kPanelsHash = @"f8e26265a5db5c20e1334a6872cf04b6e3970507697f6ae55a6ddefa5420daf0";
 static NSString *kMarqueeHash = @"dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f";
 static NSString *kLibraryWithTimeHash = @"039e8c0d553972975485fee56e59f2549d2fdb518e247a42ab5022056a74406f";
@@ -138,34 +161,33 @@ void GameService::postGraphQL(const std::string &operationName,
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (error) {
-                    completion(nil, [error localizedDescription]);
-                    return;
-                }
-                NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+            NSDictionary *payload = nil;
+            NSString *message = @"";
+            if (error) {
+                message = [error localizedDescription];
+            } else {
+                NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
                 NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-                if (http.statusCode != 200 || !json) {
-                    NSString *msg = [NSString stringWithFormat:@"GraphQL error (%ld)", (long)http.statusCode];
-                    completion(json, msg);
-                    return;
+                if (!http || http.statusCode != 200 || !json) {
+                    message = [NSString stringWithFormat:@"GraphQL error (%ld)", (long)(http ? http.statusCode : 0)];
+                } else {
+                    NSArray *errors = json[@"errors"];
+                    if ([errors isKindOfClass:[NSArray class]] && errors.count > 0) {
+                        NSDictionary *err = [errors[0] isKindOfClass:[NSDictionary class]] ? errors[0] : nil;
+                        NSString *errMsg = [err[@"message"] isKindOfClass:[NSString class]] ? err[@"message"] : nil;
+                        message = errMsg ?: @"GraphQL error";
+                    } else {
+                        NSDictionary *dataPayload = json[@"data"];
+                        if ([dataPayload isKindOfClass:[NSDictionary class]]) {
+                            payload = dataPayload;
+                        } else {
+                            message = @"No data in GraphQL response";
+                        }
+                    }
                 }
-
-
-                NSArray *errors = json[@"errors"];
-                if (errors && [errors isKindOfClass:[NSArray class]] && errors.count > 0) {
-                    NSDictionary *err = errors[0];
-                    NSString *errMsg = err[@"message"];
-                    completion(json, errMsg ? errMsg : @"GraphQL error");
-                    return;
-                }
-
-                NSDictionary *d = json[@"data"];
-                if (!d) {
-                    completion(json, @"No data in GraphQL response");
-                    return;
-                }
-                completion(d, @"");
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(payload, message);
             });
         }];
     [task resume];
@@ -436,33 +458,33 @@ void GameService::postGraphQlJson(const std::string &query,
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (error) {
-                    completion(nil, [error localizedDescription]);
-                    return;
-                }
-                NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+            NSDictionary *payload = nil;
+            NSString *message = @"";
+            if (error) {
+                message = [error localizedDescription];
+            } else {
+                NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
                 NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-                if (http.statusCode != 200 || !json) {
-                    NSString *msg = [NSString stringWithFormat:@"GraphQL error (%ld)", (long)http.statusCode];
-                    completion(json, msg);
-                    return;
+                if (!http || http.statusCode != 200 || !json) {
+                    message = [NSString stringWithFormat:@"GraphQL error (%ld)", (long)(http ? http.statusCode : 0)];
+                } else {
+                    NSArray *errors = json[@"errors"];
+                    if ([errors isKindOfClass:[NSArray class]] && errors.count > 0) {
+                        NSDictionary *err = [errors[0] isKindOfClass:[NSDictionary class]] ? errors[0] : nil;
+                        NSString *errMsg = [err[@"message"] isKindOfClass:[NSString class]] ? err[@"message"] : nil;
+                        message = errMsg ?: @"GraphQL error";
+                    } else {
+                        NSDictionary *dataPayload = json[@"data"];
+                        if ([dataPayload isKindOfClass:[NSDictionary class]]) {
+                            payload = dataPayload;
+                        } else {
+                            message = @"No data in GraphQL response";
+                        }
+                    }
                 }
-
-                NSArray *errors = json[@"errors"];
-                if (errors && [errors isKindOfClass:[NSArray class]] && errors.count > 0) {
-                    NSDictionary *err = errors[0];
-                    NSString *errMsg = err[@"message"];
-                    completion(json, errMsg ? errMsg : @"GraphQL error");
-                    return;
-                }
-
-                NSDictionary *d = json[@"data"];
-                if (!d) {
-                    completion(json, @"No data in GraphQL response");
-                    return;
-                }
-                completion(d, @"");
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(payload, message);
             });
         }];
     [task resume];
@@ -483,11 +505,13 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
     std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
     int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
     std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
-    CatalogBrowseResult cachedResult;
-    if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
-        OPN::LogInfo(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
-        callback(true, cachedResult, "");
-    }
+    dispatch_async(GameServiceWorkQueue(), ^{
+        CatalogBrowseResult cachedResult;
+        if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
+            OPN::LogInfo(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
+            DispatchCatalogBrowseCallback(callback, true, cachedResult, "");
+        }
+    });
 
     GetServerVpcId(token, [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
@@ -516,6 +540,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                     return;
                 }
 
+                dispatch_async(GameServiceWorkQueue(), ^{
                 CatalogBrowseResult result;
                 NSMutableDictionary<NSString *, NSDictionary *> *filterPayloadById = [NSMutableDictionary dictionary];
                 NSArray *filterGroupsRaw = definitionsData[@"filterGroupDefinitions"];
@@ -692,14 +717,15 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                     auto keepPaginationAlive = weakFetchPage.lock();
                  service->postGraphQlJson(selectedQuery, vars, ^(NSDictionary *data, NSString *error) {
                         (void)keepPaginationAlive;
+                        dispatch_async(GameServiceWorkQueue(), ^{
                         if (error.length > 0) {
                             OPN::LogError(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
-                            callback(false, CatalogBrowseResult{}, [error UTF8String]);
+                            DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, [error UTF8String]);
                             return;
                         }
                         NSDictionary *appsDict = data[@"apps"];
                         if (![appsDict isKindOfClass:[NSDictionary class]]) {
-                            callback(false, CatalogBrowseResult{}, "No apps data");
+                            DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, "No apps data");
                             return;
                         }
                         NSArray *items = appsDict[@"items"];
@@ -744,8 +770,11 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         blockResult->totalCount = std::max(blockResult->totalCount, (int)blockResult->games.size());
                         if (appIdsNeedingMetadata.count == 0) {
                             OPN::LogInfo(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
-                            GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
-                            callback(true, *blockResult, "");
+                            CatalogBrowseResult resultToDeliver = *blockResult;
+                            dispatch_async(GameServiceWorkQueue(), ^{
+                                GameDataCache::Shared().SaveCatalog(catalogCacheKey, resultToDeliver);
+                                DispatchCatalogBrowseCallback(callback, true, resultToDeliver, "");
+                            });
                             return;
                         }
                         OPN::LogInfo(@"[GameService] metadata enrichment start ids=%lu chunks=%lu", (unsigned long)appIdsNeedingMetadata.count, (unsigned long)((appIdsNeedingMetadata.count + 40 - 1) / 40));
@@ -787,8 +816,11 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     if (game.nvidiaTech.empty()) game.nvidiaTech = metadataGame.nvidiaTech;
                                 }
                                 OPN::LogInfo(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
-                                GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
-                                callback(true, *blockResult, "");
+                                CatalogBrowseResult resultToDeliver = *blockResult;
+                                dispatch_async(GameServiceWorkQueue(), ^{
+                                    GameDataCache::Shared().SaveCatalog(catalogCacheKey, resultToDeliver);
+                                    DispatchCatalogBrowseCallback(callback, true, resultToDeliver, "");
+                                });
                         };
 
                         for (NSUInteger start = 0; start < appIdsNeedingMetadata.count; start += chunkSize) {
@@ -801,6 +833,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                             };
                             service->postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], metaVars,
                                 ^(NSDictionary *metaData, NSString *metaError) {
+                                    dispatch_async(GameServiceWorkQueue(), ^{
                                     if (metaError.length > 0) {
                                         OPN::LogError(@"[GameService] appMetaData enrichment failed: %@", metaError);
                                     }
@@ -816,11 +849,14 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                     completedChunks++;
                                     if (completedChunks >= totalChunks) mergeAndFinish();
+                                    });
                                 });
                         }
+                        });
                     });
                 };
                 (*fetchPage)();
+                });
             });
     });
 }

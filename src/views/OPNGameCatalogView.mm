@@ -4,9 +4,7 @@
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNCoreAnimationCoordinator.h"
 #import "../common/OPNUIHelpers.h"
-#include "../games/OPNGameDataCache.h"
 #import "../streaming/OPNStreamPreferences.h"
-#import <CoreImage/CoreImage.h>
 #import <GameController/GameController.h>
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
@@ -34,119 +32,8 @@ typedef NS_ENUM(NSInteger, OPNControllerHeroPrimaryAction) {
     OPNControllerHeroPrimaryActionBuy = 2,
 };
 
-static NSCache<NSString *, NSImage *> *OPNCatalogDecodedImageCache(void) {
-    static NSCache<NSString *, NSImage *> *decodedImageCache;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        decodedImageCache = [[NSCache alloc] init];
-        decodedImageCache.countLimit = 160;
-    });
-    return decodedImageCache;
-}
-
-static NSCache<NSString *, NSData *> *OPNCatalogImageDataCache(void) {
-    static NSCache<NSString *, NSData *> *imageDataCache;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        imageDataCache = [[NSCache alloc] init];
-        imageDataCache.countLimit = 160;
-        imageDataCache.totalCostLimit = 96 * 1024 * 1024;
-    });
-    return imageDataCache;
-}
-
-static NSURLSession *OPNCatalogImageSession(void) {
-    static NSURLSession *session;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
-        configuration.HTTPMaximumConnectionsPerHost = 6;
-        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
-        configuration.timeoutIntervalForRequest = 15.0;
-        configuration.URLCache = [NSURLCache sharedURLCache];
-        session = [NSURLSession sessionWithConfiguration:configuration];
-    });
-    return session;
-}
-
-static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *OPNCatalogPendingImageCompletions(void) {
-    static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        pendingCompletions = [NSMutableDictionary dictionary];
-    });
-    return pendingCompletions;
-}
-
-static void OPNCatalogCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
-    NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
-    NSCache<NSString *, NSData *> *imageDataCache = OPNCatalogImageDataCache();
-    NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
-
-    NSArray<OPNCatalogImageCompletion> *completions = nil;
-    @synchronized (pendingCompletions) {
-        if (image) [decodedImageCache setObject:image forKey:urlString];
-        if (data.length > 0) [imageDataCache setObject:data forKey:urlString cost:data.length];
-        completions = [pendingCompletions[urlString] copy];
-        [pendingCompletions removeObjectForKey:urlString];
-    }
-    if (image && data.length > 0) OPN::GameDataCache::Shared().SaveImage(urlString, data);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        for (OPNCatalogImageCompletion completion in completions) completion(image, urlString, data);
-    });
-}
-
 static void OPNCatalogLoadImageForURL(NSString *urlString, OPNCatalogImageCompletion completion) {
-    if (urlString.length == 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, nil); });
-        return;
-    }
-
-    NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
-    NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
-
-    NSImage *cachedImage = [decodedImageCache objectForKey:urlString];
-    if (cachedImage) {
-        NSData *cachedData = [OPNCatalogImageDataCache() objectForKey:urlString];
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage, urlString, cachedData); });
-        return;
-    }
-
-    @synchronized (pendingCompletions) {
-        NSMutableArray<OPNCatalogImageCompletion> *existing = pendingCompletions[urlString];
-        if (existing) {
-            [existing addObject:[completion copy]];
-            return;
-        }
-        pendingCompletions[urlString] = [NSMutableArray arrayWithObject:[completion copy]];
-    }
-
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
-        if (cachedData.length > 0) {
-            NSImage *image = [[NSImage alloc] initWithData:cachedData];
-            if (image) {
-                OPNCatalogCompleteImageRequest(urlString, image, cachedData);
-                return;
-            }
-        }
-
-        NSURL *url = [NSURL URLWithString:urlString];
-        if (!url) {
-            OPNCatalogCompleteImageRequest(urlString, nil, nil);
-            return;
-        }
-
-        [[OPNCatalogImageSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
-                OPNCatalogCompleteImageRequest(urlString, nil, nil);
-                return;
-            }
-            NSImage *image = [[NSImage alloc] initWithData:data];
-            OPNCatalogCompleteImageRequest(urlString, image, image ? data : nil);
-        }] resume];
-    });
+    OpnLoadImageForURL(urlString, 1600.0, completion);
 }
 
 static void OPNCatalogLoadImageFromCandidates(NSArray<NSString *> *candidates, NSUInteger index, OPNCatalogImageCompletion completion) {
@@ -702,6 +589,7 @@ typedef struct {
 - (void)controllerDetailBackgroundTimerFired:(NSTimer *)timer;
 - (void)loadControllerDetailBackgroundFromCandidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index expectedURL:(NSString *)expectedURL;
 - (void)setLastPlayedFocused:(BOOL)focused;
+- (void)installGamepadValueHandlers;
 - (void)startGamepadNavigationIfNeeded;
 - (void)controllerDidConnect:(NSNotification *)notification;
 - (void)controllerDidDisconnect:(NSNotification *)notification;
@@ -1401,9 +1289,6 @@ using namespace OPN;
         _controllerDetailBackgroundView.hidden = YES;
         _controllerDetailBackgroundView.wantsLayer = YES;
         _controllerDetailBackgroundView.layer.masksToBounds = YES;
-        CIFilter *detailBackgroundBlur = [CIFilter filterWithName:@"CIGaussianBlur"];
-        [detailBackgroundBlur setValue:@8.4 forKey:kCIInputRadiusKey];
-        _controllerDetailBackgroundView.layer.filters = @[detailBackgroundBlur];
         [self addSubview:_controllerDetailBackgroundView];
 
         _libraryIconLabel = OpnLabel(@"", NSMakeRect(30, kNavHeight + 36, 0, 0),
@@ -2244,17 +2129,26 @@ using namespace OPN;
 
 - (void)renderGrid {
     OPN::LogInfo(@"[CatalogView] renderGrid begin controller=%d overview=%d category=%@ allGames=%lu renderedLimit=%ld focused=%ld", OpnControllerModeEnabled(), self.controllerCategoryOverviewVisible, self.selectedCategoryId, (unsigned long)self.allGames.size(), (long)self.controllerRenderedGameCount, (long)self.focusedCardIndex);
-    NSArray<OPNGameCardView *> *reusableCards = [self.cardViews copy];
-    NSUInteger reusableCardIndex = 0;
-    for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
-    [_cardViews removeAllObjects];
-    [self.categoryCardViews removeAllObjects];
-
     BOOL controllerMode = OpnControllerModeEnabled();
     if (controllerMode) {
+        for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
+        [_cardViews removeAllObjects];
+        [self.categoryCardViews removeAllObjects];
         [self renderControllerLibrary];
         return;
     }
+
+    NSMutableArray<OPNGameCardView *> *reusableCards = [NSMutableArray arrayWithCapacity:self.cardViews.count];
+    for (NSView *view in [self.gridContentView.subviews copy]) {
+        if ([view isKindOfClass:OPNGameCardView.class]) {
+            [reusableCards addObject:(OPNGameCardView *)view];
+        } else {
+            [view removeFromSuperview];
+        }
+    }
+    NSUInteger reusableCardIndex = 0;
+    [_cardViews removeAllObjects];
+    [self.categoryCardViews removeAllObjects];
 
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
@@ -2314,7 +2208,7 @@ using namespace OPN;
                 s.onSelectGame(gameCopy, variantIdx >= 0 ? variantIdx : 0);
             }
         };
-        [_gridContentView addSubview:card];
+        if (card.superview != _gridContentView) [_gridContentView addSubview:card];
         [_cardViews addObject:card];
 
         col++;
@@ -2323,6 +2217,10 @@ using namespace OPN;
             col = 0;
             yPos += cardHeight + kCardSpacing;
         }
+    }
+
+    for (NSUInteger index = reusableCardIndex; index < reusableCards.count; index++) {
+        [reusableCards[index] removeFromSuperview];
     }
 
     CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : yPos + cardHeight + kGridPadding;
@@ -4115,12 +4013,28 @@ using namespace OPN;
 }
 
 - (void)startGamepadNavigationIfNeeded {
-    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || !OPNCatalogGamepadNavigationActive(self)) return;
-    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
+    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) return;
+    [self installGamepadValueHandlers];
+    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:0.12
                                                                    target:self
                                                                  selector:@selector(pollGamepadNavigation)
                                                                  userInfo:nil
                                                                   repeats:YES];
+}
+
+- (void)installGamepadValueHandlers {
+    __weak __typeof__(self) weakSelf = self;
+    for (GCController *controller in [GCController controllers]) {
+        GCExtendedGamepad *gamepad = controller.extendedGamepad;
+        if (!gamepad) continue;
+        gamepad.valueChangedHandler = ^(GCExtendedGamepad *, GCControllerElement *) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || !OPNCatalogGamepadNavigationActive(strongSelf)) return;
+                [strongSelf pollGamepadNavigation];
+            });
+        };
+    }
 }
 
 - (void)stopGamepadNavigation {
@@ -4137,11 +4051,15 @@ using namespace OPN;
 
 - (void)controllerDidDisconnect:(NSNotification *)notification {
     (void)notification;
+    if ([GCController controllers].count == 0) {
+        [self stopGamepadNavigation];
+        return;
+    }
     self.previousGamepadButtons = 0;
 }
 
 - (void)pollGamepadNavigation {
-    if (!OpnControllerModeEnabled() || !OPNCatalogGamepadNavigationActive(self)) {
+    if (!OpnControllerModeEnabled() || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) {
         [self stopGamepadNavigation];
         return;
     }

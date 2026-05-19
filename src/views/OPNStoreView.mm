@@ -303,30 +303,21 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
         [self loadImageFromCandidates:urlStrings index:index + 1];
         return;
     }
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) {
-        [self loadImageFromCandidates:urlStrings index:index + 1];
-        return;
-    }
 
     __weak __typeof__(self) weakSelf = self;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-        if (error || !data || (http && http.statusCode >= 400)) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
-            });
+    CGFloat scale = self.window.screen.backingScaleFactor > 0.0 ? self.window.screen.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
+    CGFloat maxPixelDimension = MAX(NSWidth(self.bounds), NSHeight(self.bounds)) * MAX(1.0, scale);
+    OpnLoadImageForURL(urlString, maxPixelDimension, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+        (void)resolvedURL;
+        (void)data;
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (!image) {
+            [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
             return;
         }
-        NSImage *image = [[NSImage alloc] initWithData:data];
-        if (!image) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            strongSelf.imageView.image = image;
-        });
-    }] resume];
+        strongSelf.imageView.image = image;
+    });
 }
 
 @end
@@ -349,13 +340,18 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
 @property (nonatomic, assign) uint16_t previousGamepadButtons;
 @property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
+@property (nonatomic, assign) BOOL renderStoreScheduled;
 - (void)startGamepadNavigationIfNeeded;
 - (void)stopGamepadNavigation;
 - (void)controllerDidConnect:(NSNotification *)notification;
 - (void)controllerDidDisconnect:(NSNotification *)notification;
 - (void)addControllerRailLabel:(NSString *)title y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (OPNStoreGameTile *)configuredHeroGameTile:(const OPN::GameInfo &)game frame:(NSRect)frame;
+- (void)scheduleRenderStore;
+- (void)refreshLibrarySelections;
+- (void)updateFocusedTiles;
 - (void)updateHeroTileOnly;
+- (void)installGamepadValueHandlers;
 @end
 
 @implementation OPNStoreView
@@ -459,7 +455,11 @@ using namespace OPN;
 
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
-    [self renderStore];
+    if (self.rowCards.count > 0 || self.heroTile) {
+        [self refreshLibrarySelections];
+    } else if (!_panels.empty()) {
+        [self renderStore];
+    }
 }
 
 - (int)selectedVariantIndexForStoreGame:(const GameInfo &)storeGame {
@@ -535,8 +535,29 @@ using namespace OPN;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
     if (std::fabs(self.lastLayoutWidth - NSWidth(self.bounds)) > 1.0) {
         self.lastLayoutWidth = NSWidth(self.bounds);
-        [self renderStore];
+        [self scheduleRenderStore];
     }
+}
+
+- (void)scheduleRenderStore {
+    if (self.renderStoreScheduled) return;
+    self.renderStoreScheduled = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.renderStoreScheduled = NO;
+        [self renderStore];
+    });
+}
+
+- (void)refreshLibrarySelections {
+    if (self.heroTile) {
+        self.heroTile.selectedVariantIndex = [self selectedVariantIndexForStoreGame:self.heroTile.game];
+    }
+    for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
+        for (OPNStoreGameTile *card in row) {
+            card.selectedVariantIndex = [self selectedVariantIndexForStoreGame:card.game];
+        }
+    }
+    [self updateFocusedTiles];
 }
 
 - (void)renderStore {
@@ -867,12 +888,28 @@ using namespace OPN;
 }
 
 - (void)startGamepadNavigationIfNeeded {
-    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || !OPNStoreGamepadNavigationActive(self)) return;
-    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
+    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNStoreGamepadNavigationActive(self)) return;
+    [self installGamepadValueHandlers];
+    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:0.12
                                                                    target:self
                                                                  selector:@selector(pollGamepadNavigation)
                                                                  userInfo:nil
                                                                   repeats:YES];
+}
+
+- (void)installGamepadValueHandlers {
+    __weak __typeof__(self) weakSelf = self;
+    for (GCController *controller in [GCController controllers]) {
+        GCExtendedGamepad *gamepad = controller.extendedGamepad;
+        if (!gamepad) continue;
+        gamepad.valueChangedHandler = ^(GCExtendedGamepad *, GCControllerElement *) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || !OPNStoreGamepadNavigationActive(strongSelf)) return;
+                [strongSelf pollGamepadNavigation];
+            });
+        };
+    }
 }
 
 - (void)stopGamepadNavigation {
@@ -888,11 +925,15 @@ using namespace OPN;
 
 - (void)controllerDidDisconnect:(NSNotification *)notification {
     (void)notification;
+    if ([GCController controllers].count == 0) {
+        [self stopGamepadNavigation];
+        return;
+    }
     self.previousGamepadButtons = 0;
 }
 
 - (void)pollGamepadNavigation {
-    if (!OpnControllerModeEnabled() || !OPNStoreGamepadNavigationActive(self)) {
+    if (!OpnControllerModeEnabled() || [GCController controllers].count == 0 || !OPNStoreGamepadNavigationActive(self)) {
         [self stopGamepadNavigation];
         return;
     }
