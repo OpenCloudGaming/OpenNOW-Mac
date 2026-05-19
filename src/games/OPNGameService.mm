@@ -13,6 +13,7 @@ namespace OPN {
 
 
 static NSString *kPanelsHash = @"f8e26265a5db5c20e1334a6872cf04b6e3970507697f6ae55a6ddefa5420daf0";
+static NSString *kMarqueeHash = @"dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f";
 static NSString *kLibraryWithTimeHash = @"039e8c0d553972975485fee56e59f2549d2fdb518e247a42ab5022056a74406f";
 static NSString *kAppMetaDataHash = @"cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63";
 
@@ -1230,6 +1231,89 @@ std::string GameService::OptimizeImageURL(const std::string &url, int width) {
 
 
 
+std::vector<PanelResult> GameService::parsePanelResults(NSArray *rawPanels) {
+    std::vector<PanelResult> panels;
+    for (NSDictionary *p in rawPanels) {
+        if (![p isKindOfClass:[NSDictionary class]]) continue;
+        PanelResult pr;
+        { NSString *v = SafeStr(p[@"id"]); pr.id = v ? [v UTF8String] : ""; }
+        { NSString *v = SafeStr(p[@"name"]); pr.title = v ? [v UTF8String] : ""; }
+        if (pr.id.empty()) pr.id = pr.title;
+
+        NSArray *sections = p[@"sections"];
+        if (!sections || ![sections isKindOfClass:[NSArray class]]) continue;
+
+        for (NSDictionary *sec in sections) {
+            if (![sec isKindOfClass:[NSDictionary class]]) continue;
+            PanelSection ps;
+            { NSString *v = SafeStr(sec[@"id"]); ps.id = v ? [v UTF8String] : ""; }
+            { NSString *v = SafeStr(sec[@"title"]); ps.title = v ? [v UTF8String] : ""; }
+
+            NSArray *items = sec[@"items"];
+            if (!items || ![items isKindOfClass:[NSArray class]]) continue;
+
+            for (NSDictionary *item in items) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                NSString *type = SafeStr(item[@"__typename"]);
+                if (![type isEqualToString:@"GameItem"]) continue;
+
+                NSDictionary *app = item[@"app"];
+                if (![app isKindOfClass:[NSDictionary class]]) continue;
+
+                GameInfo game = parseGameItem(app);
+                if (!game.id.empty() && !game.title.empty() && HasVisibleVariants(game)) {
+                    ps.games.push_back(game);
+                }
+            }
+
+            if (!ps.games.empty()) {
+                pr.sections.push_back(ps);
+            }
+        }
+
+        if (!pr.sections.empty()) {
+            panels.push_back(pr);
+        }
+    }
+    return panels;
+}
+
+
+
+
+void GameService::FetchMarqueePanels(PanelCallback completion) {
+    std::string token = m_accessToken;
+    PanelCallback callback = completion;
+
+    GetServerVpcId(token, [this, callback](const std::string &vpcId) {
+        NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
+        NSDictionary *vars = @{
+            @"vpcId": vpcIdObj,
+            @"locale": @"en_US",
+            @"panelNames": @[@"MARQUEE"]
+        };
+
+        postGraphQL("panels/Marquee", [kMarqueeHash UTF8String], vars,
+            ^(NSDictionary *data, NSString *error) {
+                if (error.length > 0) {
+                    callback(false, {}, [error UTF8String]);
+                    return;
+                }
+
+                NSArray *rawPanels = data[@"panels"];
+                if (!rawPanels || ![rawPanels isKindOfClass:[NSArray class]]) {
+                    callback(false, {}, "No panels in marquee response");
+                    return;
+                }
+
+                callback(true, this->parsePanelResults(rawPanels), "");
+            });
+    });
+}
+
+
+
+
 void GameService::FetchMainPanels(PanelCallback completion) {
     std::string token = m_accessToken;
     PanelCallback callback = completion;
@@ -1255,49 +1339,7 @@ void GameService::FetchMainPanels(PanelCallback completion) {
                     return;
                 }
 
-                std::vector<PanelResult> panels;
-                for (NSDictionary *p in rawPanels) {
-                    if (![p isKindOfClass:[NSDictionary class]]) continue;
-                    PanelResult pr;
-                    { NSString *v = p[@"name"]; pr.title = v ? [v UTF8String] : ""; }
-                    { NSString *v = p[@"name"]; pr.id = v ? [v UTF8String] : ""; }
-
-                    NSArray *sections = p[@"sections"];
-                    if (!sections || ![sections isKindOfClass:[NSArray class]]) continue;
-
-                    for (NSDictionary *sec in sections) {
-                        if (![sec isKindOfClass:[NSDictionary class]]) continue;
-                        PanelSection ps;
-                        { NSString *v = sec[@"title"]; ps.title = v ? [v UTF8String] : ""; }
-
-                        NSArray *items = sec[@"items"];
-                        if (!items || ![items isKindOfClass:[NSArray class]]) continue;
-
-                        for (NSDictionary *item in items) {
-                            if (![item isKindOfClass:[NSDictionary class]]) continue;
-                            NSString *type = item[@"__typename"];
-                            if (![type isEqualToString:@"GameItem"]) continue;
-
-                            NSDictionary *app = item[@"app"];
-                            if (!app) continue;
-
-                            GameInfo game = parseGameItem(app);
-                            if (!game.id.empty() && !game.title.empty() && HasVisibleVariants(game)) {
-                                ps.games.push_back(game);
-                            }
-                        }
-
-                        if (!ps.games.empty()) {
-                            pr.sections.push_back(ps);
-                        }
-                    }
-
-                    if (!pr.sections.empty()) {
-                        panels.push_back(pr);
-                    }
-                }
-
-                callback(true, panels, "");
+                callback(true, this->parsePanelResults(rawPanels), "");
             });
     });
 }

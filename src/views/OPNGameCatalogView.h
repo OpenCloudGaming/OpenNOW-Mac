@@ -15,6 +15,8 @@
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games;
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result;
+- (void)setFeaturedGames:(const std::vector<OPN::GameInfo> &)games;
+- (void)setActiveSessionAppIds:(const std::vector<int> &)appIds;
 - (void)setLoading:(BOOL)loading;
 - (void)setError:(NSString *)message;
 - (void)setUserName:(NSString *)name;

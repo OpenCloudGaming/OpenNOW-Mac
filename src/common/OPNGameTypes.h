@@ -101,4 +101,9 @@ struct CatalogBrowseResult {
     std::vector<CatalogSortOption> sortOptions;
 };
 
+struct FeaturedGamesResult {
+    std::vector<GameInfo> games;
+    bool usedExplicitFeaturedSection = false;
+};
+
 }
