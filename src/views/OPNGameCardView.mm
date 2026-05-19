@@ -164,6 +164,105 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
     return signature;
 }
 
+typedef void (^OPNGameCardImageCompletion)(NSImage *image);
+
+static NSCache<NSString *, NSImage *> *OPNGameCardDecodedImageCache(void) {
+    static NSCache<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 192;
+    });
+    return cache;
+}
+
+static NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *OPNGameCardPendingImageCompletions(void) {
+    static NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pendingCompletions = [NSMutableDictionary dictionary];
+    });
+    return pendingCompletions;
+}
+
+static NSURLSession *OPNGameCardImageSession(void) {
+    static NSURLSession *session;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        configuration.HTTPMaximumConnectionsPerHost = 6;
+        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
+        configuration.timeoutIntervalForRequest = 15.0;
+        configuration.URLCache = [NSURLCache sharedURLCache];
+        session = [NSURLSession sessionWithConfiguration:configuration];
+    });
+    return session;
+}
+
+static void OPNGameCardCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
+    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions = OPNGameCardPendingImageCompletions();
+    NSArray<OPNGameCardImageCompletion> *completions = nil;
+    @synchronized (pendingCompletions) {
+        if (image) [OPNGameCardDecodedImageCache() setObject:image forKey:urlString];
+        completions = [pendingCompletions[urlString] copy];
+        [pendingCompletions removeObjectForKey:urlString];
+    }
+    if (image && data.length > 0) OPN::GameDataCache::Shared().SaveImage(urlString, data);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (OPNGameCardImageCompletion completion in completions) completion(image);
+    });
+}
+
+static void OPNGameCardLoadImageForURL(NSString *urlString, OPNGameCardImageCompletion completion) {
+    if (urlString.length == 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+        return;
+    }
+
+    NSImage *cachedImage = [OPNGameCardDecodedImageCache() objectForKey:urlString];
+    if (cachedImage) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage); });
+        return;
+    }
+
+    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions = OPNGameCardPendingImageCompletions();
+    @synchronized (pendingCompletions) {
+        NSMutableArray<OPNGameCardImageCompletion> *existing = pendingCompletions[urlString];
+        if (existing) {
+            [existing addObject:[completion copy]];
+            return;
+        }
+        pendingCompletions[urlString] = [NSMutableArray arrayWithObject:[completion copy]];
+    }
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
+        if (cachedData.length > 0) {
+            NSImage *cachedDiskImage = [[NSImage alloc] initWithData:cachedData];
+            if (cachedDiskImage) {
+                OPNGameCardCompleteImageRequest(urlString, cachedDiskImage, nil);
+                return;
+            }
+        }
+
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (!url) {
+            OPNGameCardCompleteImageRequest(urlString, nil, nil);
+            return;
+        }
+
+        [[OPNGameCardImageSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
+                OPNGameCardCompleteImageRequest(urlString, nil, nil);
+                return;
+            }
+            NSImage *image = [[NSImage alloc] initWithData:data];
+            OPNGameCardCompleteImageRequest(urlString, image, image ? data : nil);
+        }] resume];
+    });
+}
+
 @interface OPNGameCardView () <CALayerDelegate>
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
@@ -536,56 +635,20 @@ using namespace OPN;
     }
 
     NSString *urlStr = urlStrings[index];
-    NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlStr);
-    if (cachedData.length > 0) {
-        NSImage *cachedImage = [[NSImage alloc] initWithData:cachedData];
-        if (cachedImage) {
-            NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-            OPN::LogInfo(@"[GameCard] image cache hit title=%@ bytes=%lu url=%@", title, (unsigned long)cachedData.length, urlStr);
-            self.imageView.image = cachedImage;
+    NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
+    __weak __typeof__(self) weakSelf = self;
+    OPN::LogInfo(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
+    OPNGameCardLoadImageForURL(urlStr, ^(NSImage *image) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.imageLoadGeneration != generation) return;
+        if (!image) {
+            OPN::LogError(@"[GameCard] image candidate failed title=%@ index=%lu url=%@", title, (unsigned long)index + 1, urlStr);
+            [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
             return;
         }
-    }
-    NSURL *url = [NSURL URLWithString:urlStr];
-    if (!url) {
-        OPN::LogError(@"[GameCard] invalid image URL index=%lu url=%@", (unsigned long)index, urlStr);
-        [self loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
-        return;
-    }
-    NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-    OPN::LogInfo(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
-
-    __weak __typeof__(self) weakSelf = self;
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession]
-        dataTaskWithURL:url
-        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
-            if (error || !data || (http && http.statusCode >= 400)) {
-                OPN::LogError(@"[GameCard] image request failed title=%@ index=%lu status=%ld error=%@ url=%@", title, (unsigned long)index + 1, (long)(http ? http.statusCode : 0), error.localizedDescription ?: @"", urlStr);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __typeof__(self) strongSelf = weakSelf;
-                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
-                });
-                return;
-            }
-            NSImage *img = [[NSImage alloc] initWithData:data];
-            if (!img) {
-                OPN::LogError(@"[GameCard] image decode failed title=%@ index=%lu bytes=%lu url=%@", title, (unsigned long)index + 1, (unsigned long)data.length, urlStr);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __typeof__(self) strongSelf = weakSelf;
-                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
-                });
-                return;
-            }
-            OPN::GameDataCache::Shared().SaveImage(urlStr, data);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf || strongSelf.imageLoadGeneration != generation) return;
-                OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, img.size.width, img.size.height, urlStr);
-                strongSelf.imageView.image = img;
-            });
-        }];
-    [task resume];
+        OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, image.size.width, image.size.height, urlStr);
+        strongSelf.imageView.image = image;
+    });
 }
 
 - (void)mouseEntered:(NSEvent *)event {

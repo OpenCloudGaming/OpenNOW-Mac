@@ -72,6 +72,8 @@ private:
     void StopMicrophoneLevelPolling();
     void StartAudioDeviceMonitoring();
     void StopAudioDeviceMonitoring();
+    void ApplyRuntimeBitrateLimit(int mbps, const char *reason);
+    void UpdateAdaptiveBitrate(const StreamStats &stats);
 
     void *m_impl = nullptr;
     void *m_nativeWindow = nullptr;
@@ -100,6 +102,12 @@ private:
     uint64_t m_previousPacketsReceived = 0;
     uint64_t m_previousFramesDecoded = 0;
     int64_t m_previousPacketsLost = 0;
+    int m_configuredMaxBitrateMbps = 0;
+    int m_adaptiveBitrateMbps = 0;
+    int m_minAdaptiveBitrateMbps = 0;
+    int m_adaptiveCongestionScore = 0;
+    int m_adaptiveRecoveryScore = 0;
+    uint64_t m_lastAdaptiveBitrateChangeMs = 0;
     StreamSettings m_settings;
     Input::Encoder m_inputEncoder;
     std::function<void(const SendAnswerRequest &)> m_onAnswer;

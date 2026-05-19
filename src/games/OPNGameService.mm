@@ -4,6 +4,7 @@
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamSession.h"
 #include <CommonCrypto/CommonCrypto.h>
+#include <cstring>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -1574,6 +1575,122 @@ static bool IsSessionLimitExceededError(const std::string &error) {
            error.find("\"statusCode\":11") != std::string::npos;
 }
 
+static std::string HostFromStreamingResourcePath(NSString *resourcePath) {
+    if (resourcePath.length == 0) return "";
+    std::string value = [resourcePath UTF8String];
+    const char *prefixes[] = {"rtsps://", "rtsp://", "wss://", "https://"};
+    for (const char *prefix : prefixes) {
+        size_t prefixLength = strlen(prefix);
+        if (value.rfind(prefix, 0) != 0) continue;
+        std::string hostAndPath = value.substr(prefixLength);
+        size_t colon = hostAndPath.find(':');
+        size_t slash = hostAndPath.find('/');
+        size_t end = std::min(colon, slash);
+        std::string host = hostAndPath.substr(0, end);
+        if (!host.empty() && host[0] != '.') return host;
+        return "";
+    }
+    return "";
+}
+
+static ActiveSessionEntry ParseActiveSessionEntry(NSDictionary *session) {
+    ActiveSessionEntry entry;
+    if (![session isKindOfClass:[NSDictionary class]]) return entry;
+
+    NSString *sessionId = SafeStr(session[@"sessionId"]);
+    if (sessionId.length > 0) entry.sessionId = [sessionId UTF8String];
+    entry.status = SafeInt(session[@"status"]);
+
+    NSDictionary *requestData = [session[@"sessionRequestData"] isKindOfClass:[NSDictionary class]] ? session[@"sessionRequestData"] : nil;
+    if (requestData) entry.appId = SafeInt(requestData[@"appId"]);
+
+    NSString *gpuType = SafeStr(session[@"gpuType"]);
+    if (gpuType.length > 0) entry.gpuType = [gpuType UTF8String];
+
+    NSArray *connections = [session[@"connectionInfo"] isKindOfClass:[NSArray class]] ? session[@"connectionInfo"] : @[];
+    NSString *connectionHost = nil;
+    for (NSDictionary *connection in connections) {
+        if (![connection isKindOfClass:[NSDictionary class]]) continue;
+        if (SafeInt(connection[@"usage"]) != 14) continue;
+        NSString *ip = SafeStr(connection[@"ip"]);
+        if (ip.length > 0 && ![ip hasPrefix:@"."]) {
+            connectionHost = ip;
+            break;
+        }
+        std::string host = HostFromStreamingResourcePath(SafeStr(connection[@"resourcePath"]));
+        if (!host.empty()) {
+            connectionHost = [NSString stringWithUTF8String:host.c_str()];
+            break;
+        }
+    }
+
+    NSDictionary *controlInfo = [session[@"sessionControlInfo"] isKindOfClass:[NSDictionary class]] ? session[@"sessionControlInfo"] : nil;
+    NSString *controlHost = SafeStr(controlInfo[@"ip"]);
+    NSString *serverHost = controlHost.length > 0 ? controlHost : connectionHost;
+    if (serverHost.length > 0) entry.serverIp = [serverHost UTF8String];
+    if (connectionHost.length > 0) {
+        entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", connectionHost].UTF8String;
+    } else if (controlHost.length > 0) {
+        entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", controlHost].UTF8String;
+    }
+    return entry;
+}
+
+static std::vector<ActiveSessionEntry> ActiveSessionsFromSessionLimitError(const std::string &error) {
+    size_t jsonStart = error.find('{');
+    if (jsonStart == std::string::npos) return {};
+
+    std::string jsonText = error.substr(jsonStart);
+    NSData *data = [[NSData alloc] initWithBytes:jsonText.data() length:jsonText.size()];
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![json isKindOfClass:[NSDictionary class]]) return {};
+
+    NSArray *sessions = [json[@"otherUserSessions"] isKindOfClass:[NSArray class]] ? json[@"otherUserSessions"] : @[];
+    std::vector<ActiveSessionEntry> entries;
+    for (NSDictionary *session in sessions) {
+        ActiveSessionEntry entry = ParseActiveSessionEntry(session);
+        if (!entry.sessionId.empty() && !entry.serverIp.empty() && (entry.status == 1 || entry.status == 2 || entry.status == 3 || entry.status == 6)) {
+            entries.push_back(entry);
+        }
+    }
+    return entries;
+}
+
+static bool IsUnclaimableExistingSessionError(const std::string &error) {
+    return error.find("STALE_ACTIVE_SESSION") != std::string::npos ||
+           error.find("Claim HTTP 400") != std::string::npos ||
+           error.find("\"statusCode\":0") != std::string::npos ||
+           error.find("UNKNOWN 8A8C0000") != std::string::npos;
+}
+
+static void CreateSessionForLaunch(const std::string &appId,
+                                   const std::string &internalTitle,
+                                   const StreamSettings &settings,
+                                   const LaunchProgressCallback &progress,
+                                   const LaunchCallback &completion,
+                                   const std::string &reason) {
+    if (!reason.empty()) {
+        OPN::LogInfo(@"[GameService] Creating fresh session after existing session could not be claimed: %s", reason.c_str());
+        ReportLaunchProgress(progress, "Starting a fresh GeForce NOW session...");
+    }
+
+    SessionManager::Shared().CreateSession(appId, internalTitle, settings,
+        [appId, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
+            if (!success) {
+                DispatchLaunchCompletion(completion, false, SessionInfo{}, "", error);
+                return;
+            }
+            if (IsSessionReadyStatus(info.status) && !info.serverIp.empty()) {
+                ReportLaunchProgress(progress, info);
+                DispatchLaunchCompletion(completion, true, info, "", "");
+                return;
+            }
+            const int appIdNumber = atoi(appId.c_str());
+            ReportLaunchProgress(progress, info);
+            PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
+        });
+}
+
 static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &sessions,
                                   const std::string &appId,
                                   const std::string &internalTitle,
@@ -1587,7 +1704,11 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
         if (s.appId == appIdNum && IsSessionReadyStatus(s.status) && !s.serverIp.empty()) {
             OPN::LogInfo(@"[GameService] Claiming session %s status=%d", s.sessionId.c_str(), s.status);
             SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
-                [completion](bool success, const SessionInfo &info, const std::string &err) {
+                [appId, internalTitle, settings, progress, completion](bool success, const SessionInfo &info, const std::string &err) {
+                    if (!success && IsUnclaimableExistingSessionError(err)) {
+                        CreateSessionForLaunch(appId, internalTitle, settings, progress, completion, err);
+                        return;
+                    }
                     DispatchLaunchCompletion(completion, success, info, "", err);
                 });
             return true;
@@ -1597,8 +1718,13 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
     for (const auto &s : sessions) {
         if (IsSessionReadyStatus(s.status) && !s.sessionId.empty() && !s.serverIp.empty()) {
             OPN::LogInfo(@"[GameService] Claiming existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
-            SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
-                [completion](bool success, const SessionInfo &info, const std::string &err) {
+            std::string claimAppId = s.appId > 0 ? std::to_string(s.appId) : appId;
+            SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, claimAppId, settings, recoveryMode,
+                [appId, internalTitle, settings, progress, completion](bool success, const SessionInfo &info, const std::string &err) {
+                    if (!success && IsUnclaimableExistingSessionError(err)) {
+                        CreateSessionForLaunch(appId, internalTitle, settings, progress, completion, err);
+                        return;
+                    }
                     DispatchLaunchCompletion(completion, success, info, "", err);
                 });
             return true;
@@ -1644,10 +1770,14 @@ static bool RetryExistingSessionAfterLimitError(const std::string &error,
                                                 const std::string &internalTitle,
                                                 const StreamSettings &settings,
                                                 bool recoveryMode,
-                                                const LaunchProgressCallback &progress,
-                                                const LaunchCallback &completion) {
+    const LaunchProgressCallback &progress,
+    const LaunchCallback &completion) {
     if (!IsSessionLimitExceededError(error)) return false;
-    OPN::LogError(@"[GameService] SESSION_LIMIT_EXCEEDED; retrying existing session lookup");
+    OPN::LogInfo(@"[GameService] SESSION_LIMIT_EXCEEDED; retrying existing session lookup");
+    std::vector<ActiveSessionEntry> embeddedSessions = ActiveSessionsFromSessionLimitError(error);
+    if (TryUseExistingSession(embeddedSessions, appId, internalTitle, settings, recoveryMode, progress, completion)) {
+        return true;
+    }
     SessionManager::Shared().GetActiveSessions([appId, internalTitle, settings, recoveryMode, progress, completion, error](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &) {
         if (ok && TryUseExistingSession(sessions, appId, internalTitle, settings, recoveryMode, progress, completion)) {
             return;

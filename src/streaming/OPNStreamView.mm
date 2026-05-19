@@ -63,7 +63,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
 @interface OPNStreamView () {
     void *_attachedPipeline;
     OPN::IStreamSession *_streamSession;
-    NSTimer *_gamepadTimer;
+    dispatch_source_t _gamepadTimer;
     dispatch_source_t _escapeHoldTimer;
     BOOL _cursorCaptured;
     uint8_t _mouseButtonsDown;
@@ -1074,15 +1074,25 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 - (void)startGamepadPolling {
     if (_gamepadTimer) return;
     if (!_streamSession || GCController.controllers.count == 0) return;
-    _gamepadTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 60.0)
-                                                      target:self
-                                                   selector:@selector(pollGamepads)
-                                                   userInfo:nil
-                                                    repeats:YES];
+    _gamepadTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    if (!_gamepadTimer) return;
+    dispatch_source_set_timer(_gamepadTimer,
+                              dispatch_time(DISPATCH_TIME_NOW, 0),
+                              8 * NSEC_PER_MSEC,
+                              1 * NSEC_PER_MSEC);
+    __weak OPNStreamView *weakSelf = self;
+    dispatch_source_set_event_handler(_gamepadTimer, ^{
+        OPNStreamView *strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf pollGamepads];
+    });
+    dispatch_resume(_gamepadTimer);
 }
 
 - (void)stopGamepadPolling {
-    [_gamepadTimer invalidate];
+    if (_gamepadTimer) {
+        dispatch_source_cancel(_gamepadTimer);
+    }
     _gamepadTimer = nil;
 }
 

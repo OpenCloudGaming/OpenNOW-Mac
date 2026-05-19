@@ -27,7 +27,7 @@ static NSDictionary<NSString *, NSString *> *OPNWebRTCBackendRuntimeInfo(void) {
     NSString *active = [NSString stringWithUTF8String:OPN::StreamWebRTCBackendName(OPN::ResolveStreamWebRTCBackend()).c_str()];
     NSString *libDescription = [NSString stringWithUTF8String:OPN::LibWebRTCStreamSession::AvailabilityDescription().c_str()];
     NSString *requestedCodec = [NSString stringWithUTF8String:(profile.codec.value.empty() ? std::string("H264") : profile.codec.value).c_str()];
-    NSString *effectiveCodec = [requestedCodec caseInsensitiveCompare:@"auto"] == NSOrderedSame ? @"H264" : requestedCodec;
+    NSString *effectiveCodec = [requestedCodec caseInsensitiveCompare:@"auto"] == NSOrderedSame ? @"Hardware-selected at launch" : requestedCodec;
     NSString *status = libWebRTCAvailable ? @"Using libwebrtc" : @"libwebrtc unavailable";
 
     return @{

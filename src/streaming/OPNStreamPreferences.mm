@@ -3,7 +3,9 @@
 #import <CoreAudio/CoreAudio.h>
 #include <algorithm>
 #include <cmath>
+#include <ifaddrs.h>
 #include <memory>
+#include <net/if.h>
 
 namespace OPN {
 
@@ -383,6 +385,38 @@ static std::string NormalizedBaseUrl(const std::string &url) {
     return url.back() == '/' ? url : url + "/";
 }
 
+static std::string CurrentNetworkType() {
+    struct ifaddrs *interfaces = nullptr;
+    if (getifaddrs(&interfaces) != 0 || !interfaces) return "Unknown";
+
+    bool hasWifi = false;
+    bool hasWired = false;
+    for (struct ifaddrs *item = interfaces; item; item = item->ifa_next) {
+        if (!item->ifa_name || (item->ifa_flags & IFF_UP) == 0 || (item->ifa_flags & IFF_RUNNING) == 0) continue;
+        if ((item->ifa_flags & IFF_LOOPBACK) != 0) continue;
+        std::string name(item->ifa_name);
+        if (name.rfind("awdl", 0) == 0 || name.rfind("llw", 0) == 0 || name.rfind("utun", 0) == 0) continue;
+        if (name == "en0" || name == "en1") {
+            hasWifi = true;
+        } else if (name.rfind("en", 0) == 0 || name.rfind("bridge", 0) == 0) {
+            hasWired = true;
+        }
+    }
+    freeifaddrs(interfaces);
+    if (hasWired) return "Ethernet";
+    if (hasWifi) return "WiFi";
+    return "Unknown";
+}
+
+static int RecommendedPreflightBitrate(int requestedMaxBitrateMbps, int latencyMs) {
+    int requested = std::max(1, requestedMaxBitrateMbps);
+    if (latencyMs < 0) return requested;
+    if (latencyMs >= 120) return std::min(requested, 25);
+    if (latencyMs >= 85) return std::min(requested, 50);
+    if (latencyMs >= 60) return std::min(requested, 75);
+    return requested;
+}
+
 std::string LoadSelectedStreamRegionUrl() {
     NSString *value = [NSUserDefaults.standardUserDefaults stringForKey:kSelectedRegionUrlKey];
     return value.length > 0 ? std::string([value UTF8String]) : std::string();
@@ -534,6 +568,44 @@ void FetchStreamRegions(const std::string &token,
         }
         MeasureRegions(regions, tokenCopy, completion);
     }] resume];
+}
+
+void RunStreamNetworkPreflight(const std::string &token,
+                               const std::string &providerStreamingBaseUrl,
+                               int requestedMaxBitrateMbps,
+                               std::function<void(const StreamNetworkPreflightResult &result)> completion) {
+    StreamNetworkPreflightResult initial;
+    initial.streamingBaseUrl = LoadSelectedStreamingBaseUrl();
+    initial.networkType = CurrentNetworkType();
+    initial.recommendedMaxBitrateMbps = std::max(1, requestedMaxBitrateMbps);
+
+    std::string selectedRegionUrl = LoadSelectedStreamRegionUrl();
+    FetchStreamRegions(token, providerStreamingBaseUrl, [initial, selectedRegionUrl, requestedMaxBitrateMbps, completion](const std::vector<StreamRegionOption> &regions) mutable {
+        StreamNetworkPreflightResult result = initial;
+        const StreamRegionOption *chosen = nullptr;
+        if (!selectedRegionUrl.empty()) {
+            std::string normalizedSelected = NormalizedBaseUrl(selectedRegionUrl);
+            auto selected = std::find_if(regions.begin(), regions.end(), [&normalizedSelected](const StreamRegionOption &region) {
+                return NormalizedBaseUrl(region.url) == normalizedSelected;
+            });
+            if (selected != regions.end()) chosen = &(*selected);
+        }
+        if (!chosen) {
+            auto measured = std::find_if(regions.begin(), regions.end(), [](const StreamRegionOption &region) {
+                return !region.url.empty() && region.latencyMs >= 0;
+            });
+            if (measured != regions.end()) {
+                chosen = &(*measured);
+                result.usedAutomaticRegion = selectedRegionUrl.empty();
+            }
+        }
+        if (chosen && !chosen->url.empty()) {
+            result.streamingBaseUrl = NormalizedBaseUrl(chosen->url);
+            result.latencyMs = chosen->latencyMs;
+        }
+        result.recommendedMaxBitrateMbps = RecommendedPreflightBitrate(requestedMaxBitrateMbps, result.latencyMs);
+        completion(result);
+    });
 }
 
 void SaveStreamAspectIndex(int aspectIndex) {

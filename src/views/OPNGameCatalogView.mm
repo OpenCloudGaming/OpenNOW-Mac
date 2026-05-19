@@ -44,6 +44,31 @@ static NSCache<NSString *, NSImage *> *OPNCatalogDecodedImageCache(void) {
     return decodedImageCache;
 }
 
+static NSCache<NSString *, NSData *> *OPNCatalogImageDataCache(void) {
+    static NSCache<NSString *, NSData *> *imageDataCache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        imageDataCache = [[NSCache alloc] init];
+        imageDataCache.countLimit = 160;
+        imageDataCache.totalCostLimit = 96 * 1024 * 1024;
+    });
+    return imageDataCache;
+}
+
+static NSURLSession *OPNCatalogImageSession(void) {
+    static NSURLSession *session;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        configuration.HTTPMaximumConnectionsPerHost = 6;
+        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
+        configuration.timeoutIntervalForRequest = 15.0;
+        configuration.URLCache = [NSURLCache sharedURLCache];
+        session = [NSURLSession sessionWithConfiguration:configuration];
+    });
+    return session;
+}
+
 static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *OPNCatalogPendingImageCompletions(void) {
     static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions;
     static dispatch_once_t onceToken;
@@ -55,11 +80,13 @@ static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion>
 
 static void OPNCatalogCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
     NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
+    NSCache<NSString *, NSData *> *imageDataCache = OPNCatalogImageDataCache();
     NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
 
     NSArray<OPNCatalogImageCompletion> *completions = nil;
     @synchronized (pendingCompletions) {
         if (image) [decodedImageCache setObject:image forKey:urlString];
+        if (data.length > 0) [imageDataCache setObject:data forKey:urlString cost:data.length];
         completions = [pendingCompletions[urlString] copy];
         [pendingCompletions removeObjectForKey:urlString];
     }
@@ -80,7 +107,7 @@ static void OPNCatalogLoadImageForURL(NSString *urlString, OPNCatalogImageComple
 
     NSImage *cachedImage = [decodedImageCache objectForKey:urlString];
     if (cachedImage) {
-        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
+        NSData *cachedData = [OPNCatalogImageDataCache() objectForKey:urlString];
         dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage, urlString, cachedData); });
         return;
     }
@@ -110,7 +137,7 @@ static void OPNCatalogLoadImageForURL(NSString *urlString, OPNCatalogImageComple
             return;
         }
 
-        [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        [[OPNCatalogImageSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
             if (error || data.length == 0 || (http && http.statusCode >= 400)) {
                 OPNCatalogCompleteImageRequest(urlString, nil, nil);
@@ -513,6 +540,11 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
     OPNControllerOverviewSpecialTileLastPlayed = 1,
 };
 
+typedef struct {
+    NSInteger count;
+    std::vector<OPN::GameInfo> thumbnails;
+} OPNCategorySample;
+
 @interface OPNGameCatalogView ()
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSView *gridContentView;
@@ -609,6 +641,7 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 - (void)cycleCategoryBy:(NSInteger)delta;
 - (NSInteger)gameCountForCategory:(NSString *)categoryId;
 - (std::vector<OPN::GameInfo>)gamesForCategory:(NSString *)categoryId limit:(NSInteger)limit;
+- (OPNCategorySample)sampleForCategory:(NSString *)categoryId limit:(NSInteger)limit;
 - (const OPN::GameInfo *)currentLastPlayedGame;
 - (int)preferredVariantIndexForGame:(const OPN::GameInfo &)game;
 - (void)renderControllerCategoryOverview;
@@ -1932,6 +1965,31 @@ using namespace OPN;
     return games;
 }
 
+- (OPNCategorySample)sampleForCategory:(NSString *)categoryId limit:(NSInteger)limit {
+    OPNCategorySample sample = {0, {}};
+    std::vector<OPN::GameInfo> libraryThumbnails;
+    std::vector<OPN::GameInfo> otherThumbnails;
+    NSInteger thumbnailLimit = MAX(0, limit);
+    for (const OPN::GameInfo &game : self.allGames) {
+        if (![self game:game matchesCategory:categoryId]) continue;
+        sample.count++;
+        if (game.isInLibrary) {
+            if ((NSInteger)libraryThumbnails.size() < thumbnailLimit) libraryThumbnails.push_back(game);
+        } else {
+            if ((NSInteger)otherThumbnails.size() < thumbnailLimit) otherThumbnails.push_back(game);
+        }
+    }
+    for (const OPN::GameInfo &game : libraryThumbnails) {
+        if ((NSInteger)sample.thumbnails.size() >= thumbnailLimit) return sample;
+        sample.thumbnails.push_back(game);
+    }
+    for (const OPN::GameInfo &game : otherThumbnails) {
+        if ((NSInteger)sample.thumbnails.size() >= thumbnailLimit) return sample;
+        sample.thumbnails.push_back(game);
+    }
+    return sample;
+}
+
 - (BOOL)game:(const OPN::GameInfo &)game matchesCategory:(NSString *)categoryId {
     if (categoryId.length == 0 || [categoryId isEqualToString:@"all"]) return YES;
     if ([categoryId isEqualToString:@"favorites"]) return [self isFavoriteGame:game];
@@ -2353,14 +2411,13 @@ using namespace OPN;
         NSString *title = item[@"title"] ?: @"Category";
         if ([categoryId isEqualToString:@"all"]) title = @"All Games";
         if ([categoryId hasPrefix:@"store:"] && ![title hasPrefix:@"Store:"]) title = [@"Store: " stringByAppendingString:title];
-        NSInteger gameCount = [self gameCountForCategory:categoryId];
-        if (gameCount <= 0 && ![categoryId isEqualToString:@"favorites"]) continue;
-        std::vector<OPN::GameInfo> thumbnailGames = [self gamesForCategory:categoryId limit:6];
+        OPNCategorySample sample = [self sampleForCategory:categoryId limit:6];
+        if (sample.count <= 0 && ![categoryId isEqualToString:@"favorites"]) continue;
         OPNControllerCategoryCardView *card = [[OPNControllerCategoryCardView alloc] initWithFrame:NSMakeRect(nextX, cardY, cardWidth, cardHeight)
-                                                                                               title:title
-                                                                                          categoryId:categoryId
-                                                                                           gameCount:gameCount
-                                                                                              games:thumbnailGames];
+                                                                                                title:title
+                                                                                           categoryId:categoryId
+                                                                                            gameCount:sample.count
+                                                                                               games:sample.thumbnails];
         __weak __typeof__(self) weakSelf = self;
         __weak OPNControllerCategoryCardView *weakCard = card;
         card.onSelect = ^{

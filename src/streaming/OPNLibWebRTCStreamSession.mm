@@ -37,6 +37,7 @@
 namespace OPN {
 
 static constexpr int OPNPartialReliableInputLifetimeMs = 5;
+static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
 
 static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector) {
     AudioDeviceID device = kAudioObjectUnknown;
@@ -824,11 +825,19 @@ class LibWebRTCStreamSession;
         _metalView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         _metalView.framebufferOnly = YES;
         _metalView.autoResizeDrawable = NO;
-        _metalView.paused = NO;
+        _metalView.paused = YES;
         _metalView.enableSetNeedsDisplay = NO;
         _metalView.preferredFramesPerSecond = _targetFps;
         _metalView.delegate = self;
         _metalView.layerContentsPlacement = NSViewLayerContentsPlacementScaleProportionallyToFit;
+        if ([_metalView.layer isKindOfClass:CAMetalLayer.class]) {
+            CAMetalLayer *metalLayer = (CAMetalLayer *)_metalView.layer;
+            metalLayer.presentsWithTransaction = NO;
+            metalLayer.allowsNextDrawableTimeout = NO;
+            if (@available(macOS 10.13, *)) {
+                metalLayer.maximumDrawableCount = 3;
+            }
+        }
         [self addSubview:_metalView];
     }
     return self;
@@ -930,7 +939,7 @@ class LibWebRTCStreamSession;
         if (fallback) *fallback = [NSString stringWithFormat:@"%@ rejected MTKView", className];
         return nil;
     }
-    self.metalView.paused = NO;
+    self.metalView.paused = YES;
     self.metalView.enableSetNeedsDisplay = NO;
     self.metalView.preferredFramesPerSecond = self.targetFps;
     return renderer;
@@ -1225,6 +1234,12 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
                                    StreamStateCallback onState) {
     Stop();
     m_settings = settings;
+    m_configuredMaxBitrateMbps = std::max(1, settings.maxBitrateMbps);
+    m_adaptiveBitrateMbps = m_configuredMaxBitrateMbps;
+    m_minAdaptiveBitrateMbps = std::min(m_configuredMaxBitrateMbps, std::max(8, m_configuredMaxBitrateMbps * 35 / 100));
+    m_adaptiveCongestionScore = 0;
+    m_adaptiveRecoveryScore = 0;
+    m_lastAdaptiveBitrateChangeMs = 0;
     m_onState = std::move(onState);
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
@@ -1508,6 +1523,7 @@ void LibWebRTCStreamSession::SendInputPartiallyReliable(const uint8_t *data, siz
 #if defined(OPN_HAVE_LIBWEBRTC)
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.partialInputChannel || impl.partialInputChannel.readyState != RTCDataChannelStateOpen || !data || len == 0) return;
+    if (impl.partialInputChannel.bufferedAmount > OPNPartialReliableInputBacklogLimitBytes) return;
     NSData *payload = [NSData dataWithBytes:data length:len];
     RTCDataBuffer *buffer = [[RTCDataBuffer alloc] initWithData:payload isBinary:YES];
     [impl.partialInputChannel sendData:buffer];
@@ -1617,9 +1633,8 @@ void LibWebRTCStreamSession::SetMicrophoneVolume(double volume) {
 #endif
 }
 
-void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
+void LibWebRTCStreamSession::ApplyRuntimeBitrateLimit(int mbps, const char *reason) {
     int clampedMbps = std::max(1, std::min(mbps, 250));
-    m_settings.maxBitrateMbps = clampedMbps;
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
         m_latestStats.videoPipelineMode = "libwebrtc bitrate " + std::to_string(clampedMbps) + " Mbps";
@@ -1631,10 +1646,81 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
     NSNumber *currentBitrateBps = @(std::max(1, clampedMbps * 7 / 10) * 1000 * 1000);
     NSNumber *minBitrateBps = @(std::max(1, clampedMbps * 35 / 100) * 1000 * 1000);
     BOOL ok = [impl.peerConnection setBweMinBitrateBps:minBitrateBps
-                                      currentBitrateBps:currentBitrateBps
-                                          maxBitrateBps:maxBitrateBps];
-    OPN::LogInfo(@"[LibWebRTC] Runtime bitrate limit %d Mbps applied=%d", clampedMbps, ok);
+                                       currentBitrateBps:currentBitrateBps
+                                           maxBitrateBps:maxBitrateBps];
+    OPN::LogInfo(@"[LibWebRTC] Runtime bitrate limit %d Mbps applied=%d reason=%s", clampedMbps, ok, reason ? reason : "manual");
 #endif
+}
+
+void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
+    int clampedMbps = std::max(1, std::min(mbps, 250));
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_settings.maxBitrateMbps = clampedMbps;
+        m_configuredMaxBitrateMbps = clampedMbps;
+        m_adaptiveBitrateMbps = clampedMbps;
+        m_minAdaptiveBitrateMbps = std::min(clampedMbps, std::max(8, clampedMbps * 35 / 100));
+        m_adaptiveCongestionScore = 0;
+        m_adaptiveRecoveryScore = 0;
+    }
+    ApplyRuntimeBitrateLimit(clampedMbps, "manual");
+}
+
+void LibWebRTCStreamSession::UpdateAdaptiveBitrate(const StreamStats &stats) {
+    if (!stats.available) return;
+
+    int bitrateToApply = 0;
+    const char *reason = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        const int configuredMax = std::max(1, m_configuredMaxBitrateMbps > 0 ? m_configuredMaxBitrateMbps : m_settings.maxBitrateMbps);
+        if (m_adaptiveBitrateMbps <= 0) m_adaptiveBitrateMbps = configuredMax;
+        if (m_minAdaptiveBitrateMbps <= 0) m_minAdaptiveBitrateMbps = std::min(configuredMax, std::max(8, configuredMax * 35 / 100));
+
+        const double targetFps = m_settings.fps > 0 ? (double)m_settings.fps : 60.0;
+        const double frameBudgetMs = 1000.0 / targetFps;
+        const bool lossHigh = stats.packetLossPercent >= 1.0;
+        const bool jitterHigh = stats.jitterMs >= 25.0;
+        const bool latencyHigh = stats.latencyMs >= 110.0;
+        const bool decodeSlow = stats.decodeTimeMs >= frameBudgetMs * 0.90;
+        const bool renderSlow = stats.renderFps > 0.0 && stats.renderFps < targetFps * 0.82;
+        const bool congested = lossHigh || jitterHigh || latencyHigh || decodeSlow || renderSlow;
+        const uint64_t nowMs = stats.timestampMs > 0 ? stats.timestampMs : OPNMonotonicMs();
+
+        if (congested) {
+            m_adaptiveCongestionScore = std::min(m_adaptiveCongestionScore + 1, 6);
+            m_adaptiveRecoveryScore = 0;
+        } else {
+            m_adaptiveCongestionScore = std::max(0, m_adaptiveCongestionScore - 1);
+            m_adaptiveRecoveryScore = std::min(m_adaptiveRecoveryScore + 1, 20);
+        }
+
+        const bool downCooldownElapsed = m_lastAdaptiveBitrateChangeMs == 0 || nowMs - m_lastAdaptiveBitrateChangeMs >= 2500;
+        const bool upCooldownElapsed = m_lastAdaptiveBitrateChangeMs == 0 || nowMs - m_lastAdaptiveBitrateChangeMs >= 10000;
+        if (m_adaptiveCongestionScore >= 2 && downCooldownElapsed && m_adaptiveBitrateMbps > m_minAdaptiveBitrateMbps) {
+            int reduced = std::max(m_minAdaptiveBitrateMbps, (int)std::floor((double)m_adaptiveBitrateMbps * 0.82));
+            if (reduced < m_adaptiveBitrateMbps) {
+                m_adaptiveBitrateMbps = reduced;
+                m_lastAdaptiveBitrateChangeMs = nowMs;
+                m_adaptiveCongestionScore = 0;
+                bitrateToApply = reduced;
+                reason = "adaptive-congestion";
+            }
+        } else if (m_adaptiveRecoveryScore >= 10 && upCooldownElapsed && m_adaptiveBitrateMbps < configuredMax) {
+            int increased = std::min(configuredMax, std::max(m_adaptiveBitrateMbps + 1, (int)std::ceil((double)m_adaptiveBitrateMbps * 1.10)));
+            if (increased > m_adaptiveBitrateMbps) {
+                m_adaptiveBitrateMbps = increased;
+                m_lastAdaptiveBitrateChangeMs = nowMs;
+                m_adaptiveRecoveryScore = 0;
+                bitrateToApply = increased;
+                reason = "adaptive-recovery";
+            }
+        }
+    }
+
+    if (bitrateToApply > 0) {
+        ApplyRuntimeBitrateLimit(bitrateToApply, reason);
+    }
 }
 
 void LibWebRTCStreamSession::OnMicrophoneLevel(MicrophoneLevelCallback cb) {
@@ -2107,6 +2193,7 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
         m_latestStats = parsed;
         m_statsRequestInFlight = false;
     }
+    UpdateAdaptiveBitrate(parsed);
 #else
     (void)report;
 #endif

@@ -55,6 +55,15 @@ struct StreamMicrophoneDeviceOption {
     bool automatic = false;
 };
 
+struct StreamNetworkPreflightResult {
+    std::string streamingBaseUrl;
+    std::string networkTestSessionId;
+    std::string networkType = "Unknown";
+    int latencyMs = -1;
+    int recommendedMaxBitrateMbps = 0;
+    bool usedAutomaticRegion = false;
+};
+
 struct StreamPreferenceProfile {
     int aspectIndex = 1;
     int resolutionIndex = 2;
@@ -103,6 +112,10 @@ void SaveCachedStreamRegions(const std::vector<StreamRegionOption> &regions);
 void FetchStreamRegions(const std::string &token,
                         const std::string &providerStreamingBaseUrl,
                         std::function<void(const std::vector<StreamRegionOption> &regions)> completion);
+void RunStreamNetworkPreflight(const std::string &token,
+                               const std::string &providerStreamingBaseUrl,
+                               int requestedMaxBitrateMbps,
+                               std::function<void(const StreamNetworkPreflightResult &result)> completion);
 void SaveStreamAspectIndex(int aspectIndex);
 void SaveStreamResolutionIndex(int resolutionIndex);
 void SaveStreamFpsIndex(int fpsIndex);
