@@ -204,6 +204,13 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
 @property (nonatomic, assign) uint16_t previousGamepadButtons;
 @property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 - (void)applyPerformanceProfile:(NSInteger)index;
+- (void)addOptionGroupTo:(NSView *)parent
+                   group:(NSInteger)group
+                  titles:(NSArray<NSString *> *)titles
+                selected:(NSInteger)selected
+                       y:(CGFloat)y
+                   widths:(NSArray<NSNumber *> *)widths
+                  enabled:(NSArray<NSNumber *> *)enabled;
 - (void)audioDevicesChanged;
 - (void)startGamepadNavigationIfNeeded;
 - (void)stopGamepadNavigation;
@@ -613,7 +620,10 @@ using namespace OPN;
     CGFloat panelWidth = MAX(320.0, self.contentAreaWidth > 0 ? self.contentAreaWidth : 720.0);
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
-    NSView *video = [self panelWithTitle:@"Video" height:642.0];
+    OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
+    OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
+    OPN::StreamPreferenceProfile effectiveProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(profile, capabilities);
+    NSView *video = [self panelWithTitle:@"Video" height:724.0];
     [video addSubview:[self rowLabel:@"Aspect Ratio" y:112.0]];
     NSMutableArray<NSString *> *aspectTitles = [NSMutableArray array];
     for (const OPN::StreamAspectOption &option : OPN::StreamAspectOptions()) {
@@ -625,11 +635,13 @@ using namespace OPN;
     [video addSubview:[self resolutionPopupWithFrame:NSMakeRect(controlX, 176, controlWidth, 42)]];
 
     NSMutableArray<NSString *> *fpsTitles = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *fpsEnabled = [NSMutableArray array];
     for (int fps : OPN::StreamFpsOptions()) {
         [fpsTitles addObject:[NSString stringWithFormat:@"%d", fps]];
+        [fpsEnabled addObject:@(OPN::StreamFpsSupportedByCapabilities(fps, capabilities))];
     }
     [video addSubview:[self rowLabel:@"FPS" y:264.0]];
-    [self addOptionGroupTo:video group:3 titles:fpsTitles selected:self.selectedFps y:254.0 widths:@[@62.0, @62.0, @62.0, @62.0]];
+    [self addOptionGroupTo:video group:3 titles:fpsTitles selected:self.selectedFps y:254.0 widths:@[@62.0, @62.0, @62.0, @62.0] enabled:fpsEnabled];
     NSMutableArray<NSString *> *bitrateTitles = [NSMutableArray array];
     for (const OPN::StreamBitrateOption &option : OPN::StreamBitrateOptions()) {
         [bitrateTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
@@ -638,17 +650,57 @@ using namespace OPN;
     [self addOptionGroupTo:video group:8 titles:bitrateTitles selected:self.selectedBitrate y:330.0 widths:@[@86.0, @86.0, @86.0, @86.0, @94.0]];
 
     NSMutableArray<NSString *> *codecTitles = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *codecEnabled = [NSMutableArray array];
     for (const OPN::StreamCodecOption &option : OPN::StreamCodecOptions()) {
         [codecTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
+        [codecEnabled addObject:@(OPN::StreamCodecSupportedByCapabilities(option, capabilities))];
     }
     [video addSubview:[self rowLabel:@"Codec" y:416.0]];
-    [self addOptionGroupTo:video group:4 titles:codecTitles selected:self.selectedCodec y:406.0 widths:@[@142.0, @116.0, @96.0, @70.0]];
+    [self addOptionGroupTo:video group:4 titles:codecTitles selected:self.selectedCodec y:406.0 widths:@[@142.0, @116.0, @96.0, @70.0] enabled:codecEnabled];
     NSMutableArray<NSString *> *colorDepthTitles = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *colorDepthEnabled = [NSMutableArray array];
+    OPN::StreamCodecOption colorCapabilityCodec = OPN::StreamCodecSupportedByCapabilities(profile.codec, capabilities)
+        ? profile.codec
+        : effectiveProfile.codec;
     for (const OPN::StreamColorQualityOption &option : OPN::StreamColorQualityOptions()) {
         [colorDepthTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
+        [colorDepthEnabled addObject:@(OPN::StreamColorQualitySupportedByCapabilities(option, colorCapabilityCodec, capabilities))];
     }
     [video addSubview:[self rowLabel:@"Color Depth" y:492.0]];
-    [self addOptionGroupTo:video group:7 titles:colorDepthTitles selected:self.selectedColorDepth y:482.0 widths:@[@112.0, @112.0, @124.0, @124.0]];
+    [self addOptionGroupTo:video group:7 titles:colorDepthTitles selected:self.selectedColorDepth y:482.0 widths:@[@112.0, @112.0, @124.0, @124.0] enabled:colorDepthEnabled];
+
+    NSString *capabilitySummary = [NSString stringWithFormat:@"Hardware decode: H264 %@ · H265 %@ · AV1 %@. Display: %dx%d%@%@.",
+                                   capabilities.h264HardwareDecodeSupported ? @"on" : @"off",
+                                   capabilities.h265HardwareDecodeSupported ? @"on" : @"off",
+                                   capabilities.av1HardwareDecodeSupported ? @"on" : @"off",
+                                   capabilities.maxDisplayWidth,
+                                   capabilities.maxDisplayHeight,
+                                   capabilities.maxDisplayRefreshRate > 0 ? [NSString stringWithFormat:@" @ %dHz", capabilities.maxDisplayRefreshRate] : @"",
+                                   capabilities.hdrDisplaySupported ? @" · HDR display" : @""];
+    NSTextField *capabilityLabel = OpnLabel(capabilitySummary,
+                                            NSMakeRect(controlX, 548.0, controlWidth, 36.0),
+                                            12.0,
+                                            OpnColor(kTextMuted),
+                                            NSFontWeightRegular);
+    capabilityLabel.maximumNumberOfLines = 2;
+    [video addSubview:capabilityLabel];
+
+    BOOL willAdjustAtLaunch = profile.codec.value != effectiveProfile.codec.value ||
+        profile.fps != effectiveProfile.fps ||
+        profile.colorQuality.value != effectiveProfile.colorQuality.value;
+    NSString *adjustmentText = willAdjustAtLaunch
+        ? [NSString stringWithFormat:@"Saved profile will launch as %@, %dfps, %@ on this Mac.",
+           [NSString stringWithUTF8String:effectiveProfile.codec.label.c_str()],
+           effectiveProfile.fps,
+           [NSString stringWithUTF8String:effectiveProfile.colorQuality.label.c_str()]]
+        : @"Unsupported codec, color, and FPS options are disabled to match this Mac's playback capabilities.";
+    NSTextField *adjustmentLabel = OpnLabel(adjustmentText,
+                                            NSMakeRect(controlX, 594.0, controlWidth, 42.0),
+                                            12.0,
+                                            willAdjustAtLaunch ? OpnColor(0xFFD166) : OpnColor(kTextMuted),
+                                            NSFontWeightRegular);
+    adjustmentLabel.maximumNumberOfLines = 2;
+    [video addSubview:adjustmentLabel];
 
     [self.documentView addSubview:video];
 }
@@ -988,8 +1040,18 @@ using namespace OPN;
                    group:(NSInteger)group
                   titles:(NSArray<NSString *> *)titles
                 selected:(NSInteger)selected
+                        y:(CGFloat)y
+                    widths:(NSArray<NSNumber *> *)widths {
+    [self addOptionGroupTo:parent group:group titles:titles selected:selected y:y widths:widths enabled:nil];
+}
+
+- (void)addOptionGroupTo:(NSView *)parent
+                   group:(NSInteger)group
+                  titles:(NSArray<NSString *> *)titles
+                selected:(NSInteger)selected
                        y:(CGFloat)y
-                   widths:(NSArray<NSNumber *> *)widths {
+                   widths:(NSArray<NSNumber *> *)widths
+                  enabled:(NSArray<NSNumber *> *)enabled {
     CGFloat panelWidth = MAX(320.0, NSWidth(parent.frame));
     CGFloat x = [self controlXForPanelWidth:panelWidth];
     CGFloat availableWidth = MAX(80.0, panelWidth - x - 24.0);
@@ -1008,19 +1070,29 @@ using namespace OPN;
         button.action = @selector(optionClicked:);
         button.bordered = NO;
         button.wantsLayer = YES;
-        [self styleOptionButton:button selected:(NSInteger)i == selected];
+        BOOL optionEnabled = !enabled || i >= enabled.count || enabled[i].boolValue;
+        button.enabled = optionEnabled;
+        [self styleOptionButton:button selected:(NSInteger)i == selected enabled:optionEnabled];
         [parent addSubview:button];
         x += width + 8.0;
     }
 }
 
-- (void)styleOptionButton:(NSButton *)button selected:(BOOL)selected {
+- (void)styleOptionButton:(NSButton *)button selected:(BOOL)selected enabled:(BOOL)enabled {
     button.font = [NSFont systemFontOfSize:13.0 weight:selected ? NSFontWeightSemibold : NSFontWeightRegular];
-    button.contentTintColor = selected ? OpnColor(kBrandGreen) : OpnColor(kTextMuted);
+    button.contentTintColor = enabled ? (selected ? OpnColor(kBrandGreen) : OpnColor(kTextMuted)) : OpnColor(kTextMuted, 0.42);
     button.layer.cornerRadius = 10.0;
     button.layer.borderWidth = 1.0;
-    button.layer.borderColor = (selected ? OpnColor(kBrandGreen, 0.50) : OpnColor(kPanelBorder, 0.72)).CGColor;
-    button.layer.backgroundColor = (selected ? OpnColor(kBrandGreen, 0.16) : OpnColor(kInputBackground, 0.58)).CGColor;
+    button.layer.borderColor = (enabled
+                                ? (selected ? OpnColor(kBrandGreen, 0.50) : OpnColor(kPanelBorder, 0.72))
+                                : OpnColor(kPanelBorder, 0.34)).CGColor;
+    button.layer.backgroundColor = (enabled
+                                    ? (selected ? OpnColor(kBrandGreen, 0.16) : OpnColor(kInputBackground, 0.58))
+                                    : OpnColor(kInputBackground, 0.26)).CGColor;
+}
+
+- (void)styleOptionButton:(NSButton *)button selected:(BOOL)selected {
+    [self styleOptionButton:button selected:selected enabled:YES];
 }
 
 - (void)optionClicked:(NSButton *)sender {

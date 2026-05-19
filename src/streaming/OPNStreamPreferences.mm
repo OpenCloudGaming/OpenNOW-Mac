@@ -1,7 +1,10 @@
 #include "OPNStreamPreferences.h"
+#import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
+#import <VideoToolbox/VideoToolbox.h>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <ifaddrs.h>
 #include <memory>
@@ -304,6 +307,165 @@ std::vector<StreamResolutionOption> StreamResolutionOptionsForAspect(int aspectI
         default:
             return {{1280, 800}, {1440, 900}, {1680, 1050}, {1920, 1200}, {2560, 1600}, {2880, 1800}};
     }
+}
+
+static bool HardwareDecodeSupported(CMVideoCodecType codecType) {
+    if (@available(macOS 10.13, *)) {
+        return VTIsHardwareDecodeSupported(codecType);
+    }
+    return codecType == kCMVideoCodecType_H264;
+}
+
+static std::string UppercaseAscii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return (char)std::toupper(character);
+    });
+    return value;
+}
+
+StreamDeviceCapabilities LoadStreamDeviceCapabilities() {
+    StreamDeviceCapabilities capabilities;
+    capabilities.h264HardwareDecodeSupported = HardwareDecodeSupported(kCMVideoCodecType_H264);
+    capabilities.h265HardwareDecodeSupported = HardwareDecodeSupported(kCMVideoCodecType_HEVC);
+    capabilities.av1HardwareDecodeSupported = HardwareDecodeSupported(kCMVideoCodecType_AV1);
+
+    NSScreen *screen = NSScreen.mainScreen;
+    if (screen) {
+        NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+        if ([screenNumber isKindOfClass:NSNumber.class]) {
+            CGDirectDisplayID displayId = (CGDirectDisplayID)screenNumber.unsignedIntValue;
+            size_t width = CGDisplayPixelsWide(displayId);
+            size_t height = CGDisplayPixelsHigh(displayId);
+            if (width > 0 && height > 0) {
+                capabilities.maxDisplayWidth = (int)width;
+                capabilities.maxDisplayHeight = (int)height;
+            }
+            CGDisplayModeRef mode = CGDisplayCopyDisplayMode(displayId);
+            if (mode) {
+                double refreshRate = CGDisplayModeGetRefreshRate(mode);
+                if (std::isfinite(refreshRate) && refreshRate > 0.0) {
+                    capabilities.maxDisplayRefreshRate = (int)std::llround(refreshRate);
+                }
+                CGDisplayModeRelease(mode);
+            }
+        }
+        if (capabilities.maxDisplayWidth == 0 || capabilities.maxDisplayHeight == 0) {
+            CGFloat scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1.0;
+            capabilities.maxDisplayWidth = (int)std::llround(NSWidth(screen.frame) * scale);
+            capabilities.maxDisplayHeight = (int)std::llround(NSHeight(screen.frame) * scale);
+        }
+        if (@available(macOS 10.15, *)) {
+            NSInteger maximumFramesPerSecond = screen.maximumFramesPerSecond;
+            if (maximumFramesPerSecond > capabilities.maxDisplayRefreshRate) {
+                capabilities.maxDisplayRefreshRate = (int)maximumFramesPerSecond;
+            }
+            capabilities.hdrDisplaySupported = screen.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0;
+        }
+    }
+    return capabilities;
+}
+
+bool StreamCodecSupportedByCapabilities(const StreamCodecOption &codec,
+                                        const StreamDeviceCapabilities &capabilities) {
+    std::string value = UppercaseAscii(codec.value.empty() ? std::string("H264") : codec.value);
+    if (value == "AUTO") {
+        return true;
+    }
+    if (value == "H264") return true;
+    if (value == "H265" || value == "HEVC") return capabilities.h265HardwareDecodeSupported;
+    if (value == "AV1") return capabilities.av1HardwareDecodeSupported;
+    return false;
+}
+
+bool StreamFpsSupportedByCapabilities(int fps,
+                                      const StreamDeviceCapabilities &capabilities) {
+    if (fps <= 60) return true;
+    if (capabilities.maxDisplayRefreshRate <= 0) return true;
+    return fps <= std::max(60, capabilities.maxDisplayRefreshRate);
+}
+
+bool StreamColorQualitySupportedByCapabilities(const StreamColorQualityOption &colorQuality,
+                                               const StreamCodecOption &codec,
+                                               const StreamDeviceCapabilities &capabilities) {
+    if (!StreamCodecSupportedByCapabilities(codec, capabilities)) return false;
+    std::string color = UppercaseAscii(colorQuality.value);
+    if (color.rfind("10BIT", 0) != 0) return true;
+
+    std::string codecValue = UppercaseAscii(codec.value.empty() ? std::string("H264") : codec.value);
+    if (codecValue == "H265" || codecValue == "HEVC") return capabilities.h265HardwareDecodeSupported;
+    if (codecValue == "AV1") return capabilities.av1HardwareDecodeSupported;
+    if (codecValue == "AUTO") return capabilities.h265HardwareDecodeSupported || capabilities.av1HardwareDecodeSupported;
+    return false;
+}
+
+static int FirstSupportedCodecIndex(const StreamDeviceCapabilities &capabilities) {
+    const std::vector<StreamCodecOption> &codecs = StreamCodecOptions();
+    for (size_t i = 0; i < codecs.size(); i++) {
+        if (codecs[i].value == "H264" && StreamCodecSupportedByCapabilities(codecs[i], capabilities)) return (int)i;
+    }
+    for (size_t i = 0; i < codecs.size(); i++) {
+        if (StreamCodecSupportedByCapabilities(codecs[i], capabilities)) return (int)i;
+    }
+    return 0;
+}
+
+static int NearestSupportedFpsIndex(int requestedFps, const StreamDeviceCapabilities &capabilities) {
+    const std::vector<int> &fpsOptions = StreamFpsOptions();
+    int fallbackIndex = 0;
+    int fallbackFps = fpsOptions.empty() ? 60 : fpsOptions.front();
+    for (size_t i = 0; i < fpsOptions.size(); i++) {
+        int fps = fpsOptions[i];
+        if (!StreamFpsSupportedByCapabilities(fps, capabilities)) continue;
+        if (fps <= requestedFps && fps >= fallbackFps) {
+            fallbackFps = fps;
+            fallbackIndex = (int)i;
+        }
+    }
+    return fallbackIndex;
+}
+
+StreamPreferenceProfile EffectiveStreamPreferenceProfileForCapabilities(StreamPreferenceProfile profile,
+                                                                        const StreamDeviceCapabilities &capabilities) {
+    const std::vector<StreamCodecOption> &codecs = StreamCodecOptions();
+    if (profile.codecIndex < 0 || profile.codecIndex >= (int)codecs.size() ||
+        !StreamCodecSupportedByCapabilities(profile.codec, capabilities)) {
+        profile.codecIndex = FirstSupportedCodecIndex(capabilities);
+        profile.codec = codecs[(size_t)profile.codecIndex];
+    }
+
+    if (!StreamFpsSupportedByCapabilities(profile.fps, capabilities)) {
+        const std::vector<int> &fpsOptions = StreamFpsOptions();
+        profile.fpsIndex = NearestSupportedFpsIndex(profile.fps, capabilities);
+        profile.fps = fpsOptions[(size_t)profile.fpsIndex];
+    }
+
+    const std::vector<StreamColorQualityOption> &colorOptions = StreamColorQualityOptions();
+    if (profile.colorQualityIndex < 0 || profile.colorQualityIndex >= (int)colorOptions.size() ||
+        !StreamColorQualitySupportedByCapabilities(profile.colorQuality, profile.codec, capabilities)) {
+        profile.colorQualityIndex = 0;
+        profile.colorQuality = colorOptions.front();
+    }
+    return profile;
+}
+
+std::string ResolveStreamCodecForCapabilities(const StreamPreferenceProfile &profile,
+                                              const StreamResolutionOption &resolution,
+                                              const StreamDeviceCapabilities &capabilities,
+                                              bool libWebRTCAvailable) {
+    std::string requested = UppercaseAscii(profile.codec.value.empty() ? std::string("H264") : profile.codec.value);
+    if (requested != "AUTO") {
+        return StreamCodecSupportedByCapabilities(profile.codec, capabilities) ? requested : "H264";
+    }
+    if (!libWebRTCAvailable) return "H264";
+
+    const int64_t pixels = (int64_t)std::max(1, resolution.width) * (int64_t)std::max(1, resolution.height);
+    const bool prefersTenBit = profile.colorQuality.value.rfind("10bit", 0) == 0;
+    const bool prefersHighResolution = pixels >= (int64_t)2560 * 1440;
+    const bool prefersVeryHighResolution = pixels >= (int64_t)3840 * 2160;
+    const bool highFps = profile.fps >= 144;
+    if (!highFps && prefersVeryHighResolution && capabilities.av1HardwareDecodeSupported) return "AV1";
+    if (!highFps && (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75) && capabilities.h265HardwareDecodeSupported) return "H265";
+    return "H264";
 }
 
 static int ClampedStoredInteger(NSString *key, int defaultValue, int upperBoundExclusive) {
