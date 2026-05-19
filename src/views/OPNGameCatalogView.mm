@@ -4,6 +4,7 @@
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNCoreAnimationCoordinator.h"
 #import "../common/OPNUIHelpers.h"
+#include "../games/OPNGameDataCache.h"
 #import "../streaming/OPNStreamPreferences.h"
 #import <CoreImage/CoreImage.h>
 #import <GameController/GameController.h>
@@ -20,7 +21,112 @@ static const CGFloat kControllerRailSelectorOverlap = 22.0;
 static const CGFloat kControllerRailDetailOverlap = 22.0;
 static const CGFloat kControllerGameHubVerticalReserve = 96.0;
 static const CGFloat kControllerGameHubPreferredHeight = 430.0;
+static const NSInteger kDesktopGridRenderBufferRows = 3;
 static NSString *const OPNFavoriteGameIdsDefaultsKey = @"OpenNOW.Library.FavoriteGameIds";
+
+typedef void (^OPNCatalogImageCompletion)(NSImage *image);
+
+static NSCache<NSString *, NSImage *> *OPNCatalogDecodedImageCache(void) {
+    static NSCache<NSString *, NSImage *> *decodedImageCache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        decodedImageCache = [[NSCache alloc] init];
+        decodedImageCache.countLimit = 160;
+    });
+    return decodedImageCache;
+}
+
+static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *OPNCatalogPendingImageCompletions(void) {
+    static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pendingCompletions = [NSMutableDictionary dictionary];
+    });
+    return pendingCompletions;
+}
+
+static void OPNCatalogCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
+    NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
+    NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
+
+    NSArray<OPNCatalogImageCompletion> *completions = nil;
+    @synchronized (pendingCompletions) {
+        if (image) [decodedImageCache setObject:image forKey:urlString];
+        completions = [pendingCompletions[urlString] copy];
+        [pendingCompletions removeObjectForKey:urlString];
+    }
+    if (image && data.length > 0) OPN::GameDataCache::Shared().SaveImage(urlString, data);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (OPNCatalogImageCompletion completion in completions) completion(image);
+    });
+}
+
+static void OPNCatalogLoadImageForURL(NSString *urlString, OPNCatalogImageCompletion completion) {
+    if (urlString.length == 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+        return;
+    }
+
+    NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
+    NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
+
+    NSImage *cachedImage = [decodedImageCache objectForKey:urlString];
+    if (cachedImage) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage); });
+        return;
+    }
+
+    @synchronized (pendingCompletions) {
+        NSMutableArray<OPNCatalogImageCompletion> *existing = pendingCompletions[urlString];
+        if (existing) {
+            [existing addObject:[completion copy]];
+            return;
+        }
+        pendingCompletions[urlString] = [NSMutableArray arrayWithObject:[completion copy]];
+    }
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
+        if (cachedData.length > 0) {
+            NSImage *image = [[NSImage alloc] initWithData:cachedData];
+            if (image) {
+                OPNCatalogCompleteImageRequest(urlString, image, nil);
+                return;
+            }
+        }
+
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (!url) {
+            OPNCatalogCompleteImageRequest(urlString, nil, nil);
+            return;
+        }
+
+        [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
+                OPNCatalogCompleteImageRequest(urlString, nil, nil);
+                return;
+            }
+            NSImage *image = [[NSImage alloc] initWithData:data];
+            OPNCatalogCompleteImageRequest(urlString, image, image ? data : nil);
+        }] resume];
+    });
+}
+
+static void OPNCatalogLoadImageFromCandidates(NSArray<NSString *> *candidates, NSUInteger index, OPNCatalogImageCompletion completion) {
+    if (index >= candidates.count) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+        return;
+    }
+    NSString *candidate = candidates[index];
+    OPNCatalogLoadImageForURL(candidate, ^(NSImage *image) {
+        if (image) {
+            completion(image);
+            return;
+        }
+        OPNCatalogLoadImageFromCandidates(candidates, index + 1, completion);
+    });
+}
 
 @interface OPNCatalogScrollView : NSScrollView
 @end
@@ -403,6 +509,8 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 @property (nonatomic, assign) BOOL controllerCategoryOverviewVisible;
 @property (nonatomic, assign) NSInteger controllerRenderedGameCount;
 @property (nonatomic, assign) NSInteger controllerDisplayGameCount;
+@property (nonatomic, assign) NSInteger desktopRenderedGameCount;
+@property (nonatomic, assign) NSInteger desktopDisplayGameCount;
 @property (nonatomic, assign) CGFloat controllerLibraryRailContentWidth;
 @property (nonatomic, assign) CGFloat controllerLibraryRailOffsetX;
 @property (nonatomic, assign) NSInteger controllerLibraryWindowStartIndex;
@@ -464,6 +572,9 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 - (void)persistFavoriteGameIds;
 - (void)focusCardAtIndex:(NSInteger)index scrollIntoView:(BOOL)scrollIntoView;
 - (NSInteger)controllerInitialRenderedGameCount;
+- (NSInteger)desktopInitialRenderedGameCountForColumns:(NSInteger)columns;
+- (void)resetDesktopGridRenderWindow;
+- (void)libraryScrollViewBoundsDidChange:(NSNotification *)notification;
 - (BOOL)preloadControllerGameIfNeededForIndex:(NSInteger)index direction:(NSInteger)direction;
 - (void)preloadControllerNeighborForDirection:(NSInteger)direction;
 - (BOOL)appendControllerGameCardAtIndex:(NSInteger)index;
@@ -843,31 +954,11 @@ static NSString *OPNReferencePromptLetter(NSString *button) {
 }
 
 - (void)loadImageForThumbnail:(NSImageView *)thumbnail candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
-    if (index >= candidates.count) return;
-    NSURL *url = [NSURL URLWithString:candidates[index]];
-    if (!url) {
-        [self loadImageForThumbnail:thumbnail candidates:candidates index:index + 1];
-        return;
-    }
-    __weak __typeof__(self) weakSelf = self;
     __weak NSImageView *weakThumbnail = thumbnail;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-        if (error || !data || (http && http.statusCode >= 400)) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                NSImageView *strongThumbnail = weakThumbnail;
-                if (strongSelf && strongThumbnail) [strongSelf loadImageForThumbnail:strongThumbnail candidates:candidates index:index + 1];
-            });
-            return;
-        }
-        NSImage *image = [[NSImage alloc] initWithData:data];
-        if (!image) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSImageView *strongThumbnail = weakThumbnail;
-            if (strongThumbnail) strongThumbnail.image = image;
-        });
-    }] resume];
+    OPNCatalogLoadImageFromCandidates(candidates, index, ^(NSImage *image) {
+        NSImageView *strongThumbnail = weakThumbnail;
+        if (strongThumbnail && image) strongThumbnail.image = image;
+    });
 }
 
 @end
@@ -1269,6 +1360,7 @@ using namespace OPN;
         _scrollView.contentView.wantsLayer = YES;
         _scrollView.contentView.layer.opaque = NO;
         _scrollView.contentView.layer.backgroundColor = NSColor.clearColor.CGColor;
+        _scrollView.contentView.postsBoundsChangedNotifications = YES;
         [self addSubview:_scrollView];
 
 
@@ -1402,6 +1494,10 @@ using namespace OPN;
                                                  selector:@selector(controllerDidDisconnect:)
                                                      name:GCControllerDidDisconnectNotification
                                                    object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(libraryScrollViewBoundsDidChange:)
+                                                     name:NSViewBoundsDidChangeNotification
+                                                   object:_scrollView.contentView];
         [self startGamepadNavigationIfNeeded];
         [self layoutCatalogSubviews];
     }
@@ -1492,6 +1588,7 @@ using namespace OPN;
     _allGames = games;
     self.catalogTotalCount = (NSInteger)games.size();
     self.catalogSupportedCount = (NSInteger)games.size();
+    [self resetDesktopGridRenderWindow];
     [self rebuildCategoryBar];
     [self renderGrid];
     [self scrollLibraryToTop];
@@ -1515,6 +1612,7 @@ using namespace OPN;
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result {
     OPN::LogInfo(@"[CatalogView] setCatalogBrowseResult games=%lu total=%d returned=%d supported=%d selectedSort=%s filters=%lu currentCards=%lu", (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.selectedSortId.c_str(), (unsigned long)result.selectedFilterIds.size(), (unsigned long)self.cardViews.count);
     _allGames = result.games;
+    [self resetDesktopGridRenderWindow];
     for (OPNGameCardView *card in self.cardViews) {
         NSString *identifier = [self favoriteIdentifierForGame:card.game];
         BOOL updated = NO;
@@ -1647,6 +1745,7 @@ using namespace OPN;
     self.selectedCategoryId = categoryId;
     self.focusedCardIndex = 0;
     self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
+    [self resetDesktopGridRenderWindow];
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneChange);
     [self renderGrid];
     [self scrollLibraryToTop];
@@ -1756,6 +1855,7 @@ using namespace OPN;
     self.selectedCategoryId = self.categoryItems[(NSUInteger)nextIndex][@"id"] ?: @"all";
     self.focusedCardIndex = 0;
     self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
+    [self resetDesktopGridRenderWindow];
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneChange);
     [self renderGrid];
     [self scrollLibraryToTop];
@@ -1868,6 +1968,7 @@ using namespace OPN;
         self.controllerLibraryVisibleStartIndex = 0;
         self.controllerLibraryRailOffsetX = 0.0;
         self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
+        [self resetDesktopGridRenderWindow];
         if (changed) OpnPlayConsoleTone(OPNConsoleToneSelect);
         [self renderGrid];
         [self scrollLibraryToTop];
@@ -1961,12 +2062,17 @@ using namespace OPN;
         if (self.controllerRenderedGameCount <= 0) self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
         renderLimit = MIN((NSInteger)displayGames.size(), MAX([self controllerInitialRenderedGameCount], self.controllerRenderedGameCount));
         OPN::LogInfo(@"[CatalogView] controller render window category=%@ display=%lu initial=%ld renderLimit=%ld scrollWidth=%.1f", self.selectedCategoryId, (unsigned long)displayGames.size(), (long)[self controllerInitialRenderedGameCount], (long)renderLimit, NSWidth(self.scrollView.frame));
+    } else {
+        self.desktopDisplayGameCount = (NSInteger)displayGames.size();
+        NSInteger initialRenderCount = [self desktopInitialRenderedGameCountForColumns:cols];
+        if (self.desktopRenderedGameCount <= 0) self.desktopRenderedGameCount = initialRenderCount;
+        renderLimit = MIN((NSInteger)displayGames.size(), MAX(initialRenderCount, self.desktopRenderedGameCount));
     }
 
     NSInteger col = 0;
     NSInteger visibleCount = 0;
     for (auto it = displayGames.begin(); it != displayGames.end(); ++it) {
-        if (controllerMode && visibleCount >= renderLimit) break;
+        if (visibleCount >= renderLimit) break;
         auto &game = *it;
         CGFloat x = controllerMode ? xStart + visibleCount * (cardWidth + gridSpacing) : xStart + col * (cardWidth + gridSpacing);
         NSRect cardFrame = NSMakeRect(x, yPos, cardWidth, cardHeight);
@@ -2000,7 +2106,10 @@ using namespace OPN;
     }
 
     CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : yPos + cardHeight + kGridPadding;
-    if (!controllerMode && col == 0 && visibleCount > 0) totalHeight = yPos + kGridPadding;
+    if (!controllerMode) {
+        NSInteger totalRows = displayGames.empty() ? 0 : (NSInteger)ceil((double)displayGames.size() / MAX(1.0, (double)cols));
+        totalHeight = totalRows > 0 ? kGridPadding + totalRows * cardHeight + MAX(0, totalRows - 1) * kCardSpacing + kGridPadding : _scrollView.frame.size.height;
+    }
     CGFloat totalWidth = controllerMode
         ? xStart * 2.0 + visibleCount * cardWidth + MAX(0, visibleCount - 1) * gridSpacing
         : _scrollView.frame.size.width;
@@ -2008,7 +2117,7 @@ using namespace OPN;
         MAX(totalWidth, _scrollView.frame.size.width),
         MAX(totalHeight, _scrollView.frame.size.height));
 
-    NSInteger totalVisibleCount = controllerMode ? (NSInteger)displayGames.size() : visibleCount;
+    NSInteger totalVisibleCount = (NSInteger)displayGames.size();
     _gameCountLabel.stringValue = [NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"];
     if (self.onGameCountChanged) self.onGameCountChanged(totalVisibleCount);
     _statusLabel.stringValue = totalVisibleCount == 0 ? @"No games found." : @"";
@@ -2477,30 +2586,11 @@ using namespace OPN;
 
 - (void)loadControllerHeroImageForView:(OPNControllerPreviewBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view || index >= candidates.count) return;
-    NSURL *url = [NSURL URLWithString:candidates[index]];
-    if (!url) {
-        [self loadControllerHeroImageForView:view candidates:candidates index:index + 1];
-        return;
-    }
-    __weak __typeof__(self) weakSelf = self;
     __weak OPNControllerPreviewBackgroundView *weakView = view;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-        if (error || !data || (http && http.statusCode >= 400)) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                OPNControllerPreviewBackgroundView *strongView = weakView;
-                if (strongSelf && strongView.superview) [strongSelf loadControllerHeroImageForView:strongView candidates:candidates index:index + 1];
-            });
-            return;
-        }
-        NSImage *image = [[NSImage alloc] initWithData:data];
-        if (!image) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            OPNControllerPreviewBackgroundView *strongView = weakView;
-            if (strongView.superview) strongView.image = image;
-        });
-    }] resume];
+    OPNCatalogLoadImageFromCandidates(candidates, index, ^(NSImage *image) {
+        OPNControllerPreviewBackgroundView *strongView = weakView;
+        if (strongView.superview && image) strongView.image = image;
+    });
 }
 
 - (void)startControllerHeroRotationIfNeeded {
@@ -3013,35 +3103,16 @@ using namespace OPN;
 
 - (void)loadLastPlayedImageFromCandidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index expectedURL:(NSString *)expectedURL {
     if (index >= candidates.count || expectedURL.length == 0) return;
-    NSURL *url = [NSURL URLWithString:candidates[index]];
-    if (!url) {
-        [self loadLastPlayedImageFromCandidates:candidates index:index + 1 expectedURL:expectedURL];
-        return;
-    }
     __weak __typeof__(self) weakSelf = self;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-        if (error || !data || (http && http.statusCode >= 400)) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (strongSelf && [strongSelf.lastPlayedImageURL isEqualToString:expectedURL]) {
-                    [strongSelf loadLastPlayedImageFromCandidates:candidates index:index + 1 expectedURL:expectedURL];
-                }
-            });
-            return;
+    OPNCatalogLoadImageFromCandidates(candidates, index, ^(NSImage *image) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || !image || ![strongSelf.lastPlayedImageURL isEqualToString:expectedURL]) return;
+        if (image.size.width > 0.0 && image.size.height > 0.0) {
+            strongSelf.lastPlayedImageAspectRatio = image.size.width / image.size.height;
         }
-        NSImage *image = [[NSImage alloc] initWithData:data];
-        if (!image) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || ![strongSelf.lastPlayedImageURL isEqualToString:expectedURL]) return;
-            if (image.size.width > 0.0 && image.size.height > 0.0) {
-                strongSelf.lastPlayedImageAspectRatio = image.size.width / image.size.height;
-            }
-            strongSelf.lastPlayedImageView.image = image;
-            [strongSelf layoutCatalogSubviews];
-        });
-    }] resume];
+        strongSelf.lastPlayedImageView.image = image;
+        [strongSelf layoutCatalogSubviews];
+    });
 }
 
 - (void)moveCategoryFocusByRows:(NSInteger)rows columns:(NSInteger)columns {
@@ -3112,6 +3183,7 @@ using namespace OPN;
     self.controllerCategoryOverviewVisible = NO;
     self.focusedCardIndex = 0;
     self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
+    [self resetDesktopGridRenderWindow];
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
     [self renderGrid];
     [self scrollLibraryToTop];
@@ -3148,6 +3220,36 @@ using namespace OPN;
     NSInteger localIndex = OpnControllerModeEnabled() ? self.focusedCardIndex - self.controllerLibraryWindowStartIndex : self.focusedCardIndex;
     if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) return nil;
     return self.cardViews[(NSUInteger)localIndex];
+}
+
+- (void)resetDesktopGridRenderWindow {
+    self.desktopRenderedGameCount = 0;
+    self.desktopDisplayGameCount = 0;
+}
+
+- (NSInteger)desktopInitialRenderedGameCountForColumns:(NSInteger)columns {
+    CGFloat cardHeight = [OPNGameCardView cardSize].height;
+    CGFloat availableHeight = NSHeight(self.scrollView.frame) > 1.0 ? NSHeight(self.scrollView.frame) : NSHeight(self.bounds);
+    NSInteger visibleRows = (NSInteger)ceil((availableHeight + kCardSpacing) / MAX(1.0, cardHeight + kCardSpacing));
+    return MAX(columns, columns * MAX(1, visibleRows + kDesktopGridRenderBufferRows));
+}
+
+- (void)libraryScrollViewBoundsDidChange:(NSNotification *)notification {
+    if (notification.object != self.scrollView.contentView || OpnControllerModeEnabled()) return;
+    if (self.desktopDisplayGameCount <= 0 || self.desktopRenderedGameCount >= self.desktopDisplayGameCount) return;
+
+    NSClipView *clipView = self.scrollView.contentView;
+    CGFloat viewportBottom = NSMaxY(clipView.bounds);
+    CGFloat remaining = NSHeight(self.gridContentView.frame) - viewportBottom;
+    CGFloat preloadDistance = MAX(NSHeight(clipView.bounds), [OPNGameCardView cardSize].height * 2.0);
+    if (remaining > preloadDistance) return;
+
+    NSInteger columns = MAX(1, self.gridColumnCount);
+    NSInteger increment = columns * MAX(1, kDesktopGridRenderBufferRows);
+    NSInteger nextCount = MIN(self.desktopDisplayGameCount, self.desktopRenderedGameCount + increment);
+    if (nextCount <= self.desktopRenderedGameCount) return;
+    self.desktopRenderedGameCount = nextCount;
+    [self renderGrid];
 }
 
 - (NSInteger)controllerInitialRenderedGameCount {
@@ -3439,47 +3541,17 @@ using namespace OPN;
 
 - (void)loadControllerDetailBackgroundFromCandidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index expectedURL:(NSString *)expectedURL {
     if (index >= candidates.count || expectedURL.length == 0) return;
-    NSURL *url = [NSURL URLWithString:candidates[index]];
-    if (!url) {
-        [self loadControllerDetailBackgroundFromCandidates:candidates index:index + 1 expectedURL:expectedURL];
-        return;
-    }
-
     __weak __typeof__(self) weakSelf = self;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-        if (error || !data || (http && http.statusCode >= 400)) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (strongSelf && [strongSelf.controllerDetailBackgroundURL isEqualToString:expectedURL]) {
-                    [strongSelf loadControllerDetailBackgroundFromCandidates:candidates index:index + 1 expectedURL:expectedURL];
-                }
-            });
-            return;
-        }
-
-        NSImage *image = [[NSImage alloc] initWithData:data];
-        if (!image) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (strongSelf && [strongSelf.controllerDetailBackgroundURL isEqualToString:expectedURL]) {
-                    [strongSelf loadControllerDetailBackgroundFromCandidates:candidates index:index + 1 expectedURL:expectedURL];
-                }
-            });
-            return;
-        }
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || ![strongSelf.controllerDetailBackgroundURL isEqualToString:expectedURL]) return;
-            CATransition *fade = [CATransition animation];
-            fade.type = kCATransitionFade;
-            fade.duration = 0.34;
-            fade.timingFunction = [OPNCoreAnimationCoordinator appleQuinticTimingFunction];
-            [strongSelf.controllerDetailBackgroundView.layer addAnimation:fade forKey:@"opn.detail.background.fade"];
-            strongSelf.controllerDetailBackgroundView.image = image;
-        });
-    }] resume];
+    OPNCatalogLoadImageFromCandidates(candidates, index, ^(NSImage *image) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || !image || ![strongSelf.controllerDetailBackgroundURL isEqualToString:expectedURL]) return;
+        CATransition *fade = [CATransition animation];
+        fade.type = kCATransitionFade;
+        fade.duration = 0.34;
+        fade.timingFunction = [OPNCoreAnimationCoordinator appleQuinticTimingFunction];
+        [strongSelf.controllerDetailBackgroundView.layer addAnimation:fade forKey:@"opn.detail.background.fade"];
+        strongSelf.controllerDetailBackgroundView.image = image;
+    });
 }
 
 - (void)openFocusedGameDetails {

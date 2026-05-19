@@ -792,6 +792,7 @@ class LibWebRTCStreamSession;
 @property(nonatomic, assign) int targetFps;
 @property(nonatomic, assign) uint64_t frameSerial;
 @property(nonatomic, assign) uint64_t lastDrawnFrameSerial;
+@property(nonatomic, assign) CFTimeInterval lastDiagnosticsUpdateTime;
 @property(nonatomic, assign) BOOL drawScheduled;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 - (void)scheduleDraw;
@@ -814,6 +815,7 @@ class LibWebRTCStreamSession;
         _targetFps = MAX(30, MIN(targetFps, 240));
         _frameSerial = 0;
         _lastDrawnFrameSerial = 0;
+        _lastDiagnosticsUpdateTime = 0.0;
         _drawScheduled = NO;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
@@ -901,7 +903,9 @@ class LibWebRTCStreamSession;
         [renderer drawFrame:frame];
         self.lastDrawnFrameSerial = drawSerial;
     }
-    if (self.owner) {
+    CFTimeInterval now = CACurrentMediaTime();
+    if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
+        self.lastDiagnosticsUpdateTime = now;
         self.owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
                                               OPN::OPNNSStringToString(renderMode),
                                               OPN::OPNNSStringToString(frameSource),

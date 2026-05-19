@@ -1329,7 +1329,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)startStatsRefreshTimer {
     if (self.statsRefreshTimer) return;
-    self.statsRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+    self.statsRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
                                                               target:self
                                                             selector:@selector(refreshStatsOverlayTimerFired:)
                                                             userInfo:nil
