@@ -22,13 +22,13 @@
         }
 
         self.wantsLayer = YES;
-        self.layer.backgroundColor = [NSColor clearColor].CGColor;
+        self.layer.backgroundColor = OpnColor(0x020304, 0.94).CGColor;
 
         NSView *card = [[NSView alloc] initWithFrame:
             NSMakeRect(frame.size.width / 2.0 - 210, frame.size.height / 2.0 - 150, 420, 300)];
         card.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
         card.wantsLayer = YES;
-        card.layer.backgroundColor = OpnColor(kSurfaceRaised, 0.88).CGColor;
+        card.layer.backgroundColor = OpnColor(0x0A0C0F, 0.98).CGColor;
         card.layer.cornerRadius = 22;
         card.layer.borderWidth = 1;
         card.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;

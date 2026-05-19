@@ -618,7 +618,7 @@ using namespace OPN;
         [fpsTitles addObject:[NSString stringWithFormat:@"%d", fps]];
     }
     [video addSubview:[self rowLabel:@"FPS" y:264.0]];
-    [self addOptionGroupTo:video group:3 titles:fpsTitles selected:self.selectedFps y:254.0 widths:@[@62.0, @62.0, @62.0]];
+    [self addOptionGroupTo:video group:3 titles:fpsTitles selected:self.selectedFps y:254.0 widths:@[@62.0, @62.0, @62.0, @62.0]];
     NSMutableArray<NSString *> *bitrateTitles = [NSMutableArray array];
     for (const OPN::StreamBitrateOption &option : OPN::StreamBitrateOptions()) {
         [bitrateTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];

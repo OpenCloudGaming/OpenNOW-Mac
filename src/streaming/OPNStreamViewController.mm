@@ -608,7 +608,6 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
 @end
 
 @implementation OPNStatsOverlayView {
-    CALayer *_textTintLayer;
     NSTextField *_statsLineLabel;
 }
 
@@ -628,14 +627,14 @@ static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weig
 
 static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-    style.alignment = NSTextAlignmentCenter;
+    style.alignment = NSTextAlignmentRight;
     style.lineBreakMode = NSLineBreakByTruncatingTail;
     return [[NSAttributedString alloc] initWithString:text ?: @""
-                                           attributes:@{
+                                            attributes:@{
         NSFontAttributeName: [NSFont monospacedSystemFontOfSize:12.0 weight:NSFontWeightSemibold],
-        NSForegroundColorAttributeName: OPNQuitColor(1.0, 1.0, 1.0, 1.0),
-        NSStrokeColorAttributeName: OPNQuitColor(0.0, 0.0, 0.0, 0.95),
-        NSStrokeWidthAttributeName: @-3.0,
+        NSForegroundColorAttributeName: OPNQuitColor(1.0, 0.86, 0.18, 1.0),
+        NSStrokeColorAttributeName: OPNQuitColor(0.0, 0.0, 0.0, 1.0),
+        NSStrokeWidthAttributeName: @-3.6,
         NSParagraphStyleAttributeName: style,
     }];
 }
@@ -670,13 +669,9 @@ static NSString *OPNStatsZoneName(NSString *zone) {
     self = [super initWithFrame:frame];
     if (self) {
         self.wantsLayer = YES;
-        self.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
-        _textTintLayer = [CALayer layer];
-        _textTintLayer.backgroundColor = OPNQuitColor(0.0, 0.0, 0.0, 0.42).CGColor;
-        _textTintLayer.cornerRadius = 8.0;
-        [self.layer addSublayer:_textTintLayer];
+        self.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
 
-        _statsLineLabel = OPNStatsText(@"", 12.0, NSFontWeightSemibold, NSColor.clearColor, NSTextAlignmentCenter);
+        _statsLineLabel = OPNStatsText(@"", 12.0, NSFontWeightSemibold, NSColor.clearColor, NSTextAlignmentRight);
         _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingTail;
         _statsLineLabel.maximumNumberOfLines = 4;
         _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
@@ -694,7 +689,6 @@ static NSString *OPNStatsZoneName(NSString *zone) {
 
 - (void)layout {
     [super layout];
-    _textTintLayer.frame = NSInsetRect(self.bounds, 4.0, 1.0);
     _statsLineLabel.frame = NSInsetRect(self.bounds, 10.0, 2.0);
 }
 
@@ -1122,9 +1116,9 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (NSRect)statsOverlayFrame {
-    CGFloat width = MAX(0.0, NSWidth(self.view.bounds) - 32.0);
+    CGFloat width = MIN(760.0, MAX(420.0, NSWidth(self.view.bounds) - 32.0));
     CGFloat height = 78.0;
-    return NSMakeRect(16.0,
+    return NSMakeRect(MAX(16.0, NSWidth(self.view.bounds) - width - 16.0),
                       floor(NSHeight(self.view.bounds) - height - 10.0),
                       width,
                       height);
@@ -2020,6 +2014,73 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                 if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
                 OPN::LogInfo(@"[StreamVC] Active session claim result: success=%d", success);
                 if (!success) {
+                    if (error.find("SESSION_NOT_PAUSED") != std::string::npos || error.find("\"statusCode\":34") != std::string::npos) {
+                        OPN::LogInfo(@"[StreamVC] Active session is not paused; re-resolving currently available session");
+                        [strongSelf setLaunchStep:0 message:@"Resuming current active session..."];
+                        std::string requestedSessionId = strongSelf->_resumeSessionId;
+                        std::string requestedAppId = strongSelf->_appId;
+                        OPN::SessionManager::Shared().GetActiveSessions([weakSelf, settings, launchGeneration, requestedSessionId, requestedAppId](bool sessionsOk, const std::vector<OPN::ActiveSessionEntry> &sessions, const std::string &sessionsError) {
+                            std::vector<OPN::ActiveSessionEntry> sessionsCopy = sessions;
+                            std::string sessionsErrorCopy = sessionsError;
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                __typeof__(self) retrySelf = weakSelf;
+                                if (!retrySelf || retrySelf->_streamEnded || retrySelf->_launchGeneration != launchGeneration) return;
+                                if (!sessionsOk) {
+                                    [retrySelf endStreamWithSuccess:NO errorMessage:sessionsErrorCopy.empty() ? std::string("Unable to resolve active session") : sessionsErrorCopy];
+                                    return;
+                                }
+
+                                OPN::ActiveSessionEntry selectedSession;
+                                BOOL foundSession = NO;
+                                int requestedAppIdNumber = atoi(requestedAppId.c_str());
+                                for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
+                                    if (session.sessionId == requestedSessionId && !session.serverIp.empty()) {
+                                        selectedSession = session;
+                                        foundSession = YES;
+                                        break;
+                                    }
+                                }
+                                if (!foundSession && requestedAppIdNumber > 0) {
+                                    for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
+                                        if (session.appId == requestedAppIdNumber && !session.sessionId.empty() && !session.serverIp.empty()) {
+                                            selectedSession = session;
+                                            foundSession = YES;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (!foundSession) {
+                                    for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
+                                        if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
+                                            selectedSession = session;
+                                            foundSession = YES;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (!foundSession) {
+                                    [retrySelf endStreamWithSuccess:NO errorMessage:"No active session is available to resume"];
+                                    return;
+                                }
+
+                                std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : requestedAppId;
+                                retrySelf->_resumeSessionId = selectedSession.sessionId;
+                                retrySelf->_resumeServer = selectedSession.serverIp;
+                                [retrySelf setLaunchStep:0 message:@"Connecting to current active session..."];
+                                OPN::SessionManager::Shared().ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settings, true,
+                                    [weakSelf, settings, launchGeneration](bool retrySuccess, const OPN::SessionInfo &retryInfo, const std::string &retryError) {
+                                        __typeof__(self) claimSelf = weakSelf;
+                                        if (!claimSelf || claimSelf->_streamEnded || claimSelf->_launchGeneration != launchGeneration) return;
+                                        if (!retrySuccess) {
+                                            [claimSelf endStreamWithSuccess:NO errorMessage:retryError];
+                                            return;
+                                        }
+                                        [claimSelf connectWithSessionInfo:retryInfo settings:settings launchGeneration:launchGeneration];
+                                    });
+                            });
+                        });
+                        return;
+                    }
                     NSString *errMsg = [NSString stringWithFormat:@"Resume failed: %s", error.c_str()];
                     [strongSelf setStatus:errMsg];
                     if ([strongSelf beginAutomaticRecoveryForError:error]) return;

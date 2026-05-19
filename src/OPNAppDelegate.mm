@@ -17,6 +17,7 @@
 #import "common/OPNAuthTypes.h"
 #import "common/OPNGameTypes.h"
 #import <CommonCrypto/CommonDigest.h>
+#import <GameController/GameController.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -40,6 +41,11 @@
 @property (nonatomic, assign) NSInteger catalogBrowseGeneration;
 @property (nonatomic, assign) BOOL activeSessionResumeInFlight;
 @property (nonatomic, assign) NSInteger activeSessionResumeGeneration;
+@property (nonatomic, strong) NSView *activeSessionPromptView;
+@property (nonatomic, copy) void (^activeSessionContinueHandler)(void);
+@property (nonatomic, copy) void (^activeSessionDeleteHandler)(void);
+@property (nonatomic, strong) NSTimer *activeSessionPromptControllerTimer;
+@property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
 - (void)refreshAccountAvatar;
@@ -51,7 +57,26 @@
 - (void)saveWindowPresentation;
 - (void)startGameLibraryRefreshTimer;
 - (void)stopGameLibraryRefreshTimer;
+- (BOOL)hasVisibleStreamingController;
+- (void)showActiveSessionPromptWithSessionTitle:(NSString *)sessionTitle
+                              selectedGameTitle:(NSString *)selectedGameTitle
+                                continueHandler:(void (^)(void))continueHandler
+                                  deleteHandler:(void (^)(void))deleteHandler;
+- (void)dismissActiveSessionPrompt;
+- (void)startActiveSessionPromptControllerPolling;
+- (void)stopActiveSessionPromptControllerPolling;
+- (void)pollActiveSessionPromptController;
+- (void)activeSessionContinueClicked:(id)sender;
+- (void)activeSessionDeleteClicked:(id)sender;
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen;
+- (void)startStreamWithTitle:(const std::string &)title
+                       appId:(const std::string &)appId
+                    apiToken:(const std::string &)apiToken
+               accountLinked:(bool)accountLinked
+                selectedStore:(const std::string &)selectedStore
+                returnScreen:(OPN::AuthScreen)returnScreen
+              resumeSessionId:(const std::string &)resumeSessionId
+                  resumeServer:(const std::string &)resumeServer;
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen;
 - (void)restartApplication;
 - (void)loadStorePanelsWithRetry:(BOOL)canRetry;
@@ -211,6 +236,18 @@ static NSString *OPNTitleForActiveSessionAppId(int appId, const std::vector<OPN:
     return @"Current Stream";
 }
 
+static uint16_t OPNActiveSessionPromptGamepadButtons(void) {
+    NSArray<GCController *> *controllers = [GCController controllers];
+    if (controllers.count == 0) return 0;
+    GCExtendedGamepad *pad = controllers.firstObject.extendedGamepad;
+    if (!pad) return 0;
+    uint16_t buttons = 0;
+    if (pad.buttonA.value > 0.5) buttons |= 1u << 0;
+    if (pad.buttonB.value > 0.5) buttons |= 1u << 1;
+    if (pad.buttonY.value > 0.5) buttons |= 1u << 2;
+    return buttons;
+}
+
 static void OPNAppendFingerprintField(std::string &target, const std::string &value) {
     target += std::to_string(value.size());
     target += ':';
@@ -348,6 +385,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self.window saveFrameUsingName:OPNMainWindowFrameAutosaveName];
     [self saveWindowPresentation];
     [self stopGameLibraryRefreshTimer];
+    [self stopActiveSessionPromptControllerPolling];
     if (self.streamingController) {
         [self.streamingController shutdownForApplicationTermination];
         self.streamingController = nil;
@@ -412,11 +450,162 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 }
 
-- (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen {
+- (BOOL)hasVisibleStreamingController {
+    if (!self.streamingController) return NO;
+    if (self.window.contentViewController == self.streamingController) return YES;
+    OPN::LogInfo(@"[AppDelegate] Clearing stale streaming controller before launch/session check");
+    self.streamingController = nil;
+    self.currentStreamTitle = nil;
+    return NO;
+}
+
+- (void)showActiveSessionPromptWithSessionTitle:(NSString *)sessionTitle
+                              selectedGameTitle:(NSString *)selectedGameTitle
+                                continueHandler:(void (^)(void))continueHandler
+                                  deleteHandler:(void (^)(void))deleteHandler {
+    [self dismissActiveSessionPrompt];
+    self.activeSessionContinueHandler = continueHandler;
+    self.activeSessionDeleteHandler = deleteHandler;
+
+    NSView *host = self.contentContainer ?: self.window.contentView;
+    NSView *overlay = [[NSView alloc] initWithFrame:host.bounds];
+    overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    overlay.wantsLayer = YES;
+    overlay.layer.backgroundColor = OpnColor(0x020304, 0.82).CGColor;
+
+    CGFloat panelWidth = MIN(640.0, MAX(420.0, NSWidth(host.bounds) - 96.0));
+    CGFloat panelHeight = 330.0;
+    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(floor((NSWidth(host.bounds) - panelWidth) / 2.0),
+                                                            floor((NSHeight(host.bounds) - panelHeight) / 2.0),
+                                                            panelWidth,
+                                                            panelHeight)];
+    panel.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+    panel.wantsLayer = YES;
+    panel.layer.cornerRadius = 28.0;
+    panel.layer.backgroundColor = OpnColor(0x0A0C0F, 0.98).CGColor;
+    panel.layer.borderWidth = 1.5;
+    panel.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
+    panel.layer.shadowColor = NSColor.blackColor.CGColor;
+    panel.layer.shadowOpacity = 0.58;
+    panel.layer.shadowRadius = 46.0;
+    panel.layer.shadowOffset = CGSizeMake(0.0, 20.0);
+    [overlay addSubview:panel];
+
+    NSView *accentBar = [[NSView alloc] initWithFrame:NSMakeRect(34.0, panelHeight - 38.0, 80.0, 3.0)];
+    accentBar.wantsLayer = YES;
+    accentBar.layer.cornerRadius = 1.5;
+    accentBar.layer.backgroundColor = OpnColor(OPN::kBrandGreen, 0.88).CGColor;
+    [panel addSubview:accentBar];
+
+    NSTextField *eyebrow = OpnLabel(@"ACTIVE SESSION", NSMakeRect(34.0, panelHeight - 72.0, panelWidth - 68.0, 18.0), 12.0, OpnColor(OPN::kBrandGreen), NSFontWeightBold);
+    [panel addSubview:eyebrow];
+
+    NSTextField *title = OpnLabel(@"Resume or Replace", NSMakeRect(32.0, panelHeight - 124.0, panelWidth - 64.0, 42.0), 31.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
+    [panel addSubview:title];
+
+    NSString *safeSessionTitle = sessionTitle.length > 0 ? sessionTitle : @"the active cloud session";
+    NSString *safeSelectedTitle = selectedGameTitle.length > 0 ? selectedGameTitle : @"the selected game";
+    NSString *body = [NSString stringWithFormat:@"%@ is already running. Continue that stream, or delete it and launch %@.", safeSessionTitle, safeSelectedTitle];
+    NSTextField *bodyLabel = OpnLabel(body, NSMakeRect(34.0, panelHeight - 188.0, panelWidth - 68.0, 54.0), 15.0, OpnColor(OPN::kTextSecondary), NSFontWeightMedium);
+    bodyLabel.maximumNumberOfLines = 3;
+    [panel addSubview:bodyLabel];
+
+    NSView *divider = [[NSView alloc] initWithFrame:NSMakeRect(34.0, 112.0, panelWidth - 68.0, 1.0)];
+    divider.wantsLayer = YES;
+    divider.layer.backgroundColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+    [panel addSubview:divider];
+
+    CGFloat buttonY = 44.0;
+    CGFloat buttonGap = 14.0;
+    CGFloat buttonWidth = floor((panelWidth - 68.0 - buttonGap) / 2.0);
+    NSButton *continueButton = OpnButton(@"A  Continue Session", NSMakeRect(34.0, buttonY, buttonWidth, 48.0), OpnColor(0x11161A, 0.98), OpnColor(OPN::kBrandGreen), true, OpnColor(OPN::kBrandGreen, 0.52));
+    continueButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBold];
+    continueButton.target = self;
+    continueButton.action = @selector(activeSessionContinueClicked:);
+    [panel addSubview:continueButton];
+
+    NSButton *deleteButton = OpnButton(@"Y  Delete Session", NSMakeRect(NSMaxX(continueButton.frame) + buttonGap, buttonY, buttonWidth, 48.0), OpnColor(0x111114, 0.98), OpnColor(OPN::kErrorRed), true, OpnColor(OPN::kErrorRed, 0.46));
+    deleteButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBold];
+    deleteButton.target = self;
+    deleteButton.action = @selector(activeSessionDeleteClicked:);
+    [panel addSubview:deleteButton];
+
+    NSTextField *hint = OpnLabel(@"Choose how to handle the existing cloud session before launching.", NSMakeRect(34.0, 18.0, panelWidth - 68.0, 18.0), 12.0, OpnColor(OPN::kTextMuted), NSFontWeightMedium, NSTextAlignmentCenter);
+    [panel addSubview:hint];
+
+    self.activeSessionPromptView = overlay;
+    [host addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+    [self startActiveSessionPromptControllerPolling];
+}
+
+- (void)dismissActiveSessionPrompt {
+    [self stopActiveSessionPromptControllerPolling];
+    [self.activeSessionPromptView removeFromSuperview];
+    self.activeSessionPromptView = nil;
+    self.activeSessionContinueHandler = nil;
+    self.activeSessionDeleteHandler = nil;
+}
+
+- (void)startActiveSessionPromptControllerPolling {
+    if (self.activeSessionPromptControllerTimer) return;
+    self.activeSessionPromptPreviousButtons = OPNActiveSessionPromptGamepadButtons();
+    self.activeSessionPromptControllerTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
+                                                                               target:self
+                                                                             selector:@selector(pollActiveSessionPromptController)
+                                                                             userInfo:nil
+                                                                              repeats:YES];
+}
+
+- (void)stopActiveSessionPromptControllerPolling {
+    [self.activeSessionPromptControllerTimer invalidate];
+    self.activeSessionPromptControllerTimer = nil;
+    self.activeSessionPromptPreviousButtons = 0;
+}
+
+- (void)pollActiveSessionPromptController {
+    if (!self.activeSessionPromptView) {
+        [self stopActiveSessionPromptControllerPolling];
+        return;
+    }
+    uint16_t buttons = OPNActiveSessionPromptGamepadButtons();
+    uint16_t pressed = buttons & (uint16_t)~self.activeSessionPromptPreviousButtons;
+    if (pressed & (1u << 0)) {
+        [self activeSessionContinueClicked:nil];
+        return;
+    }
+    if (pressed & (1u << 2)) {
+        [self activeSessionDeleteClicked:nil];
+        return;
+    }
+    self.activeSessionPromptPreviousButtons = buttons;
+}
+
+- (void)activeSessionContinueClicked:(id)sender {
+    (void)sender;
+    void (^handler)(void) = self.activeSessionContinueHandler;
+    [self dismissActiveSessionPrompt];
+    if (handler) handler();
+}
+
+- (void)activeSessionDeleteClicked:(id)sender {
+    (void)sender;
+    void (^handler)(void) = self.activeSessionDeleteHandler;
+    [self dismissActiveSessionPrompt];
+    if (handler) handler();
+}
+
+- (void)startStreamWithTitle:(const std::string &)title
+                       appId:(const std::string &)appId
+                    apiToken:(const std::string &)apiToken
+               accountLinked:(bool)accountLinked
+                selectedStore:(const std::string &)selectedStore
+                returnScreen:(OPN::AuthScreen)returnScreen
+              resumeSessionId:(const std::string &)resumeSessionId
+                  resumeServer:(const std::string &)resumeServer {
     using namespace OPN;
 
-    if (self.streamingController) {
-        OPN::LogInfo(@"[AppDelegate] Ignoring game launch while stream is active: title=%s, id=%s", game.title.c_str(), game.id.c_str());
+    if ([self hasVisibleStreamingController]) {
+        OPN::LogInfo(@"[AppDelegate] Ignoring stream start while stream is active: title=%s, appId=%s", title.c_str(), appId.c_str());
         return;
     }
 
@@ -424,35 +613,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.storeView = nil;
     self.settingsView = nil;
 
-    OPN::LogInfo(@"[AppDelegate] Game selected: title=%s, id=%s, uuid=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), game.uuid.c_str(), variantIndex);
-
-    std::string apiToken = self.currentSession.idToken.empty()
-        ? self.currentSession.accessToken : self.currentSession.idToken;
-
-    std::string effectiveAppId;
-    std::string selectedStore;
-    bool accountLinked = OPNChooseAccountLinked(game, nullptr);
-    if (variantIndex >= 0 && variantIndex < (int)game.variants.size()) {
-        const GameVariant &variant = game.variants[(size_t)variantIndex];
-        effectiveAppId = variant.id;
-        selectedStore = variant.appStore;
-        accountLinked = OPNChooseAccountLinked(game, &variant);
-        OPN::LogInfo(@"[AppDelegate] Variant: id=%s, store=%s, status=%s, accountLinked=%d",
-              variant.id.c_str(), variant.appStore.c_str(), variant.serviceStatus.c_str(), accountLinked);
-    }
-    if (effectiveAppId.empty()) {
-        effectiveAppId = game.launchAppId.empty() ? game.id : game.launchAppId;
-    }
-    OPN::LogInfo(@"[AppDelegate] Using appId=%s, store=%s, accountLinked=%d",
-          effectiveAppId.c_str(), selectedStore.c_str(), accountLinked);
-
-    OPNStreamViewController *streamVC =
-        [[OPNStreamViewController alloc] initWithGameTitle:game.title
-                                                     appId:effectiveAppId
-                                                  apiToken:apiToken
-                                             accountLinked:accountLinked
-                                                      selectedStore:selectedStore];
-    self.currentStreamTitle = game.title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:game.title.c_str()];
+    OPNStreamViewController *streamVC = [[OPNStreamViewController alloc] initWithGameTitle:title
+                                                                                     appId:appId
+                                                                                  apiToken:apiToken
+                                                                             accountLinked:accountLinked
+                                                                              selectedStore:selectedStore
+                                                                            resumeSessionId:resumeSessionId
+                                                                                resumeServer:resumeServer];
+    self.currentStreamTitle = title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:title.c_str()];
     self.activeStreamReturnScreen = returnScreen;
 
     __weak __typeof__(self) weakSelf = self;
@@ -462,9 +630,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
             OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
-            [strongSelf transitionToScreen:returnScreen];
             strongSelf.streamingController = nil;
             strongSelf.currentStreamTitle = nil;
+            [strongSelf transitionToScreen:returnScreen];
             if (!success && !errorCopy.empty()) {
                 [strongSelf showError:errorCopy canRetry:YES];
             }
@@ -491,6 +659,120 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         });
     }
     OPN::LogInfo(@"[AppDelegate] Window setup complete");
+}
+
+- (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen {
+    using namespace OPN;
+
+    if ([self hasVisibleStreamingController]) {
+        OPN::LogInfo(@"[AppDelegate] Ignoring game launch while stream is active: title=%s, id=%s", game.title.c_str(), game.id.c_str());
+        return;
+    }
+
+    OPN::LogInfo(@"[AppDelegate] Game selected: title=%s, id=%s, uuid=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), game.uuid.c_str(), variantIndex);
+
+    std::string apiToken = self.currentSession.idToken.empty()
+        ? self.currentSession.accessToken : self.currentSession.idToken;
+
+    std::string effectiveAppId;
+    std::string selectedStore;
+    bool accountLinked = OPNChooseAccountLinked(game, nullptr);
+    if (variantIndex >= 0 && variantIndex < (int)game.variants.size()) {
+        const GameVariant &variant = game.variants[(size_t)variantIndex];
+        effectiveAppId = variant.id;
+        selectedStore = variant.appStore;
+        accountLinked = OPNChooseAccountLinked(game, &variant);
+        OPN::LogInfo(@"[AppDelegate] Variant: id=%s, store=%s, status=%s, accountLinked=%d",
+              variant.id.c_str(), variant.appStore.c_str(), variant.serviceStatus.c_str(), accountLinked);
+    }
+    if (effectiveAppId.empty()) {
+        effectiveAppId = game.launchAppId.empty() ? game.id : game.launchAppId;
+    }
+    OPN::LogInfo(@"[AppDelegate] Using appId=%s, store=%s, accountLinked=%d",
+          effectiveAppId.c_str(), selectedStore.c_str(), accountLinked);
+
+    __weak __typeof__(self) weakSelf = self;
+    std::string gameTitle = game.title;
+    auto startRequestedGame = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf startStreamWithTitle:gameTitle
+                                   appId:effectiveAppId
+                                apiToken:apiToken
+                           accountLinked:accountLinked
+                            selectedStore:selectedStore
+                            returnScreen:returnScreen
+                          resumeSessionId:""
+                              resumeServer:""];
+    };
+
+    SessionManager::Shared().SetAccessToken(apiToken);
+    SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+    SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+        std::vector<ActiveSessionEntry> sessionsCopy = sessions;
+        std::string errorCopy = error;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
+            if (!ok) {
+                OPN::LogError(@"[AppDelegate] Active session launch probe failed, continuing launch: %s", errorCopy.c_str());
+                startRequestedGame();
+                return;
+            }
+
+            ActiveSessionEntry activeSession;
+            BOOL foundActiveSession = NO;
+            for (const ActiveSessionEntry &session : sessionsCopy) {
+                if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
+                    activeSession = session;
+                    foundActiveSession = YES;
+                    break;
+                }
+            }
+            if (!foundActiveSession) {
+                startRequestedGame();
+                return;
+            }
+
+            NSString *sessionTitle = OPNTitleForActiveSessionAppId(activeSession.appId, strongSelf.cachedGameLibrary);
+            NSString *selectedGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
+            [strongSelf showActiveSessionPromptWithSessionTitle:sessionTitle
+                                              selectedGameTitle:selectedGameTitle
+                                                continueHandler:^{
+                __typeof__(self) promptSelf = weakSelf;
+                if (!promptSelf) return;
+                std::string resumeAppId = activeSession.appId > 0 ? std::to_string(activeSession.appId) : effectiveAppId;
+                std::string resumeTitle = sessionTitle.length > 0 ? [sessionTitle UTF8String] : std::string("Current Stream");
+                [promptSelf startStreamWithTitle:resumeTitle
+                                           appId:resumeAppId
+                                        apiToken:apiToken
+                                   accountLinked:true
+                                    selectedStore:""
+                                    returnScreen:returnScreen
+                                  resumeSessionId:activeSession.sessionId
+                                      resumeServer:activeSession.serverIp];
+            }
+                                                  deleteHandler:^{
+                __typeof__(self) promptSelf = weakSelf;
+                if (!promptSelf) return;
+                [promptSelf showAuthenticatingWithMessage:@"Deleting existing session..."];
+                SessionManager::Shared().SetAccessToken(apiToken);
+                SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+                SessionManager::Shared().StopSession(activeSession.sessionId, activeSession.serverIp, [weakSelf, startRequestedGame](bool stopOk, const std::string &stopError) {
+                    std::string stopErrorCopy = stopError;
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        __typeof__(self) stopSelf = weakSelf;
+                        if (!stopSelf) return;
+                        if (!stopOk) {
+                            [stopSelf showError:stopErrorCopy.empty() ? std::string("Unable to delete the existing session.") : stopErrorCopy canRetry:YES];
+                            return;
+                        }
+                        startRequestedGame();
+                    });
+                });
+            }];
+        });
+    });
 }
 
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen {
@@ -752,7 +1034,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self.contentContainer addSubview:store];
             OpnDisableFocusHighlights(store);
             self.window.title = @"OpenNOW - Store";
-            [self checkForActiveSessionResumeIfNeededForScreen:AuthScreen::Store];
             [self loadStorePanelsWithRetry:YES];
             break;
         }
@@ -830,9 +1111,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self.contentContainer addSubview:catalog];
             OpnDisableFocusHighlights(catalog);
             self.window.title = @"OpenNOW";
-            [self checkForActiveSessionResumeIfNeededForScreen:AuthScreen::Catalog];
-
-
             if (displayName.length == 0 && !self.currentSession.accessToken.empty()) {
                 [catalog setLoading:YES];
                 AuthService::Shared().FetchStarFleetUserInfo(

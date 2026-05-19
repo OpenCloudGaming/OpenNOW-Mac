@@ -57,7 +57,7 @@ const std::vector<StreamAspectOption> &StreamAspectOptions() {
 }
 
 const std::vector<int> &StreamFpsOptions() {
-    static const std::vector<int> options = {30, 60, 120};
+    static const std::vector<int> options = {30, 60, 120, 240};
     return options;
 }
 

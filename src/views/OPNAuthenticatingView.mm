@@ -13,7 +13,7 @@
     self = [super initWithFrame:frame];
     if (self) {
         self.wantsLayer = YES;
-        self.layer.backgroundColor = OpnColor(OPN::kOverlay, 0.18).CGColor;
+        self.layer.backgroundColor = OpnColor(0x020304, 0.94).CGColor;
 
         self.loadingView = [[OPNLoadingView alloc] initWithFrame:NSMakeRect(0, 0, 420, 252)
                                                          message:message];

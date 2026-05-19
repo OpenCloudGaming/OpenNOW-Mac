@@ -409,6 +409,13 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 @property (nonatomic, assign) NSInteger controllerLibraryVisibleStartIndex;
 @property (nonatomic, assign) NSInteger gridColumnCount;
 @property (nonatomic, strong) NSView *detailsOverlayView;
+@property (nonatomic, strong) NSView *controllerStoreFilterOverlayView;
+@property (nonatomic, strong) NSMutableArray<NSTextField *> *controllerStoreFilterOptionLabels;
+@property (nonatomic, copy) NSArray<NSDictionary<NSString *, NSString *> *> *controllerStoreFilterItems;
+@property (nonatomic, assign) NSInteger focusedControllerStoreFilterIndex;
+@property (nonatomic, assign) CFTimeInterval controllerYPressedAt;
+@property (nonatomic, assign) BOOL controllerYHoldActive;
+@property (nonatomic, assign) BOOL controllerYConsumedByHold;
 @property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
 @property (nonatomic, strong) NSTimer *controllerDetailBackgroundTimer;
 @property (nonatomic, strong) NSTimer *controllerHeroRotationTimer;
@@ -462,6 +469,13 @@ typedef NS_ENUM(NSInteger, OPNControllerOverviewSpecialTileKind) {
 - (BOOL)appendControllerGameCardAtIndex:(NSInteger)index;
 - (void)openFocusedGameDetails;
 - (void)closeGameDetails;
+- (std::vector<OPN::GameInfo>)controllerLibraryDisplayGames;
+- (void)showControllerStoreFilterOverlay;
+- (void)hideControllerStoreFilterOverlayApplyingSelection:(BOOL)applySelection;
+- (void)moveControllerStoreFilterFocusBy:(NSInteger)delta;
+- (void)layoutControllerStoreFilterOverlay;
+- (void)updateControllerStoreFilterOverlaySelection;
+- (void)rebuildControllerStoreFilterItems;
 - (void)launchFocusedGame;
 - (void)launchLastPlayedGame;
 - (void)cycleFocusedVariant;
@@ -1105,6 +1119,8 @@ using namespace OPN;
         _cardViews = [NSMutableArray array];
         _categoryCardViews = [NSMutableArray array];
         _controllerHeroViews = [NSMutableArray array];
+        _controllerStoreFilterOptionLabels = [NSMutableArray array];
+        _controllerStoreFilterItems = @[];
         _categoryButtons = [NSMutableArray array];
         _categoryItems = @[];
         _selectedCategoryId = @"all";
@@ -1123,6 +1139,7 @@ using namespace OPN;
         _controllerLibraryWindowStartIndex = 0;
         _controllerLibraryVisibleStartIndex = 0;
         _controllerHeroIndex = 0;
+        _focusedControllerStoreFilterIndex = 0;
         _lastPlayedImageAspectRatio = 16.0 / 9.0;
         _gridColumnCount = 1;
         self.wantsLayer = YES;
@@ -1744,6 +1761,174 @@ using namespace OPN;
     [self scrollLibraryToTop];
 }
 
+- (std::vector<OPN::GameInfo>)controllerLibraryDisplayGames {
+    std::vector<OPN::GameInfo> displayGames;
+    BOOL categoryFiltered = self.selectedCategoryId.length > 0 && ![self.selectedCategoryId isEqualToString:@"all"] && ![self.selectedCategoryId isEqualToString:@"library"];
+    for (const OPN::GameInfo &game : _allGames) {
+        if (!game.isInLibrary) continue;
+        if (categoryFiltered && ![self game:game matchesCategory:self.selectedCategoryId]) continue;
+        displayGames.push_back(game);
+    }
+    if (displayGames.empty() && !categoryFiltered) {
+        for (const OPN::GameInfo &game : _allGames) {
+            if ([self game:game matchesCategory:self.selectedCategoryId]) displayGames.push_back(game);
+        }
+    }
+    return displayGames;
+}
+
+- (void)rebuildControllerStoreFilterItems {
+    NSMutableArray<NSDictionary<NSString *, NSString *> *> *items = [NSMutableArray arrayWithObject:@{@"id": @"library", @"title": @"All Stores"}];
+    BOOL hasLibraryGames = NO;
+    for (const OPN::GameInfo &game : _allGames) {
+        if (game.isInLibrary) {
+            hasLibraryGames = YES;
+            break;
+        }
+    }
+    for (NSDictionary<NSString *, NSString *> *category in self.categoryItems) {
+        NSString *categoryId = category[@"id"] ?: @"";
+        if (![categoryId hasPrefix:@"store:"]) continue;
+        NSInteger matchingCount = 0;
+        for (const OPN::GameInfo &game : _allGames) {
+            if (hasLibraryGames && !game.isInLibrary) continue;
+            if ([self game:game matchesCategory:categoryId]) matchingCount++;
+        }
+        if (matchingCount <= 0) continue;
+        NSString *title = category[@"title"] ?: @"Store";
+        if ([title hasPrefix:@"Store: "]) title = [title substringFromIndex:@"Store: ".length];
+        [items addObject:@{@"id": categoryId, @"title": title}];
+    }
+    self.controllerStoreFilterItems = items;
+    NSInteger selectedIndex = 0;
+    for (NSUInteger index = 0; index < items.count; index++) {
+        if ([items[index][@"id"] isEqualToString:self.selectedCategoryId]) {
+            selectedIndex = (NSInteger)index;
+            break;
+        }
+    }
+    self.focusedControllerStoreFilterIndex = selectedIndex;
+}
+
+- (void)showControllerStoreFilterOverlay {
+    [self rebuildControllerStoreFilterItems];
+    [self.controllerStoreFilterOverlayView removeFromSuperview];
+    [self.controllerStoreFilterOptionLabels removeAllObjects];
+
+    NSView *overlay = [[NSView alloc] initWithFrame:self.bounds];
+    overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    overlay.wantsLayer = YES;
+    overlay.layer.backgroundColor = OpnColor(0x020304, 0.82).CGColor;
+
+    NSView *panel = [[OPNFlippedGridDocumentView alloc] initWithFrame:NSZeroRect];
+    panel.wantsLayer = YES;
+    panel.layer.cornerRadius = 26.0;
+    panel.layer.borderWidth = 1.5;
+    panel.layer.borderColor = OpnColor(0xFFFFFF, 0.20).CGColor;
+    panel.layer.backgroundColor = OpnColor(0x0A0C0F, 0.98).CGColor;
+    panel.layer.shadowColor = OpnColor(OPNControllerAccentRGB()).CGColor;
+    panel.layer.shadowOpacity = 0.32;
+    panel.layer.shadowRadius = 42.0;
+    panel.layer.shadowOffset = CGSizeZero;
+    [overlay addSubview:panel];
+
+    NSTextField *eyebrow = OpnLabel(@"STORE FILTER", NSZeroRect, 12.0, OpnColor(OPN::kBrandGreen), NSFontWeightBold);
+    eyebrow.identifier = @"eyebrow";
+    [panel addSubview:eyebrow];
+    NSTextField *title = OpnLabel(@"Choose a Store", NSZeroRect, 28.0, OpnColor(kTextPrimary), NSFontWeightBold);
+    title.identifier = @"title";
+    [panel addSubview:title];
+    NSTextField *hint = OpnLabel(@"Hold Y, use up/down, release Y to apply", NSZeroRect, 13.0, OpnColor(kTextSecondary), NSFontWeightMedium);
+    hint.identifier = @"hint";
+    [panel addSubview:hint];
+
+    for (NSDictionary<NSString *, NSString *> *item in self.controllerStoreFilterItems) {
+        NSTextField *option = OpnLabel(item[@"title"] ?: @"Store", NSZeroRect, 17.0, OpnColor(kTextPrimary), NSFontWeightSemibold);
+        option.wantsLayer = YES;
+        option.layer.cornerRadius = 14.0;
+        option.layer.masksToBounds = YES;
+        [panel addSubview:option];
+        [self.controllerStoreFilterOptionLabels addObject:option];
+    }
+
+    self.controllerStoreFilterOverlayView = overlay;
+    [self addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+    [self layoutControllerStoreFilterOverlay];
+    [self updateControllerStoreFilterOverlaySelection];
+    OpnPlayConsoleTone(OPNConsoleToneChange);
+}
+
+- (void)hideControllerStoreFilterOverlayApplyingSelection:(BOOL)applySelection {
+    if (applySelection && self.focusedControllerStoreFilterIndex >= 0 && self.focusedControllerStoreFilterIndex < (NSInteger)self.controllerStoreFilterItems.count) {
+        NSString *categoryId = self.controllerStoreFilterItems[(NSUInteger)self.focusedControllerStoreFilterIndex][@"id"] ?: @"library";
+        BOOL changed = ![categoryId isEqualToString:self.selectedCategoryId];
+        self.selectedCategoryId = categoryId;
+        self.focusedCardIndex = 0;
+        self.controllerHeroIndex = 0;
+        self.controllerLibraryVisibleStartIndex = 0;
+        self.controllerLibraryRailOffsetX = 0.0;
+        self.controllerRenderedGameCount = [self controllerInitialRenderedGameCount];
+        if (changed) OpnPlayConsoleTone(OPNConsoleToneSelect);
+        [self renderGrid];
+        [self scrollLibraryToTop];
+    }
+    [self.controllerStoreFilterOverlayView removeFromSuperview];
+    self.controllerStoreFilterOverlayView = nil;
+    [self.controllerStoreFilterOptionLabels removeAllObjects];
+    self.controllerYHoldActive = NO;
+}
+
+- (void)moveControllerStoreFilterFocusBy:(NSInteger)delta {
+    if (self.controllerStoreFilterItems.count == 0 || delta == 0) return;
+    NSInteger next = (self.focusedControllerStoreFilterIndex + delta) % (NSInteger)self.controllerStoreFilterItems.count;
+    if (next < 0) next += (NSInteger)self.controllerStoreFilterItems.count;
+    if (next == self.focusedControllerStoreFilterIndex) return;
+    self.focusedControllerStoreFilterIndex = next;
+    [self updateControllerStoreFilterOverlaySelection];
+    OpnPlayConsoleTone(OPNConsoleToneMove);
+}
+
+- (void)layoutControllerStoreFilterOverlay {
+    NSView *overlay = self.controllerStoreFilterOverlayView;
+    if (!overlay) return;
+    overlay.frame = self.bounds;
+    NSView *panel = overlay.subviews.firstObject;
+    if (!panel) return;
+    CGFloat width = NSWidth(self.bounds);
+    CGFloat height = NSHeight(self.bounds);
+    CGFloat panelWidth = MIN(420.0, MAX(320.0, width - 96.0));
+    CGFloat optionHeight = 38.0;
+    CGFloat panelHeight = 128.0 + self.controllerStoreFilterOptionLabels.count * (optionHeight + 8.0);
+    panelHeight = MIN(MAX(220.0, panelHeight), MAX(220.0, height - 96.0));
+    panel.frame = NSMakeRect(floor((width - panelWidth) / 2.0), floor((height - panelHeight) / 2.0), panelWidth, panelHeight);
+    panel.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:panel.bounds xRadius:26.0 yRadius:26.0].CGPath;
+    for (NSView *view in panel.subviews) {
+        if (![view isKindOfClass:NSTextField.class]) continue;
+        NSTextField *label = (NSTextField *)view;
+        if ([label.identifier isEqualToString:@"eyebrow"]) label.frame = NSMakeRect(26.0, 24.0, panelWidth - 52.0, 18.0);
+        if ([label.identifier isEqualToString:@"title"]) label.frame = NSMakeRect(24.0, 46.0, panelWidth - 48.0, 36.0);
+        if ([label.identifier isEqualToString:@"hint"]) label.frame = NSMakeRect(26.0, 84.0, panelWidth - 52.0, 20.0);
+    }
+    CGFloat y = 116.0;
+    for (NSTextField *option in self.controllerStoreFilterOptionLabels) {
+        option.frame = NSMakeRect(24.0, y, panelWidth - 48.0, optionHeight);
+        y += optionHeight + 8.0;
+    }
+}
+
+- (void)updateControllerStoreFilterOverlaySelection {
+    for (NSUInteger index = 0; index < self.controllerStoreFilterOptionLabels.count; index++) {
+        NSTextField *label = self.controllerStoreFilterOptionLabels[index];
+        BOOL selected = (NSInteger)index == self.focusedControllerStoreFilterIndex;
+        NSDictionary<NSString *, NSString *> *item = index < self.controllerStoreFilterItems.count ? self.controllerStoreFilterItems[index] : nil;
+        label.stringValue = [NSString stringWithFormat:@"  %@", item[@"title"] ?: @"Store"];
+        label.textColor = selected ? OpnColor(OPNControllerAccentBlackRGB(0.88)) : OpnColor(kTextPrimary);
+        label.layer.backgroundColor = (selected ? OpnColor(OPNControllerAccentSoftRGB(), 0.94) : OpnColor(0xFFFFFF, 0.075)).CGColor;
+        label.layer.borderWidth = selected ? 0.0 : 1.0;
+        label.layer.borderColor = OpnColor(0xFFFFFF, 0.12).CGColor;
+    }
+}
+
 - (void)renderGrid {
     OPN::LogInfo(@"[CatalogView] renderGrid begin controller=%d overview=%d category=%@ allGames=%lu renderedLimit=%ld focused=%ld", OpnControllerModeEnabled(), self.controllerCategoryOverviewVisible, self.selectedCategoryId, (unsigned long)self.allGames.size(), (long)self.controllerRenderedGameCount, (long)self.focusedCardIndex);
     for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
@@ -2009,13 +2194,7 @@ using namespace OPN;
     OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(width, height);
     contentInset = metrics.contentInset;
 
-    std::vector<OPN::GameInfo> displayGames;
-    for (const OPN::GameInfo &game : _allGames) {
-        if ([self game:game matchesCategory:@"library"]) displayGames.push_back(game);
-    }
-    if (displayGames.empty()) {
-        for (const OPN::GameInfo &game : _allGames) displayGames.push_back(game);
-    }
+    std::vector<OPN::GameInfo> displayGames = [self controllerLibraryDisplayGames];
     self.controllerDisplayGameCount = (NSInteger)displayGames.size();
     if (self.focusedCardIndex < 0 && !displayGames.empty()) self.focusedCardIndex = 0;
     if (self.focusedCardIndex >= (NSInteger)displayGames.size()) self.focusedCardIndex = (NSInteger)displayGames.size() - 1;
@@ -2024,7 +2203,7 @@ using namespace OPN;
 
     NSTextField *title = OpnLabel(@"My Library", NSMakeRect(contentInset, metrics.rowTitleY, metrics.rowTitleWidth, metrics.rowTitleHeight), metrics.rowTitleFontSize, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
     [self.gridContentView addSubview:title];
-    NSString *countText = [NSString stringWithFormat:@"%ld games", (long)displayGames.size()];
+    NSString *countText = [NSString stringWithFormat:@"%ld %@", (long)displayGames.size(), displayGames.size() == 1 ? @"game" : @"games"];
     NSTextField *count = OpnLabel(countText, NSMakeRect(metrics.countX, metrics.countY, metrics.countWidth, metrics.countHeight), metrics.countFontSize, OpnColor(OPN::kTextMuted), NSFontWeightRegular);
     [self.gridContentView addSubview:count];
 
@@ -2049,13 +2228,7 @@ using namespace OPN;
     OPNControllerLibraryMetrics metrics = OPNControllerLibraryMetricsForSize(width, height);
     CGFloat contentInset = metrics.contentInset;
 
-    std::vector<OPN::GameInfo> displayGames;
-    for (const OPN::GameInfo &game : _allGames) {
-        if ([self game:game matchesCategory:@"library"]) displayGames.push_back(game);
-    }
-    if (displayGames.empty()) {
-        for (const OPN::GameInfo &game : _allGames) displayGames.push_back(game);
-    }
+    std::vector<OPN::GameInfo> displayGames = [self controllerLibraryDisplayGames];
     std::vector<OPN::GameInfo> featuredGames = [self controllerFeaturedGamesFromDisplayGames:displayGames];
     if (featuredGames.empty()) {
         [self stopControllerHeroRotation];
@@ -2079,13 +2252,7 @@ using namespace OPN;
     CGFloat cardWidth = metrics.cardSize;
     CGFloat cardHeight = metrics.cardSize;
 
-    std::vector<OPN::GameInfo> displayGames;
-    for (const OPN::GameInfo &game : _allGames) {
-        if ([self game:game matchesCategory:@"library"]) displayGames.push_back(game);
-    }
-    if (displayGames.empty()) {
-        for (const OPN::GameInfo &game : _allGames) displayGames.push_back(game);
-    }
+    std::vector<OPN::GameInfo> displayGames = [self controllerLibraryDisplayGames];
     NSInteger totalGames = (NSInteger)displayGames.size();
     self.controllerDisplayGameCount = totalGames;
     if (self.focusedCardIndex < 0 && totalGames > 0) self.focusedCardIndex = 0;
@@ -2559,6 +2726,7 @@ using namespace OPN;
         self.statusLabel.frame = NSMakeRect(width * (28.0 / 1280.0), gridY + height * (120.0 / 720.0), width - width * (56.0 / 1280.0), height * (24.0 / 720.0));
         self.loadingView.frame = self.bounds;
         self.detailsOverlayView.frame = self.bounds;
+        [self layoutControllerStoreFilterOverlay];
         [self stopControllerDetailBackgroundRotation];
         return;
     }
@@ -2583,6 +2751,7 @@ using namespace OPN;
         self.statusLabel.frame = NSMakeRect(28.0, gridY + NSHeight(self.scrollView.frame) + 10.0, width - 56.0, 24.0);
         self.loadingView.frame = self.bounds;
         self.detailsOverlayView.frame = self.bounds;
+        [self layoutControllerStoreFilterOverlay];
         return;
     }
     if (self.lastPlayedPanelView.superview != self) [self addSubview:self.lastPlayedPanelView];
@@ -2674,6 +2843,7 @@ using namespace OPN;
     }
     self.loadingView.frame = self.bounds;
     self.detailsOverlayView.frame = self.bounds;
+    [self layoutControllerStoreFilterOverlay];
 }
 
 - (void)searchChanged {
@@ -3319,7 +3489,7 @@ using namespace OPN;
     NSView *overlay = [[NSView alloc] initWithFrame:self.bounds];
     overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     overlay.wantsLayer = YES;
-    overlay.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.96), 0.62).CGColor;
+    overlay.layer.backgroundColor = OpnColor(0x020304, 0.82).CGColor;
 
     CGFloat panelWidth = MIN(760.0, MAX(420.0, NSWidth(self.bounds) - 96.0));
     CGFloat panelHeight = 390.0;
@@ -3331,7 +3501,7 @@ using namespace OPN;
     panel.layer.cornerRadius = 30.0;
     panel.layer.borderWidth = 1.5;
     panel.layer.borderColor = OpnColor(0xFFFFFF, 0.22).CGColor;
-    panel.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.88), 0.96).CGColor;
+    panel.layer.backgroundColor = OpnColor(0x0A0C0F, 0.98).CGColor;
     panel.layer.shadowColor = OpnColor(OPNControllerAccentRGB()).CGColor;
     panel.layer.shadowOpacity = 0.28;
     panel.layer.shadowRadius = 48.0;
@@ -3520,6 +3690,7 @@ using namespace OPN;
     [self.gamepadNavigationTimer invalidate];
     self.gamepadNavigationTimer = nil;
     self.previousGamepadButtons = 0;
+    [self hideControllerStoreFilterOverlayApplyingSelection:NO];
 }
 
 - (void)controllerDidConnect:(NSNotification *)notification {
@@ -3540,7 +3711,14 @@ using namespace OPN;
     if (self.window.firstResponder != self.searchField) [self.window makeFirstResponder:self];
     uint16_t buttons = OPNCatalogGamepadButtons();
     uint16_t pressed = buttons & (uint16_t)~self.previousGamepadButtons;
+    uint16_t released = self.previousGamepadButtons & (uint16_t)~buttons;
     CFTimeInterval now = CACurrentMediaTime();
+    const uint16_t yButton = (1u << 2);
+    if (pressed & yButton) {
+        self.controllerYPressedAt = now;
+        self.controllerYHoldActive = NO;
+        self.controllerYConsumedByHold = NO;
+    }
     const uint16_t moveMask = (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8);
     uint16_t moves = buttons & moveMask;
     uint16_t pressedMoves = pressed & moveMask;
@@ -3551,6 +3729,20 @@ using namespace OPN;
         pressed = (uint16_t)(pressed | moves);
         self.lastGamepadMoveTime = now;
     }
+    if ((buttons & yButton) && !self.controllerYHoldActive && !self.controllerYConsumedByHold && (now - self.controllerYPressedAt) >= 0.35) {
+        self.controllerYHoldActive = YES;
+        self.controllerYConsumedByHold = YES;
+        [self showControllerStoreFilterOverlay];
+    }
+    if (self.controllerStoreFilterOverlayView) {
+        if (pressed & (1u << 5)) [self moveControllerStoreFilterFocusBy:-1];
+        if (pressed & (1u << 6)) [self moveControllerStoreFilterFocusBy:1];
+        if (pressed & (1u << 1)) [self hideControllerStoreFilterOverlayApplyingSelection:NO];
+        if (released & yButton) [self hideControllerStoreFilterOverlayApplyingSelection:YES];
+        self.previousGamepadButtons = buttons;
+        return;
+    }
+    if ((released & yButton) && !self.controllerYConsumedByHold && !self.controllerCategoryOverviewVisible) [self cycleCategoryBy:1];
     if (pressed & (1u << 0)) {
         [self launchFocusedGame];
     }
@@ -3561,7 +3753,6 @@ using namespace OPN;
             [self returnToControllerCategoryOverview];
         }
     }
-    if (pressed & (1u << 2)) [self toggleFavoriteForFocusedGame];
     if ((pressed & (1u << 3)) && !self.controllerCategoryOverviewVisible) [self cycleCategoryBy:-1];
     if ((pressed & (1u << 4)) && !self.controllerCategoryOverviewVisible) [self cycleCategoryBy:1];
     if (pressed & (1u << 5)) [self moveFocusByRows:-1 columns:0];

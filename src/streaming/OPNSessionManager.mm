@@ -1449,6 +1449,11 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                 OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
             }
             if (cHttp.statusCode != 200) {
+                if ([cBody rangeOfString:@"SESSION_NOT_PAUSED"].location != NSNotFound || [cBody rangeOfString:@"\"statusCode\":34"].location != NSNotFound) {
+                    OPN::LogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
+                    return;
+                }
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim HTTP %ld: %@", (long)cHttp.statusCode, cBody] UTF8String]);
                 return;
             }
@@ -1458,6 +1463,11 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             NSNumber *cSc = cReqStatus[@"statusCode"];
             if (!cSc || cSc.integerValue != 1) {
                 NSString *desc = cReqStatus[@"statusDescription"] ?: @"unknown";
+                if ([desc rangeOfString:@"SESSION_NOT_PAUSED"].location != NSNotFound || cSc.integerValue == 34) {
+                    OPN::LogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
+                    return;
+                }
                 OPN::LogError(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim API error %@: %@", cSc, desc] UTF8String]);
                 return;

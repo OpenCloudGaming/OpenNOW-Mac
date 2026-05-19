@@ -49,11 +49,11 @@
         _dotLayers = [NSMutableArray array];
         _stepIndicatorLayers = [NSMutableArray array];
         self.wantsLayer = YES;
-        self.layer.backgroundColor = OpnColor(OPN::kBackground, 0.98).CGColor;
+        self.layer.backgroundColor = OpnColor(0x020304, 0.98).CGColor;
         self.layer.masksToBounds = YES;
 
         _panelLayer = [CALayer layer];
-        _panelLayer.backgroundColor = OpnColor(OPN::kSurfaceRaised, 0.86).CGColor;
+        _panelLayer.backgroundColor = OpnColor(0x0A0C0F, 0.96).CGColor;
         _panelLayer.cornerRadius = 28.0;
         _panelLayer.borderWidth = 1.0;
         _panelLayer.borderColor = OpnColor(0xFFFFFF, 0.11).CGColor;
