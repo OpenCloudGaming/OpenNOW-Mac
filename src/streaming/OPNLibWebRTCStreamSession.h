@@ -55,6 +55,11 @@ public:
     double GameVolume() const;
     int TargetFps() const;
     void SetVideoRendererState(const std::string &sink, const std::string &pipelineMode);
+    void SetVideoRenderDiagnostics(const std::string &pixelFormat,
+                                   const std::string &renderMode,
+                                   const std::string &frameSource,
+                                   const std::string &renderPath,
+                                   const std::string &fallback);
 
 private:
     void HandleStatsReport(void *report);
@@ -67,12 +72,16 @@ private:
     void StopMicrophoneLevelPolling();
     void StartAudioDeviceMonitoring();
     void StopAudioDeviceMonitoring();
+    void ApplyRuntimeBitrateLimit(int mbps, const char *reason);
+    void UpdateAdaptiveBitrate(const StreamStats &stats);
 
     void *m_impl = nullptr;
     void *m_nativeWindow = nullptr;
     void *m_inputHeartbeat = nullptr;
     void *m_statsTimer = nullptr;
+    void *m_statsQueue = nullptr;
     void *m_microphoneLevelTimer = nullptr;
+    void *m_audioDeviceMonitorContext = nullptr;
     std::atomic<bool> m_audioDeviceMonitoringActive{false};
     bool m_inputReady = false;
     bool m_reliableOpen = false;
@@ -80,6 +89,8 @@ private:
     bool m_statsRequestInFlight = false;
     bool m_microphoneLevelRequestInFlight = false;
     bool m_microphoneEnabled = false;
+    uint64_t m_audioDeviceChangeGeneration = 0;
+    int m_audioDeviceUnavailableRetryCount = 0;
     uint32_t m_defaultInputDevice = 0;
     uint32_t m_defaultOutputDevice = 0;
     double m_gameVolume = 1.0;
@@ -91,6 +102,12 @@ private:
     uint64_t m_previousPacketsReceived = 0;
     uint64_t m_previousFramesDecoded = 0;
     int64_t m_previousPacketsLost = 0;
+    int m_configuredMaxBitrateMbps = 0;
+    int m_adaptiveBitrateMbps = 0;
+    int m_minAdaptiveBitrateMbps = 0;
+    int m_adaptiveCongestionScore = 0;
+    int m_adaptiveRecoveryScore = 0;
+    uint64_t m_lastAdaptiveBitrateChangeMs = 0;
     StreamSettings m_settings;
     Input::Encoder m_inputEncoder;
     std::function<void(const SendAnswerRequest &)> m_onAnswer;

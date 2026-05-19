@@ -1,12 +1,15 @@
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNStreamPreferences.h"
+#include "common/OPNSentry.h"
 
 #import <CoreAudio/CoreAudio.h>
+#import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -19,11 +22,22 @@
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #import <WebRTC/WebRTC.h>
+#import <WebRTC/RTCCVPixelBuffer.h>
+#import <MetalKit/MetalKit.h>
 #endif
+
+@interface OPNAudioDeviceMonitorContext : NSObject
+@property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+@property(nonatomic, assign, getter=isActive) BOOL active;
+@end
+
+@implementation OPNAudioDeviceMonitorContext
+@end
 
 namespace OPN {
 
-static constexpr int OPNPartialReliableInputLifetimeMs = 8;
+static constexpr int OPNPartialReliableInputLifetimeMs = 5;
+static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
 
 static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector) {
     AudioDeviceID device = kAudioObjectUnknown;
@@ -43,10 +57,11 @@ static OSStatus OPNAudioDevicesChanged(AudioObjectID,
                                        UInt32,
                                        const AudioObjectPropertyAddress *,
                                        void *clientData) {
-    auto *session = static_cast<LibWebRTCStreamSession *>(clientData);
-    if (!session) return noErr;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        session->HandleAudioDeviceChange();
+    OPNAudioDeviceMonitorContext *context = (__bridge OPNAudioDeviceMonitorContext *)clientData;
+    if (!context.isActive || !context.owner) return noErr;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (!context.isActive || !context.owner) return;
+        context.owner->HandleAudioDeviceChange();
     });
     return noErr;
 }
@@ -57,6 +72,55 @@ static OSStatus OPNAudioDevicesChanged(AudioObjectID,
 
 [[maybe_unused]] static std::string OPNNSStringToString(NSString *value) {
     return value ? std::string(value.UTF8String ?: "") : std::string();
+}
+
+static void OPNLockRTCAudioSession(id audioSession) {
+    SEL selector = NSSelectorFromString(@"lockForConfiguration");
+    if ([audioSession respondsToSelector:selector]) {
+        ((void (*)(id, SEL))objc_msgSend)(audioSession, selector);
+    }
+}
+
+static void OPNUnlockRTCAudioSession(id audioSession) {
+    SEL selector = NSSelectorFromString(@"unlockForConfiguration");
+    if ([audioSession respondsToSelector:selector]) {
+        ((void (*)(id, SEL))objc_msgSend)(audioSession, selector);
+    }
+}
+
+static void OPNSetRTCAudioSessionActive(id audioSession, BOOL active, NSString *phase) {
+    SEL selector = NSSelectorFromString(@"setActive:error:");
+    if (![audioSession respondsToSelector:selector]) return;
+
+    NSError *error = nil;
+    BOOL ok = ((BOOL (*)(id, SEL, BOOL, NSError **))objc_msgSend)(audioSession, selector, active, &error);
+    if (!ok || error) {
+        OPN::LogError(@"[LibWebRTC] RTCAudioSession setActive=%d failed during %@: %@", active, phase, error.localizedDescription ?: @"unknown error");
+    }
+}
+
+static void OPNResetRTCAudioSessionRouteToDefaults(id audioSession) {
+    OPNLockRTCAudioSession(audioSession);
+
+    SEL preferredInputSelector = NSSelectorFromString(@"setPreferredInput:error:");
+    if ([audioSession respondsToSelector:preferredInputSelector]) {
+        NSError *preferredInputError = nil;
+        BOOL ok = ((BOOL (*)(id, SEL, id, NSError **))objc_msgSend)(audioSession, preferredInputSelector, nil, &preferredInputError);
+        if (!ok || preferredInputError) {
+            OPN::LogError(@"[LibWebRTC] RTCAudioSession clear preferred input failed: %@", preferredInputError.localizedDescription ?: @"unknown error");
+        }
+    }
+
+    SEL outputOverrideSelector = NSSelectorFromString(@"overrideOutputAudioPort:error:");
+    if ([audioSession respondsToSelector:outputOverrideSelector]) {
+        NSError *outputOverrideError = nil;
+        BOOL ok = ((BOOL (*)(id, SEL, NSInteger, NSError **))objc_msgSend)(audioSession, outputOverrideSelector, 0, &outputOverrideError);
+        if (!ok || outputOverrideError) {
+            OPN::LogError(@"[LibWebRTC] RTCAudioSession clear output override failed: %@", outputOverrideError.localizedDescription ?: @"unknown error");
+        }
+    }
+
+    OPNUnlockRTCAudioSession(audioSession);
 }
 
 struct OPNLibWebRTCIceCredentials {
@@ -235,7 +299,7 @@ struct OPNLibWebRTCIceCredentials {
     }
 
     if (connectionRewrites > 0 || candidateRewrites > 0) {
-        NSLog(@"[LibWebRTC] Fixed server IP in offer SDP ip=%s c-lines=%d candidates=%d",
+        OPN::LogInfo(@"[LibWebRTC] Fixed server IP in offer SDP ip=%s c-lines=%d candidates=%d",
               ip.c_str(),
               connectionRewrites,
               candidateRewrites);
@@ -269,7 +333,7 @@ struct OPNLibWebRTCIceCredentials {
     }
 
     if (bitrateLines > 0 || stereoLines > 0) {
-        NSLog(@"[LibWebRTC] Munged answer SDP bitrateLines=%d stereoLines=%d videoBitrate=%dkbps",
+        OPN::LogInfo(@"[LibWebRTC] Munged answer SDP bitrateLines=%d stereoLines=%d videoBitrate=%dkbps",
               bitrateLines,
               stereoLines,
               std::max(1000, maxBitrateKbps));
@@ -283,14 +347,14 @@ struct OPNLibWebRTCIceCredentials {
     for (const std::string &line : OPNSplitSdpLines(sdp)) {
         if (OPNStartsWith(line, "m=video")) {
             inVideo = true;
-            NSLog(@"[LibWebRTC] %s %s", label, line.c_str());
+            OPN::LogInfo(@"[LibWebRTC] %s %s", label, line.c_str());
             logged++;
             continue;
         }
         if (OPNStartsWith(line, "m=") && inVideo) break;
         if (!inVideo) continue;
         if (OPNStartsWith(line, "a=rtpmap:") || OPNStartsWith(line, "a=fmtp:") || OPNStartsWith(line, "a=rtcp-fb:")) {
-            NSLog(@"[LibWebRTC] %s %s", label, line.c_str());
+            OPN::LogInfo(@"[LibWebRTC] %s %s", label, line.c_str());
             logged++;
             if (logged >= 64) break;
         }
@@ -367,7 +431,7 @@ struct OPNLibWebRTCIceCredentials {
     }
 
     if (tierRewrites > 0) {
-        NSLog(@"[LibWebRTC] Rewrote H265 offer tier for receiver compatibility: tier=%d maxMain=%d maxMain10=%d highTier=%d",
+        OPN::LogInfo(@"[LibWebRTC] Rewrote H265 offer tier for receiver compatibility: tier=%d maxMain=%d maxMain10=%d highTier=%d",
               tierRewrites,
               maxMainLevelId,
               maxMain10LevelId,
@@ -470,7 +534,7 @@ struct OPNLibWebRTCIceCredentials {
     }
 
     if (codecPayloads.empty()) {
-        NSLog(@"[LibWebRTC] Offer %s preference skipped; no matching payload found", normalizedCodec.c_str());
+        OPN::LogInfo(@"[LibWebRTC] Offer %s preference skipped; no matching payload found", normalizedCodec.c_str());
         return sdp;
     }
 
@@ -528,7 +592,7 @@ struct OPNLibWebRTCIceCredentials {
         filtered.push_back(line);
     }
 
-    NSLog(@"[LibWebRTC] Preferred %s offer payloads (%zu codec=%s, %zu kept=%s), removed %d non-%s payload lines",
+    OPN::LogInfo(@"[LibWebRTC] Preferred %s offer payloads (%zu codec=%s, %zu kept=%s), removed %d non-%s payload lines",
           normalizedCodec.c_str(),
           codecPayloads.size(),
           OPNPayloadVectorToString(codecPayloads).c_str(),
@@ -711,53 +775,83 @@ class LibWebRTCStreamSession;
 @property(nonatomic, strong) RTCRtpSender *localMicrophoneSender;
 @end
 
-@interface OPNPacedVideoRenderer : NSView <RTCVideoRenderer>
+@protocol OPNRTCMetalRenderer <NSObject>
+- (BOOL)addRenderingDestination:(__kindof MTKView *)view;
+- (void)drawFrame:(RTCVideoFrame *)frame;
+@end
+
+@interface OPNMetalVideoView : NSView <RTCVideoRenderer, MTKViewDelegate>
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner;
 @end
 
-@interface OPNPacedVideoRenderer ()
-@property(nonatomic, strong) RTCMTLNSVideoView *videoView;
-@property(nonatomic, strong) NSTimer *displayTimer;
-@property(nonatomic, strong) RTCVideoFrame *pendingFrame;
-@property(nonatomic, assign) BOOL hasPendingFrame;
+@interface OPNMetalVideoView ()
+@property(nonatomic, strong) MTKView *metalView;
+@property(nonatomic, strong) RTCVideoFrame *videoFrame;
+@property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererNV12;
+@property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererRGB;
+@property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererI420;
 @property(nonatomic, assign) int targetFps;
+@property(nonatomic, assign) uint64_t frameSerial;
+@property(nonatomic, assign) uint64_t lastDrawnFrameSerial;
+@property(nonatomic, assign) CFTimeInterval lastDiagnosticsUpdateTime;
+@property(nonatomic, assign) BOOL drawScheduled;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+- (void)scheduleDraw;
+- (id<OPNRTCMetalRenderer>)newRendererNamed:(NSString *)className fallback:(NSString **)fallback;
+- (id<OPNRTCMetalRenderer>)i420RendererWithFallback:(NSString **)fallback;
+- (id<OPNRTCMetalRenderer>)rendererForFrame:(RTCVideoFrame *)frame
+                                pixelFormat:(NSString **)pixelFormat
+                                 renderMode:(NSString **)renderMode
+                                frameSource:(NSString **)frameSource
+                                 renderPath:(NSString **)renderPath
+                                   fallback:(NSString **)fallback;
 @end
 
-@implementation OPNPacedVideoRenderer
+@implementation OPNMetalVideoView
 
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner {
     self = [super initWithFrame:frame];
     if (self) {
-        _targetFps = MAX(30, MIN(targetFps, 120));
         _owner = owner;
+        _targetFps = MAX(30, MIN(targetFps, 240));
+        _frameSerial = 0;
+        _lastDrawnFrameSerial = 0;
+        _lastDiagnosticsUpdateTime = 0.0;
+        _drawScheduled = NO;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
-        _videoView = [[RTCMTLNSVideoView alloc] initWithFrame:self.bounds];
-        _videoView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        _videoView.wantsLayer = YES;
-        _videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
-        [self addSubview:_videoView];
 
-        NSTimeInterval interval = 1.0 / (NSTimeInterval)_targetFps;
-        _displayTimer = [NSTimer timerWithTimeInterval:interval target:self selector:@selector(displayTimerFired:) userInfo:nil repeats:YES];
-        [NSRunLoop.mainRunLoop addTimer:_displayTimer forMode:NSRunLoopCommonModes];
+        _metalView = [[MTKView alloc] initWithFrame:self.bounds device:MTLCreateSystemDefaultDevice()];
+        _metalView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _metalView.framebufferOnly = YES;
+        _metalView.autoResizeDrawable = NO;
+        _metalView.paused = YES;
+        _metalView.enableSetNeedsDisplay = NO;
+        _metalView.preferredFramesPerSecond = _targetFps;
+        _metalView.delegate = self;
+        _metalView.layerContentsPlacement = NSViewLayerContentsPlacementScaleProportionallyToFit;
+        if ([_metalView.layer isKindOfClass:CAMetalLayer.class]) {
+            CAMetalLayer *metalLayer = (CAMetalLayer *)_metalView.layer;
+            metalLayer.presentsWithTransaction = NO;
+            metalLayer.allowsNextDrawableTimeout = NO;
+            if (@available(macOS 10.13, *)) {
+                metalLayer.maximumDrawableCount = 3;
+            }
+        }
+        [self addSubview:_metalView];
     }
     return self;
 }
 
-- (void)dealloc {
-    [_displayTimer invalidate];
-}
-
 - (void)layout {
     [super layout];
-    self.videoView.frame = self.bounds;
+    self.metalView.frame = self.bounds;
 }
 
 - (void)setSize:(CGSize)size {
+    if (size.width <= 0.0 || size.height <= 0.0) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self.videoView setSize:size];
+        self.metalView.drawableSize = size;
     });
 }
 
@@ -765,27 +859,146 @@ class LibWebRTCStreamSession;
     if (frame && self.owner) {
         self.owner->HandleVideoFrame((__bridge void *)frame);
     }
+    if (!frame) return;
+    BOOL shouldScheduleDraw = NO;
     @synchronized (self) {
-        self.pendingFrame = frame;
-        self.hasPendingFrame = frame != nil;
+        self.videoFrame = frame;
+        self.frameSerial++;
+        shouldScheduleDraw = !self.drawScheduled;
+        self.drawScheduled = YES;
     }
-    if (!frame) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.videoView renderFrame:nil];
-        });
+    if (shouldScheduleDraw) {
+        [self scheduleDraw];
     }
 }
 
-- (void)displayTimerFired:(NSTimer *)timer {
-    (void)timer;
+- (void)scheduleDraw {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            @synchronized (self) {
+                self.drawScheduled = NO;
+            }
+            if (self.metalView) {
+                [self.metalView draw];
+            }
+        }
+    });
+}
+
+- (void)drawInMTKView:(MTKView *)view {
+    if (view != self.metalView) return;
     RTCVideoFrame *frame = nil;
+    uint64_t drawSerial = 0;
     @synchronized (self) {
-        if (!self.hasPendingFrame) return;
-        frame = self.pendingFrame;
-        self.pendingFrame = nil;
-        self.hasPendingFrame = NO;
+        frame = self.videoFrame;
+        drawSerial = self.frameSerial;
     }
-    [self.videoView renderFrame:frame];
+    if (!frame || frame.width <= 0 || frame.height <= 0 || drawSerial == 0 || drawSerial == self.lastDrawnFrameSerial) return;
+
+    NSString *pixelFormat = @"unknown";
+    NSString *renderMode = @"I420";
+    NSString *frameSource = @"unknown";
+    NSString *renderPath = @"RTCMTLI420Renderer";
+    NSString *fallback = @"";
+    id<OPNRTCMetalRenderer> renderer = [self rendererForFrame:frame
+                                                  pixelFormat:&pixelFormat
+                                                   renderMode:&renderMode
+                                                  frameSource:&frameSource
+                                                   renderPath:&renderPath
+                                                     fallback:&fallback];
+    if (!renderer) {
+        fallback = @"renderer unavailable";
+    } else {
+        [renderer drawFrame:frame];
+        self.lastDrawnFrameSerial = drawSerial;
+    }
+    CFTimeInterval now = CACurrentMediaTime();
+    if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
+        self.lastDiagnosticsUpdateTime = now;
+        self.owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
+                                              OPN::OPNNSStringToString(renderMode),
+                                              OPN::OPNNSStringToString(frameSource),
+                                              OPN::OPNNSStringToString(renderPath),
+                                              OPN::OPNNSStringToString(fallback));
+    }
+}
+
+- (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size {
+    (void)view;
+    (void)size;
+}
+
+- (id<OPNRTCMetalRenderer>)newRendererNamed:(NSString *)className fallback:(NSString **)fallback {
+    Class rendererClass = NSClassFromString(className);
+    if (!rendererClass) {
+        if (fallback) *fallback = [NSString stringWithFormat:@"%@ unavailable", className];
+        return nil;
+    }
+    id<OPNRTCMetalRenderer> renderer = (id<OPNRTCMetalRenderer>)[[rendererClass alloc] init];
+    if (![renderer addRenderingDestination:self.metalView]) {
+        if (fallback) *fallback = [NSString stringWithFormat:@"%@ rejected MTKView", className];
+        return nil;
+    }
+    self.metalView.paused = YES;
+    self.metalView.enableSetNeedsDisplay = NO;
+    self.metalView.preferredFramesPerSecond = self.targetFps;
+    return renderer;
+}
+
+- (id<OPNRTCMetalRenderer>)i420RendererWithFallback:(NSString **)fallback {
+    if (!self.rendererI420) {
+        self.rendererI420 = [self newRendererNamed:@"RTCMTLI420Renderer" fallback:fallback];
+    }
+    return self.rendererI420;
+}
+
+- (id<OPNRTCMetalRenderer>)rendererForFrame:(RTCVideoFrame *)frame
+                                pixelFormat:(NSString **)pixelFormat
+                                 renderMode:(NSString **)renderMode
+                                frameSource:(NSString **)frameSource
+                                 renderPath:(NSString **)renderPath
+                                   fallback:(NSString **)fallback {
+    if ([frame.buffer isKindOfClass:RTCCVPixelBuffer.class]) {
+        if (frameSource) *frameSource = @"CVPixelBuffer";
+        RTCCVPixelBuffer *buffer = (RTCCVPixelBuffer *)frame.buffer;
+        OSType format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer);
+        BOOL isNV12 = format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
+        BOOL isRGB = format == kCVPixelFormatType_32BGRA || format == kCVPixelFormatType_32ARGB;
+        if (pixelFormat) {
+            if (format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) *pixelFormat = @"420v/NV12";
+            else if (format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) *pixelFormat = @"420f/NV12";
+            else if (format == kCVPixelFormatType_32BGRA) *pixelFormat = @"BGRA";
+            else if (format == kCVPixelFormatType_32ARGB) *pixelFormat = @"ARGB";
+            else *pixelFormat = [NSString stringWithFormat:@"0x%08x", (unsigned int)format];
+        }
+        if (isNV12) {
+            NSString *localFallback = @"";
+            if (!self.rendererNV12) self.rendererNV12 = [self newRendererNamed:@"RTCMTLNV12Renderer" fallback:&localFallback];
+            if (self.rendererNV12) {
+                if (renderMode) *renderMode = @"NV12";
+                if (renderPath) *renderPath = @"RTCMTLNV12Renderer";
+                return self.rendererNV12;
+            }
+            if (fallback) *fallback = localFallback.length > 0 ? localFallback : @"NV12 unavailable; using I420";
+        } else if (isRGB) {
+            NSString *localFallback = @"";
+            if (!self.rendererRGB) self.rendererRGB = [self newRendererNamed:@"RTCMTLRGBRenderer" fallback:&localFallback];
+            if (self.rendererRGB) {
+                if (renderMode) *renderMode = @"RGB";
+                if (renderPath) *renderPath = @"RTCMTLRGBRenderer";
+                return self.rendererRGB;
+            }
+            if (fallback) *fallback = localFallback.length > 0 ? localFallback : @"RGB unavailable; using I420";
+        } else if (fallback) {
+            *fallback = @"unsupported CVPixelBuffer; using I420";
+        }
+    } else {
+        if (frameSource) *frameSource = NSStringFromClass([frame.buffer class]) ?: @"unknown";
+        if (pixelFormat) *pixelFormat = @"I420";
+    }
+    if (renderMode) *renderMode = @"I420";
+    if (renderPath) *renderPath = @"RTCMTLI420Renderer";
+    return [self i420RendererWithFallback:fallback];
 }
 
 @end
@@ -809,7 +1022,7 @@ static bool OPNLibWebRTCSupportsCodec(RTCPeerConnectionFactory *factory, const s
         if (OPNCodecCapabilityMatches(codec, normalizedCodec)) return true;
     }
 
-    NSLog(@"[LibWebRTC] Receiver codec capabilities do not include %s; available=%@", normalizedCodec.c_str(), [codecNames componentsJoinedByString:@", "]);
+    OPN::LogInfo(@"[LibWebRTC] Receiver codec capabilities do not include %s; available=%@", normalizedCodec.c_str(), [codecNames componentsJoinedByString:@", "]);
     return false;
 }
 
@@ -872,12 +1085,12 @@ static bool OPNApplyVideoCodecPreference(RTCPeerConnectionFactory *factory,
         NSError *codecError = nil;
         if ([transceiver setCodecPreferences:preferredCodecs error:&codecError]) {
             applied = true;
-            NSLog(@"[LibWebRTC] Applied %s codec preference to video transceiver mid=%@ (%lu codecs)",
+            OPN::LogInfo(@"[LibWebRTC] Applied %s codec preference to video transceiver mid=%@ (%lu codecs)",
                   normalizedCodec.c_str(),
                   transceiver.mid ?: @"(none)",
                   (unsigned long)preferredCodecs.count);
         } else {
-            NSLog(@"[LibWebRTC] Failed to apply %s codec preference to video transceiver mid=%@: %@",
+            OPN::LogInfo(@"[LibWebRTC] Failed to apply %s codec preference to video transceiver mid=%@: %@",
                   normalizedCodec.c_str(),
                   transceiver.mid ?: @"(none)",
                   codecError.localizedDescription ?: @"unknown error");
@@ -962,13 +1175,13 @@ static bool OPNAttachMicrophoneTrack(OPNLibWebRTCSessionImpl *impl, RTCAudioTrac
         if (targetDirection != transceiver.direction) {
             [transceiver setDirection:targetDirection error:&directionError];
             if (directionError) {
-                NSLog(@"[LibWebRTC] failed to set microphone transceiver direction: %@", directionError.localizedDescription);
+                OPN::LogError(@"[LibWebRTC] failed to set microphone transceiver direction: %@", directionError.localizedDescription);
             }
         }
         transceiver.sender.track = audioTrack;
         transceiver.sender.streamIds = @[@"mic"];
         impl.localMicrophoneSender = transceiver.sender;
-        NSLog(@"[LibWebRTC] local microphone track attached to transceiver mid=%@ direction=%s target=%s enabled=%d volume=%.2f",
+        OPN::LogInfo(@"[LibWebRTC] local microphone track attached to transceiver mid=%@ direction=%s target=%s enabled=%d volume=%.2f",
               transceiver.mid ?: @"(none)",
               OPNRTCRtpTransceiverDirectionName(transceiver.direction),
               OPNRTCRtpTransceiverDirectionName(targetDirection),
@@ -980,7 +1193,7 @@ static bool OPNAttachMicrophoneTrack(OPNLibWebRTCSessionImpl *impl, RTCAudioTrac
     RTCRtpSender *sender = [impl.peerConnection addTrack:audioTrack streamIds:@[@"mic"]];
     if (!sender) return false;
     impl.localMicrophoneSender = sender;
-    NSLog(@"[LibWebRTC] local microphone track added without negotiated transceiver; renegotiation may be required");
+    OPN::LogInfo(@"[LibWebRTC] local microphone track added without negotiated transceiver; renegotiation may be required");
     return true;
 }
 #endif
@@ -1001,10 +1214,18 @@ std::string LibWebRTCStreamSession::AvailabilityDescription() {
 #endif
 }
 
-LibWebRTCStreamSession::LibWebRTCStreamSession() = default;
+LibWebRTCStreamSession::LibWebRTCStreamSession() {
+    dispatch_queue_t statsQueue = dispatch_queue_create("io.opencg.opennow.webrtc.stats", DISPATCH_QUEUE_SERIAL);
+    m_statsQueue = (__bridge_retained void *)statsQueue;
+}
 
 LibWebRTCStreamSession::~LibWebRTCStreamSession() {
     Stop();
+    if (m_statsQueue) {
+        dispatch_queue_t statsQueue = (__bridge_transfer dispatch_queue_t)m_statsQueue;
+        m_statsQueue = nullptr;
+        (void)statsQueue;
+    }
 }
 
 void LibWebRTCStreamSession::Start(const SessionInfo &session,
@@ -1013,6 +1234,12 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
                                    StreamStateCallback onState) {
     Stop();
     m_settings = settings;
+    m_configuredMaxBitrateMbps = std::max(1, settings.maxBitrateMbps);
+    m_adaptiveBitrateMbps = m_configuredMaxBitrateMbps;
+    m_minAdaptiveBitrateMbps = std::min(m_configuredMaxBitrateMbps, std::max(8, m_configuredMaxBitrateMbps * 35 / 100));
+    m_adaptiveCongestionScore = 0;
+    m_adaptiveRecoveryScore = 0;
+    m_lastAdaptiveBitrateChangeMs = 0;
     m_onState = std::move(onState);
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
@@ -1023,10 +1250,13 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.codec = settings.codec;
         m_latestStats.fps = settings.fps;
         m_latestStats.videoDecoder = "libwebrtc";
-        m_latestStats.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "OPNPacedVideoRenderer"
-            : "RTCMTLNSVideoView";
-        m_latestStats.videoPipelineMode = "libwebrtc negotiating";
+        m_latestStats.videoSink = "OPNMetalVideoView";
+        m_latestStats.videoPipelineMode = "libwebrtc Metal display";
+        m_latestStats.videoPixelFormat = "pending";
+        m_latestStats.videoRenderMode = "pending";
+        m_latestStats.videoFrameSource = "pending";
+        m_latestStats.videoRenderPath = "pending";
+        m_latestStats.videoRendererFallback = "";
         m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
         m_previousBytesReceived = 0;
@@ -1084,7 +1314,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
     std::string processedOfferSdp = offerSdp;
     if (offerSdp.find("0.0.0.0") != std::string::npos) {
         std::string mediaIp = OPNExtractPublicIp(!session.mediaConnectionInfo.ip.empty() ? session.mediaConnectionInfo.ip : session.serverIp);
-        NSLog(@"[LibWebRTC] Offer contains 0.0.0.0 placeholders; leaving SDP unchanged for native parser compatibility (mediaIp=%s)",
+        OPN::LogInfo(@"[LibWebRTC] Offer contains 0.0.0.0 placeholders; leaving SDP unchanged for native parser compatibility (mediaIp=%s)",
               mediaIp.empty() ? "unknown" : mediaIp.c_str());
     }
     std::string requestedCodec = OPNNormalizeCodec(settings.codec);
@@ -1097,16 +1327,16 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
             processedOfferSdp = OPNRewriteH265OfferForReceiver(processedOfferSdp, maxMainLevelId, maxMain10LevelId, supportsHighTier);
         }
     } else if (requestedCodec == "H265" && requestedCodecSupported) {
-        NSLog(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_H265_OFFER_REWRITE=0; retaining original H265 offer parameters");
+        OPN::LogInfo(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_H265_OFFER_REWRITE=0; retaining original H265 offer parameters");
     }
     if (OPNIsSupportedCodecPreference(requestedCodec) && requestedCodecSupported && OPNEnvFlagEnabled("OPN_ENABLE_LIBWEBRTC_CODEC_FILTER", false)) {
         processedOfferSdp = OPNPreferCodecInOffer(processedOfferSdp, requestedCodec);
     } else if (OPNIsSupportedCodecPreference(requestedCodec) && !requestedCodecSupported) {
-        NSLog(@"[LibWebRTC] Requested codec %s is not supported by this WebRTC.framework; retaining full offer so libwebrtc can negotiate a supported fallback", requestedCodec.c_str());
+        OPN::LogInfo(@"[LibWebRTC] Requested codec %s is not supported by this WebRTC.framework; retaining full offer so libwebrtc can negotiate a supported fallback", requestedCodec.c_str());
     } else if (OPNIsSupportedCodecPreference(requestedCodec)) {
-        NSLog(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_CODEC_FILTER=0; retaining all video payloads for requested codec %s", requestedCodec.c_str());
+        OPN::LogInfo(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_CODEC_FILTER=0; retaining all video payloads for requested codec %s", requestedCodec.c_str());
     } else {
-        NSLog(@"[LibWebRTC] Unsupported requested codec preference '%s'; retaining all video payloads", settings.codec.c_str());
+        OPN::LogInfo(@"[LibWebRTC] Unsupported requested codec preference '%s'; retaining all video payloads", settings.codec.c_str());
     }
     OPNLogVideoSdpSummary("offer-video", processedOfferSdp);
 
@@ -1121,7 +1351,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         std::string answerCodecPreference = OPNNormalizeCodec(this->m_settings.codec);
         if (OPNIsSupportedCodecPreference(answerCodecPreference)) {
             if (!OPNApplyVideoCodecPreference(strongImpl.factory, strongImpl.peerConnection, answerCodecPreference)) {
-                NSLog(@"[LibWebRTC] No video transceiver accepted %s codec preference before answer", answerCodecPreference.c_str());
+                OPN::LogInfo(@"[LibWebRTC] No video transceiver accepted %s codec preference before answer", answerCodecPreference.c_str());
             }
         }
 
@@ -1135,7 +1365,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
                 strongImpl.localMicrophoneTrack = audioTrack;
                 this->StartMicrophoneLevelPolling();
             } else {
-                NSLog(@"[LibWebRTC] failed to attach local microphone track");
+                OPN::LogError(@"[LibWebRTC] failed to attach local microphone track");
             }
         }
 
@@ -1156,7 +1386,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
                 ? OPNMungeAnswerSdp(rawAnswerSdp, std::max(1000, this->m_settings.maxBitrateMbps * 1000))
                 : rawAnswerSdp;
             if (!enableAnswerMunging) {
-                NSLog(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE=0; using raw local answer SDP");
+                OPN::LogInfo(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE=0; using raw local answer SDP");
             }
             OPNLogVideoSdpSummary("answer-video", localAnswerSdp);
             if (!OPNVideoSdpHasMediaCodec(localAnswerSdp)) {
@@ -1200,7 +1430,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
             return;
         }
 
-        NSLog(@"[LibWebRTC] filtered offer rejected (%@); retrying original GFN offer", error.localizedDescription);
+        OPN::LogInfo(@"[LibWebRTC] filtered offer rejected (%@); retrying original GFN offer", error.localizedDescription);
         RTCSessionDescription *originalOffer = [[RTCSessionDescription alloc] initWithType:RTCSdpTypeOffer sdp:originalOfferString];
         [strongImpl.peerConnection setRemoteDescription:originalOffer completionHandler:^(NSError *retryError) {
             if (retryError) {
@@ -1261,7 +1491,7 @@ void LibWebRTCStreamSession::AddRemoteIceCandidate(const IceCandidatePayload &ca
                                                            sdpMLineIndex:candidate.sdpMLineIndex
                                                                   sdpMid:candidate.sdpMid.empty() ? nil : OPNStringToNSString(candidate.sdpMid)];
     [impl.peerConnection addIceCandidate:rtcCandidate completionHandler:^(NSError *error) {
-        if (error) NSLog(@"[LibWebRTC] addIceCandidate failed: %@", error.localizedDescription);
+        if (error) OPN::LogError(@"[LibWebRTC] addIceCandidate failed: %@", error.localizedDescription);
     }];
 #else
     (void)candidate;
@@ -1293,6 +1523,7 @@ void LibWebRTCStreamSession::SendInputPartiallyReliable(const uint8_t *data, siz
 #if defined(OPN_HAVE_LIBWEBRTC)
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.partialInputChannel || impl.partialInputChannel.readyState != RTCDataChannelStateOpen || !data || len == 0) return;
+    if (impl.partialInputChannel.bufferedAmount > OPNPartialReliableInputBacklogLimitBytes) return;
     NSData *payload = [NSData dataWithBytes:data length:len];
     RTCDataBuffer *buffer = [[RTCDataBuffer alloc] initWithData:payload isBinary:YES];
     [impl.partialInputChannel sendData:buffer];
@@ -1402,9 +1633,8 @@ void LibWebRTCStreamSession::SetMicrophoneVolume(double volume) {
 #endif
 }
 
-void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
+void LibWebRTCStreamSession::ApplyRuntimeBitrateLimit(int mbps, const char *reason) {
     int clampedMbps = std::max(1, std::min(mbps, 250));
-    m_settings.maxBitrateMbps = clampedMbps;
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
         m_latestStats.videoPipelineMode = "libwebrtc bitrate " + std::to_string(clampedMbps) + " Mbps";
@@ -1416,10 +1646,81 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
     NSNumber *currentBitrateBps = @(std::max(1, clampedMbps * 7 / 10) * 1000 * 1000);
     NSNumber *minBitrateBps = @(std::max(1, clampedMbps * 35 / 100) * 1000 * 1000);
     BOOL ok = [impl.peerConnection setBweMinBitrateBps:minBitrateBps
-                                      currentBitrateBps:currentBitrateBps
-                                          maxBitrateBps:maxBitrateBps];
-    NSLog(@"[LibWebRTC] Runtime bitrate limit %d Mbps applied=%d", clampedMbps, ok);
+                                       currentBitrateBps:currentBitrateBps
+                                           maxBitrateBps:maxBitrateBps];
+    OPN::LogInfo(@"[LibWebRTC] Runtime bitrate limit %d Mbps applied=%d reason=%s", clampedMbps, ok, reason ? reason : "manual");
 #endif
+}
+
+void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
+    int clampedMbps = std::max(1, std::min(mbps, 250));
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_settings.maxBitrateMbps = clampedMbps;
+        m_configuredMaxBitrateMbps = clampedMbps;
+        m_adaptiveBitrateMbps = clampedMbps;
+        m_minAdaptiveBitrateMbps = std::min(clampedMbps, std::max(8, clampedMbps * 35 / 100));
+        m_adaptiveCongestionScore = 0;
+        m_adaptiveRecoveryScore = 0;
+    }
+    ApplyRuntimeBitrateLimit(clampedMbps, "manual");
+}
+
+void LibWebRTCStreamSession::UpdateAdaptiveBitrate(const StreamStats &stats) {
+    if (!stats.available) return;
+
+    int bitrateToApply = 0;
+    const char *reason = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        const int configuredMax = std::max(1, m_configuredMaxBitrateMbps > 0 ? m_configuredMaxBitrateMbps : m_settings.maxBitrateMbps);
+        if (m_adaptiveBitrateMbps <= 0) m_adaptiveBitrateMbps = configuredMax;
+        if (m_minAdaptiveBitrateMbps <= 0) m_minAdaptiveBitrateMbps = std::min(configuredMax, std::max(8, configuredMax * 35 / 100));
+
+        const double targetFps = m_settings.fps > 0 ? (double)m_settings.fps : 60.0;
+        const double frameBudgetMs = 1000.0 / targetFps;
+        const bool lossHigh = stats.packetLossPercent >= 1.0;
+        const bool jitterHigh = stats.jitterMs >= 25.0;
+        const bool latencyHigh = stats.latencyMs >= 110.0;
+        const bool decodeSlow = stats.decodeTimeMs >= frameBudgetMs * 0.90;
+        const bool renderSlow = stats.renderFps > 0.0 && stats.renderFps < targetFps * 0.82;
+        const bool congested = lossHigh || jitterHigh || latencyHigh || decodeSlow || renderSlow;
+        const uint64_t nowMs = stats.timestampMs > 0 ? stats.timestampMs : OPNMonotonicMs();
+
+        if (congested) {
+            m_adaptiveCongestionScore = std::min(m_adaptiveCongestionScore + 1, 6);
+            m_adaptiveRecoveryScore = 0;
+        } else {
+            m_adaptiveCongestionScore = std::max(0, m_adaptiveCongestionScore - 1);
+            m_adaptiveRecoveryScore = std::min(m_adaptiveRecoveryScore + 1, 20);
+        }
+
+        const bool downCooldownElapsed = m_lastAdaptiveBitrateChangeMs == 0 || nowMs - m_lastAdaptiveBitrateChangeMs >= 2500;
+        const bool upCooldownElapsed = m_lastAdaptiveBitrateChangeMs == 0 || nowMs - m_lastAdaptiveBitrateChangeMs >= 10000;
+        if (m_adaptiveCongestionScore >= 2 && downCooldownElapsed && m_adaptiveBitrateMbps > m_minAdaptiveBitrateMbps) {
+            int reduced = std::max(m_minAdaptiveBitrateMbps, (int)std::floor((double)m_adaptiveBitrateMbps * 0.82));
+            if (reduced < m_adaptiveBitrateMbps) {
+                m_adaptiveBitrateMbps = reduced;
+                m_lastAdaptiveBitrateChangeMs = nowMs;
+                m_adaptiveCongestionScore = 0;
+                bitrateToApply = reduced;
+                reason = "adaptive-congestion";
+            }
+        } else if (m_adaptiveRecoveryScore >= 10 && upCooldownElapsed && m_adaptiveBitrateMbps < configuredMax) {
+            int increased = std::min(configuredMax, std::max(m_adaptiveBitrateMbps + 1, (int)std::ceil((double)m_adaptiveBitrateMbps * 1.10)));
+            if (increased > m_adaptiveBitrateMbps) {
+                m_adaptiveBitrateMbps = increased;
+                m_lastAdaptiveBitrateChangeMs = nowMs;
+                m_adaptiveRecoveryScore = 0;
+                bitrateToApply = increased;
+                reason = "adaptive-recovery";
+            }
+        }
+    }
+
+    if (bitrateToApply > 0) {
+        ApplyRuntimeBitrateLimit(bitrateToApply, reason);
+    }
 }
 
 void LibWebRTCStreamSession::OnMicrophoneLevel(MicrophoneLevelCallback cb) {
@@ -1436,6 +1737,9 @@ void LibWebRTCStreamSession::HandleVideoFrame(void *frame) {
 
 void LibWebRTCStreamSession::RefreshAudioDevices() {
 #if defined(OPN_HAVE_LIBWEBRTC)
+    OPNAudioDeviceMonitorContext *monitorContext = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+    if (!monitorContext.isActive || !monitorContext.owner) return;
+
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.peerConnection) return;
 
@@ -1443,50 +1747,73 @@ void LibWebRTCStreamSession::RefreshAudioDevices() {
     id audioSession = audioSessionClass ? [audioSessionClass performSelector:@selector(sharedInstance)] : nil;
     if (!audioSession) return;
 
-    const BOOL wasManualAudio = [audioSession respondsToSelector:@selector(useManualAudio)] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, @selector(useManualAudio)) : NO;
-    const BOOL wasAudioEnabled = [audioSession respondsToSelector:@selector(isAudioEnabled)] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, @selector(isAudioEnabled)) : YES;
+    SEL useManualAudioSelector = NSSelectorFromString(@"useManualAudio");
+    SEL isAudioEnabledSelector = NSSelectorFromString(@"isAudioEnabled");
+    SEL setUseManualAudioSelector = NSSelectorFromString(@"setUseManualAudio:");
+    SEL setIsAudioEnabledSelector = NSSelectorFromString(@"setIsAudioEnabled:");
 
-    if ([audioSession respondsToSelector:@selector(setUseManualAudio:)]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, @selector(setUseManualAudio:), YES);
+    const BOOL wasManualAudio = [audioSession respondsToSelector:useManualAudioSelector] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, useManualAudioSelector) : NO;
+    const BOOL wasAudioEnabled = [audioSession respondsToSelector:isAudioEnabledSelector] ? ((BOOL (*)(id, SEL))objc_msgSend)(audioSession, isAudioEnabledSelector) : YES;
+
+    if ([audioSession respondsToSelector:setUseManualAudioSelector]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, setUseManualAudioSelector, YES);
     }
-    if ([audioSession respondsToSelector:@selector(setIsAudioEnabled:)]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, @selector(setIsAudioEnabled:), NO);
+    if ([audioSession respondsToSelector:setIsAudioEnabledSelector]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(audioSession, setIsAudioEnabledSelector, NO);
     }
+    OPNResetRTCAudioSessionRouteToDefaults(audioSession);
+    OPNSetRTCAudioSessionActive(audioSession, NO, @"audio route refresh");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (!this->m_impl) return;
+        if (!monitorContext.isActive || !monitorContext.owner) return;
+        LibWebRTCStreamSession *owner = monitorContext.owner;
+        if (!owner->m_impl) return;
         id activeAudioSession = audioSessionClass ? [audioSessionClass performSelector:@selector(sharedInstance)] : nil;
         if (!activeAudioSession) return;
-        if ([activeAudioSession respondsToSelector:@selector(setIsAudioEnabled:)]) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, @selector(setIsAudioEnabled:), YES);
+        OPNResetRTCAudioSessionRouteToDefaults(activeAudioSession);
+        OPNSetRTCAudioSessionActive(activeAudioSession, YES, @"audio route refresh");
+        if ([activeAudioSession respondsToSelector:setIsAudioEnabledSelector]) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setIsAudioEnabledSelector, YES);
         }
-        if ([activeAudioSession respondsToSelector:@selector(setUseManualAudio:)]) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, @selector(setUseManualAudio:), wasManualAudio);
+        if ([activeAudioSession respondsToSelector:setUseManualAudioSelector]) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setUseManualAudioSelector, wasManualAudio);
         }
         if (wasManualAudio && !wasAudioEnabled) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, @selector(setIsAudioEnabled:), NO);
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(activeAudioSession, setIsAudioEnabledSelector, NO);
         }
-        OPNLibWebRTCSessionImpl *activeImpl = OPNImplFromOpaque(this->m_impl);
+        OPNLibWebRTCSessionImpl *activeImpl = OPNImplFromOpaque(owner->m_impl);
         if (activeImpl.remoteAudioTrack) {
             activeImpl.remoteAudioTrack.isEnabled = YES;
-            activeImpl.remoteAudioTrack.source.volume = this->m_gameVolume;
+            activeImpl.remoteAudioTrack.source.volume = owner->m_gameVolume;
         }
         if (activeImpl.localMicrophoneTrack) {
-            activeImpl.localMicrophoneTrack.isEnabled = this->m_microphoneEnabled ? YES : NO;
-            activeImpl.localMicrophoneTrack.source.volume = this->m_microphoneVolumeLevel;
+            activeImpl.localMicrophoneTrack.isEnabled = owner->m_microphoneEnabled ? YES : NO;
+            activeImpl.localMicrophoneTrack.source.volume = owner->m_microphoneVolumeLevel;
         }
-        NSLog(@"[LibWebRTC] audio device refresh applied input=%u output=%u",
-              this->m_defaultInputDevice,
-              this->m_defaultOutputDevice);
+        OPN::LogInfo(@"[LibWebRTC] audio device refresh applied input=%u output=%u",
+              owner->m_defaultInputDevice,
+              owner->m_defaultOutputDevice);
     });
 #endif
 }
 
 void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     bool expected = false;
-    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, true)) return;
+    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, true)) {
+#pragma clang diagnostic pop
+        return;
+    }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     m_defaultInputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice);
     m_defaultOutputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice);
+
+    OPNAudioDeviceMonitorContext *context = [[OPNAudioDeviceMonitorContext alloc] init];
+    context.owner = this;
+    context.active = YES;
+    m_audioDeviceMonitorContext = (__bridge_retained void *)context;
 
     AudioObjectPropertyAddress devicesAddress = {
         kAudioHardwarePropertyDevices,
@@ -1504,21 +1831,29 @@ void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
         kAudioObjectPropertyElementMain,
     };
 
-    OSStatus devicesStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, this);
-    OSStatus inputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, this);
-    OSStatus outputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, this);
-    NSLog(@"[LibWebRTC] audio device monitoring started devices=%d input=%d output=%d currentInput=%u currentOutput=%u",
+    OSStatus devicesStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    OSStatus inputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    OSStatus outputStatus = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    OPN::LogInfo(@"[LibWebRTC] audio device monitoring started devices=%d input=%d output=%d currentInput=%u currentOutput=%u",
           devicesStatus,
           inputStatus,
           outputStatus,
           m_defaultInputDevice,
           m_defaultOutputDevice);
+#pragma clang diagnostic pop
 }
 
 void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     bool expected = true;
-    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, false)) return;
+    if (!m_audioDeviceMonitoringActive.compare_exchange_strong(expected, false)) {
+#pragma clang diagnostic pop
+        return;
+    }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     AudioObjectPropertyAddress devicesAddress = {
         kAudioHardwarePropertyDevices,
         kAudioObjectPropertyScopeGlobal,
@@ -1535,24 +1870,53 @@ void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
         kAudioObjectPropertyElementMain,
     };
 
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, this);
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, this);
-    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, this);
+    OPNAudioDeviceMonitorContext *context = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+    context.active = NO;
+    context.owner = nullptr;
+
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultInputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &defaultOutputAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);
+    if (m_audioDeviceMonitorContext) {
+        OPNAudioDeviceMonitorContext *releasedContext = (__bridge_transfer OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+        (void)releasedContext;
+        m_audioDeviceMonitorContext = nullptr;
+    }
     m_defaultInputDevice = kAudioObjectUnknown;
     m_defaultOutputDevice = kAudioObjectUnknown;
-    NSLog(@"[LibWebRTC] audio device monitoring stopped");
+    OPN::LogInfo(@"[LibWebRTC] audio device monitoring stopped");
+#pragma clang diagnostic pop
 }
 
 void LibWebRTCStreamSession::HandleAudioDeviceChange() {
     if (!m_audioDeviceMonitoringActive.load()) return;
 
+    const uint64_t generation = ++m_audioDeviceChangeGeneration;
     const AudioDeviceID inputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice);
     const AudioDeviceID outputDevice = OPNDefaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice);
+    if (outputDevice == kAudioObjectUnknown) {
+        OPNAudioDeviceMonitorContext *monitorContext = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
+        if (m_audioDeviceUnavailableRetryCount < 10) {
+            m_audioDeviceUnavailableRetryCount++;
+            OPN::LogInfo(@"[LibWebRTC] default output device unavailable during hotplug input=%u output=%u retry=%d", inputDevice, outputDevice, m_audioDeviceUnavailableRetryCount);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                if (!monitorContext.isActive || !monitorContext.owner) return;
+                if (monitorContext.owner->m_audioDeviceChangeGeneration != generation) return;
+                monitorContext.owner->HandleAudioDeviceChange();
+            });
+        } else {
+            OPN::LogError(@"[LibWebRTC] default output device remained unavailable after headset hotplug retries");
+        }
+        return;
+    }
+
+    m_audioDeviceUnavailableRetryCount = 0;
+
     const bool inputChanged = inputDevice != m_defaultInputDevice;
     const bool outputChanged = outputDevice != m_defaultOutputDevice;
     if (!inputChanged && !outputChanged) return;
 
-    NSLog(@"[LibWebRTC] default audio device changed input=%u->%u output=%u->%u",
+    OPN::LogInfo(@"[LibWebRTC] default audio device changed input=%u->%u output=%u->%u",
           m_defaultInputDevice,
           inputDevice,
           m_defaultOutputDevice,
@@ -1565,7 +1929,8 @@ void LibWebRTCStreamSession::HandleAudioDeviceChange() {
 void LibWebRTCStreamSession::StartMicrophoneLevelPolling() {
 #if defined(OPN_HAVE_LIBWEBRTC)
     if (m_microphoneLevelTimer) return;
-    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_queue_t statsQueue = m_statsQueue ? (__bridge dispatch_queue_t)m_statsQueue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, statsQueue);
     if (!timer) return;
 
     m_microphoneLevelTimer = (__bridge_retained void *)timer;
@@ -1587,7 +1952,7 @@ void LibWebRTCStreamSession::StartMicrophoneLevelPolling() {
         }];
     });
     dispatch_resume(timer);
-    NSLog(@"[LibWebRTC] microphone level polling started");
+    OPN::LogInfo(@"[LibWebRTC] microphone level polling started");
 #endif
 }
 
@@ -1614,8 +1979,11 @@ void LibWebRTCStreamSession::RequestStats() {
         m_statsRequestInFlight = true;
     }
 
+    dispatch_queue_t statsQueue = m_statsQueue ? (__bridge dispatch_queue_t)m_statsQueue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
     [impl.peerConnection statisticsWithCompletionHandler:^(RTCStatisticsReport *report) {
-        this->HandleStatsReport((__bridge void *)report);
+        dispatch_async(statsQueue, ^{
+            this->HandleStatsReport((__bridge void *)report);
+        });
     }];
 #endif
 }
@@ -1635,7 +2003,7 @@ void LibWebRTCStreamSession::StartStatsPolling() {
         this->RequestStats();
     });
     dispatch_resume(timer);
-    NSLog(@"[LibWebRTC] stats polling started");
+    OPN::LogInfo(@"[LibWebRTC] stats polling started");
 #endif
 }
 
@@ -1729,9 +2097,10 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
     parsed.timestampMs = OPNMonotonicMs();
     parsed.videoDecoder = "libwebrtc";
     if (parsed.videoSink.empty()) {
-        parsed.videoSink = OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true)
-            ? "OPNPacedVideoRenderer"
-            : "RTCMTLNSVideoView";
+        parsed.videoSink = "OPNMetalVideoView";
+    }
+    if (parsed.videoPipelineMode.empty()) {
+        parsed.videoPipelineMode = "libwebrtc Metal display";
     }
 
     std::string inboundCodecId;
@@ -1824,6 +2193,7 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
         m_latestStats = parsed;
         m_statsRequestInFlight = false;
     }
+    UpdateAdaptiveBitrate(parsed);
 #else
     (void)report;
 #endif
@@ -1861,12 +2231,12 @@ void LibWebRTCStreamSession::HandleDataChannelMessage(const std::string &label, 
     uint16_t version = 2;
     if (firstWord == 526) {
         if (len >= 4) version = (uint16_t)data[2] | ((uint16_t)data[3] << 8);
-        NSLog(@"[LibWebRTC] input handshake detected firstWord=526 version=%u", version);
+        OPN::LogInfo(@"[LibWebRTC] input handshake detected firstWord=526 version=%u", version);
     } else if (data[0] == 0x0e) {
         version = firstWord;
-        NSLog(@"[LibWebRTC] input handshake detected byte[0]=0x0e version=%u", version);
+        OPN::LogInfo(@"[LibWebRTC] input handshake detected byte[0]=0x0e version=%u", version);
     } else {
-        NSLog(@"[LibWebRTC] input channel message before handshake len=%zu firstWord=0x%04x", len, firstWord);
+        OPN::LogInfo(@"[LibWebRTC] input channel message before handshake len=%zu firstWord=0x%04x", len, firstWord);
         return;
     }
 
@@ -1874,7 +2244,7 @@ void LibWebRTCStreamSession::HandleDataChannelMessage(const std::string &label, 
     m_inputReady = m_reliableOpen && m_partialOpen;
     SendInput(data, len);
     StartInputHeartbeat();
-    NSLog(@"[LibWebRTC] input handshake complete protocol=v%u inputReady=%d", version, m_inputReady);
+    OPN::LogInfo(@"[LibWebRTC] input handshake complete protocol=v%u inputReady=%d", version, m_inputReady);
 }
 
 double LibWebRTCStreamSession::GameVolume() const {
@@ -1882,8 +2252,7 @@ double LibWebRTCStreamSession::GameVolume() const {
 }
 
 int LibWebRTCStreamSession::TargetFps() const {
-    StreamPreferenceProfile profile = LoadStreamPreferenceProfile();
-    return profile.rendererPacingFps > 0 ? profile.rendererPacingFps : (m_settings.fps > 0 ? m_settings.fps : 60);
+    return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
 }
 
 void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, const std::string &pipelineMode) {
@@ -1892,6 +2261,19 @@ void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, cons
     if (!pipelineMode.empty()) {
         m_latestStats.videoPipelineMode = pipelineMode;
     }
+}
+
+void LibWebRTCStreamSession::SetVideoRenderDiagnostics(const std::string &pixelFormat,
+                                                       const std::string &renderMode,
+                                                       const std::string &frameSource,
+                                                       const std::string &renderPath,
+                                                       const std::string &fallback) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_latestStats.videoPixelFormat = pixelFormat;
+    m_latestStats.videoRenderMode = renderMode;
+    m_latestStats.videoFrameSource = frameSource;
+    m_latestStats.videoRenderPath = renderPath;
+    m_latestStats.videoRendererFallback = fallback;
 }
 
 void LibWebRTCStreamSession::StartInputHeartbeat() {
@@ -1930,7 +2312,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeSignalingState:(RTCSignalingState)stateChanged {
     (void)peerConnection;
-    NSLog(@"[LibWebRTC] signaling state=%ld", (long)stateChanged);
+    OPN::LogInfo(@"[LibWebRTC] signaling state=%ld", (long)stateChanged);
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didAddStream:(RTCMediaStream *)stream {
@@ -1949,7 +2331,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceConnectionState:(RTCIceConnectionState)newState {
     (void)peerConnection;
-    NSLog(@"[LibWebRTC] ICE state=%ld", (long)newState);
+    OPN::LogInfo(@"[LibWebRTC] ICE state=%ld", (long)newState);
     if (!_owner) return;
     if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
         _owner->HandleConnectionState(true, "");
@@ -1960,7 +2342,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceGatheringState:(RTCIceGatheringState)newState {
     (void)peerConnection;
-    NSLog(@"[LibWebRTC] ICE gathering state=%ld", (long)newState);
+    OPN::LogInfo(@"[LibWebRTC] ICE gathering state=%ld", (long)newState);
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didGenerateIceCandidate:(RTCIceCandidate *)candidate {
@@ -1985,7 +2367,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeConnectionState:(RTCPeerConnectionState)newState {
     (void)peerConnection;
-    NSLog(@"[LibWebRTC] peer state=%ld", (long)newState);
+    OPN::LogInfo(@"[LibWebRTC] peer state=%ld", (long)newState);
     if (!_owner) return;
     if (newState == RTCPeerConnectionStateConnected) {
         _owner->HandleConnectionState(true, "");
@@ -1998,17 +2380,17 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
     (void)peerConnection;
     (void)mediaStreams;
     if ([rtpReceiver.track.kind isEqualToString:kRTCMediaStreamTrackKindVideo]) {
-        NSLog(@"[LibWebRTC] remote video receiver added: %@", rtpReceiver.track.trackId);
+        OPN::LogInfo(@"[LibWebRTC] remote video receiver added: %@", rtpReceiver.track.trackId);
         RTCVideoTrack *videoTrack = (RTCVideoTrack *)rtpReceiver.track;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!_owner) return;
             NSView *parentView = (__bridge NSView *)_owner->NativeWindowHandle();
             if (!parentView) {
-                NSLog(@"[LibWebRTC] Cannot attach remote video: native view is missing");
+                OPN::LogError(@"[LibWebRTC] Cannot attach remote video: native view is missing");
                 return;
             }
             if (![RTCMTLNSVideoView isMetalAvailable]) {
-                NSLog(@"[LibWebRTC] Cannot attach remote video: Metal renderer is unavailable");
+                OPN::LogError(@"[LibWebRTC] Cannot attach remote video: Metal renderer is unavailable");
                 return;
             }
 
@@ -2017,20 +2399,12 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
             }
             [self.remoteVideoView removeFromSuperview];
 
-            const bool usePacedRenderer = _owner && OPN::OPNEnvFlagEnabled("OPN_ENABLE_PACED_WEBRTC_RENDERER", true);
-            NSView *videoView = nil;
-            id<RTCVideoRenderer> videoRenderer = nil;
-            if (usePacedRenderer) {
-                OPNPacedVideoRenderer *pacedRenderer = [[OPNPacedVideoRenderer alloc] initWithFrame:parentView.bounds targetFps:_owner->TargetFps() owner:_owner];
-                videoView = pacedRenderer;
-                videoRenderer = pacedRenderer;
-                _owner->SetVideoRendererState("OPNPacedVideoRenderer", "libwebrtc paced renderer");
-            } else {
-                RTCMTLNSVideoView *metalView = [[RTCMTLNSVideoView alloc] initWithFrame:parentView.bounds];
-                videoView = metalView;
-                videoRenderer = metalView;
-                _owner->SetVideoRendererState("RTCMTLNSVideoView", "");
-            }
+            OPNMetalVideoView *metalView = [[OPNMetalVideoView alloc] initWithFrame:parentView.bounds
+                                                                          targetFps:_owner->TargetFps()
+                                                                              owner:_owner];
+            NSView *videoView = metalView;
+            id<RTCVideoRenderer> videoRenderer = metalView;
+            _owner->SetVideoRendererState("OPNMetalVideoView", "libwebrtc Metal display");
             videoView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             videoView.wantsLayer = YES;
             videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
@@ -2040,14 +2414,14 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
             self.remoteVideoTrack = videoTrack;
             self.remoteVideoView = videoView;
             self.remoteVideoRenderer = videoRenderer;
-            NSLog(@"[LibWebRTC] Remote video renderer attached to native view=%p paced=%d", (__bridge void *)parentView, usePacedRenderer);
+            OPN::LogInfo(@"[LibWebRTC] Remote video renderer attached to native view=%p metal=1 targetFps=%d", (__bridge void *)parentView, _owner->TargetFps());
         });
     } else if ([rtpReceiver.track.kind isEqualToString:kRTCMediaStreamTrackKindAudio]) {
         RTCAudioTrack *audioTrack = (RTCAudioTrack *)rtpReceiver.track;
         audioTrack.isEnabled = YES;
         audioTrack.source.volume = _owner ? _owner->GameVolume() : 1.0;
         self.remoteAudioTrack = audioTrack;
-        NSLog(@"[LibWebRTC] remote audio track enabled: %@ volume=%.2f", audioTrack.trackId, audioTrack.source.volume);
+        OPN::LogInfo(@"[LibWebRTC] remote audio track enabled: %@ volume=%.2f", audioTrack.trackId, audioTrack.source.volume);
     }
 }
 
@@ -2055,7 +2429,7 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
     if (!_owner || !dataChannel) return;
     const bool open = dataChannel.readyState == RTCDataChannelStateOpen;
     _owner->HandleDataChannelState(OPN::OPNNSStringToString(dataChannel.label), open);
-    NSLog(@"[LibWebRTC] data channel %@ state=%ld inputReady=%d", dataChannel.label, (long)dataChannel.readyState, _owner->InputReady());
+    OPN::LogInfo(@"[LibWebRTC] data channel %@ state=%ld inputReady=%d", dataChannel.label, (long)dataChannel.readyState, _owner->InputReady());
 }
 
 - (void)dataChannel:(RTCDataChannel *)dataChannel didReceiveMessageWithBuffer:(RTCDataBuffer *)buffer {

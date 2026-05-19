@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <map>
 
 namespace OPN {
 
@@ -31,6 +32,7 @@ struct GameInfo {
     std::string imageUrl;
     std::string heroImageUrl;
     std::vector<std::string> screenshotUrls;
+    std::map<std::string, std::vector<std::string>> imageUrlsByType;
     std::vector<std::string> genres;
     std::vector<std::string> featureLabels;
     std::vector<std::string> supportedControls;
@@ -97,6 +99,11 @@ struct CatalogBrowseResult {
     std::vector<std::string> selectedFilterIds;
     std::vector<CatalogFilterGroup> filterGroups;
     std::vector<CatalogSortOption> sortOptions;
+};
+
+struct FeaturedGamesResult {
+    std::vector<GameInfo> games;
+    bool usedExplicitFeaturedSection = false;
 };
 
 }

@@ -4,14 +4,17 @@
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamSession.h"
 #include <CommonCrypto/CommonCrypto.h>
+#include <cstring>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include "common/OPNSentry.h"
 
 namespace OPN {
 
 
 static NSString *kPanelsHash = @"f8e26265a5db5c20e1334a6872cf04b6e3970507697f6ae55a6ddefa5420daf0";
+static NSString *kMarqueeHash = @"dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f";
 static NSString *kLibraryWithTimeHash = @"039e8c0d553972975485fee56e59f2549d2fdb518e247a42ab5022056a74406f";
 static NSString *kAppMetaDataHash = @"cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63";
 
@@ -189,11 +192,11 @@ static NSString *FirstSafeString(NSDictionary *dictionary, NSArray<NSString *> *
 
 static NSString *FirstLandscapeImageString(NSDictionary *images) {
     return FirstSafeString(images, @[
-        @"TV_BANNER",
+        @"MARQUEE_HERO_IMAGE",
         @"HERO_IMAGE",
-        @"WIDE_ART",
-        @"LANDSCAPE_IMAGE",
-        @"MARQUEE_IMAGE",
+        @"TV_BANNER",
+        @"FEATURE_IMAGE",
+        @"KEY_IMAGE",
         @"KEY_ART"
     ]);
 }
@@ -201,9 +204,7 @@ static NSString *FirstLandscapeImageString(NSDictionary *images) {
 static NSString *FirstPosterImageString(NSDictionary *images) {
     return FirstSafeString(images, @[
         @"GAME_BOX_ART",
-        @"BOX_ART",
-        @"POSTER_IMAGE",
-        @"POSTER",
+        @"KEY_IMAGE",
         @"KEY_ART"
     ]);
 }
@@ -229,6 +230,11 @@ static void AppendUniqueString(std::vector<std::string> &values, NSString *value
     if (value.length == 0) return;
     std::string text = [value UTF8String];
     if (std::find(values.begin(), values.end(), text) == values.end()) values.push_back(text);
+}
+
+static void AppendUniqueStdString(std::vector<std::string> &values, const std::string &value) {
+    if (value.empty()) return;
+    if (std::find(values.begin(), values.end(), value) == values.end()) values.push_back(value);
 }
 
 static void AppendStringValues(std::vector<std::string> &values, id rawValue) {
@@ -282,6 +288,22 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
 
     NSDictionary *images = app[@"images"];
     if (images && [images isKindOfClass:[NSDictionary class]]) {
+        for (id rawKey in images) {
+            NSString *key = [rawKey isKindOfClass:[NSString class]] ? (NSString *)rawKey : @"";
+            if (key.length == 0) continue;
+            id rawValue = images[key];
+            std::vector<std::string> urls;
+            if ([rawValue isKindOfClass:[NSString class]]) {
+                NSString *url = SafeStr(rawValue);
+                if (url.length > 0) AppendUniqueStdString(urls, OptimizeImageURL([url UTF8String], 1200));
+            } else if ([rawValue isKindOfClass:[NSArray class]]) {
+                for (id item in (NSArray *)rawValue) {
+                    NSString *url = SafeStr(item);
+                    if (url.length > 0) AppendUniqueStdString(urls, OptimizeImageURL([url UTF8String], 1200));
+                }
+            }
+            if (!urls.empty()) g.imageUrlsByType[[key UTF8String]] = urls;
+        }
         NSString *landscape = FirstLandscapeImageString(images);
         NSString *poster = FirstPosterImageString(images);
         NSString *primary = landscape ?: poster;
@@ -457,13 +479,13 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                      CatalogBrowseCallback completion) {
     std::string token = m_accessToken;
     CatalogBrowseCallback callback = completion;
-    NSLog(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
+    OPN::LogInfo(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
     std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
     int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
     std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
     CatalogBrowseResult cachedResult;
     if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
-        NSLog(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
+        OPN::LogInfo(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
         callback(true, cachedResult, "");
     }
 
@@ -473,7 +495,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
         std::vector<std::string> requestedFilterIds = filterIds;
         int requestedFetchCount = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
-        NSLog(@"[GameService] BrowseCatalogGames vpc=%s requestedFetchCount=%d", vpcId.c_str(), requestedFetchCount);
+        OPN::LogInfo(@"[GameService] BrowseCatalogGames vpc=%s requestedFetchCount=%d", vpcId.c_str(), requestedFetchCount);
 
         std::string definitionsQuery = R"(
         query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
@@ -489,7 +511,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         postGraphQlJson(definitionsQuery, @{@"locale": @"en_US"},
             [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
-                    NSLog(@"[GameService] catalog definitions failed error=%@", definitionsError);
+                    OPN::LogError(@"[GameService] catalog definitions failed error=%@", definitionsError);
                     callback(false, CatalogBrowseResult{}, [definitionsError UTF8String]);
                     return;
                 }
@@ -593,7 +615,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 items {
                     id
                     title
-                    images { KEY_ART GAME_BOX_ART TV_BANNER HERO_IMAGE SCREENSHOTS }
+                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE SCREENSHOTS }
                     variants {
                         id
                         appStore
@@ -632,7 +654,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 items {
                     id
                     title
-                    images { KEY_ART GAME_BOX_ART TV_BANNER HERO_IMAGE SCREENSHOTS }
+                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE SCREENSHOTS }
                     variants {
                         id
                         appStore
@@ -671,7 +693,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                  service->postGraphQlJson(selectedQuery, vars, ^(NSDictionary *data, NSString *error) {
                         (void)keepPaginationAlive;
                         if (error.length > 0) {
-                            NSLog(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
+                            OPN::LogError(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
                             callback(false, CatalogBrowseResult{}, [error UTF8String]);
                             return;
                         }
@@ -690,7 +712,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         blockResult->totalCount = [pageInfo isKindOfClass:[NSDictionary class]] ? SafeInt(pageInfo[@"totalCount"]) : blockResult->totalCount;
                         blockResult->hasNextPage = hasNextPage;
                         if (endCursor.length > 0) blockResult->endCursor = [endCursor UTF8String];
-                        NSLog(@"[GameService] catalog page=%ld items=%lu collected=%lu returned=%d total=%d hasNext=%d", (long)*page, (unsigned long)([items isKindOfClass:[NSArray class]] ? items.count : 0), (unsigned long)collectedApps.count, blockResult->numberReturned, blockResult->totalCount, hasNextPage);
+                        OPN::LogInfo(@"[GameService] catalog page=%ld items=%lu collected=%lu returned=%d total=%d hasNext=%d", (long)*page, (unsigned long)([items isKindOfClass:[NSArray class]] ? items.count : 0), (unsigned long)collectedApps.count, blockResult->numberReturned, blockResult->totalCount, hasNextPage);
 
                         (*page)++;
                         if (hasNextPage && endCursor.length > 0 && *page < kMaxCatalogPages) {
@@ -715,18 +737,18 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                 }
                                 blockResult->games.push_back(g);
-                                NSLog(@"[GameService] parsed catalog game title=%s id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", g.title.c_str(), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
+                                OPN::LogInfo(@"[GameService] parsed catalog game title=%s id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", g.title.c_str(), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
                             }
                         }
                         blockResult->numberSupported = std::max(blockResult->numberSupported, (int)blockResult->games.size());
                         blockResult->totalCount = std::max(blockResult->totalCount, (int)blockResult->games.size());
                         if (appIdsNeedingMetadata.count == 0) {
-                            NSLog(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
+                            OPN::LogInfo(@"[GameService] catalog no metadata enrichment needed games=%lu", (unsigned long)blockResult->games.size());
                             GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                             callback(true, *blockResult, "");
                             return;
                         }
-                        NSLog(@"[GameService] metadata enrichment start ids=%lu chunks=%lu", (unsigned long)appIdsNeedingMetadata.count, (unsigned long)((appIdsNeedingMetadata.count + 40 - 1) / 40));
+                        OPN::LogInfo(@"[GameService] metadata enrichment start ids=%lu chunks=%lu", (unsigned long)appIdsNeedingMetadata.count, (unsigned long)((appIdsNeedingMetadata.count + 40 - 1) / 40));
 
                         NSMutableDictionary<NSString *, NSDictionary *> *metadataById = [NSMutableDictionary dictionary];
                         NSUInteger chunkSize = 40;
@@ -753,7 +775,10 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                     if (game.developerName.empty()) game.developerName = metadataGame.developerName;
                                     if (game.publisherName.empty()) game.publisherName = metadataGame.publisherName;
+                                    if (game.imageUrl.empty()) game.imageUrl = metadataGame.imageUrl;
+                                    if (game.heroImageUrl.empty()) game.heroImageUrl = metadataGame.heroImageUrl;
                                     if (!metadataGame.screenshotUrls.empty()) game.screenshotUrls = metadataGame.screenshotUrls;
+                                    if (!metadataGame.imageUrlsByType.empty()) game.imageUrlsByType = metadataGame.imageUrlsByType;
                                     if (!metadataGame.imageUrl.empty() || !metadataGame.heroImageUrl.empty()) enrichedImages++;
                                     if (game.maxLocalPlayers <= 0) game.maxLocalPlayers = metadataGame.maxLocalPlayers;
                                     if (game.maxOnlinePlayers <= 0) game.maxOnlinePlayers = metadataGame.maxOnlinePlayers;
@@ -761,7 +786,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     if (game.contentRatings.empty()) game.contentRatings = metadataGame.contentRatings;
                                     if (game.nvidiaTech.empty()) game.nvidiaTech = metadataGame.nvidiaTech;
                                 }
-                                NSLog(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
+                                OPN::LogInfo(@"[GameService] metadata enrichment complete games=%lu descriptions=%lu imageRecords=%lu", (unsigned long)blockResult->games.size(), (unsigned long)enrichedDescriptions, (unsigned long)enrichedImages);
                                 GameDataCache::Shared().SaveCatalog(catalogCacheKey, *blockResult);
                                 callback(true, *blockResult, "");
                         };
@@ -777,12 +802,12 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                             service->postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], metaVars,
                                 ^(NSDictionary *metaData, NSString *metaError) {
                                     if (metaError.length > 0) {
-                                        NSLog(@"[GameService] appMetaData enrichment failed: %@", metaError);
+                                        OPN::LogError(@"[GameService] appMetaData enrichment failed: %@", metaError);
                                     }
                                     NSDictionary *apps = metaData[@"apps"];
                                     NSArray *metadataItems = [apps isKindOfClass:[NSDictionary class]] ? apps[@"items"] : nil;
                                     if ([metadataItems isKindOfClass:[NSArray class]]) {
-                                        NSLog(@"[GameService] metadata chunk returned start=%lu count=%lu", (unsigned long)start, (unsigned long)metadataItems.count);
+                                        OPN::LogInfo(@"[GameService] metadata chunk returned start=%lu count=%lu", (unsigned long)start, (unsigned long)metadataItems.count);
                                         for (NSDictionary *metadataApp in metadataItems) {
                                             if (![metadataApp isKindOfClass:[NSDictionary class]]) continue;
                                             NSString *appId = SafeStr(metadataApp[@"id"]);
@@ -1124,6 +1149,8 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
                                         merged.heroImageUrl = g.heroImageUrl;
                                     if (merged.screenshotUrls.empty() && !g.screenshotUrls.empty())
                                         merged.screenshotUrls = g.screenshotUrls;
+                                    if (merged.imageUrlsByType.empty() && !g.imageUrlsByType.empty())
+                                        merged.imageUrlsByType = g.imageUrlsByType;
                                     if (merged.description.empty() && !g.description.empty())
                                         merged.description = g.description;
                                     if (merged.variants.empty())
@@ -1158,6 +1185,11 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
                                     if (existing.imageUrl.empty()) existing.imageUrl = g.imageUrl;
                                     if (existing.heroImageUrl.empty()) existing.heroImageUrl = g.heroImageUrl;
                                     if (!g.screenshotUrls.empty()) existing.screenshotUrls = g.screenshotUrls;
+                                    for (const auto &imageEntry : g.imageUrlsByType) {
+                                        if (existing.imageUrlsByType.find(imageEntry.first) == existing.imageUrlsByType.end()) {
+                                            existing.imageUrlsByType[imageEntry.first] = imageEntry.second;
+                                        }
+                                    }
                                     if (existing.description.empty()) existing.description = g.description;
                                 }
                             }
@@ -1200,6 +1232,89 @@ std::string GameService::OptimizeImageURL(const std::string &url, int width) {
 
 
 
+std::vector<PanelResult> GameService::parsePanelResults(NSArray *rawPanels) {
+    std::vector<PanelResult> panels;
+    for (NSDictionary *p in rawPanels) {
+        if (![p isKindOfClass:[NSDictionary class]]) continue;
+        PanelResult pr;
+        { NSString *v = SafeStr(p[@"id"]); pr.id = v ? [v UTF8String] : ""; }
+        { NSString *v = SafeStr(p[@"name"]); pr.title = v ? [v UTF8String] : ""; }
+        if (pr.id.empty()) pr.id = pr.title;
+
+        NSArray *sections = p[@"sections"];
+        if (!sections || ![sections isKindOfClass:[NSArray class]]) continue;
+
+        for (NSDictionary *sec in sections) {
+            if (![sec isKindOfClass:[NSDictionary class]]) continue;
+            PanelSection ps;
+            { NSString *v = SafeStr(sec[@"id"]); ps.id = v ? [v UTF8String] : ""; }
+            { NSString *v = SafeStr(sec[@"title"]); ps.title = v ? [v UTF8String] : ""; }
+
+            NSArray *items = sec[@"items"];
+            if (!items || ![items isKindOfClass:[NSArray class]]) continue;
+
+            for (NSDictionary *item in items) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                NSString *type = SafeStr(item[@"__typename"]);
+                if (![type isEqualToString:@"GameItem"]) continue;
+
+                NSDictionary *app = item[@"app"];
+                if (![app isKindOfClass:[NSDictionary class]]) continue;
+
+                GameInfo game = parseGameItem(app);
+                if (!game.id.empty() && !game.title.empty() && HasVisibleVariants(game)) {
+                    ps.games.push_back(game);
+                }
+            }
+
+            if (!ps.games.empty()) {
+                pr.sections.push_back(ps);
+            }
+        }
+
+        if (!pr.sections.empty()) {
+            panels.push_back(pr);
+        }
+    }
+    return panels;
+}
+
+
+
+
+void GameService::FetchMarqueePanels(PanelCallback completion) {
+    std::string token = m_accessToken;
+    PanelCallback callback = completion;
+
+    GetServerVpcId(token, [this, callback](const std::string &vpcId) {
+        NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
+        NSDictionary *vars = @{
+            @"vpcId": vpcIdObj,
+            @"locale": @"en_US",
+            @"panelNames": @[@"MARQUEE"]
+        };
+
+        postGraphQL("panels/Marquee", [kMarqueeHash UTF8String], vars,
+            ^(NSDictionary *data, NSString *error) {
+                if (error.length > 0) {
+                    callback(false, {}, [error UTF8String]);
+                    return;
+                }
+
+                NSArray *rawPanels = data[@"panels"];
+                if (!rawPanels || ![rawPanels isKindOfClass:[NSArray class]]) {
+                    callback(false, {}, "No panels in marquee response");
+                    return;
+                }
+
+                callback(true, this->parsePanelResults(rawPanels), "");
+            });
+    });
+}
+
+
+
+
 void GameService::FetchMainPanels(PanelCallback completion) {
     std::string token = m_accessToken;
     PanelCallback callback = completion;
@@ -1225,49 +1340,7 @@ void GameService::FetchMainPanels(PanelCallback completion) {
                     return;
                 }
 
-                std::vector<PanelResult> panels;
-                for (NSDictionary *p in rawPanels) {
-                    if (![p isKindOfClass:[NSDictionary class]]) continue;
-                    PanelResult pr;
-                    { NSString *v = p[@"name"]; pr.title = v ? [v UTF8String] : ""; }
-                    { NSString *v = p[@"name"]; pr.id = v ? [v UTF8String] : ""; }
-
-                    NSArray *sections = p[@"sections"];
-                    if (!sections || ![sections isKindOfClass:[NSArray class]]) continue;
-
-                    for (NSDictionary *sec in sections) {
-                        if (![sec isKindOfClass:[NSDictionary class]]) continue;
-                        PanelSection ps;
-                        { NSString *v = sec[@"title"]; ps.title = v ? [v UTF8String] : ""; }
-
-                        NSArray *items = sec[@"items"];
-                        if (!items || ![items isKindOfClass:[NSArray class]]) continue;
-
-                        for (NSDictionary *item in items) {
-                            if (![item isKindOfClass:[NSDictionary class]]) continue;
-                            NSString *type = item[@"__typename"];
-                            if (![type isEqualToString:@"GameItem"]) continue;
-
-                            NSDictionary *app = item[@"app"];
-                            if (!app) continue;
-
-                            GameInfo game = parseGameItem(app);
-                            if (!game.id.empty() && !game.title.empty() && HasVisibleVariants(game)) {
-                                ps.games.push_back(game);
-                            }
-                        }
-
-                        if (!ps.games.empty()) {
-                            pr.sections.push_back(ps);
-                        }
-                    }
-
-                    if (!pr.sections.empty()) {
-                        panels.push_back(pr);
-                    }
-                }
-
-                callback(true, panels, "");
+                callback(true, this->parsePanelResults(rawPanels), "");
             });
     });
 }
@@ -1276,8 +1349,32 @@ static bool IsSessionReadyStatus(int status) {
     return status == 2 || status == 3;
 }
 
-static bool IsSessionActivelyQueued(const SessionInfo &session) {
-    return session.status == 1 && (session.queuePosition > 0 || session.seatSetupStep > 0 || session.adState.isAdsRequired);
+static bool IsSessionLaunchProgressPending(const SessionInfo &session) {
+    if (session.status != 1) return false;
+    if (session.adState.isAdsRequired || session.queuePosition > 0 || session.seatSetupStep > 0) return true;
+    return session.progressState == SessionProgressState::Connecting ||
+           session.progressState == SessionProgressState::InQueue ||
+           session.progressState == SessionProgressState::PreviousSessionCleanup ||
+           session.progressState == SessionProgressState::WaitingForStorage ||
+           session.progressState == SessionProgressState::SettingUp;
+}
+
+static SessionInfo SessionWithoutQueueBadge(SessionInfo session) {
+    session.queuePosition = 0;
+    return session;
+}
+
+static std::string QueueProgressMessage(int queuePosition) {
+    if (queuePosition > 2) {
+        return std::to_string(queuePosition - 1) + " gamers ahead of you.";
+    }
+    if (queuePosition == 2) {
+        return "1 gamer ahead of you.";
+    }
+    if (queuePosition == 1) {
+        return "You're next in queue.";
+    }
+    return "Waiting in queue...";
 }
 
 static std::string ProgressMessageForSession(const SessionInfo &session) {
@@ -1285,11 +1382,27 @@ static std::string ProgressMessageForSession(const SessionInfo &session) {
         if (!session.adState.message.empty()) return session.adState.message;
         return session.adState.isQueuePaused ? "Session queue paused for ads." : "Ad playback is required while waiting in queue.";
     }
-    if (session.queuePosition > 0) {
-        return "Position #" + std::to_string(session.queuePosition) + " in queue.";
+    if (session.status == 6) {
+        return "Previous session is ending. Waiting for GeForce NOW to finish cleanup...";
     }
-    if (session.seatSetupStep > 0) {
-        return "Setting up cloud rig...";
+
+    switch (session.progressState) {
+        case SessionProgressState::PreviousSessionCleanup:
+            return "Previous session is ending. Waiting for GeForce NOW to finish cleanup...";
+        case SessionProgressState::WaitingForStorage:
+            return "Waiting for cloud storage to be ready...";
+        case SessionProgressState::InQueue:
+            return QueueProgressMessage(session.queuePosition);
+        case SessionProgressState::Connecting:
+            return "Connecting to GeForce NOW...";
+        case SessionProgressState::SettingUp:
+            return "Setting up cloud rig...";
+        case SessionProgressState::Unknown:
+            break;
+    }
+
+    if (session.queuePosition > 0) {
+        return QueueProgressMessage(session.queuePosition);
     }
     return "Waiting for cloud session...";
 }
@@ -1331,15 +1444,26 @@ static void ReportLaunchProgress(const LaunchProgressCallback &progress, const S
     });
 }
 
-static void PollSessionReady(std::string sessionId,
-                              std::string serverIp,
-                              LaunchProgressCallback progress,
-                              LaunchCallback completion) {
-    __block int retries = 0;
-    const int maxRetries = 60;
-    __block bool lastPollWasActiveQueue = false;
+static void ReportTeardownProgress(const LaunchProgressCallback &progress, const SessionInfo &session = SessionInfo{}) {
+    if (!progress) return;
+    LaunchProgressCallback progressCopy = progress;
+    SessionInfo cleanupInfo = SessionWithoutQueueBadge(session);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (progressCopy) progressCopy("Previous session is ending. Waiting for GeForce NOW to finish cleanup...", cleanupInfo);
+    });
+}
 
-    __block void (^pollBlock)(void);
+static void PollSessionReady(std::string sessionId,
+                               std::string serverIp,
+                               int appId,
+                               LaunchProgressCallback progress,
+                               LaunchCallback completion) {
+    (void)appId;
+    auto retries = std::make_shared<int>(0);
+    const int maxRetries = 60;
+    auto lastPollWasPendingProgress = std::make_shared<bool>(false);
+
+    auto pollBlock = std::make_shared<std::function<void()>>();
 
     void (^poller)(bool, const SessionInfo &, const std::string &) = ^(bool ok, const SessionInfo &pollInfo, const std::string &pollErr) {
         (void)pollErr;
@@ -1349,14 +1473,14 @@ static void PollSessionReady(std::string sessionId,
             DispatchLaunchCompletion(completion, true, pollInfo, "", "");
             return;
         }
-        if (ok) {
-            ReportLaunchProgress(progress, pollInfo);
-            lastPollWasActiveQueue = IsSessionActivelyQueued(pollInfo);
-        } else {
-            lastPollWasActiveQueue = false;
-        }
         if (ok && pollInfo.status == 6) {
-            ReportLaunchProgress(progress, "Previous session is ending. Waiting for GeForce NOW to finish cleanup...");
+            ReportTeardownProgress(progress, pollInfo);
+            *lastPollWasPendingProgress = true;
+        } else if (ok) {
+            ReportLaunchProgress(progress, pollInfo);
+            *lastPollWasPendingProgress = IsSessionLaunchProgressPending(pollInfo);
+        } else {
+            *lastPollWasPendingProgress = false;
         }
 
         if (ok && pollInfo.status > 3 && pollInfo.status != 6) {
@@ -1364,24 +1488,26 @@ static void PollSessionReady(std::string sessionId,
             return;
         }
 
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), pollBlock);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (*pollBlock) (*pollBlock)();
+        });
     };
 
-    pollBlock = ^{
-        if (retries >= maxRetries && !lastPollWasActiveQueue) {
+    *pollBlock = [=] {
+        if (*retries >= maxRetries && !*lastPollWasPendingProgress) {
             DispatchLaunchCompletion(completion, false, SessionInfo{}, "", "Session poll timeout");
             return;
         }
-        if (retries >= maxRetries && lastPollWasActiveQueue) {
-            retries = 0;
+        if (*retries >= maxRetries && *lastPollWasPendingProgress) {
+            *retries = 0;
         }
-        retries++;
+        (*retries)++;
         SessionManager::Shared().PollSession(sessionId, serverIp,
             [poller](bool ok, const SessionInfo &info, const std::string &err) {
                 poller(ok, info, err);
             });
     };
-    pollBlock();
+    (*pollBlock)();
 }
 
 static void WaitForSessionTeardown(std::string sessionId,
@@ -1419,7 +1545,7 @@ static void WaitForSessionTeardown(std::string sessionId,
         SessionManager::Shared().GetActiveSessions([sessionId, appId, completion, timer, polling](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             *polling = false;
             if (!ok) {
-                NSLog(@"[GameService] Teardown wait active-session poll failed: %s", error.c_str());
+                OPN::LogError(@"[GameService] Teardown wait active-session poll failed: %s", error.c_str());
                 return;
             }
 
@@ -1449,6 +1575,122 @@ static bool IsSessionLimitExceededError(const std::string &error) {
            error.find("\"statusCode\":11") != std::string::npos;
 }
 
+static std::string HostFromStreamingResourcePath(NSString *resourcePath) {
+    if (resourcePath.length == 0) return "";
+    std::string value = [resourcePath UTF8String];
+    const char *prefixes[] = {"rtsps://", "rtsp://", "wss://", "https://"};
+    for (const char *prefix : prefixes) {
+        size_t prefixLength = strlen(prefix);
+        if (value.rfind(prefix, 0) != 0) continue;
+        std::string hostAndPath = value.substr(prefixLength);
+        size_t colon = hostAndPath.find(':');
+        size_t slash = hostAndPath.find('/');
+        size_t end = std::min(colon, slash);
+        std::string host = hostAndPath.substr(0, end);
+        if (!host.empty() && host[0] != '.') return host;
+        return "";
+    }
+    return "";
+}
+
+static ActiveSessionEntry ParseActiveSessionEntry(NSDictionary *session) {
+    ActiveSessionEntry entry;
+    if (![session isKindOfClass:[NSDictionary class]]) return entry;
+
+    NSString *sessionId = SafeStr(session[@"sessionId"]);
+    if (sessionId.length > 0) entry.sessionId = [sessionId UTF8String];
+    entry.status = SafeInt(session[@"status"]);
+
+    NSDictionary *requestData = [session[@"sessionRequestData"] isKindOfClass:[NSDictionary class]] ? session[@"sessionRequestData"] : nil;
+    if (requestData) entry.appId = SafeInt(requestData[@"appId"]);
+
+    NSString *gpuType = SafeStr(session[@"gpuType"]);
+    if (gpuType.length > 0) entry.gpuType = [gpuType UTF8String];
+
+    NSArray *connections = [session[@"connectionInfo"] isKindOfClass:[NSArray class]] ? session[@"connectionInfo"] : @[];
+    NSString *connectionHost = nil;
+    for (NSDictionary *connection in connections) {
+        if (![connection isKindOfClass:[NSDictionary class]]) continue;
+        if (SafeInt(connection[@"usage"]) != 14) continue;
+        NSString *ip = SafeStr(connection[@"ip"]);
+        if (ip.length > 0 && ![ip hasPrefix:@"."]) {
+            connectionHost = ip;
+            break;
+        }
+        std::string host = HostFromStreamingResourcePath(SafeStr(connection[@"resourcePath"]));
+        if (!host.empty()) {
+            connectionHost = [NSString stringWithUTF8String:host.c_str()];
+            break;
+        }
+    }
+
+    NSDictionary *controlInfo = [session[@"sessionControlInfo"] isKindOfClass:[NSDictionary class]] ? session[@"sessionControlInfo"] : nil;
+    NSString *controlHost = SafeStr(controlInfo[@"ip"]);
+    NSString *serverHost = controlHost.length > 0 ? controlHost : connectionHost;
+    if (serverHost.length > 0) entry.serverIp = [serverHost UTF8String];
+    if (connectionHost.length > 0) {
+        entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", connectionHost].UTF8String;
+    } else if (controlHost.length > 0) {
+        entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", controlHost].UTF8String;
+    }
+    return entry;
+}
+
+static std::vector<ActiveSessionEntry> ActiveSessionsFromSessionLimitError(const std::string &error) {
+    size_t jsonStart = error.find('{');
+    if (jsonStart == std::string::npos) return {};
+
+    std::string jsonText = error.substr(jsonStart);
+    NSData *data = [[NSData alloc] initWithBytes:jsonText.data() length:jsonText.size()];
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![json isKindOfClass:[NSDictionary class]]) return {};
+
+    NSArray *sessions = [json[@"otherUserSessions"] isKindOfClass:[NSArray class]] ? json[@"otherUserSessions"] : @[];
+    std::vector<ActiveSessionEntry> entries;
+    for (NSDictionary *session in sessions) {
+        ActiveSessionEntry entry = ParseActiveSessionEntry(session);
+        if (!entry.sessionId.empty() && !entry.serverIp.empty() && (entry.status == 1 || entry.status == 2 || entry.status == 3 || entry.status == 6)) {
+            entries.push_back(entry);
+        }
+    }
+    return entries;
+}
+
+static bool IsUnclaimableExistingSessionError(const std::string &error) {
+    return error.find("STALE_ACTIVE_SESSION") != std::string::npos ||
+           error.find("Claim HTTP 400") != std::string::npos ||
+           error.find("\"statusCode\":0") != std::string::npos ||
+           error.find("UNKNOWN 8A8C0000") != std::string::npos;
+}
+
+static void CreateSessionForLaunch(const std::string &appId,
+                                   const std::string &internalTitle,
+                                   const StreamSettings &settings,
+                                   const LaunchProgressCallback &progress,
+                                   const LaunchCallback &completion,
+                                   const std::string &reason) {
+    if (!reason.empty()) {
+        OPN::LogInfo(@"[GameService] Creating fresh session after existing session could not be claimed: %s", reason.c_str());
+        ReportLaunchProgress(progress, "Starting a fresh GeForce NOW session...");
+    }
+
+    SessionManager::Shared().CreateSession(appId, internalTitle, settings,
+        [appId, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
+            if (!success) {
+                DispatchLaunchCompletion(completion, false, SessionInfo{}, "", error);
+                return;
+            }
+            if (IsSessionReadyStatus(info.status) && !info.serverIp.empty()) {
+                ReportLaunchProgress(progress, info);
+                DispatchLaunchCompletion(completion, true, info, "", "");
+                return;
+            }
+            const int appIdNumber = atoi(appId.c_str());
+            ReportLaunchProgress(progress, info);
+            PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
+        });
+}
+
 static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &sessions,
                                   const std::string &appId,
                                   const std::string &internalTitle,
@@ -1460,9 +1702,13 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && IsSessionReadyStatus(s.status) && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Claiming session %s status=%d", s.sessionId.c_str(), s.status);
+            OPN::LogInfo(@"[GameService] Claiming session %s status=%d", s.sessionId.c_str(), s.status);
             SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
-                [completion](bool success, const SessionInfo &info, const std::string &err) {
+                [appId, internalTitle, settings, progress, completion](bool success, const SessionInfo &info, const std::string &err) {
+                    if (!success && IsUnclaimableExistingSessionError(err)) {
+                        CreateSessionForLaunch(appId, internalTitle, settings, progress, completion, err);
+                        return;
+                    }
                     DispatchLaunchCompletion(completion, success, info, "", err);
                 });
             return true;
@@ -1471,9 +1717,14 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (IsSessionReadyStatus(s.status) && !s.sessionId.empty() && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Claiming existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
-            SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
-                [completion](bool success, const SessionInfo &info, const std::string &err) {
+            OPN::LogInfo(@"[GameService] Claiming existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
+            std::string claimAppId = s.appId > 0 ? std::to_string(s.appId) : appId;
+            SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, claimAppId, settings, recoveryMode,
+                [appId, internalTitle, settings, progress, completion](bool success, const SessionInfo &info, const std::string &err) {
+                    if (!success && IsUnclaimableExistingSessionError(err)) {
+                        CreateSessionForLaunch(appId, internalTitle, settings, progress, completion, err);
+                        return;
+                    }
                     DispatchLaunchCompletion(completion, success, info, "", err);
                 });
             return true;
@@ -1482,7 +1733,7 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && s.status == 6) {
-            NSLog(@"[GameService] Waiting for previous session %s to finish teardown", s.sessionId.c_str());
+            OPN::LogInfo(@"[GameService] Waiting for previous session %s to finish teardown", s.sessionId.c_str());
             WaitForSessionTeardown(s.sessionId, appIdNum, progress,
                 [appId, internalTitle, settings, recoveryMode, progress, completion](bool teardownComplete, const std::string &teardownError) {
                     if (!teardownComplete) {
@@ -1497,16 +1748,16 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && s.status == 1 && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Polling existing session %s", s.sessionId.c_str());
-            PollSessionReady(s.sessionId, s.serverIp, progress, completion);
+            OPN::LogInfo(@"[GameService] Polling existing session %s", s.sessionId.c_str());
+            PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
     }
 
     for (const auto &s : sessions) {
         if (s.status == 1 && !s.sessionId.empty() && !s.serverIp.empty()) {
-            NSLog(@"[GameService] Polling existing queued session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
-            PollSessionReady(s.sessionId, s.serverIp, progress, completion);
+            OPN::LogInfo(@"[GameService] Polling existing queued session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
+            PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
     }
@@ -1519,10 +1770,14 @@ static bool RetryExistingSessionAfterLimitError(const std::string &error,
                                                 const std::string &internalTitle,
                                                 const StreamSettings &settings,
                                                 bool recoveryMode,
-                                                const LaunchProgressCallback &progress,
-                                                const LaunchCallback &completion) {
+    const LaunchProgressCallback &progress,
+    const LaunchCallback &completion) {
     if (!IsSessionLimitExceededError(error)) return false;
-    NSLog(@"[GameService] SESSION_LIMIT_EXCEEDED; retrying existing session lookup");
+    OPN::LogInfo(@"[GameService] SESSION_LIMIT_EXCEEDED; retrying existing session lookup");
+    std::vector<ActiveSessionEntry> embeddedSessions = ActiveSessionsFromSessionLimitError(error);
+    if (TryUseExistingSession(embeddedSessions, appId, internalTitle, settings, recoveryMode, progress, completion)) {
+        return true;
+    }
     SessionManager::Shared().GetActiveSessions([appId, internalTitle, settings, recoveryMode, progress, completion, error](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &) {
         if (ok && TryUseExistingSession(sessions, appId, internalTitle, settings, recoveryMode, progress, completion)) {
             return;
@@ -1538,13 +1793,13 @@ void GameService::LaunchGame(const std::string &appId,
                               bool recoveryMode,
                               LaunchProgressCallback progress,
                               LaunchCallback completion) {
-    NSLog(@"[GameService] LaunchGame called with appId=%s recovery=%d", appId.c_str(), recoveryMode);
+    OPN::LogInfo(@"[GameService] LaunchGame called with appId=%s recovery=%d", appId.c_str(), recoveryMode);
     SessionManager::Shared().SetAccessToken(m_accessToken);
 
     SessionManager::Shared().GetActiveSessions([appId, internalTitle, settings, recoveryMode, progress, completion](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
         (void)error;
         if (!ok) {
-            NSLog(@"[GameService] GetActiveSessions failed, falling through to CreateSession");
+            OPN::LogError(@"[GameService] GetActiveSessions failed, falling through to CreateSession");
             SessionManager::Shared().CreateSession(appId, internalTitle, settings,
                 [appId, internalTitle, settings, recoveryMode, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
                     if (!success) {
@@ -1559,8 +1814,9 @@ void GameService::LaunchGame(const std::string &appId,
                         DispatchLaunchCompletion(completion, true, info, "", "");
                         return;
                     }
+                    const int appIdNumber = atoi(appId.c_str());
                     ReportLaunchProgress(progress, info);
-                    PollSessionReady(info.sessionId, info.serverIp, progress, completion);
+                    PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
                 });
             return;
         }
@@ -1569,7 +1825,7 @@ void GameService::LaunchGame(const std::string &appId,
             return;
         }
 
-        NSLog(@"[GameService] Creating new session");
+        OPN::LogInfo(@"[GameService] Creating new session");
         SessionManager::Shared().CreateSession(appId, internalTitle, settings,
             [appId, internalTitle, settings, recoveryMode, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
                 if (!success) {
@@ -1584,8 +1840,9 @@ void GameService::LaunchGame(const std::string &appId,
                     DispatchLaunchCompletion(completion, true, info, "", "");
                     return;
                 }
+                const int appIdNumber = atoi(appId.c_str());
                 ReportLaunchProgress(progress, info);
-                PollSessionReady(info.sessionId, info.serverIp, progress, completion);
+                PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
             });
     });
 }

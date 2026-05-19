@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <cstdint>
 
 namespace OPN {
 
@@ -25,6 +26,12 @@ struct StreamSettings {
     std::string gameLanguage = "en_US";
     bool accountLinked = true;
     std::string selectedStore;
+    std::string networkTestSessionId;
+    std::string networkType = "Unknown";
+    int networkLatencyMs = -1;
+    uint32_t remoteControllersBitmap = 0;
+    uint32_t supportedHidDevices = 0;
+    std::vector<std::string> availableSupportedControllers;
 };
 
 struct IceServer {
@@ -75,11 +82,21 @@ struct SessionAdState {
     std::vector<SessionAdInfo> sessionAds;
 };
 
+enum class SessionProgressState {
+    Unknown = 0,
+    Connecting,
+    InQueue,
+    PreviousSessionCleanup,
+    WaitingForStorage,
+    SettingUp,
+};
+
 struct SessionInfo {
     std::string sessionId;
     int status = 0;
     int queuePosition = 0;
     int seatSetupStep = 0;
+    SessionProgressState progressState = SessionProgressState::Unknown;
     std::string zone;
     std::string streamingBaseUrl;
     std::string serverIp;

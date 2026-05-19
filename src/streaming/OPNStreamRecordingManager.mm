@@ -1,4 +1,5 @@
 #import "OPNStreamRecordingManager.h"
+#include "common/OPNSentry.h"
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreImage/CoreImage.h>
@@ -187,12 +188,12 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
                 if (writer.status == AVAssetWriterStatusCompleted && !error) {
                     [self refreshRecentRecordings];
                     [self updateStatus:@"Recording saved" starting:NO recording:NO notify:YES];
-                    NSLog(@"[Recording] Saved %@", outputURL.path);
+                    OPN::LogInfo(@"[Recording] Saved %@", outputURL.path);
                 } else {
                     if (outputURL) [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil];
                     NSString *message = error.localizedDescription ?: @"Recording failed";
                     [self updateStatus:message starting:NO recording:NO notify:YES];
-                    NSLog(@"[Recording] Finish failed: %@", message);
+                    OPN::LogError(@"[Recording] Finish failed: %@", message);
                 }
             });
         }];
@@ -242,7 +243,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
             BOOL appended = [self->_pixelBufferAdaptor appendPixelBuffer:pixelBuffer withPresentationTime:presentationTime];
             CVPixelBufferRelease(pixelBuffer);
             if (!appended) {
-                NSLog(@"[Recording] Video append failed: %@", self->_writer.error.localizedDescription ?: @"unknown");
+                OPN::LogError(@"[Recording] Video append failed: %@", self->_writer.error.localizedDescription ?: @"unknown");
             } else if (self.starting) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self updateStatus:@"Recording" starting:NO recording:YES notify:YES];
@@ -266,7 +267,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     _droppedVideoFrames++;
     CFTimeInterval now = CACurrentMediaTime();
     if (now - _lastDroppedVideoFrameLogTime >= 5.0) {
-        NSLog(@"[Recording] Dropping video frames while writer is busy (total=%llu)", (unsigned long long)_droppedVideoFrames);
+        OPN::LogError(@"[Recording] Dropping video frames while writer is busy (total=%llu)", (unsigned long long)_droppedVideoFrames);
         _lastDroppedVideoFrameLogTime = now;
     }
 }
@@ -329,7 +330,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     if ([writer canAddInput:microphoneAudio]) [writer addInput:microphoneAudio];
 
     if (![writer startWriting]) {
-        NSLog(@"[Recording] startWriting failed: %@", writer.error.localizedDescription ?: @"unknown");
+        OPN::LogError(@"[Recording] startWriting failed: %@", writer.error.localizedDescription ?: @"unknown");
         return NO;
     }
     [writer startSessionAtSourceTime:kCMTimeZero];
@@ -340,7 +341,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     _microphoneAudioInput = microphoneAudio;
     _pixelBufferAdaptor = adaptor;
     _videoSize = CGSizeMake(width, height);
-    NSLog(@"[Recording] Writer started %@ %.0fx%.0f", self.currentRecordingURL.path, _videoSize.width, _videoSize.height);
+    OPN::LogInfo(@"[Recording] Writer started %@ %.0fx%.0f", self.currentRecordingURL.path, _videoSize.width, _videoSize.height);
     return YES;
 }
 
@@ -442,7 +443,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         BOOL appended = [input appendSampleBuffer:retimed];
         CFRelease(retimed);
         if (!appended) {
-            NSLog(@"[Recording] Audio append failed: %@", self->_writer.error.localizedDescription ?: @"unknown");
+            OPN::LogError(@"[Recording] Audio append failed: %@", self->_writer.error.localizedDescription ?: @"unknown");
         }
     });
 }
@@ -486,7 +487,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *content, NSError *error) {
             OPNStreamRecordingManager *strongSelf = weakSelf;
             if (!strongSelf || error || !content) {
-                NSLog(@"[Recording] Audio capture unavailable: %@", error.localizedDescription ?: @"no shareable content");
+                OPN::LogError(@"[Recording] Audio capture unavailable: %@", error.localizedDescription ?: @"no shareable content");
                 [strongSelf startAVMicrophoneCapture];
                 return;
             }
@@ -516,16 +517,16 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
             SCStream *stream = [[SCStream alloc] initWithFilter:filter configuration:configuration delegate:output];
             NSError *screenOutputError = nil;
             if (![stream addStreamOutput:output type:SCStreamOutputTypeScreen sampleHandlerQueue:strongSelf->_audioQueue error:&screenOutputError]) {
-                NSLog(@"[Recording] Screen output sink failed: %@", screenOutputError.localizedDescription ?: @"unknown");
+                OPN::LogError(@"[Recording] Screen output sink failed: %@", screenOutputError.localizedDescription ?: @"unknown");
             }
             NSError *outputError = nil;
             if (![stream addStreamOutput:output type:SCStreamOutputTypeAudio sampleHandlerQueue:strongSelf->_audioQueue error:&outputError]) {
-                NSLog(@"[Recording] System audio output failed: %@", outputError.localizedDescription ?: @"unknown");
+                OPN::LogError(@"[Recording] System audio output failed: %@", outputError.localizedDescription ?: @"unknown");
             }
             if (@available(macOS 15.0, *)) {
                 NSError *micError = nil;
                 if (![stream addStreamOutput:output type:SCStreamOutputTypeMicrophone sampleHandlerQueue:strongSelf->_audioQueue error:&micError]) {
-                    NSLog(@"[Recording] Microphone audio output failed: %@", micError.localizedDescription ?: @"unknown");
+                    OPN::LogError(@"[Recording] Microphone audio output failed: %@", micError.localizedDescription ?: @"unknown");
                     [strongSelf startAVMicrophoneCapture];
                 }
             } else {
@@ -535,9 +536,9 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
             strongSelf->_audioStream = stream;
             [stream startCaptureWithCompletionHandler:^(NSError *startError) {
                 if (startError) {
-                    NSLog(@"[Recording] Audio capture start failed: %@", startError.localizedDescription ?: @"unknown");
+                    OPN::LogError(@"[Recording] Audio capture start failed: %@", startError.localizedDescription ?: @"unknown");
                 } else {
-                    NSLog(@"[Recording] Audio capture started");
+                    OPN::LogInfo(@"[Recording] Audio capture started");
                 }
             }];
         }];
@@ -557,7 +558,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         _audioStream = nil;
         _audioOutput = nil;
         [stream stopCaptureWithCompletionHandler:^(NSError *error) {
-            if (error) NSLog(@"[Recording] Audio capture stop failed: %@", error.localizedDescription ?: @"unknown");
+            if (error) OPN::LogError(@"[Recording] Audio capture stop failed: %@", error.localizedDescription ?: @"unknown");
         }];
     }
 #endif
@@ -567,7 +568,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     if (_microphoneCaptureSession) return;
     AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
     if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
-        NSLog(@"[Recording] Microphone recording unavailable: permission denied");
+        OPN::LogError(@"[Recording] Microphone recording unavailable: permission denied");
         return;
     }
     if (status == AVAuthorizationStatusNotDetermined) {
@@ -586,7 +587,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     NSError *error = nil;
     AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (!input || error) {
-        NSLog(@"[Recording] Microphone input failed: %@", error.localizedDescription ?: @"unknown");
+        OPN::LogError(@"[Recording] Microphone input failed: %@", error.localizedDescription ?: @"unknown");
         return;
     }
     AVCaptureAudioDataOutput *output = [[AVCaptureAudioDataOutput alloc] init];
@@ -597,7 +598,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     [session addOutput:output];
     _microphoneCaptureSession = session;
     [session startRunning];
-    NSLog(@"[Recording] AVFoundation microphone capture started");
+    OPN::LogInfo(@"[Recording] AVFoundation microphone capture started");
 }
 
 - (void)stopAVMicrophoneCapture {
@@ -715,7 +716,7 @@ static CGSize OPNRecordingFrameSize(RTCVideoFrame *frame) {
 
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
     (void)stream;
-    if (error) NSLog(@"[Recording] ScreenCaptureKit stopped: %@", error.localizedDescription ?: @"unknown");
+    if (error) OPN::LogError(@"[Recording] ScreenCaptureKit stopped: %@", error.localizedDescription ?: @"unknown");
 }
 
 @end

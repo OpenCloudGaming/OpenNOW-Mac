@@ -4,30 +4,27 @@
 #import "../common/OPNUIHelpers.h"
 #include "../games/OPNGameDataCache.h"
 #include <QuartzCore/QuartzCore.h>
+#include "common/OPNSentry.h"
 
 static const CGFloat gCardWidth = 220.0;
 static const CGFloat gControllerCardWidth = 164.0;
 static const CGFloat gImageHeight = gCardWidth * 9.0 / 16.0;
 static const CGFloat gInfoHeight = 0.0;
-static unsigned OPNControllerAccentRGB(void) {
-    return OpnCurrentAccentRGB();
-}
-
 static unsigned OPNControllerAccentSoftRGB(void) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0xFFFFFF, 0.42);
+    return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
 }
 
 static unsigned OPNControllerAccentBlackRGB(CGFloat blackMix) {
-    return OpnBlendRGB(OpnCurrentAccentRGB(), 0x000000, blackMix);
+    return OpnBlendRGB(OPN::kBrandGreen, 0x000000, blackMix);
 }
 static CGFloat OPNScaledCardWidth(void) {
     if (OpnControllerModeEnabled()) return gControllerCardWidth;
-    return floor(gCardWidth * OpnPosterSizeScale());
+    return gCardWidth;
 }
 
 static CGFloat OPNScaledCardHeight(void) {
-    if (OpnControllerModeEnabled()) return floor(gControllerCardWidth * 9.0 / 16.0);
-    return floor(gImageHeight * OpnPosterSizeScale());
+    if (OpnControllerModeEnabled()) return gControllerCardWidth;
+    return gImageHeight;
 }
 
 static NSString *OPNStorePrettyName(NSString *name) {
@@ -88,9 +85,28 @@ static NSImage *OPNStoreIconImage(NSString *name) {
     }
     if (!image) return nil;
 
-    [image setTemplate:YES];
+    [image setTemplate:NO];
     cache[assetName] = image;
     return image;
+}
+
+static NSImage *OPNGreyscaleStoreIconImage(NSString *name) {
+    static NSMutableDictionary<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [NSMutableDictionary dictionary];
+    });
+
+    NSString *assetName = OPNStoreIconAssetName(name ?: @"");
+    NSImage *cached = cache[assetName];
+    if (cached) return cached;
+
+    NSImage *source = OPNStoreIconImage(name);
+    if (!source) return nil;
+    NSImage *templateImage = [source copy];
+    [templateImage setTemplate:YES];
+    cache[assetName] = templateImage;
+    return templateImage;
 }
 
 static NSString *OPNStoreIconGlyph(NSString *name) {
@@ -107,8 +123,8 @@ static NSString *OPNStoreIconGlyph(NSString *name) {
 
 static NSColor *OPNStoreIconColor(NSString *name, BOOL selected) {
     (void)name;
-    CGFloat alpha = selected ? 0.96 : 0.68;
-    return OpnColor(OPNControllerAccentSoftRGB(), alpha);
+    CGFloat alpha = selected ? 0.96 : 0.76;
+    return OpnColor(0xF4F5F7, alpha);
 }
 
 static NSFont *OPNStoreIconFont(NSString *glyph) {
@@ -135,18 +151,135 @@ static NSString *OPNSteamArtworkURLForGame(const OPN::GameInfo &game) {
     return [NSString stringWithFormat:@"https://cdn.cloudflare.steamstatic.com/steam/apps/%s/header.jpg", appId.c_str()];
 }
 
+static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
+    std::string signature = game.heroImageUrl + "\n" + game.imageUrl + "\n" + game.launchAppId;
+    for (const char *type : {"KEY_ART", "KEY_IMAGE"}) {
+        auto it = game.imageUrlsByType.find(type);
+        if (it == game.imageUrlsByType.end()) continue;
+        for (const std::string &value : it->second) {
+            signature += "\n";
+            signature += value;
+        }
+    }
+    return signature;
+}
+
+typedef void (^OPNGameCardImageCompletion)(NSImage *image);
+
+static NSCache<NSString *, NSImage *> *OPNGameCardDecodedImageCache(void) {
+    static NSCache<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 192;
+    });
+    return cache;
+}
+
+static NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *OPNGameCardPendingImageCompletions(void) {
+    static NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pendingCompletions = [NSMutableDictionary dictionary];
+    });
+    return pendingCompletions;
+}
+
+static NSURLSession *OPNGameCardImageSession(void) {
+    static NSURLSession *session;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        configuration.HTTPMaximumConnectionsPerHost = 6;
+        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
+        configuration.timeoutIntervalForRequest = 15.0;
+        configuration.URLCache = [NSURLCache sharedURLCache];
+        session = [NSURLSession sessionWithConfiguration:configuration];
+    });
+    return session;
+}
+
+static void OPNGameCardCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
+    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions = OPNGameCardPendingImageCompletions();
+    NSArray<OPNGameCardImageCompletion> *completions = nil;
+    @synchronized (pendingCompletions) {
+        if (image) [OPNGameCardDecodedImageCache() setObject:image forKey:urlString];
+        completions = [pendingCompletions[urlString] copy];
+        [pendingCompletions removeObjectForKey:urlString];
+    }
+    if (image && data.length > 0) OPN::GameDataCache::Shared().SaveImage(urlString, data);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (OPNGameCardImageCompletion completion in completions) completion(image);
+    });
+}
+
+static void OPNGameCardLoadImageForURL(NSString *urlString, OPNGameCardImageCompletion completion) {
+    if (urlString.length == 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+        return;
+    }
+
+    NSImage *cachedImage = [OPNGameCardDecodedImageCache() objectForKey:urlString];
+    if (cachedImage) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage); });
+        return;
+    }
+
+    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions = OPNGameCardPendingImageCompletions();
+    @synchronized (pendingCompletions) {
+        NSMutableArray<OPNGameCardImageCompletion> *existing = pendingCompletions[urlString];
+        if (existing) {
+            [existing addObject:[completion copy]];
+            return;
+        }
+        pendingCompletions[urlString] = [NSMutableArray arrayWithObject:[completion copy]];
+    }
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
+        if (cachedData.length > 0) {
+            NSImage *cachedDiskImage = [[NSImage alloc] initWithData:cachedData];
+            if (cachedDiskImage) {
+                OPNGameCardCompleteImageRequest(urlString, cachedDiskImage, nil);
+                return;
+            }
+        }
+
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (!url) {
+            OPNGameCardCompleteImageRequest(urlString, nil, nil);
+            return;
+        }
+
+        [[OPNGameCardImageSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
+                OPNGameCardCompleteImageRequest(urlString, nil, nil);
+                return;
+            }
+            NSImage *image = [[NSImage alloc] initWithData:data];
+            OPNGameCardCompleteImageRequest(urlString, image, image ? data : nil);
+        }] resume];
+    });
+}
+
 @interface OPNGameCardView () <CALayerDelegate>
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
 @property (nonatomic, strong) NSImageView *imageView;
+@property (nonatomic, strong) NSTextField *controllerStoreLabel;
+@property (nonatomic, strong) NSTextField *controllerTitleLabel;
 @property (nonatomic, strong) NSView *storeChipsContainer;
+@property (nonatomic, strong) NSView *currentStoreLogoContainer;
+@property (nonatomic, strong) NSImageView *currentStoreLogoView;
 @property (nonatomic, strong) NSTrackingArea *trackingArea;
 @property (nonatomic, strong) NSButton *playButton;
 @property (nonatomic, strong) CALayer *reflectionLayer;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
-@property (nonatomic, strong, readwrite) NSColor *artworkAccentColor;
-- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index;
+@property (nonatomic, assign) NSUInteger imageLoadGeneration;
+- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
+- (void)updateCurrentStoreLogo;
 @end
 
 @implementation OPNGameCardView
@@ -197,6 +330,29 @@ using namespace OPN;
         _imageView.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
         [_contentView addSubview:_imageView];
 
+        _currentStoreLogoContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+        _currentStoreLogoContainer.wantsLayer = YES;
+        _currentStoreLogoContainer.layer.cornerRadius = 9.0;
+        _currentStoreLogoContainer.layer.backgroundColor = OpnColor(0x05070A, 0.62).CGColor;
+        _currentStoreLogoContainer.layer.borderWidth = 1.0;
+        _currentStoreLogoContainer.layer.borderColor = OpnColor(0xFFFFFF, 0.15).CGColor;
+        [_contentView addSubview:_currentStoreLogoContainer];
+
+        _currentStoreLogoView = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        _currentStoreLogoView.imageScaling = NSImageScaleProportionallyDown;
+        _currentStoreLogoView.contentTintColor = OpnColor(0xD7D8DC, 0.88);
+        [_currentStoreLogoContainer addSubview:_currentStoreLogoView];
+
+        _controllerStoreLabel = OpnLabel(@"", NSZeroRect, 13.0, OpnColor(0xFFFFFF, 0.88), NSFontWeightMedium);
+        _controllerStoreLabel.hidden = !OpnControllerModeEnabled();
+        [_contentView addSubview:_controllerStoreLabel];
+
+        _controllerTitleLabel = OpnLabel(@"", NSZeroRect, 15.0, OpnColor(0xFFFFFF), NSFontWeightBold);
+        _controllerTitleLabel.hidden = !OpnControllerModeEnabled();
+        _controllerTitleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+        _controllerTitleLabel.maximumNumberOfLines = 2;
+        [_contentView addSubview:_controllerTitleLabel];
+
         _playButton = [[NSButton alloc] initWithFrame:
             NSMakeRect((NSWidth(self.bounds) - 76) / 2, NSHeight(self.bounds) - 52, 76, 34)];
         _playButton.title = @"PLAY";
@@ -234,6 +390,8 @@ using namespace OPN;
             NSMakeRect(16, NSHeight(self.bounds) - 37, NSWidth(self.bounds) - 32, 24)];
         [_contentView addSubview:_storeChipsContainer];
         [self buildStoreChips];
+        [self updateControllerLabels];
+        [self updateCurrentStoreLogo];
 
         [self loadImage];
 
@@ -253,13 +411,13 @@ using namespace OPN;
 
 - (void)applyFocusStyle {
     BOOL selected = self.controllerFocused;
-    NSColor *accentColor = self.artworkAccentColor ?: OpnColor(OPNControllerAccentSoftRGB());
+    NSColor *accentColor = OpnColor(OPNControllerAccentSoftRGB());
     self.playButton.hidden = OpnControllerModeEnabled() || !selected;
     [CATransaction begin];
     [CATransaction setAnimationDuration:0.22];
     [CATransaction setAnimationTimingFunction:[OPNCoreAnimationCoordinator appleQuinticTimingFunction]];
     self.layer.zPosition = selected ? 20.0 : 0.0;
-    self.layer.borderColor = selected ? OpnColor(0xFFFFFF, 0.94).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor;
+    self.layer.borderColor = selected ? OpnColor(OPN::kBrandGreen, 0.98).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor;
     self.layer.borderWidth = selected ? 3.0 : 1.0;
     self.playButton.layer.shadowOpacity = selected ? 0.58 : 0.18;
     self.playButton.layer.shadowRadius = selected ? 22.0 : 14.0;
@@ -273,19 +431,68 @@ using namespace OPN;
                                                                    accentColor:accentColor];
 }
 
+- (void)updateControllerLabels {
+    NSString *store = @"";
+    if (_selectedVariantIndex >= 0 && _selectedVariantIndex < (int)_gameData.variants.size()) {
+        store = OPNStorePrettyName([NSString stringWithUTF8String:_gameData.variants[(size_t)_selectedVariantIndex].appStore.c_str()]);
+    } else if (!_gameData.availableStores.empty()) {
+        store = OPNStorePrettyName([NSString stringWithUTF8String:_gameData.availableStores.front().c_str()]);
+    }
+    self.controllerStoreLabel.stringValue = store;
+    self.controllerTitleLabel.stringValue = _gameData.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:_gameData.title.c_str()];
+}
+
 - (BOOL)isFlipped { return YES; }
 
 - (void)layout {
     [super layout];
     CGFloat width = NSWidth(self.bounds);
     CGFloat height = NSHeight(self.bounds);
+    CGFloat shortestSide = MAX(1.0, MIN(width, height));
+    CGFloat cornerRadius = shortestSide * (20.0 / 180.0);
     self.contentView.frame = self.bounds;
-    self.contentView.layer.cornerRadius = 20.0;
+    self.contentView.layer.cornerRadius = cornerRadius;
     self.imageView.frame = self.bounds;
-    self.playButton.frame = NSMakeRect((width - 76.0) / 2.0, MAX(18.0, height - 52.0), 76.0, 34.0);
-    self.storeChipsContainer.frame = NSMakeRect(16.0, MAX(0.0, height - 37.0), MAX(40.0, width - 32.0), 24.0);
-    self.reflectionLayer.frame = NSMakeRect(16.0, height - 10.0, MAX(24.0, width - 32.0), 18.0);
-    self.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:20.0 yRadius:20.0].CGPath;
+    if (OpnControllerModeEnabled()) {
+        self.controllerStoreLabel.hidden = YES;
+        self.controllerTitleLabel.hidden = YES;
+        self.controllerStoreLabel.frame = NSZeroRect;
+        self.controllerTitleLabel.frame = NSZeroRect;
+    } else {
+        self.controllerStoreLabel.hidden = YES;
+        self.controllerTitleLabel.hidden = YES;
+    }
+    CGFloat playWidth = width * (76.0 / 180.0);
+    CGFloat playHeight = height * (34.0 / 180.0);
+    self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, MAX(0.0, height - height * (52.0 / 180.0)), playWidth, playHeight);
+    self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
+    CGFloat logoContainerSize = MAX(24.0, floor(width * (30.0 / 164.0)));
+    CGFloat logoMargin = MAX(8.0, floor(width * (9.0 / 164.0)));
+    self.currentStoreLogoContainer.frame = NSMakeRect(width - logoMargin - logoContainerSize,
+                                                      height - logoMargin - logoContainerSize,
+                                                      logoContainerSize,
+                                                      logoContainerSize);
+    self.currentStoreLogoContainer.layer.cornerRadius = logoContainerSize * 0.30;
+    CGFloat logoInset = logoContainerSize * 0.20;
+    self.currentStoreLogoView.frame = NSInsetRect(self.currentStoreLogoContainer.bounds, logoInset, logoInset);
+    self.reflectionLayer.frame = NSMakeRect(width * (16.0 / 180.0), height - height * (10.0 / 180.0), MAX(1.0, width - width * (32.0 / 180.0)), height * (18.0 / 180.0));
+    CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
+    self.layer.shadowPath = shadowPath;
+    CGPathRelease(shadowPath);
+}
+
+- (void)updateCurrentStoreLogo {
+    NSString *store = @"";
+    if (_selectedVariantIndex >= 0 && _selectedVariantIndex < (int)_gameData.variants.size()) {
+        store = [NSString stringWithUTF8String:_gameData.variants[(size_t)_selectedVariantIndex].appStore.c_str()];
+    } else if (!_gameData.availableStores.empty()) {
+        store = [NSString stringWithUTF8String:_gameData.availableStores.front().c_str()];
+    }
+
+    NSImage *icon = OPNGreyscaleStoreIconImage(store);
+    self.currentStoreLogoView.image = icon;
+    self.currentStoreLogoContainer.hidden = icon == nil || store.length == 0;
+    self.currentStoreLogoContainer.toolTip = store.length > 0 ? OPNStorePrettyName(store) : @"";
 }
 
 - (void)playClicked {
@@ -294,6 +501,8 @@ using namespace OPN;
 
 - (void)updateGame:(const OPN::GameInfo &)game {
     int selectedVariant = _selectedVariantIndex;
+    const std::string previousImageSignature = OPNGameCardImageSignature(_gameData);
+    const std::string nextImageSignature = OPNGameCardImageSignature(game);
     _gameData = game;
     if (selectedVariant >= 0 && selectedVariant < (int)_gameData.variants.size()) {
         _selectedVariantIndex = selectedVariant;
@@ -301,6 +510,12 @@ using namespace OPN;
         _selectedVariantIndex = _gameData.variants.empty() ? -1 : 0;
     }
     [self buildStoreChips];
+    [self updateControllerLabels];
+    [self updateCurrentStoreLogo];
+    if (previousImageSignature != nextImageSignature) {
+        self.imageView.image = nil;
+        [self loadImage];
+    }
 }
 
 - (void)buildStoreChips {
@@ -330,7 +545,6 @@ using namespace OPN;
             chip.image = iconImage;
             chip.imagePosition = NSImageOnly;
             chip.imageScaling = NSImageScaleProportionallyDown;
-            chip.contentTintColor = OPNStoreIconColor(name, selected);
         } else {
             chip.attributedTitle = [[NSAttributedString alloc] initWithString:glyph
                                                                     attributes:@{
@@ -347,12 +561,12 @@ using namespace OPN;
         chip.toolTip = OPNStorePrettyName(name ?: @"");
 
         if (selected) {
-            chip.layer.backgroundColor = OpnColor(OPNControllerAccentRGB(), 0.18).CGColor;
+            chip.layer.backgroundColor = OpnColor(0x05070A, 0.62).CGColor;
             chip.layer.borderWidth = 1.0;
-            chip.layer.borderColor = OPNStoreIconColor(name, YES).CGColor;
+            chip.layer.borderColor = OpnColor(0xFFFFFF, 0.34).CGColor;
         } else {
-            chip.layer.backgroundColor = OpnColor(OPNControllerAccentRGB(), 0.08).CGColor;
-            chip.layer.borderColor = OpnColor(OPNControllerAccentRGB(), 0.14).CGColor;
+            chip.layer.backgroundColor = OpnColor(0x05070A, 0.34).CGColor;
+            chip.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
             chip.layer.borderWidth = 1;
         }
 
@@ -372,10 +586,26 @@ using namespace OPN;
     if (index < 0 || index >= (int)_gameData.variants.size()) return;
     _selectedVariantIndex = index;
     [self buildStoreChips];
+    [self updateControllerLabels];
+    [self updateCurrentStoreLogo];
 }
 
 - (void)loadImage {
     NSMutableArray<NSString *> *urlStrings = [NSMutableArray array];
+    const OPN::GameInfo &gameData = _gameData;
+    auto appendRawImagesForType = [&](const char *type) {
+        auto it = gameData.imageUrlsByType.find(type);
+        if (it == gameData.imageUrlsByType.end()) return;
+        for (const std::string &value : it->second) {
+            if (value.empty()) continue;
+            NSString *candidate = [NSString stringWithUTF8String:value.c_str()];
+            if (candidate.length > 0 && ![urlStrings containsObject:candidate]) [urlStrings addObject:candidate];
+        }
+    };
+    if (OpnControllerModeEnabled()) {
+        appendRawImagesForType("KEY_ART");
+        appendRawImagesForType("KEY_IMAGE");
+    }
     NSString *primaryUrl = self.gameData.imageUrl.empty() ? nil : [NSString stringWithUTF8String:self.gameData.imageUrl.c_str()];
     NSString *heroUrl = self.gameData.heroImageUrl.empty() ? nil : [NSString stringWithUTF8String:self.gameData.heroImageUrl.c_str()];
     NSString *steamUrl = OPNSteamArtworkURLForGame(self.gameData);
@@ -386,99 +616,39 @@ using namespace OPN;
     }
     NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
     NSString *gameId = self.gameData.id.empty() ? @"" : [NSString stringWithUTF8String:self.gameData.id.c_str()];
-    NSLog(@"[GameCard] image candidates title=%@ id=%@ hero=%d primary=%d steam=%d total=%lu", title, gameId, heroUrl.length > 0, primaryUrl.length > 0, steamUrl.length > 0, (unsigned long)urlStrings.count);
+    OPN::LogInfo(@"[GameCard] image candidates title=%@ id=%@ hero=%d primary=%d steam=%d total=%lu", title, gameId, heroUrl.length > 0, primaryUrl.length > 0, steamUrl.length > 0, (unsigned long)urlStrings.count);
     if (urlStrings.count == 0) {
-        NSLog(@"[GameCard] no image candidates title=%@ id=%@ variants=%lu", title, gameId, (unsigned long)self.gameData.variants.size());
+        OPN::LogInfo(@"[GameCard] no image candidates title=%@ id=%@ variants=%lu", title, gameId, (unsigned long)self.gameData.variants.size());
         return;
     }
 
-    [self loadImageFromCandidates:urlStrings index:0];
+    NSUInteger generation = ++self.imageLoadGeneration;
+    [self loadImageFromCandidates:urlStrings index:0 generation:generation];
 }
 
-- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index {
+- (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation {
+    if (generation != self.imageLoadGeneration) return;
     if (index >= urlStrings.count) {
         NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-        NSLog(@"[GameCard] all image candidates failed title=%@", title);
+        OPN::LogError(@"[GameCard] all image candidates failed title=%@", title);
         return;
     }
 
     NSString *urlStr = urlStrings[index];
-    NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlStr);
-    if (cachedData.length > 0) {
-        NSImage *cachedImage = [[NSImage alloc] initWithData:cachedData];
-        if (cachedImage) {
-            NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-            NSLog(@"[GameCard] image cache hit title=%@ bytes=%lu url=%@", title, (unsigned long)cachedData.length, urlStr);
-            self.imageView.image = cachedImage;
-            NSRect imageRect = NSMakeRect(0.0, 0.0, cachedImage.size.width, cachedImage.size.height);
-            CGImageRef cgImage = [cachedImage CGImageForProposedRect:&imageRect context:nil hints:nil];
-            if (cgImage) {
-                __weak __typeof__(self) weakSelf = self;
-                [[OPNCoreAnimationCoordinator sharedCoordinator] extractDominantColorFromImage:cgImage
-                                                                                       cacheKey:urlStr
-                                                                                     completion:^(NSColor *color) {
-                    __typeof__(self) completedSelf = weakSelf;
-                    if (!completedSelf || !color) return;
-                    completedSelf.artworkAccentColor = color;
-                    if (completedSelf.onArtworkAccentColorChanged) completedSelf.onArtworkAccentColorChanged(color);
-                }];
-            }
+    NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
+    __weak __typeof__(self) weakSelf = self;
+    OPN::LogInfo(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
+    OPNGameCardLoadImageForURL(urlStr, ^(NSImage *image) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.imageLoadGeneration != generation) return;
+        if (!image) {
+            OPN::LogError(@"[GameCard] image candidate failed title=%@ index=%lu url=%@", title, (unsigned long)index + 1, urlStr);
+            [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
             return;
         }
-    }
-    NSURL *url = [NSURL URLWithString:urlStr];
-    if (!url) {
-        NSLog(@"[GameCard] invalid image URL index=%lu url=%@", (unsigned long)index, urlStr);
-        [self loadImageFromCandidates:urlStrings index:index + 1];
-        return;
-    }
-    NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-    NSLog(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
-
-    __weak __typeof__(self) weakSelf = self;
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession]
-        dataTaskWithURL:url
-        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
-            if (error || !data || (http && http.statusCode >= 400)) {
-                NSLog(@"[GameCard] image request failed title=%@ index=%lu status=%ld error=%@ url=%@", title, (unsigned long)index + 1, (long)(http ? http.statusCode : 0), error.localizedDescription ?: @"", urlStr);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __typeof__(self) strongSelf = weakSelf;
-                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
-                });
-                return;
-            }
-            NSImage *img = [[NSImage alloc] initWithData:data];
-            if (!img) {
-                NSLog(@"[GameCard] image decode failed title=%@ index=%lu bytes=%lu url=%@", title, (unsigned long)index + 1, (unsigned long)data.length, urlStr);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __typeof__(self) strongSelf = weakSelf;
-                    [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
-                });
-                return;
-            }
-            OPN::GameDataCache::Shared().SaveImage(urlStr, data);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                NSLog(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, img.size.width, img.size.height, urlStr);
-                strongSelf.imageView.image = img;
-                NSRect imageRect = NSMakeRect(0.0, 0.0, img.size.width, img.size.height);
-                CGImageRef cgImage = [img CGImageForProposedRect:&imageRect context:nil hints:nil];
-                if (cgImage) {
-                    [[OPNCoreAnimationCoordinator sharedCoordinator] extractDominantColorFromImage:cgImage
-                                                                                           cacheKey:urlStr
-                                                                                         completion:^(NSColor *color) {
-                        __typeof__(self) completedSelf = weakSelf;
-                        if (!completedSelf || !color) return;
-                        completedSelf.artworkAccentColor = color;
-                        if (completedSelf.controllerFocused) [completedSelf applyFocusStyle];
-                        if (completedSelf.onArtworkAccentColorChanged) completedSelf.onArtworkAccentColorChanged(color);
-                    }];
-                }
-            });
-        }];
-    [task resume];
+        OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, image.size.width, image.size.height, urlStr);
+        strongSelf.imageView.image = image;
+    });
 }
 
 - (void)mouseEntered:(NSEvent *)event {

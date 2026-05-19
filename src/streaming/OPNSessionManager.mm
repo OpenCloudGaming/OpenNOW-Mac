@@ -1,5 +1,6 @@
 
 #include "OPNSessionManager.h"
+#include "common/OPNSentry.h"
 #include "OPNStreamTypes.h"
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonCrypto.h>
@@ -14,11 +15,6 @@ static NSString *GetUserAgent() {
 }
 
 
-static bool IsZoneHostname(const std::string &host) {
-    return host.find("cloudmatchbeta.nvidiagrid.net") != std::string::npos
-        || host.find("cloudmatch.nvidiagrid.net") != std::string::npos;
-}
-
 static int AdActionCode(const std::string &action) {
     if (action == "start") return 1;
     if (action == "pause") return 2;
@@ -29,8 +25,13 @@ static int AdActionCode(const std::string &action) {
 }
 
 static std::string ResolveSessionBaseUrl(const std::string &streamingBaseUrl, const std::string &serverIp) {
-    if (serverIp.empty() || IsZoneHostname(serverIp)) {
+    if (serverIp.empty()) {
         return streamingBaseUrl.empty() ? "https://prod.cloudmatchbeta.nvidiagrid.net" : streamingBaseUrl;
+    }
+    if (serverIp.rfind("https://", 0) == 0 || serverIp.rfind("http://", 0) == 0) {
+        std::string base = serverIp;
+        while (!base.empty() && base.back() == '/') base.pop_back();
+        return base;
     }
     return "https://" + serverIp;
 }
@@ -51,6 +52,36 @@ static NSString *StringValue(id value) {
     return [value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0 ? (NSString *)value : nil;
 }
 
+static NSString *StringFromStdString(const std::string &value, NSString *fallback = @"") {
+    if (value.empty()) return fallback ?: @"";
+    NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    return string ?: (fallback ?: @"");
+}
+
+static id NetworkTestSessionIdValue(const OPN::StreamSettings &settings) {
+    NSString *value = StringFromStdString(settings.networkTestSessionId);
+    return value.length > 0 ? value : (id)[NSNull null];
+}
+
+static NSString *NetworkTypeValue(const OPN::StreamSettings &settings) {
+    NSString *value = StringFromStdString(settings.networkType, @"Unknown");
+    return value.length > 0 ? value : @"Unknown";
+}
+
+static NSString *NetworkLatencyValue(const OPN::StreamSettings &settings) {
+    return settings.networkLatencyMs >= 0 ? [NSString stringWithFormat:@"%d", settings.networkLatencyMs] : @"Unknown";
+}
+
+static NSArray *AvailableSupportedControllersValue(const OPN::StreamSettings &settings) {
+    if (settings.availableSupportedControllers.empty()) return @[];
+    NSMutableArray *controllers = [NSMutableArray arrayWithCapacity:settings.availableSupportedControllers.size()];
+    for (const std::string &controller : settings.availableSupportedControllers) {
+        NSString *value = StringFromStdString(controller);
+        if (value.length > 0) [controllers addObject:value];
+    }
+    return controllers;
+}
+
 static int PositiveIntValue(id value) {
     if ([value isKindOfClass:[NSNumber class]]) {
         int parsed = [(NSNumber *)value intValue];
@@ -67,6 +98,21 @@ static int IntValue(id value, int fallback = 0) {
     if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value intValue];
     if ([value isKindOfClass:[NSString class]]) return [(NSString *)value intValue];
     return fallback;
+}
+
+static OPN::SessionProgressState ProgressStateForSeatSetupStep(int seatSetupStep, int queuePosition) {
+    switch (seatSetupStep) {
+        case 0:
+            return queuePosition > 0 ? OPN::SessionProgressState::InQueue : OPN::SessionProgressState::Connecting;
+        case 1:
+            return OPN::SessionProgressState::InQueue;
+        case 5:
+            return OPN::SessionProgressState::PreviousSessionCleanup;
+        case 6:
+            return OPN::SessionProgressState::WaitingForStorage;
+        default:
+            return OPN::SessionProgressState::SettingUp;
+    }
 }
 
 static bool BoolValue(id value, bool fallback = false) {
@@ -116,7 +162,7 @@ static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &setti
         @"enabledL4S": @(settings.enableL4S),
         @"mouseMovementFlags": @0,
         @"trueHdr": @NO,
-        @"supportedHidDevices": @0,
+        @"supportedHidDevices": @((unsigned long long)settings.supportedHidDevices),
         @"profile": @0,
         @"fallbackToLogicalResolution": @NO,
         @"hidDevices": [NSNull null],
@@ -159,7 +205,7 @@ static void ParseStreamProfile(NSDictionary *session, OPN::NegotiatedStreamProfi
     if (chromaFormat) profile.chromaFormat = [chromaFormat intValue];
     if (profile.bitDepth >= 0 || profile.chromaFormat >= 0) {
         profile.colorQuality = ColorQualityFromFeatures(profile.bitDepth, profile.chromaFormat);
-        NSLog(@"[SessionManager] Finalized stream features bitDepth=%d chromaFormat=%d color=%s",
+        OPN::LogInfo(@"[SessionManager] Finalized stream features bitDepth=%d chromaFormat=%d color=%s",
               profile.bitDepth,
               profile.chromaFormat,
               profile.colorQuality.c_str());
@@ -185,6 +231,7 @@ static void ParseQueueProgress(NSDictionary *session, OPN::SessionInfo &info) {
     if (info.seatSetupStep == 0 && progressInfo) {
         info.seatSetupStep = IntValue(progressInfo[@"seatSetupStep"]);
     }
+    info.progressState = ProgressStateForSeatSetupStep(info.seatSetupStep, info.queuePosition);
 }
 
 static int AdMediaProfileRank(const std::string &profile) {
@@ -282,7 +329,7 @@ static void MergeSessionAdState(OPN::SessionAdState &target, const OPN::SessionA
 }
 
 static void LogPollSessionSummary(NSInteger httpStatus, const OPN::SessionInfo &info) {
-    NSLog(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d server=%s signaling=%s gpu=%s color=%s ads=%s",
+    OPN::LogInfo(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d server=%s signaling=%s gpu=%s color=%s ads=%s",
           (long)httpStatus,
           info.sessionId.empty() ? "(empty)" : info.sessionId.c_str(),
           info.status,
@@ -335,6 +382,104 @@ static std::string ExtractHostFromUrl(const std::string &url) {
     std::string host = afterProto.substr(0, end);
     if (host.empty() || host[0] == '.') return "";
     return host;
+}
+
+static bool IsReusableActiveSessionStatus(int status) {
+    return status == 1 || status == 2 || status == 3 || status == 6;
+}
+
+static bool IsReadyActiveSessionStatus(int status) {
+    return status == 2 || status == 3;
+}
+
+static bool IsSessionLimitExceededResponse(NSDictionary *json) {
+    NSDictionary *requestStatus = DictionaryValue(json[@"requestStatus"]);
+    NSNumber *statusCode = [requestStatus[@"statusCode"] isKindOfClass:[NSNumber class]] ? requestStatus[@"statusCode"] : nil;
+    NSString *statusDescription = StringValue(requestStatus[@"statusDescription"]);
+    return statusCode.integerValue == 11 || (statusDescription && [statusDescription rangeOfString:@"SESSION_LIMIT"].location != NSNotFound);
+}
+
+static OPN::ActiveSessionEntry ActiveSessionEntryFromDictionary(NSDictionary *session, const std::string &streamingBaseUrl) {
+    OPN::ActiveSessionEntry entry;
+    if (![session isKindOfClass:[NSDictionary class]]) return entry;
+
+    NSString *sessionId = StringValue(session[@"sessionId"]);
+    if (sessionId) entry.sessionId = sessionId.UTF8String;
+    entry.status = IntValue(session[@"status"]);
+
+    NSDictionary *requestData = DictionaryValue(session[@"sessionRequestData"]);
+    if (requestData) entry.appId = IntValue(requestData[@"appId"]);
+
+    NSString *gpuType = StringValue(session[@"gpuType"]);
+    if (gpuType) entry.gpuType = gpuType.UTF8String;
+
+    NSString *streamingHost = nil;
+    for (NSDictionary *connection in ArrayValue(session[@"connectionInfo"])) {
+        if (![connection isKindOfClass:[NSDictionary class]]) continue;
+        if (IntValue(connection[@"usage"]) != 14) continue;
+        NSString *ip = StringValue(connection[@"ip"]);
+        if (IsUsableEndpointHost(ip)) {
+            streamingHost = ip;
+            break;
+        }
+        NSString *resourcePath = StringValue(connection[@"resourcePath"]);
+        if (resourcePath.length > 0) {
+            std::string host = ExtractHostFromUrl(resourcePath.UTF8String);
+            if (!host.empty()) {
+                streamingHost = [NSString stringWithUTF8String:host.c_str()];
+                break;
+            }
+        }
+    }
+
+    NSDictionary *controlInfo = DictionaryValue(session[@"sessionControlInfo"]);
+    NSString *controlHost = StringValue(controlInfo[@"ip"]);
+    NSString *sessionHost = controlHost.length > 0 ? controlHost : streamingHost;
+    if (sessionHost.length > 0) entry.serverIp = sessionHost.UTF8String;
+    if (streamingHost.length > 0) entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", streamingHost].UTF8String;
+    entry.streamingBaseUrl = streamingBaseUrl;
+    return entry;
+}
+
+static std::vector<OPN::ActiveSessionEntry> ActiveSessionEntriesFromArray(NSArray *sessions, const std::string &streamingBaseUrl) {
+    std::vector<OPN::ActiveSessionEntry> entries;
+    for (NSDictionary *session in sessions) {
+        OPN::ActiveSessionEntry entry = ActiveSessionEntryFromDictionary(session, streamingBaseUrl);
+        if (!entry.sessionId.empty() && !entry.serverIp.empty() && IsReusableActiveSessionStatus(entry.status)) {
+            entries.push_back(entry);
+        }
+    }
+    return entries;
+}
+
+static bool SelectSessionLimitReuseEntry(const std::vector<OPN::ActiveSessionEntry> &sessions,
+                                         int requestedAppId,
+                                         OPN::ActiveSessionEntry &selected) {
+    for (const OPN::ActiveSessionEntry &session : sessions) {
+        if (session.appId == requestedAppId && IsReadyActiveSessionStatus(session.status)) {
+            selected = session;
+            return true;
+        }
+    }
+    for (const OPN::ActiveSessionEntry &session : sessions) {
+        if (IsReadyActiveSessionStatus(session.status)) {
+            selected = session;
+            return true;
+        }
+    }
+    for (const OPN::ActiveSessionEntry &session : sessions) {
+        if (session.appId == requestedAppId && session.status == 1) {
+            selected = session;
+            return true;
+        }
+    }
+    for (const OPN::ActiveSessionEntry &session : sessions) {
+        if (session.status == 1) {
+            selected = session;
+            return true;
+        }
+    }
+    return false;
 }
 
 static std::string RandomUUID() {
@@ -406,6 +551,10 @@ void SessionManager::CreateSession(const std::string &appId,
         return;
     }
 
+    std::string appIdCopy = appId;
+    std::string internalTitleCopy = internalTitle;
+    StreamSettings settingsCopy = settings;
+
     std::string baseUrl = m_streamingBaseUrl.empty()
         ? "https://prod.cloudmatchbeta.nvidiagrid.net"
         : m_streamingBaseUrl;
@@ -414,38 +563,36 @@ void SessionManager::CreateSession(const std::string &appId,
     std::string deviceId = GetStableDeviceId();
 
     int w = 1920, h = 1080;
-    sscanf(settings.resolution.c_str(), "%dx%d", &w, &h);
+    sscanf(settingsCopy.resolution.c_str(), "%dx%d", &w, &h);
 
     bool hdrEnabled = false;
 
-    int timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
+    NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
 
-    NSLog(@"[SessionManager] CreateSession called with appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s",
-          appId.c_str(),
-          settings.codec.c_str(),
-          settings.colorQuality.c_str(),
-          settings.maxBitrateMbps,
-          settings.enableL4S ? "on" : "off");
+    OPN::LogInfo(@"[SessionManager] CreateSession called with appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s",
+          appIdCopy.c_str(),
+          settingsCopy.codec.c_str(),
+          settingsCopy.colorQuality.c_str(),
+          settingsCopy.maxBitrateMbps,
+          settingsCopy.enableL4S ? "on" : "off");
 
-    NSString *appIdStr = [NSString stringWithUTF8String:appId.c_str()];
-    NSLog(@"[SessionManager] appIdStr=%@", appIdStr);
-    if (!appIdStr) {
-        NSLog(@"[SessionManager] WARNING: appIdStr is nil!");
-        appIdStr = @"";
-    }
+    NSString *appIdStr = StringFromStdString(appIdCopy);
+    OPN::LogInfo(@"[SessionManager] appIdStr=%@", appIdStr);
 
-    NSString *internalTitleStr = internalTitle.empty() ? @"" : [NSString stringWithUTF8String:internalTitle.c_str()];
-    if (!internalTitleStr) internalTitleStr = @"";
+    NSString *internalTitleStr = StringFromStdString(internalTitleCopy);
+    NSString *deviceIdStr = StringFromStdString(deviceId);
+    NSString *subSessionIdStr = StringFromStdString(RandomUUID());
+    NSString *selectedStoreStr = settingsCopy.selectedStore.empty() ? @"unknown" : StringFromStdString(settingsCopy.selectedStore, @"unknown");
 
 
     NSDictionary *sessionRequestData = @{
         @"appId": appIdStr,
         @"internalTitle": internalTitleStr,
-        @"availableSupportedControllers": @[],
-        @"networkTestSessionId": [NSNull null],
+        @"availableSupportedControllers": AvailableSupportedControllersValue(settingsCopy),
+        @"networkTestSessionId": NetworkTestSessionIdValue(settingsCopy),
         @"parentSessionId": [NSNull null],
         @"clientIdentification": @"GFN-PC",
-        @"deviceHashId": [NSString stringWithUTF8String:deviceId.c_str()],
+        @"deviceHashId": deviceIdStr,
         @"clientVersion": @"30.0",
         @"sdkVersion": @"1.0",
         @"streamerVersion": @1,
@@ -456,7 +603,7 @@ void SessionManager::CreateSession(const std::string &appId,
             @"positionY": @0,
             @"widthInPixels": @(w),
             @"heightInPixels": @(h),
-            @"framesPerSecond": @(settings.fps),
+            @"framesPerSecond": @(settingsCopy.fps),
             @"sdrHdrMode": hdrEnabled ? @1 : @0,
             @"displayData": [NSNull null],
             @"hdr10PlusGamingData": [NSNull null],
@@ -465,28 +612,29 @@ void SessionManager::CreateSession(const std::string &appId,
         @"useOps": @YES,
         @"audioMode": @2,
         @"metaData": @[
-            @{@"key": @"SubSessionId", @"value": [NSString stringWithUTF8String:RandomUUID().c_str()]},
+            @{@"key": @"SubSessionId", @"value": subSessionIdStr},
             @{@"key": @"wssignaling", @"value": @"1"},
             @{@"key": @"GSStreamerType", @"value": @"WebRTC"},
-            @{@"key": @"networkType", @"value": @"Unknown"},
+            @{@"key": @"networkType", @"value": NetworkTypeValue(settingsCopy)},
+            @{@"key": @"networkLatencyMs", @"value": NetworkLatencyValue(settingsCopy)},
             @{@"key": @"ClientImeSupport", @"value": @"0"},
             @{@"key": @"clientPhysicalResolution", @"value": [NSString stringWithFormat:@"{\"horizontalPixels\":%d,\"verticalPixels\":%d}", w, h]},
             @{@"key": @"surroundAudioInfo", @"value": @"2"},
-            @{@"key": @"store", @"value": settings.selectedStore.empty() ? @"unknown" : [NSString stringWithUTF8String:settings.selectedStore.c_str()]},
+            @{@"key": @"store", @"value": selectedStoreStr},
         ],
         @"sdrHdrMode": hdrEnabled ? @1 : @0,
         @"clientDisplayHdrCapabilities": [NSNull null],
         @"surroundAudioInfo": @0,
-        @"remoteControllersBitmap": @0,
+        @"remoteControllersBitmap": @((unsigned long long)settingsCopy.remoteControllersBitmap),
         @"clientTimezoneOffset": @(timezoneOffset),
         @"enhancedStreamMode": @1,
         @"appLaunchMode": @1,
         @"secureRTSPSupported": @NO,
         @"partnerCustomData": @"",
-        @"accountLinked": @(settings.accountLinked),
+        @"accountLinked": @(settingsCopy.accountLinked),
         @"enablePersistingInGameSettings": @YES,
         @"userAge": @26,
-        @"requestedStreamingFeatures": RequestedStreamingFeatures(settings),
+        @"requestedStreamingFeatures": RequestedStreamingFeatures(settingsCopy),
     };
 
 
@@ -494,13 +642,17 @@ void SessionManager::CreateSession(const std::string &appId,
         @"sessionRequestData": sessionRequestData,
     };
 
-    NSString *layout = [NSString stringWithUTF8String:settings.keyboardLayout.c_str()];
-    NSString *lang = [NSString stringWithUTF8String:settings.gameLanguage.c_str()];
-    if (!layout) layout = @"us";
-    if (!lang) lang = @"en_US";
+    NSString *layout = StringFromStdString(settingsCopy.keyboardLayout, @"us");
+    NSString *lang = StringFromStdString(settingsCopy.gameLanguage, @"en_US");
+    NSString *baseUrlString = StringFromStdString(baseUrl);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session?keyboardLayout=%@&languageCode=%@",
-                        [NSString stringWithUTF8String:baseUrl.c_str()], layout, lang];
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
+                        baseUrlString, layout, lang];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    if (!url) {
+        completion(false, SessionInfo{}, "Invalid session create URL");
+        return;
+    }
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
     [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
     [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
@@ -514,18 +666,18 @@ void SessionManager::CreateSession(const std::string &appId,
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-make"];
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-model"];
     [req setValue:@"CHROME" forHTTPHeaderField:@"nv-browser-type"];
-    [req setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+    [req setValue:deviceIdStr forHTTPHeaderField:@"x-device-id"];
     [req setValue:@"https://play.geforcenow.com" forHTTPHeaderField:@"Origin"];
 
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     NSString *bodyStr = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
     if (VerboseSessionHttpLoggingEnabled()) {
-        NSLog(@"[SessionManager] HTTP Body: %@", bodyStr);
+        OPN::LogInfo(@"[SessionManager] HTTP Body: %@", bodyStr);
     }
     req.HTTPBody = bodyData;
 
     SessionCreateCallback cb = completion;
-    NSString *baseUrlStr = [NSString stringWithUTF8String:baseUrl.c_str()];
+    NSString *baseUrlStr = baseUrlString;
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             if (error || !data) {
@@ -534,14 +686,38 @@ void SessionManager::CreateSession(const std::string &appId,
             }
             NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
             if (http.statusCode != 200) {
-                NSString *bodyStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                cb(false, SessionInfo{}, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, bodyStr] UTF8String]);
+                NSString *responseBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+                NSString *originalErrorString = [NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, responseBody];
+                std::string originalError = originalErrorString.UTF8String ? originalErrorString.UTF8String : "";
+                NSDictionary *errorJson = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+                if (IsSessionLimitExceededResponse(errorJson)) {
+                    std::vector<ActiveSessionEntry> sessions = ActiveSessionEntriesFromArray(ArrayValue(errorJson[@"otherUserSessions"]), baseUrl);
+                    ActiveSessionEntry selectedSession;
+                    if (SelectSessionLimitReuseEntry(sessions, appIdCopy.empty() ? 0 : atoi(appIdCopy.c_str()), selectedSession)) {
+                        OPN::LogInfo(@"[SessionManager] Reusing embedded active session after session limit sessionId=%s appId=%d status=%d server=%s",
+                                     selectedSession.sessionId.c_str(),
+                                     selectedSession.appId,
+                                     selectedSession.status,
+                                     selectedSession.serverIp.c_str());
+                        SessionCreateCallback reuseCompletion = [cb](bool reuseSuccess, const SessionInfo &reuseInfo, const std::string &reuseError) {
+                            cb(reuseSuccess, reuseInfo, reuseError);
+                        };
+                        if (IsReadyActiveSessionStatus(selectedSession.status)) {
+                            std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : appIdCopy;
+                            this->ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settingsCopy, true, reuseCompletion);
+                        } else {
+                            this->pollClaimSession(selectedSession.sessionId, selectedSession.serverIp, deviceId, clientId, NegotiatedStreamProfile{}, reuseCompletion);
+                        }
+                        return;
+                    }
+                }
+                cb(false, SessionInfo{}, originalError);
                 return;
             }
 
             NSString *createBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
             if (VerboseSessionHttpLoggingEnabled()) {
-                NSLog(@"[SessionManager] CreateSession response: %@", createBody);
+                OPN::LogInfo(@"[SessionManager] CreateSession response: %@", createBody);
             }
 
             NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
@@ -666,7 +842,7 @@ void SessionManager::CreateSession(const std::string &appId,
         NSString *ctrlIp = [ctrlInfo[@"ip"] isKindOfClass:[NSString class]] ? ctrlInfo[@"ip"] : nil;
         if (ctrlIp.length > 0 && info.serverIp.empty()) {
             info.serverIp = [ctrlIp UTF8String];
-            NSLog(@"[SessionManager] Using sessionControlInfo zone: %s", info.serverIp.c_str());
+            OPN::LogInfo(@"[SessionManager] Using sessionControlInfo zone: %s", info.serverIp.c_str());
         }
 
         info.clientId = clientId;
@@ -713,7 +889,7 @@ void SessionManager::PollSession(const std::string &sessionId,
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         NSString *rawBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if (VerboseSessionHttpLoggingEnabled()) {
-            NSLog(@"[PollSession] Raw response: HTTP %ld body=%@", (long)http.statusCode, rawBody);
+            OPN::LogInfo(@"[PollSession] Raw response: HTTP %ld body=%@", (long)http.statusCode, rawBody);
         }
         if (http.statusCode != 200) {
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, rawBody] UTF8String]);
@@ -1010,72 +1186,7 @@ void SessionManager::GetActiveSessions(std::function<void(bool, const std::vecto
             return;
         }
 
-        std::vector<ActiveSessionEntry> result;
-        for (NSDictionary *s in sessions) {
-            if (![s isKindOfClass:[NSDictionary class]]) continue;
-            int status = [s[@"status"] intValue];
-            if (status != 1 && status != 2 && status != 3 && status != 6) continue;
-
-            ActiveSessionEntry entry;
-            NSString *sid = [s[@"sessionId"] isKindOfClass:[NSString class]] ? s[@"sessionId"] : nil;
-            if (sid) entry.sessionId = [sid UTF8String];
-            entry.status = status;
-
-
-            NSDictionary *reqData = DictionaryValue(s[@"sessionRequestData"]);
-            if (reqData) {
-                id appIdVal = reqData[@"appId"];
-                if ([appIdVal isKindOfClass:[NSNumber class]]) {
-                    entry.appId = [appIdVal intValue];
-                } else if ([appIdVal isKindOfClass:[NSString class]]) {
-                    entry.appId = [(NSString *)appIdVal intValue];
-                }
-            }
-
-
-            NSString *gpu = [s[@"gpuType"] isKindOfClass:[NSString class]] ? s[@"gpuType"] : nil;
-            if (gpu) entry.gpuType = [gpu UTF8String];
-
-            NSArray *conns = ArrayValue(s[@"connectionInfo"]);
-            NSString *serverIp = nil;
-            NSString *connIp = nil;
-            for (NSDictionary *conn in conns) {
-                if (![conn isKindOfClass:[NSDictionary class]]) continue;
-                int usage = [conn[@"usage"] intValue];
-                if (usage == 14) {
-                    NSString *ip = [conn[@"ip"] isKindOfClass:[NSString class]] ? conn[@"ip"] : nil;
-                    NSString *resourcePath = [conn[@"resourcePath"] isKindOfClass:[NSString class]] ? conn[@"resourcePath"] : nil;
-                    if (IsUsableEndpointHost(ip)) {
-                        connIp = ip;
-                        break;
-                    }
-
-                    if (!connIp && resourcePath.length > 0) {
-                        std::string host = ExtractHostFromUrl([resourcePath UTF8String]);
-                        if (!host.empty()) {
-                            connIp = [NSString stringWithUTF8String:host.c_str()];
-                            break;
-                        }
-                    }
-                }
-            }
-
-            NSDictionary *ctrlInfo = DictionaryValue(s[@"sessionControlInfo"]);
-            NSString *ctrlIp = [ctrlInfo[@"ip"] isKindOfClass:[NSString class]] ? ctrlInfo[@"ip"] : nil;
-
-            serverIp = connIp ? connIp : ctrlIp;
-            if (serverIp) entry.serverIp = [serverIp UTF8String];
-
-            if (connIp) {
-                entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", connIp].UTF8String;
-            } else if (ctrlIp) {
-                entry.signalingUrl = [NSString stringWithFormat:@"wss://%@:443/nvst/", ctrlIp].UTF8String;
-            }
-
-            entry.streamingBaseUrl = base;
-
-            result.push_back(entry);
-        }
+        std::vector<ActiveSessionEntry> result = ActiveSessionEntriesFromArray(sessions, base);
 
         cb(true, result, "");
     }] resume];
@@ -1091,12 +1202,7 @@ void SessionManager::pollClaimSession(std::string sessionId,
     const int maxRetries = 60;
 
 
-    NSString *baseUrl;
-    if (IsZoneHostname(serverIp)) {
-        baseUrl = [NSString stringWithUTF8String:(m_streamingBaseUrl.empty() ? "https://prod.cloudmatchbeta.nvidiagrid.net" : m_streamingBaseUrl.c_str())];
-    } else {
-        baseUrl = [NSString stringWithFormat:@"https://%s", serverIp.c_str()];
-    }
+    NSString *baseUrl = [NSString stringWithUTF8String:ResolveSessionBaseUrl(m_streamingBaseUrl, serverIp).c_str()];
 
     __block void (^pollBlock)(void);
 
@@ -1258,12 +1364,10 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     std::string clientId = RandomUUID();
 
 
-    NSString *sid = [NSString stringWithUTF8String:sessionId.c_str()];
-    NSString *sip = [NSString stringWithUTF8String:serverIp.c_str()];
-    if (!sid) sid = @"";
-    if (!sip) sip = @"";
+    NSString *sid = StringFromStdString(sessionId);
+    NSString *sip = StringFromStdString(serverIp);
 
-    NSLog(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
+    OPN::LogInfo(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
           sid,
           sip,
           appId.c_str(),
@@ -1273,36 +1377,40 @@ void SessionManager::ClaimSession(const std::string &sessionId,
           settings.enableL4S ? "on" : "off",
           recoveryMode);
 
-    int timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
-    NSString *subSessionId = [NSString stringWithUTF8String:RandomUUID().c_str()];
+    NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
+    NSString *subSessionId = StringFromStdString(RandomUUID());
+    NSString *deviceIdString = StringFromStdString(deviceId);
+    NSString *selectedStore = settings.selectedStore.empty() ? @"unknown" : StringFromStdString(settings.selectedStore, @"unknown");
+    NSString *appIdString = StringFromStdString(appId);
 
     NSDictionary *payload = @{
         @"action": @2,
         @"data": @"RESUME",
         @"sessionRequestData": @{
             @"audioMode": @2,
-            @"remoteControllersBitmap": @0,
+            @"remoteControllersBitmap": @((unsigned long long)settings.remoteControllersBitmap),
             @"sdrHdrMode": @0,
-            @"networkTestSessionId": [NSNull null],
-            @"availableSupportedControllers": @[],
+            @"networkTestSessionId": NetworkTestSessionIdValue(settings),
+            @"availableSupportedControllers": AvailableSupportedControllersValue(settings),
             @"clientVersion": @"30.0",
-            @"deviceHashId": [NSString stringWithUTF8String:deviceId.c_str()],
+            @"deviceHashId": deviceIdString,
             @"internalTitle": [NSNull null],
             @"clientPlatformName": @"windows",
             @"metaData": @[
                 @{@"key": @"SubSessionId", @"value": subSessionId},
                 @{@"key": @"wssignaling", @"value": @"1"},
                 @{@"key": @"GSStreamerType", @"value": @"WebRTC"},
-                @{@"key": @"networkType", @"value": @"Unknown"},
+                @{@"key": @"networkType", @"value": NetworkTypeValue(settings)},
+                @{@"key": @"networkLatencyMs", @"value": NetworkLatencyValue(settings)},
                 @{@"key": @"ClientImeSupport", @"value": @"0"},
                 @{@"key": @"surroundAudioInfo", @"value": @"2"},
-                @{@"key": @"store", @"value": settings.selectedStore.empty() ? @"unknown" : [NSString stringWithUTF8String:settings.selectedStore.c_str()]},
+                @{@"key": @"store", @"value": selectedStore},
             ],
             @"surroundAudioInfo": @0,
             @"clientTimezoneOffset": @(timezoneOffset),
             @"clientIdentification": @"GFN-PC",
             @"parentSessionId": [NSNull null],
-            @"appId": @([NSString stringWithUTF8String:appId.c_str()].intValue),
+            @"appId": @(appIdString.intValue),
             @"streamerVersion": @1,
             @"appLaunchMode": @1,
             @"sdkVersion": @"1.0",
@@ -1314,35 +1422,30 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             @"enablePersistingInGameSettings": @YES,
             @"secureRTSPSupported": @NO,
             @"userAge": @26,
-            @"requestedStreamingFeatures": @{
-                @"reflex": @(settings.enableReflex),
-                @"enabledL4S": @(settings.enableL4S),
-            },
+            @"requestedStreamingFeatures": RequestedStreamingFeatures(settings),
         },
         @"metaData": @[],
     };
 
-    NSString *layout = [NSString stringWithUTF8String:settings.keyboardLayout.c_str()];
-    NSString *lang = [NSString stringWithUTF8String:settings.gameLanguage.c_str()];
-    if (!layout) layout = @"us";
-    if (!lang) lang = @"en_US";
+    NSString *layout = StringFromStdString(settings.keyboardLayout, @"us");
+    NSString *lang = StringFromStdString(settings.gameLanguage, @"en_US");
 
     NSString *claimUrl = [NSString stringWithFormat:@"https://%@/v2/session/%@?keyboardLayout=%@&languageCode=%@",
                           sip, sid, layout, lang];
 
     if (sip.length == 0) {
-        NSLog(@"[ClaimSession] ERROR: serverIp is empty, cannot construct URL");
+        OPN::LogError(@"[ClaimSession] ERROR: serverIp is empty, cannot construct URL");
         completion(false, SessionInfo{}, "No server IP for claim");
         return;
     }
 
     __block int preClaimStatus = 0;
     NSString *validationUrlStr = [NSString stringWithFormat:@"https://%@/v2/session/%@", sip, sid];
-    NSLog(@"[ClaimSession] Validation GET %@", validationUrlStr);
+    OPN::LogInfo(@"[ClaimSession] Validation GET %@", validationUrlStr);
 
     NSURL *validationURL = [NSURL URLWithString:validationUrlStr];
     if (!validationURL) {
-        NSLog(@"[ClaimSession] ERROR: invalid validation URL: %@", validationUrlStr);
+        OPN::LogError(@"[ClaimSession] ERROR: invalid validation URL: %@", validationUrlStr);
         completion(false, SessionInfo{}, "Invalid validation URL");
         return;
     }
@@ -1357,23 +1460,30 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     [validationReq setValue:@"NVIDIA-CLASSIC" forHTTPHeaderField:@"nv-client-streamer"];
     [validationReq setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
     [validationReq setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
-    [validationReq setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+    [validationReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
 
     SessionCreateCallback cb = completion;
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:validationReq completionHandler:^(NSData *vData, NSURLResponse *vResp, NSError *vErr) {
-        (void)vResp;
+        NSHTTPURLResponse *validationHttp = (NSHTTPURLResponse *)vResp;
         if (vErr) {
-            NSLog(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
+            OPN::LogError(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
         } else if (vData) {
             NSDictionary *vJson = [NSJSONSerialization JSONObjectWithData:vData options:0 error:nil];
             NSDictionary *vSession = DictionaryValue(vJson[@"session"]);
             if (vSession) {
                 preClaimStatus = [vSession[@"status"] intValue];
-                NSLog(@"[ClaimSession] Pre-claim validation status=%d", preClaimStatus);
+                OPN::LogInfo(@"[ClaimSession] Pre-claim validation status=%d", preClaimStatus);
+            }
+            NSDictionary *vReqStatus = DictionaryValue(vJson[@"requestStatus"]);
+            NSNumber *vStatusCode = [vReqStatus[@"statusCode"] isKindOfClass:[NSNumber class]] ? vReqStatus[@"statusCode"] : nil;
+            if (validationHttp.statusCode >= 400 || (vStatusCode && vStatusCode.integerValue != 1 && preClaimStatus == 0)) {
+                NSString *validationBody = [[NSString alloc] initWithData:vData encoding:NSUTF8StringEncoding] ?: @"";
+                cb(false, SessionInfo{}, [[NSString stringWithFormat:@"STALE_ACTIVE_SESSION: validation HTTP %ld: %@", (long)validationHttp.statusCode, validationBody] UTF8String]);
+                return;
             }
         } else {
-            NSLog(@"[ClaimSession] Validation request returned no data and no error");
+            OPN::LogError(@"[ClaimSession] Validation request returned no data and no error");
         }
 
         if (preClaimStatus == 1) {
@@ -1382,13 +1492,18 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         }
 
         if (recoveryMode && (preClaimStatus == 2 || preClaimStatus == 3)) {
-            NSLog(@"[ClaimSession] Recovery mode with ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
+            OPN::LogInfo(@"[ClaimSession] Recovery mode with ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
             this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
             return;
         }
 
-        NSLog(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
-        NSMutableURLRequest *claimReq = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:claimUrl]];
+        OPN::LogInfo(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
+        NSURL *claimURL = [NSURL URLWithString:claimUrl];
+        if (!claimURL) {
+            cb(false, SessionInfo{}, "Invalid claim URL");
+            return;
+        }
+        NSMutableURLRequest *claimReq = [NSMutableURLRequest requestWithURL:claimURL];
         claimReq.timeoutInterval = 15;
         claimReq.HTTPMethod = @"PUT";
         [claimReq setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
@@ -1402,24 +1517,29 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         [claimReq setValue:kNvClientVersion forHTTPHeaderField:@"nv-client-version"];
         [claimReq setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
         [claimReq setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
-        [claimReq setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+        [claimReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
         claimReq.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:claimReq completionHandler:^(NSData *cData, NSURLResponse *cResp, NSError *cErr) {
             if (cErr || !cData) {
                 NSString *errDesc = cErr ? [cErr localizedDescription] : @"No data";
-                NSLog(@"[ClaimSession] PUT failed: %@", errDesc);
+                OPN::LogError(@"[ClaimSession] PUT failed: %@", errDesc);
                 cb(false, SessionInfo{}, [errDesc UTF8String]);
                 return;
             }
             NSHTTPURLResponse *cHttp = (NSHTTPURLResponse *)cResp;
             NSString *cBody = [[NSString alloc] initWithData:cData encoding:NSUTF8StringEncoding];
             if (VerboseSessionHttpLoggingEnabled()) {
-                NSLog(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);
+                OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);
             } else {
-                NSLog(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
+                OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
             }
             if (cHttp.statusCode != 200) {
+                if ([cBody rangeOfString:@"SESSION_NOT_PAUSED"].location != NSNotFound || [cBody rangeOfString:@"\"statusCode\":34"].location != NSNotFound) {
+                    OPN::LogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
+                    return;
+                }
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim HTTP %ld: %@", (long)cHttp.statusCode, cBody] UTF8String]);
                 return;
             }
@@ -1429,7 +1549,12 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             NSNumber *cSc = cReqStatus[@"statusCode"];
             if (!cSc || cSc.integerValue != 1) {
                 NSString *desc = cReqStatus[@"statusDescription"] ?: @"unknown";
-                NSLog(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
+                if ([desc rangeOfString:@"SESSION_NOT_PAUSED"].location != NSNotFound || cSc.integerValue == 34) {
+                    OPN::LogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
+                    return;
+                }
+                OPN::LogError(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim API error %@: %@", cSc, desc] UTF8String]);
                 return;
             }

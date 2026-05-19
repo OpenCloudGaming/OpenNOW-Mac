@@ -17,7 +17,6 @@ typedef NS_ENUM(NSInteger, OPNBackdropMode) {
 @property (nonatomic, copy) NSString *gameCountText;
 @property (nonatomic, copy) NSArray<NSDictionary<NSString *, NSString *> *> *accountMenuItems;
 @property (nonatomic, copy) NSString *currentAccountIdentifier;
-@property (nonatomic, assign) unsigned controllerAccentRGB;
 @property (nonatomic, copy) void (^onStoreSelected)(void);
 @property (nonatomic, copy) void (^onLibrarySelected)(void);
 @property (nonatomic, copy) void (^onSettingsSelected)(void);

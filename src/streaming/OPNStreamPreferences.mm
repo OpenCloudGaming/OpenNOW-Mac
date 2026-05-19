@@ -3,7 +3,9 @@
 #import <CoreAudio/CoreAudio.h>
 #include <algorithm>
 #include <cmath>
+#include <ifaddrs.h>
 #include <memory>
+#include <net/if.h>
 
 namespace OPN {
 
@@ -13,7 +15,6 @@ static NSString *const kFpsIndexKey = @"OpenNOW.Stream.FpsIndex";
 static NSString *const kCodecIndexKey = @"OpenNOW.Stream.CodecIndex";
 static NSString *const kBitrateIndexKey = @"OpenNOW.Stream.BitrateIndex";
 static NSString *const kColorQualityIndexKey = @"OpenNOW.Stream.ColorQualityIndex";
-static NSString *const kRendererPacingIndexKey = @"OpenNOW.Stream.RendererPacingIndex";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
@@ -58,7 +59,7 @@ const std::vector<StreamAspectOption> &StreamAspectOptions() {
 }
 
 const std::vector<int> &StreamFpsOptions() {
-    static const std::vector<int> options = {30, 60, 120};
+    static const std::vector<int> options = {30, 60, 120, 240};
     return options;
 }
 
@@ -90,11 +91,6 @@ const std::vector<StreamColorQualityOption> &StreamColorQualityOptions() {
         {"10-bit 4:2:0", "10bit_420"},
         {"10-bit 4:4:4", "10bit_444"},
     };
-    return options;
-}
-
-const std::vector<int> &StreamRendererPacingOptions() {
-    static const std::vector<int> options = {30, 60, 120};
     return options;
 }
 
@@ -353,10 +349,6 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.colorQualityIndex = ClampedStoredInteger(kColorQualityIndexKey, 0, (int)colorQualityOptions.size());
     profile.colorQuality = colorQualityOptions[(size_t)profile.colorQualityIndex];
 
-    const auto &rendererPacingOptions = StreamRendererPacingOptions();
-    profile.rendererPacingIndex = ClampedStoredInteger(kRendererPacingIndexKey, 1, (int)rendererPacingOptions.size());
-    profile.rendererPacingFps = rendererPacingOptions[(size_t)profile.rendererPacingIndex];
-
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
     profile.enablePowerSaver = [NSUserDefaults.standardUserDefaults boolForKey:kPowerSaverEnabledKey];
     id suppressInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kSuppressInputWhenInactiveKey];
@@ -391,6 +383,38 @@ const char *DefaultStreamingBaseUrl() {
 static std::string NormalizedBaseUrl(const std::string &url) {
     if (url.empty()) return kDefaultStreamingBaseUrl;
     return url.back() == '/' ? url : url + "/";
+}
+
+static std::string CurrentNetworkType() {
+    struct ifaddrs *interfaces = nullptr;
+    if (getifaddrs(&interfaces) != 0 || !interfaces) return "Unknown";
+
+    bool hasWifi = false;
+    bool hasWired = false;
+    for (struct ifaddrs *item = interfaces; item; item = item->ifa_next) {
+        if (!item->ifa_name || (item->ifa_flags & IFF_UP) == 0 || (item->ifa_flags & IFF_RUNNING) == 0) continue;
+        if ((item->ifa_flags & IFF_LOOPBACK) != 0) continue;
+        std::string name(item->ifa_name);
+        if (name.rfind("awdl", 0) == 0 || name.rfind("llw", 0) == 0 || name.rfind("utun", 0) == 0) continue;
+        if (name == "en0" || name == "en1") {
+            hasWifi = true;
+        } else if (name.rfind("en", 0) == 0 || name.rfind("bridge", 0) == 0) {
+            hasWired = true;
+        }
+    }
+    freeifaddrs(interfaces);
+    if (hasWired) return "Ethernet";
+    if (hasWifi) return "WiFi";
+    return "Unknown";
+}
+
+static int RecommendedPreflightBitrate(int requestedMaxBitrateMbps, int latencyMs) {
+    int requested = std::max(1, requestedMaxBitrateMbps);
+    if (latencyMs < 0) return requested;
+    if (latencyMs >= 120) return std::min(requested, 25);
+    if (latencyMs >= 85) return std::min(requested, 50);
+    if (latencyMs >= 60) return std::min(requested, 75);
+    return requested;
 }
 
 std::string LoadSelectedStreamRegionUrl() {
@@ -546,6 +570,44 @@ void FetchStreamRegions(const std::string &token,
     }] resume];
 }
 
+void RunStreamNetworkPreflight(const std::string &token,
+                               const std::string &providerStreamingBaseUrl,
+                               int requestedMaxBitrateMbps,
+                               std::function<void(const StreamNetworkPreflightResult &result)> completion) {
+    StreamNetworkPreflightResult initial;
+    initial.streamingBaseUrl = LoadSelectedStreamingBaseUrl();
+    initial.networkType = CurrentNetworkType();
+    initial.recommendedMaxBitrateMbps = std::max(1, requestedMaxBitrateMbps);
+
+    std::string selectedRegionUrl = LoadSelectedStreamRegionUrl();
+    FetchStreamRegions(token, providerStreamingBaseUrl, [initial, selectedRegionUrl, requestedMaxBitrateMbps, completion](const std::vector<StreamRegionOption> &regions) mutable {
+        StreamNetworkPreflightResult result = initial;
+        const StreamRegionOption *chosen = nullptr;
+        if (!selectedRegionUrl.empty()) {
+            std::string normalizedSelected = NormalizedBaseUrl(selectedRegionUrl);
+            auto selected = std::find_if(regions.begin(), regions.end(), [&normalizedSelected](const StreamRegionOption &region) {
+                return NormalizedBaseUrl(region.url) == normalizedSelected;
+            });
+            if (selected != regions.end()) chosen = &(*selected);
+        }
+        if (!chosen) {
+            auto measured = std::find_if(regions.begin(), regions.end(), [](const StreamRegionOption &region) {
+                return !region.url.empty() && region.latencyMs >= 0;
+            });
+            if (measured != regions.end()) {
+                chosen = &(*measured);
+                result.usedAutomaticRegion = selectedRegionUrl.empty();
+            }
+        }
+        if (chosen && !chosen->url.empty()) {
+            result.streamingBaseUrl = NormalizedBaseUrl(chosen->url);
+            result.latencyMs = chosen->latencyMs;
+        }
+        result.recommendedMaxBitrateMbps = RecommendedPreflightBitrate(requestedMaxBitrateMbps, result.latencyMs);
+        completion(result);
+    });
+}
+
 void SaveStreamAspectIndex(int aspectIndex) {
     int clamped = std::max(0, std::min(aspectIndex, (int)StreamAspectOptions().size() - 1));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kAspectIndexKey];
@@ -579,11 +641,6 @@ void SaveStreamBitrateIndex(int bitrateIndex) {
 void SaveStreamColorQualityIndex(int colorQualityIndex) {
     int clamped = std::max(0, std::min(colorQualityIndex, (int)StreamColorQualityOptions().size() - 1));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kColorQualityIndexKey];
-}
-
-void SaveStreamRendererPacingIndex(int rendererPacingIndex) {
-    int clamped = std::max(0, std::min(rendererPacingIndex, (int)StreamRendererPacingOptions().size() - 1));
-    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kRendererPacingIndexKey];
 }
 
 void SaveStreamL4SEnabled(bool enabled) {

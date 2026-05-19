@@ -23,7 +23,6 @@ class IStreamSession;
 - (void)stopRecordingIfNeeded;
 - (void)setMicrophoneLevel:(double)level;
 - (void)setSuppressInputWhenWindowInactive:(BOOL)suppress;
-- (void)setInputSuspendedForLibraryOverlay:(BOOL)suspended;
 - (void)attachToPipeline:(void *)pipeline;
 - (void)detachFromPipeline;
 - (void)handleKeyEvent:(NSEvent *)event;
@@ -33,6 +32,6 @@ class IStreamSession;
 - (void)takeFocus;
 - (void)releasePointerLock;
 
-@property (nonatomic, copy) void (^onGuideButtonPressed)(void);
+@property (nonatomic, copy) void (^onUserActivity)(void);
 
 @end

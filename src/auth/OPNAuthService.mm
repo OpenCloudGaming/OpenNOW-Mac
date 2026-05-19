@@ -1,4 +1,5 @@
 #include "OPNAuthService.h"
+#include "common/OPNSentry.h"
 
 #include <CommonCrypto/CommonCrypto.h>
 #include <AppKit/NSWorkspace.h>
@@ -10,6 +11,28 @@
 
 namespace OPN {
 
+static NSString *EnvironmentString(const char *name) {
+    const char *value = getenv(name);
+    return (value && value[0] != '\0') ? [NSString stringWithUTF8String:value] : nil;
+}
+
+static NSUserDefaults *AuthUserDefaults() {
+    NSString *suiteName = EnvironmentString("OPN_AUTH_USER_DEFAULTS_SUITE");
+    if (suiteName.length > 0) {
+        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suiteName];
+        return defaults ?: [NSUserDefaults standardUserDefaults];
+    }
+    return [NSUserDefaults standardUserDefaults];
+}
+
+static NSString *ApplicationSupportBasePath() {
+    NSString *overridePath = EnvironmentString("OPN_AUTH_APPLICATION_SUPPORT_DIR");
+    if (overridePath.length > 0) return overridePath;
+    NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    return paths.count > 0 ? paths[0] : nil;
+}
+
 
 
 
@@ -20,7 +43,7 @@ std::string PersistentDeviceUUID::GetUUID() {
     if (!s_cachedUUID.empty()) return s_cachedUUID;
     NSString *key = @"OPN_PersistentDeviceUUID";
     NSString *legacyKey = @"GFN_PersistentDeviceUUID";
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AuthUserDefaults();
     NSString *stored = [defaults stringForKey:key];
     if (!stored || stored.length == 0) {
         stored = [defaults stringForKey:legacyKey];
@@ -34,8 +57,8 @@ std::string PersistentDeviceUUID::GetUUID() {
         return s_cachedUUID;
     }
     NSString *newUUID = [[NSUUID UUID] UUIDString];
-    [[NSUserDefaults standardUserDefaults] setObject:newUUID forKey:key];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    [defaults setObject:newUUID forKey:key];
+    [defaults synchronize];
     s_cachedUUID = [newUUID UTF8String];
     return s_cachedUUID;
 }
@@ -173,7 +196,7 @@ void AuthService::FetchClientToken(const std::string &accessToken,
         [NSURL URLWithString:@"https://login.nvidia.com/client_token"]];
     req.HTTPMethod = @"GET";
     req.timeoutInterval = 10.0;
-    NSLog(@"[OpenNOW] FetchClientToken: accessToken length=%zu", accessToken.size());
+    OPN::LogInfo(@"[OpenNOW] FetchClientToken: accessToken length=%zu", accessToken.size());
     [req setValue:[NSString stringWithFormat:@"Bearer %s", accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
     [req setValue:@"https://nvfile" forHTTPHeaderField:@"Origin"];
     [req setValue:@"application/json, text/plain, */*" forHTTPHeaderField:@"Accept"];
@@ -900,10 +923,8 @@ NSDictionary *AuthService::parseQueryString(NSString *query) {
 
 static NSString *SessionStorageDirectory() {
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(
-        NSApplicationSupportDirectory, NSUserDomainMask, YES);
-    if (paths.count == 0) return nil;
-    NSString *basePath = paths[0];
+    NSString *basePath = ApplicationSupportBasePath();
+    if (basePath.length == 0) return nil;
     NSString *dir = [basePath stringByAppendingPathComponent:@"OpenNOW"];
     if (![fm fileExistsAtPath:dir]) {
         NSError *error = nil;
@@ -918,10 +939,9 @@ static NSString *SessionStorageDirectory() {
 }
 
 static NSString *LegacySessionFilePath() {
-    NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(
-        NSApplicationSupportDirectory, NSUserDomainMask, YES);
-    if (paths.count == 0) return nil;
-    NSString *legacyDir = [paths[0] stringByAppendingPathComponent:@"com.nvidia.geforcenow"];
+    NSString *basePath = ApplicationSupportBasePath();
+    if (basePath.length == 0) return nil;
+    NSString *legacyDir = [basePath stringByAppendingPathComponent:@"com.nvidia.geforcenow"];
     return [legacyDir stringByAppendingPathComponent:@"session.plist"];
 }
 
@@ -1088,13 +1108,14 @@ void AuthService::SaveSession(const AuthSession &session) {
     [accounts insertObject:DictionaryFromSession(session) atIndex:0];
     SaveAccountDictionaries(accounts, identity);
 
-    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"OPN_HasSavedSession"];
-    [[NSUserDefaults standardUserDefaults] setObject:identity forKey:@"OPN_ActiveUserId"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    NSUserDefaults *defaults = AuthUserDefaults();
+    [defaults setBool:YES forKey:@"OPN_HasSavedSession"];
+    [defaults setObject:identity forKey:@"OPN_ActiveUserId"];
+    [defaults synchronize];
 }
 
 AuthSession AuthService::LoadSavedSession() {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AuthUserDefaults();
     NSString *storeActiveUserId = nil;
     NSArray *accounts = LoadAccountDictionaries(&storeActiveUserId);
     NSString *preferredUserId = [defaults stringForKey:@"OPN_ActiveUserId"] ?: storeActiveUserId;
@@ -1164,9 +1185,10 @@ void AuthService::SetActiveSessionUserId(const std::string &userId) {
     }
     if (!found) return;
     SaveAccountDictionaries(accounts, identity);
-    [NSUserDefaults.standardUserDefaults setObject:identity forKey:@"OPN_ActiveUserId"];
-    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"OPN_HasSavedSession"];
-    [NSUserDefaults.standardUserDefaults synchronize];
+    NSUserDefaults *defaults = AuthUserDefaults();
+    [defaults setObject:identity forKey:@"OPN_ActiveUserId"];
+    [defaults setBool:YES forKey:@"OPN_HasSavedSession"];
+    [defaults synchronize];
 }
 
 void AuthService::RemoveSavedSession(const std::string &userId) {
@@ -1184,18 +1206,20 @@ void AuthService::RemoveSavedSession(const std::string &userId) {
         newActive = SessionIdentityFromDictionary(accounts[0]);
     }
     SaveAccountDictionaries(accounts, newActive);
+    NSUserDefaults *defaults = AuthUserDefaults();
     if (newActive.length > 0) {
-        [NSUserDefaults.standardUserDefaults setObject:newActive forKey:@"OPN_ActiveUserId"];
-        [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"OPN_HasSavedSession"];
+        [defaults setObject:newActive forKey:@"OPN_ActiveUserId"];
+        [defaults setBool:YES forKey:@"OPN_HasSavedSession"];
     } else {
-        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"OPN_ActiveUserId"];
-        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"OPN_HasSavedSession"];
+        [defaults removeObjectForKey:@"OPN_ActiveUserId"];
+        [defaults removeObjectForKey:@"OPN_HasSavedSession"];
     }
-    [NSUserDefaults.standardUserDefaults synchronize];
+    [defaults synchronize];
 }
 
 void AuthService::ClearSession() {
-    NSString *activeUserId = [NSUserDefaults.standardUserDefaults stringForKey:@"OPN_ActiveUserId"];
+    NSUserDefaults *defaults = AuthUserDefaults();
+    NSString *activeUserId = [defaults stringForKey:@"OPN_ActiveUserId"];
     if (activeUserId.length > 0) {
         RemoveSavedSession([activeUserId UTF8String]);
         return;
@@ -1212,22 +1236,23 @@ void AuthService::ClearSession() {
     if (legacyPath) {
         [[NSFileManager defaultManager] removeItemAtPath:legacyPath error:nil];
     }
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"OPN_HasSavedSession"];
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"GFN_HasSavedSession"];
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"OPN_ActiveUserId"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    [defaults removeObjectForKey:@"OPN_HasSavedSession"];
+    [defaults removeObjectForKey:@"GFN_HasSavedSession"];
+    [defaults removeObjectForKey:@"OPN_ActiveUserId"];
+    [defaults synchronize];
 }
 
 bool AuthService::GetStayLoggedIn() {
-    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *d = AuthUserDefaults();
     if ([d objectForKey:@"OPN_StayLoggedIn"]) return [d boolForKey:@"OPN_StayLoggedIn"];
     if ([d objectForKey:@"GFN_StayLoggedIn"]) return [d boolForKey:@"GFN_StayLoggedIn"];
     return true;
 }
 
 void AuthService::SetStayLoggedIn(bool value) {
-    [[NSUserDefaults standardUserDefaults] setBool:value forKey:@"OPN_StayLoggedIn"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    NSUserDefaults *defaults = AuthUserDefaults();
+    [defaults setBool:value forKey:@"OPN_StayLoggedIn"];
+    [defaults synchronize];
 }
 
 

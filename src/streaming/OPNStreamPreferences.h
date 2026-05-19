@@ -55,6 +55,15 @@ struct StreamMicrophoneDeviceOption {
     bool automatic = false;
 };
 
+struct StreamNetworkPreflightResult {
+    std::string streamingBaseUrl;
+    std::string networkTestSessionId;
+    std::string networkType = "Unknown";
+    int latencyMs = -1;
+    int recommendedMaxBitrateMbps = 0;
+    bool usedAutomaticRegion = false;
+};
+
 struct StreamPreferenceProfile {
     int aspectIndex = 1;
     int resolutionIndex = 2;
@@ -62,9 +71,7 @@ struct StreamPreferenceProfile {
     int codecIndex = 0;
     int bitrateIndex = 2;
     int colorQualityIndex = 0;
-    int rendererPacingIndex = 1;
     int fps = 60;
-    int rendererPacingFps = 60;
     int maxBitrateMbps = 50;
     bool enableL4S = false;
     bool enablePowerSaver = false;
@@ -91,7 +98,6 @@ const std::vector<int> &StreamFpsOptions();
 const std::vector<StreamCodecOption> &StreamCodecOptions();
 const std::vector<StreamBitrateOption> &StreamBitrateOptions();
 const std::vector<StreamColorQualityOption> &StreamColorQualityOptions();
-const std::vector<int> &StreamRendererPacingOptions();
 const std::vector<StreamMicrophoneModeOption> &StreamMicrophoneModeOptions();
 std::vector<StreamMicrophoneDeviceOption> LoadMicrophoneDeviceOptions();
 std::vector<StreamResolutionOption> StreamResolutionOptionsForAspect(int aspectIndex);
@@ -106,13 +112,16 @@ void SaveCachedStreamRegions(const std::vector<StreamRegionOption> &regions);
 void FetchStreamRegions(const std::string &token,
                         const std::string &providerStreamingBaseUrl,
                         std::function<void(const std::vector<StreamRegionOption> &regions)> completion);
+void RunStreamNetworkPreflight(const std::string &token,
+                               const std::string &providerStreamingBaseUrl,
+                               int requestedMaxBitrateMbps,
+                               std::function<void(const StreamNetworkPreflightResult &result)> completion);
 void SaveStreamAspectIndex(int aspectIndex);
 void SaveStreamResolutionIndex(int resolutionIndex);
 void SaveStreamFpsIndex(int fpsIndex);
 void SaveStreamCodecIndex(int codecIndex);
 void SaveStreamBitrateIndex(int bitrateIndex);
 void SaveStreamColorQualityIndex(int colorQualityIndex);
-void SaveStreamRendererPacingIndex(int rendererPacingIndex);
 void SaveStreamL4SEnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);
 void SaveStreamSuppressInputWhenInactive(bool enabled);

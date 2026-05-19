@@ -15,6 +15,23 @@
                 "reveal": "always",
                 "panel": "shared"
             }
+        },
+        {
+            "label": "test",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "test"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
         }
     ]
 }

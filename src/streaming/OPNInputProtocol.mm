@@ -210,12 +210,25 @@ std::vector<uint8_t> Encoder::EncodeKey(uint32_t type, const KeyboardPayload &pa
 }
 
 std::vector<uint8_t> Encoder::EncodeMouseMove(const MouseMovePayload &payload) const {
-    std::vector<uint8_t> bytes(22, 0);
-    WriteU32LE(bytes, 0, INPUT_MOUSE_REL);
-    WriteI16BE(bytes, 4, payload.dx);
-    WriteI16BE(bytes, 6, payload.dy);
-    WriteU64BE(bytes, 14, payload.timestampUs);
-    return WrapMouseMoveEvent(bytes);
+    if (m_protocolVersion <= 2) {
+        std::vector<uint8_t> bytes(22, 0);
+        WriteU32LE(bytes, 0, INPUT_MOUSE_REL);
+        WriteI16BE(bytes, 4, payload.dx);
+        WriteI16BE(bytes, 6, payload.dy);
+        WriteU64BE(bytes, 14, payload.timestampUs);
+        return bytes;
+    }
+
+    std::vector<uint8_t> wrapped(34, 0);
+    wrapped[0] = 0x23;
+    WriteU64BE(wrapped, 1, TimestampUs());
+    wrapped[9] = 0x21;
+    WriteU16BE(wrapped, 10, 22);
+    WriteU32LE(wrapped, 12, INPUT_MOUSE_REL);
+    WriteI16BE(wrapped, 16, payload.dx);
+    WriteI16BE(wrapped, 18, payload.dy);
+    WriteU64BE(wrapped, 26, payload.timestampUs);
+    return wrapped;
 }
 
 std::vector<uint8_t> Encoder::EncodeMouseButtonDown(const MouseButtonPayload &payload) const {

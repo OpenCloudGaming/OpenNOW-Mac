@@ -1,5 +1,6 @@
-vendor-analysis/
+vendor/
 graphify-out/
+third_party/sentry-native/
 .vscode/settings.json
 
 # macOS and Xcode artifacts
@@ -93,3 +94,4 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+.opencode

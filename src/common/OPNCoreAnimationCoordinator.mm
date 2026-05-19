@@ -27,11 +27,6 @@ static NSValue *OPNCurrentTransformValue(CALayer *layer) {
     return [NSValue valueWithCATransform3D:(presentationLayer ? presentationLayer.transform : layer.transform)];
 }
 
-@interface OPNCoreAnimationCoordinator ()
-@property (nonatomic, strong) NSCache<NSString *, NSColor *> *colorCache;
-@property (nonatomic, strong) dispatch_queue_t colorQueue;
-@end
-
 @implementation OPNCoreAnimationCoordinator
 
 + (instancetype)sharedCoordinator {
@@ -41,16 +36,6 @@ static NSValue *OPNCurrentTransformValue(CALayer *layer) {
         coordinator = [[OPNCoreAnimationCoordinator alloc] init];
     });
     return coordinator;
-}
-
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        _colorCache = [[NSCache alloc] init];
-        _colorCache.countLimit = 256;
-        _colorQueue = dispatch_queue_create("com.opennow.artwork-color-extraction", DISPATCH_QUEUE_CONCURRENT);
-    }
-    return self;
 }
 
 + (CAMediaTimingFunction *)appleQuinticTimingFunction {
@@ -212,89 +197,6 @@ static NSValue *OPNCurrentTransformValue(CALayer *layer) {
     metalView.enableSetNeedsDisplay = NO;
     metalView.paused = NO;
     metalView.framebufferOnly = YES;
-}
-
-- (void)extractDominantColorFromImage:(CGImageRef)image
-                              cacheKey:(NSString *)cacheKey
-                            completion:(void (^)(NSColor *color))completion {
-    if (!image || cacheKey.length == 0 || !completion) return;
-
-    NSColor *cachedColor = [self.colorCache objectForKey:cacheKey];
-    if (cachedColor) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedColor);
-        });
-        return;
-    }
-
-    CGImageRef retainedImage = CGImageRetain(image);
-    dispatch_async(self.colorQueue, ^{
-        const size_t width = 32;
-        const size_t height = 32;
-        const size_t bytesPerPixel = 4;
-        const size_t bytesPerRow = width * bytesPerPixel;
-        NSMutableData *pixelData = [NSMutableData dataWithLength:height * bytesPerRow];
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-        CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
-        CGContextRef context = CGBitmapContextCreate(pixelData.mutableBytes,
-                                                     width,
-                                                     height,
-                                                     8,
-                                                     bytesPerRow,
-                                                     colorSpace,
-                                                     bitmapInfo);
-
-        if (!context || !colorSpace) {
-            if (context) CGContextRelease(context);
-            if (colorSpace) CGColorSpaceRelease(colorSpace);
-            CGImageRelease(retainedImage);
-            return;
-        }
-
-        CGContextSetInterpolationQuality(context, kCGInterpolationMedium);
-        CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), retainedImage);
-
-        const uint8_t *pixels = (const uint8_t *)pixelData.bytes;
-        CGFloat redTotal = 0.0;
-        CGFloat greenTotal = 0.0;
-        CGFloat blueTotal = 0.0;
-        CGFloat weightTotal = 0.0;
-
-        for (size_t index = 0; index < width * height; index++) {
-            const uint8_t *pixel = pixels + index * bytesPerPixel;
-            CGFloat red = pixel[0] / 255.0;
-            CGFloat green = pixel[1] / 255.0;
-            CGFloat blue = pixel[2] / 255.0;
-            CGFloat alpha = pixel[3] / 255.0;
-            CGFloat maxChannel = MAX(red, MAX(green, blue));
-            CGFloat minChannel = MIN(red, MIN(green, blue));
-            CGFloat saturation = maxChannel <= 0.0 ? 0.0 : (maxChannel - minChannel) / maxChannel;
-            CGFloat luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-            CGFloat highlightPenalty = 1.0 - MAX(0.0, luminance - 0.92);
-            CGFloat weight = alpha * (0.25 + saturation) * (0.35 + luminance) * highlightPenalty;
-
-            redTotal += red * weight;
-            greenTotal += green * weight;
-            blueTotal += blue * weight;
-            weightTotal += weight;
-        }
-
-        CGContextRelease(context);
-        CGColorSpaceRelease(colorSpace);
-        CGImageRelease(retainedImage);
-
-        if (weightTotal <= 0.001) weightTotal = 1.0;
-
-        NSColor *color = [NSColor colorWithCalibratedRed:redTotal / weightTotal
-                                                   green:greenTotal / weightTotal
-                                                    blue:blueTotal / weightTotal
-                                                   alpha:1.0];
-        [self.colorCache setObject:color forKey:cacheKey];
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(color);
-        });
-    });
 }
 
 @end

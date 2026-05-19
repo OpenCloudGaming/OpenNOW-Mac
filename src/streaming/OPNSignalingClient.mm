@@ -1,4 +1,7 @@
 #include "OPNSignalingClient.h"
+#include "common/OPNSentry.h"
+
+#include <errno.h>
 
 #import <Foundation/Foundation.h>
 
@@ -74,6 +77,41 @@ static NSURL *BuildSignInUrl(const std::string &signalingServer,
     return comp.URL;
 }
 
+static NSString *SanitizedSignalingURLString(NSURL *url) {
+    if (!url) return @"";
+    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    if (!components) return url.host ?: @"";
+    components.query = nil;
+    return components.string ?: url.host ?: @"";
+}
+
+static NSString *SignalingConnectionErrorDescription(NSError *error, NSURL *url) {
+    NSString *urlString = SanitizedSignalingURLString(url);
+    id handshakeReason = error.userInfo[@"_NSURLErrorWebSocketHandshakeFailureReasonKey"];
+    NSString *reasonString = handshakeReason ? [NSString stringWithFormat:@" handshakeReason=%@", handshakeReason] : @"";
+    id failingURLValue = error.userInfo[NSURLErrorFailingURLErrorKey];
+    NSString *failingURL = [failingURLValue isKindOfClass:[NSURL class]]
+        ? [failingURLValue absoluteString]
+        : urlString;
+    NSURLComponents *failingComponents = [NSURLComponents componentsWithString:failingURL];
+    failingComponents.query = nil;
+    NSString *safeFailingURL = failingComponents.string ?: urlString;
+    return [NSString stringWithFormat:@"Signaling connect failed: domain=%@ code=%ld url=%@ failingURL=%@%@ description=%@",
+                                      error.domain,
+                                      (long)error.code,
+                                      urlString,
+                                      safeFailingURL,
+                                      reasonString,
+                                      error.localizedDescription ?: @"unknown error"];
+}
+
+static BOOL IsSocketNotConnectedError(NSError *error) {
+    if (!error) return NO;
+    if ([error.domain isEqualToString:NSPOSIXErrorDomain] && error.code == ENOTCONN) return YES;
+    NSError *underlyingError = error.userInfo[NSUnderlyingErrorKey];
+    return IsSocketNotConnectedError(underlyingError);
+}
+
 
 
 
@@ -144,17 +182,23 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
 
 
         if (m_didOpen) {
-            NSLog(@"[Signaling] Post-connection error: %@", error);
+            if (IsSocketNotConnectedError(error)) {
+                OPN::LogInfo(@"[Signaling] Post-connection socket closed: %@", error.localizedDescription ?: @"unknown error");
+            } else {
+                OPN::LogError(@"[Signaling] Post-connection error: %@", error);
+            }
             return;
         }
-        std::string msg = [[NSString stringWithFormat:@"Signaling connect failed: %@", error.localizedDescription] UTF8String];
+        NSString *message = SignalingConnectionErrorDescription(error, url);
+        OPN::LogError(@"[Signaling] %@", message);
+        std::string msg = message.UTF8String ?: "Signaling connect failed";
         onConnect(false, msg);
     };
 
 
     void (^onClose)(NSURLSessionWebSocketCloseCode, NSString *) = ^(NSURLSessionWebSocketCloseCode code, NSString *reason) {
         if (!IsCurrentGeneration(generation)) return;
-        NSLog(@"[Signaling] WebSocket closed: code=%ld, reason=%@", (long)code, reason);
+        OPN::LogInfo(@"[Signaling] WebSocket closed: code=%ld, reason=%@", (long)code, reason);
         ClearHeartbeat();
         m_webSocketTask = nullptr;
     };
@@ -268,7 +312,11 @@ void SignalingClient::RearmReceiveHandler() {
         if (!blockSelf->IsCurrentGeneration(generation)) return;
 
         if (err) {
-            NSLog(@"[Signaling] Receive error: %@", err);
+            if (IsSocketNotConnectedError(err)) {
+                OPN::LogInfo(@"[Signaling] Receive stopped after socket closed: %@", err.localizedDescription ?: @"unknown error");
+            } else {
+                OPN::LogError(@"[Signaling] Receive error: %@", err);
+            }
             return;
         }
 
@@ -323,7 +371,7 @@ void SignalingClient::HandleMessage(const std::string &text) {
         NSString *name = peerInfo[@"name"];
         if (pid && [name isKindOfClass:[NSString class]] && [name isEqualToString:[NSString stringWithUTF8String:m_peerName.c_str()]]) {
             m_peerId = pid.intValue;
-            NSLog(@"[Signaling] Local peer id assigned: %d", m_peerId);
+            OPN::LogInfo(@"[Signaling] Local peer id assigned: %d", m_peerId);
         }
     }
 
@@ -357,7 +405,7 @@ void SignalingClient::HandleMessage(const std::string &text) {
     NSNumber *fromId = peerMsg[@"from"];
     if (fromId) {
         m_remotePeerId = fromId.intValue;
-        NSLog(@"[Signaling] Remote peer id: %d", m_remotePeerId);
+        OPN::LogInfo(@"[Signaling] Remote peer id: %d", m_remotePeerId);
     }
 
 
@@ -369,7 +417,7 @@ void SignalingClient::HandleMessage(const std::string &text) {
     NSString *type = payload[@"type"];
     if ([type isEqualToString:@"offer"]) {
         NSString *sdp = payload[@"sdp"];
-        NSLog(@"[Signaling] Offer received, sdp length=%lu, m_onOffer=%p",
+        OPN::LogInfo(@"[Signaling] Offer received, sdp length=%lu, m_onOffer=%p",
               (unsigned long)sdp.length, (void*)&m_onOffer);
         if (sdp && m_onOffer) {
             m_onOffer([sdp UTF8String]);
@@ -408,7 +456,7 @@ void SignalingClient::OnIceCandidate(SignalingIceCallback cb) {
 
 void SignalingClient::SendAnswer(const SendAnswerRequest &answer) {
     if (!m_webSocketTask) return;
-    NSLog(@"[Signaling] Sending answer SDP length=%zu nvstSdp length=%zu", answer.sdp.size(), answer.nvstSdp.size());
+    OPN::LogInfo(@"[Signaling] Sending answer SDP length=%zu nvstSdp length=%zu", answer.sdp.size(), answer.nvstSdp.size());
 
     NSMutableDictionary *answerDict = [NSMutableDictionary dictionary];
     answerDict[@"type"] = @"answer";

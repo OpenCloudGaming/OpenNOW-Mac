@@ -32,6 +32,7 @@ public:
     void SetUserId(const std::string &id);
     void SetStreamingBaseUrl(const std::string &url);
 
+    void FetchMarqueePanels(PanelCallback completion);
     void FetchMainPanels(PanelCallback completion);
     void BrowseCatalogGames(const std::string &searchQuery,
                             const std::string &sortId,
@@ -65,6 +66,7 @@ private:
                          std::function<void(NSDictionary *, NSString *)> completion);
 
     GameInfo parseGameItem(NSDictionary *item);
+    std::vector<PanelResult> parsePanelResults(NSArray *rawPanels);
     NSDictionary *baseHeaders();
 
     std::string m_accessToken;

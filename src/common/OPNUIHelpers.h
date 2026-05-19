@@ -8,23 +8,11 @@ unsigned OpnBlendRGB(unsigned rgb, unsigned target, CGFloat amount);
 
 extern NSString *const OPNInterfacePreferencesDidChangeNotification;
 
-unsigned OpnCurrentAccentRGB(void);
-void OpnSetCurrentAccentRGB(unsigned rgb);
-CGFloat OpnPosterSizeScale(void);
-void OpnSetPosterSizeScale(CGFloat scale);
-CGFloat OpnControllerGridItemScale(void);
-void OpnSetControllerGridItemScale(CGFloat scale);
 BOOL OpnAutoFullScreenEnabled(void);
 void OpnSetAutoFullScreenEnabled(BOOL enabled);
 BOOL OpnControllerModeEnabled(void);
 void OpnSetControllerModeEnabled(BOOL enabled);
-BOOL OpnBackgroundAnimationEnabled(void);
-void OpnSetBackgroundAnimationEnabled(BOOL enabled);
-BOOL OpnDerivedAccentColorsEnabled(void);
-void OpnSetDerivedAccentColorsEnabled(BOOL enabled);
 CGFloat OpnBackgroundTintStrength(void);
-uint16_t OpnControllerLibraryShortcutMask(void);
-void OpnSetControllerLibraryShortcutMask(uint16_t mask);
 
 typedef NS_ENUM(NSInteger, OPNConsoleTone) {
     OPNConsoleToneMove = 0,
@@ -50,3 +38,5 @@ NSTextField *OpnTextField(NSRect frame, NSString *placeholder, bool isSecure = f
 NSProgressIndicator *OpnSpinner(NSRect frame);
 
 void OpnDisableFocusHighlights(NSView *view);
+CGPathRef OpnCreateRoundedRectPath(NSRect rect, CGFloat xRadius, CGFloat yRadius) CF_RETURNS_RETAINED;
+CGPathRef OpnCreateEllipsePath(NSRect rect) CF_RETURNS_RETAINED;
