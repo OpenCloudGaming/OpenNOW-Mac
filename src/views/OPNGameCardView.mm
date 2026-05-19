@@ -377,7 +377,9 @@ using namespace OPN;
     CGFloat logoInset = logoContainerSize * 0.20;
     self.currentStoreLogoView.frame = NSInsetRect(self.currentStoreLogoContainer.bounds, logoInset, logoInset);
     self.reflectionLayer.frame = NSMakeRect(width * (16.0 / 180.0), height - height * (10.0 / 180.0), MAX(1.0, width - width * (32.0 / 180.0)), height * (18.0 / 180.0));
-    self.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:cornerRadius yRadius:cornerRadius].CGPath;
+    CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
+    self.layer.shadowPath = shadowPath;
+    CGPathRelease(shadowPath);
 }
 
 - (void)updateCurrentStoreLogo {

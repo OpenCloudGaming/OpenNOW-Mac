@@ -434,14 +434,18 @@
     NSRect orbitRect = NSMakeRect(centerX - orbitSize * 0.5, orbitY, orbitSize, orbitSize);
 
     self.panelLayer.frame = panelRect;
-    self.panelLayer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0.0, 0.0, panelWidth, panelHeight)
-                                                                 xRadius:28.0
-                                                                 yRadius:28.0].CGPath;
+    CGPathRef panelShadowPath = OpnCreateRoundedRectPath(NSMakeRect(0.0, 0.0, panelWidth, panelHeight), 28.0, 28.0);
+    self.panelLayer.shadowPath = panelShadowPath;
+    CGPathRelease(panelShadowPath);
     self.sweepLayer.frame = NSMakeRect(-width * 0.8, 0.0, width * 0.72, height);
     self.orbitLayer.frame = NSRectToCGRect(orbitRect);
-    self.orbitLayer.path = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(0, 0, orbitSize, orbitSize)].CGPath;
+    CGPathRef orbitPath = OpnCreateEllipsePath(NSMakeRect(0, 0, orbitSize, orbitSize));
+    self.orbitLayer.path = orbitPath;
+    CGPathRelease(orbitPath);
     self.innerOrbitLayer.frame = NSInsetRect(orbitRect, 13.0, 13.0);
-    self.innerOrbitLayer.path = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(0, 0, orbitSize - 26.0, orbitSize - 26.0)].CGPath;
+    CGPathRef innerOrbitPath = OpnCreateEllipsePath(NSMakeRect(0, 0, orbitSize - 26.0, orbitSize - 26.0));
+    self.innerOrbitLayer.path = innerOrbitPath;
+    CGPathRelease(innerOrbitPath);
 
     self.coreLayer.frame = NSMakeRect(centerX - 7.0, orbitY + orbitSize * 0.5 - 7.0, 14.0, 14.0);
     self.coreLayer.cornerRadius = 7.0;

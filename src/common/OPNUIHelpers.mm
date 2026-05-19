@@ -248,3 +248,11 @@ void OpnDisableFocusHighlights(NSView *view) {
         OpnDisableFocusHighlights(subview);
     }
 }
+
+CGPathRef OpnCreateRoundedRectPath(NSRect rect, CGFloat xRadius, CGFloat yRadius) {
+    return CGPathCreateWithRoundedRect(NSRectToCGRect(rect), xRadius, yRadius, nullptr);
+}
+
+CGPathRef OpnCreateEllipsePath(NSRect rect) {
+    return CGPathCreateWithEllipseInRect(NSRectToCGRect(rect), nullptr);
+}

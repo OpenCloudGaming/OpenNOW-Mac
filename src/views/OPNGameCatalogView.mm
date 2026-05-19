@@ -2002,7 +2002,9 @@ using namespace OPN;
     CGFloat panelHeight = 128.0 + self.controllerStoreFilterOptionLabels.count * (optionHeight + 8.0);
     panelHeight = MIN(MAX(220.0, panelHeight), MAX(220.0, height - 96.0));
     panel.frame = NSMakeRect(floor((width - panelWidth) / 2.0), floor((height - panelHeight) / 2.0), panelWidth, panelHeight);
-    panel.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:panel.bounds xRadius:26.0 yRadius:26.0].CGPath;
+    CGPathRef panelShadowPath = OpnCreateRoundedRectPath(panel.bounds, 26.0, 26.0);
+    panel.layer.shadowPath = panelShadowPath;
+    CGPathRelease(panelShadowPath);
     for (NSView *view in panel.subviews) {
         if (![view isKindOfClass:NSTextField.class]) continue;
         NSTextField *label = (NSTextField *)view;
@@ -2486,7 +2488,9 @@ using namespace OPN;
     heroShadow.layer.shadowOpacity = 0.58;
     heroShadow.layer.shadowRadius = heroHeight * (30.0 / 270.0);
     heroShadow.layer.shadowOffset = CGSizeMake(0.0, heroHeight * (16.0 / 270.0));
-    heroShadow.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:heroShadow.bounds xRadius:cornerRadius yRadius:cornerRadius].CGPath;
+    CGPathRef heroShadowPath = OpnCreateRoundedRectPath(heroShadow.bounds, cornerRadius, cornerRadius);
+    heroShadow.layer.shadowPath = heroShadowPath;
+    CGPathRelease(heroShadowPath);
     [self.gridContentView addSubview:heroShadow];
     [self.controllerHeroViews addObject:heroShadow];
 
@@ -2586,9 +2590,12 @@ using namespace OPN;
     for (NSInteger index = 0; index < totalCount; index++) {
         BOOL active = index == activeIndex;
         NSRect dotRect = active ? NSMakeRect(dotX + index * dotSpacing, dotY, activeDotWidth, dotHeight) : NSMakeRect(dotX + index * dotSpacing + (activeDotWidth - inactiveDotWidth) * 0.5, dotY, inactiveDotWidth, dotHeight);
-        NSBezierPath *dot = [NSBezierPath bezierPathWithRoundedRect:dotRect xRadius:dotHeight * 0.5 yRadius:dotHeight * 0.5];
-        [active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.18) setFill];
-        [dot fill];
+        NSView *dot = [[NSView alloc] initWithFrame:dotRect];
+        dot.wantsLayer = YES;
+        dot.layer.cornerRadius = dotHeight * 0.5;
+        dot.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.18)).CGColor;
+        [self.gridContentView addSubview:dot];
+        [self.controllerHeroViews addObject:dot];
     }
 }
 
@@ -2905,7 +2912,9 @@ using namespace OPN;
     self.controllerSectionLabel.stringValue = sectionTitle;
     self.controllerSectionLabel.frame = NSMakeRect(64.0, 42.0, MIN(620.0, width - 128.0), 26.0);
     self.controllerDetailView.frame = NSMakeRect(0.0, detailY, width, detailHeight);
-    self.controllerDetailView.layer.shadowPath = [NSBezierPath bezierPathWithRoundedRect:self.controllerDetailView.bounds xRadius:30.0 yRadius:30.0].CGPath;
+    CGPathRef detailShadowPath = OpnCreateRoundedRectPath(self.controllerDetailView.bounds, 30.0, 30.0);
+    self.controllerDetailView.layer.shadowPath = detailShadowPath;
+    CGPathRelease(detailShadowPath);
     CGFloat detailWidth = NSWidth(self.controllerDetailView.frame);
     self.controllerDetailGradientLayer.frame = self.controllerDetailView.bounds;
     self.controllerDetailAccentLayer.frame = NSMakeRect(64.0, 18.0, 74.0, 3.0);

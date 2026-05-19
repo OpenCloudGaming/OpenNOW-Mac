@@ -38,3 +38,5 @@ NSTextField *OpnTextField(NSRect frame, NSString *placeholder, bool isSecure = f
 NSProgressIndicator *OpnSpinner(NSRect frame);
 
 void OpnDisableFocusHighlights(NSView *view);
+CGPathRef OpnCreateRoundedRectPath(NSRect rect, CGFloat xRadius, CGFloat yRadius) CF_RETURNS_RETAINED;
+CGPathRef OpnCreateEllipsePath(NSRect rect) CF_RETURNS_RETAINED;
