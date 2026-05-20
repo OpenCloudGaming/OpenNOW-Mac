@@ -19,9 +19,7 @@ static const CGFloat kStoreTileWidth = 268.0;
 static const CGFloat kStoreTileHeight = 151.0;
 static const CGFloat kControllerStoreContentX = 52.0;
 static const CGFloat kControllerStoreHeroTop = 120.0;
-static const CGFloat kControllerStoreRailWidth = 220.0;
 static const CGFloat kControllerStoreRailHeight = 276.0;
-static const CGFloat kControllerStoreLaneGap = 34.0;
 
 @interface OPNStoreDocumentView : NSView
 @end
@@ -843,7 +841,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
-@property (nonatomic, strong) NSMutableArray<NSTextField *> *controllerRailLabels;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
 @property (nonatomic, strong) OPNStoreGameTile *heroTile;
@@ -860,7 +857,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)stopGamepadNavigation;
 - (void)controllerDidConnect:(NSNotification *)notification;
 - (void)controllerDidDisconnect:(NSNotification *)notification;
-- (void)addControllerRailLabel:(NSString *)title y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (OPNStoreGameTile *)configuredHeroGameTile:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)addControllerFeaturedHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
 - (void)loadControllerFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
@@ -887,7 +883,6 @@ using namespace OPN;
         self.wantsLayer = YES;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
         _rowCards = [NSMutableArray array];
-        _controllerRailLabels = [NSMutableArray array];
         _focusedRowIndex = 0;
         _focusedColumnIndex = 0;
         _scrollView = [[NSScrollView alloc] initWithFrame:self.bounds];
@@ -1089,7 +1084,6 @@ using namespace OPN;
         [view removeFromSuperview];
     }
     [self.rowCards removeAllObjects];
-    [self.controllerRailLabels removeAllObjects];
 
     if (OpnControllerModeEnabled()) {
         [self renderControllerStore];
@@ -1299,8 +1293,7 @@ using namespace OPN;
     CGFloat width = MAX(1040.0, NSWidth(self.bounds));
     CGFloat contentX = MIN(kControllerStoreContentX, MAX(30.0, width * 0.055));
     CGFloat contentWidth = MAX(640.0, width - contentX * 2.0);
-    CGFloat railX = contentX;
-    CGFloat laneX = railX + kControllerStoreRailWidth + kControllerStoreLaneGap;
+    CGFloat laneX = contentX;
     CGFloat y = kControllerStoreHeroTop;
 
     OPNStoreAmbientView *ambient = [[OPNStoreAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), 1600.0))];
@@ -1347,8 +1340,6 @@ using namespace OPN;
     for (const PanelResult &panel : _panels) {
         for (const PanelSection &section : panel.sections) {
             if (section.games.empty()) continue;
-            NSString *sectionTitle = section.title.empty() ? @"Featured" : [NSString stringWithUTF8String:section.title.c_str()];
-            [self addControllerRailLabel:sectionTitle y:y + 52.0 contentX:railX width:kControllerStoreRailWidth];
             [self addSection:section index:renderedRows y:y contentX:laneX width:width];
             y += kControllerStoreRailHeight;
             renderedRows++;
@@ -1369,13 +1360,6 @@ using namespace OPN;
     ambientGradient.frame = ambientPanel.bounds;
     self.documentView.frame = NSMakeRect(0, 0, width, documentHeight);
     [self updateFocusedTiles];
-}
-
-- (void)addControllerRailLabel:(NSString *)title y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
-    NSTextField *label = OpnLabel(title, NSMakeRect(contentX, y, width, 34.0), 21.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentRight);
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.documentView addSubview:label];
-    [self.controllerRailLabels addObject:label];
 }
 
 - (void)addControllerFeaturedHeroForGame:(const GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
@@ -1702,13 +1686,6 @@ using namespace OPN;
             BOOL focused = controllerMode && (NSInteger)rowIndex == self.focusedRowIndex && (NSInteger)columnIndex == self.focusedColumnIndex;
             [row[columnIndex] setStoreFocused:focused];
         }
-    }
-    for (NSUInteger index = 0; index < self.controllerRailLabels.count; index++) {
-        NSTextField *label = self.controllerRailLabels[index];
-        BOOL focused = controllerMode && (NSInteger)index == self.focusedRowIndex;
-        label.textColor = focused ? OpnColor(kBrandGreen) : OpnColor(kTextSecondary);
-        label.font = [NSFont systemFontOfSize:focused ? 25.0 : 21.0 weight:focused ? NSFontWeightBold : NSFontWeightSemibold];
-        label.alphaValue = focused ? 1.0 : 0.58;
     }
 }
 

@@ -965,6 +965,21 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     if (self.onExitSelected) self.onExitSelected();
 }
 
+- (NSView *)hitTest:(NSPoint)point {
+    if (self.hidden || self.alphaValue <= 0.0) return nil;
+    if (_controllerAccountMenuView && NSPointInRect(point, _controllerAccountMenuView.frame)) {
+        return [super hitTest:point];
+    }
+    if (self.mode != OPNBackdropModeAuth &&
+        (NSPointInRect(point, _storeNavFrame) ||
+         NSPointInRect(point, _libraryNavFrame) ||
+         NSPointInRect(point, _settingsNavFrame) ||
+         NSPointInRect(point, _accountFrame))) {
+        return self;
+    }
+    return [super hitTest:point];
+}
+
 - (void)mouseDown:(NSEvent *)event {
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     if (_controllerAccountMenuView && !NSPointInRect(point, _controllerAccountMenuView.frame) && !NSPointInRect(point, _accountFrame)) {
