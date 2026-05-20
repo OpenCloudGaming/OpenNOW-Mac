@@ -359,6 +359,7 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
             GameVariant gv;
             { NSString *s = SafeStr(v[@"id"]); gv.id = s ? [s UTF8String] : ""; }
             { NSString *s = SafeStr(v[@"appStore"]); gv.appStore = s ? [s UTF8String] : ""; }
+            { NSString *s = SafeStr(v[@"storeUrl"]); gv.storeUrl = s ? [s UTF8String] : ""; }
 
             NSDictionary *variantService = v[@"gfn"];
             if (variantService && [variantService isKindOfClass:[NSDictionary class]]) {
@@ -644,6 +645,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                     variants {
                         id
                         appStore
+                        storeUrl
                         supportedControls
                         gfn { status library { status selected } }
                     }
@@ -683,6 +685,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                     variants {
                         id
                         appStore
+                        storeUrl
                         supportedControls
                         gfn { status library { status selected } }
                     }

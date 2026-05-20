@@ -10,6 +10,7 @@ namespace OPN {
 struct GameVariant {
     std::string id;
     std::string appStore;
+    std::string storeUrl;
     std::string serviceStatus;
     bool librarySelected = false;
     bool inLibrary = false;

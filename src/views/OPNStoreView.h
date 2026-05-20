@@ -6,6 +6,7 @@
 @interface OPNStoreView : NSView
 
 @property (nonatomic, copy) void (^onSelectGame)(const OPN::GameInfo &game, int variantIndex);
+@property (nonatomic, copy) void (^onBuyGame)(const OPN::GameInfo &game, int variantIndex, NSString *purchaseURL);
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setLoading:(BOOL)loading;

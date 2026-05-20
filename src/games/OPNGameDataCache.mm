@@ -66,6 +66,7 @@ static NSDictionary *OPNVariantToDictionary(const GameVariant &variant) {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
     if (!variant.id.empty()) dict[@"i"] = OPNStringFromStd(variant.id);
     if (!variant.appStore.empty()) dict[@"s"] = OPNStringFromStd(variant.appStore);
+    if (!variant.storeUrl.empty()) dict[@"u"] = OPNStringFromStd(variant.storeUrl);
     if (!variant.serviceStatus.empty()) dict[@"t"] = OPNStringFromStd(variant.serviceStatus);
     if (variant.librarySelected) dict[@"l"] = @YES;
     if (variant.inLibrary) dict[@"b"] = @YES;
@@ -77,6 +78,7 @@ static GameVariant OPNVariantFromDictionary(id value) {
     GameVariant variant;
     variant.id = OPNStdFromString(dict[@"i"]);
     variant.appStore = OPNStdFromString(dict[@"s"]);
+    variant.storeUrl = OPNStdFromString(dict[@"u"]);
     variant.serviceStatus = OPNStdFromString(dict[@"t"]);
     variant.librarySelected = [dict[@"l"] boolValue];
     variant.inLibrary = [dict[@"b"] boolValue];
@@ -177,7 +179,7 @@ std::string GameDataCache::CatalogKey(const std::string &searchQuery,
         @"s": OPNStringFromStd(sortId),
         @"f": filters,
         @"c": @(fetchCount),
-        @"v": @1,
+        @"v": @2,
     };
     NSData *data = [NSJSONSerialization dataWithJSONObject:key options:0 error:nil];
     NSString *string = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
