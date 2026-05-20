@@ -1,6 +1,5 @@
 #import "OPNCoreAnimationCoordinator.h"
 
-#import <CoreImage/CoreImage.h>
 #import <MetalKit/MetalKit.h>
 
 static CASpringAnimation *OPNSpringAnimation(NSString *keyPath,
@@ -111,7 +110,6 @@ static NSValue *OPNCurrentTransformValue(CALayer *layer) {
 
     NSColor *resolvedAccent = accentColor ?: NSColor.whiteColor;
     CGFloat scale = expanded ? 1.18 : 1.0;
-    CGFloat blurRadius = expanded ? 22.0 : 0.0;
     CGFloat metadataOpacity = expanded ? 0.28 : 1.0;
 
     CATransform3D targetTransform = CATransform3DIdentity;
@@ -119,12 +117,6 @@ static NSValue *OPNCurrentTransformValue(CALayer *layer) {
     targetTransform = CATransform3DTranslate(targetTransform, 0.0, expanded ? -18.0 : 0.0, expanded ? 80.0 : 0.0);
     targetTransform = CATransform3DScale(targetTransform, scale, scale, 1.0);
     NSValue *currentTransform = OPNCurrentTransformValue(cardLayer);
-
-    CIFilter *blurFilter = [CIFilter filterWithName:@"CIGaussianBlur"];
-    if (!blurFilter) return;
-    blurFilter.name = @"opnMetadataBlur";
-    [blurFilter setDefaults];
-    [blurFilter setValue:@(blurRadius) forKey:kCIInputRadiusKey];
 
     [CATransaction begin];
     [CATransaction setAnimationDuration:0.42];
@@ -136,14 +128,7 @@ static NSValue *OPNCurrentTransformValue(CALayer *layer) {
     cardLayer.shadowRadius = expanded ? 64.0 : 22.0;
     cardLayer.shadowOffset = CGSizeMake(0.0, expanded ? 34.0 : 14.0);
     metadataContainer.layer.opacity = metadataOpacity;
-    backgroundLayer.filters = @[blurFilter];
-
-    CABasicAnimation *blurAnimation = [CABasicAnimation animationWithKeyPath:@"filters.opnMetadataBlur.inputRadius"];
-    blurAnimation.fromValue = @(!expanded ? 22.0 : 0.0);
-    blurAnimation.toValue = @(blurRadius);
-    blurAnimation.duration = 0.42;
-    blurAnimation.timingFunction = [OPNCoreAnimationCoordinator appleQuinticTimingFunction];
-    [backgroundLayer addAnimation:blurAnimation forKey:@"opn.metadata.blur"];
+    backgroundLayer.opacity = expanded ? 0.62 : 1.0;
 
     CASpringAnimation *transformSpring = OPNSpringAnimation(@"transform",
                                                             currentTransform,

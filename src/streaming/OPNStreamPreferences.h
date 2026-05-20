@@ -64,6 +64,16 @@ struct StreamNetworkPreflightResult {
     bool usedAutomaticRegion = false;
 };
 
+struct StreamDeviceCapabilities {
+    bool h264HardwareDecodeSupported = true;
+    bool h265HardwareDecodeSupported = false;
+    bool av1HardwareDecodeSupported = false;
+    bool hdrDisplaySupported = false;
+    int maxDisplayWidth = 0;
+    int maxDisplayHeight = 0;
+    int maxDisplayRefreshRate = 0;
+};
+
 struct StreamPreferenceProfile {
     int aspectIndex = 1;
     int resolutionIndex = 2;
@@ -101,6 +111,20 @@ const std::vector<StreamColorQualityOption> &StreamColorQualityOptions();
 const std::vector<StreamMicrophoneModeOption> &StreamMicrophoneModeOptions();
 std::vector<StreamMicrophoneDeviceOption> LoadMicrophoneDeviceOptions();
 std::vector<StreamResolutionOption> StreamResolutionOptionsForAspect(int aspectIndex);
+StreamDeviceCapabilities LoadStreamDeviceCapabilities();
+bool StreamCodecSupportedByCapabilities(const StreamCodecOption &codec,
+                                        const StreamDeviceCapabilities &capabilities);
+bool StreamFpsSupportedByCapabilities(int fps,
+                                      const StreamDeviceCapabilities &capabilities);
+bool StreamColorQualitySupportedByCapabilities(const StreamColorQualityOption &colorQuality,
+                                               const StreamCodecOption &codec,
+                                               const StreamDeviceCapabilities &capabilities);
+StreamPreferenceProfile EffectiveStreamPreferenceProfileForCapabilities(StreamPreferenceProfile profile,
+                                                                        const StreamDeviceCapabilities &capabilities);
+std::string ResolveStreamCodecForCapabilities(const StreamPreferenceProfile &profile,
+                                              const StreamResolutionOption &resolution,
+                                              const StreamDeviceCapabilities &capabilities,
+                                              bool libWebRTCAvailable);
 
 StreamPreferenceProfile LoadStreamPreferenceProfile();
 const char *DefaultStreamingBaseUrl();

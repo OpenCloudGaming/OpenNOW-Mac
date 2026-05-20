@@ -75,6 +75,7 @@
 - (void)activeSessionContinueClicked:(id)sender;
 - (void)activeSessionDeleteClicked:(id)sender;
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen;
+- (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex;
 - (void)startStreamWithTitle:(const std::string &)title
                        appId:(const std::string &)appId
                     apiToken:(const std::string &)apiToken
@@ -338,6 +339,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             std::string variantEntry;
             OPNAppendFingerprintField(variantEntry, variant.id);
             OPNAppendFingerprintField(variantEntry, variant.appStore);
+            OPNAppendFingerprintField(variantEntry, variant.storeUrl);
             OPNAppendFingerprintField(variantEntry, variant.serviceStatus);
             OPNAppendFingerprintField(variantEntry, variant.librarySelected ? "1" : "0");
             OPNAppendFingerprintField(variantEntry, variant.inLibrary ? "1" : "0");
@@ -498,10 +500,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
-    if (OpnControllerModeEnabled() && self.currentScreen == OPN::AuthScreen::Store) {
-        [self transitionToScreen:OPN::AuthScreen::Catalog];
-        return;
-    }
 }
 
 - (BOOL)hasVisibleStreamingController {
@@ -829,6 +827,28 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     });
 }
 
+- (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
+    NSString *trimmedURL = [purchaseURL ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedURL.length == 0) {
+        OPN::LogError(@"[AppDelegate] Missing purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+        NSBeep();
+        return;
+    }
+
+    NSURL *url = [NSURL URLWithString:trimmedURL];
+    if (!url || url.scheme.length == 0 || url.host.length == 0) {
+        OPN::LogError(@"[AppDelegate] Invalid purchase URL for title=%s, id=%s, variantIndex=%d, url=%@", game.title.c_str(), game.id.c_str(), variantIndex, trimmedURL);
+        NSBeep();
+        return;
+    }
+
+    OPN::LogInfo(@"[AppDelegate] Opening purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+    if (![[NSWorkspace sharedWorkspace] openURL:url]) {
+        OPN::LogError(@"[AppDelegate] Failed to open purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+        NSBeep();
+    }
+}
+
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen {
     using namespace OPN;
     if (screen != AuthScreen::Catalog && screen != AuthScreen::Store) return;
@@ -919,7 +939,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         __weak __typeof__(self) weakSelf = self;
         self.rootView.onStoreSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
-            if (OpnControllerModeEnabled()) return;
             if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Store) return;
             [strongSelf transitionToScreen:OPN::AuthScreen::Store];
         };
@@ -985,10 +1004,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
 - (void)transitionToScreen:(OPN::AuthScreen)screen {
     using namespace OPN;
-
-    if (OpnControllerModeEnabled() && screen == AuthScreen::Store) {
-        screen = AuthScreen::Catalog;
-    }
 
     [self installLibraryRootIfNeeded];
     [self configureContentContainerForScreen:screen];
@@ -1083,6 +1098,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf launchGame:game variantIndex:variantIndex returnScreen:AuthScreen::Store];
+            };
+            store.onBuyGame = ^(const GameInfo &game, int variantIndex, NSString *purchaseURL) {
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
             };
 
             [self.contentContainer addSubview:store];
