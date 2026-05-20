@@ -181,7 +181,11 @@ static std::string OPNAuthSessionIdentifier(const OPN::AuthSession &session) {
 
 static NSString *OPNAuthSessionDisplayName(const OPN::AuthSession &session) {
     if (!session.displayName.empty()) return [NSString stringWithUTF8String:session.displayName.c_str()];
-    if (!session.email.empty()) return [NSString stringWithUTF8String:session.email.c_str()];
+    if (!session.email.empty()) {
+        NSString *email = [NSString stringWithUTF8String:session.email.c_str()];
+        NSString *localPart = [email componentsSeparatedByString:@"@"].firstObject;
+        return localPart.length > 0 ? localPart : email;
+    }
     if (!session.userId.empty()) return [NSString stringWithUTF8String:session.userId.c_str()];
     return @"Account";
 }
@@ -1066,8 +1070,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             self.catalogView = nil;
             self.settingsView = nil;
 
-            NSString *displayName = [NSString stringWithUTF8String:self.currentSession.displayName.c_str()];
-            self.rootView.accountName = displayName.length > 0 ? displayName : @"User";
+            self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
             self.rootView.gameCountText = @"";
@@ -1136,8 +1139,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 [catalog setUserName:displayName];
                 self.rootView.accountName = displayName;
             } else {
-                [catalog setUserName:@"User"];
-                self.rootView.accountName = @"User";
+                NSString *fallbackName = OPNAuthSessionDisplayName(self.currentSession);
+                [catalog setUserName:fallbackName];
+                self.rootView.accountName = fallbackName;
             }
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
@@ -1230,8 +1234,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             OPNConfigureLibraryWindow(self.window);
             self.storeView = nil;
             self.catalogView = nil;
-            NSString *displayName = [NSString stringWithUTF8String:self.currentSession.displayName.c_str()];
-            self.rootView.accountName = displayName.length > 0 ? displayName : @"User";
+            self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
             self.rootView.gameCountText = @"";

@@ -10,6 +10,7 @@
 
 static const CGFloat kStoreTopInset = 82.0;
 static const CGFloat kStoreNavigationClearance = 64.0;
+static const CGFloat kControllerStoreNavigationClearance = 118.0;
 static const CGFloat kStoreHeroTopOffset = 120.0;
 static const CGFloat kStoreHeroHeight = 424.0;
 static const CGFloat kStoreRowHeight = 258.0;
@@ -1051,7 +1052,7 @@ using namespace OPN;
 
 - (void)layout {
     [super layout];
-    CGFloat navClearance = kStoreNavigationClearance;
+    CGFloat navClearance = OpnControllerModeEnabled() ? kControllerStoreNavigationClearance : kStoreNavigationClearance;
     self.scrollView.frame = NSMakeRect(0.0, navClearance, NSWidth(self.bounds), MAX(0.0, NSHeight(self.bounds) - navClearance));
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
