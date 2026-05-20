@@ -102,6 +102,7 @@
                        filterIds:(const std::vector<std::string> &)filterIds
                          canRetry:(BOOL)canRetry
                      retryAttempt:(NSInteger)retryAttempt;
+- (void)switchControllerPageBy:(NSInteger)delta;
 @end
 
 @implementation AppDelegate
@@ -364,6 +365,28 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         OPNAppendFingerprintField(fingerprint, entry);
     }
     return fingerprint;
+}
+
+- (void)switchControllerPageBy:(NSInteger)delta {
+    if (!OpnControllerModeEnabled() || delta == 0) return;
+    NSArray<NSNumber *> *pages = @[
+        @((NSInteger)OPN::AuthScreen::Catalog),
+        @((NSInteger)OPN::AuthScreen::Store),
+        @((NSInteger)OPN::AuthScreen::Settings),
+    ];
+    NSInteger currentIndex = 0;
+    for (NSUInteger index = 0; index < pages.count; index++) {
+        if ((OPN::AuthScreen)pages[index].integerValue == self.currentScreen) {
+            currentIndex = (NSInteger)index;
+            break;
+        }
+    }
+    NSInteger nextIndex = (currentIndex + delta) % (NSInteger)pages.count;
+    if (nextIndex < 0) nextIndex += (NSInteger)pages.count;
+    OPN::AuthScreen nextScreen = (OPN::AuthScreen)pages[(NSUInteger)nextIndex].integerValue;
+    if (nextScreen == self.currentScreen) return;
+    OpnPlayConsoleTone(OPNConsoleToneChange);
+    [self transitionToScreen:nextScreen];
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -1112,6 +1135,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 if (!strongSelf) return;
                 [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
             };
+            store.onPreviousPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:-1];
+            };
+            store.onNextPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:1];
+            };
 
             [self.contentContainer addSubview:store];
             OpnDisableFocusHighlights(store);
@@ -1174,6 +1207,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [NSApp terminate:strongSelf];
+            };
+            catalog.onPreviousPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:-1];
+            };
+            catalog.onNextPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:1];
             };
 
             catalog.onRestartRequested = ^{
@@ -1250,6 +1293,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf transitionToScreen:AuthScreen::Catalog];
+            };
+            settings.onPreviousPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:-1];
+            };
+            settings.onNextPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:1];
             };
             self.settingsView = settings;
             [self.contentContainer addSubview:settings];

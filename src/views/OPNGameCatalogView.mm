@@ -1718,6 +1718,20 @@ using namespace OPN;
 
 - (void)rebuildCategoryBar {
     NSMutableArray<NSDictionary<NSString *, NSString *> *> *items = [NSMutableArray array];
+    if (OpnControllerModeEnabled()) {
+        [items addObject:@{@"id": @"library", @"title": @"Library"}];
+        [items addObject:@{@"id": @"favorites", @"title": @"Favorites"}];
+        BOOL selectedStillExists = NO;
+        for (NSDictionary<NSString *, NSString *> *item in items) {
+            if ([item[@"id"] isEqualToString:self.selectedCategoryId]) selectedStillExists = YES;
+        }
+        if (!selectedStillExists) self.selectedCategoryId = @"library";
+        self.categoryItems = items;
+        for (NSView *view in self.categoryBarView.subviews) [view removeFromSuperview];
+        [self.categoryButtons removeAllObjects];
+        return;
+    }
+
     [items addObject:@{@"id": @"all", @"title": @"All"}];
     [items addObject:@{@"id": @"favorites", @"title": @"Favorites"}];
 
@@ -4004,8 +4018,16 @@ using namespace OPN;
             [self returnToControllerCategoryOverview];
         }
     }
-    if ((pressed & (1u << 3)) && !self.controllerCategoryOverviewVisible) [self cycleCategoryBy:-1];
-    if ((pressed & (1u << 4)) && !self.controllerCategoryOverviewVisible) [self cycleCategoryBy:1];
+    if (pressed & (1u << 3)) {
+        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
+    if (pressed & (1u << 4)) {
+        if (self.onNextPageRequested) self.onNextPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
     if (pressed & (1u << 5)) [self moveFocusByRows:-1 columns:0];
     if (pressed & (1u << 6)) [self cycleFocusedVariant];
     if (pressed & (1u << 7)) [self moveFocusByRows:0 columns:-1];

@@ -87,6 +87,8 @@ static uint16_t OPNSettingsGamepadButtons(void) {
     if (pad.dpad.down.value > 0.5 || pad.leftThumbstick.yAxis.value < -0.65) buttons |= 1u << 3;
     if (pad.dpad.left.value > 0.5 || pad.leftThumbstick.xAxis.value < -0.65) buttons |= 1u << 4;
     if (pad.dpad.right.value > 0.5 || pad.leftThumbstick.xAxis.value > 0.65) buttons |= 1u << 5;
+    if (pad.leftShoulder.value > 0.5) buttons |= 1u << 6;
+    if (pad.rightShoulder.value > 0.5) buttons |= 1u << 7;
     return buttons;
 }
 
@@ -1269,6 +1271,16 @@ using namespace OPN;
         self.lastGamepadMoveTime = now;
     }
     if (pressed & (1u << 0)) [self activateControllerFocusedControl];
+    if (pressed & (1u << 6)) {
+        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
+    if (pressed & (1u << 7)) {
+        if (self.onNextPageRequested) self.onNextPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
     if (pressed & (1u << 1)) {
         if (self.onBackRequested) {
             OpnPlayConsoleTone(OPNConsoleToneBack);

@@ -467,6 +467,8 @@ static uint16_t OPNStoreGamepadButtons(void) {
     if (pad.dpad.down.value > 0.5 || pad.leftThumbstick.yAxis.value < -0.65) buttons |= 1u << 3;
     if (pad.dpad.left.value > 0.5 || pad.leftThumbstick.xAxis.value < -0.65) buttons |= 1u << 4;
     if (pad.dpad.right.value > 0.5 || pad.leftThumbstick.xAxis.value > 0.65) buttons |= 1u << 5;
+    if (pad.leftShoulder.value > 0.5) buttons |= 1u << 6;
+    if (pad.rightShoulder.value > 0.5) buttons |= 1u << 7;
     return buttons;
 }
 
@@ -1864,6 +1866,16 @@ using namespace OPN;
         self.lastGamepadMoveTime = now;
     }
     if (pressed & (1u << 0)) [self launchFocusedGame];
+    if (pressed & (1u << 6)) {
+        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
+    if (pressed & (1u << 7)) {
+        if (self.onNextPageRequested) self.onNextPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
     if (pressed & (1u << 2)) [self moveFocusByRows:-1 columns:0];
     if (pressed & (1u << 3)) [self moveFocusByRows:1 columns:0];
     if (pressed & (1u << 4)) [self moveFocusByRows:0 columns:-1];

@@ -11,6 +11,8 @@
 @property (nonatomic, copy) void (^onInterfaceSettingsRequested)(void);
 @property (nonatomic, copy) void (^onRestartRequested)(void);
 @property (nonatomic, copy) void (^onExitRequested)(void);
+@property (nonatomic, copy) void (^onPreviousPageRequested)(void);
+@property (nonatomic, copy) void (^onNextPageRequested)(void);
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games;
