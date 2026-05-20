@@ -54,6 +54,7 @@
 @property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
+- (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
 - (void)refreshAccountAvatar;
 - (void)refreshStreamRegions;
 - (void)refreshAccountMenu;
@@ -213,6 +214,10 @@ static bool OPNIsTransientNetworkLostError(const std::string &error) {
     return lower.find("network connection was lost") != std::string::npos ||
            lower.find("nsurlerrornetworkconnectionlost") != std::string::npos ||
            lower.find("-1005") != std::string::npos;
+}
+
+static bool OPNIsUnauthorizedError(const std::string &error) {
+    return error.find("401") != std::string::npos;
 }
 
 static bool OPNIsOwnedLibraryStatus(const std::string &status) {
@@ -1260,6 +1265,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 }
 
 - (void)refreshAccountSummary {
+    [self refreshAccountSummaryWithRetry:YES];
+}
+
+- (void)refreshAccountSummaryWithRetry:(BOOL)canRetry {
     using namespace OPN;
     if (!self.rootView || self.currentSession.accessToken.empty()) {
         return;
@@ -1270,9 +1279,27 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         : self.currentSession.idToken);
     std::string userId = self.currentSession.userId;
     __weak __typeof__(self) weakSelf = self;
-    GameService::Shared().FetchSubscriptionInfo(userId, [weakSelf](bool success, const SubscriptionInfo &subscription, const std::string &error) {
+    GameService::Shared().FetchSubscriptionInfo(userId, [weakSelf, canRetry](bool success, const SubscriptionInfo &subscription, const std::string &error) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || !strongSelf.rootView) return;
+        if (!success && canRetry && OPNIsUnauthorizedError(error)) {
+            AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                if (refreshSuccess) {
+                    retrySelf.currentSession = fresh;
+                    if (retrySelf.pendingCredentials.stayLoggedIn) {
+                        AuthService::Shared().SaveSession(fresh);
+                    }
+                    [retrySelf refreshAccountMenu];
+                    [retrySelf refreshAccountSummaryWithRetry:NO];
+                    return;
+                }
+
+                OPN::LogError(@"[AppDelegate] Subscription token refresh failed after unauthorized response");
+            }, true);
+            return;
+        }
         if (!success) {
             OPN::LogError(@"[AppDelegate] Subscription fetch failed: %s", error.c_str());
             return;
