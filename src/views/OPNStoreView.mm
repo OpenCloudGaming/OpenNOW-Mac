@@ -524,8 +524,14 @@ static NSString *OPNStorePurchaseURLForGame(const OPN::GameInfo &game, int varia
     return @"";
 }
 
+static bool OPNStoreGameHasPurchaseURL(const OPN::GameInfo &game, int variantIndex) {
+    return OPNStorePurchaseURLForGame(game, variantIndex).length > 0;
+}
+
 static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int variantIndex, BOOL prominent) {
-    if (OPNStoreGameNeedsPurchase(game, variantIndex)) return @"Buy";
+    if (OPNStoreGameNeedsPurchase(game, variantIndex)) {
+        return OPNStoreGameHasPurchaseURL(game, variantIndex) ? @"Buy" : @"Unavailable";
+    }
     return prominent ? @"Play Now" : @"PLAY";
 }
 
@@ -576,7 +582,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.storeIconView.image = OPNStoreIconImage(storeName);
     NSInteger storeCount = MAX((NSInteger)_gameData.availableStores.size(), (NSInteger)_gameData.variants.size());
     BOOL needsPurchase = OPNStoreGameNeedsPurchase(_gameData, _selectedVariantIndex);
-    self.availabilityLabel.stringValue = needsPurchase ? @"Not owned" : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
+    self.availabilityLabel.stringValue = needsPurchase
+        ? (OPNStoreGameHasPurchaseURL(_gameData, _selectedVariantIndex) ? @"Not owned" : @"Purchase unavailable")
+        : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
     self.playButton.title = OPNStorePrimaryActionTitle(_gameData, _selectedVariantIndex, self.prominent);
 }
 
@@ -744,7 +752,12 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 
 - (void)selectPressed {
     if (OPNStoreGameNeedsPurchase(self.gameData, self.selectedVariantIndex)) {
-        if (self.onBuy) self.onBuy(OPNStorePurchaseURLForGame(self.gameData, self.selectedVariantIndex));
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(self.gameData, self.selectedVariantIndex);
+        if (purchaseURL.length == 0) {
+            NSBeep();
+            return;
+        }
+        if (self.onBuy) self.onBuy(purchaseURL);
         return;
     }
     if (self.onSelect) self.onSelect();
@@ -1258,7 +1271,10 @@ using namespace OPN;
     }
 
     NSButton *launchButton = [[NSButton alloc] initWithFrame:NSMakeRect(34.0, height - 82.0, 156.0, 46.0)];
-    launchButton.title = OPNStoreGameNeedsPurchase(game, [self selectedVariantIndexForStoreGame:game]) ? @"Buy" : @"Launch in Cloud";
+    int selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
+    launchButton.title = OPNStoreGameNeedsPurchase(game, selectedVariantIndex)
+        ? (OPNStoreGameHasPurchaseURL(game, selectedVariantIndex) ? @"Buy" : @"Unavailable")
+        : @"Launch in Cloud";
     launchButton.bordered = NO;
     launchButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
     launchButton.contentTintColor = OpnColor(kAccentOn);
@@ -1427,7 +1443,9 @@ using namespace OPN;
     meta.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.documentView addSubview:meta];
 
-    NSString *primaryTitle = OPNStoreGameNeedsPurchase(game, self.controllerFeaturedHeroVariantIndex) ? @"Buy" : @"▶  Play Now";
+    NSString *primaryTitle = OPNStoreGameNeedsPurchase(game, self.controllerFeaturedHeroVariantIndex)
+        ? (OPNStoreGameHasPurchaseURL(game, self.controllerFeaturedHeroVariantIndex) ? @"Buy" : @"Unavailable")
+        : @"▶  Play Now";
     NSButton *primary = OpnButton(primaryTitle, NSMakeRect(NSMinX(frame) + leftInset, buttonY, buttonWidth, buttonHeight), OpnColor(0x45F27C, 0.98), OpnColor(0x051008));
     primary.font = [NSFont systemFontOfSize:14.5 * heroScale * 0.68 weight:NSFontWeightBold];
     primary.layer.cornerRadius = buttonHeight * 0.24;
@@ -1519,7 +1537,12 @@ using namespace OPN;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
     int variantIndex = self.controllerFeaturedHeroVariantIndex >= 0 ? self.controllerFeaturedHeroVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(self.controllerFeaturedHeroGame, variantIndex)) {
-        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, OPNStorePurchaseURLForGame(self.controllerFeaturedHeroGame, variantIndex));
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(self.controllerFeaturedHeroGame, variantIndex);
+        if (purchaseURL.length == 0) {
+            NSBeep();
+            return;
+        }
+        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, purchaseURL);
         return;
     }
     if (!self.onSelectGame) return;
@@ -1731,7 +1754,12 @@ using namespace OPN;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
     int variantIndex = tile.selectedVariantIndex >= 0 ? tile.selectedVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(tile.game, variantIndex)) {
-        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, OPNStorePurchaseURLForGame(tile.game, variantIndex));
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(tile.game, variantIndex);
+        if (purchaseURL.length == 0) {
+            NSBeep();
+            return;
+        }
+        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, purchaseURL);
         return;
     }
     if (self.onSelectGame) self.onSelectGame(tile.game, variantIndex);
