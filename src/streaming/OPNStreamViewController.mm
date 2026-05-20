@@ -304,33 +304,12 @@ static int OPNEffectiveMaxBitrateMbps(const OPN::StreamPreferenceProfile &profil
     return profile.maxBitrateMbps;
 }
 
-static bool OPNHardwareDecodeSupported(CMVideoCodecType codecType) {
-    if (@available(macOS 10.13, *)) {
-        return VTIsHardwareDecodeSupported(codecType);
-    }
-    return codecType == kCMVideoCodecType_H264;
-}
-
 static std::string OPNEffectiveStreamCodec(const OPN::StreamPreferenceProfile &profile,
-                                           const OPN::StreamResolutionOption &resolution,
-                                           OPN::StreamWebRTCBackend backend) {
-    std::string requested = profile.codec.value.empty() ? "H264" : profile.codec.value;
-    std::transform(requested.begin(), requested.end(), requested.begin(), [](unsigned char c) { return (char)std::toupper(c); });
-    if (requested != "AUTO") return requested;
-    if (backend != OPN::StreamWebRTCBackend::LibWebRTC) return "H264";
-
-    const int64_t pixels = (int64_t)std::max(1, resolution.width) * (int64_t)std::max(1, resolution.height);
-    const bool prefersTenBit = profile.colorQuality.value.rfind("10bit", 0) == 0;
-    const bool prefersHighResolution = pixels >= (int64_t)2560 * 1440;
-    const bool prefersVeryHighResolution = pixels >= (int64_t)3840 * 2160;
-    const bool highFps = profile.fps >= 144;
-    if (!highFps && prefersVeryHighResolution && OPNHardwareDecodeSupported(kCMVideoCodecType_AV1)) {
-        return "AV1";
-    }
-    if (!highFps && (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75) && OPNHardwareDecodeSupported(kCMVideoCodecType_HEVC)) {
-        return "H265";
-    }
-    return "H264";
+                                            const OPN::StreamResolutionOption &resolution,
+                                            OPN::StreamWebRTCBackend backend,
+                                            const OPN::StreamDeviceCapabilities &capabilities) {
+    bool libWebRTCAvailable = backend == OPN::StreamWebRTCBackend::LibWebRTC;
+    return OPN::ResolveStreamCodecForCapabilities(profile, resolution, capabilities, libWebRTCAvailable);
 }
 
 static uint32_t OPNConnectedControllerBitmap() {
@@ -722,38 +701,12 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
     style.lineBreakMode = NSLineBreakByTruncatingTail;
     return [[NSAttributedString alloc] initWithString:text ?: @""
                                             attributes:@{
-        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:12.0 weight:NSFontWeightSemibold],
+        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:10.0 weight:NSFontWeightMedium],
         NSForegroundColorAttributeName: OPNQuitColor(1.0, 0.86, 0.18, 1.0),
         NSStrokeColorAttributeName: OPNQuitColor(0.0, 0.0, 0.0, 1.0),
-        NSStrokeWidthAttributeName: @-3.6,
+        NSStrokeWidthAttributeName: @-2.8,
         NSParagraphStyleAttributeName: style,
     }];
-}
-
-static NSString *OPNStatsZoneName(NSString *zone) {
-    NSString *trimmed = [zone stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (trimmed.length == 0) return @"pending";
-
-    NSString *host = [NSURLComponents componentsWithString:trimmed].host;
-    if (host.length == 0) {
-        host = trimmed;
-        NSRange schemeRange = [host rangeOfString:@"://"];
-        if (schemeRange.location != NSNotFound) {
-            host = [host substringFromIndex:NSMaxRange(schemeRange)];
-        }
-        NSRange pathRange = [host rangeOfString:@"/"];
-        if (pathRange.location != NSNotFound) {
-            host = [host substringToIndex:pathRange.location];
-        }
-    }
-
-    NSRange portRange = [host rangeOfString:@":"];
-    if (portRange.location != NSNotFound) {
-        host = [host substringToIndex:portRange.location];
-    }
-    NSArray<NSString *> *labels = [host componentsSeparatedByString:@"."];
-    NSString *zoneName = labels.count > 0 ? labels.firstObject : host;
-    return zoneName.length > 0 ? zoneName : @"pending";
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -762,9 +715,9 @@ static NSString *OPNStatsZoneName(NSString *zone) {
         self.wantsLayer = YES;
         self.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
 
-        _statsLineLabel = OPNStatsText(@"", 12.0, NSFontWeightSemibold, NSColor.clearColor, NSTextAlignmentRight);
+        _statsLineLabel = OPNStatsText(@"", 10.0, NSFontWeightMedium, NSColor.clearColor, NSTextAlignmentRight);
         _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        _statsLineLabel.maximumNumberOfLines = 4;
+        _statsLineLabel.maximumNumberOfLines = 1;
         _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
         [self addSubview:_statsLineLabel];
     }
@@ -780,7 +733,7 @@ static NSString *OPNStatsZoneName(NSString *zone) {
 
 - (void)layout {
     [super layout];
-    _statsLineLabel.frame = NSInsetRect(self.bounds, 10.0, 2.0);
+    _statsLineLabel.frame = NSInsetRect(self.bounds, 8.0, 1.0);
 }
 
 - (void)updateLatencyMs:(NSInteger)latencyMs
@@ -808,15 +761,10 @@ static NSString *OPNStatsZoneName(NSString *zone) {
              framesDecoded:(uint64_t)framesDecoded
              framesDropped:(uint64_t)framesDropped {
     NSString *latencyText = latencyMs >= 0 ? [NSString stringWithFormat:@"%ld ms", (long)latencyMs] : @"measuring";
-    NSString *jitterText = jitterMs >= 0 ? [NSString stringWithFormat:@"%ld ms", (long)jitterMs] : @"--";
     NSString *bitrateText = bitrateMbps >= 0.0 ? [NSString stringWithFormat:@"%.1f Mbps", bitrateMbps] : @"--";
-    NSString *lossText = @"--";
-    if (packetLossPercent >= 0.0 && packetsLost >= 0) {
-        lossText = [NSString stringWithFormat:@"%.2f%%/%lld", packetLossPercent, (long long)packetsLost];
-    } else if (packetsLost >= 0) {
-        lossText = [NSString stringWithFormat:@"%lld", (long long)packetsLost];
-    }
     (void)gpu;
+    (void)jitterMs;
+    (void)packetLossPercent;
 
     NSString *streamText = @"--";
     if (resolution.length > 0 && fps > 0) {
@@ -827,43 +775,29 @@ static NSString *OPNStatsZoneName(NSString *zone) {
     if (codec.length > 0) {
         streamText = [NSString stringWithFormat:@"%@/%@", streamText, codec];
     }
-    NSString *serverText = OPNStatsZoneName(zone);
-    NSString *decodeText = @"pending";
-    if (decoder.length > 0 && decodeTimeMs >= 0.0) {
-        decodeText = [NSString stringWithFormat:@"%@ %.1f ms", decoder, decodeTimeMs];
-    } else if (decoder.length > 0) {
-        decodeText = decoder;
-    }
-    NSString *renderText = @"pending";
-    if (framesReceived > 0 || framesDecoded > 0 || framesDropped > 0) {
-        NSString *fpsText = renderFps >= 0.0 ? [NSString stringWithFormat:@"%.0f fps ", renderFps] : @"";
-        NSString *modeText = renderMode.length > 0 ? renderMode : @"pending";
-        renderText = [NSString stringWithFormat:@"%@%@ drop %llu",
-                      fpsText,
-                      modeText,
-                      (unsigned long long)framesDropped];
-    } else if (sink.length > 0 && pipelineMode.length > 0) {
-        renderText = [NSString stringWithFormat:@"%@/%@", sink, pipelineMode];
-    }
-    NSString *sourceText = frameSource.length > 0 ? frameSource : @"pending";
-    NSString *pixelText = pixelFormat.length > 0 ? pixelFormat : @"pending";
-    NSString *pathText = renderPath.length > 0 ? renderPath : @"pending";
-    NSString *backendText = webrtcBackend.length > 0 ? webrtcBackend : @"pending";
-    NSString *fallbackText = rendererFallback.length > 0 ? rendererFallback : @"none";
-    NSArray<NSString *> *lines = @[
-        [NSString stringWithFormat:@"Latency %@", latencyText],
-        [NSString stringWithFormat:@"Jitter %@", jitterText],
-        [NSString stringWithFormat:@"Bitrate %@", bitrateText],
-        [NSString stringWithFormat:@"Loss %@", lossText],
-    ];
-    NSArray<NSString *> *detailLines = @[
-        [NSString stringWithFormat:@"Stream %@ | Decode %@ | Server %@", streamText, decodeText, serverText],
-        [NSString stringWithFormat:@"Render %@ via %@ | Pixel %@/%@", renderText, sink.length > 0 ? sink : @"pending", pixelText, sourceText],
-        [NSString stringWithFormat:@"Path %@ | Fallback %@ | Backend %@", pathText, fallbackText, backendText],
-    ];
-    NSString *networkLine = [lines componentsJoinedByString:@" | "];
-    NSArray<NSString *> *allLines = [@[networkLine] arrayByAddingObjectsFromArray:detailLines];
-    NSString *statsText = [allLines componentsJoinedByString:@"\n"];
+    NSString *renderText = renderFps >= 0.0 ? [NSString stringWithFormat:@"%.0f fps", renderFps] : @"-- fps";
+    NSString *dropText = framesDropped > 0 ? [NSString stringWithFormat:@"drop %llu", (unsigned long long)framesDropped] : @"drop 0";
+    NSString *lossText = packetsLost > 0 ? [NSString stringWithFormat:@"loss %lld", (long long)packetsLost] : @"loss 0";
+    NSString *statsText = [NSString stringWithFormat:@"%@ | %@ | %@ | %@ | %@ | %@",
+                           latencyText,
+                           bitrateText,
+                           streamText,
+                           renderText,
+                           dropText,
+                           lossText];
+    (void)zone;
+    (void)decoder;
+    (void)decodeTimeMs;
+    (void)sink;
+    (void)pipelineMode;
+    (void)pixelFormat;
+    (void)renderMode;
+    (void)frameSource;
+    (void)renderPath;
+    (void)rendererFallback;
+    (void)webrtcBackend;
+    (void)framesReceived;
+    (void)framesDecoded;
     _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(statsText);
 }
 
@@ -1207,10 +1141,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (NSRect)statsOverlayFrame {
-    CGFloat width = MIN(760.0, MAX(420.0, NSWidth(self.view.bounds) - 32.0));
-    CGFloat height = 78.0;
+    CGFloat width = MIN(620.0, MAX(320.0, NSWidth(self.view.bounds) - 32.0));
+    CGFloat height = 22.0;
     return NSMakeRect(MAX(16.0, NSWidth(self.view.bounds) - width - 16.0),
-                      floor(NSHeight(self.view.bounds) - height - 10.0),
+                      floor(NSHeight(self.view.bounds) - height - 8.0),
                       width,
                       height);
 }
@@ -2207,12 +2141,31 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }
 
     OPNDisplayStreamProfile displayProfile = ResolveDisplayStreamProfile(self.view.window);
-    OPN::StreamPreferenceProfile streamProfile = OPN::LoadStreamPreferenceProfile();
+    OPN::StreamPreferenceProfile requestedStreamProfile = OPN::LoadStreamPreferenceProfile();
+    OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
+    OPN::StreamPreferenceProfile streamProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(requestedStreamProfile, capabilities);
+    if (requestedStreamProfile.codec.value != streamProfile.codec.value ||
+        requestedStreamProfile.fps != streamProfile.fps ||
+        requestedStreamProfile.colorQuality.value != streamProfile.colorQuality.value) {
+        OPN::LogInfo(@"[StreamVC] Capability-gated stream profile requested codec=%s fps=%d color=%s; effective codec=%s fps=%d color=%s hardware(h264=%d h265=%d av1=%d) display=%dx%d@%d",
+              requestedStreamProfile.codec.value.c_str(),
+              requestedStreamProfile.fps,
+              requestedStreamProfile.colorQuality.value.c_str(),
+              streamProfile.codec.value.c_str(),
+              streamProfile.fps,
+              streamProfile.colorQuality.value.c_str(),
+              capabilities.h264HardwareDecodeSupported,
+              capabilities.h265HardwareDecodeSupported,
+              capabilities.av1HardwareDecodeSupported,
+              capabilities.maxDisplayWidth,
+              capabilities.maxDisplayHeight,
+              capabilities.maxDisplayRefreshRate);
+    }
     OPN::StreamResolutionOption effectiveResolution = OPNEffectiveStreamResolution(streamProfile, displayProfile);
     OPN::StreamSettings settings;
     settings.resolution = effectiveResolution.Value();
     settings.fps = streamProfile.enablePowerSaver ? std::min(streamProfile.fps, 30) : streamProfile.fps;
-    settings.codec = OPNEffectiveStreamCodec(streamProfile, effectiveResolution, OPN::ResolveStreamWebRTCBackend());
+    settings.codec = OPNEffectiveStreamCodec(streamProfile, effectiveResolution, OPN::ResolveStreamWebRTCBackend(), capabilities);
     settings.colorQuality = streamProfile.colorQuality.value.empty() ? "8bit_420" : streamProfile.colorQuality.value;
     settings.maxBitrateMbps = OPNEffectiveMaxBitrateMbps(streamProfile);
     settings.enableL4S = streamProfile.enableL4S;

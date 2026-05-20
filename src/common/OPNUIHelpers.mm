@@ -1,6 +1,8 @@
 #import "OPNUIHelpers.h"
 #import "OPNColorTokens.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CommonCrypto/CommonCrypto.h>
+#import <ImageIO/ImageIO.h>
 #include <cmath>
 
 NSString *const OPNInterfacePreferencesDidChangeNotification = @"OpenNOW.InterfacePreferencesDidChange";
@@ -8,6 +10,134 @@ NSString *const OPNInterfacePreferencesDidChangeNotification = @"OpenNOW.Interfa
 static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFullScreen";
 static NSString *const OPNControllerModeDefaultsKey = @"OpenNOW.Interface.ControllerMode";
 static const CGFloat OPNBackgroundTintStrength = 0.85;
+
+static dispatch_queue_t OpnImageLoaderQueue(void) {
+    static dispatch_queue_t queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = dispatch_queue_create("com.opennow.image-loader", DISPATCH_QUEUE_CONCURRENT);
+    });
+    return queue;
+}
+
+static NSURLSession *OpnImageLoaderSession(void) {
+    static NSURLSession *session;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
+        configuration.HTTPMaximumConnectionsPerHost = 6;
+        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
+        configuration.timeoutIntervalForRequest = 15.0;
+        configuration.URLCache = [NSURLCache sharedURLCache];
+        session = [NSURLSession sessionWithConfiguration:configuration];
+    });
+    return session;
+}
+
+static NSCache<NSString *, NSImage *> *OpnDecodedImageCache(void) {
+    static NSCache<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 260;
+        cache.totalCostLimit = 128 * 1024 * 1024;
+    });
+    return cache;
+}
+
+static NSCache<NSString *, NSData *> *OpnImageDataMemoryCache(void) {
+    static NSCache<NSString *, NSData *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 260;
+        cache.totalCostLimit = 96 * 1024 * 1024;
+    });
+    return cache;
+}
+
+static NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *OpnPendingImageCompletions(void) {
+    static NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *pendingCompletions;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pendingCompletions = [NSMutableDictionary dictionary];
+    });
+    return pendingCompletions;
+}
+
+static NSString *OpnSHA256String(NSString *value) {
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    NSMutableString *hash = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) [hash appendFormat:@"%02x", digest[i]];
+    return hash;
+}
+
+static NSString *OpnImageLoaderDirectory(void) {
+    static NSString *directory;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSArray<NSURL *> *urls = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask];
+        NSURL *baseURL = urls.firstObject ?: [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
+        directory = [[baseURL URLByAppendingPathComponent:@"OpenNOW/ImageLoader" isDirectory:YES].path copy];
+        [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
+    });
+    return directory;
+}
+
+static NSString *OpnImageDataPath(NSString *urlString) {
+    return [OpnImageLoaderDirectory() stringByAppendingPathComponent:[OpnSHA256String(urlString) stringByAppendingPathExtension:@"img"]];
+}
+
+static NSInteger OpnImageCachePixelBucket(CGFloat maxPixelDimension) {
+    CGFloat clamped = MAX(64.0, MIN(maxPixelDimension > 0.0 ? maxPixelDimension : 1024.0, 4096.0));
+    return (NSInteger)(ceil(clamped / 128.0) * 128.0);
+}
+
+static NSString *OpnImageCacheKey(NSString *urlString, CGFloat maxPixelDimension) {
+    return [NSString stringWithFormat:@"%@|%ld", urlString ?: @"", (long)OpnImageCachePixelBucket(maxPixelDimension)];
+}
+
+static NSImage *OpnDecodedImageFromData(NSData *data, CGFloat maxPixelDimension) {
+    if (data.length == 0) return nil;
+    NSInteger pixelLimit = OpnImageCachePixelBucket(maxPixelDimension);
+    NSDictionary *sourceOptions = @{(__bridge NSString *)kCGImageSourceShouldCache: @NO};
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, (__bridge CFDictionaryRef)sourceOptions);
+    if (!source) return nil;
+
+    NSDictionary *thumbnailOptions = @{
+        (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+        (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
+        (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES,
+        (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @(pixelLimit),
+    };
+    CGImageRef thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)thumbnailOptions);
+    CFRelease(source);
+    if (!thumbnail) return [[NSImage alloc] initWithData:data];
+
+    NSSize size = NSMakeSize((CGFloat)CGImageGetWidth(thumbnail), (CGFloat)CGImageGetHeight(thumbnail));
+    NSImage *image = [[NSImage alloc] initWithCGImage:thumbnail size:size];
+    CGImageRelease(thumbnail);
+    return image;
+}
+
+static void OpnCompleteImageRequest(NSString *cacheKey, NSString *urlString, NSImage *image, NSData *data) {
+    NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *pendingCompletions = OpnPendingImageCompletions();
+    NSArray<OpnImageLoadCompletion> *completions = nil;
+    @synchronized (pendingCompletions) {
+        if (image) {
+            NSUInteger cost = MAX((NSUInteger)1, (NSUInteger)(image.size.width * image.size.height * 4.0));
+            [OpnDecodedImageCache() setObject:image forKey:cacheKey cost:cost];
+        }
+        if (data.length > 0) [OpnImageDataMemoryCache() setObject:data forKey:cacheKey cost:data.length];
+        completions = [pendingCompletions[cacheKey] copy];
+        [pendingCompletions removeObjectForKey:cacheKey];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (OpnImageLoadCompletion completion in completions) completion(image, urlString, data);
+    });
+}
 
 static int OPNClampedColorByte(NSInteger value) {
     return (int)MAX(0, MIN(value, 255));
@@ -255,4 +385,86 @@ CGPathRef OpnCreateRoundedRectPath(NSRect rect, CGFloat xRadius, CGFloat yRadius
 
 CGPathRef OpnCreateEllipsePath(NSRect rect) {
     return CGPathCreateWithEllipseInRect(NSRectToCGRect(rect), nullptr);
+}
+
+void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion) {
+    if (!completion) return;
+    NSString *normalizedURL = [[urlString ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
+    if (normalizedURL.length == 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, nil); });
+        return;
+    }
+
+    NSString *cacheKey = OpnImageCacheKey(normalizedURL, maxPixelDimension);
+    NSImage *cachedImage = [OpnDecodedImageCache() objectForKey:cacheKey];
+    if (cachedImage) {
+        NSData *cachedData = [OpnImageDataMemoryCache() objectForKey:cacheKey];
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage, normalizedURL, cachedData); });
+        return;
+    }
+
+    NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *pendingCompletions = OpnPendingImageCompletions();
+    @synchronized (pendingCompletions) {
+        NSMutableArray<OpnImageLoadCompletion> *existing = pendingCompletions[cacheKey];
+        if (existing) {
+            [existing addObject:[completion copy]];
+            return;
+        }
+        pendingCompletions[cacheKey] = [NSMutableArray arrayWithObject:[completion copy]];
+    }
+
+    dispatch_async(OpnImageLoaderQueue(), ^{
+        NSData *cachedData = [NSData dataWithContentsOfFile:OpnImageDataPath(normalizedURL)];
+        if (cachedData.length > 0) {
+            NSImage *image = OpnDecodedImageFromData(cachedData, maxPixelDimension);
+            if (image) {
+                OpnCompleteImageRequest(cacheKey, normalizedURL, image, cachedData);
+                return;
+            }
+        }
+
+        NSURL *url = [NSURL URLWithString:normalizedURL];
+        if (!url) {
+            OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil);
+            return;
+        }
+
+        [[OpnImageLoaderSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
+                OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil);
+                return;
+            }
+            dispatch_async(OpnImageLoaderQueue(), ^{
+                NSImage *image = OpnDecodedImageFromData(data, maxPixelDimension);
+                if (image) [data writeToFile:OpnImageDataPath(normalizedURL) options:NSDataWritingAtomic error:nil];
+                OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? data : nil);
+            });
+        }] resume];
+    });
+}
+
+static void OpnLoadImageCandidateAtIndex(NSArray<NSString *> *candidates,
+                                         NSUInteger index,
+                                         CGFloat maxPixelDimension,
+                                         OpnImageLoadCompletion completion) {
+    if (!completion) return;
+    if (index >= candidates.count) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, nil); });
+        return;
+    }
+    NSString *candidate = candidates[index];
+    OpnLoadImageForURL(candidate, maxPixelDimension, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+        if (image) {
+            completion(image, resolvedURL, data);
+            return;
+        }
+        OpnLoadImageCandidateAtIndex(candidates, index + 1, maxPixelDimension, completion);
+    });
+}
+
+void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
+                                CGFloat maxPixelDimension,
+                                OpnImageLoadCompletion completion) {
+    OpnLoadImageCandidateAtIndex(candidates, 0, maxPixelDimension, completion);
 }

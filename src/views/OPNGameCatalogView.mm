@@ -4,9 +4,7 @@
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNCoreAnimationCoordinator.h"
 #import "../common/OPNUIHelpers.h"
-#include "../games/OPNGameDataCache.h"
 #import "../streaming/OPNStreamPreferences.h"
-#import <CoreImage/CoreImage.h>
 #import <GameController/GameController.h>
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
@@ -23,6 +21,7 @@ static const CGFloat kControllerRailSelectorOverlap = 22.0;
 static const CGFloat kControllerRailDetailOverlap = 22.0;
 static const CGFloat kControllerGameHubVerticalReserve = 96.0;
 static const CGFloat kControllerGameHubPreferredHeight = 430.0;
+static const CGFloat kControllerHeroMarqueeRatio = 0.3229;
 static const NSInteger kDesktopGridRenderBufferRows = 3;
 static NSString *const OPNFavoriteGameIdsDefaultsKey = @"OpenNOW.Library.FavoriteGameIds";
 
@@ -34,119 +33,8 @@ typedef NS_ENUM(NSInteger, OPNControllerHeroPrimaryAction) {
     OPNControllerHeroPrimaryActionBuy = 2,
 };
 
-static NSCache<NSString *, NSImage *> *OPNCatalogDecodedImageCache(void) {
-    static NSCache<NSString *, NSImage *> *decodedImageCache;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        decodedImageCache = [[NSCache alloc] init];
-        decodedImageCache.countLimit = 160;
-    });
-    return decodedImageCache;
-}
-
-static NSCache<NSString *, NSData *> *OPNCatalogImageDataCache(void) {
-    static NSCache<NSString *, NSData *> *imageDataCache;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        imageDataCache = [[NSCache alloc] init];
-        imageDataCache.countLimit = 160;
-        imageDataCache.totalCostLimit = 96 * 1024 * 1024;
-    });
-    return imageDataCache;
-}
-
-static NSURLSession *OPNCatalogImageSession(void) {
-    static NSURLSession *session;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
-        configuration.HTTPMaximumConnectionsPerHost = 6;
-        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
-        configuration.timeoutIntervalForRequest = 15.0;
-        configuration.URLCache = [NSURLCache sharedURLCache];
-        session = [NSURLSession sessionWithConfiguration:configuration];
-    });
-    return session;
-}
-
-static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *OPNCatalogPendingImageCompletions(void) {
-    static NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        pendingCompletions = [NSMutableDictionary dictionary];
-    });
-    return pendingCompletions;
-}
-
-static void OPNCatalogCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
-    NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
-    NSCache<NSString *, NSData *> *imageDataCache = OPNCatalogImageDataCache();
-    NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
-
-    NSArray<OPNCatalogImageCompletion> *completions = nil;
-    @synchronized (pendingCompletions) {
-        if (image) [decodedImageCache setObject:image forKey:urlString];
-        if (data.length > 0) [imageDataCache setObject:data forKey:urlString cost:data.length];
-        completions = [pendingCompletions[urlString] copy];
-        [pendingCompletions removeObjectForKey:urlString];
-    }
-    if (image && data.length > 0) OPN::GameDataCache::Shared().SaveImage(urlString, data);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        for (OPNCatalogImageCompletion completion in completions) completion(image, urlString, data);
-    });
-}
-
 static void OPNCatalogLoadImageForURL(NSString *urlString, OPNCatalogImageCompletion completion) {
-    if (urlString.length == 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, nil); });
-        return;
-    }
-
-    NSCache<NSString *, NSImage *> *decodedImageCache = OPNCatalogDecodedImageCache();
-    NSMutableDictionary<NSString *, NSMutableArray<OPNCatalogImageCompletion> *> *pendingCompletions = OPNCatalogPendingImageCompletions();
-
-    NSImage *cachedImage = [decodedImageCache objectForKey:urlString];
-    if (cachedImage) {
-        NSData *cachedData = [OPNCatalogImageDataCache() objectForKey:urlString];
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage, urlString, cachedData); });
-        return;
-    }
-
-    @synchronized (pendingCompletions) {
-        NSMutableArray<OPNCatalogImageCompletion> *existing = pendingCompletions[urlString];
-        if (existing) {
-            [existing addObject:[completion copy]];
-            return;
-        }
-        pendingCompletions[urlString] = [NSMutableArray arrayWithObject:[completion copy]];
-    }
-
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
-        if (cachedData.length > 0) {
-            NSImage *image = [[NSImage alloc] initWithData:cachedData];
-            if (image) {
-                OPNCatalogCompleteImageRequest(urlString, image, cachedData);
-                return;
-            }
-        }
-
-        NSURL *url = [NSURL URLWithString:urlString];
-        if (!url) {
-            OPNCatalogCompleteImageRequest(urlString, nil, nil);
-            return;
-        }
-
-        [[OPNCatalogImageSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
-                OPNCatalogCompleteImageRequest(urlString, nil, nil);
-                return;
-            }
-            NSImage *image = [[NSImage alloc] initWithData:data];
-            OPNCatalogCompleteImageRequest(urlString, image, image ? data : nil);
-        }] resume];
-    });
+    OpnLoadImageForURL(urlString, 1600.0, completion);
 }
 
 static void OPNCatalogLoadImageFromCandidates(NSArray<NSString *> *candidates, NSUInteger index, OPNCatalogImageCompletion completion) {
@@ -267,8 +155,9 @@ static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat wi
     CGFloat topInset = safeHeight * (120.0 / 720.0);
     CGFloat bottomInset = safeHeight * (72.0 / 720.0);
     CGFloat contentInset = safeWidth * (52.0 / 1280.0);
+    CGFloat availableHeroWidth = MAX(1.0, safeWidth - contentInset * 2.0);
     CGFloat heroY = safeHeight * (2.0 / 720.0);
-    CGFloat heroHeight = safeHeight * (280.0 / 720.0);
+    CGFloat heroHeight = MIN(availableHeroWidth * kControllerHeroMarqueeRatio, safeHeight * (330.0 / 720.0));
     CGFloat rowGap = safeHeight * (18.0 / 720.0);
     CGFloat rowTitleHeight = safeHeight * (34.0 / 720.0);
     CGFloat rowTitleY = heroY + heroHeight + rowGap;
@@ -475,6 +364,9 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
         }
     }
 
+    NSGradient *leftScrim = [[NSGradient alloc] initWithColors:@[OpnColor(0x000000, 0.58), OpnColor(0x000000, 0.28), OpnColor(0x000000, 0.0)]];
+    [leftScrim drawInRect:bounds angle:0.0];
+
 }
 
 @end
@@ -651,7 +543,6 @@ typedef struct {
 - (void)renderControllerLibraryRail;
 - (void)scrollControllerLibraryRailToCardAtIndex:(NSInteger)index animated:(BOOL)animated;
 - (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
-- (void)animateControllerHeroIncomingViews:(NSArray<NSView *> *)incomingViews outgoingViews:(NSArray<NSView *> *)outgoingViews frame:(NSRect)frame;
 - (void)loadControllerHeroImageForView:(OPNControllerPreviewBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (std::vector<OPN::GameInfo>)controllerFeaturedGamesFromDisplayGames:(const std::vector<OPN::GameInfo> &)displayGames;
 - (const OPN::GameInfo *)currentControllerHeroGame;
@@ -702,6 +593,7 @@ typedef struct {
 - (void)controllerDetailBackgroundTimerFired:(NSTimer *)timer;
 - (void)loadControllerDetailBackgroundFromCandidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index expectedURL:(NSString *)expectedURL;
 - (void)setLastPlayedFocused:(BOOL)focused;
+- (void)installGamepadValueHandlers;
 - (void)startGamepadNavigationIfNeeded;
 - (void)controllerDidConnect:(NSNotification *)notification;
 - (void)controllerDidDisconnect:(NSNotification *)notification;
@@ -1401,9 +1293,6 @@ using namespace OPN;
         _controllerDetailBackgroundView.hidden = YES;
         _controllerDetailBackgroundView.wantsLayer = YES;
         _controllerDetailBackgroundView.layer.masksToBounds = YES;
-        CIFilter *detailBackgroundBlur = [CIFilter filterWithName:@"CIGaussianBlur"];
-        [detailBackgroundBlur setValue:@8.4 forKey:kCIInputRadiusKey];
-        _controllerDetailBackgroundView.layer.filters = @[detailBackgroundBlur];
         [self addSubview:_controllerDetailBackgroundView];
 
         _libraryIconLabel = OpnLabel(@"", NSMakeRect(30, kNavHeight + 36, 0, 0),
@@ -2244,17 +2133,26 @@ using namespace OPN;
 
 - (void)renderGrid {
     OPN::LogInfo(@"[CatalogView] renderGrid begin controller=%d overview=%d category=%@ allGames=%lu renderedLimit=%ld focused=%ld", OpnControllerModeEnabled(), self.controllerCategoryOverviewVisible, self.selectedCategoryId, (unsigned long)self.allGames.size(), (long)self.controllerRenderedGameCount, (long)self.focusedCardIndex);
-    NSArray<OPNGameCardView *> *reusableCards = [self.cardViews copy];
-    NSUInteger reusableCardIndex = 0;
-    for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
-    [_cardViews removeAllObjects];
-    [self.categoryCardViews removeAllObjects];
-
     BOOL controllerMode = OpnControllerModeEnabled();
     if (controllerMode) {
+        for (NSView *view in [self.gridContentView.subviews copy]) { [view removeFromSuperview]; }
+        [_cardViews removeAllObjects];
+        [self.categoryCardViews removeAllObjects];
         [self renderControllerLibrary];
         return;
     }
+
+    NSMutableArray<OPNGameCardView *> *reusableCards = [NSMutableArray arrayWithCapacity:self.cardViews.count];
+    for (NSView *view in [self.gridContentView.subviews copy]) {
+        if ([view isKindOfClass:OPNGameCardView.class]) {
+            [reusableCards addObject:(OPNGameCardView *)view];
+        } else {
+            [view removeFromSuperview];
+        }
+    }
+    NSUInteger reusableCardIndex = 0;
+    [_cardViews removeAllObjects];
+    [self.categoryCardViews removeAllObjects];
 
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
@@ -2314,7 +2212,7 @@ using namespace OPN;
                 s.onSelectGame(gameCopy, variantIdx >= 0 ? variantIdx : 0);
             }
         };
-        [_gridContentView addSubview:card];
+        if (card.superview != _gridContentView) [_gridContentView addSubview:card];
         [_cardViews addObject:card];
 
         col++;
@@ -2323,6 +2221,10 @@ using namespace OPN;
             col = 0;
             yPos += cardHeight + kCardSpacing;
         }
+    }
+
+    for (NSUInteger index = reusableCardIndex; index < reusableCards.count; index++) {
+        [reusableCards[index] removeFromSuperview];
     }
 
     CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : yPos + cardHeight + kGridPadding;
@@ -2555,9 +2457,9 @@ using namespace OPN;
 }
 
 - (void)renderControllerHeroAnimated:(BOOL)animated {
+    (void)animated;
     NSArray<NSView *> *outgoingViews = [self.controllerHeroViews copy];
     for (NSView *view in outgoingViews) {
-        if (animated && view.superview) continue;
         [view removeFromSuperview];
     }
     [self.controllerHeroViews removeAllObjects];
@@ -2575,126 +2477,12 @@ using namespace OPN;
     if (self.controllerHeroIndex >= (NSInteger)featuredGames.size()) self.controllerHeroIndex = 0;
     NSInteger heroIndex = MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1));
     CGFloat availableHeroWidth = width - contentInset * 2.0;
-    CGFloat heroWidth = MIN(availableHeroWidth, MAX(metrics.heroHeight, metrics.heroHeight * MAX(0.1, self.controllerHeroImageAspectRatio)));
+    CGFloat heroWidth = MIN(availableHeroWidth, metrics.heroHeight / kControllerHeroMarqueeRatio);
     NSRect heroFrame = NSMakeRect(contentInset + (availableHeroWidth - heroWidth) * 0.5, metrics.heroY, heroWidth, metrics.heroHeight);
     [self addControllerHeroForGame:featuredGames[(size_t)heroIndex]
                              frame:heroFrame
                       activeIndex:heroIndex
                       totalCount:(NSInteger)featuredGames.size()];
-    if (animated && outgoingViews.count > 0) {
-        [self animateControllerHeroIncomingViews:[self.controllerHeroViews copy] outgoingViews:outgoingViews frame:heroFrame];
-    }
-}
-
-- (void)animateControllerHeroIncomingViews:(NSArray<NSView *> *)incomingViews outgoingViews:(NSArray<NSView *> *)outgoingViews frame:(NSRect)frame {
-    CGFloat heroWidth = MAX(1.0, NSWidth(frame));
-    CGFloat travel = MIN(heroWidth * 0.18, 150.0);
-    CFTimeInterval speedScale = 2.0;
-    CFTimeInterval now = CACurrentMediaTime();
-    CAMediaTimingFunction *ease = [OPNCoreAnimationCoordinator appleQuinticTimingFunction];
-
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-
-    for (NSView *view in outgoingViews) {
-        if (!view.layer) continue;
-        CALayer *layer = view.layer;
-        CALayer *presentationLayer = layer.presentationLayer;
-        CATransform3D currentTransform = presentationLayer ? presentationLayer.transform : layer.transform;
-        CGFloat currentOpacity = presentationLayer ? presentationLayer.opacity : layer.opacity;
-        CATransform3D exitTransform = CATransform3DIdentity;
-        exitTransform.m34 = -1.0 / 900.0;
-        exitTransform = CATransform3DTranslate(exitTransform, -travel, 0.0, -70.0);
-        exitTransform = CATransform3DScale(exitTransform, 0.965, 0.965, 1.0);
-        exitTransform = CATransform3DRotate(exitTransform, -0.045, 0.0, 1.0, 0.0);
-        layer.opacity = 0.0;
-        layer.transform = exitTransform;
-
-        CABasicAnimation *opacity = [CABasicAnimation animationWithKeyPath:@"opacity"];
-        opacity.fromValue = @(currentOpacity);
-        opacity.toValue = @0.0;
-
-        CABasicAnimation *transform = [CABasicAnimation animationWithKeyPath:@"transform"];
-        transform.fromValue = [NSValue valueWithCATransform3D:currentTransform];
-        transform.toValue = [NSValue valueWithCATransform3D:exitTransform];
-
-        CAAnimationGroup *group = [CAAnimationGroup animation];
-        group.animations = @[opacity, transform];
-        group.duration = 0.42 * speedScale;
-        group.beginTime = now;
-        group.timingFunction = ease;
-        group.removedOnCompletion = YES;
-        [layer addAnimation:group forKey:@"opn.hero.deck.exit"];
-    }
-
-    for (NSUInteger index = 0; index < incomingViews.count; index++) {
-        NSView *view = incomingViews[index];
-        if (!view.layer) continue;
-        CALayer *layer = view.layer;
-        BOOL isActionElement = index >= 2;
-        CFTimeInterval delay = (isActionElement ? 0.06 + MIN((CGFloat)(index - 2), 3.0) * 0.035 : index * 0.025) * speedScale;
-        CATransform3D startTransform = CATransform3DIdentity;
-        startTransform.m34 = -1.0 / 900.0;
-        startTransform = CATransform3DTranslate(startTransform, travel, isActionElement ? 10.0 : 0.0, 82.0);
-        startTransform = CATransform3DScale(startTransform, isActionElement ? 1.035 : 1.055, isActionElement ? 1.035 : 1.055, 1.0);
-        startTransform = CATransform3DRotate(startTransform, 0.040, 0.0, 1.0, 0.0);
-        layer.opacity = 1.0;
-        layer.transform = CATransform3DIdentity;
-
-        CABasicAnimation *opacity = [CABasicAnimation animationWithKeyPath:@"opacity"];
-        opacity.fromValue = @0.0;
-        opacity.toValue = @1.0;
-
-        CABasicAnimation *transform = [CABasicAnimation animationWithKeyPath:@"transform"];
-        transform.fromValue = [NSValue valueWithCATransform3D:startTransform];
-        transform.toValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
-
-        CAAnimationGroup *group = [CAAnimationGroup animation];
-        group.animations = @[opacity, transform];
-        group.duration = (isActionElement ? 0.55 : 0.62) * speedScale;
-        group.beginTime = now + delay;
-        group.timingFunction = ease;
-        group.removedOnCompletion = YES;
-        [layer addAnimation:group forKey:@"opn.hero.deck.enter"];
-    }
-
-    NSView *sweepView = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame) - heroWidth * 0.20, NSMinY(frame) - NSHeight(frame) * 0.20, heroWidth * 0.16, NSHeight(frame) * 1.40)];
-    sweepView.wantsLayer = YES;
-    sweepView.layer.anchorPoint = CGPointMake(0.5, 0.5);
-    sweepView.layer.position = CGPointMake(NSMidX(sweepView.frame), NSMidY(sweepView.frame));
-    sweepView.layer.transform = CATransform3DMakeRotation(-0.22, 0.0, 0.0, 1.0);
-    sweepView.layer.opacity = 0.0;
-    CAGradientLayer *sweepLayer = [CAGradientLayer layer];
-    sweepLayer.frame = sweepView.bounds;
-    sweepLayer.startPoint = CGPointMake(0.0, 0.5);
-    sweepLayer.endPoint = CGPointMake(1.0, 0.5);
-    sweepLayer.colors = @[(id)OpnColor(0x45F27C, 0.0).CGColor,
-                          (id)OpnColor(0x45F27C, 0.22).CGColor,
-                          (id)OpnColor(0xFFFFFF, 0.34).CGColor,
-                          (id)OpnColor(0x45F27C, 0.0).CGColor];
-    sweepLayer.locations = @[@0.0, @0.38, @0.52, @1.0];
-    [sweepView.layer addSublayer:sweepLayer];
-    [self.gridContentView addSubview:sweepView positioned:NSWindowAbove relativeTo:nil];
-
-    CABasicAnimation *sweepPosition = [CABasicAnimation animationWithKeyPath:@"position.x"];
-    sweepPosition.fromValue = @(NSMinX(frame) - heroWidth * 0.16);
-    sweepPosition.toValue = @(NSMaxX(frame) + heroWidth * 0.18);
-    CAKeyframeAnimation *sweepPulse = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
-    sweepPulse.values = @[@0.0, @1.0, @0.68, @0.0];
-    sweepPulse.keyTimes = @[@0.0, @0.18, @0.72, @1.0];
-    CAAnimationGroup *sweepGroup = [CAAnimationGroup animation];
-    sweepGroup.animations = @[sweepPosition, sweepPulse];
-    sweepGroup.duration = 0.50 * speedScale;
-    sweepGroup.beginTime = now + 0.10 * speedScale;
-    sweepGroup.timingFunction = ease;
-    sweepGroup.removedOnCompletion = YES;
-    [sweepView.layer addAnimation:sweepGroup forKey:@"opn.hero.sweep"];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.72 * speedScale * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [sweepView removeFromSuperview];
-        for (NSView *view in outgoingViews) [view removeFromSuperview];
-    });
-
-    [CATransaction commit];
 }
 
 - (void)renderControllerLibraryRail {
@@ -2814,17 +2602,18 @@ using namespace OPN;
 - (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
     OPNControllerPreviewBackgroundView *hero = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:frame];
     CGFloat heroHeight = MAX(1.0, NSHeight(frame));
-    CGFloat heroWidth = MAX(1.0, NSWidth(frame));
+    CGFloat heroScale = MIN(heroHeight / 270.0, 2.0);
     CGFloat cornerRadius = heroHeight * (18.0 / 270.0);
-    CGFloat leftInset = heroWidth * (68.0 / 1176.0);
-    CGFloat logoWidth = heroWidth * (340.0 / 1176.0);
-    CGFloat logoHeight = heroHeight * (84.0 / 270.0);
-    CGFloat resumeButtonWidth = heroWidth * (136.0 / 1176.0);
-    CGFloat secondaryButtonWidth = heroWidth * (136.0 / 1176.0);
-    CGFloat moreButtonWidth = heroWidth * (50.0 / 1176.0);
-    CGFloat buttonHeight = heroHeight * (42.0 / 270.0);
-    CGFloat buttonGap = heroWidth * (14.0 / 1176.0);
-    CGFloat actionFontSize = heroHeight * (14.5 / 270.0);
+    CGFloat leftInset = 68.0 * heroScale;
+    CGFloat logoWidth = 340.0 * heroScale;
+    CGFloat logoHeight = 84.0 * heroScale;
+    CGFloat actionScale = heroScale * 0.68;
+    CGFloat resumeButtonWidth = 136.0 * actionScale;
+    CGFloat secondaryButtonWidth = 136.0 * actionScale;
+    CGFloat moreButtonWidth = 50.0 * actionScale;
+    CGFloat buttonHeight = 42.0 * actionScale;
+    CGFloat buttonGap = 14.0 * actionScale;
+    CGFloat actionFontSize = 14.5 * actionScale;
 
     NSView *heroShadow = [[NSView alloc] initWithFrame:frame];
     heroShadow.wantsLayer = YES;
@@ -2842,7 +2631,7 @@ using namespace OPN;
     [self.controllerHeroViews addObject:heroShadow];
 
     hero.cornerRadius = cornerRadius;
-    hero.rightAlignImageToHeight = YES;
+    hero.rightAlignImageToHeight = NO;
     hero.wantsLayer = YES;
     hero.layer.cornerRadius = cornerRadius;
     hero.layer.masksToBounds = YES;
@@ -2856,6 +2645,7 @@ using namespace OPN;
     logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
     logoView.imageAlignment = NSImageAlignLeft;
     logoView.wantsLayer = YES;
+    logoView.layer.opacity = 0.0;
     logoView.layer.shadowColor = NSColor.blackColor.CGColor;
     logoView.layer.shadowOpacity = 0.55;
     logoView.layer.shadowRadius = heroHeight * (10.0 / 270.0);
@@ -2894,10 +2684,10 @@ using namespace OPN;
     [self.gridContentView addSubview:ellipsis];
     [self.controllerHeroViews addObject:ellipsis];
 
-    CGFloat dotSpacing = heroWidth * (24.0 / 1176.0);
-    CGFloat activeDotWidth = heroWidth * (22.0 / 1176.0);
-    CGFloat inactiveDotWidth = heroWidth * (14.0 / 1176.0);
-    CGFloat dotHeight = heroHeight * (5.0 / 270.0);
+    CGFloat dotSpacing = 24.0 * heroScale;
+    CGFloat activeDotWidth = 22.0 * heroScale;
+    CGFloat inactiveDotWidth = 14.0 * heroScale;
+    CGFloat dotHeight = 5.0 * heroScale;
     CGFloat dotWidth = totalCount > 0 ? (totalCount - 1) * dotSpacing + activeDotWidth : 0.0;
     CGFloat dotX = NSMidX(frame) - dotWidth * 0.5;
     CGFloat dotY = NSMaxY(frame) + heroHeight * (14.0 / 270.0);
@@ -2926,8 +2716,6 @@ using namespace OPN;
         CGFloat aspectRatio = image.size.width / image.size.height;
         if (fabs(strongSelf.controllerHeroImageAspectRatio - aspectRatio) <= 0.01) return;
         strongSelf.controllerHeroImageAspectRatio = aspectRatio;
-        [strongSelf renderControllerHero];
-        [strongSelf layoutCatalogSubviews];
     });
 }
 
@@ -2938,7 +2726,13 @@ using namespace OPN;
         (void)resolvedURL;
         (void)data;
         NSImageView *strongView = weakView;
-        if (strongView.superview && image) strongView.image = image;
+        if (!strongView.superview || !image) return;
+
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        strongView.image = image;
+        strongView.layer.opacity = 1.0;
+        [CATransaction commit];
     });
 }
 
@@ -4115,12 +3909,28 @@ using namespace OPN;
 }
 
 - (void)startGamepadNavigationIfNeeded {
-    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || !OPNCatalogGamepadNavigationActive(self)) return;
-    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
+    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) return;
+    [self installGamepadValueHandlers];
+    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:0.12
                                                                    target:self
                                                                  selector:@selector(pollGamepadNavigation)
                                                                  userInfo:nil
                                                                   repeats:YES];
+}
+
+- (void)installGamepadValueHandlers {
+    __weak __typeof__(self) weakSelf = self;
+    for (GCController *controller in [GCController controllers]) {
+        GCExtendedGamepad *gamepad = controller.extendedGamepad;
+        if (!gamepad) continue;
+        gamepad.valueChangedHandler = ^(GCExtendedGamepad *, GCControllerElement *) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || !OPNCatalogGamepadNavigationActive(strongSelf)) return;
+                [strongSelf pollGamepadNavigation];
+            });
+        };
+    }
 }
 
 - (void)stopGamepadNavigation {
@@ -4137,11 +3947,15 @@ using namespace OPN;
 
 - (void)controllerDidDisconnect:(NSNotification *)notification {
     (void)notification;
+    if ([GCController controllers].count == 0) {
+        [self stopGamepadNavigation];
+        return;
+    }
     self.previousGamepadButtons = 0;
 }
 
 - (void)pollGamepadNavigation {
-    if (!OpnControllerModeEnabled() || !OPNCatalogGamepadNavigationActive(self)) {
+    if (!OpnControllerModeEnabled() || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) {
         [self stopGamepadNavigation];
         return;
     }

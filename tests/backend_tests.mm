@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "../src/streaming/OPNStreamBackend.h"
+#include "../src/streaming/OPNStreamPreferences.h"
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
 
@@ -302,6 +303,53 @@ TEST_CASE("StreamWebRTCBackendName") {
 TEST_CASE("StreamWebRTCBackendNameDefaultCase") {
     std::string name = OPN::StreamWebRTCBackendName(static_cast<OPN::StreamWebRTCBackend>(0xFF));
     CHECK_EQ(name, "libwebrtc");
+}
+
+}
+
+namespace streaming_preference_tests {
+
+TEST_SUITE("streaming/preferences")
+
+static OPN::StreamPreferenceProfile ProfileWithSelections(int codecIndex, int fpsIndex, int colorQualityIndex) {
+    OPN::StreamPreferenceProfile profile;
+    const std::vector<OPN::StreamCodecOption> &codecs = OPN::StreamCodecOptions();
+    const std::vector<int> &fpsOptions = OPN::StreamFpsOptions();
+    const std::vector<OPN::StreamColorQualityOption> &colorOptions = OPN::StreamColorQualityOptions();
+    profile.codecIndex = codecIndex;
+    profile.codec = codecs[(size_t)codecIndex];
+    profile.fpsIndex = fpsIndex;
+    profile.fps = fpsOptions[(size_t)fpsIndex];
+    profile.colorQualityIndex = colorQualityIndex;
+    profile.colorQuality = colorOptions[(size_t)colorQualityIndex];
+    return profile;
+}
+
+TEST_CASE("EffectiveStreamPreferenceProfileForCapabilitiesFallsBackUnsupportedSelections") {
+    OPN::StreamDeviceCapabilities capabilities;
+    capabilities.h264HardwareDecodeSupported = true;
+    capabilities.h265HardwareDecodeSupported = false;
+    capabilities.av1HardwareDecodeSupported = false;
+    capabilities.maxDisplayRefreshRate = 60;
+
+    OPN::StreamPreferenceProfile profile = ProfileWithSelections(1, 3, 2);
+    OPN::StreamPreferenceProfile effective = OPN::EffectiveStreamPreferenceProfileForCapabilities(profile, capabilities);
+
+    CHECK_EQ(effective.codec.value, "H264");
+    CHECK_EQ(effective.fps, 60);
+    CHECK_EQ(effective.colorQuality.value, "8bit_420");
+}
+
+TEST_CASE("ResolveStreamCodecForCapabilitiesPrefersHevcForTenBitAuto") {
+    OPN::StreamDeviceCapabilities capabilities;
+    capabilities.h264HardwareDecodeSupported = true;
+    capabilities.h265HardwareDecodeSupported = true;
+    capabilities.av1HardwareDecodeSupported = false;
+
+    OPN::StreamPreferenceProfile profile = ProfileWithSelections(3, 1, 2);
+    std::string codec = OPN::ResolveStreamCodecForCapabilities(profile, {2560, 1440}, capabilities, true);
+
+    CHECK_EQ(codec, "H265");
 }
 
 }

@@ -2,7 +2,6 @@
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNCoreAnimationCoordinator.h"
 #import "../common/OPNUIHelpers.h"
-#include "../games/OPNGameDataCache.h"
 #include <QuartzCore/QuartzCore.h>
 #include "common/OPNSentry.h"
 
@@ -166,100 +165,11 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 
 typedef void (^OPNGameCardImageCompletion)(NSImage *image);
 
-static NSCache<NSString *, NSImage *> *OPNGameCardDecodedImageCache(void) {
-    static NSCache<NSString *, NSImage *> *cache;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        cache = [[NSCache alloc] init];
-        cache.countLimit = 192;
-    });
-    return cache;
-}
-
-static NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *OPNGameCardPendingImageCompletions(void) {
-    static NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        pendingCompletions = [NSMutableDictionary dictionary];
-    });
-    return pendingCompletions;
-}
-
-static NSURLSession *OPNGameCardImageSession(void) {
-    static NSURLSession *session;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
-        configuration.HTTPMaximumConnectionsPerHost = 6;
-        configuration.requestCachePolicy = NSURLRequestReturnCacheDataElseLoad;
-        configuration.timeoutIntervalForRequest = 15.0;
-        configuration.URLCache = [NSURLCache sharedURLCache];
-        session = [NSURLSession sessionWithConfiguration:configuration];
-    });
-    return session;
-}
-
-static void OPNGameCardCompleteImageRequest(NSString *urlString, NSImage *image, NSData *data) {
-    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions = OPNGameCardPendingImageCompletions();
-    NSArray<OPNGameCardImageCompletion> *completions = nil;
-    @synchronized (pendingCompletions) {
-        if (image) [OPNGameCardDecodedImageCache() setObject:image forKey:urlString];
-        completions = [pendingCompletions[urlString] copy];
-        [pendingCompletions removeObjectForKey:urlString];
-    }
-    if (image && data.length > 0) OPN::GameDataCache::Shared().SaveImage(urlString, data);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        for (OPNGameCardImageCompletion completion in completions) completion(image);
-    });
-}
-
 static void OPNGameCardLoadImageForURL(NSString *urlString, OPNGameCardImageCompletion completion) {
-    if (urlString.length == 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
-        return;
-    }
-
-    NSImage *cachedImage = [OPNGameCardDecodedImageCache() objectForKey:urlString];
-    if (cachedImage) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage); });
-        return;
-    }
-
-    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardImageCompletion> *> *pendingCompletions = OPNGameCardPendingImageCompletions();
-    @synchronized (pendingCompletions) {
-        NSMutableArray<OPNGameCardImageCompletion> *existing = pendingCompletions[urlString];
-        if (existing) {
-            [existing addObject:[completion copy]];
-            return;
-        }
-        pendingCompletions[urlString] = [NSMutableArray arrayWithObject:[completion copy]];
-    }
-
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSData *cachedData = OPN::GameDataCache::Shared().LoadImage(urlString);
-        if (cachedData.length > 0) {
-            NSImage *cachedDiskImage = [[NSImage alloc] initWithData:cachedData];
-            if (cachedDiskImage) {
-                OPNGameCardCompleteImageRequest(urlString, cachedDiskImage, nil);
-                return;
-            }
-        }
-
-        NSURL *url = [NSURL URLWithString:urlString];
-        if (!url) {
-            OPNGameCardCompleteImageRequest(urlString, nil, nil);
-            return;
-        }
-
-        [[OPNGameCardImageSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
-                OPNGameCardCompleteImageRequest(urlString, nil, nil);
-                return;
-            }
-            NSImage *image = [[NSImage alloc] initWithData:data];
-            OPNGameCardCompleteImageRequest(urlString, image, image ? data : nil);
-        }] resume];
+    OpnLoadImageForURL(urlString, 720.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+        (void)resolvedURL;
+        (void)data;
+        completion(image);
     });
 }
 

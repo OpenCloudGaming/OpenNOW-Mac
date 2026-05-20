@@ -40,3 +40,10 @@ NSProgressIndicator *OpnSpinner(NSRect frame);
 void OpnDisableFocusHighlights(NSView *view);
 CGPathRef OpnCreateRoundedRectPath(NSRect rect, CGFloat xRadius, CGFloat yRadius) CF_RETURNS_RETAINED;
 CGPathRef OpnCreateEllipsePath(NSRect rect) CF_RETURNS_RETAINED;
+
+typedef void (^OpnImageLoadCompletion)(NSImage *image, NSString *resolvedURL, NSData *data);
+
+void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion);
+void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
+                                CGFloat maxPixelDimension,
+                                OpnImageLoadCompletion completion);
