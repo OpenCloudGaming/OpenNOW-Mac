@@ -30,3 +30,6 @@ Before executing any task, you must strictly follow this sequence:
 ## 4. Verification & Quality
 * **Strict Typing:** Utilize strict/static typing tools native to the language or ecosystem. Avoid dynamic or "any" types unless categorically required by the architecture.
 * **Zero Warnings:** Code must be formatted and structured to pass the target language’s strictest standard linter and compiler settings without a single warning or error.
+
+# Commit Standards
+* **Tagged Commit Messages:** Every commit message must begin with a conventional tag such as `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`. The tag must accurately describe the purpose of the change.
