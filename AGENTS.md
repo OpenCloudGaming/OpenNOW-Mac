@@ -32,4 +32,5 @@ Before executing any task, you must strictly follow this sequence:
 * **Zero Warnings:** Code must be formatted and structured to pass the target language’s strictest standard linter and compiler settings without a single warning or error.
 
 # Commit Standards
+* **Commit Completed Work:** After a task is fully implemented and verified, commit the finished work before considering the task complete, unless explicitly instructed not to commit.
 * **Tagged Commit Messages:** Every commit message must begin with a conventional tag such as `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`. The tag must accurately describe the purpose of the change.
