@@ -54,6 +54,7 @@
 @property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
+- (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
 - (void)refreshAccountAvatar;
 - (void)refreshStreamRegions;
 - (void)refreshAccountMenu;
@@ -101,6 +102,7 @@
                        filterIds:(const std::vector<std::string> &)filterIds
                          canRetry:(BOOL)canRetry
                      retryAttempt:(NSInteger)retryAttempt;
+- (void)switchControllerPageBy:(NSInteger)delta;
 @end
 
 @implementation AppDelegate
@@ -180,7 +182,11 @@ static std::string OPNAuthSessionIdentifier(const OPN::AuthSession &session) {
 
 static NSString *OPNAuthSessionDisplayName(const OPN::AuthSession &session) {
     if (!session.displayName.empty()) return [NSString stringWithUTF8String:session.displayName.c_str()];
-    if (!session.email.empty()) return [NSString stringWithUTF8String:session.email.c_str()];
+    if (!session.email.empty()) {
+        NSString *email = [NSString stringWithUTF8String:session.email.c_str()];
+        NSString *localPart = [email componentsSeparatedByString:@"@"].firstObject;
+        return localPart.length > 0 ? localPart : email;
+    }
     if (!session.userId.empty()) return [NSString stringWithUTF8String:session.userId.c_str()];
     return @"Account";
 }
@@ -213,6 +219,10 @@ static bool OPNIsTransientNetworkLostError(const std::string &error) {
     return lower.find("network connection was lost") != std::string::npos ||
            lower.find("nsurlerrornetworkconnectionlost") != std::string::npos ||
            lower.find("-1005") != std::string::npos;
+}
+
+static bool OPNIsUnauthorizedError(const std::string &error) {
+    return error.find("401") != std::string::npos;
 }
 
 static bool OPNIsOwnedLibraryStatus(const std::string &status) {
@@ -355,6 +365,40 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         OPNAppendFingerprintField(fingerprint, entry);
     }
     return fingerprint;
+}
+
+- (void)switchControllerPageBy:(NSInteger)delta {
+    if (!OpnControllerModeEnabled() || delta == 0) return;
+    NSArray<NSString *> *pages = @[@"home", @"library", @"store", @"settings"];
+    NSInteger currentIndex = 0;
+    for (NSUInteger index = 0; index < pages.count; index++) {
+        NSString *page = pages[index];
+        BOOL selected = ([page isEqualToString:@"home"] && self.currentScreen == OPN::AuthScreen::Catalog && self.rootView.mode == OPNBackdropModeHome) ||
+                        ([page isEqualToString:@"library"] && self.currentScreen == OPN::AuthScreen::Catalog && self.rootView.mode == OPNBackdropModeLibrary) ||
+                        ([page isEqualToString:@"store"] && self.currentScreen == OPN::AuthScreen::Store) ||
+                        ([page isEqualToString:@"settings"] && self.currentScreen == OPN::AuthScreen::Settings);
+        if (selected) {
+            currentIndex = (NSInteger)index;
+            break;
+        }
+    }
+    NSInteger nextIndex = (currentIndex + delta) % (NSInteger)pages.count;
+    if (nextIndex < 0) nextIndex += (NSInteger)pages.count;
+    OpnPlayConsoleTone(OPNConsoleToneChange);
+    NSString *nextPage = pages[(NSUInteger)nextIndex];
+    if ([nextPage isEqualToString:@"home"]) {
+        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
+        [self.catalogView showControllerHome];
+        self.rootView.mode = OPNBackdropModeHome;
+    } else if ([nextPage isEqualToString:@"library"]) {
+        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
+        [self.catalogView showControllerLibrary];
+        self.rootView.mode = OPNBackdropModeLibrary;
+    } else if ([nextPage isEqualToString:@"store"]) {
+        if (self.currentScreen != OPN::AuthScreen::Store) [self transitionToScreen:OPN::AuthScreen::Store];
+    } else if ([nextPage isEqualToString:@"settings"]) {
+        if (self.currentScreen != OPN::AuthScreen::Settings) [self transitionToScreen:OPN::AuthScreen::Settings];
+    }
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -830,8 +874,20 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
     NSString *trimmedURL = [purchaseURL ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmedURL.length == 0) {
-        OPN::LogError(@"[AppDelegate] Missing purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
-        NSBeep();
+        OPN::GameInfo gameCopy = game;
+        __weak __typeof__(self) weakSelf = self;
+        OPN::LogInfo(@"[AppDelegate] Resolving purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+        OPN::GameService::Shared().ResolveStoreURL(gameCopy, variantIndex, [weakSelf, gameCopy, variantIndex](bool success, const std::string &storeURL, const std::string &error) {
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (!success || storeURL.empty()) {
+                OPN::LogError(@"[AppDelegate] Store URL resolution failed for title=%s, id=%s, variantIndex=%d, error=%s", gameCopy.title.c_str(), gameCopy.id.c_str(), variantIndex, error.c_str());
+                NSBeep();
+                return;
+            }
+            NSString *resolvedURL = [NSString stringWithUTF8String:storeURL.c_str()];
+            [strongSelf openPurchaseURL:resolvedURL forGame:gameCopy variantIndex:variantIndex];
+        });
         return;
     }
 
@@ -937,6 +993,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         self.rootView.layer.opaque = NO;
         self.rootView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         __weak __typeof__(self) weakSelf = self;
+        self.rootView.onHomeSelected = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            [strongSelf.catalogView showControllerHome];
+            strongSelf.rootView.mode = OPNBackdropModeHome;
+        };
         self.rootView.onStoreSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Store) return;
@@ -944,8 +1007,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         };
         self.rootView.onLibrarySelected = ^{
             __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
-            [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            if (!strongSelf) return;
+            if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            [strongSelf.catalogView showControllerLibrary];
+            strongSelf.rootView.mode = OPNBackdropModeLibrary;
+        };
+        self.rootView.onSearchSelected = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            [strongSelf.catalogView showControllerLibrary];
+            strongSelf.rootView.mode = OPNBackdropModeLibrary;
         };
         self.rootView.onSettingsSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
@@ -991,7 +1063,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (screen == OPN::AuthScreen::Store) {
             self.rootView.mode = OPNBackdropModeStore;
         } else if (screen == OPN::AuthScreen::Catalog) {
-            self.rootView.mode = OPNBackdropModeLibrary;
+            self.rootView.mode = OpnControllerModeEnabled() ? OPNBackdropModeHome : OPNBackdropModeLibrary;
         } else if (screen == OPN::AuthScreen::Settings) {
             self.rootView.mode = OPNBackdropModeSettings;
         } else {
@@ -1061,8 +1133,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             self.catalogView = nil;
             self.settingsView = nil;
 
-            NSString *displayName = [NSString stringWithUTF8String:self.currentSession.displayName.c_str()];
-            self.rootView.accountName = displayName.length > 0 ? displayName : @"User";
+            self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
             self.rootView.gameCountText = @"";
@@ -1104,6 +1175,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 if (!strongSelf) return;
                 [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
             };
+            store.onPreviousPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:-1];
+            };
+            store.onNextPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:1];
+            };
 
             [self.contentContainer addSubview:store];
             OpnDisableFocusHighlights(store);
@@ -1131,8 +1212,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 [catalog setUserName:displayName];
                 self.rootView.accountName = displayName;
             } else {
-                [catalog setUserName:@"User"];
-                self.rootView.accountName = @"User";
+                NSString *fallbackName = OPNAuthSessionDisplayName(self.currentSession);
+                [catalog setUserName:fallbackName];
+                self.rootView.accountName = fallbackName;
             }
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
@@ -1161,10 +1243,32 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 [strongSelf transitionToScreen:AuthScreen::Settings];
             };
 
+            catalog.onStoreRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf transitionToScreen:AuthScreen::Store];
+            };
+
+            catalog.onControllerSurfaceChanged = ^(BOOL homeSurface) {
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || !strongSelf.rootView || strongSelf.currentScreen != AuthScreen::Catalog) return;
+                strongSelf.rootView.mode = homeSurface ? OPNBackdropModeHome : OPNBackdropModeLibrary;
+            };
+
             catalog.onExitRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [NSApp terminate:strongSelf];
+            };
+            catalog.onPreviousPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:-1];
+            };
+            catalog.onNextPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:1];
             };
 
             catalog.onRestartRequested = ^{
@@ -1225,8 +1329,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             OPNConfigureLibraryWindow(self.window);
             self.storeView = nil;
             self.catalogView = nil;
-            NSString *displayName = [NSString stringWithUTF8String:self.currentSession.displayName.c_str()];
-            self.rootView.accountName = displayName.length > 0 ? displayName : @"User";
+            self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
             self.rootView.gameCountText = @"";
@@ -1242,6 +1345,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf transitionToScreen:AuthScreen::Catalog];
+            };
+            settings.onPreviousPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:-1];
+            };
+            settings.onNextPageRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf switchControllerPageBy:1];
             };
             self.settingsView = settings;
             [self.contentContainer addSubview:settings];
@@ -1260,6 +1373,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 }
 
 - (void)refreshAccountSummary {
+    [self refreshAccountSummaryWithRetry:YES];
+}
+
+- (void)refreshAccountSummaryWithRetry:(BOOL)canRetry {
     using namespace OPN;
     if (!self.rootView || self.currentSession.accessToken.empty()) {
         return;
@@ -1270,9 +1387,27 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         : self.currentSession.idToken);
     std::string userId = self.currentSession.userId;
     __weak __typeof__(self) weakSelf = self;
-    GameService::Shared().FetchSubscriptionInfo(userId, [weakSelf](bool success, const SubscriptionInfo &subscription, const std::string &error) {
+    GameService::Shared().FetchSubscriptionInfo(userId, [weakSelf, canRetry](bool success, const SubscriptionInfo &subscription, const std::string &error) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || !strongSelf.rootView) return;
+        if (!success && canRetry && OPNIsUnauthorizedError(error)) {
+            AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                if (refreshSuccess) {
+                    retrySelf.currentSession = fresh;
+                    if (retrySelf.pendingCredentials.stayLoggedIn) {
+                        AuthService::Shared().SaveSession(fresh);
+                    }
+                    [retrySelf refreshAccountMenu];
+                    [retrySelf refreshAccountSummaryWithRetry:NO];
+                    return;
+                }
+
+                OPN::LogError(@"[AppDelegate] Subscription token refresh failed after unauthorized response");
+            }, true);
+            return;
+        }
         if (!success) {
             OPN::LogError(@"[AppDelegate] Subscription fetch failed: %s", error.c_str());
             return;

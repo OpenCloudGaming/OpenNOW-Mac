@@ -10,6 +10,7 @@
 
 static const CGFloat kStoreTopInset = 82.0;
 static const CGFloat kStoreNavigationClearance = 64.0;
+static const CGFloat kControllerStoreNavigationClearance = 118.0;
 static const CGFloat kStoreHeroTopOffset = 120.0;
 static const CGFloat kStoreHeroHeight = 424.0;
 static const CGFloat kStoreRowHeight = 258.0;
@@ -18,9 +19,7 @@ static const CGFloat kStoreTileWidth = 268.0;
 static const CGFloat kStoreTileHeight = 151.0;
 static const CGFloat kControllerStoreContentX = 52.0;
 static const CGFloat kControllerStoreHeroTop = 120.0;
-static const CGFloat kControllerStoreRailWidth = 220.0;
 static const CGFloat kControllerStoreRailHeight = 276.0;
-static const CGFloat kControllerStoreLaneGap = 34.0;
 
 @interface OPNStoreDocumentView : NSView
 @end
@@ -456,6 +455,74 @@ static bool OPNStoreGameMatchesLibraryGame(const OPN::GameInfo &storeGame, const
     return false;
 }
 
+static bool OPNStoreVariantMatchesMetadata(const OPN::GameVariant &target, const OPN::GameVariant &source) {
+    if (!target.id.empty() && !source.id.empty() && target.id == source.id) return true;
+    if (!target.appStore.empty() && !source.appStore.empty() && OPNStoreStringEqualsCaseInsensitive(target.appStore, source.appStore)) return true;
+    return false;
+}
+
+static bool OPNStoreContainsStoreName(const std::vector<std::string> &stores, const std::string &store) {
+    for (const std::string &entry : stores) {
+        if (OPNStoreStringEqualsCaseInsensitive(entry, store)) return true;
+    }
+    return false;
+}
+
+static bool OPNStoreMergeGameStoreMetadata(OPN::GameInfo &target, const OPN::GameInfo &source) {
+    bool changed = false;
+    if (target.launchAppId.empty() && !source.launchAppId.empty()) {
+        target.launchAppId = source.launchAppId;
+        changed = true;
+    }
+    for (const std::string &store : source.availableStores) {
+        if (!store.empty() && !OPNStoreContainsStoreName(target.availableStores, store)) {
+            target.availableStores.push_back(store);
+            changed = true;
+        }
+    }
+    for (const OPN::GameVariant &sourceVariant : source.variants) {
+        if (sourceVariant.appStore.empty()) continue;
+        bool merged = false;
+        for (OPN::GameVariant &targetVariant : target.variants) {
+            if (!OPNStoreVariantMatchesMetadata(targetVariant, sourceVariant)) continue;
+            if (targetVariant.id.empty() && !sourceVariant.id.empty()) {
+                targetVariant.id = sourceVariant.id;
+                changed = true;
+            }
+            if (targetVariant.appStore.empty()) {
+                targetVariant.appStore = sourceVariant.appStore;
+                changed = true;
+            }
+            if (targetVariant.storeUrl.empty() && !sourceVariant.storeUrl.empty()) {
+                targetVariant.storeUrl = sourceVariant.storeUrl;
+                changed = true;
+            }
+            if (targetVariant.serviceStatus.empty() && !sourceVariant.serviceStatus.empty()) {
+                targetVariant.serviceStatus = sourceVariant.serviceStatus;
+                changed = true;
+            }
+            if (!targetVariant.librarySelected && sourceVariant.librarySelected) {
+                targetVariant.librarySelected = true;
+                changed = true;
+            }
+            if (!targetVariant.inLibrary && sourceVariant.inLibrary) {
+                targetVariant.inLibrary = true;
+                changed = true;
+            }
+            merged = true;
+            break;
+        }
+        if (!merged && !sourceVariant.storeUrl.empty()) {
+            target.variants.push_back(sourceVariant);
+            if (!OPNStoreContainsStoreName(target.availableStores, sourceVariant.appStore)) {
+                target.availableStores.push_back(sourceVariant.appStore);
+            }
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 static uint16_t OPNStoreGamepadButtons(void) {
     NSArray<GCController *> *controllers = [GCController controllers];
     if (controllers.count == 0) return 0;
@@ -468,6 +535,8 @@ static uint16_t OPNStoreGamepadButtons(void) {
     if (pad.dpad.down.value > 0.5 || pad.leftThumbstick.yAxis.value < -0.65) buttons |= 1u << 3;
     if (pad.dpad.left.value > 0.5 || pad.leftThumbstick.xAxis.value < -0.65) buttons |= 1u << 4;
     if (pad.dpad.right.value > 0.5 || pad.leftThumbstick.xAxis.value > 0.65) buttons |= 1u << 5;
+    if (pad.leftShoulder.value > 0.5) buttons |= 1u << 6;
+    if (pad.rightShoulder.value > 0.5) buttons |= 1u << 7;
     return buttons;
 }
 
@@ -494,8 +563,12 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
     return libraryGame.variants.empty() ? -1 : 0;
 }
 
+static bool OPNStoreVariantIsOwned(const OPN::GameVariant &variant) {
+    return variant.inLibrary || variant.librarySelected;
+}
+
 static bool OPNStoreVariantIsNotOwned(const OPN::GameVariant &variant) {
-    return variant.serviceStatus == "NOT_OWNED";
+    return !OPNStoreVariantIsOwned(variant);
 }
 
 static const OPN::GameVariant *OPNStoreVariantAtIndex(const OPN::GameInfo &game, int variantIndex) {
@@ -525,7 +598,9 @@ static NSString *OPNStorePurchaseURLForGame(const OPN::GameInfo &game, int varia
 }
 
 static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int variantIndex, BOOL prominent) {
-    if (OPNStoreGameNeedsPurchase(game, variantIndex)) return @"Buy";
+    if (OPNStoreGameNeedsPurchase(game, variantIndex)) {
+        return @"Buy";
+    }
     return prominent ? @"Play Now" : @"PLAY";
 }
 
@@ -576,7 +651,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.storeIconView.image = OPNStoreIconImage(storeName);
     NSInteger storeCount = MAX((NSInteger)_gameData.availableStores.size(), (NSInteger)_gameData.variants.size());
     BOOL needsPurchase = OPNStoreGameNeedsPurchase(_gameData, _selectedVariantIndex);
-    self.availabilityLabel.stringValue = needsPurchase ? @"Not owned" : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
+    self.availabilityLabel.stringValue = needsPurchase
+        ? @"Not owned"
+        : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
     self.playButton.title = OPNStorePrimaryActionTitle(_gameData, _selectedVariantIndex, self.prominent);
 }
 
@@ -744,7 +821,8 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 
 - (void)selectPressed {
     if (OPNStoreGameNeedsPurchase(self.gameData, self.selectedVariantIndex)) {
-        if (self.onBuy) self.onBuy(OPNStorePurchaseURLForGame(self.gameData, self.selectedVariantIndex));
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(self.gameData, self.selectedVariantIndex);
+        if (self.onBuy) self.onBuy(purchaseURL ?: @"");
         return;
     }
     if (self.onSelect) self.onSelect();
@@ -829,10 +907,11 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
-@property (nonatomic, strong) NSMutableArray<NSTextField *> *controllerRailLabels;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
 @property (nonatomic, strong) OPNStoreGameTile *heroTile;
+@property (nonatomic, strong) NSMutableArray<NSView *> *controllerFeaturedHeroViews;
+@property (nonatomic, assign) NSRect controllerFeaturedHeroFrame;
 @property (nonatomic, assign) NSInteger currentHeroIndex;
 @property (nonatomic, assign) NSInteger focusedRowIndex;
 @property (nonatomic, assign) NSInteger focusedColumnIndex;
@@ -846,9 +925,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)stopGamepadNavigation;
 - (void)controllerDidConnect:(NSNotification *)notification;
 - (void)controllerDidDisconnect:(NSNotification *)notification;
-- (void)addControllerRailLabel:(NSString *)title y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (OPNStoreGameTile *)configuredHeroGameTile:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)addControllerFeaturedHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
+- (void)updateControllerFeaturedHeroOnly;
 - (void)loadControllerFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)loadControllerFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)controllerFeaturedHeroLaunchClicked:(id)sender;
@@ -857,6 +936,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (void)scheduleRenderStore;
+- (BOOL)mergeKnownStoreMetadataIntoPanels;
 - (void)refreshLibrarySelections;
 - (void)updateFocusedTiles;
 - (void)updateHeroTileOnly;
@@ -873,7 +953,8 @@ using namespace OPN;
         self.wantsLayer = YES;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
         _rowCards = [NSMutableArray array];
-        _controllerRailLabels = [NSMutableArray array];
+        _controllerFeaturedHeroViews = [NSMutableArray array];
+        _controllerFeaturedHeroFrame = NSZeroRect;
         _focusedRowIndex = 0;
         _focusedColumnIndex = 0;
         _scrollView = [[NSScrollView alloc] initWithFrame:self.bounds];
@@ -957,6 +1038,7 @@ using namespace OPN;
 
 - (void)setPanels:(const std::vector<OPN::PanelResult> &)panels {
     _panels = panels;
+    [self mergeKnownStoreMetadataIntoPanels];
     self.currentHeroIndex = 0;
     [self configureHeroRotationTimer];
     [self renderStore];
@@ -964,11 +1046,32 @@ using namespace OPN;
 
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
+    BOOL mergedStoreMetadata = [self mergeKnownStoreMetadataIntoPanels];
+    if (mergedStoreMetadata) {
+        [self renderStore];
+        return;
+    }
     if (self.rowCards.count > 0 || self.heroTile) {
         [self refreshLibrarySelections];
     } else if (!_panels.empty()) {
         [self renderStore];
     }
+}
+
+- (BOOL)mergeKnownStoreMetadataIntoPanels {
+    if (_panels.empty() || _libraryGames.empty()) return NO;
+    BOOL changed = NO;
+    for (PanelResult &panel : _panels) {
+        for (PanelSection &section : panel.sections) {
+            for (GameInfo &storeGame : section.games) {
+                for (const GameInfo &knownGame : _libraryGames) {
+                    if (!OPNStoreGameMatchesLibraryGame(storeGame, knownGame)) continue;
+                    if (OPNStoreMergeGameStoreMetadata(storeGame, knownGame)) changed = YES;
+                }
+            }
+        }
+    }
+    return changed;
 }
 
 - (int)selectedVariantIndexForStoreGame:(const GameInfo &)storeGame {
@@ -1038,7 +1141,7 @@ using namespace OPN;
 
 - (void)layout {
     [super layout];
-    CGFloat navClearance = kStoreNavigationClearance;
+    CGFloat navClearance = OpnControllerModeEnabled() ? kControllerStoreNavigationClearance : kStoreNavigationClearance;
     self.scrollView.frame = NSMakeRect(0.0, navClearance, NSWidth(self.bounds), MAX(0.0, NSHeight(self.bounds) - navClearance));
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
@@ -1075,7 +1178,8 @@ using namespace OPN;
         [view removeFromSuperview];
     }
     [self.rowCards removeAllObjects];
-    [self.controllerRailLabels removeAllObjects];
+    [self.controllerFeaturedHeroViews removeAllObjects];
+    self.controllerFeaturedHeroFrame = NSZeroRect;
 
     if (OpnControllerModeEnabled()) {
         [self renderControllerStore];
@@ -1258,7 +1362,10 @@ using namespace OPN;
     }
 
     NSButton *launchButton = [[NSButton alloc] initWithFrame:NSMakeRect(34.0, height - 82.0, 156.0, 46.0)];
-    launchButton.title = OPNStoreGameNeedsPurchase(game, [self selectedVariantIndexForStoreGame:game]) ? @"Buy" : @"Launch in Cloud";
+    int selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
+    launchButton.title = OPNStoreGameNeedsPurchase(game, selectedVariantIndex)
+        ? @"Buy"
+        : @"Launch in Cloud";
     launchButton.bordered = NO;
     launchButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
     launchButton.contentTintColor = OpnColor(kAccentOn);
@@ -1282,8 +1389,7 @@ using namespace OPN;
     CGFloat width = MAX(1040.0, NSWidth(self.bounds));
     CGFloat contentX = MIN(kControllerStoreContentX, MAX(30.0, width * 0.055));
     CGFloat contentWidth = MAX(640.0, width - contentX * 2.0);
-    CGFloat railX = contentX;
-    CGFloat laneX = railX + kControllerStoreRailWidth + kControllerStoreLaneGap;
+    CGFloat laneX = contentX;
     CGFloat y = kControllerStoreHeroTop;
 
     OPNStoreAmbientView *ambient = [[OPNStoreAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), 1600.0))];
@@ -1330,8 +1436,6 @@ using namespace OPN;
     for (const PanelResult &panel : _panels) {
         for (const PanelSection &section : panel.sections) {
             if (section.games.empty()) continue;
-            NSString *sectionTitle = section.title.empty() ? @"Featured" : [NSString stringWithUTF8String:section.title.c_str()];
-            [self addControllerRailLabel:sectionTitle y:y + 52.0 contentX:railX width:kControllerStoreRailWidth];
             [self addSection:section index:renderedRows y:y contentX:laneX width:width];
             y += kControllerStoreRailHeight;
             renderedRows++;
@@ -1354,16 +1458,10 @@ using namespace OPN;
     [self updateFocusedTiles];
 }
 
-- (void)addControllerRailLabel:(NSString *)title y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
-    NSTextField *label = OpnLabel(title, NSMakeRect(contentX, y, width, 34.0), 21.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentRight);
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.documentView addSubview:label];
-    [self.controllerRailLabels addObject:label];
-}
-
 - (void)addControllerFeaturedHeroForGame:(const GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
     self.controllerFeaturedHeroGame = game;
     self.controllerFeaturedHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
+    self.controllerFeaturedHeroFrame = frame;
 
     CGFloat heroHeight = MAX(1.0, NSHeight(frame));
     CGFloat heroScale = MIN(heroHeight / 270.0, 2.0);
@@ -1388,6 +1486,7 @@ using namespace OPN;
     heroShadow.layer.shadowPath = heroShadowPath;
     CGPathRelease(heroShadowPath);
     [self.documentView addSubview:heroShadow];
+    [self.controllerFeaturedHeroViews addObject:heroShadow];
 
     OPNStoreHeroBackgroundView *hero = [[OPNStoreHeroBackgroundView alloc] initWithFrame:frame];
     hero.cornerRadius = cornerRadius;
@@ -1397,6 +1496,7 @@ using namespace OPN;
     hero.layer.borderWidth = heroHeight * (1.0 / 270.0);
     hero.layer.borderColor = OpnColor(0xFFFFFF, 0.14).CGColor;
     [self.documentView addSubview:hero];
+    [self.controllerFeaturedHeroViews addObject:hero];
     [self loadControllerFeaturedHeroImageForView:hero candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
 
     NSString *titleText = OPNStoreString(game.title, @"Untitled");
@@ -1408,6 +1508,7 @@ using namespace OPN;
     title.layer.shadowRadius = 10.0;
     title.layer.shadowOffset = CGSizeMake(0.0, 3.0);
     [self.documentView addSubview:title];
+    [self.controllerFeaturedHeroViews addObject:title];
 
     NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (70.0 / 270.0), logoWidth, logoHeight)];
     logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
@@ -1419,6 +1520,7 @@ using namespace OPN;
     logoView.layer.shadowRadius = heroHeight * (10.0 / 270.0);
     logoView.layer.shadowOffset = CGSizeMake(0.0, heroHeight * (4.0 / 270.0));
     [self.documentView addSubview:logoView];
+    [self.controllerFeaturedHeroViews addObject:logoView];
     [self loadControllerFeaturedHeroLogoForView:logoView titleFallback:title candidates:OPNStoreLogoCandidatesForGame(game) index:0];
 
     NSString *store = OPNStorePrimaryStoreName(game);
@@ -1426,8 +1528,11 @@ using namespace OPN;
     NSTextField *meta = OpnLabel(metaText, NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (152.0 / 270.0), logoWidth, 20.0 * heroScale), 14.0 * heroScale, OpnColor(0xFFFFFF, 0.82), NSFontWeightSemibold);
     meta.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.documentView addSubview:meta];
+    [self.controllerFeaturedHeroViews addObject:meta];
 
-    NSString *primaryTitle = OPNStoreGameNeedsPurchase(game, self.controllerFeaturedHeroVariantIndex) ? @"Buy" : @"▶  Play Now";
+    NSString *primaryTitle = OPNStoreGameNeedsPurchase(game, self.controllerFeaturedHeroVariantIndex)
+        ? @"Buy"
+        : @"▶  Play Now";
     NSButton *primary = OpnButton(primaryTitle, NSMakeRect(NSMinX(frame) + leftInset, buttonY, buttonWidth, buttonHeight), OpnColor(0x45F27C, 0.98), OpnColor(0x051008));
     primary.font = [NSFont systemFontOfSize:14.5 * heroScale * 0.68 weight:NSFontWeightBold];
     primary.layer.cornerRadius = buttonHeight * 0.24;
@@ -1438,9 +1543,11 @@ using namespace OPN;
     primary.target = self;
     primary.action = @selector(controllerFeaturedHeroLaunchClicked:);
     [self.documentView addSubview:primary];
+    [self.controllerFeaturedHeroViews addObject:primary];
 
     NSView *storePill = [self storeChipWithTitle:store frame:NSMakeRect(NSMaxX(primary.frame) + 14.0 * heroScale * 0.68, NSMinY(primary.frame), MAX(110.0, store.length * 8.0 + 32.0) * heroScale * 0.68, buttonHeight) highlighted:NO];
     [self.documentView addSubview:storePill];
+    [self.controllerFeaturedHeroViews addObject:storePill];
 
     CGFloat dotSpacing = 24.0 * heroScale;
     CGFloat activeDotWidth = 22.0 * heroScale;
@@ -1457,6 +1564,7 @@ using namespace OPN;
         dot.layer.cornerRadius = dotHeight * 0.5;
         dot.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.18)).CGColor;
         [self.documentView addSubview:dot];
+        [self.controllerFeaturedHeroViews addObject:dot];
     }
 }
 
@@ -1519,11 +1627,31 @@ using namespace OPN;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
     int variantIndex = self.controllerFeaturedHeroVariantIndex >= 0 ? self.controllerFeaturedHeroVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(self.controllerFeaturedHeroGame, variantIndex)) {
-        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, OPNStorePurchaseURLForGame(self.controllerFeaturedHeroGame, variantIndex));
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(self.controllerFeaturedHeroGame, variantIndex);
+        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, purchaseURL ?: @"");
         return;
     }
     if (!self.onSelectGame) return;
     self.onSelectGame(self.controllerFeaturedHeroGame, variantIndex);
+}
+
+- (void)updateControllerFeaturedHeroOnly {
+    const GameInfo *heroGame = [self currentHeroGame];
+    if (!heroGame || NSEqualRects(self.controllerFeaturedHeroFrame, NSZeroRect)) {
+        [self renderStore];
+        return;
+    }
+
+    NSRect frame = self.controllerFeaturedHeroFrame;
+    for (NSView *view in [self.controllerFeaturedHeroViews copy]) {
+        [view removeFromSuperview];
+    }
+    [self.controllerFeaturedHeroViews removeAllObjects];
+
+    NSInteger heroDotCount = MIN((NSInteger)6, MAX((NSInteger)1, [self heroCandidateCount]));
+    NSInteger heroDotIndex = ((self.currentHeroIndex % heroDotCount) + heroDotCount) % heroDotCount;
+    [self addControllerFeaturedHeroForGame:*heroGame frame:frame activeIndex:heroDotIndex totalCount:heroDotCount];
+    [self updateFocusedTiles];
 }
 
 - (void)addHeroGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
@@ -1556,6 +1684,11 @@ using namespace OPN;
 }
 
 - (void)updateHeroTileOnly {
+    if (OpnControllerModeEnabled()) {
+        [self updateControllerFeaturedHeroOnly];
+        return;
+    }
+
     const GameInfo *heroGame = [self currentHeroGame];
     if (!heroGame || !self.heroTile || self.heroTile.superview != self.documentView) {
         [self renderStore];
@@ -1679,13 +1812,6 @@ using namespace OPN;
             [row[columnIndex] setStoreFocused:focused];
         }
     }
-    for (NSUInteger index = 0; index < self.controllerRailLabels.count; index++) {
-        NSTextField *label = self.controllerRailLabels[index];
-        BOOL focused = controllerMode && (NSInteger)index == self.focusedRowIndex;
-        label.textColor = focused ? OpnColor(kBrandGreen) : OpnColor(kTextSecondary);
-        label.font = [NSFont systemFontOfSize:focused ? 25.0 : 21.0 weight:focused ? NSFontWeightBold : NSFontWeightSemibold];
-        label.alphaValue = focused ? 1.0 : 0.58;
-    }
 }
 
 - (void)scrollFocusedTileIntoView {
@@ -1731,7 +1857,8 @@ using namespace OPN;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
     int variantIndex = tile.selectedVariantIndex >= 0 ? tile.selectedVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(tile.game, variantIndex)) {
-        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, OPNStorePurchaseURLForGame(tile.game, variantIndex));
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(tile.game, variantIndex);
+        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, purchaseURL ?: @"");
         return;
     }
     if (self.onSelectGame) self.onSelectGame(tile.game, variantIndex);
@@ -1818,6 +1945,16 @@ using namespace OPN;
         self.lastGamepadMoveTime = now;
     }
     if (pressed & (1u << 0)) [self launchFocusedGame];
+    if (pressed & (1u << 6)) {
+        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
+    if (pressed & (1u << 7)) {
+        if (self.onNextPageRequested) self.onNextPageRequested();
+        self.previousGamepadButtons = buttons;
+        return;
+    }
     if (pressed & (1u << 2)) [self moveFocusByRows:-1 columns:0];
     if (pressed & (1u << 3)) [self moveFocusByRows:1 columns:0];
     if (pressed & (1u << 4)) [self moveFocusByRows:0 columns:-1];

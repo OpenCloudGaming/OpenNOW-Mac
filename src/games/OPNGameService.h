@@ -21,7 +21,9 @@ using LaunchCallback = std::function<void(bool success, const SessionInfo &sessi
                                              const std::string &error)>;
 using LaunchProgressCallback = std::function<void(const std::string &message, const SessionInfo &session)>;
 using SubscriptionCallback = std::function<void(bool success, const SubscriptionInfo &subscription,
-                                                const std::string &error)>;
+                                                 const std::string &error)>;
+using StoreURLCallback = std::function<void(bool success, const std::string &storeURL,
+                                            const std::string &error)>;
 
 class GameService {
 public:
@@ -43,6 +45,7 @@ public:
     void FetchPublicGames(CatalogCallback completion);
     void FetchLibraryGames(CatalogCallback completion);
     void FetchSubscriptionInfo(const std::string &userId, SubscriptionCallback completion);
+    void ResolveStoreURL(const GameInfo &game, int variantIndex, StoreURLCallback completion);
 
     void LaunchGame(const std::string &appId,
                     const std::string &internalTitle,
@@ -67,6 +70,9 @@ private:
 
     GameInfo parseGameItem(NSDictionary *item);
     std::vector<PanelResult> parsePanelResults(NSArray *rawPanels);
+    void fetchAppMetadata(NSArray<NSString *> *appIds,
+                          NSString *vpcId,
+                          std::function<void(NSDictionary *, NSString *)> completion);
     NSDictionary *baseHeaders();
 
     std::string m_accessToken;

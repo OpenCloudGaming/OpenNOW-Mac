@@ -206,12 +206,16 @@ static void OPNDrawReferenceHeaderNavItem(NSString *title, NSString *icon, CGFlo
 }
 
 @implementation OPNBackdropView {
+    NSRect _homeNavFrame;
     NSRect _storeNavFrame;
     NSRect _libraryNavFrame;
+    NSRect _searchNavFrame;
     NSRect _settingsNavFrame;
     NSRect _accountFrame;
+    NSButton *_homeButton;
     NSButton *_storeButton;
     NSButton *_libraryButton;
+    NSButton *_searchButton;
     NSButton *_settingsButton;
     NSButton *_accountButton;
     NSView *_controllerAccountMenuView;
@@ -238,12 +242,16 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 - (instancetype)initWithFrame:(NSRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
+        _homeButton = [self navigationHitButtonWithAction:@selector(homeButtonPressed:)];
         _storeButton = [self navigationHitButtonWithAction:@selector(storeButtonPressed:)];
         _libraryButton = [self navigationHitButtonWithAction:@selector(libraryButtonPressed:)];
+        _searchButton = [self navigationHitButtonWithAction:@selector(searchButtonPressed:)];
         _settingsButton = [self navigationHitButtonWithAction:@selector(settingsButtonPressed:)];
         _accountButton = [self navigationHitButtonWithAction:@selector(accountButtonPressed:)];
+        [self addSubview:_homeButton];
         [self addSubview:_storeButton];
         [self addSubview:_libraryButton];
+        [self addSubview:_searchButton];
         [self addSubview:_settingsButton];
         [self addSubview:_accountButton];
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -260,6 +268,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
+    [self setNeedsLayout:YES];
     [self setNeedsDisplay:YES];
 }
 
@@ -383,6 +392,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
 - (void)setMode:(OPNBackdropMode)mode {
     _mode = mode;
     [self dismissControllerAccountMenu];
+    [self setNeedsLayout:YES];
     [self setNeedsDisplay:YES];
 }
 
@@ -432,27 +442,43 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
         CGFloat spacing = 4.0;
         CGFloat navWidth = storeWidth + libraryWidth + settingsWidth + spacing * 2.0;
         CGFloat x = floor((NSWidth(self.bounds) - navWidth) / 2.0);
+        _homeNavFrame = NSZeroRect;
         _storeNavFrame = NSMakeRect(x, 18.0, storeWidth, 28.0);
         _libraryNavFrame = NSMakeRect(NSMaxX(_storeNavFrame) + spacing, 18.0, libraryWidth, 28.0);
+        _searchNavFrame = NSZeroRect;
         _settingsNavFrame = NSMakeRect(NSMaxX(_libraryNavFrame) + spacing, 18.0, settingsWidth, 28.0);
         _accountFrame = NSMakeRect(NSWidth(self.bounds) - 174.0, 9.0, 154.0, 48.0);
     } else if (showNavigation && controllerMode) {
         CGFloat scale = MAX(0.70, MIN(1.0, MIN(NSWidth(self.bounds) / 1280.0, NSHeight(self.bounds) / 720.0)));
         CGFloat navCenter = NSWidth(self.bounds) * 0.470;
         CGFloat navY = 34.0 * scale;
+        _homeNavFrame = NSMakeRect(navCenter - 224.0 * scale, navY, 108.0 * scale, 50.0 * scale);
         _libraryNavFrame = NSMakeRect(navCenter - 94.0 * scale, navY, 112.0 * scale, 50.0 * scale);
         _storeNavFrame = NSMakeRect(navCenter + 32.0 * scale, navY, 104.0 * scale, 50.0 * scale);
+        _searchNavFrame = NSMakeRect(navCenter + 150.0 * scale, navY, 112.0 * scale, 50.0 * scale);
         _settingsNavFrame = NSMakeRect(navCenter + 292.0 * scale, navY, 120.0 * scale, 50.0 * scale);
         _accountFrame = NSMakeRect(NSWidth(self.bounds) - 278.0 * scale, 36.0 * scale, 258.0 * scale, 40.0 * scale);
+    } else {
+        _homeNavFrame = NSZeroRect;
+        _storeNavFrame = NSZeroRect;
+        _libraryNavFrame = NSZeroRect;
+        _searchNavFrame = NSZeroRect;
+        _settingsNavFrame = NSZeroRect;
+        _accountFrame = NSZeroRect;
     }
     BOOL showTabs = showNavigation;
     BOOL showStore = showTabs;
+    BOOL showControllerOnlyTabs = showNavigation && controllerMode;
+    _homeButton.frame = showControllerOnlyTabs && !NSEqualRects(_homeNavFrame, NSZeroRect) ? _homeNavFrame : NSZeroRect;
     _storeButton.frame = showStore && !NSEqualRects(_storeNavFrame, NSZeroRect) ? _storeNavFrame : NSZeroRect;
     _libraryButton.frame = showTabs && !NSEqualRects(_libraryNavFrame, NSZeroRect) ? _libraryNavFrame : NSZeroRect;
+    _searchButton.frame = showControllerOnlyTabs && !NSEqualRects(_searchNavFrame, NSZeroRect) ? _searchNavFrame : NSZeroRect;
     _settingsButton.frame = showTabs && !NSEqualRects(_settingsNavFrame, NSZeroRect) ? _settingsNavFrame : NSZeroRect;
     _accountButton.frame = showNavigation && !NSEqualRects(_accountFrame, NSZeroRect) ? _accountFrame : NSZeroRect;
+    _homeButton.hidden = !showControllerOnlyTabs;
     _storeButton.hidden = !showStore;
     _libraryButton.hidden = !showTabs;
+    _searchButton.hidden = !showControllerOnlyTabs;
     _settingsButton.hidden = !showTabs;
     _accountButton.hidden = !showNavigation;
     if (_controllerAccountMenuView) {
@@ -533,7 +559,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
                                   NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.98)}];
 
         CGFloat navCenter = NSWidth(bounds) * 0.470;
-        OPNDrawReferenceHeaderNavItem(@"Home", @"home", navCenter - 170.0 * scale, NO, scale, accentRGB);
+        OPNDrawReferenceHeaderNavItem(@"Home", @"home", navCenter - 170.0 * scale, self.mode == OPNBackdropModeHome, scale, accentRGB);
         OPNDrawReferenceHeaderNavItem(@"Library", @"library", navCenter - 45.0 * scale, self.mode == OPNBackdropModeLibrary, scale, accentRGB);
         OPNDrawReferenceHeaderNavItem(@"Store", @"store", navCenter + 80.0 * scale, self.mode == OPNBackdropModeStore, scale, accentRGB);
         OPNDrawReferenceHeaderNavItem(@"Search", @"search", navCenter + 205.0 * scale, NO, scale, accentRGB);
@@ -619,8 +645,8 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
             NSString *item = items[i];
             CGFloat itemWidth = [item isEqualToString:@"Store"] ? widths[2] : ([item isEqualToString:@"Library"] ? widths[0] : widths[1]);
             BOOL active = ([item isEqualToString:@"Store"] && self.mode == OPNBackdropModeStore) ||
-                          ([item isEqualToString:@"Library"] && self.mode == OPNBackdropModeLibrary) ||
-                          ([item isEqualToString:@"Settings"] && self.mode == OPNBackdropModeSettings);
+                           ([item isEqualToString:@"Library"] && self.mode == OPNBackdropModeLibrary) ||
+                           ([item isEqualToString:@"Settings"] && self.mode == OPNBackdropModeSettings);
             NSRect itemRect = NSMakeRect(x, 18.0, itemWidth, 28.0);
             if ([item isEqualToString:@"Store"]) _storeNavFrame = itemRect;
             if ([item isEqualToString:@"Library"]) _libraryNavFrame = itemRect;
@@ -726,6 +752,12 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     [chevron stroke];
 }
 
+- (void)homeButtonPressed:(id)sender {
+    (void)sender;
+    if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
+    if (self.onHomeSelected) self.onHomeSelected();
+}
+
 - (void)storeButtonPressed:(id)sender {
     (void)sender;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
@@ -736,6 +768,12 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     (void)sender;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
     if (self.onLibrarySelected) self.onLibrarySelected();
+}
+
+- (void)searchButtonPressed:(id)sender {
+    (void)sender;
+    if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
+    if (self.onSearchSelected) self.onSearchSelected();
 }
 
 - (void)settingsButtonPressed:(id)sender {
@@ -965,10 +1003,31 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     if (self.onExitSelected) self.onExitSelected();
 }
 
+- (NSView *)hitTest:(NSPoint)point {
+    if (self.hidden || self.alphaValue <= 0.0) return nil;
+    if (_controllerAccountMenuView && NSPointInRect(point, _controllerAccountMenuView.frame)) {
+        return [super hitTest:point];
+    }
+    if (self.mode != OPNBackdropModeAuth &&
+        (NSPointInRect(point, _homeNavFrame) ||
+         NSPointInRect(point, _storeNavFrame) ||
+         NSPointInRect(point, _libraryNavFrame) ||
+         NSPointInRect(point, _searchNavFrame) ||
+         NSPointInRect(point, _settingsNavFrame) ||
+         NSPointInRect(point, _accountFrame))) {
+        return self;
+    }
+    return [super hitTest:point];
+}
+
 - (void)mouseDown:(NSEvent *)event {
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     if (_controllerAccountMenuView && !NSPointInRect(point, _controllerAccountMenuView.frame) && !NSPointInRect(point, _accountFrame)) {
         [self dismissControllerAccountMenu];
+        return;
+    }
+    if (NSPointInRect(point, _homeNavFrame)) {
+        if (self.onHomeSelected) self.onHomeSelected();
         return;
     }
     if (NSPointInRect(point, _storeNavFrame)) {
@@ -977,6 +1036,10 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
     }
     if (NSPointInRect(point, _libraryNavFrame)) {
         if (self.onLibrarySelected) self.onLibrarySelected();
+        return;
+    }
+    if (NSPointInRect(point, _searchNavFrame)) {
+        if (self.onSearchSelected) self.onSearchSelected();
         return;
     }
     if (NSPointInRect(point, _settingsNavFrame)) {
