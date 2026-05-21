@@ -2,9 +2,10 @@
 
 typedef NS_ENUM(NSInteger, OPNBackdropMode) {
     OPNBackdropModeAuth = 0,
-    OPNBackdropModeStore = 1,
-    OPNBackdropModeLibrary = 2,
-    OPNBackdropModeSettings = 3,
+    OPNBackdropModeHome = 1,
+    OPNBackdropModeStore = 2,
+    OPNBackdropModeLibrary = 3,
+    OPNBackdropModeSettings = 4,
 };
 
 @interface OPNBackdropView : NSView
