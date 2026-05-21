@@ -559,7 +559,7 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
                                   NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.98)}];
 
         CGFloat navCenter = NSWidth(bounds) * 0.470;
-        OPNDrawReferenceHeaderNavItem(@"Home", @"home", navCenter - 170.0 * scale, NO, scale, accentRGB);
+        OPNDrawReferenceHeaderNavItem(@"Home", @"home", navCenter - 170.0 * scale, self.mode == OPNBackdropModeHome, scale, accentRGB);
         OPNDrawReferenceHeaderNavItem(@"Library", @"library", navCenter - 45.0 * scale, self.mode == OPNBackdropModeLibrary, scale, accentRGB);
         OPNDrawReferenceHeaderNavItem(@"Store", @"store", navCenter + 80.0 * scale, self.mode == OPNBackdropModeStore, scale, accentRGB);
         OPNDrawReferenceHeaderNavItem(@"Search", @"search", navCenter + 205.0 * scale, NO, scale, accentRGB);
@@ -645,8 +645,8 @@ static CGFloat OPNControllerAccountMenuWidth(NSRect bounds) {
             NSString *item = items[i];
             CGFloat itemWidth = [item isEqualToString:@"Store"] ? widths[2] : ([item isEqualToString:@"Library"] ? widths[0] : widths[1]);
             BOOL active = ([item isEqualToString:@"Store"] && self.mode == OPNBackdropModeStore) ||
-                          ([item isEqualToString:@"Library"] && self.mode == OPNBackdropModeLibrary) ||
-                          ([item isEqualToString:@"Settings"] && self.mode == OPNBackdropModeSettings);
+                           ([item isEqualToString:@"Library"] && self.mode == OPNBackdropModeLibrary) ||
+                           ([item isEqualToString:@"Settings"] && self.mode == OPNBackdropModeSettings);
             NSRect itemRect = NSMakeRect(x, 18.0, itemWidth, 28.0);
             if ([item isEqualToString:@"Store"]) _storeNavFrame = itemRect;
             if ([item isEqualToString:@"Library"]) _libraryNavFrame = itemRect;

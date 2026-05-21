@@ -369,24 +369,36 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
 - (void)switchControllerPageBy:(NSInteger)delta {
     if (!OpnControllerModeEnabled() || delta == 0) return;
-    NSArray<NSNumber *> *pages = @[
-        @((NSInteger)OPN::AuthScreen::Catalog),
-        @((NSInteger)OPN::AuthScreen::Store),
-        @((NSInteger)OPN::AuthScreen::Settings),
-    ];
+    NSArray<NSString *> *pages = @[@"home", @"library", @"store", @"settings"];
     NSInteger currentIndex = 0;
     for (NSUInteger index = 0; index < pages.count; index++) {
-        if ((OPN::AuthScreen)pages[index].integerValue == self.currentScreen) {
+        NSString *page = pages[index];
+        BOOL selected = ([page isEqualToString:@"home"] && self.currentScreen == OPN::AuthScreen::Catalog && self.rootView.mode == OPNBackdropModeHome) ||
+                        ([page isEqualToString:@"library"] && self.currentScreen == OPN::AuthScreen::Catalog && self.rootView.mode == OPNBackdropModeLibrary) ||
+                        ([page isEqualToString:@"store"] && self.currentScreen == OPN::AuthScreen::Store) ||
+                        ([page isEqualToString:@"settings"] && self.currentScreen == OPN::AuthScreen::Settings);
+        if (selected) {
             currentIndex = (NSInteger)index;
             break;
         }
     }
     NSInteger nextIndex = (currentIndex + delta) % (NSInteger)pages.count;
     if (nextIndex < 0) nextIndex += (NSInteger)pages.count;
-    OPN::AuthScreen nextScreen = (OPN::AuthScreen)pages[(NSUInteger)nextIndex].integerValue;
-    if (nextScreen == self.currentScreen) return;
     OpnPlayConsoleTone(OPNConsoleToneChange);
-    [self transitionToScreen:nextScreen];
+    NSString *nextPage = pages[(NSUInteger)nextIndex];
+    if ([nextPage isEqualToString:@"home"]) {
+        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
+        [self.catalogView showControllerHome];
+        self.rootView.mode = OPNBackdropModeHome;
+    } else if ([nextPage isEqualToString:@"library"]) {
+        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
+        [self.catalogView showControllerLibrary];
+        self.rootView.mode = OPNBackdropModeLibrary;
+    } else if ([nextPage isEqualToString:@"store"]) {
+        if (self.currentScreen != OPN::AuthScreen::Store) [self transitionToScreen:OPN::AuthScreen::Store];
+    } else if ([nextPage isEqualToString:@"settings"]) {
+        if (self.currentScreen != OPN::AuthScreen::Settings) [self transitionToScreen:OPN::AuthScreen::Settings];
+    }
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -983,8 +995,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         __weak __typeof__(self) weakSelf = self;
         self.rootView.onHomeSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
-            [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            if (!strongSelf) return;
+            if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            [strongSelf.catalogView showControllerHome];
+            strongSelf.rootView.mode = OPNBackdropModeHome;
         };
         self.rootView.onStoreSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
@@ -993,13 +1007,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         };
         self.rootView.onLibrarySelected = ^{
             __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
-            [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            if (!strongSelf) return;
+            if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            [strongSelf.catalogView showControllerLibrary];
+            strongSelf.rootView.mode = OPNBackdropModeLibrary;
         };
         self.rootView.onSearchSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
-            [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            if (!strongSelf) return;
+            if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+            [strongSelf.catalogView showControllerLibrary];
+            strongSelf.rootView.mode = OPNBackdropModeLibrary;
         };
         self.rootView.onSettingsSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
@@ -1045,7 +1063,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (screen == OPN::AuthScreen::Store) {
             self.rootView.mode = OPNBackdropModeStore;
         } else if (screen == OPN::AuthScreen::Catalog) {
-            self.rootView.mode = OPNBackdropModeLibrary;
+            self.rootView.mode = OpnControllerModeEnabled() ? OPNBackdropModeHome : OPNBackdropModeLibrary;
         } else if (screen == OPN::AuthScreen::Settings) {
             self.rootView.mode = OPNBackdropModeSettings;
         } else {
@@ -1223,6 +1241,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf transitionToScreen:AuthScreen::Settings];
+            };
+
+            catalog.onStoreRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf transitionToScreen:AuthScreen::Store];
+            };
+
+            catalog.onControllerSurfaceChanged = ^(BOOL homeSurface) {
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || !strongSelf.rootView || strongSelf.currentScreen != AuthScreen::Catalog) return;
+                strongSelf.rootView.mode = homeSurface ? OPNBackdropModeHome : OPNBackdropModeLibrary;
             };
 
             catalog.onExitRequested = ^{
