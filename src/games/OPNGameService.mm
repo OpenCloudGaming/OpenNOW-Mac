@@ -4,6 +4,8 @@
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamSession.h"
 #include <CommonCrypto/CommonCrypto.h>
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <memory>
 #include <unordered_map>
@@ -32,6 +34,70 @@ static void DispatchCatalogBrowseCallback(const CatalogBrowseCallback &completio
     std::string errorCopy = error;
     dispatch_async(dispatch_get_main_queue(), ^{
         completionCopy(success, resultCopy, errorCopy);
+    });
+}
+
+static void DispatchCatalogCallback(const CatalogCallback &completion,
+                                    bool success,
+                                    const std::vector<GameInfo> &games,
+                                    const std::string &error) {
+    if (!completion) return;
+    CatalogCallback completionCopy = completion;
+    std::vector<GameInfo> gamesCopy = games;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, gamesCopy, errorCopy);
+    });
+}
+
+static void DispatchPanelCallback(const PanelCallback &completion,
+                                  bool success,
+                                  const std::vector<PanelResult> &panels,
+                                  const std::string &error) {
+    if (!completion) return;
+    PanelCallback completionCopy = completion;
+    std::vector<PanelResult> panelsCopy = panels;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, panelsCopy, errorCopy);
+    });
+}
+
+static void DispatchSubscriptionCallback(const SubscriptionCallback &completion,
+                                         bool success,
+                                         const SubscriptionInfo &subscription,
+                                         const std::string &error) {
+    if (!completion) return;
+    SubscriptionCallback completionCopy = completion;
+    SubscriptionInfo subscriptionCopy = subscription;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, subscriptionCopy, errorCopy);
+    });
+}
+
+static void DispatchStoreURLCallback(const StoreURLCallback &completion,
+                                     bool success,
+                                     const std::string &storeURL,
+                                     const std::string &error) {
+    if (!completion) return;
+    StoreURLCallback completionCopy = completion;
+    std::string storeURLCopy = storeURL;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, storeURLCopy, errorCopy);
+    });
+}
+
+static void DispatchGraphQLCallback(const std::function<void(NSDictionary *, NSString *)> &completion,
+                                    NSDictionary *payload,
+                                    NSString *message) {
+    if (!completion) return;
+    std::function<void(NSDictionary *, NSString *)> completionCopy = completion;
+    NSDictionary *payloadCopy = payload;
+    NSString *messageCopy = [message copy] ?: @"";
+    dispatch_async(GameServiceWorkQueue(), ^{
+        completionCopy(payloadCopy, messageCopy);
     });
 }
 
@@ -143,7 +209,7 @@ void GameService::postGraphQL(const std::string &operationName,
 
     NSURL *url = [NSURL URLWithString:urlStr];
     if (!url) {
-        completion(nil, @"Invalid URL");
+        DispatchGraphQLCallback(completion, nil, @"Invalid URL");
         return;
     }
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
@@ -186,9 +252,7 @@ void GameService::postGraphQL(const std::string &operationName,
                     }
                 }
             }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(payload, message);
-            });
+            DispatchGraphQLCallback(completion, payload, message);
         }];
     [task resume];
 }
@@ -257,6 +321,140 @@ static void AppendUniqueString(std::vector<std::string> &values, NSString *value
 static void AppendUniqueStdString(std::vector<std::string> &values, const std::string &value) {
     if (value.empty()) return;
     if (std::find(values.begin(), values.end(), value) == values.end()) values.push_back(value);
+}
+
+static bool StringsEqualCaseInsensitive(const std::string &lhs, const std::string &rhs) {
+    if (lhs.size() != rhs.size()) return false;
+    for (size_t i = 0; i < lhs.size(); i++) {
+        if (std::tolower((unsigned char)lhs[i]) != std::tolower((unsigned char)rhs[i])) return false;
+    }
+    return true;
+}
+
+static bool ContainsStringCaseInsensitive(const std::vector<std::string> &values, const std::string &candidate) {
+    for (const std::string &value : values) {
+        if (StringsEqualCaseInsensitive(value, candidate)) return true;
+    }
+    return false;
+}
+
+static bool VariantMatchesStoreMetadata(const GameVariant &target, const GameVariant &metadata) {
+    if (!target.id.empty() && !metadata.id.empty() && target.id == metadata.id) return true;
+    if (!target.appStore.empty() && !metadata.appStore.empty() && StringsEqualCaseInsensitive(target.appStore, metadata.appStore)) return true;
+    return false;
+}
+
+static bool MergeMissingStoreMetadata(GameInfo &target, const GameInfo &metadata) {
+    bool changed = false;
+    if (target.launchAppId.empty() && !metadata.launchAppId.empty()) {
+        target.launchAppId = metadata.launchAppId;
+        changed = true;
+    }
+    for (const std::string &store : metadata.availableStores) {
+        if (!ContainsStringCaseInsensitive(target.availableStores, store)) {
+            target.availableStores.push_back(store);
+            changed = true;
+        }
+    }
+
+    for (const GameVariant &metadataVariant : metadata.variants) {
+        bool merged = false;
+        for (GameVariant &targetVariant : target.variants) {
+            if (!VariantMatchesStoreMetadata(targetVariant, metadataVariant)) continue;
+            if (targetVariant.id.empty() && !metadataVariant.id.empty()) {
+                targetVariant.id = metadataVariant.id;
+                changed = true;
+            }
+            if (targetVariant.appStore.empty() && !metadataVariant.appStore.empty()) {
+                targetVariant.appStore = metadataVariant.appStore;
+                changed = true;
+            }
+            if (targetVariant.storeUrl.empty() && !metadataVariant.storeUrl.empty()) {
+                targetVariant.storeUrl = metadataVariant.storeUrl;
+                changed = true;
+            }
+            if (targetVariant.serviceStatus.empty() && !metadataVariant.serviceStatus.empty()) {
+                targetVariant.serviceStatus = metadataVariant.serviceStatus;
+                changed = true;
+            }
+            if (!targetVariant.librarySelected && metadataVariant.librarySelected) {
+                targetVariant.librarySelected = true;
+                changed = true;
+            }
+            if (!targetVariant.inLibrary && metadataVariant.inLibrary) {
+                targetVariant.inLibrary = true;
+                changed = true;
+            }
+            merged = true;
+            break;
+        }
+        if (!merged && !metadataVariant.appStore.empty()) {
+            target.variants.push_back(metadataVariant);
+            if (!ContainsStringCaseInsensitive(target.availableStores, metadataVariant.appStore)) {
+                target.availableStores.push_back(metadataVariant.appStore);
+            }
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+static const GameVariant *GameVariantAtIndex(const GameInfo &game, int variantIndex) {
+    if (variantIndex < 0 || variantIndex >= (int)game.variants.size()) return nullptr;
+    return &game.variants[(size_t)variantIndex];
+}
+
+static std::string StoreURLForKnownGame(const GameInfo &game, int variantIndex) {
+    const GameVariant *selectedVariant = GameVariantAtIndex(game, variantIndex);
+    if (selectedVariant && !selectedVariant->storeUrl.empty()) return selectedVariant->storeUrl;
+    for (const GameVariant &variant : game.variants) {
+        if (!variant.storeUrl.empty()) return variant.storeUrl;
+    }
+    return "";
+}
+
+static std::string StoreURLForMetadataGame(const GameInfo &metadataGame,
+                                           const std::string &variantId,
+                                           const std::string &store) {
+    if (!variantId.empty()) {
+        for (const GameVariant &variant : metadataGame.variants) {
+            if (variant.id == variantId && !variant.storeUrl.empty()) return variant.storeUrl;
+        }
+    }
+    if (!store.empty()) {
+        for (const GameVariant &variant : metadataGame.variants) {
+            if (StringsEqualCaseInsensitive(variant.appStore, store) && !variant.storeUrl.empty()) return variant.storeUrl;
+        }
+    }
+    for (const GameVariant &variant : metadataGame.variants) {
+        if (!variant.storeUrl.empty()) return variant.storeUrl;
+    }
+    return "";
+}
+
+static bool MergeVariantFromSameStore(GameVariant &target, const GameVariant &source) {
+    bool changed = false;
+    if (!source.id.empty() && (target.id.empty() || (!target.librarySelected && source.librarySelected))) {
+        target.id = source.id;
+        changed = true;
+    }
+    if (target.storeUrl.empty() && !source.storeUrl.empty()) {
+        target.storeUrl = source.storeUrl;
+        changed = true;
+    }
+    if (!source.serviceStatus.empty() && (target.serviceStatus.empty() || (!target.librarySelected && source.librarySelected))) {
+        target.serviceStatus = source.serviceStatus;
+        changed = true;
+    }
+    if (!target.librarySelected && source.librarySelected) {
+        target.librarySelected = true;
+        changed = true;
+    }
+    if (!target.inLibrary && source.inLibrary) {
+        target.inLibrary = true;
+        changed = true;
+    }
+    return changed;
 }
 
 static void AppendStringValues(std::vector<std::string> &values, id rawValue) {
@@ -353,7 +551,6 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
 
     NSArray *variants = app[@"variants"];
     if (variants && [variants isKindOfClass:[NSArray class]]) {
-        std::unordered_set<std::string> seenStores;
         for (NSDictionary *v in variants) {
             if (![v isKindOfClass:[NSDictionary class]]) continue;
             GameVariant gv;
@@ -374,8 +571,14 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
             }
 
             if (!gv.appStore.empty() && gv.appStore != "UNKNOWN" && gv.appStore != "NONE") {
-                if (seenStores.find(gv.appStore) == seenStores.end()) {
-                    seenStores.insert(gv.appStore);
+                bool mergedExistingStore = false;
+                for (GameVariant &existing : g.variants) {
+                    if (!StringsEqualCaseInsensitive(existing.appStore, gv.appStore)) continue;
+                    MergeVariantFromSameStore(existing, gv);
+                    mergedExistingStore = true;
+                    break;
+                }
+                if (!mergedExistingStore) {
                     g.availableStores.push_back(gv.appStore);
                     g.variants.push_back(gv);
                 }
@@ -484,11 +687,88 @@ void GameService::postGraphQlJson(const std::string &query,
                     }
                 }
             }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(payload, message);
-            });
+            DispatchGraphQLCallback(completion, payload, message);
         }];
     [task resume];
+}
+
+void GameService::fetchAppMetadata(NSArray<NSString *> *appIds,
+                                   NSString *vpcId,
+                                   std::function<void(NSDictionary *, NSString *)> completion) {
+    NSDictionary *variables = @{
+        @"vpcId": vpcId.length > 0 ? vpcId : @"GFN-PC",
+        @"locale": @"en_US",
+        @"appIds": appIds ?: @[],
+    };
+    postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], variables, completion);
+}
+
+void GameService::ResolveStoreURL(const GameInfo &game, int variantIndex, StoreURLCallback completion) {
+    StoreURLCallback callback = completion;
+    std::string localStoreURL = StoreURLForKnownGame(game, variantIndex);
+    if (!localStoreURL.empty()) {
+        DispatchStoreURLCallback(callback, true, localStoreURL, "");
+        return;
+    }
+
+    std::string appId = game.uuid.empty() ? game.id : game.uuid;
+    if (appId.empty()) {
+        DispatchStoreURLCallback(callback, false, "", "No app ID available for store URL lookup");
+        return;
+    }
+
+    std::string token = m_accessToken;
+    if (token.empty()) {
+        DispatchStoreURLCallback(callback, false, "", "No access token");
+        return;
+    }
+
+    const GameVariant *selectedVariant = GameVariantAtIndex(game, variantIndex);
+    std::string selectedVariantId = selectedVariant ? selectedVariant->id : "";
+    std::string selectedStore = selectedVariant ? selectedVariant->appStore : "";
+
+    GetServerVpcId(token, [this, callback, appId, selectedVariantId, selectedStore](const std::string &vpcId) {
+        NSString *appIdString = [NSString stringWithUTF8String:appId.c_str()];
+        NSString *vpcIdString = [NSString stringWithUTF8String:vpcId.empty() ? "GFN-PC" : vpcId.c_str()];
+        fetchAppMetadata(@[appIdString], vpcIdString,
+            [this, callback, appId, selectedVariantId, selectedStore](NSDictionary *metaData, NSString *metaError) {
+                if (metaError.length > 0) {
+                    DispatchStoreURLCallback(callback, false, "", [metaError UTF8String]);
+                    return;
+                }
+
+                NSDictionary *apps = metaData[@"apps"];
+                NSArray *metadataItems = [apps isKindOfClass:[NSDictionary class]] ? apps[@"items"] : nil;
+                if (![metadataItems isKindOfClass:[NSArray class]]) {
+                    DispatchStoreURLCallback(callback, false, "", "No app metadata in store URL response");
+                    return;
+                }
+
+                NSDictionary *metadataApp = nil;
+                for (NSDictionary *candidate in metadataItems) {
+                    if (![candidate isKindOfClass:[NSDictionary class]]) continue;
+                    NSString *candidateId = SafeStr(candidate[@"id"]);
+                    if (candidateId.length > 0 && appId == [candidateId UTF8String]) {
+                        metadataApp = candidate;
+                        break;
+                    }
+                    if (!metadataApp) metadataApp = candidate;
+                }
+
+                if (!metadataApp) {
+                    DispatchStoreURLCallback(callback, false, "", "No matching app metadata for store URL lookup");
+                    return;
+                }
+
+                GameInfo metadataGame = parseGameItem(metadataApp);
+                std::string storeURL = StoreURLForMetadataGame(metadataGame, selectedVariantId, selectedStore);
+                if (storeURL.empty()) {
+                    DispatchStoreURLCallback(callback, false, "", "No store URL found for selected variant");
+                    return;
+                }
+                DispatchStoreURLCallback(callback, true, storeURL, "");
+            });
+    });
 }
 
 
@@ -537,7 +817,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
             [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
                     OPN::LogError(@"[GameService] catalog definitions failed error=%@", definitionsError);
-                    callback(false, CatalogBrowseResult{}, [definitionsError UTF8String]);
+                    DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, [definitionsError UTF8String]);
                     return;
                 }
 
@@ -795,6 +1075,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     NSDictionary *metadataApp = metadataById[uuid];
                                     if (!metadataApp) continue;
                                     GameInfo metadataGame = service->parseGameItem(metadataApp);
+                                    MergeMissingStoreMetadata(game, metadataGame);
                                     if (!metadataGame.description.empty()) {
                                         game.description = metadataGame.description;
                                         enrichedDescriptions++;
@@ -829,12 +1110,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         for (NSUInteger start = 0; start < appIdsNeedingMetadata.count; start += chunkSize) {
                             NSUInteger length = MIN(chunkSize, appIdsNeedingMetadata.count - start);
                             NSArray<NSString *> *chunk = [appIdsNeedingMetadata subarrayWithRange:NSMakeRange(start, length)];
-                            NSDictionary *metaVars = @{
-                                @"vpcId": vpcIdObj,
-                                @"locale": @"en_US",
-                                @"appIds": chunk,
-                            };
-                            service->postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], metaVars,
+                            service->fetchAppMetadata(chunk, vpcIdObj,
                                 ^(NSDictionary *metaData, NSString *metaError) {
                                     dispatch_async(GameServiceWorkQueue(), ^{
                                     if (metaError.length > 0) {
@@ -886,14 +1162,14 @@ void GameService::FetchPublicGames(CatalogCallback completion) {
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
+            dispatch_async(GameServiceWorkQueue(), ^{
                 if (error) {
-                    completion(false, {}, [[error localizedDescription] UTF8String]);
+                    DispatchCatalogCallback(completion, false, {}, [[error localizedDescription] UTF8String]);
                     return;
                 }
                 NSArray *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
                 if (![json isKindOfClass:[NSArray class]]) {
-                    completion(false, {}, "Invalid public games JSON");
+                    DispatchCatalogCallback(completion, false, {}, "Invalid public games JSON");
                     return;
                 }
 
@@ -946,7 +1222,7 @@ void GameService::FetchPublicGames(CatalogCallback completion) {
 
                     games.push_back(g);
                 }
-                completion(true, games, "");
+                DispatchCatalogCallback(completion, true, games, "");
             });
         }];
     [task resume];
@@ -954,11 +1230,11 @@ void GameService::FetchPublicGames(CatalogCallback completion) {
 
 void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionCallback completion) {
     if (m_accessToken.empty()) {
-        completion(false, SubscriptionInfo{}, "No access token");
+        DispatchSubscriptionCallback(completion, false, SubscriptionInfo{}, "No access token");
         return;
     }
     if (userId.empty()) {
-        completion(false, SubscriptionInfo{}, "No user ID");
+        DispatchSubscriptionCallback(completion, false, SubscriptionInfo{}, "No user ID");
         return;
     }
 
@@ -975,7 +1251,7 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
         ];
         NSURL *url = components.URL;
         if (!url) {
-            callback(false, SubscriptionInfo{}, "Invalid subscription URL");
+            DispatchSubscriptionCallback(callback, false, SubscriptionInfo{}, "Invalid subscription URL");
             return;
         }
 
@@ -994,16 +1270,16 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
         NSURLSessionDataTask *task = [[NSURLSession sharedSession]
             dataTaskWithRequest:req
             completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-                dispatch_async(dispatch_get_main_queue(), ^{
+                dispatch_async(GameServiceWorkQueue(), ^{
                     if (error) {
-                        callback(false, SubscriptionInfo{}, [[error localizedDescription] UTF8String]);
+                        DispatchSubscriptionCallback(callback, false, SubscriptionInfo{}, [[error localizedDescription] UTF8String]);
                         return;
                     }
                     NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
                     NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
                     if (http.statusCode != 200 || ![json isKindOfClass:[NSDictionary class]]) {
                         NSString *message = [NSString stringWithFormat:@"Subscription API failed (%ld)", (long)http.statusCode];
-                        callback(false, SubscriptionInfo{}, [message UTF8String]);
+                        DispatchSubscriptionCallback(callback, false, SubscriptionInfo{}, [message UTF8String]);
                         return;
                     }
 
@@ -1028,7 +1304,7 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
                         : nil;
                     NSNumber *allowed = [state[@"isGamePlayAllowed"] isKindOfClass:[NSNumber class]] ? state[@"isGamePlayAllowed"] : nil;
                     info.isGamePlayAllowed = allowed ? allowed.boolValue : true;
-                    callback(true, info, "");
+                    DispatchSubscriptionCallback(callback, true, info, "");
                 });
             }];
         [task resume];
@@ -1091,13 +1367,13 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
 
         auto flattenAndEnrich = ^(NSDictionary *data, NSString *error) {
             if (error.length > 0) {
-                callback(false, {}, [error UTF8String]);
+                DispatchCatalogCallback(callback, false, {}, [error UTF8String]);
                 return;
             }
 
             NSArray *rawPanels = data[@"panels"];
             if (![rawPanels isKindOfClass:[NSArray class]]) {
-                callback(false, {}, "No panels in library response");
+                DispatchCatalogCallback(callback, false, {}, "No panels in library response");
                 return;
             }
 
@@ -1124,7 +1400,7 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
             }
 
             if (games.empty()) {
-                callback(true, games, "");
+                DispatchCatalogCallback(callback, true, games, "");
                 return;
             }
 
@@ -1142,7 +1418,7 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
             }
 
             if (uuids.count == 0) {
-                callback(true, games, "");
+                DispatchCatalogCallback(callback, true, games, "");
                 return;
             }
 
@@ -1153,14 +1429,8 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
 
             for (NSUInteger i = 0; i < uuids.count; i += chunkSize) {
                 NSUInteger end = MIN(i + chunkSize, uuids.count);
-                NSArray *chunk = [uuids subarrayWithRange:NSMakeRange(i, end - i)];
-                NSDictionary *metaVars = @{
-                    @"vpcId": vpcIdObj,
-                    @"locale": @"en_US",
-                    @"appIds": chunk
-                };
-
-                postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], metaVars,
+                NSArray<NSString *> *chunk = [uuids subarrayWithRange:NSMakeRange(i, end - i)];
+                fetchAppMetadata(chunk, vpcIdObj,
                     ^(NSDictionary *metaData, NSString *metaError) {
                         if (metaError.length == 0) {
                             NSDictionary *appsDict = metaData[@"apps"];
@@ -1238,7 +1508,7 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
                                     finalGames.push_back(kv.second);
                                 }
                             }
-                            callback(true, finalGames, "");
+                            DispatchCatalogCallback(callback, true, finalGames, "");
                         }
                     });
             }
@@ -1318,9 +1588,6 @@ std::vector<PanelResult> GameService::parsePanelResults(NSArray *rawPanels) {
     return panels;
 }
 
-
-
-
 void GameService::FetchMarqueePanels(PanelCallback completion) {
     std::string token = m_accessToken;
     PanelCallback callback = completion;
@@ -1336,17 +1603,17 @@ void GameService::FetchMarqueePanels(PanelCallback completion) {
         postGraphQL("panels/Marquee", [kMarqueeHash UTF8String], vars,
             ^(NSDictionary *data, NSString *error) {
                 if (error.length > 0) {
-                    callback(false, {}, [error UTF8String]);
+                    DispatchPanelCallback(callback, false, {}, [error UTF8String]);
                     return;
                 }
 
                 NSArray *rawPanels = data[@"panels"];
                 if (!rawPanels || ![rawPanels isKindOfClass:[NSArray class]]) {
-                    callback(false, {}, "No panels in marquee response");
+                    DispatchPanelCallback(callback, false, {}, "No panels in marquee response");
                     return;
                 }
 
-                callback(true, this->parsePanelResults(rawPanels), "");
+                DispatchPanelCallback(callback, true, this->parsePanelResults(rawPanels), "");
             });
     });
 }
@@ -1369,17 +1636,17 @@ void GameService::FetchMainPanels(PanelCallback completion) {
         postGraphQL("panels/MainV2", [kPanelsHash UTF8String], vars,
             ^(NSDictionary *data, NSString *error) {
                 if (error.length > 0) {
-                    callback(false, {}, [error UTF8String]);
+                    DispatchPanelCallback(callback, false, {}, [error UTF8String]);
                     return;
                 }
 
                 NSArray *rawPanels = data[@"panels"];
                 if (!rawPanels || ![rawPanels isKindOfClass:[NSArray class]]) {
-                    callback(false, {}, "No panels in response");
+                    DispatchPanelCallback(callback, false, {}, "No panels in response");
                     return;
                 }
 
-                callback(true, this->parsePanelResults(rawPanels), "");
+                DispatchPanelCallback(callback, true, this->parsePanelResults(rawPanels), "");
             });
     });
 }

@@ -455,6 +455,74 @@ static bool OPNStoreGameMatchesLibraryGame(const OPN::GameInfo &storeGame, const
     return false;
 }
 
+static bool OPNStoreVariantMatchesMetadata(const OPN::GameVariant &target, const OPN::GameVariant &source) {
+    if (!target.id.empty() && !source.id.empty() && target.id == source.id) return true;
+    if (!target.appStore.empty() && !source.appStore.empty() && OPNStoreStringEqualsCaseInsensitive(target.appStore, source.appStore)) return true;
+    return false;
+}
+
+static bool OPNStoreContainsStoreName(const std::vector<std::string> &stores, const std::string &store) {
+    for (const std::string &entry : stores) {
+        if (OPNStoreStringEqualsCaseInsensitive(entry, store)) return true;
+    }
+    return false;
+}
+
+static bool OPNStoreMergeGameStoreMetadata(OPN::GameInfo &target, const OPN::GameInfo &source) {
+    bool changed = false;
+    if (target.launchAppId.empty() && !source.launchAppId.empty()) {
+        target.launchAppId = source.launchAppId;
+        changed = true;
+    }
+    for (const std::string &store : source.availableStores) {
+        if (!store.empty() && !OPNStoreContainsStoreName(target.availableStores, store)) {
+            target.availableStores.push_back(store);
+            changed = true;
+        }
+    }
+    for (const OPN::GameVariant &sourceVariant : source.variants) {
+        if (sourceVariant.appStore.empty()) continue;
+        bool merged = false;
+        for (OPN::GameVariant &targetVariant : target.variants) {
+            if (!OPNStoreVariantMatchesMetadata(targetVariant, sourceVariant)) continue;
+            if (targetVariant.id.empty() && !sourceVariant.id.empty()) {
+                targetVariant.id = sourceVariant.id;
+                changed = true;
+            }
+            if (targetVariant.appStore.empty()) {
+                targetVariant.appStore = sourceVariant.appStore;
+                changed = true;
+            }
+            if (targetVariant.storeUrl.empty() && !sourceVariant.storeUrl.empty()) {
+                targetVariant.storeUrl = sourceVariant.storeUrl;
+                changed = true;
+            }
+            if (targetVariant.serviceStatus.empty() && !sourceVariant.serviceStatus.empty()) {
+                targetVariant.serviceStatus = sourceVariant.serviceStatus;
+                changed = true;
+            }
+            if (!targetVariant.librarySelected && sourceVariant.librarySelected) {
+                targetVariant.librarySelected = true;
+                changed = true;
+            }
+            if (!targetVariant.inLibrary && sourceVariant.inLibrary) {
+                targetVariant.inLibrary = true;
+                changed = true;
+            }
+            merged = true;
+            break;
+        }
+        if (!merged && !sourceVariant.storeUrl.empty()) {
+            target.variants.push_back(sourceVariant);
+            if (!OPNStoreContainsStoreName(target.availableStores, sourceVariant.appStore)) {
+                target.availableStores.push_back(sourceVariant.appStore);
+            }
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 static uint16_t OPNStoreGamepadButtons(void) {
     NSArray<GCController *> *controllers = [GCController controllers];
     if (controllers.count == 0) return 0;
@@ -495,8 +563,12 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
     return libraryGame.variants.empty() ? -1 : 0;
 }
 
+static bool OPNStoreVariantIsOwned(const OPN::GameVariant &variant) {
+    return variant.inLibrary || variant.librarySelected;
+}
+
 static bool OPNStoreVariantIsNotOwned(const OPN::GameVariant &variant) {
-    return variant.serviceStatus == "NOT_OWNED";
+    return !OPNStoreVariantIsOwned(variant);
 }
 
 static const OPN::GameVariant *OPNStoreVariantAtIndex(const OPN::GameInfo &game, int variantIndex) {
@@ -525,13 +597,9 @@ static NSString *OPNStorePurchaseURLForGame(const OPN::GameInfo &game, int varia
     return @"";
 }
 
-static bool OPNStoreGameHasPurchaseURL(const OPN::GameInfo &game, int variantIndex) {
-    return OPNStorePurchaseURLForGame(game, variantIndex).length > 0;
-}
-
 static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int variantIndex, BOOL prominent) {
     if (OPNStoreGameNeedsPurchase(game, variantIndex)) {
-        return OPNStoreGameHasPurchaseURL(game, variantIndex) ? @"Buy" : @"Unavailable";
+        return @"Buy";
     }
     return prominent ? @"Play Now" : @"PLAY";
 }
@@ -584,7 +652,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     NSInteger storeCount = MAX((NSInteger)_gameData.availableStores.size(), (NSInteger)_gameData.variants.size());
     BOOL needsPurchase = OPNStoreGameNeedsPurchase(_gameData, _selectedVariantIndex);
     self.availabilityLabel.stringValue = needsPurchase
-        ? (OPNStoreGameHasPurchaseURL(_gameData, _selectedVariantIndex) ? @"Not owned" : @"Purchase unavailable")
+        ? @"Not owned"
         : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
     self.playButton.title = OPNStorePrimaryActionTitle(_gameData, _selectedVariantIndex, self.prominent);
 }
@@ -754,11 +822,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)selectPressed {
     if (OPNStoreGameNeedsPurchase(self.gameData, self.selectedVariantIndex)) {
         NSString *purchaseURL = OPNStorePurchaseURLForGame(self.gameData, self.selectedVariantIndex);
-        if (purchaseURL.length == 0) {
-            NSBeep();
-            return;
-        }
-        if (self.onBuy) self.onBuy(purchaseURL);
+        if (self.onBuy) self.onBuy(purchaseURL ?: @"");
         return;
     }
     if (self.onSelect) self.onSelect();
@@ -872,6 +936,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (void)scheduleRenderStore;
+- (BOOL)mergeKnownStoreMetadataIntoPanels;
 - (void)refreshLibrarySelections;
 - (void)updateFocusedTiles;
 - (void)updateHeroTileOnly;
@@ -973,6 +1038,7 @@ using namespace OPN;
 
 - (void)setPanels:(const std::vector<OPN::PanelResult> &)panels {
     _panels = panels;
+    [self mergeKnownStoreMetadataIntoPanels];
     self.currentHeroIndex = 0;
     [self configureHeroRotationTimer];
     [self renderStore];
@@ -980,11 +1046,32 @@ using namespace OPN;
 
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
+    BOOL mergedStoreMetadata = [self mergeKnownStoreMetadataIntoPanels];
+    if (mergedStoreMetadata) {
+        [self renderStore];
+        return;
+    }
     if (self.rowCards.count > 0 || self.heroTile) {
         [self refreshLibrarySelections];
     } else if (!_panels.empty()) {
         [self renderStore];
     }
+}
+
+- (BOOL)mergeKnownStoreMetadataIntoPanels {
+    if (_panels.empty() || _libraryGames.empty()) return NO;
+    BOOL changed = NO;
+    for (PanelResult &panel : _panels) {
+        for (PanelSection &section : panel.sections) {
+            for (GameInfo &storeGame : section.games) {
+                for (const GameInfo &knownGame : _libraryGames) {
+                    if (!OPNStoreGameMatchesLibraryGame(storeGame, knownGame)) continue;
+                    if (OPNStoreMergeGameStoreMetadata(storeGame, knownGame)) changed = YES;
+                }
+            }
+        }
+    }
+    return changed;
 }
 
 - (int)selectedVariantIndexForStoreGame:(const GameInfo &)storeGame {
@@ -1277,7 +1364,7 @@ using namespace OPN;
     NSButton *launchButton = [[NSButton alloc] initWithFrame:NSMakeRect(34.0, height - 82.0, 156.0, 46.0)];
     int selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
     launchButton.title = OPNStoreGameNeedsPurchase(game, selectedVariantIndex)
-        ? (OPNStoreGameHasPurchaseURL(game, selectedVariantIndex) ? @"Buy" : @"Unavailable")
+        ? @"Buy"
         : @"Launch in Cloud";
     launchButton.bordered = NO;
     launchButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
@@ -1444,7 +1531,7 @@ using namespace OPN;
     [self.controllerFeaturedHeroViews addObject:meta];
 
     NSString *primaryTitle = OPNStoreGameNeedsPurchase(game, self.controllerFeaturedHeroVariantIndex)
-        ? (OPNStoreGameHasPurchaseURL(game, self.controllerFeaturedHeroVariantIndex) ? @"Buy" : @"Unavailable")
+        ? @"Buy"
         : @"▶  Play Now";
     NSButton *primary = OpnButton(primaryTitle, NSMakeRect(NSMinX(frame) + leftInset, buttonY, buttonWidth, buttonHeight), OpnColor(0x45F27C, 0.98), OpnColor(0x051008));
     primary.font = [NSFont systemFontOfSize:14.5 * heroScale * 0.68 weight:NSFontWeightBold];
@@ -1541,11 +1628,7 @@ using namespace OPN;
     int variantIndex = self.controllerFeaturedHeroVariantIndex >= 0 ? self.controllerFeaturedHeroVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(self.controllerFeaturedHeroGame, variantIndex)) {
         NSString *purchaseURL = OPNStorePurchaseURLForGame(self.controllerFeaturedHeroGame, variantIndex);
-        if (purchaseURL.length == 0) {
-            NSBeep();
-            return;
-        }
-        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, purchaseURL);
+        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, purchaseURL ?: @"");
         return;
     }
     if (!self.onSelectGame) return;
@@ -1775,11 +1858,7 @@ using namespace OPN;
     int variantIndex = tile.selectedVariantIndex >= 0 ? tile.selectedVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(tile.game, variantIndex)) {
         NSString *purchaseURL = OPNStorePurchaseURLForGame(tile.game, variantIndex);
-        if (purchaseURL.length == 0) {
-            NSBeep();
-            return;
-        }
-        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, purchaseURL);
+        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, purchaseURL ?: @"");
         return;
     }
     if (self.onSelectGame) self.onSelectGame(tile.game, variantIndex);

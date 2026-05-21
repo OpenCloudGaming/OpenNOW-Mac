@@ -862,8 +862,20 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
     NSString *trimmedURL = [purchaseURL ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmedURL.length == 0) {
-        OPN::LogError(@"[AppDelegate] Missing purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
-        NSBeep();
+        OPN::GameInfo gameCopy = game;
+        __weak __typeof__(self) weakSelf = self;
+        OPN::LogInfo(@"[AppDelegate] Resolving purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+        OPN::GameService::Shared().ResolveStoreURL(gameCopy, variantIndex, [weakSelf, gameCopy, variantIndex](bool success, const std::string &storeURL, const std::string &error) {
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (!success || storeURL.empty()) {
+                OPN::LogError(@"[AppDelegate] Store URL resolution failed for title=%s, id=%s, variantIndex=%d, error=%s", gameCopy.title.c_str(), gameCopy.id.c_str(), variantIndex, error.c_str());
+                NSBeep();
+                return;
+            }
+            NSString *resolvedURL = [NSString stringWithUTF8String:storeURL.c_str()];
+            [strongSelf openPurchaseURL:resolvedURL forGame:gameCopy variantIndex:variantIndex];
+        });
         return;
     }
 
@@ -969,12 +981,22 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         self.rootView.layer.opaque = NO;
         self.rootView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         __weak __typeof__(self) weakSelf = self;
+        self.rootView.onHomeSelected = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
+            [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+        };
         self.rootView.onStoreSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Store) return;
             [strongSelf transitionToScreen:OPN::AuthScreen::Store];
         };
         self.rootView.onLibrarySelected = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
+            [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
+        };
+        self.rootView.onSearchSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || strongSelf.currentScreen == OPN::AuthScreen::Catalog) return;
             [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
