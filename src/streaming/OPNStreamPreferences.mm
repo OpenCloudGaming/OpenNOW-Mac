@@ -643,6 +643,7 @@ static NSMutableURLRequest *ServerInfoRequest(const std::string &baseUrl, const 
     NSString *base = [NSString stringWithUTF8String:normalized.c_str()] ?: @"";
     NSString *urlString = [base stringByAppendingString:@"v2/serverInfo"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+    request.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
     request.timeoutInterval = 4.0;
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
@@ -660,6 +661,40 @@ static NSMutableURLRequest *ServerInfoRequest(const std::string &baseUrl, const 
     return request;
 }
 
+static constexpr int kRegionLatencyProbeCount = 2;
+
+static void MeasureRegionLatency(std::shared_ptr<std::vector<StreamRegionOption>> regions,
+                                 size_t index,
+                                 std::string token,
+                                 NSURLSession *session,
+                                 int attempt,
+                                 int bestLatencyMs,
+                                 dispatch_group_t group) {
+    if (!regions || index >= regions->size()) {
+        dispatch_group_leave(group);
+        return;
+    }
+
+    NSDate *start = [NSDate date];
+    NSMutableURLRequest *request = ServerInfoRequest((*regions)[index].url, token);
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *, NSURLResponse *response, NSError *error) {
+        int updatedBestLatencyMs = bestLatencyMs;
+        NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+        if (!error && http.statusCode >= 200 && http.statusCode < 500) {
+            int measuredLatencyMs = (int)std::llround([[NSDate date] timeIntervalSinceDate:start] * 1000.0);
+            updatedBestLatencyMs = updatedBestLatencyMs < 0 ? measuredLatencyMs : std::min(updatedBestLatencyMs, measuredLatencyMs);
+            (*regions)[index].latencyMs = updatedBestLatencyMs;
+        }
+
+        if (updatedBestLatencyMs >= 0 && attempt + 1 < kRegionLatencyProbeCount) {
+            MeasureRegionLatency(regions, index, token, session, attempt + 1, updatedBestLatencyMs, group);
+            return;
+        }
+        dispatch_group_leave(group);
+    }];
+    [task resume];
+}
+
 static void MeasureRegions(std::shared_ptr<std::vector<StreamRegionOption>> regions,
                            const std::string &token,
                            std::function<void(const std::vector<StreamRegionOption> &)> completion) {
@@ -672,16 +707,7 @@ static void MeasureRegions(std::shared_ptr<std::vector<StreamRegionOption>> regi
     NSURLSession *session = NSURLSession.sharedSession;
     for (size_t i = 0; i < regions->size(); i++) {
         dispatch_group_enter(group);
-        NSDate *start = [NSDate date];
-        NSMutableURLRequest *request = ServerInfoRequest((*regions)[i].url, token);
-        NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
-            if (!error && http.statusCode >= 200 && http.statusCode < 500) {
-                (*regions)[i].latencyMs = (int)std::llround([[NSDate date] timeIntervalSinceDate:start] * 1000.0);
-            }
-            dispatch_group_leave(group);
-        }];
-        [task resume];
+        MeasureRegionLatency(regions, i, token, session, 0, -1, group);
     }
 
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{

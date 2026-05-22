@@ -894,7 +894,96 @@ static void OPNStrokePath(NSBezierPath *path, NSColor *color, CGFloat width) {
             operation:NSCompositingOperationSourceOver
              fraction:alpha
        respectFlipped:YES
-                hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+                 hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+}
+
+- (BOOL)drawCommandIconInRect:(NSRect)rect color:(NSColor *)color {
+    if (self.tileStyle != OPNControllerHomeTileStyleCommand || self.actionIdentifier.length == 0) return NO;
+    NSString *action = self.actionIdentifier.lowercaseString;
+    NSRect icon = NSInsetRect(rect, NSWidth(rect) * 0.24, NSHeight(rect) * 0.24);
+    CGFloat strokeWidth = MAX(2.0, NSWidth(rect) * 0.055);
+
+    [color setStroke];
+    [color setFill];
+
+    if ([action isEqualToString:@"library"]) {
+        CGFloat cardHeight = NSHeight(icon) * 0.42;
+        for (NSInteger index = 0; index < 3; index++) {
+            CGFloat offset = (CGFloat)index * NSHeight(icon) * 0.15;
+            NSRect stackRect = NSMakeRect(NSMinX(icon) + offset,
+                                          NSMinY(icon) + NSHeight(icon) - cardHeight - offset,
+                                          NSWidth(icon) - offset * 1.35,
+                                          cardHeight);
+            NSBezierPath *stack = [NSBezierPath bezierPathWithRoundedRect:stackRect xRadius:4.0 yRadius:4.0];
+            stack.lineWidth = strokeWidth;
+            [stack stroke];
+        }
+        return YES;
+    }
+
+    if ([action isEqualToString:@"favorites"]) {
+        CGFloat headHeight = NSHeight(icon) * 0.38;
+        NSRect headRect = NSMakeRect(NSMinX(icon) + NSWidth(icon) * 0.18,
+                                     NSMinY(icon) + NSHeight(icon) * 0.05,
+                                     NSWidth(icon) * 0.64,
+                                     headHeight);
+        NSBezierPath *head = [NSBezierPath bezierPathWithRoundedRect:headRect xRadius:5.0 yRadius:5.0];
+        head.lineWidth = strokeWidth;
+        [head stroke];
+
+        NSBezierPath *pin = [NSBezierPath bezierPath];
+        [pin moveToPoint:NSMakePoint(NSMidX(icon), NSMaxY(headRect))];
+        [pin lineToPoint:NSMakePoint(NSMidX(icon), NSMinY(icon) + NSHeight(icon) * 0.78)];
+        [pin lineToPoint:NSMakePoint(NSMidX(icon) - NSWidth(icon) * 0.22, NSMaxY(icon))];
+        [pin moveToPoint:NSMakePoint(NSMidX(icon), NSMinY(icon) + NSHeight(icon) * 0.78)];
+        [pin lineToPoint:NSMakePoint(NSMidX(icon) + NSWidth(icon) * 0.22, NSMaxY(icon))];
+        pin.lineWidth = strokeWidth;
+        pin.lineCapStyle = NSLineCapStyleRound;
+        pin.lineJoinStyle = NSLineJoinStyleRound;
+        [pin stroke];
+        return YES;
+    }
+
+    if ([action isEqualToString:@"store"]) {
+        NSBezierPath *ring = [NSBezierPath bezierPathWithOvalInRect:icon];
+        ring.lineWidth = strokeWidth;
+        [ring stroke];
+
+        NSBezierPath *needle = [NSBezierPath bezierPath];
+        [needle moveToPoint:NSMakePoint(NSMidX(icon), NSMinY(icon) + NSHeight(icon) * 0.19)];
+        [needle lineToPoint:NSMakePoint(NSMinX(icon) + NSWidth(icon) * 0.66, NSMinY(icon) + NSHeight(icon) * 0.58)];
+        [needle lineToPoint:NSMakePoint(NSMidX(icon), NSMaxY(icon) - NSHeight(icon) * 0.19)];
+        [needle lineToPoint:NSMakePoint(NSMinX(icon) + NSWidth(icon) * 0.34, NSMinY(icon) + NSHeight(icon) * 0.42)];
+        [needle closePath];
+        [needle fill];
+        return YES;
+    }
+
+    if ([action isEqualToString:@"settings"]) {
+        NSPoint center = NSMakePoint(NSMidX(icon), NSMidY(icon));
+        CGFloat outerRadius = MIN(NSWidth(icon), NSHeight(icon)) * 0.42;
+        CGFloat innerRadius = outerRadius * 0.38;
+        for (NSInteger index = 0; index < 8; index++) {
+            CGFloat angle = ((CGFloat)index / 8.0) * (CGFloat)(M_PI * 2.0);
+            NSBezierPath *spoke = [NSBezierPath bezierPath];
+            [spoke moveToPoint:NSMakePoint(center.x + cos(angle) * outerRadius * 0.78, center.y + sin(angle) * outerRadius * 0.78)];
+            [spoke lineToPoint:NSMakePoint(center.x + cos(angle) * outerRadius, center.y + sin(angle) * outerRadius)];
+            spoke.lineWidth = strokeWidth;
+            spoke.lineCapStyle = NSLineCapStyleRound;
+            [spoke stroke];
+        }
+        NSRect outer = NSMakeRect(center.x - outerRadius * 0.72, center.y - outerRadius * 0.72, outerRadius * 1.44, outerRadius * 1.44);
+        NSBezierPath *gear = [NSBezierPath bezierPathWithOvalInRect:outer];
+        gear.lineWidth = strokeWidth;
+        [gear stroke];
+        NSRect inner = NSMakeRect(center.x - innerRadius, center.y - innerRadius, innerRadius * 2.0, innerRadius * 2.0);
+        NSBezierPath *hole = [NSBezierPath bezierPathWithOvalInRect:inner];
+        hole.lineWidth = strokeWidth;
+        [hole stroke];
+        return YES;
+    }
+
+    return NO;
 }
 
 - (void)drawGlyphInRect:(NSRect)rect {
@@ -904,6 +993,7 @@ static void OPNStrokePath(NSBezierPath *path, NSColor *color, CGFloat width) {
                                                             endingColor:OpnColor(OPNControllerAccentRGB(), self.controllerFocused ? 0.44 : 0.20)];
     [orbGradient drawInBezierPath:orb angle:-35.0];
     OPNStrokePath(orb, OpnColor(0xFFFFFF, self.controllerFocused ? 0.46 : 0.18), 1.0);
+    if ([self drawCommandIconInRect:rect color:OpnColor(OPNControllerAccentBlackRGB(0.90), 0.94)]) return;
     NSMutableParagraphStyle *center = [[NSMutableParagraphStyle alloc] init];
     center.alignment = NSTextAlignmentCenter;
     NSDictionary<NSAttributedStringKey, id> *attrs = @{
@@ -2356,12 +2446,8 @@ using namespace OPN;
     NSInteger favoriteCount = [self controllerHomeFavoriteCount];
     NSInteger totalCount = (NSInteger)_allGames.size();
 
-    NSTextField *eyebrow = OpnLabel(@"CONTROLLER HOME", NSMakeRect(contentInset, headerY, 260.0 * scale, 18.0 * scale), 12.0 * scale, OpnColor(OPNControllerAccentSoftRGB()), NSFontWeightBlack);
-    [self.gridContentView addSubview:eyebrow];
-    NSTextField *title = OpnLabel(@"Command Center", NSMakeRect(contentInset, headerY + 22.0 * scale, 520.0 * scale, 48.0 * scale), 40.0 * scale, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
-    [self.gridContentView addSubview:title];
     NSString *summary = [NSString stringWithFormat:@"%ld library %@ / %ld favorites / %ld total cloud %@", (long)libraryCount, libraryCount == 1 ? @"game" : @"games", (long)favoriteCount, (long)totalCount, totalCount == 1 ? @"title" : @"titles"];
-    NSTextField *subtitle = OpnLabel(summary, NSMakeRect(contentInset + 2.0, headerY + 73.0 * scale, MIN(720.0 * scale, contentWidth), 24.0 * scale), 15.0 * scale, OpnColor(0xDDE3E0, 0.72), NSFontWeightSemibold);
+    NSTextField *subtitle = OpnLabel(summary, NSMakeRect(contentInset + 2.0, headerY, MIN(720.0 * scale, contentWidth), 24.0 * scale), 15.0 * scale, OpnColor(0xDDE3E0, 0.72), NSFontWeightSemibold);
     [self.gridContentView addSubview:subtitle];
 
     std::vector<OPN::GameInfo> queueGames = [self controllerHomeQueueGamesWithLimit:4];
@@ -2369,7 +2455,7 @@ using namespace OPN;
     const OPN::GameInfo *heroGame = lastPlayedGame ? lastPlayedGame : (queueGames.empty() ? nullptr : &queueGames.front());
 
     CGFloat gap = MAX(18.0, 24.0 * scale);
-    CGFloat heroY = 112.0 * scale;
+    CGFloat heroY = 39.0 * scale;
     CGFloat heroWidth = floor(contentWidth * 0.50);
     CGFloat sideWidth = contentWidth - heroWidth - gap;
     CGFloat heroHeight = MIN(MAX(258.0, height * 0.405), 338.0);
