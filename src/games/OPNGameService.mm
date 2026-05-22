@@ -113,6 +113,9 @@ static NSString *kNvClientVersion = @"2.0.80.173";
 static constexpr const char *kDefaultSubscriptionVpcId = "NP-AMS-08";
 static constexpr int kDefaultCatalogFetchCount = 96;
 static constexpr int kMaxCatalogPages = 3;
+static constexpr NSTimeInterval kCatalogCacheFreshSeconds = 15.0 * 60.0;
+static constexpr NSTimeInterval kCatalogDefinitionsFreshSeconds = 24.0 * 60.0 * 60.0;
+static NSString *const kCatalogLocale = @"en_US";
 static void GetServerVpcId(const std::string &token,
                            std::function<void(const std::string &vpcId)> completion);
 
@@ -310,6 +313,62 @@ static int SafeInt(id value) {
     if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value intValue];
     if ([value isKindOfClass:[NSString class]]) return [(NSString *)value intValue];
     return 0;
+}
+
+static void ParseCatalogDefinitions(NSDictionary *definitionsData,
+                                    CatalogBrowseResult &result,
+                                    NSMutableDictionary<NSString *, NSDictionary *> *filterPayloadById) {
+    NSArray *filterGroupsRaw = definitionsData[@"filterGroupDefinitions"];
+    if ([filterGroupsRaw isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *groupRaw in filterGroupsRaw) {
+            if (![groupRaw isKindOfClass:[NSDictionary class]]) continue;
+            CatalogFilterGroup group;
+            NSString *groupId = SafeStr(groupRaw[@"id"]);
+            NSString *groupLabel = SafeStr(groupRaw[@"label"]);
+            group.id = groupId ? [groupId UTF8String] : "";
+            group.label = groupLabel ? [groupLabel UTF8String] : "";
+            NSArray *filters = groupRaw[@"filters"];
+            if ([filters isKindOfClass:[NSArray class]]) {
+                for (NSDictionary *entry in filters) {
+                    if (![entry isKindOfClass:[NSDictionary class]]) continue;
+                    NSArray *payloads = entry[@"filters"];
+                    NSString *payloadString = [payloads isKindOfClass:[NSArray class]] && payloads.count > 0 ? SafeStr(payloads[0]) : nil;
+                    NSString *filterId = SafeStr(entry[@"id"]);
+                    NSString *filterLabel = SafeStr(entry[@"label"]);
+                    if (filterId.length == 0 || payloadString.length == 0) continue;
+                    NSData *payloadData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
+                    NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:payloadData options:0 error:nil];
+                    if (![payload isKindOfClass:[NSDictionary class]]) continue;
+                    filterPayloadById[filterId] = payload;
+
+                    CatalogFilterOption option;
+                    option.id = [filterId UTF8String];
+                    option.rawId = option.id;
+                    option.label = filterLabel ? [filterLabel UTF8String] : option.id;
+                    option.groupId = group.id;
+                    option.groupLabel = group.label;
+                    group.options.push_back(option);
+                }
+            }
+            if (!group.options.empty()) result.filterGroups.push_back(group);
+        }
+    }
+
+    NSArray *sortsRaw = definitionsData[@"sortOrderDefinitions"];
+    if ([sortsRaw isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *sortRaw in sortsRaw) {
+            if (![sortRaw isKindOfClass:[NSDictionary class]]) continue;
+            NSString *sid = SafeStr(sortRaw[@"id"]);
+            NSString *label = SafeStr(sortRaw[@"label"]);
+            NSString *orderBy = SafeStr(sortRaw[@"orderBy"]);
+            if (sid.length == 0 || orderBy.length == 0) continue;
+            CatalogSortOption option;
+            option.id = [sid UTF8String];
+            option.label = label ? [label UTF8String] : option.id;
+            option.orderBy = [orderBy UTF8String];
+            result.sortOptions.push_back(option);
+        }
+    }
 }
 
 static void AppendUniqueString(std::vector<std::string> &values, NSString *value) {
@@ -786,6 +845,18 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
     std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
     int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
     std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
+
+    CatalogBrowseResult freshCachedResult;
+    NSDictionary *freshDefinitions = nil;
+    if (GameDataCache::Shared().LoadFreshCatalog(catalogCacheKey, kCatalogCacheFreshSeconds, freshCachedResult) &&
+        GameDataCache::Shared().LoadCatalogDefinitions(kCatalogLocale, kCatalogDefinitionsFreshSeconds, &freshDefinitions)) {
+        NSMutableDictionary<NSString *, NSDictionary *> *unusedFilterPayloads = [NSMutableDictionary dictionary];
+        ParseCatalogDefinitions(freshDefinitions, freshCachedResult, unusedFilterPayloads);
+        OPN::LogInfo(@"[GameService] catalog fresh cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)freshCachedResult.games.size());
+        DispatchCatalogBrowseCallback(callback, true, freshCachedResult, "");
+        return;
+    }
+
     dispatch_async(GameServiceWorkQueue(), ^{
         CatalogBrowseResult cachedResult;
         if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
@@ -813,8 +884,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         }
         )";
 
-        postGraphQlJson(definitionsQuery, @{@"locale": @"en_US"},
-            [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
+        auto handleDefinitions = [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
                     OPN::LogError(@"[GameService] catalog definitions failed error=%@", definitionsError);
                     DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, [definitionsError UTF8String]);
@@ -824,57 +894,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 dispatch_async(GameServiceWorkQueue(), ^{
                 CatalogBrowseResult result;
                 NSMutableDictionary<NSString *, NSDictionary *> *filterPayloadById = [NSMutableDictionary dictionary];
-                NSArray *filterGroupsRaw = definitionsData[@"filterGroupDefinitions"];
-                if ([filterGroupsRaw isKindOfClass:[NSArray class]]) {
-                    for (NSDictionary *groupRaw in filterGroupsRaw) {
-                        if (![groupRaw isKindOfClass:[NSDictionary class]]) continue;
-                        CatalogFilterGroup group;
-                        NSString *groupId = SafeStr(groupRaw[@"id"]);
-                        NSString *groupLabel = SafeStr(groupRaw[@"label"]);
-                        group.id = groupId ? [groupId UTF8String] : "";
-                        group.label = groupLabel ? [groupLabel UTF8String] : "";
-                        NSArray *filters = groupRaw[@"filters"];
-                        if ([filters isKindOfClass:[NSArray class]]) {
-                            for (NSDictionary *entry in filters) {
-                                if (![entry isKindOfClass:[NSDictionary class]]) continue;
-                                NSArray *payloads = entry[@"filters"];
-                                NSString *payloadString = [payloads isKindOfClass:[NSArray class]] && payloads.count > 0 ? SafeStr(payloads[0]) : nil;
-                                NSString *filterId = SafeStr(entry[@"id"]);
-                                NSString *filterLabel = SafeStr(entry[@"label"]);
-                                if (filterId.length == 0 || payloadString.length == 0) continue;
-                                NSData *payloadData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
-                                NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:payloadData options:0 error:nil];
-                                if (![payload isKindOfClass:[NSDictionary class]]) continue;
-                                filterPayloadById[filterId] = payload;
-
-                                CatalogFilterOption option;
-                                option.id = [filterId UTF8String];
-                                option.rawId = option.id;
-                                option.label = filterLabel ? [filterLabel UTF8String] : option.id;
-                                option.groupId = group.id;
-                                option.groupLabel = group.label;
-                                group.options.push_back(option);
-                            }
-                        }
-                        if (!group.options.empty()) result.filterGroups.push_back(group);
-                    }
-                }
-
-                NSArray *sortsRaw = definitionsData[@"sortOrderDefinitions"];
-                if ([sortsRaw isKindOfClass:[NSArray class]]) {
-                    for (NSDictionary *sortRaw in sortsRaw) {
-                        if (![sortRaw isKindOfClass:[NSDictionary class]]) continue;
-                        NSString *sid = SafeStr(sortRaw[@"id"]);
-                        NSString *label = SafeStr(sortRaw[@"label"]);
-                        NSString *orderBy = SafeStr(sortRaw[@"orderBy"]);
-                        if (sid.length == 0 || orderBy.length == 0) continue;
-                        CatalogSortOption option;
-                        option.id = [sid UTF8String];
-                        option.label = label ? [label UTF8String] : option.id;
-                        option.orderBy = [orderBy UTF8String];
-                        result.sortOptions.push_back(option);
-                    }
-                }
+                ParseCatalogDefinitions(definitionsData, result, filterPayloadById);
 
                 CatalogSortOption selectedSort;
                 selectedSort.id = "relevance";
@@ -1136,7 +1156,23 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 };
                 (*fetchPage)();
                 });
+            };
+
+        NSDictionary *cachedDefinitions = nil;
+        if (GameDataCache::Shared().LoadCatalogDefinitions(kCatalogLocale, kCatalogDefinitionsFreshSeconds, &cachedDefinitions)) {
+            OPN::LogInfo(@"[GameService] catalog definitions cache hit locale=%@", kCatalogLocale);
+            dispatch_async(GameServiceWorkQueue(), ^{
+                handleDefinitions(cachedDefinitions, @"");
             });
+        } else {
+            postGraphQlJson(definitionsQuery, @{@"locale": kCatalogLocale},
+                [handleDefinitions](NSDictionary *definitionsData, NSString *definitionsError) {
+                    if (definitionsError.length == 0 && [definitionsData isKindOfClass:[NSDictionary class]]) {
+                        GameDataCache::Shared().SaveCatalogDefinitions(kCatalogLocale, definitionsData);
+                    }
+                    handleDefinitions(definitionsData, definitionsError);
+                });
+        }
     });
 }
 

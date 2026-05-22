@@ -43,7 +43,18 @@ CGPathRef OpnCreateEllipsePath(NSRect rect) CF_RETURNS_RETAINED;
 
 typedef void (^OpnImageLoadCompletion)(NSImage *image, NSString *resolvedURL, NSData *data);
 
+@interface OpnImageLoadToken : NSObject
+@property (nonatomic, assign, readonly, getter=isCancelled) BOOL cancelled;
+- (void)cancel;
+@end
+
 void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion);
 void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
                                 CGFloat maxPixelDimension,
                                 OpnImageLoadCompletion completion);
+OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString,
+                                                 CGFloat maxPixelDimension,
+                                                 OpnImageLoadCompletion completion);
+OpnImageLoadToken *OpnLoadImageFromCandidatesCancellable(NSArray<NSString *> *candidates,
+                                                         CGFloat maxPixelDimension,
+                                                         OpnImageLoadCompletion completion);
