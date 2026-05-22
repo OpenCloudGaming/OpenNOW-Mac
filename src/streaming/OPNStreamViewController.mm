@@ -30,6 +30,9 @@ static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
 static constexpr NSTimeInterval OPNStreamIdleDeviceInputInterval = 5.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityTimeoutInterval = 10.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
+static constexpr NSTimeInterval OPNStreamQualityGuardrailCooldownInterval = 30.0;
+static constexpr NSInteger OPNStreamQualityDegradedSampleThreshold = 3;
+static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 
 @interface OPNQuitGameOverlayView : NSView
 @property (nonatomic, copy) void (^onCancel)(void);
@@ -88,6 +91,10 @@ static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 @property (nonatomic, assign) CFTimeInterval launchStartTime;
 @property (nonatomic, assign) os_signpost_id_t launchSignpostId;
 - (void)finishLaunchMeasurementWithSuccess:(BOOL)success reason:(NSString *)reason;
+- (NSString *)launchStatusMessageForStep:(NSInteger)stepIndex baseMessage:(NSString *)baseMessage;
+- (void)resetQualityGuardrailsForBitrate:(int)bitrateMbps;
+- (void)evaluateQualityGuardrailsWithStats:(const OPN::StreamStats &)stats;
+- (void)showQualityGuardrailToastWithTitle:(NSString *)title detail:(NSString *)detail warning:(BOOL)warning;
 - (void)recordStreamUserActivity;
 - (void)startInactivityTimer;
 - (void)stopInactivityTimer;
@@ -840,6 +847,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     id _latencyActivity;
     CFTimeInterval _lastStreamActivityTime;
     CFTimeInterval _lastIdleDeviceInputTime;
+    CFTimeInterval _launchFlowStartTime;
+    CFTimeInterval _lastQualityGuardrailChangeTime;
+    NSInteger _qualityDegradedSampleCount;
+    BOOL _qualityWarningShown;
+    int _runtimeMaxBitrateMbps;
     BOOL _idleDeviceInputEnabled;
 }
 
@@ -895,6 +907,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _latencyActivity = nil;
         _lastStreamActivityTime = 0;
         _lastIdleDeviceInputTime = 0;
+        _launchFlowStartTime = 0;
+        _lastQualityGuardrailChangeTime = 0;
+        _qualityDegradedSampleCount = 0;
+        _qualityWarningShown = NO;
+        _runtimeMaxBitrateMbps = 0;
         _idleDeviceInputEnabled = NO;
     }
     return self;
@@ -951,7 +968,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     self.loadingView = [[OPNLoadingView alloc] initWithFrame:[self loadingViewFrame]
                                                      message:@"Starting session..."];
     self.loadingView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [self.loadingView setSteps:@[@"Allocate cloud session",
+    [self.loadingView setSteps:@[@"Check network route",
+                                 @"Allocate cloud session",
                                  @"Connect to game server",
                                  @"Receive stream offer",
                                  @"Negotiate WebRTC",
@@ -1014,15 +1032,39 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     return self.view.bounds;
 }
 
+- (NSString *)launchStatusMessageForStep:(NSInteger)stepIndex baseMessage:(NSString *)baseMessage {
+    NSString *safeMessage = baseMessage.length > 0 ? baseMessage : @"Starting session...";
+    if (_launchFlowStartTime <= 0.0) return safeMessage;
+
+    CFTimeInterval elapsed = MAX(0.0, CACurrentMediaTime() - _launchFlowStartTime);
+    NSString *phase = @"Launch";
+    switch (stepIndex) {
+        case 0: phase = @"Network"; break;
+        case 1: phase = @"Session"; break;
+        case 2: phase = @"Server"; break;
+        case 3: phase = @"Offer"; break;
+        case 4: phase = @"WebRTC"; break;
+        case 5: phase = @"Video"; break;
+        case 6: phase = @"Ready"; break;
+        default: break;
+    }
+
+    NSString *retryText = _recovering
+        ? [NSString stringWithFormat:@" · retry %ld/%ld", (long)_recoveryAttempt, (long)OPNMaxAutomaticRecoveryAttempts]
+        : @"";
+    return [NSString stringWithFormat:@"%@ · %@ · %.0fs%@", phase, safeMessage, elapsed, retryText];
+}
+
 - (void)setLaunchStep:(NSInteger)stepIndex message:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *statusMessage = [self launchStatusMessageForStep:stepIndex baseMessage:message];
         if (self.loadingView) {
             if (stepIndex >= self.loadingView.currentStepIndex) {
-                [self.loadingView advanceToStep:stepIndex message:message];
+                [self.loadingView advanceToStep:stepIndex message:statusMessage];
             }
         }
         if (self.statusLabel) {
-            self.statusLabel.stringValue = message;
+            self.statusLabel.stringValue = statusMessage;
         }
     });
 }
@@ -1293,6 +1335,111 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }];
 }
 
+- (void)showQualityGuardrailToastWithTitle:(NSString *)title detail:(NSString *)detail warning:(BOOL)warning {
+    [_connectedToast removeFromSuperview];
+
+    CGFloat width = MIN(420.0, MAX(300.0, NSWidth(self.view.bounds) - 36.0));
+    CGFloat height = detail.length > 0 ? 78.0 : 58.0;
+    NSView *toast = [[NSView alloc] initWithFrame:NSMakeRect(floor((NSWidth(self.view.bounds) - width) / 2.0),
+                                                             24.0,
+                                                             width,
+                                                             height)];
+    toast.wantsLayer = YES;
+    toast.layer.cornerRadius = 16.0;
+    toast.layer.backgroundColor = OPNQuitColor(0.05, 0.07, 0.06, 0.90).CGColor;
+    toast.layer.borderWidth = 1.0;
+    toast.layer.borderColor = (warning ? OPNQuitColor(1.0, 0.72, 0.34, 0.36) : OPNQuitColor(0.35, 0.95, 0.56, 0.30)).CGColor;
+    toast.alphaValue = 0.0;
+
+    NSColor *titleColor = warning ? OPNQuitColor(1.0, 0.91, 0.76, 1.0) : OPNQuitColor(0.88, 1.0, 0.92, 1.0);
+    NSTextField *titleLabel = OPNStatsText(title ?: @"Stream quality adjusted", 14.0, NSFontWeightSemibold, titleColor, NSTextAlignmentCenter);
+    titleLabel.frame = NSMakeRect(18.0, detail.length > 0 ? 13.0 : 19.0, width - 36.0, 20.0);
+    [toast addSubview:titleLabel];
+
+    if (detail.length > 0) {
+        NSTextField *detailLabel = OPNStatsText(detail, 11.0, NSFontWeightMedium, OPNQuitColor(0.78, 0.84, 0.78, 1.0), NSTextAlignmentCenter);
+        detailLabel.frame = NSMakeRect(18.0, 39.0, width - 36.0, 18.0);
+        [toast addSubview:detailLabel];
+    }
+
+    _connectedToast = toast;
+    [self.view addSubview:toast positioned:NSWindowAbove relativeTo:nil];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.16;
+        toast.animator.alphaValue = 1.0;
+    } completionHandler:^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2600 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (self->_connectedToast != toast) return;
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.22;
+                toast.animator.alphaValue = 0.0;
+            } completionHandler:^{
+                if (self->_connectedToast == toast) self->_connectedToast = nil;
+                [toast removeFromSuperview];
+            }];
+        });
+    }];
+}
+
+- (void)resetQualityGuardrailsForBitrate:(int)bitrateMbps {
+    _runtimeMaxBitrateMbps = std::max(0, bitrateMbps);
+    _qualityDegradedSampleCount = 0;
+    _lastQualityGuardrailChangeTime = 0.0;
+    _qualityWarningShown = NO;
+}
+
+- (void)evaluateQualityGuardrailsWithStats:(const OPN::StreamStats &)stats {
+    if (_streamEnded || !_connectedOnce || _recovering || !stats.available || _runtimeMaxBitrateMbps <= 0) return;
+
+    const double targetFps = stats.fps > 0 ? (double)stats.fps : 60.0;
+    const bool highLatency = stats.latencyMs >= 115.0;
+    const bool highJitter = stats.jitterMs >= 28.0;
+    const bool packetLoss = stats.packetLossPercent >= 1.0;
+    const bool droppedFrames = stats.framesReceived > 0 && stats.framesDropped >= 6;
+    const bool renderSlow = stats.renderFps > 0.0 && stats.renderFps < targetFps * 0.82;
+    const bool decodeSlow = stats.decodeTimeMs >= (1000.0 / targetFps) * 0.95;
+    const bool degraded = highLatency || highJitter || packetLoss || droppedFrames || renderSlow || decodeSlow;
+
+    if (!degraded) {
+        _qualityDegradedSampleCount = MAX((NSInteger)0, _qualityDegradedSampleCount - 1);
+        return;
+    }
+
+    _qualityDegradedSampleCount = MIN(_qualityDegradedSampleCount + 1, (NSInteger)10);
+    if (_qualityDegradedSampleCount < OPNStreamQualityDegradedSampleThreshold) return;
+
+    NSMutableArray<NSString *> *signals = [NSMutableArray array];
+    if (highLatency) [signals addObject:[NSString stringWithFormat:@"latency %.0f ms", stats.latencyMs]];
+    if (highJitter) [signals addObject:[NSString stringWithFormat:@"jitter %.0f ms", stats.jitterMs]];
+    if (packetLoss) [signals addObject:[NSString stringWithFormat:@"loss %.1f%%", stats.packetLossPercent]];
+    if (renderSlow) [signals addObject:[NSString stringWithFormat:@"render %.0f fps", stats.renderFps]];
+    if (decodeSlow) [signals addObject:[NSString stringWithFormat:@"decode %.1f ms", stats.decodeTimeMs]];
+    if (droppedFrames) [signals addObject:[NSString stringWithFormat:@"%llu dropped", (unsigned long long)stats.framesDropped]];
+
+    CFTimeInterval now = CACurrentMediaTime();
+    BOOL cooldownElapsed = _lastQualityGuardrailChangeTime <= 0.0 || now - _lastQualityGuardrailChangeTime >= OPNStreamQualityGuardrailCooldownInterval;
+    int reducedBitrate = MAX(OPNStreamMinimumGuardrailBitrateMbps, (int)std::floor((double)_runtimeMaxBitrateMbps * 0.80));
+    NSString *signalText = [signals componentsJoinedByString:@", "];
+    if (cooldownElapsed && reducedBitrate < _runtimeMaxBitrateMbps) {
+        _runtimeMaxBitrateMbps = reducedBitrate;
+        _lastQualityGuardrailChangeTime = now;
+        _qualityDegradedSampleCount = 0;
+        [self.streamView setMaxBitrateMbps:reducedBitrate];
+        if (_session) _session->SetMaxBitrateMbps(reducedBitrate);
+        NSString *detail = [NSString stringWithFormat:@"%@ · capped at %d Mbps", signalText, reducedBitrate];
+        [self showQualityGuardrailToastWithTitle:@"Stream quality guardrail applied" detail:detail warning:YES];
+        OPN::LogInfo(@"[StreamVC] Quality guardrail lowered runtime bitrate to %d Mbps after signals: %@", reducedBitrate, signalText);
+        return;
+    }
+
+    if (!_qualityWarningShown) {
+        _qualityWarningShown = YES;
+        NSString *detail = [NSString stringWithFormat:@"%@ · consider 30 FPS or H264 if this continues", signalText];
+        [self showQualityGuardrailToastWithTitle:@"Stream quality is unstable" detail:detail warning:YES];
+        OPN::LogInfo(@"[StreamVC] Quality warning shown after signals: %@", signalText);
+    }
+}
+
 - (void)copyCurrentLogToClipboardFromShortcut {
     if (_streamEnded) return;
     OPN::AppendLogEvent(@"[StreamVC] Command-L requested log copy");
@@ -1303,12 +1450,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (void)updateStatsOverlay {
-    if (!self.statsOverlay) return;
     OPN::StreamStats stats;
     if (_session) {
         _session->RequestStats();
         stats = _session->GetLatestStats();
     }
+    [self evaluateQualityGuardrailsWithStats:stats];
+    if (!self.statsOverlay) return;
 
     NSInteger latencyMs = stats.latencyMs >= 0 ? (NSInteger)std::llround(stats.latencyMs) : -1;
     NSInteger jitterMs = stats.jitterMs >= 0 ? (NSInteger)std::llround(stats.jitterMs) : -1;
@@ -1378,7 +1526,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         if (self.statsOverlay) {
             [self.statsOverlay removeFromSuperview];
             self.statsOverlay = nil;
-            [self stopStatsRefreshTimer];
+            if (!self->_connectedOnce) [self stopStatsRefreshTimer];
             [self.streamView takeFocus];
             OPN::LogInfo(@"[StreamVC] Stats overlay hidden via CMD+N");
             return;
@@ -1478,7 +1626,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     self.loadingView = [[OPNLoadingView alloc] initWithFrame:[self loadingViewFrame]
                                                      message:message];
     self.loadingView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [self.loadingView setSteps:@[@"Allocate cloud session",
+    [self.loadingView setSteps:@[@"Check network route",
+                                 @"Allocate cloud session",
                                  @"Connect to game server",
                                  @"Receive stream offer",
                                  @"Negotiate WebRTC",
@@ -1744,6 +1893,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self ensureLoadingViewWithMessage:message];
     [self.streamView stopRecordingIfNeeded];
     [self resetTransportForRecovery];
+    [self resetQualityGuardrailsForBitrate:_runtimeMaxBitrateMbps];
     [self setStatus:message];
 
     __weak __typeof__(self) weakSelf = self;
@@ -1773,7 +1923,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded || _launchGeneration != launchGeneration) return;
 
-    [self setLaunchStep:1 message:@"Connecting to game server..."];
+    [self setLaunchStep:2 message:@"Connecting to game server..."];
 
     OPN::SessionInfo activeSessionInfo = sessionInfo;
     OPN::StreamSettings negotiatedSettings = OPNSettingsWithNegotiatedProfile(settings, activeSessionInfo);
@@ -1813,7 +1963,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         s->_remoteIceReceived = NO;
         [s startRemoteIceGraceTimerForLaunchGeneration:launchGeneration];
 
-        [s setLaunchStep:3 message:@"Negotiating stream..."];
+        [s setLaunchStep:4 message:@"Negotiating stream..."];
         s->_session->SetNativeWindow((__bridge void *)[s.streamView nativeVideoView]);
 
         s->_session->OnAnswerReady([weakSelf, activeSessionInfo, serverIceUfrag, launchGeneration](const OPN::SendAnswerRequest &answer) {
@@ -1835,7 +1985,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             s2->_signaling->SendIceCandidate(candidate);
         });
 
-        [s setLaunchStep:4 message:@"Starting video pipeline..."];
+        [s setLaunchStep:5 message:@"Starting video pipeline..."];
         s->_session->Start(activeSessionInfo, sdp, negotiatedSettings, [weakSelf, activeSessionInfo, negotiatedSettings, launchGeneration](bool connected, const std::string &streamError) {
             __typeof__(self) s2 = weakSelf;
             if (!s2 || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
@@ -1847,12 +1997,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     s2->_connectedOnce = YES;
                     s2->_recovering = NO;
                     [s2 beginLatencyActivity];
-                    [s2 setLaunchStep:5 message:@"Connected!"];
+                    [s2 setLaunchStep:6 message:@"Connected!"];
                     [s2 finishLaunchMeasurementWithSuccess:YES reason:@"connected"];
                     [s2.streamView setStreamSession:s2->_session];
                     [s2.streamView takeFocus];
                     [s2 startInactivityTimer];
                     [s2 showConnectedToastWithResolution:negotiatedSettings.resolution fps:negotiatedSettings.fps bitrate:negotiatedSettings.maxBitrateMbps codec:negotiatedSettings.codec];
+                    [s2 startStatsRefreshTimer];
                     [s2 updateStatsOverlay];
                     [s2 scheduleRecoveryAttemptResetForLaunchGeneration:launchGeneration];
                     __weak __typeof__(s2) weakConnectedSelf = s2;
@@ -1898,7 +2049,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         }
         if (ok) {
             OPN::LogInfo(@"[StreamVC] Signaling connected");
-            [s setLaunchStep:2 message:@"Waiting for stream offer..."];
+            [s setLaunchStep:3 message:@"Waiting for stream offer..."];
         }
         if (!ok) {
             OPN::LogError(@"[StreamVC] Signaling Connect failed: %s", err.c_str());
@@ -1921,6 +2072,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     if (_streamEnded || _launchGeneration != launchGeneration) return;
 
     OPNDisplayStreamProfile displayProfile = ResolveDisplayStreamProfile(self.view.window);
+    [self setLaunchStep:1 message:recoveringLaunch ? @"Reallocating cloud session..." : @"Allocating cloud session..."];
     self.launchStartTime = CACurrentMediaTime();
     self.launchSignpostId = os_signpost_id_generate(OPNStreamPerformanceLog());
     self.launchSignpostActive = YES;
@@ -1961,7 +2113,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         OPN::LogInfo(@"[StreamVC] Claiming active session for silent resume: sessionId=%s", _resumeSessionId.c_str());
         OPN::SessionManager::Shared().SetAccessToken(_apiToken);
         OPN::SessionManager::Shared().SetStreamingBaseUrl(streamingBaseUrl);
-        [self setLaunchStep:0 message:@"Resuming active session..."];
+        [self setLaunchStep:1 message:@"Resuming active session..."];
         OPN::SessionManager::Shared().ClaimSession(_resumeSessionId, _resumeServer, _appId, settings, recoveringLaunch,
             [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch](bool success, const OPN::SessionInfo &info, const std::string &error) {
                 __typeof__(self) strongSelf = weakSelf;
@@ -1983,7 +2135,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     }
                     if (error.find("SESSION_NOT_PAUSED") != std::string::npos || error.find("\"statusCode\":34") != std::string::npos) {
                         OPN::LogInfo(@"[StreamVC] Active session is not paused; re-resolving currently available session");
-                        [strongSelf setLaunchStep:0 message:@"Resuming current active session..."];
+                        [strongSelf setLaunchStep:1 message:@"Resuming current active session..."];
                         std::string requestedSessionId = strongSelf->_resumeSessionId;
                         std::string requestedAppId = strongSelf->_appId;
                         OPN::SessionManager::Shared().GetActiveSessions([weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedSessionId, requestedAppId](bool sessionsOk, const std::vector<OPN::ActiveSessionEntry> &sessions, const std::string &sessionsError) {
@@ -2033,7 +2185,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                 std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : requestedAppId;
                                 retrySelf->_resumeSessionId = selectedSession.sessionId;
                                 retrySelf->_resumeServer = selectedSession.serverIp;
-                                [retrySelf setLaunchStep:0 message:@"Connecting to current active session..."];
+                                [retrySelf setLaunchStep:2 message:@"Connecting to current active session..."];
                                 OPN::SessionManager::Shared().ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settings, true,
                                     [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch](bool retrySuccess, const OPN::SessionInfo &retryInfo, const std::string &retryError) {
                                         __typeof__(self) claimSelf = weakSelf;
@@ -2081,7 +2233,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
             NSString *statusMessage = OPNStringFromStdString(message, @"Waiting for session cleanup...");
-            [strongSelf setLaunchStep:0 message:statusMessage ?: @"Waiting for session cleanup..."];
+            [strongSelf setLaunchStep:1 message:statusMessage ?: @"Waiting for session cleanup..."];
             if (!progressSession.sessionId.empty()) {
                 [strongSelf updateLaunchAdState:progressSession];
             }
@@ -2117,13 +2269,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)startStreamLaunchFlow {
     NSUInteger launchGeneration = ++_launchGeneration;
     BOOL recoveringLaunch = _recovering;
+    _launchFlowStartTime = CACurrentMediaTime();
     OPN::LogInfo(@"[StreamVC] Starting stream launch flow for game: %@ (appId=%s, recovery=%d attempt=%ld/%ld)",
           OPNStringFromStdString(_gameTitle, @""),
           _appId.c_str(),
           recoveringLaunch,
           (long)_recoveryAttempt,
           (long)OPNMaxAutomaticRecoveryAttempts);
-    NSString *launchMessage = recoveringLaunch ? @"Reconnecting to session..." : @"Allocating session...";
+    NSString *launchMessage = recoveringLaunch ? @"Preparing reconnect..." : @"Preparing stream launch...";
     [self ensureLoadingViewWithMessage:launchMessage];
     [self setLaunchStep:0 message:launchMessage];
 
@@ -2236,6 +2389,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                 if (preflightCopy.recommendedMaxBitrateMbps > 0) {
                     finalSettings.maxBitrateMbps = std::min(finalSettings.maxBitrateMbps, preflightCopy.recommendedMaxBitrateMbps);
                 }
+                [strongSelf resetQualityGuardrailsForBitrate:finalSettings.maxBitrateMbps];
                 [strongSelf.streamView setMaxBitrateMbps:finalSettings.maxBitrateMbps];
 
                 std::string baseUrl = preflightCopy.streamingBaseUrl.empty() ? OPN::LoadSelectedStreamingBaseUrl() : preflightCopy.streamingBaseUrl;
