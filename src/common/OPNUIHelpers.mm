@@ -11,14 +11,103 @@ static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFu
 static NSString *const OPNControllerModeDefaultsKey = @"OpenNOW.Interface.ControllerMode";
 static const CGFloat OPNBackgroundTintStrength = 0.85;
 
-static dispatch_queue_t OpnImageLoaderQueue(void) {
-    static dispatch_queue_t queue;
+static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
+    static NSOperationQueue *queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.opennow.image-loader", DISPATCH_QUEUE_CONCURRENT);
+        queue = [[NSOperationQueue alloc] init];
+        queue.name = @"com.opennow.image-loader";
+        queue.maxConcurrentOperationCount = 4;
+        queue.qualityOfService = NSQualityOfServiceUtility;
     });
     return queue;
 }
+
+@interface OpnImageLoadToken ()
+- (void)opnSetOperation:(NSOperation *)operation;
+- (void)opnSetTask:(NSURLSessionDataTask *)task;
+- (void)opnAddChildToken:(OpnImageLoadToken *)token;
+@end
+
+@implementation OpnImageLoadToken {
+    NSLock *_lock;
+    BOOL _cancelled;
+    NSOperation *_operation;
+    NSURLSessionDataTask *_task;
+    NSMutableArray<OpnImageLoadToken *> *_children;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _lock = [[NSLock alloc] init];
+        _children = [NSMutableArray array];
+    }
+    return self;
+}
+
+- (BOOL)isCancelled {
+    [_lock lock];
+    BOOL cancelled = _cancelled;
+    [_lock unlock];
+    return cancelled;
+}
+
+- (void)cancel {
+    NSArray<OpnImageLoadToken *> *children = nil;
+    NSOperation *operation = nil;
+    NSURLSessionDataTask *task = nil;
+    [_lock lock];
+    if (!_cancelled) {
+        _cancelled = YES;
+        operation = _operation;
+        task = _task;
+        children = [_children copy];
+        [_children removeAllObjects];
+    }
+    [_lock unlock];
+    [operation cancel];
+    [task cancel];
+    for (OpnImageLoadToken *child in children) [child cancel];
+}
+
+- (void)opnSetOperation:(NSOperation *)operation {
+    BOOL cancelNow = NO;
+    [_lock lock];
+    _operation = operation;
+    cancelNow = _cancelled;
+    [_lock unlock];
+    if (cancelNow) [operation cancel];
+}
+
+- (void)opnSetTask:(NSURLSessionDataTask *)task {
+    BOOL cancelNow = NO;
+    [_lock lock];
+    _task = task;
+    cancelNow = _cancelled;
+    [_lock unlock];
+    if (cancelNow) [task cancel];
+}
+
+- (void)opnAddChildToken:(OpnImageLoadToken *)token {
+    if (!token) return;
+    BOOL cancelNow = NO;
+    [_lock lock];
+    cancelNow = _cancelled;
+    if (!cancelNow) [_children addObject:token];
+    [_lock unlock];
+    if (cancelNow) [token cancel];
+}
+
+@end
+
+@interface OpnPendingImageCompletion : NSObject
+@property (nonatomic, strong) OpnImageLoadToken *token;
+@property (nonatomic, copy) OpnImageLoadCompletion completion;
+@end
+
+@implementation OpnPendingImageCompletion
+@end
 
 static NSURLSession *OpnImageLoaderSession(void) {
     static NSURLSession *session;
@@ -56,13 +145,50 @@ static NSCache<NSString *, NSData *> *OpnImageDataMemoryCache(void) {
     return cache;
 }
 
-static NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *OpnPendingImageCompletions(void) {
-    static NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *pendingCompletions;
+static NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *OpnPendingImageCompletions(void) {
+    static NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *pendingCompletions;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         pendingCompletions = [NSMutableDictionary dictionary];
     });
     return pendingCompletions;
+}
+
+static NSMutableDictionary<NSString *, NSDate *> *OpnImageFailureCache(void) {
+    static NSMutableDictionary<NSString *, NSDate *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [NSMutableDictionary dictionary];
+    });
+    return cache;
+}
+
+static BOOL OpnImageFailureCacheContainsFreshEntry(NSString *urlString) {
+    if (urlString.length == 0) return NO;
+    NSMutableDictionary<NSString *, NSDate *> *cache = OpnImageFailureCache();
+    @synchronized (cache) {
+        NSDate *expiresAt = cache[urlString];
+        if (!expiresAt) return NO;
+        if ([expiresAt timeIntervalSinceNow] > 0.0) return YES;
+        [cache removeObjectForKey:urlString];
+        return NO;
+    }
+}
+
+static void OpnImageFailureCacheSetFailed(NSString *urlString) {
+    if (urlString.length == 0) return;
+    NSMutableDictionary<NSString *, NSDate *> *cache = OpnImageFailureCache();
+    @synchronized (cache) {
+        cache[urlString] = [NSDate dateWithTimeIntervalSinceNow:10.0 * 60.0];
+    }
+}
+
+static void OpnImageFailureCacheClear(NSString *urlString) {
+    if (urlString.length == 0) return;
+    NSMutableDictionary<NSString *, NSDate *> *cache = OpnImageFailureCache();
+    @synchronized (cache) {
+        [cache removeObjectForKey:urlString];
+    }
 }
 
 static NSString *OpnSHA256String(NSString *value) {
@@ -123,19 +249,24 @@ static NSImage *OpnDecodedImageFromData(NSData *data, CGFloat maxPixelDimension)
 }
 
 static void OpnCompleteImageRequest(NSString *cacheKey, NSString *urlString, NSImage *image, NSData *data) {
-    NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *pendingCompletions = OpnPendingImageCompletions();
-    NSArray<OpnImageLoadCompletion> *completions = nil;
+    NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *pendingCompletions = OpnPendingImageCompletions();
+    NSArray<OpnPendingImageCompletion *> *completions = nil;
     @synchronized (pendingCompletions) {
         if (image) {
             NSUInteger cost = MAX((NSUInteger)1, (NSUInteger)(image.size.width * image.size.height * 4.0));
             [OpnDecodedImageCache() setObject:image forKey:cacheKey cost:cost];
+            OpnImageFailureCacheClear(urlString);
+        } else {
+            OpnImageFailureCacheSetFailed(urlString);
         }
         if (data.length > 0) [OpnImageDataMemoryCache() setObject:data forKey:cacheKey cost:data.length];
         completions = [pendingCompletions[cacheKey] copy];
         [pendingCompletions removeObjectForKey:cacheKey];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
-        for (OpnImageLoadCompletion completion in completions) completion(image, urlString, data);
+        for (OpnPendingImageCompletion *entry in completions) {
+            if (!entry.token.isCancelled && entry.completion) entry.completion(image, urlString, data);
+        }
     });
 }
 
@@ -387,33 +518,43 @@ CGPathRef OpnCreateEllipsePath(NSRect rect) {
     return CGPathCreateWithEllipseInRect(NSRectToCGRect(rect), nullptr);
 }
 
-void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion) {
-    if (!completion) return;
+OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion) {
+    OpnImageLoadToken *token = [[OpnImageLoadToken alloc] init];
+    if (!completion) return token;
     NSString *normalizedURL = [[urlString ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
     if (normalizedURL.length == 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, nil); });
-        return;
+        dispatch_async(dispatch_get_main_queue(), ^{ if (!token.isCancelled) completion(nil, nil, nil); });
+        return token;
     }
 
     NSString *cacheKey = OpnImageCacheKey(normalizedURL, maxPixelDimension);
     NSImage *cachedImage = [OpnDecodedImageCache() objectForKey:cacheKey];
     if (cachedImage) {
         NSData *cachedData = [OpnImageDataMemoryCache() objectForKey:cacheKey];
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(cachedImage, normalizedURL, cachedData); });
-        return;
+        dispatch_async(dispatch_get_main_queue(), ^{ if (!token.isCancelled) completion(cachedImage, normalizedURL, cachedData); });
+        return token;
     }
 
-    NSMutableDictionary<NSString *, NSMutableArray<OpnImageLoadCompletion> *> *pendingCompletions = OpnPendingImageCompletions();
+    if (OpnImageFailureCacheContainsFreshEntry(normalizedURL)) {
+        dispatch_async(dispatch_get_main_queue(), ^{ if (!token.isCancelled) completion(nil, normalizedURL, nil); });
+        return token;
+    }
+
+    OpnPendingImageCompletion *pendingEntry = [[OpnPendingImageCompletion alloc] init];
+    pendingEntry.token = token;
+    pendingEntry.completion = [completion copy];
+
+    NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *pendingCompletions = OpnPendingImageCompletions();
     @synchronized (pendingCompletions) {
-        NSMutableArray<OpnImageLoadCompletion> *existing = pendingCompletions[cacheKey];
+        NSMutableArray<OpnPendingImageCompletion *> *existing = pendingCompletions[cacheKey];
         if (existing) {
-            [existing addObject:[completion copy]];
-            return;
+            [existing addObject:pendingEntry];
+            return token;
         }
-        pendingCompletions[cacheKey] = [NSMutableArray arrayWithObject:[completion copy]];
+        pendingCompletions[cacheKey] = [NSMutableArray arrayWithObject:pendingEntry];
     }
 
-    dispatch_async(OpnImageLoaderQueue(), ^{
+    NSBlockOperation *operation = [NSBlockOperation blockOperationWithBlock:^{
         NSData *cachedData = [NSData dataWithContentsOfFile:OpnImageDataPath(normalizedURL)];
         if (cachedData.length > 0) {
             NSImage *image = OpnDecodedImageFromData(cachedData, maxPixelDimension);
@@ -429,42 +570,62 @@ void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImage
             return;
         }
 
-        [[OpnImageLoaderSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSURLSessionDataTask *task = [OpnImageLoaderSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
             if (error || data.length == 0 || (http && http.statusCode >= 400)) {
                 OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil);
                 return;
             }
-            dispatch_async(OpnImageLoaderQueue(), ^{
+            NSBlockOperation *decodeOperation = [NSBlockOperation blockOperationWithBlock:^{
                 NSImage *image = OpnDecodedImageFromData(data, maxPixelDimension);
                 if (image) [data writeToFile:OpnImageDataPath(normalizedURL) options:NSDataWritingAtomic error:nil];
                 OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? data : nil);
-            });
-        }] resume];
-    });
+            }];
+            [OpnImageLoaderOperationQueue() addOperation:decodeOperation];
+        }];
+        [task resume];
+    }];
+    [OpnImageLoaderOperationQueue() addOperation:operation];
+    return token;
+}
+
+void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion) {
+    (void)OpnLoadImageForURLCancellable(urlString, maxPixelDimension, completion);
 }
 
 static void OpnLoadImageCandidateAtIndex(NSArray<NSString *> *candidates,
                                          NSUInteger index,
                                          CGFloat maxPixelDimension,
-                                         OpnImageLoadCompletion completion) {
+                                         OpnImageLoadCompletion completion,
+                                         OpnImageLoadToken *parentToken) {
     if (!completion) return;
+    if (parentToken.isCancelled) return;
     if (index >= candidates.count) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, nil); });
+        dispatch_async(dispatch_get_main_queue(), ^{ if (!parentToken.isCancelled) completion(nil, nil, nil); });
         return;
     }
     NSString *candidate = candidates[index];
-    OpnLoadImageForURL(candidate, maxPixelDimension, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+    OpnImageLoadToken *childToken = OpnLoadImageForURLCancellable(candidate, maxPixelDimension, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+        if (parentToken.isCancelled) return;
         if (image) {
             completion(image, resolvedURL, data);
             return;
         }
-        OpnLoadImageCandidateAtIndex(candidates, index + 1, maxPixelDimension, completion);
+        OpnLoadImageCandidateAtIndex(candidates, index + 1, maxPixelDimension, completion, parentToken);
     });
+    [parentToken opnAddChildToken:childToken];
 }
 
 void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
                                 CGFloat maxPixelDimension,
                                 OpnImageLoadCompletion completion) {
-    OpnLoadImageCandidateAtIndex(candidates, 0, maxPixelDimension, completion);
+    (void)OpnLoadImageFromCandidatesCancellable(candidates, maxPixelDimension, completion);
+}
+
+OpnImageLoadToken *OpnLoadImageFromCandidatesCancellable(NSArray<NSString *> *candidates,
+                                                        CGFloat maxPixelDimension,
+                                                        OpnImageLoadCompletion completion) {
+    OpnImageLoadToken *token = [[OpnImageLoadToken alloc] init];
+    OpnLoadImageCandidateAtIndex(candidates, 0, maxPixelDimension, completion, token);
+    return token;
 }

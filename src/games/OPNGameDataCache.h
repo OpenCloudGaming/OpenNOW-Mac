@@ -16,7 +16,15 @@ public:
                            const std::vector<std::string> &filterIds,
                            int fetchCount) const;
     bool LoadCatalog(const std::string &key, CatalogBrowseResult &result) const;
+    bool LoadFreshCatalog(const std::string &key,
+                          NSTimeInterval maxAgeSeconds,
+                          CatalogBrowseResult &result) const;
     void SaveCatalog(const std::string &key, const CatalogBrowseResult &result) const;
+
+    bool LoadCatalogDefinitions(NSString *locale,
+                                NSTimeInterval maxAgeSeconds,
+                                NSDictionary **definitions) const;
+    void SaveCatalogDefinitions(NSString *locale, NSDictionary *definitions) const;
 
     NSData *LoadImage(NSString *urlString) const;
     void SaveImage(NSString *urlString, NSData *data) const;
@@ -26,6 +34,7 @@ private:
 
     NSString *m_rootPath;
     NSString *m_catalogPath;
+    NSString *m_catalogDefinitionsPath;
     NSString *m_imagePath;
 };
 

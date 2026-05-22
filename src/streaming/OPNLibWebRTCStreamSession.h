@@ -98,6 +98,7 @@ private:
     StreamStats m_latestStats;
     mutable std::mutex m_statsMutex;
     uint64_t m_previousStatsTimestampMs = 0;
+    uint64_t m_lastStatsRequestMs = 0;
     uint64_t m_previousBytesReceived = 0;
     uint64_t m_previousPacketsReceived = 0;
     uint64_t m_previousFramesDecoded = 0;

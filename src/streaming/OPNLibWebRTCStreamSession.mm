@@ -1641,6 +1641,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.videoRendererFallback = "";
         m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
+        m_lastStatsRequestMs = 0;
         m_previousBytesReceived = 0;
         m_previousPacketsReceived = 0;
         m_previousFramesDecoded = 0;
@@ -2422,7 +2423,10 @@ void LibWebRTCStreamSession::RequestStats() {
     if (!impl.peerConnection) return;
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
+        uint64_t nowMs = OPNMonotonicMs();
+        if (m_lastStatsRequestMs > 0 && nowMs - m_lastStatsRequestMs < 900) return;
         if (m_statsRequestInFlight) return;
+        m_lastStatsRequestMs = nowMs;
         m_statsRequestInFlight = true;
     }
 
@@ -2444,8 +2448,8 @@ void LibWebRTCStreamSession::StartStatsPolling() {
     m_statsTimer = (__bridge_retained void *)timer;
     dispatch_source_set_timer(timer,
                               dispatch_time(DISPATCH_TIME_NOW, 0),
-                              500 * NSEC_PER_MSEC,
-                              50 * NSEC_PER_MSEC);
+                              1 * NSEC_PER_SEC,
+                              100 * NSEC_PER_MSEC);
     dispatch_source_set_event_handler(timer, ^{
         this->RequestStats();
     });
@@ -2516,13 +2520,6 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
     };
 
     std::unordered_map<std::string, std::string> codecs;
-    for (RTCStatistics *stat in statsReport.statistics.allValues) {
-        if (![stat.type isEqualToString:@"codec"]) continue;
-        NSString *mimeType = OPNRTCStatsStringForKey(stat.values, @"mimeType");
-        if (mimeType.length == 0) continue;
-        codecs[OPNNSStringToString(stat.id)] = OPNNSStringToString(mimeType);
-    }
-
     StreamStats parsed;
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
@@ -2553,6 +2550,12 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
     std::string inboundCodecId;
     uint64_t selectedVideoScore = 0;
     for (RTCStatistics *stat in statsReport.statistics.allValues) {
+        if ([stat.type isEqualToString:@"codec"]) {
+            NSString *mimeType = OPNRTCStatsStringForKey(stat.values, @"mimeType");
+            if (mimeType.length > 0) codecs[OPNNSStringToString(stat.id)] = OPNNSStringToString(mimeType);
+            continue;
+        }
+
         if ([stat.type isEqualToString:@"candidate-pair"]) {
             NSNumber *nominated = OPNRTCStatsNumberForKey(stat.values, @"nominated");
             NSString *state = OPNRTCStatsStringForKey(stat.values, @"state");

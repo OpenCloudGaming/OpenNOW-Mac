@@ -163,16 +163,6 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
     return signature;
 }
 
-typedef void (^OPNGameCardImageCompletion)(NSImage *image);
-
-static void OPNGameCardLoadImageForURL(NSString *urlString, OPNGameCardImageCompletion completion) {
-    OpnLoadImageForURL(urlString, 720.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
-        (void)resolvedURL;
-        (void)data;
-        completion(image);
-    });
-}
-
 @interface OPNGameCardView () <CALayerDelegate>
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
@@ -186,6 +176,7 @@ static void OPNGameCardLoadImageForURL(NSString *urlString, OPNGameCardImageComp
 @property (nonatomic, strong) NSButton *playButton;
 @property (nonatomic, strong) CALayer *reflectionLayer;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
+@property (nonatomic, strong) OpnImageLoadToken *imageLoadToken;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
@@ -201,6 +192,10 @@ using namespace OPN;
 + (CGFloat)infoHeight { return gInfoHeight; }
 
 - (OPN::GameInfo)game { return _gameData; }
+
+- (void)dealloc {
+    [_imageLoadToken cancel];
+}
 
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game {
     self = [super initWithFrame:frame];
@@ -532,6 +527,7 @@ using namespace OPN;
         return;
     }
 
+    [self.imageLoadToken cancel];
     NSUInteger generation = ++self.imageLoadGeneration;
     [self loadImageFromCandidates:urlStrings index:0 generation:generation];
 }
@@ -548,7 +544,9 @@ using namespace OPN;
     NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
     __weak __typeof__(self) weakSelf = self;
     OPN::LogInfo(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
-    OPNGameCardLoadImageForURL(urlStr, ^(NSImage *image) {
+    self.imageLoadToken = OpnLoadImageForURLCancellable(urlStr, 720.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+        (void)resolvedURL;
+        (void)data;
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf.imageLoadGeneration != generation) return;
         if (!image) {

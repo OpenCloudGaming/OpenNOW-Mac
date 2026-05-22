@@ -17,6 +17,7 @@
 #include "../src/streaming/OPNStreamPreferences.h"
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
+#include "../src/games/OPNGameDataCache.h"
 
 namespace {
 
@@ -1298,6 +1299,69 @@ TEST_CASE("StartOAuthLoginReportsTokenExchangeHttpError") {
     CHECK(WaitUntil([&] { return done; }));
     CHECK(!success);
     CHECK_EQ(error, "token exchange rejected");
+}
+
+TEST_CASE("game-cache/catalog freshness metadata") {
+    OPN::GameDataCache &cache = OPN::GameDataCache::Shared();
+    std::string unique = [[[NSUUID UUID] UUIDString] UTF8String];
+    std::string key = cache.CatalogKey("unit-" + unique, "last_played", {"owned"}, 24);
+
+    OPN::CatalogBrowseResult saved;
+    saved.numberReturned = 1;
+    saved.numberSupported = 1;
+    saved.totalCount = 1;
+    saved.selectedSortId = "last_played";
+    saved.selectedFilterIds = {"owned"};
+    OPN::GameInfo game;
+    game.id = unique;
+    game.title = "Cached Game";
+    saved.games.push_back(game);
+    cache.SaveCatalog(key, saved);
+
+    OPN::CatalogBrowseResult loaded;
+    CHECK(cache.LoadCatalog(key, loaded));
+    REQUIRE(loaded.games.size() == 1);
+    CHECK_EQ(loaded.games[0].title, "Cached Game");
+
+    OPN::CatalogBrowseResult fresh;
+    CHECK(cache.LoadFreshCatalog(key, 60.0, fresh));
+    REQUIRE(fresh.games.size() == 1);
+    CHECK_EQ(fresh.selectedFilterIds[0], "owned");
+
+    OPN::CatalogBrowseResult stale;
+    CHECK(!cache.LoadFreshCatalog(key, 0.0, stale));
+}
+
+TEST_CASE("game-cache/catalog definitions freshness") {
+    OPN::GameDataCache &cache = OPN::GameDataCache::Shared();
+    NSString *locale = [@"unit-" stringByAppendingString:[[NSUUID UUID] UUIDString]];
+    NSDictionary *definitions = @{
+        @"filterGroupDefinitions": @[
+            @{
+                @"id": @"stores",
+                @"label": @"Stores",
+                @"filters": @[
+                    @{@"id": @"steam", @"label": @"Steam", @"filters": @[@"{\"store\":\"steam\"}"]}
+                ]
+            }
+        ],
+        @"sortOrderDefinitions": @[
+            @{@"id": @"title", @"label": @"Title", @"orderBy": @"title:ASC"}
+        ]
+    };
+
+    cache.SaveCatalogDefinitions(locale, definitions);
+
+    NSDictionary *loaded = nil;
+    CHECK(cache.LoadCatalogDefinitions(locale, 60.0, &loaded));
+    REQUIRE(loaded != nil);
+    NSArray *groups = loaded[@"filterGroupDefinitions"];
+    CHECK([groups isKindOfClass:NSArray.class]);
+    CHECK_EQ(groups.count, 1u);
+
+    NSDictionary *stale = nil;
+    CHECK(!cache.LoadCatalogDefinitions(locale, 0.0, &stale));
+    CHECK(stale == nil);
 }
 
 }
