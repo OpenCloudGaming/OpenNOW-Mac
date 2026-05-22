@@ -3,6 +3,8 @@ BUILD_DIR := build
 SRC := $(shell find src -name '*.mm')
 BIN := $(BUILD_DIR)/$(APP_NAME)
 INFO_PLIST := OpenNOW-Info.plist
+LOG_DIR ?= $${TMPDIR:-/tmp/}OpenNOW
+LOG_FILE ?= $(LOG_DIR)/OpenNOW-current.log
 
 CXX := clang++
 ARCHFLAGS ?= -arch arm64
@@ -37,13 +39,13 @@ SENTRY_LIBS :=
 endif
 
 CXXFLAGS := $(ARCHFLAGS) $(OPTFLAGS) -std=c++20 -Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Wno-gnu-conditional-omitted-operand -fobjc-arc -Isrc $(WEBRTC_CFLAGS) $(SENTRY_CFLAGS)
-LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS) $(SENTRY_LIBS)
+LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework AudioUnit -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS) $(SENTRY_LIBS)
 TEST_SRC := tests/backend_tests.mm
 TEST_HEADERS := tests/doctest.h
 TEST_DEPS := src/streaming/OPNStreamBackend.mm src/streaming/OPNStreamPreferences.mm src/auth/OPNAuthService.mm src/common/OPNSentry.mm
 TEST_BIN := $(BUILD_DIR)/backend_tests
 
-.PHONY: all run clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
+.PHONY: all run logs clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
 
 all: $(BIN)
 
@@ -59,7 +61,14 @@ test: $(TEST_BIN)
 	./$(TEST_BIN)
 
 run: $(BIN)
-	./$(BIN)
+	@printf 'Starting $(APP_NAME) with terminal info logs enabled. Captured log: %s\n' "$(LOG_FILE)"
+	OPN_INFO_LOGS=$${OPN_INFO_LOGS:-1} ./$(BIN)
+
+logs:
+	@mkdir -p "$(LOG_DIR)"
+	@touch "$(LOG_FILE)"
+	@printf 'Tailing $(APP_NAME) log: %s\n' "$(LOG_FILE)"
+	tail -F "$(LOG_FILE)"
 
 clean:
 	rm -rf $(BUILD_DIR)
