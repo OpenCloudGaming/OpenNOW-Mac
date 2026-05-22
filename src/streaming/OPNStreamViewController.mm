@@ -2117,8 +2117,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)startStreamLaunchFlow {
     NSUInteger launchGeneration = ++_launchGeneration;
     BOOL recoveringLaunch = _recovering;
-    OPN::LogInfo(@"[StreamVC] Starting stream launch flow for game: %s (appId=%s, recovery=%d attempt=%ld/%ld)",
-          _gameTitle.c_str(),
+    OPN::LogInfo(@"[StreamVC] Starting stream launch flow for game: %@ (appId=%s, recovery=%d attempt=%ld/%ld)",
+          OPNStringFromStdString(_gameTitle, @""),
           _appId.c_str(),
           recoveringLaunch,
           (long)_recoveryAttempt,

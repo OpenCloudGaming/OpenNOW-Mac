@@ -841,7 +841,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
 
     if ([self hasVisibleStreamingController]) {
-        OPN::LogInfo(@"[AppDelegate] Ignoring stream start while stream is active: title=%s, appId=%s", title.c_str(), appId.c_str());
+        OPN::LogInfo(@"[AppDelegate] Ignoring stream start while stream is active: title=%@, appId=%s", OPNAppStringFromStdString(title, @""), appId.c_str());
         return;
     }
 
@@ -901,11 +901,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
 
     if ([self hasVisibleStreamingController]) {
-        OPN::LogInfo(@"[AppDelegate] Ignoring game launch while stream is active: title=%s, id=%s", game.title.c_str(), game.id.c_str());
+        OPN::LogInfo(@"[AppDelegate] Ignoring game launch while stream is active: title=%@, id=%s", OPNAppStringFromStdString(game.title, @""), game.id.c_str());
         return;
     }
 
-    OPN::LogInfo(@"[AppDelegate] Game selected: title=%s, id=%s, uuid=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), game.uuid.c_str(), variantIndex);
+    OPN::LogInfo(@"[AppDelegate] Game selected: title=%@, id=%s, uuid=%s, variantIndex=%d", OPNAppStringFromStdString(game.title, @""), game.id.c_str(), game.uuid.c_str(), variantIndex);
 
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
@@ -1029,12 +1029,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (trimmedURL.length == 0) {
         OPN::GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
-        OPN::LogInfo(@"[AppDelegate] Resolving purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+        OPN::LogInfo(@"[AppDelegate] Resolving purchase URL for title=%@, id=%s, variantIndex=%d", OPNAppStringFromStdString(game.title, @""), game.id.c_str(), variantIndex);
         OPN::GameService::Shared().ResolveStoreURL(gameCopy, variantIndex, [weakSelf, gameCopy, variantIndex](bool success, const std::string &storeURL, const std::string &error) {
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf) return;
             if (!success || storeURL.empty()) {
-                OPN::LogError(@"[AppDelegate] Store URL resolution failed for title=%s, id=%s, variantIndex=%d, error=%s", gameCopy.title.c_str(), gameCopy.id.c_str(), variantIndex, error.c_str());
+                OPN::LogError(@"[AppDelegate] Store URL resolution failed for title=%@, id=%s, variantIndex=%d, error=%s", OPNAppStringFromStdString(gameCopy.title, @""), gameCopy.id.c_str(), variantIndex, error.c_str());
                 NSBeep();
                 return;
             }
@@ -1046,14 +1046,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     NSURL *url = [NSURL URLWithString:trimmedURL];
     if (!url || url.scheme.length == 0 || url.host.length == 0) {
-        OPN::LogError(@"[AppDelegate] Invalid purchase URL for title=%s, id=%s, variantIndex=%d, url=%@", game.title.c_str(), game.id.c_str(), variantIndex, trimmedURL);
+        OPN::LogError(@"[AppDelegate] Invalid purchase URL for title=%@, id=%s, variantIndex=%d, url=%@", OPNAppStringFromStdString(game.title, @""), game.id.c_str(), variantIndex, trimmedURL);
         NSBeep();
         return;
     }
 
-    OPN::LogInfo(@"[AppDelegate] Opening purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+    OPN::LogInfo(@"[AppDelegate] Opening purchase URL for title=%@, id=%s, variantIndex=%d", OPNAppStringFromStdString(game.title, @""), game.id.c_str(), variantIndex);
     if (![[NSWorkspace sharedWorkspace] openURL:url]) {
-        OPN::LogError(@"[AppDelegate] Failed to open purchase URL for title=%s, id=%s, variantIndex=%d", game.title.c_str(), game.id.c_str(), variantIndex);
+        OPN::LogError(@"[AppDelegate] Failed to open purchase URL for title=%@, id=%s, variantIndex=%d", OPNAppStringFromStdString(game.title, @""), game.id.c_str(), variantIndex);
         NSBeep();
     }
 }

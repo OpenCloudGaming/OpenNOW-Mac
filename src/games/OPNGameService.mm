@@ -270,6 +270,12 @@ static NSString *SafeStr(id value) {
     return (NSString *)value;
 }
 
+static NSString *NSStringFromStdString(const std::string &value, NSString *fallback = @"") {
+    if (value.empty()) return fallback ?: @"";
+    NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    return string ?: (fallback ?: @"");
+}
+
 static NSString *FirstSafeString(NSDictionary *dictionary, NSArray<NSString *> *keys) {
     if (![dictionary isKindOfClass:[NSDictionary class]]) return nil;
     for (NSString *key in keys) {
@@ -1066,7 +1072,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                     }
                                 }
                                 blockResult->games.push_back(g);
-                                OPN::LogInfo(@"[GameService] parsed catalog game title=%s id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", g.title.c_str(), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
+                                OPN::LogInfo(@"[GameService] parsed catalog game title=%@ id=%s uuid=%s desc=%d image=%d hero=%d variants=%lu", NSStringFromStdString(g.title, @"<untitled>"), g.id.c_str(), g.uuid.c_str(), !g.description.empty(), !g.imageUrl.empty(), !g.heroImageUrl.empty(), (unsigned long)g.variants.size());
                             }
                         }
                         blockResult->numberSupported = std::max(blockResult->numberSupported, (int)blockResult->games.size());
