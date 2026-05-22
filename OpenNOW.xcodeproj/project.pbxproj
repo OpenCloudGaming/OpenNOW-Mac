@@ -26,6 +26,10 @@
 			isa = PBXBuildFile;
 			fileRef = 5BE24C8D582444F1B0E20505;
 		};
+		7B2A61D34F4E41BDB9A9D103 /* OPNCloudmatchServerPickerView.mm in PBXBuildFile */ = {
+			isa = PBXBuildFile;
+			fileRef = 7B2A61D24F4E41BDB9A9D102;
+		};
 		E61312258EEB2041AA067B25 /* OPNGameCatalogView.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = AD0614C0EE6F7B83442E87EC;
@@ -93,6 +97,10 @@
 		8953374293462F57B5DE59CF /* AVKit.framework in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 2DC921A46254106F27A61389;
+		};
+		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in PBXBuildFile */ = {
+			isa = PBXBuildFile;
+			fileRef = 7B2A61D54F4E41BDB9A9D105;
 		};
 		16BED31EA37540021A105CB0 /* main.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
@@ -218,6 +226,13 @@
 			lastKnownFileType = wrapper.framework;
 			name = AVKit.framework;
 			path = System/Library/Frameworks/AVKit.framework;
+			sourceTree = SDKROOT;
+		};
+		7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework in PBXFileReference */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.framework;
+			name = VideoToolbox.framework;
+			path = System/Library/Frameworks/VideoToolbox.framework;
 			sourceTree = SDKROOT;
 		};
 		D928B272EFA8B448F7CF8585 /* ApplicationServices.framework in PBXFileReference */ = {
@@ -365,6 +380,20 @@
 			lastKnownFileType = sourcecode.cpp.objcpp;
 			name = OPNCarouselFocusLayout.mm;
 			path = src/views/OPNCarouselFocusLayout.mm;
+			sourceTree = "<group>";
+		};
+		7B2A61D14F4E41BDB9A9D101 /* OPNCloudmatchServerPickerView.h in PBXFileReference */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.c.h;
+			name = OPNCloudmatchServerPickerView.h;
+			path = src/views/OPNCloudmatchServerPickerView.h;
+			sourceTree = "<group>";
+		};
+		7B2A61D24F4E41BDB9A9D102 /* OPNCloudmatchServerPickerView.mm in PBXFileReference */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.cpp.objcpp;
+			name = OPNCloudmatchServerPickerView.mm;
+			path = src/views/OPNCloudmatchServerPickerView.mm;
 			sourceTree = "<group>";
 		};
 		27524879C46BFC320035B795 /* OPNColorTokens.h in PBXFileReference */ = {
@@ -767,6 +796,7 @@
 			files = (
 				E57A113BFF3CA1175BCB810D /* WebRTC.framework in PBXBuildFile */,
 				4EB63AD5790216383B1EAEE0 /* Cocoa.framework in PBXBuildFile */,
+				7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in PBXBuildFile */,
 				8ECCF37444025BB964FF312C /* QuartzCore.framework in PBXBuildFile */,
 				428BC444FE5243302EE59EAC /* Metal.framework in PBXBuildFile */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in PBXBuildFile */,
@@ -792,6 +822,7 @@
 				09E51D173F1A00C061B7641B /* src in PBXGroup */,
 				5BB0AC794547B308C15C38CA /* Products in PBXGroup */,
 				8C182E3135E4306DC54F496B /* OpenNOW-Info.plist in PBXFileReference */,
+				7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework in PBXFileReference */,
 				71540FEB572BA7ADB70C4D69 /* WebRTC.framework in PBXFileReference */,
 			);
 			name = OpenNOW;
@@ -900,6 +931,7 @@
 				A76F537775672462DD3C2CF3 /* OPNAuthenticatingView.mm in PBXFileReference */,
 				D5D7BE933494E3A3A79ACEDF /* OPNBackdropView.mm in PBXFileReference */,
 				5BE24C8D582444F1B0E20505 /* OPNCarouselFocusLayout.mm in PBXFileReference */,
+				7B2A61D24F4E41BDB9A9D102 /* OPNCloudmatchServerPickerView.mm in PBXFileReference */,
 				3261121E15C07D0F5DD55294 /* OPNEmailEntryView.mm in PBXFileReference */,
 				86D84DF80E9DF4678C23A701 /* OPNErrorView.mm in PBXFileReference */,
 				C4A5535762AEAD53315C41B6 /* OPNGameCardView.mm in PBXFileReference */,
@@ -910,6 +942,7 @@
 				DB79E5FA853AC3173A1B8C79 /* OPNAuthenticatingView.h in PBXFileReference */,
 				09C065FAD2707F6C9B38E11F /* OPNBackdropView.h in PBXFileReference */,
 				80FD49B2D2C3C194CC9FFA6E /* OPNCarouselFocusLayout.h in PBXFileReference */,
+				7B2A61D14F4E41BDB9A9D101 /* OPNCloudmatchServerPickerView.h in PBXFileReference */,
 				74DD1974B9762CA9B6D258FB /* OPNEmailEntryView.h in PBXFileReference */,
 				78EEB4B1D71B9405A8290251 /* OPNErrorView.h in PBXFileReference */,
 				05E53718D481ADCC9644DD45 /* OPNGameCardView.h in PBXFileReference */,
@@ -995,6 +1028,7 @@
 				C174D57D164809AC11FF73C7 /* OPNAuthenticatingView.mm in PBXBuildFile */,
 				96B438E76F776D852AC56D8F /* OPNBackdropView.mm in PBXBuildFile */,
 				916F79FB2547CA9622C74129 /* OPNCarouselFocusLayout.mm in PBXBuildFile */,
+				7B2A61D34F4E41BDB9A9D103 /* OPNCloudmatchServerPickerView.mm in PBXBuildFile */,
 				7F6DB1C410B60A80B1874565 /* OPNEmailEntryView.mm in PBXBuildFile */,
 				FF9C21C3A9D9EDC4DCB29F3D /* OPNErrorView.mm in PBXBuildFile */,
 				A1607B65917D0849841E2E29 /* OPNGameCardView.mm in PBXBuildFile */,

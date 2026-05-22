@@ -3879,7 +3879,7 @@ using namespace OPN;
 }
 
 - (void)startGamepadNavigationIfNeeded {
-    if (!OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) return;
+    if (self.controllerInputSuspended || !OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) return;
     [self installGamepadValueHandlers];
     self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:0.12
                                                                    target:self
@@ -3925,6 +3925,10 @@ using namespace OPN;
 }
 
 - (void)pollGamepadNavigation {
+    if (self.controllerInputSuspended) {
+        self.previousGamepadButtons = OPNCatalogGamepadButtons();
+        return;
+    }
     if (!OpnControllerModeEnabled() || [GCController controllers].count == 0 || !OPNCatalogGamepadNavigationActive(self)) {
         [self stopGamepadNavigation];
         return;

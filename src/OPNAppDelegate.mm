@@ -11,6 +11,7 @@
 #import "views/OPNGameCatalogView.h"
 #import "views/OPNSettingsView.h"
 #import "views/OPNStoreView.h"
+#import "views/OPNCloudmatchServerPickerView.h"
 #import "common/OPNColorTokens.h"
 #import "common/OPNUIHelpers.h"
 #include "common/OPNLogCapture.h"
@@ -52,6 +53,8 @@
 @property (nonatomic, copy) void (^activeSessionDeleteHandler)(void);
 @property (nonatomic, strong) NSTimer *activeSessionPromptControllerTimer;
 @property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
+@property (nonatomic, strong) OPNCloudmatchServerPickerView *cloudmatchServerPickerView;
+@property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
 - (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
@@ -75,6 +78,12 @@
 - (void)pollActiveSessionPromptController;
 - (void)activeSessionContinueClicked:(id)sender;
 - (void)activeSessionDeleteClicked:(id)sender;
+- (void)showCloudmatchServerPickerForGameTitle:(NSString *)gameTitle
+                                      apiToken:(const std::string &)apiToken
+                                    completion:(void (^)(BOOL confirmed))completion;
+- (void)refreshCloudmatchServerPickerWithToken:(const std::string &)apiToken
+                                    generation:(NSInteger)generation;
+- (void)dismissCloudmatchServerPicker;
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen;
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex;
 - (void)startStreamWithTitle:(const std::string &)title
@@ -311,6 +320,37 @@ static uint16_t OPNActiveSessionPromptGamepadButtons(void) {
     if (pad.buttonB.value > 0.5) buttons |= 1u << 1;
     if (pad.buttonY.value > 0.5) buttons |= 1u << 2;
     return buttons;
+}
+
+static NSString *OPNAppStringFromStdString(const std::string &value, NSString *fallback) {
+    if (value.empty()) return fallback ?: @"";
+    NSString *string = [NSString stringWithUTF8String:value.c_str()];
+    return string.length > 0 ? string : (fallback ?: @"");
+}
+
+static NSArray<OPNCloudmatchServerOption *> *OPNCloudmatchServerOptionsFromRegions(const std::vector<OPN::StreamRegionOption> &regions) {
+    NSMutableArray<OPNCloudmatchServerOption *> *options = [NSMutableArray array];
+    NSInteger bestLatency = -1;
+    for (const OPN::StreamRegionOption &region : regions) {
+        if (region.latencyMs < 0) continue;
+        if (bestLatency < 0 || region.latencyMs < bestLatency) bestLatency = region.latencyMs;
+    }
+
+    [options addObject:[[OPNCloudmatchServerOption alloc] initWithName:@"Automatic"
+                                                                   url:@""
+                                                             latencyMs:bestLatency
+                                                              automatic:YES]];
+    for (const OPN::StreamRegionOption &region : regions) {
+        if (region.url.empty()) continue;
+        NSString *name = OPNAppStringFromStdString(region.name, @"Cloudmatch");
+        NSString *url = OPNAppStringFromStdString(region.url, @"");
+        if (url.length == 0) continue;
+        [options addObject:[[OPNCloudmatchServerOption alloc] initWithName:name
+                                                                       url:url
+                                                                 latencyMs:region.latencyMs
+                                                                  automatic:NO]];
+    }
+    return options;
 }
 
 static void OPNAppendFingerprintField(std::string &target, const std::string &value) {
@@ -690,6 +730,106 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (handler) handler();
 }
 
+- (void)showCloudmatchServerPickerForGameTitle:(NSString *)gameTitle
+                                      apiToken:(const std::string &)apiToken
+                                    completion:(void (^)(BOOL confirmed))completion {
+    [self dismissCloudmatchServerPicker];
+    NSView *host = self.contentContainer ?: self.window.contentView;
+    if (!host) {
+        if (completion) completion(NO);
+        return;
+    }
+
+    self.catalogView.controllerInputSuspended = YES;
+    self.storeView.controllerInputSuspended = YES;
+
+    NSInteger generation = ++self.cloudmatchServerPickerGeneration;
+    OPNCloudmatchServerPickerView *picker = [[OPNCloudmatchServerPickerView alloc] initWithFrame:host.bounds gameTitle:gameTitle ?: @""];
+    picker.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    self.cloudmatchServerPickerView = picker;
+
+    std::vector<OPN::StreamRegionOption> cachedRegions = OPN::LoadCachedStreamRegions();
+    NSString *selectedRegionUrl = OPNAppStringFromStdString(OPN::LoadSelectedStreamRegionUrl(), @"");
+    [picker setOptions:OPNCloudmatchServerOptionsFromRegions(cachedRegions)
+     selectedRegionUrl:selectedRegionUrl
+            refreshing:YES];
+    [picker setStatusMessage:cachedRegions.empty()
+        ? @"Discovering cloudmatch servers and measuring ping..."
+        : @"Refreshing cloudmatch ping before launch..."
+                     isError:NO];
+
+    __weak __typeof__(self) weakSelf = self;
+    __weak OPNCloudmatchServerPickerView *weakPicker = picker;
+    std::string tokenCopy = apiToken;
+    void (^completionCopy)(BOOL) = [completion copy];
+    picker.onConfirm = ^(OPNCloudmatchServerOption *option) {
+        __typeof__(self) strongSelf = weakSelf;
+        OPNCloudmatchServerPickerView *strongPicker = weakPicker;
+        if (!strongSelf || !strongPicker || strongSelf.cloudmatchServerPickerView != strongPicker) return;
+
+        std::string selectedUrl;
+        if (option.url.length > 0) selectedUrl = [option.url UTF8String];
+        OPN::SaveSelectedStreamRegionUrl(selectedUrl);
+        OPN::LogInfo(@"[AppDelegate] Cloudmatch server selected: %s", selectedUrl.empty() ? "automatic" : selectedUrl.c_str());
+        [strongSelf dismissCloudmatchServerPicker];
+        if (completionCopy) completionCopy(YES);
+    };
+    picker.onCancel = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        OPNCloudmatchServerPickerView *strongPicker = weakPicker;
+        if (!strongSelf || !strongPicker || strongSelf.cloudmatchServerPickerView != strongPicker) return;
+        OPN::LogInfo(@"[AppDelegate] Cloudmatch server selection cancelled");
+        [strongSelf dismissCloudmatchServerPicker];
+        if (completionCopy) completionCopy(NO);
+    };
+    picker.onRefresh = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf refreshCloudmatchServerPickerWithToken:tokenCopy generation:generation];
+    };
+
+    [host addSubview:picker positioned:NSWindowAbove relativeTo:nil];
+    [self.window makeFirstResponder:picker];
+    [self refreshCloudmatchServerPickerWithToken:apiToken generation:generation];
+}
+
+- (void)refreshCloudmatchServerPickerWithToken:(const std::string &)apiToken
+                                    generation:(NSInteger)generation {
+    OPNCloudmatchServerPickerView *picker = self.cloudmatchServerPickerView;
+    if (!picker || generation != self.cloudmatchServerPickerGeneration) return;
+
+    [picker setRefreshing:YES];
+    [picker setStatusMessage:@"Pinging cloudmatch servers..." isError:NO];
+
+    __weak __typeof__(self) weakSelf = self;
+    __weak OPNCloudmatchServerPickerView *weakPicker = picker;
+    std::string tokenCopy = apiToken;
+    OPN::FetchStreamRegions(tokenCopy, OPN::DefaultStreamingBaseUrl(), [weakSelf, weakPicker, generation](const std::vector<OPN::StreamRegionOption> &regions) {
+        __typeof__(self) strongSelf = weakSelf;
+        OPNCloudmatchServerPickerView *strongPicker = weakPicker;
+        if (!strongSelf || !strongPicker) return;
+        if (generation != strongSelf.cloudmatchServerPickerGeneration || strongSelf.cloudmatchServerPickerView != strongPicker) return;
+
+        NSString *selectedRegionUrl = OPNAppStringFromStdString(OPN::LoadSelectedStreamRegionUrl(), @"");
+        [strongPicker setOptions:OPNCloudmatchServerOptionsFromRegions(regions)
+               selectedRegionUrl:selectedRegionUrl
+                      refreshing:NO];
+        if (regions.empty()) {
+            [strongPicker setStatusMessage:@"Server discovery failed. Automatic can still launch using the default route." isError:YES];
+        } else {
+            [strongPicker setStatusMessage:@"Latency updated. Lower ping usually means a more responsive stream." isError:NO];
+        }
+    });
+}
+
+- (void)dismissCloudmatchServerPicker {
+    self.cloudmatchServerPickerGeneration++;
+    [self.cloudmatchServerPickerView removeFromSuperview];
+    self.cloudmatchServerPickerView = nil;
+    self.catalogView.controllerInputSuspended = NO;
+    self.storeView.controllerInputSuspended = NO;
+}
+
 - (void)startStreamWithTitle:(const std::string &)title
                        appId:(const std::string &)appId
                     apiToken:(const std::string &)apiToken
@@ -802,73 +942,86 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                               resumeServer:""];
     };
 
-    SessionManager::Shared().SetAccessToken(apiToken);
-    SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-    SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
-        std::vector<ActiveSessionEntry> sessionsCopy = sessions;
-        std::string errorCopy = error;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
-            if (!ok) {
-                OPN::LogError(@"[AppDelegate] Active session launch probe failed, continuing launch: %s", errorCopy.c_str());
-                startRequestedGame();
-                return;
-            }
+    auto continueLaunchAfterServerSelection = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
 
-            ActiveSessionEntry activeSession;
-            BOOL foundActiveSession = NO;
-            for (const ActiveSessionEntry &session : sessionsCopy) {
-                if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
-                    activeSession = session;
-                    foundActiveSession = YES;
-                    break;
+        SessionManager::Shared().SetAccessToken(apiToken);
+        SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+            std::vector<ActiveSessionEntry> sessionsCopy = sessions;
+            std::string errorCopy = error;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
+                if (!ok) {
+                    OPN::LogError(@"[AppDelegate] Active session launch probe failed, continuing launch: %s", errorCopy.c_str());
+                    startRequestedGame();
+                    return;
                 }
-            }
-            if (!foundActiveSession) {
-                startRequestedGame();
-                return;
-            }
 
-            NSString *sessionTitle = OPNTitleForActiveSessionAppId(activeSession.appId, strongSelf.cachedGameLibrary);
-            NSString *selectedGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
-            [strongSelf showActiveSessionPromptWithSessionTitle:sessionTitle
-                                              selectedGameTitle:selectedGameTitle
-                                                continueHandler:^{
-                __typeof__(self) promptSelf = weakSelf;
-                if (!promptSelf) return;
-                std::string resumeAppId = activeSession.appId > 0 ? std::to_string(activeSession.appId) : effectiveAppId;
-                std::string resumeTitle = sessionTitle.length > 0 ? [sessionTitle UTF8String] : std::string("Current Stream");
-                [promptSelf startStreamWithTitle:resumeTitle
-                                           appId:resumeAppId
-                                        apiToken:apiToken
-                                   accountLinked:true
-                                    selectedStore:""
-                                    returnScreen:returnScreen
-                                  resumeSessionId:activeSession.sessionId
-                                      resumeServer:activeSession.serverIp];
-            }
-                                                  deleteHandler:^{
-                __typeof__(self) promptSelf = weakSelf;
-                if (!promptSelf) return;
-                [promptSelf showAuthenticatingWithMessage:@"Deleting existing session..."];
-                SessionManager::Shared().SetAccessToken(apiToken);
-                SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-                SessionManager::Shared().StopSession(activeSession.sessionId, activeSession.serverIp, [weakSelf, startRequestedGame](bool stopOk, const std::string &stopError) {
-                    std::string stopErrorCopy = stopError;
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        __typeof__(self) stopSelf = weakSelf;
-                        if (!stopSelf) return;
-                        if (!stopOk) {
-                            [stopSelf showError:stopErrorCopy.empty() ? std::string("Unable to delete the existing session.") : stopErrorCopy canRetry:YES];
-                            return;
-                        }
-                        startRequestedGame();
+                ActiveSessionEntry activeSession;
+                BOOL foundActiveSession = NO;
+                for (const ActiveSessionEntry &session : sessionsCopy) {
+                    if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
+                        activeSession = session;
+                        foundActiveSession = YES;
+                        break;
+                    }
+                }
+                if (!foundActiveSession) {
+                    startRequestedGame();
+                    return;
+                }
+
+                NSString *sessionTitle = OPNTitleForActiveSessionAppId(activeSession.appId, strongSelf.cachedGameLibrary);
+                NSString *selectedGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
+                [strongSelf showActiveSessionPromptWithSessionTitle:sessionTitle
+                                                  selectedGameTitle:selectedGameTitle
+                                                    continueHandler:^{
+                    __typeof__(self) promptSelf = weakSelf;
+                    if (!promptSelf) return;
+                    std::string resumeAppId = activeSession.appId > 0 ? std::to_string(activeSession.appId) : effectiveAppId;
+                    std::string resumeTitle = sessionTitle.length > 0 ? [sessionTitle UTF8String] : std::string("Current Stream");
+                    [promptSelf startStreamWithTitle:resumeTitle
+                                               appId:resumeAppId
+                                            apiToken:apiToken
+                                       accountLinked:true
+                                        selectedStore:""
+                                        returnScreen:returnScreen
+                                      resumeSessionId:activeSession.sessionId
+                                          resumeServer:activeSession.serverIp];
+                }
+                                                      deleteHandler:^{
+                    __typeof__(self) promptSelf = weakSelf;
+                    if (!promptSelf) return;
+                    [promptSelf showAuthenticatingWithMessage:@"Deleting existing session..."];
+                    SessionManager::Shared().SetAccessToken(apiToken);
+                    SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+                    SessionManager::Shared().StopSession(activeSession.sessionId, activeSession.serverIp, [weakSelf, startRequestedGame](bool stopOk, const std::string &stopError) {
+                        std::string stopErrorCopy = stopError;
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            __typeof__(self) stopSelf = weakSelf;
+                            if (!stopSelf) return;
+                            if (!stopOk) {
+                                [stopSelf showError:stopErrorCopy.empty() ? std::string("Unable to delete the existing session.") : stopErrorCopy canRetry:YES];
+                                return;
+                            }
+                            startRequestedGame();
+                        });
                     });
-                });
-            }];
+                }];
+            });
         });
-    });
+    };
+
+    NSString *pickerGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
+    [self showCloudmatchServerPickerForGameTitle:pickerGameTitle
+                                        apiToken:apiToken
+                                      completion:^(BOOL confirmed) {
+        if (!confirmed) return;
+        continueLaunchAfterServerSelection();
+    }];
 }
 
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {

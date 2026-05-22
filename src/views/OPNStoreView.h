@@ -9,6 +9,7 @@
 @property (nonatomic, copy) void (^onBuyGame)(const OPN::GameInfo &game, int variantIndex, NSString *purchaseURL);
 @property (nonatomic, copy) void (^onPreviousPageRequested)(void);
 @property (nonatomic, copy) void (^onNextPageRequested)(void);
+@property (nonatomic, assign) BOOL controllerInputSuspended;
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setLoading:(BOOL)loading;
