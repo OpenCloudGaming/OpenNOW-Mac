@@ -198,6 +198,7 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
 @property (nonatomic, assign) NSInteger selectedMicrophoneDevice;
 @property (nonatomic, assign) BOOL enableL4S;
 @property (nonatomic, assign) BOOL suppressInputWhenInactive;
+@property (nonatomic, assign) BOOL directMouseInput;
 @property (nonatomic, assign) BOOL audioDeviceListenerInstalled;
 @property (nonatomic, assign) CGFloat contentAreaWidth;
 @property (nonatomic, strong) NSMutableArray<NSControl *> *controllerFocusableControls;
@@ -256,6 +257,7 @@ using namespace OPN;
         _selectedMicrophoneDevice = 0;
         _enableL4S = profile.enableL4S;
         _suppressInputWhenInactive = profile.suppressInputWhenInactive;
+        _directMouseInput = profile.directMouseInput;
         _sectionNames = @[@"Stream", @"Video", @"Audio", @"Input", @"Interface", @"About", @"Thanks"];
         _sidebarButtons = [NSMutableArray array];
         _controllerFocusableControls = [NSMutableArray array];
@@ -894,7 +896,10 @@ using namespace OPN;
 }
 
 - (void)buildInterfaceContent {
-    NSView *panel = [self panelWithTitle:@"Interface" height:260.0];
+    OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
+    self.directMouseInput = profile.directMouseInput;
+
+    NSView *panel = [self panelWithTitle:@"Interface" height:378.0];
     CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
@@ -919,8 +924,28 @@ using namespace OPN;
     controllerHint.maximumNumberOfLines = 2;
     [panel addSubview:controllerHint];
 
-    [panel addSubview:[self rowLabel:@"Auto Full Screen" y:198.0]];
-    NSButton *autoFullScreenToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 190.0, controlWidth, 28.0)];
+    [panel addSubview:[self rowLabel:@"Direct Mouse Input" y:198.0]];
+    NSButton *directMouseToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 190.0, controlWidth, 28.0)];
+    directMouseToggle.buttonType = NSButtonTypeSwitch;
+    directMouseToggle.title = @"Use raw relative mouse movement while streaming";
+    directMouseToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
+    directMouseToggle.contentTintColor = OpnColor(kBrandGreen);
+    directMouseToggle.state = self.directMouseInput ? NSControlStateValueOn : NSControlStateValueOff;
+    directMouseToggle.target = self;
+    directMouseToggle.action = @selector(directMouseInputToggleChanged:);
+    [panel addSubview:directMouseToggle];
+    [self registerControllerFocusableControl:directMouseToggle];
+
+    NSTextField *directMouseHint = OpnLabel(@"Bypasses desktop cursor position and acceleration by locking the pointer and sending hardware-relative deltas to the stream.",
+                                            NSMakeRect(controlX, 226.0, controlWidth, 50.0),
+                                            12.0,
+                                            OpnColor(kTextMuted),
+                                            NSFontWeightRegular);
+    directMouseHint.maximumNumberOfLines = 3;
+    [panel addSubview:directMouseHint];
+
+    [panel addSubview:[self rowLabel:@"Auto Full Screen" y:316.0]];
+    NSButton *autoFullScreenToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 308.0, controlWidth, 28.0)];
     autoFullScreenToggle.buttonType = NSButtonTypeSwitch;
     autoFullScreenToggle.title = @"Enter full screen automatically when a stream starts";
     autoFullScreenToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -1175,6 +1200,12 @@ using namespace OPN;
 - (void)suppressInputWhenInactiveToggleChanged:(NSButton *)sender {
     self.suppressInputWhenInactive = sender.state == NSControlStateValueOn;
     OPN::SaveStreamSuppressInputWhenInactive(self.suppressInputWhenInactive);
+    [self rebuildContent];
+}
+
+- (void)directMouseInputToggleChanged:(NSButton *)sender {
+    self.directMouseInput = sender.state == NSControlStateValueOn;
+    OPN::SaveStreamDirectMouseInputEnabled(self.directMouseInput);
     [self rebuildContent];
 }
 

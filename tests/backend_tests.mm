@@ -312,6 +312,34 @@ namespace streaming_preference_tests {
 
 TEST_SUITE("streaming/preferences")
 
+class ScopedDirectMouseInputPreference final {
+public:
+    ScopedDirectMouseInputPreference()
+        : key(@"OpenNOW.Stream.DirectMouseInput"),
+          originalValue([NSUserDefaults.standardUserDefaults objectForKey:key]) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+    ~ScopedDirectMouseInputPreference() {
+        if (originalValue) {
+            [NSUserDefaults.standardUserDefaults setObject:originalValue forKey:key];
+        } else {
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        }
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+    void Reset() const {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+private:
+    NSString *key;
+    id originalValue;
+};
+
 static OPN::StreamPreferenceProfile ProfileWithSelections(int codecIndex, int fpsIndex, int colorQualityIndex) {
     OPN::StreamPreferenceProfile profile;
     const std::vector<OPN::StreamCodecOption> &codecs = OPN::StreamCodecOptions();
@@ -351,6 +379,21 @@ TEST_CASE("ResolveStreamCodecForCapabilitiesPrefersHevcForTenBitAuto") {
     std::string codec = OPN::ResolveStreamCodecForCapabilities(profile, {2560, 1440}, capabilities, true);
 
     CHECK_EQ(codec, "H265");
+}
+
+TEST_CASE("DirectMouseInputPreferenceDefaultsOnAndPersistsChanges") {
+    ScopedDirectMouseInputPreference preference;
+
+    CHECK(OPN::LoadStreamPreferenceProfile().directMouseInput);
+
+    OPN::SaveStreamDirectMouseInputEnabled(false);
+    CHECK(!OPN::LoadStreamPreferenceProfile().directMouseInput);
+
+    OPN::SaveStreamDirectMouseInputEnabled(true);
+    CHECK(OPN::LoadStreamPreferenceProfile().directMouseInput);
+
+    preference.Reset();
+    CHECK(OPN::LoadStreamPreferenceProfile().directMouseInput);
 }
 
 }

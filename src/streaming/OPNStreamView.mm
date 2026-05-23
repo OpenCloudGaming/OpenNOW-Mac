@@ -66,6 +66,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     dispatch_source_t _gamepadTimer;
     dispatch_source_t _escapeHoldTimer;
     BOOL _cursorCaptured;
+    BOOL _cursorHidden;
     uint8_t _mouseButtonsDown;
     uint16_t _gamepadBitmap;
     BOOL _modifierDown[128];
@@ -76,6 +77,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     BOOL _pushToTalkMicEnabled;
     BOOL _microphoneShortcutEnabled;
     BOOL _suppressInputWhenWindowInactive;
+    BOOL _directMouseInputEnabled;
     BOOL _sidebarOpen;
     double _gameVolume;
     double _microphoneVolumeLevel;
@@ -114,6 +116,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         _gamepadTimer = nil;
         _escapeHoldTimer = nil;
         _cursorCaptured = NO;
+        _cursorHidden = NO;
         _mouseButtonsDown = 0;
         _gamepadBitmap = 0;
         std::memset(_modifierDown, 0, sizeof(_modifierDown));
@@ -124,8 +127,10 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         _pushToTalkMicEnabled = NO;
         _microphoneShortcutEnabled = YES;
         _suppressInputWhenWindowInactive = YES;
+        _directMouseInputEnabled = YES;
         _sidebarOpen = NO;
         OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
+        _directMouseInputEnabled = profile.directMouseInput ? YES : NO;
         _gameVolume = profile.gameVolume;
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
@@ -492,10 +497,43 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     [[self window] setAcceptsMouseMovedEvents:YES];
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center removeObserver:self name:NSWindowDidResignKeyNotification object:nil];
+    if (self.window) {
+        [center addObserver:self selector:@selector(streamWindowDidResignKey:) name:NSWindowDidResignKeyNotification object:self.window];
+    }
+    [center removeObserver:self name:NSApplicationDidResignActiveNotification object:nil];
+    [center addObserver:self selector:@selector(applicationDidResignActive:) name:NSApplicationDidResignActiveNotification object:NSApp];
+}
+
+- (void)viewWillMoveToWindow:(NSWindow *)newWindow {
+    if (!newWindow) {
+        [self releaseCursorCapture];
+        [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowDidResignKeyNotification object:self.window];
+        [[NSNotificationCenter defaultCenter] removeObserver:self name:NSApplicationDidResignActiveNotification object:NSApp];
+    }
+    [super viewWillMoveToWindow:newWindow];
+}
+
+- (void)streamWindowDidResignKey:(NSNotification *)notification {
+    (void)notification;
+    [self releaseCursorCapture];
+}
+
+- (void)applicationDidResignActive:(NSNotification *)notification {
+    (void)notification;
+    [self releaseCursorCapture];
 }
 
 - (void)setSuppressInputWhenWindowInactive:(BOOL)suppress {
     _suppressInputWhenWindowInactive = suppress;
+}
+
+- (void)setDirectMouseInputEnabled:(BOOL)enabled {
+    _directMouseInputEnabled = enabled;
+    if (!enabled) {
+        [self releaseCursorCapture];
+    }
 }
 
 - (BOOL)streamWindowAcceptsInput {
@@ -812,7 +850,7 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
         case NSEventTypeLeftMouseDragged:
         case NSEventTypeRightMouseDragged:
         case NSEventTypeOtherMouseDragged: {
-            if (!_cursorCaptured) {
+            if (!_directMouseInputEnabled || !_cursorCaptured) {
                 break;
             }
             [self accumulateMouseDx:event.deltaX dy:event.deltaY];
@@ -823,6 +861,13 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
         case NSEventTypeRightMouseDown:
         case NSEventTypeOtherMouseDown: {
             [self takeFocus];
+            if (!_directMouseInputEnabled) {
+                uint8_t button = OPNMouseButtonForEvent(event);
+                uint8_t mask = OPNMouseButtonMask(button);
+                if (mask) _mouseButtonsDown |= mask;
+                _streamSession->SendMouseButton(button, true);
+                break;
+            }
             if (!_cursorCaptured) {
                 [self captureCursorIfNeeded];
                 break;
@@ -837,21 +882,15 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
         case NSEventTypeLeftMouseUp:
         case NSEventTypeRightMouseUp:
         case NSEventTypeOtherMouseUp: {
-            if (!_cursorCaptured) {
-                break;
-            }
             uint8_t button = OPNMouseButtonForEvent(event);
             uint8_t mask = OPNMouseButtonMask(button);
             if (mask) _mouseButtonsDown &= (uint8_t)~mask;
-            [self flushPendingMouseMove];
+            if (_cursorCaptured) [self flushPendingMouseMove];
             _streamSession->SendMouseButton(button, false);
             break;
         }
         case NSEventTypeScrollWheel: {
-            if (!_cursorCaptured) {
-                break;
-            }
-            [self flushPendingMouseMove];
+            if (_cursorCaptured) [self flushPendingMouseMove];
             double precise = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY * 120.0;
             _streamSession->SendMouseWheel(OPNClampI16(-precise));
             break;
@@ -958,9 +997,12 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 }
 
 - (void)captureCursorIfNeeded {
-    if (_cursorCaptured) return;
+    if (_cursorCaptured || !_directMouseInputEnabled) return;
     CGAssociateMouseAndMouseCursorPosition(false);
-    CGDisplayHideCursor(kCGDirectMainDisplay);
+    if (!_cursorHidden) {
+        [NSCursor hide];
+        _cursorHidden = YES;
+    }
     _cursorCaptured = YES;
     OPN::LogInfo(@"[StreamView] Stream pointer locker active");
 }
@@ -991,7 +1033,10 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     _pendingMouseDx = 0;
     _pendingMouseDy = 0;
     CGAssociateMouseAndMouseCursorPosition(true);
-    CGDisplayShowCursor(kCGDirectMainDisplay);
+    if (_cursorHidden) {
+        [NSCursor unhide];
+        _cursorHidden = NO;
+    }
     _cursorCaptured = NO;
     OPN::LogInfo(@"[StreamView] Stream pointer locker armed");
 }

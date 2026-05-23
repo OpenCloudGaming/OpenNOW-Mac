@@ -23,6 +23,7 @@ class IStreamSession;
 - (void)stopRecordingIfNeeded;
 - (void)setMicrophoneLevel:(double)level;
 - (void)setSuppressInputWhenWindowInactive:(BOOL)suppress;
+- (void)setDirectMouseInputEnabled:(BOOL)enabled;
 - (void)attachToPipeline:(void *)pipeline;
 - (void)detachFromPipeline;
 - (void)handleKeyEvent:(NSEvent *)event;

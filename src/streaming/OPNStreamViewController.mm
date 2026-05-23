@@ -2334,6 +2334,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.availableSupportedControllers = OPNAvailableSupportedControllers();
     [self.streamView setVideoAspectRatio:(CGFloat)OPNAspectRatioForResolution(effectiveResolution, streamProfile.AspectRatio())];
     [self.streamView setSuppressInputWhenWindowInactive:streamProfile.suppressInputWhenInactive ? YES : NO];
+    [self.streamView setDirectMouseInputEnabled:streamProfile.directMouseInput ? YES : NO];
     [self.streamView setMaxBitrateMbps:settings.maxBitrateMbps];
     [self.streamView setMicrophoneMode:settings.microphoneMode
                      pushToTalkKeyCode:(uint16_t)settings.microphonePushToTalkKeyCode

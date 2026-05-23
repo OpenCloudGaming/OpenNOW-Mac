@@ -86,6 +86,7 @@ struct StreamPreferenceProfile {
     bool enableL4S = false;
     bool enablePowerSaver = false;
     bool suppressInputWhenInactive = true;
+    bool directMouseInput = true;
     double gameVolume = 1.0;
     double microphoneVolume = 1.0;
     std::string microphoneMode = "disabled";
@@ -149,6 +150,7 @@ void SaveStreamColorQualityIndex(int colorQualityIndex);
 void SaveStreamL4SEnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);
 void SaveStreamSuppressInputWhenInactive(bool enabled);
+void SaveStreamDirectMouseInputEnabled(bool enabled);
 void SaveStreamGameVolume(double volume);
 void SaveStreamMicrophoneVolume(double volume);
 void SaveStreamMicrophoneMode(const std::string &mode);

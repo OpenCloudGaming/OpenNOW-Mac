@@ -21,6 +21,7 @@ static NSString *const kColorQualityIndexKey = @"OpenNOW.Stream.ColorQualityInde
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
+static NSString *const kDirectMouseInputKey = @"OpenNOW.Stream.DirectMouseInput";
 static NSString *const kGameVolumeKey = @"OpenNOW.Stream.GameVolume";
 static NSString *const kMicrophoneVolumeKey = @"OpenNOW.Stream.MicrophoneVolume";
 static NSString *const kMicrophoneModeKey = @"OpenNOW.Stream.MicrophoneMode";
@@ -515,6 +516,8 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.enablePowerSaver = [NSUserDefaults.standardUserDefaults boolForKey:kPowerSaverEnabledKey];
     id suppressInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kSuppressInputWhenInactiveKey];
     profile.suppressInputWhenInactive = [suppressInputValue isKindOfClass:NSNumber.class] ? [(NSNumber *)suppressInputValue boolValue] : true;
+    id directMouseInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kDirectMouseInputKey];
+    profile.directMouseInput = [directMouseInputValue isKindOfClass:NSNumber.class] ? [(NSNumber *)directMouseInputValue boolValue] : true;
     profile.gameVolume = ClampedStoredDouble(kGameVolumeKey, 1.0, 0.0, 1.0);
     profile.microphoneVolume = ClampedStoredDouble(kMicrophoneVolumeKey, 1.0, 0.0, 1.0);
     NSString *microphoneMode = [NSUserDefaults.standardUserDefaults stringForKey:kMicrophoneModeKey];
@@ -841,6 +844,10 @@ void SaveStreamPowerSaverEnabled(bool enabled) {
 
 void SaveStreamSuppressInputWhenInactive(bool enabled) {
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kSuppressInputWhenInactiveKey];
+}
+
+void SaveStreamDirectMouseInputEnabled(bool enabled) {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kDirectMouseInputKey];
 }
 
 void SaveStreamGameVolume(double volume) {
