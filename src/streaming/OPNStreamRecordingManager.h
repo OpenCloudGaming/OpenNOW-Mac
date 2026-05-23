@@ -1,6 +1,7 @@
 #pragma once
 
 #import <Cocoa/Cocoa.h>
+#import <AudioToolbox/AudioToolbox.h>
 #import <CoreMedia/CoreMedia.h>
 
 @interface OPNStreamRecordingManager : NSObject
@@ -16,6 +17,7 @@
 - (void)startRecordingForGameTitle:(NSString *)gameTitle window:(NSWindow *)window;
 - (void)stopRecording;
 - (void)appendWebRTCVideoFrame:(void *)frame;
+- (void)appendWebRTCAudioBufferList:(const AudioBufferList *)audioBufferList frameCount:(UInt32)frameCount sampleRate:(double)sampleRate channels:(UInt32)channels;
 - (NSImage *)thumbnailForRecordingURL:(NSURL *)url size:(NSSize)size;
 
 @end

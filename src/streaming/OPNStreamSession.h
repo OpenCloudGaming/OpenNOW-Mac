@@ -18,6 +18,7 @@ struct StreamStatsState;
 using StreamStateCallback = std::function<void(bool connected, const std::string &error)>;
 using MicrophoneLevelCallback = std::function<void(double level)>;
 using VideoFrameCallback = std::function<void(void *frame)>;
+using GameAudioFrameCallback = std::function<void(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels)>;
 
 struct StreamStats {
     bool available = false;
@@ -76,6 +77,7 @@ public:
     virtual void SetMaxBitrateMbps(int mbps) = 0;
     virtual void OnMicrophoneLevel(MicrophoneLevelCallback cb) = 0;
     virtual void OnVideoFrame(VideoFrameCallback cb) = 0;
+    virtual void OnGameAudioFrame(GameAudioFrameCallback cb) = 0;
     virtual void RefreshAudioDevices() = 0;
     virtual void RequestStats() = 0;
     virtual StreamStats GetLatestStats() const = 0;
@@ -115,6 +117,7 @@ public:
     void SetMaxBitrateMbps(int mbps) override;
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
+    void OnGameAudioFrame(GameAudioFrameCallback cb) override;
     void RefreshAudioDevices() override;
     void RequestStats() override;
     StreamStats GetLatestStats() const override;

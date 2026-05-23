@@ -763,6 +763,7 @@ class LibWebRTCStreamSession;
 }
 
 @interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
+@property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 - (void)handleDefaultDeviceChange;
 @end
 
@@ -940,6 +941,12 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
     }
     OSStatus status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, outputData);
     if (status != noErr) [self clearAudioBufferList:outputData];
+    if (status == noErr && self.owner && outputData) {
+        self.owner->HandleGameAudioFrame(outputData,
+                                         frameCount,
+                                         self.deviceOutputSampleRate,
+                                         (uint32_t)self.outputNumberOfChannels);
+    }
     return status;
 }
 
@@ -1660,6 +1667,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 
     auto *impl = [[OPNLibWebRTCSessionImpl alloc] initWithOwner:this];
     impl.audioDevice = [[OPNCoreAudioRTCDevice alloc] init];
+    impl.audioDevice.owner = this;
     RTCDefaultVideoEncoderFactory *encoderFactory = [[RTCDefaultVideoEncoderFactory alloc] init];
     RTCDefaultVideoDecoderFactory *decoderFactory = [[RTCDefaultVideoDecoderFactory alloc] init];
     impl.factory = [[RTCPeerConnectionFactory alloc] initWithEncoderFactory:encoderFactory
@@ -2126,8 +2134,16 @@ void LibWebRTCStreamSession::OnVideoFrame(VideoFrameCallback cb) {
     m_onVideoFrame = std::move(cb);
 }
 
+void LibWebRTCStreamSession::OnGameAudioFrame(GameAudioFrameCallback cb) {
+    m_onGameAudioFrame = std::move(cb);
+}
+
 void LibWebRTCStreamSession::HandleVideoFrame(void *frame) {
     if (m_onVideoFrame) m_onVideoFrame(frame);
+}
+
+void LibWebRTCStreamSession::HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
+    if (m_onGameAudioFrame) m_onGameAudioFrame(audioBufferList, frameCount, sampleRate, channels);
 }
 
 void LibWebRTCStreamSession::RefreshAudioDevices() {
