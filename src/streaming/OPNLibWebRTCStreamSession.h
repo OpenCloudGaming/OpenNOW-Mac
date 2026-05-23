@@ -40,6 +40,7 @@ public:
     void SetMaxBitrateMbps(int mbps) override;
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
+    void OnGameAudioFrame(GameAudioFrameCallback cb) override;
     void RefreshAudioDevices() override;
     void RequestStats() override;
     StreamStats GetLatestStats() const override;
@@ -52,6 +53,7 @@ public:
     void HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len);
     void HandleAudioDeviceChange();
     void HandleVideoFrame(void *frame);
+    void HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels);
     double GameVolume() const;
     int TargetFps() const;
     void SetVideoRendererState(const std::string &sink, const std::string &pipelineMode);
@@ -116,6 +118,7 @@ private:
     StreamStateCallback m_onState;
     MicrophoneLevelCallback m_onMicrophoneLevel;
     VideoFrameCallback m_onVideoFrame;
+    GameAudioFrameCallback m_onGameAudioFrame;
 };
 
 }

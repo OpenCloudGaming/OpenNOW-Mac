@@ -334,6 +334,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     OPN::IStreamSession *previousSession = _streamSession;
     if (previousSession && previousSession != session) {
         previousSession->OnVideoFrame(OPN::VideoFrameCallback{});
+        previousSession->OnGameAudioFrame(OPN::GameAudioFrameCallback{});
     }
     _streamSession = session;
     if (session) {
@@ -352,6 +353,14 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
             OPNStreamView *strongSelf = weakSelf;
             if (!strongSelf) return;
             [strongSelf.recordingManager appendWebRTCVideoFrame:frame];
+        });
+        session->OnGameAudioFrame([weakSelf](const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
+            OPNStreamView *strongSelf = weakSelf;
+            if (!strongSelf) return;
+            [strongSelf.recordingManager appendWebRTCAudioBufferList:(const AudioBufferList *)audioBufferList
+                                                          frameCount:(UInt32)frameCount
+                                                          sampleRate:sampleRate
+                                                            channels:(UInt32)channels];
         });
         [self startGamepadPolling];
         [self applyMicrophoneShortcutState];

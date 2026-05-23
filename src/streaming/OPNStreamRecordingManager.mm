@@ -193,7 +193,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
                     if (outputURL) [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil];
                     NSString *message = error.localizedDescription ?: @"Recording failed";
                     [self updateStatus:message starting:NO recording:NO notify:YES];
-                    OPN::LogError(@"[Recording] Finish failed: %@", message);
+                    OPN::LogError(@"[Recording] Finish failed status=%ld error=%@", (long)writer.status, error ?: (NSError *)nil);
                 }
             });
         }];
@@ -243,7 +243,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
             BOOL appended = [self->_pixelBufferAdaptor appendPixelBuffer:pixelBuffer withPresentationTime:presentationTime];
             CVPixelBufferRelease(pixelBuffer);
             if (!appended) {
-                OPN::LogError(@"[Recording] Video append failed: %@", self->_writer.error.localizedDescription ?: @"unknown");
+                OPN::LogError(@"[Recording] Video append failed: %@", self->_writer.error ?: (NSError *)nil);
             } else if (self.starting) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self updateStatus:@"Recording" starting:NO recording:YES notify:YES];
@@ -330,7 +330,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     if ([writer canAddInput:microphoneAudio]) [writer addInput:microphoneAudio];
 
     if (![writer startWriting]) {
-        OPN::LogError(@"[Recording] startWriting failed: %@", writer.error.localizedDescription ?: @"unknown");
+        OPN::LogError(@"[Recording] startWriting failed: %@", writer.error ?: (NSError *)nil);
         return NO;
     }
     [writer startSessionAtSourceTime:kCMTimeZero];
@@ -443,9 +443,81 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         BOOL appended = [input appendSampleBuffer:retimed];
         CFRelease(retimed);
         if (!appended) {
-            OPN::LogError(@"[Recording] Audio append failed: %@", self->_writer.error.localizedDescription ?: @"unknown");
+            OPN::LogError(@"[Recording] Audio append failed: %@", self->_writer.error ?: (NSError *)nil);
         }
     });
+}
+
+- (void)appendPreparedAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer kind:(OPNRecordingAudioKind)kind {
+    if (!sampleBuffer || (!self.recording && !self.starting)) return;
+    CFRetain(sampleBuffer);
+    dispatch_async(_writerQueue, ^{
+        if (!self->_acceptingSamples || !self->_writer || self->_writer.status != AVAssetWriterStatusWriting) {
+            CFRelease(sampleBuffer);
+            return;
+        }
+        AVAssetWriterInput *input = kind == OPNRecordingAudioKindMicrophone ? self->_microphoneAudioInput : self->_systemAudioInput;
+        if (!input || !input.readyForMoreMediaData) {
+            CFRelease(sampleBuffer);
+            return;
+        }
+        BOOL appended = [input appendSampleBuffer:sampleBuffer];
+        CFRelease(sampleBuffer);
+        if (!appended) {
+            OPN::LogError(@"[Recording] Prepared audio append failed: %@", self->_writer.error ?: (NSError *)nil);
+        }
+    });
+}
+
+- (void)appendWebRTCAudioBufferList:(const AudioBufferList *)audioBufferList frameCount:(UInt32)frameCount sampleRate:(double)sampleRate channels:(UInt32)channels {
+    if (!audioBufferList || frameCount == 0 || (!self.recording && !self.starting)) return;
+    if (audioBufferList->mNumberBuffers == 0 || !audioBufferList->mBuffers[0].mData || audioBufferList->mBuffers[0].mDataByteSize == 0) return;
+
+    AudioStreamBasicDescription format = {};
+    format.mSampleRate = sampleRate > 0.0 ? sampleRate : 48000.0;
+    format.mFormatID = kAudioFormatLinearPCM;
+    format.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+    format.mBitsPerChannel = 16;
+    format.mChannelsPerFrame = std::max<UInt32>(1, channels);
+    format.mFramesPerPacket = 1;
+    format.mBytesPerFrame = format.mChannelsPerFrame * sizeof(int16_t);
+    format.mBytesPerPacket = format.mBytesPerFrame;
+
+    const UInt32 expectedBytes = frameCount * format.mBytesPerFrame;
+    const UInt32 dataBytes = std::min<UInt32>(expectedBytes, audioBufferList->mBuffers[0].mDataByteSize);
+    if (dataBytes == 0) return;
+
+    CMFormatDescriptionRef formatDescription = nil;
+    OSStatus status = CMAudioFormatDescriptionCreate(kCFAllocatorDefault, &format, 0, nullptr, 0, nullptr, nullptr, &formatDescription);
+    if (status != noErr || !formatDescription) return;
+
+    CMBlockBufferRef blockBuffer = nil;
+    status = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, dataBytes, kCFAllocatorDefault, nullptr, 0, dataBytes, 0, &blockBuffer);
+    if (status != noErr || !blockBuffer) {
+        CFRelease(formatDescription);
+        return;
+    }
+    status = CMBlockBufferReplaceDataBytes(audioBufferList->mBuffers[0].mData, blockBuffer, 0, dataBytes);
+    if (status != noErr) {
+        CFRelease(blockBuffer);
+        CFRelease(formatDescription);
+        return;
+    }
+
+    CMSampleTimingInfo timing = {};
+    timing.duration = CMTimeMake(1, (int32_t)format.mSampleRate);
+    timing.presentationTimeStamp = CMTimeMakeWithSeconds(std::max<CFTimeInterval>(0.0, CACurrentMediaTime() - _recordingStartHostTime), 600);
+    timing.decodeTimeStamp = kCMTimeInvalid;
+
+    CMSampleBufferRef sampleBuffer = nil;
+    const CMItemCount sampleCount = std::max<CMItemCount>(1, dataBytes / format.mBytesPerFrame);
+    status = CMSampleBufferCreateReady(kCFAllocatorDefault, blockBuffer, formatDescription, sampleCount, 1, &timing, 0, nullptr, &sampleBuffer);
+    CFRelease(blockBuffer);
+    CFRelease(formatDescription);
+    if (status != noErr || !sampleBuffer) return;
+
+    [self appendPreparedAudioSampleBuffer:sampleBuffer kind:OPNRecordingAudioKindSystem];
+    CFRelease(sampleBuffer);
 }
 
 - (CMSampleBufferRef)copyAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer kind:(OPNRecordingAudioKind)kind {
@@ -478,90 +550,12 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
 }
 
 - (void)startAudioCaptureForWindow:(NSWindow *)window {
-#if OPN_HAVE_SCREENCAPTUREKIT
-    if (@available(macOS 13.0, *)) {
-        NSScreen *screen = window.screen ?: NSScreen.mainScreen;
-        NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
-        CGDirectDisplayID targetDisplayID = screenNumber ? (CGDirectDisplayID)screenNumber.unsignedIntValue : CGMainDisplayID();
-        __weak OPNStreamRecordingManager *weakSelf = self;
-        [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *content, NSError *error) {
-            OPNStreamRecordingManager *strongSelf = weakSelf;
-            if (!strongSelf || error || !content) {
-                OPN::LogError(@"[Recording] Audio capture unavailable: %@", error.localizedDescription ?: @"no shareable content");
-                [strongSelf startAVMicrophoneCapture];
-                return;
-            }
-            SCDisplay *display = content.displays.firstObject;
-            for (SCDisplay *candidate in content.displays) {
-                if (candidate.displayID == targetDisplayID) {
-                    display = candidate;
-                    break;
-                }
-            }
-            if (!display) return;
-            SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
-            SCStreamConfiguration *configuration = [[SCStreamConfiguration alloc] init];
-            configuration.width = 2;
-            configuration.height = 2;
-            configuration.minimumFrameInterval = CMTimeMake(1, 1);
-            configuration.queueDepth = 3;
-            configuration.capturesAudio = YES;
-            configuration.excludesCurrentProcessAudio = NO;
-            configuration.sampleRate = 48000;
-            configuration.channelCount = 2;
-            if (@available(macOS 15.0, *)) {
-                configuration.captureMicrophone = YES;
-            }
-            OPNRecordingScreenCaptureOutput *output = [[OPNRecordingScreenCaptureOutput alloc] init];
-            output.manager = strongSelf;
-            SCStream *stream = [[SCStream alloc] initWithFilter:filter configuration:configuration delegate:output];
-            NSError *screenOutputError = nil;
-            if (![stream addStreamOutput:output type:SCStreamOutputTypeScreen sampleHandlerQueue:strongSelf->_audioQueue error:&screenOutputError]) {
-                OPN::LogError(@"[Recording] Screen output sink failed: %@", screenOutputError.localizedDescription ?: @"unknown");
-            }
-            NSError *outputError = nil;
-            if (![stream addStreamOutput:output type:SCStreamOutputTypeAudio sampleHandlerQueue:strongSelf->_audioQueue error:&outputError]) {
-                OPN::LogError(@"[Recording] System audio output failed: %@", outputError.localizedDescription ?: @"unknown");
-            }
-            if (@available(macOS 15.0, *)) {
-                NSError *micError = nil;
-                if (![stream addStreamOutput:output type:SCStreamOutputTypeMicrophone sampleHandlerQueue:strongSelf->_audioQueue error:&micError]) {
-                    OPN::LogError(@"[Recording] Microphone audio output failed: %@", micError.localizedDescription ?: @"unknown");
-                    [strongSelf startAVMicrophoneCapture];
-                }
-            } else {
-                [strongSelf startAVMicrophoneCapture];
-            }
-            strongSelf->_audioOutput = output;
-            strongSelf->_audioStream = stream;
-            [stream startCaptureWithCompletionHandler:^(NSError *startError) {
-                if (startError) {
-                    OPN::LogError(@"[Recording] Audio capture start failed: %@", startError.localizedDescription ?: @"unknown");
-                } else {
-                    OPN::LogInfo(@"[Recording] Audio capture started");
-                }
-            }];
-        }];
-    } else {
-        [self startAVMicrophoneCapture];
-    }
-#else
     (void)window;
     [self startAVMicrophoneCapture];
-#endif
+    OPN::LogInfo(@"[Recording] Direct WebRTC game audio enabled; system audio capture disabled");
 }
 
 - (void)stopAudioCapture {
-#if OPN_HAVE_SCREENCAPTUREKIT
-    if (@available(macOS 13.0, *)) {
-        SCStream *stream = _audioStream;
-        _audioStream = nil;
-        _audioOutput = nil;
-        [stream stopCaptureWithCompletionHandler:^(NSError *error) {
-            if (error) OPN::LogError(@"[Recording] Audio capture stop failed: %@", error.localizedDescription ?: @"unknown");
-        }];
-    }
-#endif
 }
 
 - (void)startAVMicrophoneCapture {
