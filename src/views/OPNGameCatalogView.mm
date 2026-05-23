@@ -139,7 +139,7 @@ static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat wi
     CGFloat safeWidth = MAX(1.0, width);
     CGFloat safeHeight = MAX(1.0, height);
     CGFloat scale = MIN(safeWidth / 1280.0, safeHeight / 720.0);
-    CGFloat topInset = safeHeight * (120.0 / 720.0);
+    CGFloat topInset = safeHeight * (28.0 / 720.0);
     CGFloat bottomInset = safeHeight * (72.0 / 720.0);
     CGFloat contentInset = safeWidth * (52.0 / 1280.0);
     CGFloat availableHeroWidth = MAX(1.0, safeWidth - contentInset * 2.0);
@@ -2460,14 +2460,8 @@ using namespace OPN;
     CGFloat contentInset = metrics.contentInset;
     CGFloat contentWidth = MAX(1.0, width - contentInset * 2.0);
     CGFloat scale = metrics.scale;
-    CGFloat headerY = 4.0 * scale;
     NSInteger libraryCount = [self controllerHomeLibraryCount];
     NSInteger favoriteCount = [self controllerHomeFavoriteCount];
-    NSInteger totalCount = (NSInteger)_allGames.size();
-
-    NSString *summary = [NSString stringWithFormat:@"%ld library %@ / %ld favorites / %ld total cloud %@", (long)libraryCount, libraryCount == 1 ? @"game" : @"games", (long)favoriteCount, (long)totalCount, totalCount == 1 ? @"title" : @"titles"];
-    NSTextField *subtitle = OpnLabel(summary, NSMakeRect(contentInset + 2.0, headerY, MIN(720.0 * scale, contentWidth), 24.0 * scale), 15.0 * scale, OpnColor(0xDDE3E0, 0.72), NSFontWeightSemibold);
-    [self.gridContentView addSubview:subtitle];
 
     std::vector<OPN::GameInfo> queueGames = [self controllerHomeQueueGamesWithLimit:4];
     const OPN::GameInfo *lastPlayedGame = [self currentLastPlayedGame];
