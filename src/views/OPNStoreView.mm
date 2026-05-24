@@ -941,6 +941,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)updateFocusedTiles;
 - (void)updateHeroTileOnly;
 - (void)installGamepadValueHandlers;
+- (void)requestControllerBackToHome;
 @end
 
 @implementation OPNStoreView
@@ -1414,7 +1415,7 @@ using namespace OPN;
     NSTextField *title = OpnLabel(@"Store Theater", NSMakeRect(contentX, 52.0, MIN(560.0, contentWidth - 260.0), 44.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBold);
     title.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.documentView addSubview:title];
-    NSTextField *hints = OpnLabel(@"D-pad browse / A launch / Space select", NSMakeRect(width - contentX - 420.0, 54.0, 420.0, 26.0), 13.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentRight);
+    NSTextField *hints = OpnLabel(@"D-pad browse / A launch / B Home / LB RB pages", NSMakeRect(width - contentX - 500.0, 54.0, 500.0, 26.0), 13.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentRight);
     [self.documentView addSubview:hints];
 
     const GameInfo *heroGame = [self currentHeroGame];
@@ -1864,11 +1865,18 @@ using namespace OPN;
     if (self.onSelectGame) self.onSelectGame(tile.game, variantIndex);
 }
 
+- (void)requestControllerBackToHome {
+    if (!self.onBackRequested) return;
+    OpnPlayConsoleTone(OPNConsoleToneBack);
+    self.onBackRequested();
+}
+
 - (void)keyDown:(NSEvent *)event {
     if (!OpnControllerModeEnabled()) {
         [super keyDown:event];
         return;
     }
+    NSString *chars = event.charactersIgnoringModifiers.lowercaseString ?: @"";
     switch (event.keyCode) {
         case 123: [self moveFocusByRows:0 columns:-1]; return;
         case 124: [self moveFocusByRows:0 columns:1]; return;
@@ -1878,8 +1886,23 @@ using namespace OPN;
         case 49:
             [self launchFocusedGame];
             return;
+        case 53:
+            [self requestControllerBackToHome];
+            return;
         default:
             break;
+    }
+    if ([chars isEqualToString:@"b"] || [chars isEqualToString:@"h"]) {
+        [self requestControllerBackToHome];
+        return;
+    }
+    if ([chars isEqualToString:@"["]) {
+        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
+        return;
+    }
+    if ([chars isEqualToString:@"]"]) {
+        if (self.onNextPageRequested) self.onNextPageRequested();
+        return;
     }
     [super keyDown:event];
 }
@@ -1950,10 +1973,7 @@ using namespace OPN;
     }
     if (pressed & (1u << 0)) [self launchFocusedGame];
     if (pressed & (1u << 1)) {
-        if (self.onBackRequested) {
-            OpnPlayConsoleTone(OPNConsoleToneBack);
-            self.onBackRequested();
-        }
+        [self requestControllerBackToHome];
         self.previousGamepadButtons = buttons;
         return;
     }
