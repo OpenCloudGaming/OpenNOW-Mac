@@ -27,7 +27,7 @@
 static constexpr NSInteger OPNMaxAutomaticRecoveryAttempts = 2;
 static constexpr NSTimeInterval OPNStableRecoveryResetInterval = 15.0;
 static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
-static constexpr NSTimeInterval OPNStreamIdleDeviceInputInterval = 5.0 * 60.0;
+static constexpr NSTimeInterval OPNStreamIdleDeviceInputInterval = 4.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityTimeoutInterval = 10.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 static constexpr NSTimeInterval OPNStreamQualityGuardrailCooldownInterval = 30.0;
@@ -1767,8 +1767,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     };
     uint32_t index = arc4random_uniform((uint32_t)(sizeof(deltas) / sizeof(deltas[0])));
     _session->SendMouseMove(deltas[index][0], deltas[index][1]);
+    _session->SendMouseMove((int16_t)-deltas[index][0], (int16_t)-deltas[index][1]);
+    CFTimeInterval idleDuration = now - _lastStreamActivityTime;
+    _lastStreamActivityTime = now;
     _lastIdleDeviceInputTime = now;
-    OPN::LogInfo(@"[StreamVC] Sent idle device input after %.1fs without user activity", now - _lastStreamActivityTime);
+    OPN::LogInfo(@"[StreamVC] Sent idle device input after %.1fs without user activity", idleDuration);
 }
 
 - (void)endStreamFromInactivityTimeout {
