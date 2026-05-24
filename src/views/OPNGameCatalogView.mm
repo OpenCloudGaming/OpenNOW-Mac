@@ -2623,16 +2623,39 @@ using namespace OPN;
     if (itemCount == 0 || (rows == 0 && columns == 0)) return;
     NSInteger currentIndex = MAX(0, MIN(self.focusedHomeItemIndex, itemCount - 1));
     NSView *currentView = self.controllerHomeTileViews[(NSUInteger)currentIndex];
+    NSRect currentFrame = currentView.frame;
     CGFloat currentX = NSMidX(currentView.frame);
     CGFloat currentY = NSMidY(currentView.frame);
     CGFloat bestScore = CGFLOAT_MAX;
     NSInteger bestIndex = NSNotFound;
+    BOOL hasAxisAlignedCandidate = NO;
     for (NSInteger index = 0; index < itemCount; index++) {
         if (index == currentIndex) continue;
         NSView *candidateView = self.controllerHomeTileViews[(NSUInteger)index];
+        NSRect candidateFrame = candidateView.frame;
+        CGFloat dx = NSMidX(candidateFrame) - currentX;
+        CGFloat dy = NSMidY(candidateFrame) - currentY;
+        BOOL verticalOverlap = NSMinY(candidateFrame) < NSMaxY(currentFrame) && NSMaxY(candidateFrame) > NSMinY(currentFrame);
+        BOOL horizontalOverlap = NSMinX(candidateFrame) < NSMaxX(currentFrame) && NSMaxX(candidateFrame) > NSMinX(currentFrame);
+        if (columns > 0 && dx > 1.0 && verticalOverlap) hasAxisAlignedCandidate = YES;
+        if (columns < 0 && dx < -1.0 && verticalOverlap) hasAxisAlignedCandidate = YES;
+        if (rows > 0 && dy > 1.0 && horizontalOverlap) hasAxisAlignedCandidate = YES;
+        if (rows < 0 && dy < -1.0 && horizontalOverlap) hasAxisAlignedCandidate = YES;
+    }
+    for (NSInteger index = 0; index < itemCount; index++) {
+        if (index == currentIndex) continue;
+        NSView *candidateView = self.controllerHomeTileViews[(NSUInteger)index];
+        NSRect candidateFrame = candidateView.frame;
         CGFloat dx = NSMidX(candidateView.frame) - currentX;
         CGFloat dy = NSMidY(candidateView.frame) - currentY;
         CGFloat score = CGFLOAT_MAX;
+        BOOL axisAligned = YES;
+        if (columns != 0) {
+            axisAligned = NSMinY(candidateFrame) < NSMaxY(currentFrame) && NSMaxY(candidateFrame) > NSMinY(currentFrame);
+        } else if (rows != 0) {
+            axisAligned = NSMinX(candidateFrame) < NSMaxX(currentFrame) && NSMaxX(candidateFrame) > NSMinX(currentFrame);
+        }
+        if (hasAxisAlignedCandidate && !axisAligned) continue;
         if (rows > 0 && dy > 1.0) {
             score = fabs(dx) * 2.4 + dy;
         } else if (rows < 0 && dy < -1.0) {
@@ -3990,8 +4013,6 @@ using namespace OPN;
     if ([chars isEqualToString:@"b"]) {
         if (self.controllerSurface == OPNControllerCatalogSurfaceLibrary) {
             [self showControllerHome];
-        } else {
-            [self showControllerLibrary];
         }
         return;
     }
@@ -4098,8 +4119,6 @@ using namespace OPN;
     if (pressed & (1u << 1)) {
         if (self.controllerSurface == OPNControllerCatalogSurfaceLibrary) {
             [self showControllerHome];
-        } else {
-            [self showControllerLibrary];
         }
     }
     if (pressed & (1u << 3)) {

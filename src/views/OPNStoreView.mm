@@ -1949,6 +1949,14 @@ using namespace OPN;
         self.lastGamepadMoveTime = now;
     }
     if (pressed & (1u << 0)) [self launchFocusedGame];
+    if (pressed & (1u << 1)) {
+        if (self.onBackRequested) {
+            OpnPlayConsoleTone(OPNConsoleToneBack);
+            self.onBackRequested();
+        }
+        self.previousGamepadButtons = buttons;
+        return;
+    }
     if (pressed & (1u << 6)) {
         if (self.onPreviousPageRequested) self.onPreviousPageRequested();
         self.previousGamepadButtons = buttons;
