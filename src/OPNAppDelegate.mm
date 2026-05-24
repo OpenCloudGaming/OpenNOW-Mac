@@ -23,6 +23,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <unordered_set>
 #include "common/OPNSentry.h"
 
@@ -111,6 +112,7 @@
                        filterIds:(const std::vector<std::string> &)filterIds
                          canRetry:(BOOL)canRetry
                      retryAttempt:(NSInteger)retryAttempt;
+- (void)showControllerHomePage;
 - (void)switchControllerPageBy:(NSInteger)delta;
 @end
 
@@ -439,6 +441,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     } else if ([nextPage isEqualToString:@"settings"]) {
         if (self.currentScreen != OPN::AuthScreen::Settings) [self transitionToScreen:OPN::AuthScreen::Settings];
     }
+}
+
+- (void)showControllerHomePage {
+    if (!OpnControllerModeEnabled()) return;
+    if (self.currentScreen != OPN::AuthScreen::Catalog) {
+        [self transitionToScreen:OPN::AuthScreen::Catalog];
+    }
+    [self.catalogView showControllerHome];
+    self.rootView.mode = OPNBackdropModeHome;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -1338,6 +1349,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 if (!strongSelf) return;
                 [strongSelf switchControllerPageBy:1];
             };
+            store.onBackRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf showControllerHomePage];
+            };
 
             [self.contentContainer addSubview:store];
             OpnDisableFocusHighlights(store);
@@ -1497,7 +1513,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             settings.onBackRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                [strongSelf transitionToScreen:AuthScreen::Catalog];
+                if (OpnControllerModeEnabled()) {
+                    [strongSelf showControllerHomePage];
+                } else {
+                    [strongSelf transitionToScreen:AuthScreen::Catalog];
+                }
             };
             settings.onPreviousPageRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
@@ -2042,67 +2062,38 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
     GameService::Shared().SetVpcId("GFN-PC");
 
-    __block int outstanding = 2;
-    __block std::vector<GameInfo> allGames;
-    __block BOOL retryStarted = NO;
-    __block BOOL completed = NO;
+    auto terminalFailureDelivered = std::make_shared<bool>(false);
     __weak __typeof__(self) weakSelf = self;
-
-    auto finalize = ^(std::vector<GameInfo> toAdd) {
-        __typeof__(self) s = weakSelf;
-        if (!s || retryStarted || completed) return;
-        for (auto &g : toAdd) allGames.push_back(g);
-        outstanding--;
-        if (outstanding == 0) {
-            if (allGames.empty()) {
-                GameService::Shared().FetchPublicGames(
-                    ^(bool, const std::vector<GameInfo> &publicGames, const std::string &) {
-                        if (completed) return;
-                        completed = YES;
-                        completion(true, publicGames);
-                    });
-            } else {
-                completed = YES;
-                completion(true, allGames);
-            }
-        }
-    };
-
-
-    GameService::Shared().FetchLibraryGames(
-        ^(bool ok, const std::vector<OPN::GameInfo> &games, const std::string &err) {
-            if (!ok && canRetry && err.find("401") != std::string::npos) {
-                retryStarted = YES;
-                AuthService::Shared().RefreshSession(^(bool ok2, const AuthSession &fresh, const std::string &) {
-                    __typeof__(self) s2 = weakSelf;
-                    if (!s2 || completed) return;
-                    if (ok2) {
-                        s2.currentSession = fresh;
-                        if (s2.pendingCredentials.stayLoggedIn)
-                            AuthService::Shared().SaveSession(fresh);
-                        [s2 refreshAccountMenu];
-                        [s2 fetchGameLibraryWithRetry:NO completion:completion];
-                    } else {
-                        completed = YES;
-                        AuthSession fallback = AuthService::Shared().LoadSavedSession();
-                        if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
-                            s2.currentSession = fallback;
-                            [s2 transitionToScreen:AuthScreen::Catalog];
-                        } else {
-                            [s2 transitionToScreen:AuthScreen::EmailEntry];
-                        }
-                        completion(false, std::vector<GameInfo>());
+    GameService::Shared().BrowseCatalogGames("", "last_played", {}, 96,
+        [weakSelf, canRetry, completion, terminalFailureDelivered](bool success, const CatalogBrowseResult &result, const std::string &error) {
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || *terminalFailureDelivered) return;
+            if (!success && canRetry && error.find("401") != std::string::npos) {
+                AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
+                    __typeof__(self) retrySelf = weakSelf;
+                    if (!retrySelf || *terminalFailureDelivered) return;
+                    if (refreshSuccess) {
+                        retrySelf.currentSession = fresh;
+                        if (retrySelf.pendingCredentials.stayLoggedIn) AuthService::Shared().SaveSession(fresh);
+                        [retrySelf refreshAccountMenu];
+                        [retrySelf fetchGameLibraryWithRetry:NO completion:completion];
+                        return;
                     }
+
+                    *terminalFailureDelivered = true;
+                    AuthSession fallback = AuthService::Shared().LoadSavedSession();
+                    if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
+                        retrySelf.currentSession = fallback;
+                        [retrySelf transitionToScreen:AuthScreen::Catalog];
+                    } else {
+                        [retrySelf transitionToScreen:AuthScreen::EmailEntry];
+                    }
+                    completion(false, std::vector<GameInfo>());
                 }, true);
                 return;
             }
-            finalize(games);
-        });
 
-
-    GameService::Shared().FetchCatalogGames(
-        ^(bool ok, const std::vector<GameInfo> &games, const std::string &) {
-            finalize(ok ? games : std::vector<GameInfo>());
+            completion(success, success ? result.games : std::vector<GameInfo>());
         });
 }
 
