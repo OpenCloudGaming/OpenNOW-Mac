@@ -77,6 +77,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     BOOL _pushToTalkMicEnabled;
     BOOL _microphoneShortcutEnabled;
     BOOL _suppressInputWhenWindowInactive;
+    BOOL _streamInputSuppressed;
     BOOL _directMouseInputEnabled;
     BOOL _sidebarOpen;
     double _gameVolume;
@@ -86,6 +87,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     double _pendingMouseDy;
     int _maxBitrateMbps;
     OPNPadSnapshot _previousPads[GAMEPAD_MAX_CONTROLLERS];
+    BOOL _previousGuideDown[GAMEPAD_MAX_CONTROLLERS];
     CFTimeInterval _lastGamepadSend[GAMEPAD_MAX_CONTROLLERS];
 }
 @property (nonatomic, strong) OPNVideoSurfaceView *videoSurface;
@@ -127,6 +129,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         _pushToTalkMicEnabled = NO;
         _microphoneShortcutEnabled = YES;
         _suppressInputWhenWindowInactive = YES;
+        _streamInputSuppressed = NO;
         _directMouseInputEnabled = YES;
         _sidebarOpen = NO;
         OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
@@ -546,10 +549,20 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 }
 
 - (BOOL)streamWindowAcceptsInput {
+    if (_streamInputSuppressed) return NO;
     if (_sidebarOpen) return NO;
     if (!_suppressInputWhenWindowInactive) return YES;
     NSWindow *window = self.window;
     return NSApp.isActive && window && (window.isKeyWindow || window.isMainWindow);
+}
+
+- (void)setStreamInputSuppressed:(BOOL)suppressed {
+    if (_streamInputSuppressed == suppressed) return;
+    _streamInputSuppressed = suppressed;
+    if (suppressed) {
+        [self resetInputStateAfterSuppression];
+        [self releaseCursorCapture];
+    }
 }
 
 - (void)toggleSidebarHUD {
@@ -1163,7 +1176,7 @@ static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::
 
 - (void)pollGamepads {
     if (!_streamSession || !_streamSession->InputReady()) return;
-    if (![self streamWindowAcceptsInput]) return;
+    BOOL streamAcceptsInput = [self streamWindowAcceptsInput];
 
     NSArray<GCController *> *controllers = [GCController controllers];
     if (controllers.count == 0) {
@@ -1209,6 +1222,14 @@ static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::
         if (@available(macOS 11.0, *)) {
             if (pad.buttonHome.value > 0) buttons |= GAMEPAD_GUIDE;
         }
+        BOOL guideDown = (buttons & GAMEPAD_GUIDE) != 0;
+        if (guideDown && !_previousGuideDown[i]) {
+            if (self.onGuideButtonPressed) self.onGuideButtonPressed();
+            [self notifyUserActivity];
+        }
+        _previousGuideDown[i] = guideDown;
+        buttons &= (uint16_t)~GAMEPAD_GUIDE;
+        if (!streamAcceptsInput) continue;
 
         OPN::Input::GamepadState state;
         state.controllerId = (uint16_t)i;
@@ -1244,6 +1265,7 @@ static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::
         state.connected = false;
         state.timestampUs = OPN::Input::TimestampUs();
         _streamSession->SendGamepadState(state, _gamepadBitmap);
+        _previousGuideDown[i] = NO;
         _previousPads[i].state = state;
         _lastGamepadSend[i] = CACurrentMediaTime();
     }
