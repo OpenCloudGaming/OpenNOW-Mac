@@ -89,6 +89,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
     OPNPadSnapshot _previousPads[GAMEPAD_MAX_CONTROLLERS];
     BOOL _previousGuideDown[GAMEPAD_MAX_CONTROLLERS];
     CFTimeInterval _lastGamepadSend[GAMEPAD_MAX_CONTROLLERS];
+    CFTimeInterval _lastLocalGuidePressTime;
 }
 @property (nonatomic, strong) OPNVideoSurfaceView *videoSurface;
 @property (nonatomic, strong) NSView *microphoneActiveOverlay;
@@ -140,6 +141,7 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
         _microphoneLevel = 0.0;
         _pendingMouseDx = 0;
         _pendingMouseDy = 0;
+        _lastLocalGuidePressTime = 0;
         _videoAspectRatio = 16.0 / 9.0;
         _recordingGameTitle = @"Stream";
         _recordingManager = [[OPNStreamRecordingManager alloc] init];
@@ -365,6 +367,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
                                                           sampleRate:sampleRate
                                                             channels:(UInt32)channels];
         });
+        [self installLocalGuideButtonHandlers];
         [self startGamepadPolling];
         [self applyMicrophoneShortcutState];
     } else {
@@ -1121,12 +1124,48 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
     [center addObserver:self selector:@selector(controllerDidConnect:) name:GCControllerDidConnectNotification object:nil];
     [center addObserver:self selector:@selector(controllerDidDisconnect:) name:GCControllerDidDisconnectNotification object:nil];
+    [self installLocalGuideButtonHandlers];
 }
 
 - (void)controllerDidConnect:(NSNotification *)notification {
     (void)notification;
     OPN::LogInfo(@"[StreamView] GameController connected");
+    [self installLocalGuideButtonHandlers];
     [self startGamepadPolling];
+}
+
+- (void)handleLocalGuideButtonPress {
+    CFTimeInterval now = CACurrentMediaTime();
+    if (_lastLocalGuidePressTime > 0 && now - _lastLocalGuidePressTime < 0.35) return;
+    _lastLocalGuidePressTime = now;
+    if (self.onGuideButtonPressed) self.onGuideButtonPressed();
+    [self notifyUserActivity];
+}
+
+- (void)installLocalGuideButtonHandlers {
+    __weak OPNStreamView *weakSelf = self;
+    for (GCController *controller in [GCController controllers]) {
+        controller.controllerPausedHandler = ^(GCController *) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                OPNStreamView *strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf handleLocalGuideButtonPress];
+            });
+        };
+        GCExtendedGamepad *pad = controller.extendedGamepad;
+        if (!pad) continue;
+        pad.valueChangedHandler = ^(GCExtendedGamepad *gamepad, GCControllerElement *element) {
+            if (@available(macOS 11.0, *)) {
+                if (element == gamepad.buttonHome && gamepad.buttonHome.value > 0.5) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        OPNStreamView *strongSelf = weakSelf;
+                        if (!strongSelf) return;
+                        [strongSelf handleLocalGuideButtonPress];
+                    });
+                }
+            }
+        };
+    }
 }
 
 - (void)controllerDidDisconnect:(NSNotification *)notification {
@@ -1224,8 +1263,7 @@ static bool OPNStateEquals(const OPN::Input::GamepadState &a, const OPN::Input::
         }
         BOOL guideDown = (buttons & GAMEPAD_GUIDE) != 0;
         if (guideDown && !_previousGuideDown[i]) {
-            if (self.onGuideButtonPressed) self.onGuideButtonPressed();
-            [self notifyUserActivity];
+            [self handleLocalGuideButtonPress];
         }
         _previousGuideDown[i] = guideDown;
         buttons &= (uint16_t)~GAMEPAD_GUIDE;
