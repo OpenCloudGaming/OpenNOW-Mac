@@ -1145,13 +1145,6 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
 - (void)installLocalGuideButtonHandlers {
     __weak OPNStreamView *weakSelf = self;
     for (GCController *controller in [GCController controllers]) {
-        controller.controllerPausedHandler = ^(GCController *) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                OPNStreamView *strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf handleLocalGuideButtonPress];
-            });
-        };
         GCExtendedGamepad *pad = controller.extendedGamepad;
         if (!pad) continue;
         pad.valueChangedHandler = ^(GCExtendedGamepad *gamepad, GCControllerElement *element) {
