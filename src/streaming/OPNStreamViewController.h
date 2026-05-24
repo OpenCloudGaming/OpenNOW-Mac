@@ -21,9 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)setInitialViewFrame:(NSRect)frame;
 - (void)startStreamIfNeeded;
+- (void)setStreamInputSuppressed:(BOOL)suppressed;
 
 @property(nonatomic, copy) void (^onStreamEnd)
     (BOOL success, const std::string &errorMessage);
+@property(nonatomic, copy) void (^onDashboardToggleRequested)(void);
 
 - (void)requestQuitGameConfirmation;
 - (void)shutdownForApplicationTermination;

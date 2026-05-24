@@ -35,6 +35,10 @@
 @property (nonatomic, strong) OPNStreamViewController *streamingController;
 @property (nonatomic, copy) NSString *currentStreamTitle;
 @property (nonatomic, assign) OPN::AuthScreen activeStreamReturnScreen;
+@property (nonatomic, assign) BOOL streamDashboardHomeVisible;
+@property (nonatomic, strong) NSTimer *streamDashboardControllerTimer;
+@property (nonatomic, assign) CFTimeInterval streamDashboardStartHoldBegan;
+@property (nonatomic, assign) BOOL streamDashboardStartHoldConsumed;
 @property (nonatomic, strong) NSTimer *gameLibraryRefreshTimer;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> cachedGameLibrary;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> cachedFeaturedGames;
@@ -69,6 +73,12 @@
 - (void)startGameLibraryRefreshTimer;
 - (void)stopGameLibraryRefreshTimer;
 - (BOOL)hasVisibleStreamingController;
+- (void)toggleStreamDashboardHome;
+- (void)showStreamDashboardHome;
+- (void)restoreVisibleStreamFromDashboard;
+- (void)startStreamDashboardControllerPolling;
+- (void)stopStreamDashboardControllerPolling;
+- (void)pollStreamDashboardController:(NSTimer *)timer;
 - (void)showActiveSessionPromptWithSessionTitle:(NSString *)sessionTitle
                               selectedGameTitle:(NSString *)selectedGameTitle
                                 continueHandler:(void (^)(void))continueHandler
@@ -537,6 +547,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self saveWindowPresentation];
     [self stopGameLibraryRefreshTimer];
     [self stopActiveSessionPromptControllerPolling];
+    [self stopStreamDashboardControllerPolling];
     if (self.streamingController) {
         [self.streamingController shutdownForApplicationTermination];
         self.streamingController = nil;
@@ -599,11 +610,98 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
 - (BOOL)hasVisibleStreamingController {
     if (!self.streamingController) return NO;
+    if (self.streamDashboardHomeVisible) return YES;
     if (self.window.contentViewController == self.streamingController) return YES;
     OPN::LogInfo(@"[AppDelegate] Clearing stale streaming controller before launch/session check");
     self.streamingController = nil;
     self.currentStreamTitle = nil;
     return NO;
+}
+
+- (void)toggleStreamDashboardHome {
+    if (!self.streamingController) return;
+    if (self.streamDashboardHomeVisible) {
+        [self restoreVisibleStreamFromDashboard];
+    } else {
+        [self showStreamDashboardHome];
+    }
+}
+
+- (void)showStreamDashboardHome {
+    if (!self.streamingController || self.streamDashboardHomeVisible) return;
+    self.streamDashboardHomeVisible = YES;
+    self.streamDashboardStartHoldBegan = CACurrentMediaTime();
+    self.streamDashboardStartHoldConsumed = YES;
+    [self.streamingController setStreamInputSuppressed:YES];
+    self.window.contentViewController = nil;
+    [self transitionToScreen:OPN::AuthScreen::Catalog];
+    [self.catalogView showControllerHome];
+    self.rootView.mode = OPNBackdropModeHome;
+    [self startStreamDashboardControllerPolling];
+    OPN::LogInfo(@"[AppDelegate] Stream dashboard Home shown");
+}
+
+- (void)restoreVisibleStreamFromDashboard {
+    if (!self.streamingController) return;
+    [self stopStreamDashboardControllerPolling];
+    self.streamDashboardHomeVisible = NO;
+    NSRect preservedFrame = self.window.frame;
+    BOOL preserveFrame = !OPNWindowIsFullScreen(self.window);
+    [self.streamingController setInitialViewFrame:self.window.contentView.bounds];
+    self.streamingController.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    OPNConfigureStreamWindow(self.window);
+    self.window.contentViewController = self.streamingController;
+    OpnDisableFocusHighlights(self.streamingController.view);
+    [self.streamingController setStreamInputSuppressed:NO];
+    if (preserveFrame) [self.window setFrame:preservedFrame display:YES animate:NO];
+    [self.window makeKeyAndOrderFront:nil];
+    OPN::LogInfo(@"[AppDelegate] Stream restored from dashboard Home");
+}
+
+- (void)startStreamDashboardControllerPolling {
+    [self stopStreamDashboardControllerPolling];
+    self.streamDashboardControllerTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
+                                                                           target:self
+                                                                         selector:@selector(pollStreamDashboardController:)
+                                                                         userInfo:nil
+                                                                          repeats:YES];
+}
+
+- (void)stopStreamDashboardControllerPolling {
+    [self.streamDashboardControllerTimer invalidate];
+    self.streamDashboardControllerTimer = nil;
+    self.streamDashboardStartHoldBegan = 0;
+    self.streamDashboardStartHoldConsumed = NO;
+}
+
+- (void)pollStreamDashboardController:(NSTimer *)timer {
+    (void)timer;
+    if (!self.streamDashboardHomeVisible || !self.streamingController) {
+        [self stopStreamDashboardControllerPolling];
+        return;
+    }
+    BOOL startDown = NO;
+    for (GCController *controller in [GCController controllers]) {
+        GCExtendedGamepad *pad = controller.extendedGamepad;
+        if (!pad) continue;
+        if (pad.buttonMenu.value > 0.5) {
+            startDown = YES;
+            break;
+        }
+    }
+    if (!startDown) {
+        self.streamDashboardStartHoldBegan = 0;
+        self.streamDashboardStartHoldConsumed = NO;
+        return;
+    }
+    CFTimeInterval now = CACurrentMediaTime();
+    if (self.streamDashboardStartHoldBegan <= 0) {
+        self.streamDashboardStartHoldBegan = now;
+        return;
+    }
+    if (self.streamDashboardStartHoldConsumed || now - self.streamDashboardStartHoldBegan < 3.0) return;
+    self.streamDashboardStartHoldConsumed = YES;
+    [self restoreVisibleStreamFromDashboard];
 }
 
 - (void)showActiveSessionPromptWithSessionTitle:(NSString *)sessionTitle
@@ -869,6 +967,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                                                                 resumeServer:resumeServer];
     self.currentStreamTitle = title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:title.c_str()];
     self.activeStreamReturnScreen = returnScreen;
+    self.streamDashboardHomeVisible = NO;
 
     __weak __typeof__(self) weakSelf = self;
     streamVC.onStreamEnd = ^(BOOL success, const std::string &error) {
@@ -877,12 +976,21 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
             OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
+            [strongSelf stopStreamDashboardControllerPolling];
+            strongSelf.streamDashboardHomeVisible = NO;
             strongSelf.streamingController = nil;
             strongSelf.currentStreamTitle = nil;
             [strongSelf transitionToScreen:returnScreen];
             if (!success && !errorCopy.empty()) {
                 [strongSelf showError:errorCopy canRetry:YES];
             }
+        });
+    };
+    streamVC.onDashboardToggleRequested = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [strongSelf toggleStreamDashboardHome];
         });
     };
 
@@ -1130,10 +1238,19 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 std::string errorCopy = streamError;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     OPN::AuthScreen returnScreen = streamStrongSelf.activeStreamReturnScreen;
+                    [streamStrongSelf stopStreamDashboardControllerPolling];
+                    streamStrongSelf.streamDashboardHomeVisible = NO;
                     streamStrongSelf.streamingController = nil;
                     streamStrongSelf.currentStreamTitle = nil;
                     [streamStrongSelf transitionToScreen:returnScreen];
                     if (!success && !errorCopy.empty()) [streamStrongSelf showError:errorCopy canRetry:YES];
+                });
+            };
+            streamVC.onDashboardToggleRequested = ^{
+                __typeof__(strongSelf) dashboardSelf = streamWeakSelf;
+                if (!dashboardSelf) return;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [dashboardSelf toggleStreamDashboardHome];
                 });
             };
             [streamVC setInitialViewFrame:strongSelf.window.contentView.bounds];

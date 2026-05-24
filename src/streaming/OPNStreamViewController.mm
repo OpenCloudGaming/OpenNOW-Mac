@@ -42,18 +42,6 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 @interface OPNShortcutLegendView : NSView
 @end
 
-@interface OPNStreamDashboardOverlayView : NSView
-@property (nonatomic, copy) void (^onClose)(void);
-@property (nonatomic, copy) void (^onQuit)(void);
-@property (nonatomic, copy) void (^onAudio)(void);
-@property (nonatomic, copy) void (^onStats)(void);
-@property (nonatomic, copy) void (^onRecord)(void);
-@property (nonatomic, copy) void (^onMicrophone)(void);
-@property (nonatomic, copy) void (^onAntiAFK)(void);
-@property (nonatomic, copy) void (^onCopyLogs)(void);
-- (instancetype)initWithFrame:(NSRect)frame gameTitle:(NSString *)gameTitle;
-@end
-
 @interface OPNStatsOverlayView : NSView
 - (void)updateLatencyMs:(NSInteger)latencyMs
                jitterMs:(NSInteger)jitterMs
@@ -88,7 +76,6 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 @property (nonatomic, strong) OPNQuitGameOverlayView *quitOverlay;
 @property (nonatomic, strong) OPNStatsOverlayView *statsOverlay;
 @property (nonatomic, strong) OPNShortcutLegendView *shortcutLegendOverlay;
-@property (nonatomic, strong) OPNStreamDashboardOverlayView *streamDashboardOverlay;
 @property (nonatomic, strong) NSTimer *statsRefreshTimer;
 @property (nonatomic, strong) NSTimer *inactivityTimer;
 @property (nonatomic, assign) std::string gameTitle;
@@ -113,8 +100,6 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 - (void)stopInactivityTimer;
 - (void)checkInactivityTimer:(NSTimer *)timer;
 - (void)toggleIdleDeviceInputMode;
-- (void)toggleStreamDashboardOverlay;
-- (void)dismissStreamDashboardOverlayAndRefocus:(BOOL)refocus;
 - (void)showAntiAFKNoticeEnabled:(BOOL)enabled;
 - (void)sendRandomIdleDeviceInputIfNeededAtTime:(CFTimeInterval)now;
 - (void)endStreamFromInactivityTimeout;
@@ -648,135 +633,6 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
 
 @end
 
-@implementation OPNStreamDashboardOverlayView {
-    NSView *_panelView;
-    NSTextField *_brandLabel;
-    NSTextField *_titleLabel;
-    NSTextField *_subtitleLabel;
-    NSArray<NSButton *> *_actionButtons;
-    NSButton *_closeButton;
-}
-
-- (instancetype)initWithFrame:(NSRect)frame gameTitle:(NSString *)gameTitle {
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.wantsLayer = YES;
-        self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-
-        _panelView = [[NSView alloc] initWithFrame:NSZeroRect];
-        _panelView.wantsLayer = YES;
-        _panelView.layer.cornerRadius = 24.0;
-        _panelView.layer.backgroundColor = OPNQuitColor(0.035, 0.045, 0.040, 0.95).CGColor;
-        _panelView.layer.borderWidth = 1.0;
-        _panelView.layer.borderColor = OPNQuitColor(0.52, 0.95, 0.64, 0.22).CGColor;
-        _panelView.layer.shadowColor = NSColor.blackColor.CGColor;
-        _panelView.layer.shadowOpacity = 0.38;
-        _panelView.layer.shadowRadius = 34.0;
-        _panelView.layer.shadowOffset = CGSizeMake(0.0, -12.0);
-        [self addSubview:_panelView];
-
-        _brandLabel = OPNQuitLabel(@"OPENNOW GUIDE", 12.0, NSFontWeightBlack, OPNQuitColor(0.52, 0.95, 0.64, 1.0), NSTextAlignmentLeft);
-        _titleLabel = OPNQuitLabel(gameTitle.length > 0 ? gameTitle : @"Stream Dashboard", 24.0, NSFontWeightBlack, OPNQuitColor(0.95, 0.98, 0.95, 1.0), NSTextAlignmentLeft);
-        _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        _subtitleLabel = OPNQuitLabel(@"Guide toggles this dashboard. Stream input is paused while it is open.", 13.0, NSFontWeightMedium, OPNQuitColor(0.72, 0.78, 0.72, 1.0), NSTextAlignmentLeft);
-        [_panelView addSubview:_brandLabel];
-        [_panelView addSubview:_titleLabel];
-        [_panelView addSubview:_subtitleLabel];
-
-        NSArray<NSString *> *titles = @[@"Close Dashboard", @"Audio HUD", @"Stats HUD", @"Record Stream", @"Toggle Microphone", @"Anti-AFK", @"Copy Logs", @"Quit Stream"];
-        NSArray<NSString *> *actions = @[@"closePressed:", @"audioPressed:", @"statsPressed:", @"recordPressed:", @"microphonePressed:", @"antiAFKPressed:", @"copyLogsPressed:", @"quitPressed:"];
-        NSMutableArray<NSButton *> *buttons = [NSMutableArray arrayWithCapacity:titles.count];
-        for (NSUInteger index = 0; index < titles.count; index++) {
-            NSButton *button = [NSButton buttonWithTitle:titles[index] target:self action:NSSelectorFromString(actions[index])];
-            BOOL primary = index == 0;
-            BOOL destructive = index == titles.count - 1;
-            OPNStyleQuitButton(button,
-                               destructive ? OPNQuitColor(0.58, 0.14, 0.16, 0.96) : (primary ? OPNQuitColor(0.36, 0.90, 0.48, 0.96) : OPNQuitColor(0.12, 0.16, 0.14, 0.96)),
-                               primary ? OPNQuitColor(0.02, 0.06, 0.03, 1.0) : OPNQuitColor(0.90, 0.95, 0.90, 1.0));
-            button.layer.borderWidth = 1.0;
-            button.layer.borderColor = OPNQuitColor(1.0, 1.0, 1.0, primary ? 0.00 : 0.11).CGColor;
-            [_panelView addSubview:button];
-            [buttons addObject:button];
-        }
-        _actionButtons = buttons;
-
-        _closeButton = [NSButton buttonWithTitle:@"B / Guide" target:self action:@selector(closePressed:)];
-        OPNStyleQuitButton(_closeButton, OPNQuitColor(1.0, 1.0, 1.0, 0.08), OPNQuitColor(0.84, 0.90, 0.84, 1.0));
-        _closeButton.layer.borderWidth = 1.0;
-        _closeButton.layer.borderColor = OPNQuitColor(1.0, 1.0, 1.0, 0.12).CGColor;
-        [_panelView addSubview:_closeButton];
-    }
-    return self;
-}
-
-- (BOOL)acceptsFirstResponder { return YES; }
-
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    [self.window makeFirstResponder:self];
-}
-
-- (void)layout {
-    [super layout];
-    CGFloat panelWidth = MIN(680.0, MAX(420.0, NSWidth(self.bounds) - 96.0));
-    CGFloat panelHeight = 430.0;
-    _panelView.frame = NSMakeRect(floor((NSWidth(self.bounds) - panelWidth) * 0.5),
-                                  floor((NSHeight(self.bounds) - panelHeight) * 0.5),
-                                  panelWidth,
-                                  panelHeight);
-    CGFloat padding = 28.0;
-    CGFloat top = NSHeight(_panelView.bounds);
-    _brandLabel.frame = NSMakeRect(padding, top - 48.0, 180.0, 18.0);
-    _closeButton.frame = NSMakeRect(panelWidth - padding - 116.0, top - 54.0, 116.0, 32.0);
-    _titleLabel.frame = NSMakeRect(padding, top - 88.0, panelWidth - padding * 2.0, 30.0);
-    _subtitleLabel.frame = NSMakeRect(padding, top - 116.0, panelWidth - padding * 2.0, 20.0);
-
-    CGFloat buttonWidth = floor((panelWidth - padding * 2.0 - 14.0) * 0.5);
-    CGFloat buttonHeight = 48.0;
-    CGFloat startY = top - 184.0;
-    for (NSUInteger index = 0; index < _actionButtons.count; index++) {
-        NSUInteger column = index % 2;
-        NSUInteger row = index / 2;
-        _actionButtons[index].frame = NSMakeRect(padding + (buttonWidth + 14.0) * column,
-                                                 startY - (buttonHeight + 12.0) * row,
-                                                 buttonWidth,
-                                                 buttonHeight);
-    }
-}
-
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    [[NSColor colorWithCalibratedWhite:0.0 alpha:0.48] setFill];
-    NSRectFill(self.bounds);
-    NSGradient *veil = [[NSGradient alloc] initWithStartingColor:OPNQuitColor(0.02, 0.08, 0.04, 0.38)
-                                                    endingColor:OPNQuitColor(0.0, 0.0, 0.0, 0.78)];
-    [veil drawInRect:self.bounds angle:90.0];
-}
-
-- (void)keyDown:(NSEvent *)event {
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    if (event.keyCode == 53 || [key isEqualToString:@"b"] || [key isEqualToString:@"h"]) {
-        if (self.onClose) self.onClose();
-        return;
-    }
-    if (event.keyCode == 36 || event.keyCode == 49) {
-        if (self.onClose) self.onClose();
-        return;
-    }
-    [super keyDown:event];
-}
-
-- (void)closePressed:(id)sender { (void)sender; if (self.onClose) self.onClose(); }
-- (void)quitPressed:(id)sender { (void)sender; if (self.onQuit) self.onQuit(); }
-- (void)audioPressed:(id)sender { (void)sender; if (self.onAudio) self.onAudio(); }
-- (void)statsPressed:(id)sender { (void)sender; if (self.onStats) self.onStats(); }
-- (void)recordPressed:(id)sender { (void)sender; if (self.onRecord) self.onRecord(); }
-- (void)microphonePressed:(id)sender { (void)sender; if (self.onMicrophone) self.onMicrophone(); }
-- (void)antiAFKPressed:(id)sender { (void)sender; if (self.onAntiAFK) self.onAntiAFK(); }
-- (void)copyLogsPressed:(id)sender { (void)sender; if (self.onCopyLogs) self.onCopyLogs(); }
-
-@end
-
 @implementation OPNShortcutLegendView {
     NSTextField *_titleLabel;
     NSArray<NSTextField *> *_shortcutLabels;
@@ -795,8 +651,8 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
         _titleLabel = OPNQuitLabel(@"Shortcuts", 18.0, NSFontWeightSemibold, OPNQuitColor(0.96, 0.97, 0.99, 1.0), NSTextAlignmentLeft);
         [self addSubview:_titleLabel];
 
-        NSArray<NSString *> *shortcuts = @[@"Guide", @"Command-H", @"Command-G", @"Command-R", @"Command-N", @"Command-M", @"Command-K", @"Command-L", @"Command-Q", @"Hold Esc"];
-        NSArray<NSString *> *descriptions = @[@"Dashboard", @"Toggle this legend", @"Audio HUD", @"Record stream", @"Stats HUD", @"Toggle microphone", @"Anti-AFK", @"Copy logs", @"Quit stream", @"Release pointer"];
+        NSArray<NSString *> *shortcuts = @[@"Hold Options", @"Command-H", @"Command-G", @"Command-R", @"Command-N", @"Command-M", @"Command-K", @"Command-L", @"Command-Q", @"Hold Esc"];
+        NSArray<NSString *> *descriptions = @[@"Home dashboard", @"Toggle this legend", @"Audio HUD", @"Record stream", @"Stats HUD", @"Toggle microphone", @"Anti-AFK", @"Copy logs", @"Quit stream", @"Release pointer"];
         NSMutableArray<NSTextField *> *shortcutLabels = [NSMutableArray arrayWithCapacity:shortcuts.count];
         NSMutableArray<NSTextField *> *descriptionLabels = [NSMutableArray arrayWithCapacity:descriptions.count];
         for (NSUInteger i = 0; i < shortcuts.count; i++) {
@@ -1086,10 +942,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         if (!strongSelf || strongSelf->_streamEnded) return;
         [strongSelf recordStreamUserActivity];
     };
-    view.onGuideButtonPressed = ^{
+    view.onDashboardToggleRequested = ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf->_streamEnded) return;
-        [strongSelf toggleStreamDashboardOverlay];
+        if (strongSelf.onDashboardToggleRequested) strongSelf.onDashboardToggleRequested();
     };
     [self.streamView setStreamSession:_session];
     [self.streamView setRecordingGameTitle:OPNStringFromStdString(_gameTitle, @"Stream")];
@@ -1105,6 +961,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self.view setNeedsLayout:YES];
     [self.streamView setNeedsLayout:YES];
     [self.view layoutSubtreeIfNeeded];
+}
+
+- (void)setStreamInputSuppressed:(BOOL)suppressed {
+    [self.streamView setStreamInputSuppressed:suppressed];
 }
 
 - (void)viewDidLoad {
@@ -1140,9 +1000,6 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }
     if (self.shortcutLegendOverlay) {
         self.shortcutLegendOverlay.frame = [self shortcutLegendFrame];
-    }
-    if (self.streamDashboardOverlay) {
-        self.streamDashboardOverlay.frame = self.view.bounds;
     }
     if (self.loadingView) {
         self.loadingView.frame = [self loadingViewFrame];
@@ -1714,83 +1571,6 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         [self.view addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
         [self.streamView takeFocus];
         OPN::LogInfo(@"[StreamVC] Shortcut legend shown via CMD+H");
-    });
-}
-
-- (void)dismissStreamDashboardOverlayAndRefocus:(BOOL)refocus {
-    if (!self.streamDashboardOverlay) return;
-    [self.streamDashboardOverlay removeFromSuperview];
-    self.streamDashboardOverlay = nil;
-    [self.streamView setStreamInputSuppressed:NO];
-    if (refocus && !_streamEnded) [self.streamView takeFocus];
-    OPN::LogInfo(@"[StreamVC] Stream dashboard hidden");
-}
-
-- (void)toggleStreamDashboardOverlay {
-    if (_streamEnded) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (self->_streamEnded) return;
-        if (self.streamDashboardOverlay) {
-            [self dismissStreamDashboardOverlayAndRefocus:YES];
-            return;
-        }
-
-        [self.streamView setStreamInputSuppressed:YES];
-        NSString *title = OPNStringFromStdString(self->_gameTitle, @"Stream Dashboard");
-        OPNStreamDashboardOverlayView *overlay = [[OPNStreamDashboardOverlayView alloc] initWithFrame:self.view.bounds gameTitle:title];
-        overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        __weak __typeof__(self) weakSelf = self;
-        overlay.onClose = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:YES];
-        };
-        overlay.onQuit = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:NO];
-            [strongSelf requestQuitGameConfirmation];
-        };
-        overlay.onAudio = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:NO];
-            [strongSelf.streamView toggleSidebarHUD];
-        };
-        overlay.onStats = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:YES];
-            [strongSelf toggleStatsOverlay];
-        };
-        overlay.onRecord = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:YES];
-            [strongSelf.streamView toggleRecordingShortcut];
-        };
-        overlay.onMicrophone = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:YES];
-            [strongSelf.streamView toggleMicrophoneEnabledShortcut];
-        };
-        overlay.onAntiAFK = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:YES];
-            [strongSelf toggleIdleDeviceInputMode];
-        };
-        overlay.onCopyLogs = ^{
-            __typeof__(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            [strongSelf dismissStreamDashboardOverlayAndRefocus:YES];
-            [strongSelf copyCurrentLogToClipboardFromShortcut];
-        };
-        self.streamDashboardOverlay = overlay;
-        [self.view addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
-        [self.view.window makeFirstResponder:overlay];
-        OPN::LogInfo(@"[StreamVC] Stream dashboard shown via Guide button");
     });
 }
 
@@ -2703,7 +2483,6 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self stopInactivityTimer];
     [self removeQuitShortcutMonitor];
     [self dismissQuitGameOverlayAndRefocus:NO];
-    [self dismissStreamDashboardOverlayAndRefocus:NO];
     [self stopStatsRefreshTimer];
     [self.streamView stopRecordingIfNeeded];
     if (self.statsOverlay) {
