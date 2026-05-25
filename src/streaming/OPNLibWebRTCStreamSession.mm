@@ -614,6 +614,10 @@ struct OPNLibWebRTCIceCredentials {
     const int initialBitrateKbps = std::max(minBitrateKbps, maxBitrateKbps * 70 / 100);
     const int bitDepth = OPNStartsWith(settings.colorQuality, "10bit") ? 10 : 8;
     const std::string codec = OPNNormalizeCodec(settings.codec);
+    const int prefilterMode = std::max(0, std::min(settings.prefilterMode, 2));
+    const int prefilterSharpness = std::max(0, std::min(settings.prefilterSharpness, 10));
+    const int prefilterDenoise = std::max(0, std::min(settings.prefilterDenoise, 10));
+    const int prefilterModel = std::max(0, settings.prefilterModel);
     const bool isAv1 = codec == "AV1";
     const bool isHighFps = settings.fps >= 90;
     const bool is120Fps = settings.fps == 120;
@@ -735,7 +739,10 @@ struct OPNLibWebRTCIceCredentials {
         "a=video.dynamicRangeMode:0",
         "a=video.bitDepth:" + std::to_string(bitDepth),
         std::string("a=video.scalingFeature1:") + (isAv1 ? "1" : "0"),
-        "a=video.prefilterParams.prefilterModel:0",
+        "a=video.prefilterParams.prefilterMode:" + std::to_string(prefilterMode),
+        "a=video.prefilterParams.prefilterModel:" + std::to_string(prefilterModel),
+        "a=video.prefilterParams.sharpnessLevel:" + std::to_string(prefilterSharpness),
+        "a=video.prefilterParams.denoiseLevel:" + std::to_string(prefilterDenoise),
         "m=audio 0 RTP/AVP",
         "a=msid:audio",
         "m=mic 0 RTP/AVP",

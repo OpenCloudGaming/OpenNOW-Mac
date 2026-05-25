@@ -44,6 +44,11 @@ struct StreamColorQualityOption {
     std::string value;
 };
 
+struct StreamPrefilterModeOption {
+    std::string label;
+    int value = 0;
+};
+
 struct StreamMicrophoneModeOption {
     std::string label;
     std::string value;
@@ -83,6 +88,11 @@ struct StreamPreferenceProfile {
     int colorQualityIndex = 0;
     int fps = 60;
     int maxBitrateMbps = 50;
+    int prefilterModeIndex = 0;
+    int prefilterMode = 0;
+    int prefilterSharpness = 0;
+    int prefilterDenoise = 0;
+    int prefilterModel = 0;
     bool enableL4S = false;
     bool enablePowerSaver = false;
     bool suppressInputWhenInactive = true;
@@ -100,6 +110,7 @@ struct StreamPreferenceProfile {
     StreamCodecOption codec;
     StreamBitrateOption bitrate;
     StreamColorQualityOption colorQuality;
+    StreamPrefilterModeOption prefilterModeOption;
 
     double AspectRatio() const;
 };
@@ -109,6 +120,7 @@ const std::vector<int> &StreamFpsOptions();
 const std::vector<StreamCodecOption> &StreamCodecOptions();
 const std::vector<StreamBitrateOption> &StreamBitrateOptions();
 const std::vector<StreamColorQualityOption> &StreamColorQualityOptions();
+const std::vector<StreamPrefilterModeOption> &StreamPrefilterModeOptions();
 const std::vector<StreamMicrophoneModeOption> &StreamMicrophoneModeOptions();
 std::vector<StreamMicrophoneDeviceOption> LoadMicrophoneDeviceOptions();
 std::vector<StreamResolutionOption> StreamResolutionOptionsForAspect(int aspectIndex);
@@ -147,6 +159,9 @@ void SaveStreamFpsIndex(int fpsIndex);
 void SaveStreamCodecIndex(int codecIndex);
 void SaveStreamBitrateIndex(int bitrateIndex);
 void SaveStreamColorQualityIndex(int colorQualityIndex);
+void SaveStreamPrefilterModeIndex(int prefilterModeIndex);
+void SaveStreamPrefilterSharpness(int sharpness);
+void SaveStreamPrefilterDenoise(int denoise);
 void SaveStreamL4SEnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);
 void SaveStreamSuppressInputWhenInactive(bool enabled);

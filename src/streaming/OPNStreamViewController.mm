@@ -341,6 +341,10 @@ static OPN::StreamSettings OPNSettingsWithNegotiatedProfile(OPN::StreamSettings 
     if (profile.fps > 0) settings.fps = profile.fps;
     if (!profile.codec.empty()) settings.codec = profile.codec;
     if (!profile.colorQuality.empty()) settings.colorQuality = profile.colorQuality;
+    if (profile.prefilterMode >= 0) settings.prefilterMode = profile.prefilterMode;
+    if (profile.prefilterSharpness >= 0) settings.prefilterSharpness = profile.prefilterSharpness;
+    if (profile.prefilterDenoise >= 0) settings.prefilterDenoise = profile.prefilterDenoise;
+    if (profile.prefilterModel >= 0) settings.prefilterModel = profile.prefilterModel;
     return settings;
 }
 
@@ -2333,6 +2337,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.codec = OPNEffectiveStreamCodec(streamProfile, effectiveResolution, OPN::ResolveStreamWebRTCBackend(), capabilities);
     settings.colorQuality = streamProfile.colorQuality.value.empty() ? "8bit_420" : streamProfile.colorQuality.value;
     settings.maxBitrateMbps = OPNEffectiveMaxBitrateMbps(streamProfile);
+    settings.prefilterMode = streamProfile.prefilterMode;
+    settings.prefilterSharpness = streamProfile.prefilterSharpness;
+    settings.prefilterDenoise = streamProfile.prefilterDenoise;
+    settings.prefilterModel = streamProfile.prefilterModel;
     settings.enableL4S = streamProfile.enableL4S;
     settings.microphoneMode = streamProfile.microphoneMode;
     settings.microphoneDeviceId = streamProfile.microphoneDeviceId;
@@ -2388,7 +2396,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     __weak __typeof__(self) weakSelf = self;
     OPN::StreamSettings preflightSettings = settings;
     OPN::StreamPreferenceProfile preflightProfile = streamProfile;
-    OPN::RunStreamNetworkPreflight(_apiToken, OPN::DefaultStreamingBaseUrl(), settings.maxBitrateMbps,
+    OPN::RunStreamNetworkPreflight(_apiToken, OPN::GameService::Shared().ProviderStreamingBaseUrl(), settings.maxBitrateMbps,
         [weakSelf, preflightSettings, preflightProfile, launchGeneration, recoveringLaunch](const OPN::StreamNetworkPreflightResult &preflight) {
             OPN::StreamNetworkPreflightResult preflightCopy = preflight;
             dispatch_async(dispatch_get_main_queue(), ^{

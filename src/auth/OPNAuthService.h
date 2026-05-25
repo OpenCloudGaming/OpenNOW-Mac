@@ -19,6 +19,7 @@ public:
 
 
     void StartOAuthLogin(AuthCallback completion);
+    void StartOAuthLogin(const std::string &providerIdpId, AuthCallback completion);
 
 
     void RefreshSession(AuthCallback completion, bool forceRefresh = false);
@@ -68,7 +69,8 @@ private:
 
 
     void doOAuthTokenExchange(NSString *authCode, NSString *codeVerifier,
-                               NSString *redirectUri, AuthCallback completion);
+                               NSString *redirectUri, const std::string &providerIdpId,
+                               AuthCallback completion);
 
 
     static int64_t getIdTokenExpiry(NSString *idToken);

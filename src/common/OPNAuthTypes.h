@@ -18,6 +18,7 @@ enum class AuthScreen {
 
 struct AuthCredentials {
     std::string email;
+    std::string providerIdpId;
     bool stayLoggedIn = true;
 };
 
@@ -29,6 +30,7 @@ struct AuthSession {
     std::string displayName;
     std::string email;
     std::string membershipTier;
+    std::string idpId;
     int64_t expiresAt = 0;
     bool isAuthenticated = false;
 
@@ -61,6 +63,7 @@ struct AuthSession {
         displayName.clear();
         email.clear();
         membershipTier.clear();
+        idpId.clear();
         expiresAt = 0;
         isAuthenticated = false;
         clientToken.clear();
