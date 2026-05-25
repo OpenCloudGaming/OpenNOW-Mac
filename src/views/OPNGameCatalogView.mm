@@ -1014,14 +1014,21 @@ static void OPNStrokePath(NSBezierPath *path, NSColor *color, CGFloat width) {
     CGFloat width = NSWidth(bounds);
     CGFloat height = NSHeight(bounds);
     if (self.tileStyle == OPNControllerHomeTileStyleHero) {
-        NSRect imageRect = NSMakeRect(width * 0.47, 0.0, width * 0.53, height);
-        [self drawImage:self.image inAspectFillRect:imageRect alpha:self.image ? 0.92 : 0.0];
-        NSGradient *imageScrim = [[NSGradient alloc] initWithColors:@[
-            OpnColor(0x020403, 1.0),
-            OpnColor(0x020403, 0.58),
-            OpnColor(0x020403, 0.05),
-        ]];
-        [imageScrim drawInRect:imageRect angle:0.0];
+        [self drawImage:self.image inAspectFillRect:bounds alpha:self.image ? 0.88 : 0.0];
+        NSGradient *leftScrim = [[NSGradient alloc] initWithColorsAndLocations:
+            OpnColor(0x06100A, 0.98), 0.0,
+            OpnColor(0x06100A, 0.84), 0.40,
+            OpnColor(0x06100A, 0.30), 0.68,
+            OpnColor(0x06100A, 0.08), 1.0,
+            nil];
+        [leftScrim drawInRect:bounds angle:0.0];
+        NSGradient *floorScrim = [[NSGradient alloc] initWithStartingColor:OpnColor(0x020403, 0.0)
+                                                              endingColor:OpnColor(0x020403, 0.72)];
+        [floorScrim drawInRect:bounds angle:-90.0];
+        NSBezierPath *lens = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(width * 0.42, -height * 0.38, width * 0.68, height * 1.34)];
+        NSGradient *lensGlow = [[NSGradient alloc] initWithStartingColor:OpnColor(OPNControllerAccentSoftRGB(), self.controllerFocused ? 0.20 : 0.12)
+                                                             endingColor:OpnColor(OPNControllerAccentRGB(), 0.0)];
+        [lensGlow drawInBezierPath:lens angle:22.0];
     } else if (self.image) {
         NSRect imageRect = NSMakeRect(0.0, 0.0, width, height * 0.50);
         [self drawImage:self.image inAspectFillRect:imageRect alpha:0.86];
@@ -2519,7 +2526,7 @@ using namespace OPN;
             heroGame ? @"NOW" : @"START",
             heroTitle,
             heroSubtitle,
-            heroGame ? @"A PLAY" : @"A LIBRARY",
+            heroGame ? @"PLAY" : @"LIBRARY",
             heroGame);
 
     CGFloat sideX = contentInset + heroWidth + gap;

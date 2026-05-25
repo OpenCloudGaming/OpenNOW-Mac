@@ -7,7 +7,7 @@
 
 static const CGFloat gCardWidth = 220.0;
 static const CGFloat gControllerCardWidth = 164.0;
-static const CGFloat gImageHeight = gCardWidth * 9.0 / 16.0;
+static const CGFloat gImageHeight = gCardWidth;
 static const CGFloat gInfoHeight = 0.0;
 static unsigned OPNControllerAccentSoftRGB(void) {
     return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
@@ -23,7 +23,7 @@ static CGFloat OPNScaledCardWidth(void) {
 
 static CGFloat OPNScaledCardHeight(void) {
     if (OpnControllerModeEnabled()) return gControllerCardWidth;
-    return gImageHeight;
+    return gImageHeight + gInfoHeight;
 }
 
 static NSString *OPNStorePrettyName(NSString *name) {
@@ -167,6 +167,9 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
 @property (nonatomic, strong) NSImageView *imageView;
+@property (nonatomic, strong) NSTextField *desktopTitleLabel;
+@property (nonatomic, strong) NSTextField *desktopMetaLabel;
+@property (nonatomic, strong) NSButton *desktopVariantButton;
 @property (nonatomic, strong) NSTextField *controllerStoreLabel;
 @property (nonatomic, strong) NSTextField *controllerTitleLabel;
 @property (nonatomic, strong) NSView *storeChipsContainer;
@@ -235,6 +238,25 @@ using namespace OPN;
         _imageView.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
         [_contentView addSubview:_imageView];
 
+        _desktopTitleLabel = OpnLabel(@"", NSZeroRect, 14.0, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
+        _desktopTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [_contentView addSubview:_desktopTitleLabel];
+
+        _desktopMetaLabel = OpnLabel(@"", NSZeroRect, 11.0, OpnColor(OPN::kTextSecondary), NSFontWeightSemibold);
+        _desktopMetaLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [_contentView addSubview:_desktopMetaLabel];
+
+        _desktopVariantButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+        _desktopVariantButton.bordered = NO;
+        _desktopVariantButton.font = [NSFont systemFontOfSize:11.0 weight:NSFontWeightBold];
+        _desktopVariantButton.contentTintColor = OpnColor(OPNControllerAccentBlackRGB(0.88));
+        _desktopVariantButton.wantsLayer = YES;
+        _desktopVariantButton.layer.cornerRadius = 11.0;
+        _desktopVariantButton.layer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.88).CGColor;
+        _desktopVariantButton.target = self;
+        _desktopVariantButton.action = @selector(desktopVariantClicked:);
+        [_contentView addSubview:_desktopVariantButton];
+
         _currentStoreLogoContainer = [[NSView alloc] initWithFrame:NSZeroRect];
         _currentStoreLogoContainer.wantsLayer = YES;
         _currentStoreLogoContainer.layer.cornerRadius = 9.0;
@@ -295,6 +317,7 @@ using namespace OPN;
             NSMakeRect(16, NSHeight(self.bounds) - 37, NSWidth(self.bounds) - 32, 24)];
         [_contentView addSubview:_storeChipsContainer];
         [self buildStoreChips];
+        [self updateDesktopLabels];
         [self updateControllerLabels];
         [self updateCurrentStoreLogo];
 
@@ -347,6 +370,19 @@ using namespace OPN;
     self.controllerTitleLabel.stringValue = _gameData.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:_gameData.title.c_str()];
 }
 
+- (void)updateDesktopLabels {
+    self.desktopTitleLabel.stringValue = _gameData.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:_gameData.title.c_str()];
+    NSString *store = @"";
+    if (_selectedVariantIndex >= 0 && _selectedVariantIndex < (int)_gameData.variants.size()) {
+        store = OPNStorePrettyName([NSString stringWithUTF8String:_gameData.variants[(size_t)_selectedVariantIndex].appStore.c_str()]);
+    } else if (!_gameData.availableStores.empty()) {
+        store = OPNStorePrettyName([NSString stringWithUTF8String:_gameData.availableStores.front().c_str()]);
+    }
+    NSString *state = _gameData.isInLibrary ? @"Ready to Play" : @"Available";
+    self.desktopMetaLabel.stringValue = store.length > 0 ? [NSString stringWithFormat:@"%@ / %@", store, state] : state;
+    self.desktopVariantButton.title = store.length > 0 ? [NSString stringWithFormat:@"%@ ▾", store] : @"Store ▾";
+}
+
 - (BOOL)isFlipped { return YES; }
 
 - (void)layout {
@@ -357,19 +393,34 @@ using namespace OPN;
     CGFloat cornerRadius = shortestSide * (20.0 / 180.0);
     self.contentView.frame = self.bounds;
     self.contentView.layer.cornerRadius = cornerRadius;
-    self.imageView.frame = self.bounds;
     if (OpnControllerModeEnabled()) {
+        self.imageView.frame = self.bounds;
+        self.desktopTitleLabel.hidden = YES;
+        self.desktopMetaLabel.hidden = YES;
+        self.desktopVariantButton.hidden = YES;
+        self.desktopTitleLabel.frame = NSZeroRect;
+        self.desktopMetaLabel.frame = NSZeroRect;
+        self.desktopVariantButton.frame = NSZeroRect;
         self.controllerStoreLabel.hidden = YES;
         self.controllerTitleLabel.hidden = YES;
         self.controllerStoreLabel.frame = NSZeroRect;
         self.controllerTitleLabel.frame = NSZeroRect;
     } else {
+        self.imageView.frame = self.bounds;
+        self.desktopTitleLabel.hidden = YES;
+        self.desktopMetaLabel.hidden = YES;
+        self.desktopTitleLabel.frame = NSZeroRect;
+        self.desktopMetaLabel.frame = NSZeroRect;
+        CGFloat variantWidth = MIN(82.0, MAX(58.0, width * 0.30));
+        self.desktopVariantButton.hidden = _gameData.variants.size() <= 1;
+        self.desktopVariantButton.frame = NSMakeRect(width - 10.0 - variantWidth, 10.0, variantWidth, 23.0);
         self.controllerStoreLabel.hidden = YES;
         self.controllerTitleLabel.hidden = YES;
     }
     CGFloat playWidth = width * (76.0 / 180.0);
     CGFloat playHeight = height * (34.0 / 180.0);
-    self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, MAX(0.0, height - height * (52.0 / 180.0)), playWidth, playHeight);
+    CGFloat playY = OpnControllerModeEnabled() ? MAX(0.0, height - height * (52.0 / 180.0)) : 10.0;
+    self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, playY, playWidth, playHeight);
     self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
     CGFloat logoContainerSize = MAX(24.0, floor(width * (30.0 / 164.0)));
     CGFloat logoMargin = MAX(8.0, floor(width * (9.0 / 164.0)));
@@ -415,6 +466,7 @@ using namespace OPN;
         _selectedVariantIndex = _gameData.variants.empty() ? -1 : 0;
     }
     [self buildStoreChips];
+    [self updateDesktopLabels];
     [self updateControllerLabels];
     [self updateCurrentStoreLogo];
     if (previousImageSignature != nextImageSignature) {
@@ -426,7 +478,7 @@ using namespace OPN;
 - (void)buildStoreChips {
     for (NSView *v in _storeChipsContainer.subviews) { [v removeFromSuperview]; }
     [_storeChipButtons removeAllObjects];
-    self.storeChipsContainer.hidden = OpnControllerModeEnabled() || _gameData.variants.size() <= 1;
+    self.storeChipsContainer.hidden = YES;
     if (self.storeChipsContainer.hidden) return;
     if (_gameData.variants.empty()) return;
 
@@ -483,6 +535,28 @@ using namespace OPN;
     }
 }
 
+- (void)desktopVariantClicked:(NSButton *)sender {
+    (void)sender;
+    if (_gameData.variants.size() <= 1) return;
+
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Stores"];
+    for (size_t index = 0; index < _gameData.variants.size(); index++) {
+        const OPN::GameVariant &variant = _gameData.variants[index];
+        NSString *store = OPNStorePrettyName([NSString stringWithUTF8String:variant.appStore.c_str()]);
+        if (store.length == 0) store = [NSString stringWithFormat:@"Variant %zu", index + 1];
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:store action:@selector(desktopVariantMenuItemSelected:) keyEquivalent:@""];
+        item.target = self;
+        item.tag = (NSInteger)index;
+        item.state = (NSInteger)index == self.selectedVariantIndex ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0.0, NSHeight(self.desktopVariantButton.bounds) + 2.0) inView:self.desktopVariantButton];
+}
+
+- (void)desktopVariantMenuItemSelected:(NSMenuItem *)sender {
+    [self selectVariantAtIndex:(int)sender.tag];
+}
+
 - (void)chipClicked:(NSButton *)sender {
     [self selectVariantAtIndex:(int)sender.tag];
 }
@@ -491,6 +565,7 @@ using namespace OPN;
     if (index < 0 || index >= (int)_gameData.variants.size()) return;
     _selectedVariantIndex = index;
     [self buildStoreChips];
+    [self updateDesktopLabels];
     [self updateControllerLabels];
     [self updateCurrentStoreLogo];
 }
@@ -508,6 +583,9 @@ using namespace OPN;
         }
     };
     if (OpnControllerModeEnabled()) {
+        appendRawImagesForType("KEY_ART");
+        appendRawImagesForType("KEY_IMAGE");
+    } else {
         appendRawImagesForType("KEY_ART");
         appendRawImagesForType("KEY_IMAGE");
     }

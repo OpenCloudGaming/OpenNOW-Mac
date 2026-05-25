@@ -60,6 +60,9 @@
 @property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
 @property (nonatomic, strong) OPNCloudmatchServerPickerView *cloudmatchServerPickerView;
 @property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
+@property (nonatomic, strong) id controllerModeShortcutMonitor;
+@property (nonatomic, strong) NSView *desktopNavigationBar;
+@property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
 - (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
@@ -124,6 +127,13 @@
                      retryAttempt:(NSInteger)retryAttempt;
 - (void)showControllerHomePage;
 - (void)switchControllerPageBy:(NSInteger)delta;
+- (void)installControllerModeShortcutMonitor;
+- (void)toggleControllerModeFromShortcut;
+- (void)applyInterfacePreferencesToCurrentScreen;
+- (void)installDesktopNavigationBarIfNeeded;
+- (void)layoutDesktopNavigationBar;
+- (void)updateDesktopNavigationBar;
+- (void)desktopNavigationButtonClicked:(NSButton *)sender;
 @end
 
 @implementation AppDelegate
@@ -133,6 +143,19 @@ static NSString *const OPNMainWindowWasFullScreenKey = @"OpenNOW.MainWindowWasFu
 
 static BOOL OPNWindowIsFullScreen(NSWindow *window) {
     return window && ((window.styleMask & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen);
+}
+
+static BOOL OPNAppDelegateIsCommandIEvent(NSEvent *event) {
+    if (event.type != NSEventTypeKeyDown) return NO;
+    NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    if ((flags & NSEventModifierFlagCommand) == 0) return NO;
+    if ((flags & (NSEventModifierFlagControl | NSEventModifierFlagOption)) != 0) return NO;
+    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
+    return [key isEqualToString:@"i"];
+}
+
+static BOOL OPNAppDelegateScreenSupportsDesktopNavigation(OPN::AuthScreen screen) {
+    return screen == OPN::AuthScreen::Catalog || screen == OPN::AuthScreen::Store || screen == OPN::AuthScreen::Settings;
 }
 
 static NSSize OPNResizableWindowMaxSize() {
@@ -495,6 +518,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                              selector:@selector(interfacePreferencesChanged:)
                                                  name:OPNInterfacePreferencesDidChangeNotification
                                                object:nil];
+    [self installControllerModeShortcutMonitor];
     {
         OPN::AuthCredentials creds = self.pendingCredentials;
         creds.stayLoggedIn = AuthService::Shared().GetStayLoggedIn();
@@ -547,6 +571,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self stopGameLibraryRefreshTimer];
     [self stopActiveSessionPromptControllerPolling];
     [self stopStreamDashboardControllerPolling];
+    if (self.controllerModeShortcutMonitor) {
+        [NSEvent removeMonitor:self.controllerModeShortcutMonitor];
+        self.controllerModeShortcutMonitor = nil;
+    }
+    self.desktopNavigationButtons = @[];
+    self.desktopNavigationBar = nil;
     if (self.streamingController) {
         [self.streamingController shutdownForApplicationTermination];
         self.streamingController = nil;
@@ -601,10 +631,131 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)windowFullScreenStateChanged:(NSNotification *)notification {
     if (notification.object != self.window) return;
     [self saveWindowPresentation];
+    [self layoutDesktopNavigationBar];
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
+    [self applyInterfacePreferencesToCurrentScreen];
+}
+
+- (void)installControllerModeShortcutMonitor {
+    if (self.controllerModeShortcutMonitor) return;
+    __weak __typeof__(self) weakSelf = self;
+    self.controllerModeShortcutMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                                                               handler:^NSEvent *(NSEvent *event) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || !strongSelf.window || event.window != strongSelf.window) return event;
+        if (!OPNAppDelegateIsCommandIEvent(event)) return event;
+        [strongSelf toggleControllerModeFromShortcut];
+        return (NSEvent *)nil;
+    }];
+}
+
+- (void)toggleControllerModeFromShortcut {
+    BOOL enabled = !OpnControllerModeEnabled();
+    OpnSetControllerModeEnabled(enabled);
+    OpnPlayConsoleTone(OPNConsoleToneChange);
+    OPN::LogInfo(@"[AppDelegate] Controller mode toggled via Command-I: %d", enabled);
+}
+
+- (void)applyInterfacePreferencesToCurrentScreen {
+    if (!self.rootView) return;
+    if (self.currentScreen == OPN::AuthScreen::Store) {
+        self.rootView.mode = OPNBackdropModeStore;
+    } else if (self.currentScreen == OPN::AuthScreen::Catalog) {
+        self.rootView.mode = OpnControllerModeEnabled() ? OPNBackdropModeHome : OPNBackdropModeLibrary;
+    } else if (self.currentScreen == OPN::AuthScreen::Settings) {
+        self.rootView.mode = OPNBackdropModeSettings;
+    }
+    [self updateDesktopNavigationBar];
+}
+
+- (NSButton *)desktopNavigationButtonWithTitle:(NSString *)title tag:(NSInteger)tag {
+    NSButton *button = [[NSButton alloc] initWithFrame:NSZeroRect];
+    button.title = title ?: @"";
+    button.tag = tag;
+    button.bordered = NO;
+    button.font = [NSFont systemFontOfSize:12.0 weight:NSFontWeightSemibold];
+    button.target = self;
+    button.action = @selector(desktopNavigationButtonClicked:);
+    button.wantsLayer = YES;
+    button.layer.cornerRadius = 14.0;
+    button.focusRingType = NSFocusRingTypeNone;
+    return button;
+}
+
+- (void)installDesktopNavigationBarIfNeeded {
+    if (!self.rootView || self.desktopNavigationBar) return;
+    NSView *bar = [[NSView alloc] initWithFrame:NSZeroRect];
+    bar.wantsLayer = YES;
+    bar.layer.cornerRadius = 18.0;
+    bar.layer.backgroundColor = OpnColor(0x050A08, 0.78).CGColor;
+    bar.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+    bar.layer.borderWidth = 1.0;
+    bar.layer.shadowColor = NSColor.blackColor.CGColor;
+    bar.layer.shadowOpacity = 0.24;
+    bar.layer.shadowRadius = 18.0;
+    bar.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    self.desktopNavigationBar = bar;
+
+    NSArray<NSButton *> *buttons = @[
+        [self desktopNavigationButtonWithTitle:@"Library" tag:0],
+        [self desktopNavigationButtonWithTitle:@"Store" tag:1],
+        [self desktopNavigationButtonWithTitle:@"Settings" tag:2],
+    ];
+    self.desktopNavigationButtons = buttons;
+    for (NSButton *button in buttons) [bar addSubview:button];
+    [self.rootView addSubview:bar positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self layoutDesktopNavigationBar];
+    [self updateDesktopNavigationBar];
+}
+
+- (void)layoutDesktopNavigationBar {
+    if (!self.desktopNavigationBar || !self.rootView) return;
+    CGFloat width = NSWidth(self.rootView.bounds);
+    CGFloat barWidth = 296.0;
+    CGFloat barHeight = 36.0;
+    CGFloat x = MAX(88.0, floor(width * 0.055));
+    self.desktopNavigationBar.frame = NSMakeRect(x, 58.0, barWidth, barHeight);
+    CGFloat buttonWidth = floor((barWidth - 12.0) / 3.0);
+    CGFloat buttonX = 4.0;
+    for (NSButton *button in self.desktopNavigationButtons) {
+        button.frame = NSMakeRect(buttonX, 4.0, buttonWidth, barHeight - 8.0);
+        buttonX += buttonWidth + 2.0;
+    }
+}
+
+- (void)updateDesktopNavigationBar {
+    [self installDesktopNavigationBarIfNeeded];
+    if (!self.desktopNavigationBar) return;
+    BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
+    self.desktopNavigationBar.hidden = !visible;
+    if (!visible) return;
+    [self layoutDesktopNavigationBar];
+    for (NSButton *button in self.desktopNavigationButtons) {
+        BOOL selected = (button.tag == 0 && self.currentScreen == OPN::AuthScreen::Catalog) ||
+            (button.tag == 1 && self.currentScreen == OPN::AuthScreen::Store) ||
+            (button.tag == 2 && self.currentScreen == OPN::AuthScreen::Settings);
+        button.contentTintColor = selected ? OpnColor(0x071008) : OpnColor(OPN::kTextSecondary);
+        button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.92).CGColor : NSColor.clearColor.CGColor;
+        button.layer.borderWidth = selected ? 0.0 : 1.0;
+        button.layer.borderColor = OpnColor(0xFFFFFF, selected ? 0.0 : 0.08).CGColor;
+    }
+}
+
+- (void)desktopNavigationButtonClicked:(NSButton *)sender {
+    if (sender.tag == 0) {
+        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
+        return;
+    }
+    if (sender.tag == 1) {
+        if (self.currentScreen != OPN::AuthScreen::Store) [self transitionToScreen:OPN::AuthScreen::Store];
+        return;
+    }
+    if (sender.tag == 2 && self.currentScreen != OPN::AuthScreen::Settings) {
+        [self transitionToScreen:OPN::AuthScreen::Settings];
+    }
 }
 
 - (BOOL)hasVisibleStreamingController {
@@ -1336,6 +1487,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         self.contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [self.rootView addSubview:self.contentContainer];
     }
+    [self installDesktopNavigationBarIfNeeded];
 }
 
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen {
@@ -1352,6 +1504,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     self.contentContainer.frame = self.rootView.bounds;
     self.contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [self updateDesktopNavigationBar];
 }
 
 - (void)transitionToScreen:(OPN::AuthScreen)screen {
@@ -1365,6 +1518,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 
     self.currentScreen = screen;
+    [self updateDesktopNavigationBar];
     NSRect bounds = self.contentContainer.bounds;
 
     switch (screen) {
