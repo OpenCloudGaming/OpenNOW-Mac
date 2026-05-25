@@ -108,7 +108,42 @@ jobs:
           elif [[ -d third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework ]]; then
             cp -R third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
           fi
+          if [[ -f third_party/sentry-native/install/lib/libsentry.dylib ]]; then
+            cp third_party/sentry-native/install/lib/libsentry.dylib "${app_path}/Contents/Frameworks/libsentry.dylib"
+          fi
           codesign --force --deep --sign - "${app_path}"
+          python3 - "${app_path}/Contents" <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          contents = Path(sys.argv[1])
+          frameworks = contents / 'Frameworks'
+          binary = contents / 'MacOS/OpenNOW'
+          files = [binary] + sorted(frameworks.glob('*.dylib'))
+          webrtc_binary = frameworks / 'WebRTC.framework/WebRTC'
+          if webrtc_binary.exists():
+              files.append(webrtc_binary)
+
+          missing = []
+          for file in files:
+              output = subprocess.check_output(['otool', '-L', str(file)], text=True, stderr=subprocess.DEVNULL)
+              for line in output.splitlines()[1:]:
+                  dep = line.strip().split(' ', 1)[0]
+                  if not dep.startswith('@rpath/'):
+                      continue
+                  name = dep[len('@rpath/'):]
+                  if name == 'WebRTC.framework/WebRTC':
+                      exists = (frameworks / name).exists()
+                  else:
+                      exists = (frameworks / Path(name).name).exists()
+                  if not exists:
+                      missing.append((str(file), dep))
+          if missing:
+              for file, dep in missing[:50]:
+                  print(f'{file}: {dep}')
+              raise SystemExit(f'{len(missing)} missing bundled @rpath dependencies')
+          PY
           ditto -c -k --keepParent "${app_path}" "dist/${RELEASE_ARCHIVE}"
 
       - name: Commit version bump and tag

@@ -24,6 +24,8 @@ ZIP_PATH="${RELEASE_DIR}/${APP_NAME}-macOS-arm64.zip"
 DMG_PATH="${RELEASE_DIR}/${APP_NAME}-macOS-arm64.dmg"
 WEBRTC_FRAMEWORK_DIR="${WEBRTC_FRAMEWORK_DIR:-${ROOT_DIR}/third_party/webrtc-official}"
 WEBRTC_FRAMEWORK_PATH=""
+SENTRY_SDK_DIR="${SENTRY_SDK_DIR:-${ROOT_DIR}/third_party/sentry-native/install}"
+SENTRY_DYLIB_PATH="${SENTRY_SDK_DIR%/}/lib/libsentry.dylib"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -88,6 +90,12 @@ if [[ -n "${WEBRTC_FRAMEWORK_PATH}" ]]; then
   cp -R "${WEBRTC_FRAMEWORK_PATH}" "${FRAMEWORKS_DIR}/WebRTC.framework"
   chmod -R u+w "${FRAMEWORKS_DIR}/WebRTC.framework"
   chmod 755 "${FRAMEWORKS_DIR}/WebRTC.framework/WebRTC"
+fi
+
+if [[ -f "${SENTRY_DYLIB_PATH}" ]]; then
+  printf 'Bundling libsentry.dylib from %s...\n' "${SENTRY_DYLIB_PATH}"
+  cp "${SENTRY_DYLIB_PATH}" "${FRAMEWORKS_DIR}/libsentry.dylib"
+  chmod 755 "${FRAMEWORKS_DIR}/libsentry.dylib"
 fi
 
 cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
@@ -219,21 +227,35 @@ import subprocess
 import sys
 
 contents = Path(sys.argv[1])
-webrtc_binary = contents / 'Frameworks/WebRTC.framework/WebRTC'
-files = [contents / 'MacOS/OpenNOW.bin'] + sorted((contents / 'Frameworks').glob('*.dylib'))
+frameworks = contents / 'Frameworks'
+webrtc_binary = frameworks / 'WebRTC.framework/WebRTC'
+files = [contents / 'MacOS/OpenNOW.bin'] + sorted(frameworks.glob('*.dylib'))
 if webrtc_binary.exists():
     files.append(webrtc_binary)
 unresolved = []
+missing_rpath = []
 for file in files:
     output = subprocess.check_output(['otool', '-L', str(file)], text=True, stderr=subprocess.DEVNULL)
     for line in output.splitlines()[1:]:
         dep = line.strip().split(' ', 1)[0]
         if dep.startswith('/opt/homebrew/') or dep.startswith('/usr/local/'):
             unresolved.append((str(file), dep))
+        if dep.startswith('@rpath/'):
+            name = dep[len('@rpath/'):]
+            if name == 'WebRTC.framework/WebRTC':
+                exists = (frameworks / name).exists()
+            else:
+                exists = (frameworks / Path(name).name).exists()
+            if not exists:
+                missing_rpath.append((str(file), dep))
 if unresolved:
     for file, dep in unresolved[:50]:
         print(f'{file}: {dep}')
     raise SystemExit(f'{len(unresolved)} unresolved external references')
+if missing_rpath:
+    for file, dep in missing_rpath[:50]:
+        print(f'{file}: {dep}')
+    raise SystemExit(f'{len(missing_rpath)} missing bundled @rpath dependencies')
 print(f'No Homebrew install-name references in {len(files)} bundled Mach-O files')
 PY
 
