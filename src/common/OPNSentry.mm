@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <string>
 
 #if defined(OPN_HAVE_SENTRY) && OPN_HAVE_SENTRY
@@ -40,10 +41,10 @@ namespace {
 
 static constexpr const char *OPNDefaultSentryDsn = "https://26e9dba9cb293d4ca2afceb73dd13b74@o4509317113184256.ingest.us.sentry.io/4511406450868224";
 static constexpr const char *OPNSentryLoggerName = "opennow";
-static constexpr unsigned int OPNMaxStructuredInfoLogsPerRun = 128;
 static bool OPNSentryInitialized = false;
-static std::atomic<unsigned int> OPNSentryStructuredInfoLogCount{0};
-static std::atomic<bool> OPNSentryStructuredInfoLogsDisabled{false};
+static std::atomic<bool> OPNSentryStructuredInfoLogFailureReported{false};
+static NSUncaughtExceptionHandler *OPNPreviousUncaughtExceptionHandler = nullptr;
+static std::terminate_handler OPNPreviousTerminateHandler = nullptr;
 
 static NSString *OPNInfoString(NSString *key, NSString *fallback) {
     id value = NSBundle.mainBundle.infoDictionary[key];
@@ -173,23 +174,12 @@ static bool OPNUploadInfoLogsAsEvents() {
     return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_INFO_EVENTS");
 }
 
-static bool OPNUploadStructuredInfoLogs() {
-    return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_INFO_LOGS");
-}
-
 static bool OPNFlushErrorsImmediately() {
     return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_FLUSH_ERRORS");
 }
 
 static bool OPNShouldSendStructuredInfoLog() {
-    if (!OPNUploadStructuredInfoLogs()) return false;
-    if (OPNSentryStructuredInfoLogsDisabled.load()) return false;
-    unsigned int previousCount = OPNSentryStructuredInfoLogCount.fetch_add(1);
-    if (previousCount < OPNMaxStructuredInfoLogsPerRun) return true;
-    if (previousCount == OPNMaxStructuredInfoLogsPerRun) {
-        std::fprintf(stderr, "[Sentry] structured info log limit reached; local logging continues\n");
-    }
-    return false;
+    return true;
 }
 
 static const char *OPNSentryLogReturnName(log_return_value_t value) {
@@ -206,6 +196,74 @@ static void OPNCaptureSentryMessage(sentry_level_t level, const char *message) {
     sentry_capture_event(sentry_value_new_message_event(level, OPNSentryLoggerName, message));
 }
 
+static void OPNSendStructuredInfoLog(const char *message) {
+    if (!OPNSentryInitialized || !OPNShouldSendStructuredInfoLog()) return;
+    log_return_value_t result = sentry_log_info("%s", message);
+    if (result != SENTRY_LOG_RETURN_SUCCESS && !OPNSentryStructuredInfoLogFailureReported.exchange(true)) {
+        std::fprintf(stderr, "[Sentry] sentry_log_info returned %s; local logging continues\n", OPNSentryLogReturnName(result));
+    }
+}
+
+static void OPNSendStructuredErrorLog(const char *message) {
+    if (!OPNSentryInitialized) return;
+    log_return_value_t result = sentry_log_error("%s", message);
+    if (result != SENTRY_LOG_RETURN_SUCCESS) {
+        std::fprintf(stderr, "[Sentry] sentry_log_error returned %s\n", OPNSentryLogReturnName(result));
+    }
+    OPNCaptureSentryMessage(SENTRY_LEVEL_ERROR, message);
+    if (OPNFlushErrorsImmediately()) {
+        sentry_flush(2000);
+    }
+}
+
+static BOOL OPNExternalLogLineLooksLikeError(NSString *line) {
+    if (line.length == 0) return NO;
+    NSString *lowercaseLine = line.lowercaseString;
+    return [lowercaseLine containsString:@"error"] ||
+        [lowercaseLine containsString:@"exception"] ||
+        [lowercaseLine containsString:@"failed"] ||
+        [lowercaseLine containsString:@"failure"] ||
+        [lowercaseLine containsString:@"crash"] ||
+        [lowercaseLine containsString:@"fatal"];
+}
+
+static void OPNReportUncaughtNSException(NSException *exception) {
+    NSString *reason = exception.reason ?: @"unknown reason";
+    NSString *name = exception.name ?: @"NSException";
+    NSArray<NSString *> *symbols = exception.callStackSymbols ?: @[];
+    NSString *stack = symbols.count > 0 ? [symbols componentsJoinedByString:@"\n"] : @"";
+    OPN::LogError(@"[Sentry] Uncaught Objective-C exception %@: %@\n%@", name, reason, stack);
+    if (OPNPreviousUncaughtExceptionHandler) {
+        OPNPreviousUncaughtExceptionHandler(exception);
+    }
+}
+
+static void OPNReportTerminate() {
+    std::exception_ptr currentException = std::current_exception();
+    if (currentException) {
+        try {
+            std::rethrow_exception(currentException);
+        } catch (const std::exception &exception) {
+            OPN::LogError(@"[Sentry] Unhandled C++ exception: %s", exception.what());
+        } catch (...) {
+            OPN::LogError(@"[Sentry] Unhandled non-standard C++ exception");
+        }
+    } else {
+        OPN::LogError(@"[Sentry] std::terminate called without an active exception");
+    }
+
+    if (OPNPreviousTerminateHandler) {
+        OPNPreviousTerminateHandler();
+    }
+    std::abort();
+}
+
+static void OPNInstallUnhandledExceptionHandlers() {
+    OPNPreviousUncaughtExceptionHandler = NSGetUncaughtExceptionHandler();
+    NSSetUncaughtExceptionHandler(OPNReportUncaughtNSException);
+    OPNPreviousTerminateHandler = std::set_terminate(OPNReportTerminate);
+}
+
 static void OPNCaptureSentryVerificationMessageIfRequested() {
     if (!OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) return;
     sentry_capture_event(sentry_value_new_message_event(SENTRY_LEVEL_INFO, OPNSentryLoggerName, "It works!"));
@@ -215,35 +273,25 @@ static void OPNCaptureSentryVerificationMessageIfRequested() {
 #endif
 
 bool ShouldLogInfo() {
-#if defined(NDEBUG)
-    return OPNEnvironmentFlagEnabled("OPN_INFO_LOGS") || OPNEnvironmentFlagEnabled("OPN_DEBUG_LOGS");
-#else
     return !OPNEnvironmentFlagEnabled("OPN_DISABLE_INFO_LOGS");
-#endif
 }
 
 void LogInfo(NSString *format, ...) {
-    if (!ShouldLogInfo()) return;
-
     va_list arguments;
     va_start(arguments, format);
     NSString *message = OPNFormattedLogMessage(format, arguments);
     va_end(arguments);
     const char *utf8Message = OPNLogMessageUtf8(message);
 
-    std::fprintf(stderr, "%s\n", utf8Message);
+    if (ShouldLogInfo()) {
+        std::fprintf(stderr, "%s\n", utf8Message);
+    }
 
 #if OPN_SENTRY_ENABLED
     if (OPNSentryInitialized) {
         NSString *sentryMessage = OPNSanitizedSentryMessage(message);
         const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
-        if (OPNShouldSendStructuredInfoLog()) {
-            log_return_value_t result = sentry_log_info("%s", sentryUtf8Message);
-            if (result != SENTRY_LOG_RETURN_SUCCESS) {
-                OPNSentryStructuredInfoLogsDisabled.store(true);
-                std::fprintf(stderr, "[Sentry] sentry_log_info returned %s; local logging continues\n", OPNSentryLogReturnName(result));
-            }
-        }
+        OPNSendStructuredInfoLog(sentryUtf8Message);
         if (OPNUploadInfoLogsAsEvents()) {
             OPNCaptureSentryMessage(SENTRY_LEVEL_INFO, sentryUtf8Message);
         }
@@ -264,15 +312,25 @@ void LogError(NSString *format, ...) {
     if (OPNSentryInitialized) {
         NSString *sentryMessage = OPNSanitizedSentryMessage(message);
         const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
-        log_return_value_t result = sentry_log_error("%s", sentryUtf8Message);
-        if (result != SENTRY_LOG_RETURN_SUCCESS) {
-            std::fprintf(stderr, "[Sentry] sentry_log_error returned %s\n", OPNSentryLogReturnName(result));
-        }
-        OPNCaptureSentryMessage(SENTRY_LEVEL_ERROR, sentryUtf8Message);
-        if (OPNFlushErrorsImmediately()) {
-            sentry_flush(2000);
-        }
+        OPNSendStructuredErrorLog(sentryUtf8Message);
     }
+#endif
+}
+
+void CaptureExternalLogLine(NSString *line) {
+    if (line.length == 0) return;
+
+#if OPN_SENTRY_ENABLED
+    if (!OPNSentryInitialized) return;
+    NSString *sentryMessage = OPNSanitizedSentryMessage(line);
+    const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
+    if (OPNExternalLogLineLooksLikeError(sentryMessage)) {
+        OPNSendStructuredErrorLog(sentryUtf8Message);
+    } else {
+        OPNSendStructuredInfoLog(sentryUtf8Message);
+    }
+#else
+    (void)line;
 #endif
 }
 
@@ -317,6 +375,7 @@ void InitializeSentry() {
             return;
         }
         OPNSentryInitialized = true;
+        OPNInstallUnhandledExceptionHandlers();
         OPNCaptureSentryVerificationMessageIfRequested();
         if (OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) {
             log_return_value_t result = sentry_log_info("%s", "OpenNOW Sentry structured logs are enabled");

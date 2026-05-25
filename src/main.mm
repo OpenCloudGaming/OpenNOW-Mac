@@ -1,4 +1,5 @@
 #import "OPNAppDelegate.h"
+#include "common/OPNLogCapture.h"
 #include "common/OPNSentry.h"
 
 int main(int argc, const char *argv[]) {
@@ -6,6 +7,7 @@ int main(int argc, const char *argv[]) {
     (void)argv;
 
     @autoreleasepool {
+        OPN::StartLogCapture();
         OPN::InitializeSentry();
 
         NSApplication *app = [NSApplication sharedApplication];
