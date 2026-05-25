@@ -8,9 +8,9 @@
 #include <cctype>
 #include <cmath>
 
-static const CGFloat kStoreTopInset = 82.0;
-static const CGFloat kStoreNavigationClearance = 64.0;
-static const CGFloat kControllerStoreNavigationClearance = 118.0;
+static const CGFloat kStoreTopInset = 146.0;
+static const CGFloat kStoreNavigationClearance = 0.0;
+static const CGFloat kControllerStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroTopOffset = 120.0;
 static const CGFloat kStoreHeroHeight = 424.0;
 static const CGFloat kStoreRowHeight = 258.0;
@@ -1294,6 +1294,9 @@ using namespace OPN;
 }
 
 - (void)addDesktopHeroStageForGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
+    self.controllerFeaturedHeroGame = game;
+    self.controllerFeaturedHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
+
     OPNStoreDocumentView *stage = [[OPNStoreDocumentView alloc] initWithFrame:NSMakeRect(contentX, y, width, height)];
     stage.wantsLayer = YES;
     CAGradientLayer *stageGradient = [CAGradientLayer layer];
@@ -1323,9 +1326,33 @@ using namespace OPN;
     CGFloat artX = width - artWidth - 34.0;
     CGFloat artY = 34.0;
     CGFloat artHeight = height - 68.0;
-    OPNStoreGameTile *hero = [self configuredHeroGameTile:game frame:NSMakeRect(artX, artY, artWidth, artHeight)];
-    [stage addSubview:hero];
-    self.heroTile = hero;
+    OPNStoreHeroBackgroundView *artwork = [[OPNStoreHeroBackgroundView alloc] initWithFrame:NSMakeRect(artX, artY, artWidth, artHeight)];
+    artwork.cornerRadius = 28.0;
+    artwork.wantsLayer = YES;
+    artwork.layer.cornerRadius = 28.0;
+    artwork.layer.masksToBounds = YES;
+    artwork.layer.borderWidth = 1.0;
+    artwork.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
+    [stage addSubview:artwork];
+    [self loadControllerFeaturedHeroImageForView:artwork candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
+
+    CAGradientLayer *artScrim = [CAGradientLayer layer];
+    artScrim.frame = artwork.bounds;
+    artScrim.colors = @[(id)OpnColor(0x020403, 0.70).CGColor,
+                        (id)OpnColor(0x020403, 0.08).CGColor,
+                        (id)OpnColor(0x020403, 0.66).CGColor];
+    artScrim.locations = @[@0.0, @0.48, @1.0];
+    artScrim.startPoint = CGPointMake(0.0, 0.5);
+    artScrim.endPoint = CGPointMake(1.0, 0.5);
+    [artwork.layer addSublayer:artScrim];
+
+    NSView *artGlow = [[NSView alloc] initWithFrame:NSInsetRect(artwork.frame, -10.0, -10.0)];
+    artGlow.wantsLayer = YES;
+    artGlow.layer.cornerRadius = 34.0;
+    artGlow.layer.borderWidth = 1.0;
+    artGlow.layer.borderColor = OpnColor(kBrandGreen, 0.18).CGColor;
+    artGlow.layer.backgroundColor = NSColor.clearColor.CGColor;
+    [stage addSubview:artGlow positioned:NSWindowBelow relativeTo:artwork];
 
     CGFloat textWidth = MAX(320.0, artX - 64.0);
     NSTextField *kicker = OpnLabel(@"FEATURED STREAM", NSMakeRect(34.0, 38.0, textWidth, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBlack);
@@ -1377,8 +1404,8 @@ using namespace OPN;
     launchButton.layer.shadowOpacity = 0.32;
     launchButton.layer.shadowRadius = 22.0;
     launchButton.layer.shadowOffset = CGSizeZero;
-    launchButton.target = hero;
-    launchButton.action = @selector(selectPressed);
+    launchButton.target = self;
+    launchButton.action = @selector(controllerFeaturedHeroLaunchClicked:);
     [stage addSubview:launchButton];
 
     NSTextField *hint = OpnLabel(@"Store variant follows your library selection when available", NSMakeRect(206.0, height - 70.0, textWidth - 206.0, 22.0), 12.0, OpnColor(kTextMuted), NSFontWeightSemibold);
