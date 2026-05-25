@@ -102,6 +102,24 @@ struct CatalogBrowseResult {
     std::vector<CatalogSortOption> sortOptions;
 };
 
+struct GameProviderEndpoint {
+    std::string loginProvider;
+    std::string loginProviderCode;
+    std::string loginProviderDisplayName;
+    std::string streamingServiceUrl;
+    std::string idpId;
+    std::string redeemRedirectUrl;
+    int priority = 0;
+};
+
+struct GameProviderInfo {
+    std::string defaultProvider;
+    std::string loggedInProvider;
+    bool loginRequired = false;
+    std::vector<std::string> loginPreferredProviders;
+    std::vector<GameProviderEndpoint> endpoints;
+};
+
 struct FeaturedGamesResult {
     std::vector<GameInfo> games;
     bool usedExplicitFeaturedSection = false;

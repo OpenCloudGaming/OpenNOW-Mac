@@ -2,6 +2,7 @@
 #include "OPNGameDataCache.h"
 #include "streaming/OPNSessionManager.h"
 #include "streaming/OPNSignalingClient.h"
+#include "streaming/OPNStreamPreferences.h"
 #include "streaming/OPNStreamSession.h"
 #include <CommonCrypto/CommonCrypto.h>
 #include <algorithm>
@@ -89,6 +90,21 @@ static void DispatchStoreURLCallback(const StoreURLCallback &completion,
     });
 }
 
+static void DispatchProviderInfoCallback(const ProviderInfoCallback &completion,
+                                         bool success,
+                                         const GameProviderInfo &providerInfo,
+                                         const GameProviderEndpoint &selectedEndpoint,
+                                         const std::string &error) {
+    if (!completion) return;
+    ProviderInfoCallback completionCopy = completion;
+    GameProviderInfo providerInfoCopy = providerInfo;
+    GameProviderEndpoint selectedEndpointCopy = selectedEndpoint;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, providerInfoCopy, selectedEndpointCopy, errorCopy);
+    });
+}
+
 static void DispatchGraphQLCallback(const std::function<void(NSDictionary *, NSString *)> &completion,
                                     NSDictionary *payload,
                                     NSString *message) {
@@ -110,6 +126,7 @@ static NSString *kAppMetaDataHash = @"cf8b620dfd03617017ba7c858cee65197e1ace5180
 
 static NSString *kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *kNvClientVersion = @"2.0.80.173";
+static NSString *const kProviderServiceUrlsEndpoint = @"https://pcs.geforcenow.com/v1/serviceUrls";
 static constexpr const char *kDefaultSubscriptionVpcId = "NP-AMS-08";
 static constexpr int kDefaultCatalogFetchCount = 96;
 static constexpr int kMaxCatalogPages = 3;
@@ -117,7 +134,11 @@ static constexpr NSTimeInterval kCatalogCacheFreshSeconds = 15.0 * 60.0;
 static constexpr NSTimeInterval kCatalogDefinitionsFreshSeconds = 24.0 * 60.0 * 60.0;
 static NSString *const kCatalogLocale = @"en_US";
 static void GetServerVpcId(const std::string &token,
+                           const std::string &providerStreamingBaseUrl,
                            std::function<void(const std::string &vpcId)> completion);
+static NSString *SafeStr(id value);
+static int SafeInt(id value);
+static NSString *NSStringFromStdString(const std::string &value, NSString *fallback = @"");
 
 GameService &GameService::Shared() {
     static GameService instance;
@@ -126,6 +147,7 @@ GameService &GameService::Shared() {
 
 GameService::GameService() {
     m_graphqlURL = "https://games.geforce.com/graphql";
+    m_providerStreamingBaseUrl = DefaultStreamingBaseUrl();
 }
 
 void GameService::SetAccessToken(const std::string &token) {
@@ -143,6 +165,141 @@ void GameService::SetUserId(const std::string &id) {
 void GameService::SetStreamingBaseUrl(const std::string &url) {
     m_streamingBaseUrl = url;
     SessionManager::Shared().SetStreamingBaseUrl(url);
+}
+
+std::string GameService::ProviderStreamingBaseUrl() const {
+    return m_providerStreamingBaseUrl.empty() ? DefaultStreamingBaseUrl() : m_providerStreamingBaseUrl;
+}
+
+static std::string NormalizeStreamingBaseUrl(const std::string &url) {
+    if (url.empty()) return DefaultStreamingBaseUrl();
+    return url.back() == '/' ? url : url + "/";
+}
+
+static std::vector<std::string> SafeStringVector(id value) {
+    std::vector<std::string> out;
+    if (![value isKindOfClass:[NSArray class]]) return out;
+    for (id item in (NSArray *)value) {
+        NSString *text = SafeStr(item);
+        if (text.length > 0) out.push_back([text UTF8String]);
+    }
+    return out;
+}
+
+static bool SafeBool(id value) {
+    if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value boolValue];
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *lower = [(NSString *)value lowercaseString];
+        return [lower isEqualToString:@"true"] || [lower isEqualToString:@"1"] || [lower isEqualToString:@"yes"];
+    }
+    return false;
+}
+
+static NSDictionary *ProviderInfoDictionary(NSDictionary *json) {
+    if (![json isKindOfClass:[NSDictionary class]]) return nil;
+    NSDictionary *info = [json[@"gfnServiceInfo"] isKindOfClass:[NSDictionary class]] ? json[@"gfnServiceInfo"] : nil;
+    if (info) return info;
+    NSDictionary *data = [json[@"data"] isKindOfClass:[NSDictionary class]] ? json[@"data"] : nil;
+    if (data) {
+        info = [data[@"gfnServiceInfo"] isKindOfClass:[NSDictionary class]] ? data[@"gfnServiceInfo"] : nil;
+        if (info) return info;
+        NSDictionary *serviceUrls = [data[@"serviceUrls"] isKindOfClass:[NSDictionary class]] ? data[@"serviceUrls"] : nil;
+        info = [serviceUrls[@"gfnServiceInfo"] isKindOfClass:[NSDictionary class]] ? serviceUrls[@"gfnServiceInfo"] : nil;
+        if (info) return info;
+    }
+    return json;
+}
+
+static GameProviderInfo ParseGameProviderInfo(NSDictionary *json) {
+    NSDictionary *infoRaw = ProviderInfoDictionary(json);
+    GameProviderInfo info;
+    if (!infoRaw) return info;
+
+    NSString *defaultProvider = SafeStr(infoRaw[@"defaultProvider"]);
+    NSString *loggedInProvider = SafeStr(infoRaw[@"loggedInProvider"]);
+    info.defaultProvider = defaultProvider ? [defaultProvider UTF8String] : "";
+    info.loggedInProvider = loggedInProvider ? [loggedInProvider UTF8String] : "";
+    info.loginRequired = SafeBool(infoRaw[@"loginRequired"]);
+    info.loginPreferredProviders = SafeStringVector(infoRaw[@"loginPreferredProviders"]);
+
+    NSArray *endpoints = [infoRaw[@"gfnServiceEndpoints"] isKindOfClass:[NSArray class]] ? infoRaw[@"gfnServiceEndpoints"] : @[];
+    for (NSDictionary *entry in endpoints) {
+        if (![entry isKindOfClass:[NSDictionary class]]) continue;
+        GameProviderEndpoint endpoint;
+        if (NSString *value = SafeStr(entry[@"loginProvider"])) endpoint.loginProvider = [value UTF8String];
+        if (NSString *value = SafeStr(entry[@"loginProviderCode"])) endpoint.loginProviderCode = [value UTF8String];
+        if (NSString *value = SafeStr(entry[@"loginProviderDisplayName"])) endpoint.loginProviderDisplayName = [value UTF8String];
+        if (NSString *value = SafeStr(entry[@"streamingServiceUrl"])) endpoint.streamingServiceUrl = NormalizeStreamingBaseUrl([value UTF8String]);
+        if (NSString *value = SafeStr(entry[@"idpId"])) endpoint.idpId = [value UTF8String];
+        if (NSString *value = SafeStr(entry[@"redeemRedirectUrl"])) endpoint.redeemRedirectUrl = [value UTF8String];
+        endpoint.priority = SafeInt(entry[@"loginProviderPriority"]);
+        if (!endpoint.streamingServiceUrl.empty()) info.endpoints.push_back(endpoint);
+    }
+    std::sort(info.endpoints.begin(), info.endpoints.end(), [](const GameProviderEndpoint &lhs, const GameProviderEndpoint &rhs) {
+        return lhs.priority < rhs.priority;
+    });
+    return info;
+}
+
+static GameProviderEndpoint SelectGameProviderEndpoint(const GameProviderInfo &info, const std::string &idpId) {
+    if (!idpId.empty()) {
+        for (const GameProviderEndpoint &endpoint : info.endpoints) {
+            if (endpoint.idpId == idpId) return endpoint;
+        }
+    }
+    if (!info.loggedInProvider.empty()) {
+        for (const GameProviderEndpoint &endpoint : info.endpoints) {
+            if (endpoint.loginProvider == info.loggedInProvider || endpoint.loginProviderCode == info.loggedInProvider) return endpoint;
+        }
+    }
+    if (!info.defaultProvider.empty()) {
+        for (const GameProviderEndpoint &endpoint : info.endpoints) {
+            if (endpoint.loginProvider == info.defaultProvider || endpoint.loginProviderCode == info.defaultProvider) return endpoint;
+        }
+    }
+    for (const GameProviderEndpoint &endpoint : info.endpoints) {
+        if (!endpoint.streamingServiceUrl.empty()) return endpoint;
+    }
+    GameProviderEndpoint fallback;
+    fallback.loginProvider = info.defaultProvider;
+    fallback.streamingServiceUrl = DefaultStreamingBaseUrl();
+    return fallback;
+}
+
+void GameService::FetchProviderInfo(const std::string &idpId, ProviderInfoCallback completion) {
+    std::string idpIdCopy = idpId;
+    NSURL *url = [NSURL URLWithString:kProviderServiceUrlsEndpoint];
+    if (!url) {
+        DispatchProviderInfoCallback(completion, false, GameProviderInfo{}, GameProviderEndpoint{}, "Invalid provider info URL");
+        return;
+    }
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.timeoutInterval = 10.0;
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 GFN-PC/2.0.80.173" forHTTPHeaderField:@"User-Agent"];
+
+    ProviderInfoCallback callback = completion;
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+        if (error || !data || http.statusCode != 200) {
+            GameProviderInfo info;
+            GameProviderEndpoint endpoint;
+            endpoint.streamingServiceUrl = DefaultStreamingBaseUrl();
+            this->m_providerStreamingBaseUrl = endpoint.streamingServiceUrl;
+            std::string message = error ? [[error localizedDescription] UTF8String] : "Provider info request failed";
+            DispatchProviderInfoCallback(callback, false, info, endpoint, message);
+            return;
+        }
+
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        GameProviderInfo info = ParseGameProviderInfo(json);
+        GameProviderEndpoint endpoint = SelectGameProviderEndpoint(info, idpIdCopy);
+        if (endpoint.streamingServiceUrl.empty()) endpoint.streamingServiceUrl = DefaultStreamingBaseUrl();
+        this->m_providerStreamingBaseUrl = NormalizeStreamingBaseUrl(endpoint.streamingServiceUrl);
+        endpoint.streamingServiceUrl = this->m_providerStreamingBaseUrl;
+        DispatchProviderInfoCallback(callback, true, info, endpoint, "");
+    }] resume];
 }
 
 
@@ -270,7 +427,7 @@ static NSString *SafeStr(id value) {
     return (NSString *)value;
 }
 
-static NSString *NSStringFromStdString(const std::string &value, NSString *fallback = @"") {
+static NSString *NSStringFromStdString(const std::string &value, NSString *fallback) {
     if (value.empty()) return fallback ?: @"";
     NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
     return string ?: (fallback ?: @"");
@@ -321,6 +478,21 @@ static int SafeInt(id value) {
     return 0;
 }
 
+static void DeepMergeDictionaryInto(NSMutableDictionary *target, NSDictionary *source) {
+    if (!target || ![source isKindOfClass:[NSDictionary class]]) return;
+    for (id key in source) {
+        id sourceValue = source[key];
+        id targetValue = target[key];
+        if ([targetValue isKindOfClass:[NSDictionary class]] && [sourceValue isKindOfClass:[NSDictionary class]]) {
+            NSMutableDictionary *merged = [(NSDictionary *)targetValue mutableCopy];
+            DeepMergeDictionaryInto(merged, sourceValue);
+            target[key] = merged;
+        } else if (sourceValue) {
+            target[key] = sourceValue;
+        }
+    }
+}
+
 static void ParseCatalogDefinitions(NSDictionary *definitionsData,
                                     CatalogBrowseResult &result,
                                     NSMutableDictionary<NSString *, NSDictionary *> *filterPayloadById) {
@@ -337,15 +509,20 @@ static void ParseCatalogDefinitions(NSDictionary *definitionsData,
             if ([filters isKindOfClass:[NSArray class]]) {
                 for (NSDictionary *entry in filters) {
                     if (![entry isKindOfClass:[NSDictionary class]]) continue;
-                    NSArray *payloads = entry[@"filters"];
-                    NSString *payloadString = [payloads isKindOfClass:[NSArray class]] && payloads.count > 0 ? SafeStr(payloads[0]) : nil;
                     NSString *filterId = SafeStr(entry[@"id"]);
                     NSString *filterLabel = SafeStr(entry[@"label"]);
-                    if (filterId.length == 0 || payloadString.length == 0) continue;
-                    NSData *payloadData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
-                    NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:payloadData options:0 error:nil];
-                    if (![payload isKindOfClass:[NSDictionary class]]) continue;
-                    filterPayloadById[filterId] = payload;
+                    NSArray *payloads = [entry[@"filters"] isKindOfClass:[NSArray class]] ? entry[@"filters"] : @[];
+                    NSMutableDictionary *mergedPayload = [NSMutableDictionary dictionary];
+                    for (id rawPayload in payloads) {
+                        NSString *payloadString = SafeStr(rawPayload);
+                        if (payloadString.length == 0) continue;
+                        NSData *payloadData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
+                        NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:payloadData options:0 error:nil];
+                        if (![payload isKindOfClass:[NSDictionary class]]) continue;
+                        DeepMergeDictionaryInto(mergedPayload, payload);
+                    }
+                    if (filterId.length == 0 || mergedPayload.count == 0) continue;
+                    filterPayloadById[filterId] = [mergedPayload copy];
 
                     CatalogFilterOption option;
                     option.id = [filterId UTF8String];
@@ -792,7 +969,7 @@ void GameService::ResolveStoreURL(const GameInfo &game, int variantIndex, StoreU
     std::string selectedVariantId = selectedVariant ? selectedVariant->id : "";
     std::string selectedStore = selectedVariant ? selectedVariant->appStore : "";
 
-    GetServerVpcId(token, [this, callback, appId, selectedVariantId, selectedStore](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback, appId, selectedVariantId, selectedStore](const std::string &vpcId) {
         NSString *appIdString = [NSString stringWithUTF8String:appId.c_str()];
         NSString *vpcIdString = [NSString stringWithUTF8String:vpcId.empty() ? "GFN-PC" : vpcId.c_str()];
         fetchAppMetadata(@[appIdString], vpcIdString,
@@ -871,7 +1048,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         }
     });
 
-    GetServerVpcId(token, [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         std::string requestedSearch = searchQuery;
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
@@ -915,7 +1092,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                     NSString *key = [NSString stringWithUTF8String:filterId.c_str()];
                     NSDictionary *payload = filterPayloadById[key];
                     if (!payload) continue;
-                    [filters addEntriesFromDictionary:payload];
+                    DeepMergeDictionaryInto(filters, payload);
                     result.selectedFilterIds.push_back(filterId);
                 }
 
@@ -1282,7 +1459,7 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
 
     std::string token = m_accessToken;
     SubscriptionCallback callback = completion;
-    GetServerVpcId(token, [token, userId, callback](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [token, userId, callback](const std::string &vpcId) {
         const std::string subscriptionVpcId = vpcId == "GFN-PC" ? kDefaultSubscriptionVpcId : vpcId;
         NSURLComponents *components = [NSURLComponents componentsWithString:@"https://mes.geforcenow.com/v4/subscriptions"];
         components.queryItems = @[
@@ -1358,8 +1535,11 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
 
 
 static void GetServerVpcId(const std::string &token,
+                            const std::string &providerStreamingBaseUrl,
                             std::function<void(const std::string &vpcId)> completion) {
-    NSURL *url = [NSURL URLWithString:@"https://prod.cloudmatchbeta.nvidiagrid.net/v2/serverInfo"];
+    std::string normalized = NormalizeStreamingBaseUrl(providerStreamingBaseUrl);
+    NSString *urlString = [NSString stringWithFormat:@"%sv2/serverInfo", normalized.c_str()];
+    NSURL *url = [NSURL URLWithString:urlString];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [req setValue:[NSString stringWithFormat:@"GFNJWT %s", token.c_str()] forHTTPHeaderField:@"Authorization"];
@@ -1399,7 +1579,7 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
     std::string token = m_accessToken;
     CatalogCallback callback = completion;
 
-    GetServerVpcId(token, [this, callback, token](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback, token](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         NSDictionary *vars = @{
             @"vpcId": vpcIdObj,
@@ -1634,7 +1814,7 @@ void GameService::FetchMarqueePanels(PanelCallback completion) {
     std::string token = m_accessToken;
     PanelCallback callback = completion;
 
-    GetServerVpcId(token, [this, callback](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         NSDictionary *vars = @{
             @"vpcId": vpcIdObj,
@@ -1667,7 +1847,7 @@ void GameService::FetchMainPanels(PanelCallback completion) {
     std::string token = m_accessToken;
     PanelCallback callback = completion;
 
-    GetServerVpcId(token, [this, callback](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         NSDictionary *vars = @{
             @"vpcId": vpcIdObj,

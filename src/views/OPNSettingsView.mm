@@ -194,6 +194,7 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
 @property (nonatomic, assign) NSInteger selectedCodec;
 @property (nonatomic, assign) NSInteger selectedBitrate;
 @property (nonatomic, assign) NSInteger selectedColorDepth;
+@property (nonatomic, assign) NSInteger selectedPrefilterMode;
 @property (nonatomic, assign) NSInteger selectedMicrophoneMode;
 @property (nonatomic, assign) NSInteger selectedMicrophoneDevice;
 @property (nonatomic, assign) BOOL enableL4S;
@@ -253,6 +254,7 @@ using namespace OPN;
         _selectedCodec = profile.codecIndex;
         _selectedBitrate = profile.bitrateIndex;
         _selectedColorDepth = profile.colorQualityIndex;
+        _selectedPrefilterMode = profile.prefilterModeIndex;
         _selectedMicrophoneMode = profile.microphoneMode == "push-to-talk" ? 1 : (profile.microphoneMode == "voice-activity" ? 2 : 0);
         _selectedMicrophoneDevice = 0;
         _enableL4S = profile.enableL4S;
@@ -627,7 +629,7 @@ using namespace OPN;
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
     OPN::StreamPreferenceProfile effectiveProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(profile, capabilities);
-    NSView *video = [self panelWithTitle:@"Video" height:724.0];
+    NSView *video = [self panelWithTitle:@"Video" height:856.0];
     [video addSubview:[self rowLabel:@"Aspect Ratio" y:112.0]];
     NSMutableArray<NSString *> *aspectTitles = [NSMutableArray array];
     for (const OPN::StreamAspectOption &option : OPN::StreamAspectOptions()) {
@@ -705,6 +707,35 @@ using namespace OPN;
                                             NSFontWeightRegular);
     adjustmentLabel.maximumNumberOfLines = 2;
     [video addSubview:adjustmentLabel];
+
+    NSMutableArray<NSString *> *prefilterTitles = [NSMutableArray array];
+    for (const OPN::StreamPrefilterModeOption &option : OPN::StreamPrefilterModeOptions()) {
+        [prefilterTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
+    }
+    [video addSubview:[self rowLabel:@"AI Filter" y:680.0]];
+    [self addOptionGroupTo:video group:10 titles:prefilterTitles selected:self.selectedPrefilterMode y:670.0 widths:@[@72.0, @72.0, @96.0]];
+
+    [video addSubview:[self rowLabel:@"Custom Levels" y:736.0]];
+    [video addSubview:OpnLabel(@"Sharpness", NSMakeRect(controlX, 704.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *sharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 724.0, MIN(120.0, controlWidth), 38.0)
+                                                         value:profile.prefilterSharpness
+                                                        action:@selector(prefilterSharpnessPopupChanged:)];
+    [video addSubview:sharpnessPopup];
+
+    CGFloat denoiseX = controlX + MIN(160.0, controlWidth * 0.5);
+    [video addSubview:OpnLabel(@"Denoise", NSMakeRect(denoiseX, 704.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *denoisePopup = [self integerPopupWithFrame:NSMakeRect(denoiseX, 724.0, MIN(120.0, controlWidth), 38.0)
+                                                        value:profile.prefilterDenoise
+                                                       action:@selector(prefilterDenoisePopupChanged:)];
+    [video addSubview:denoisePopup];
+
+    NSTextField *prefilterHint = OpnLabel(@"Auto lets GFN choose supported enhancement. Custom sends the sharpness and denoise levels from 0 to 10.",
+                                          NSMakeRect(controlX, 782.0, controlWidth, 42.0),
+                                          12.0,
+                                          OpnColor(kTextMuted),
+                                          NSFontWeightRegular);
+    prefilterHint.maximumNumberOfLines = 2;
+    [video addSubview:prefilterHint];
 
     [self.documentView addSubview:video];
 }
@@ -1063,6 +1094,27 @@ using namespace OPN;
     return popup;
 }
 
+- (NSPopUpButton *)integerPopupWithFrame:(NSRect)frame value:(NSInteger)value action:(SEL)action {
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:frame pullsDown:NO];
+    popup.target = self;
+    popup.action = action;
+    popup.bordered = NO;
+    popup.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightRegular];
+    popup.contentTintColor = OpnColor(kTextPrimary);
+    popup.wantsLayer = YES;
+    popup.layer.backgroundColor = OpnColor(0x090A0C, 0.72).CGColor;
+    popup.layer.cornerRadius = 11.0;
+    popup.layer.borderWidth = 1.0;
+    popup.layer.borderColor = OpnColor(kPanelBorder, 0.78).CGColor;
+    [popup removeAllItems];
+    for (NSInteger i = 0; i <= 10; i++) {
+        [popup addItemWithTitle:[NSString stringWithFormat:@"%ld", (long)i]];
+    }
+    NSInteger selected = MAX(0, MIN(value, 10));
+    [popup selectItemAtIndex:selected];
+    return popup;
+}
+
 - (void)addOptionGroupTo:(NSView *)parent
                    group:(NSInteger)group
                   titles:(NSArray<NSString *> *)titles
@@ -1132,6 +1184,7 @@ using namespace OPN;
         case 7: OPN::SaveStreamColorQualityIndex((int)index); break;
         case 8: OPN::SaveStreamBitrateIndex((int)index); break;
         case 9: [self applyPerformanceProfile:index]; break;
+        case 10: OPN::SaveStreamPrefilterModeIndex((int)index); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
@@ -1141,6 +1194,7 @@ using namespace OPN;
     self.selectedCodec = profile.codecIndex;
     self.selectedBitrate = profile.bitrateIndex;
     self.selectedColorDepth = profile.colorQualityIndex;
+    self.selectedPrefilterMode = profile.prefilterModeIndex;
     self.enableL4S = profile.enableL4S;
     [self rebuildContent];
 }
@@ -1194,6 +1248,16 @@ using namespace OPN;
 - (void)l4sToggleChanged:(NSButton *)sender {
     self.enableL4S = sender.state == NSControlStateValueOn;
     OPN::SaveStreamL4SEnabled(self.enableL4S);
+    [self rebuildContent];
+}
+
+- (void)prefilterSharpnessPopupChanged:(NSPopUpButton *)sender {
+    OPN::SaveStreamPrefilterSharpness((int)sender.indexOfSelectedItem);
+    [self rebuildContent];
+}
+
+- (void)prefilterDenoisePopupChanged:(NSPopUpButton *)sender {
+    OPN::SaveStreamPrefilterDenoise((int)sender.indexOfSelectedItem);
     [self rebuildContent];
 }
 

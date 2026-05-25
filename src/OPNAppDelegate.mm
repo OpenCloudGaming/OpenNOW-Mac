@@ -63,12 +63,14 @@
 @property (nonatomic, strong) id controllerModeShortcutMonitor;
 @property (nonatomic, strong) NSView *desktopNavigationBar;
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
+@property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
 - (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
 - (void)refreshAccountAvatar;
 - (void)refreshStreamRegions;
 - (void)refreshAccountMenu;
+- (void)transitionToCatalogAfterProviderSelectionForSession:(const OPN::AuthSession &)session;
 - (void)addAccount;
 - (void)switchToAccountIdentifier:(NSString *)identifier;
 - (void)restoreSavedWindowPresentation;
@@ -131,9 +133,14 @@
 - (void)toggleControllerModeFromShortcut;
 - (void)applyInterfacePreferencesToCurrentScreen;
 - (void)installDesktopNavigationBarIfNeeded;
+- (void)installDesktopAccountSwitcherIfNeeded;
 - (void)layoutDesktopNavigationBar;
+- (void)layoutDesktopAccountSwitcher;
 - (void)updateDesktopNavigationBar;
+- (void)updateDesktopAccountSwitcher;
+- (void)rebuildDesktopAccountSwitcher;
 - (void)desktopNavigationButtonClicked:(NSButton *)sender;
+- (void)desktopAccountSwitcherChanged:(NSPopUpButton *)sender;
 @end
 
 @implementation AppDelegate
@@ -577,6 +584,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     self.desktopNavigationButtons = @[];
     self.desktopNavigationBar = nil;
+    self.desktopAccountSwitcher = nil;
     if (self.streamingController) {
         [self.streamingController shutdownForApplicationTermination];
         self.streamingController = nil;
@@ -632,6 +640,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (notification.object != self.window) return;
     [self saveWindowPresentation];
     [self layoutDesktopNavigationBar];
+    [self layoutDesktopAccountSwitcher];
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
@@ -669,6 +678,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         self.rootView.mode = OPNBackdropModeSettings;
     }
     [self updateDesktopNavigationBar];
+    [self updateDesktopAccountSwitcher];
 }
 
 - (NSButton *)desktopNavigationButtonWithTitle:(NSString *)title tag:(NSInteger)tag {
@@ -711,6 +721,31 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self updateDesktopNavigationBar];
 }
 
+- (void)installDesktopAccountSwitcherIfNeeded {
+    if (!self.rootView || self.desktopAccountSwitcher) return;
+    NSPopUpButton *switcher = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    switcher.target = self;
+    switcher.action = @selector(desktopAccountSwitcherChanged:);
+    switcher.bordered = NO;
+    switcher.font = [NSFont systemFontOfSize:12.0 weight:NSFontWeightSemibold];
+    switcher.contentTintColor = OpnColor(OPN::kTextPrimary);
+    switcher.focusRingType = NSFocusRingTypeNone;
+    switcher.wantsLayer = YES;
+    switcher.layer.cornerRadius = 18.0;
+    switcher.layer.backgroundColor = OpnColor(0x050A08, 0.78).CGColor;
+    switcher.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+    switcher.layer.borderWidth = 1.0;
+    switcher.layer.shadowColor = NSColor.blackColor.CGColor;
+    switcher.layer.shadowOpacity = 0.24;
+    switcher.layer.shadowRadius = 18.0;
+    switcher.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    self.desktopAccountSwitcher = switcher;
+    [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self rebuildDesktopAccountSwitcher];
+    [self layoutDesktopAccountSwitcher];
+    [self updateDesktopAccountSwitcher];
+}
+
 - (void)layoutDesktopNavigationBar {
     if (!self.desktopNavigationBar || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
@@ -726,8 +761,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 }
 
+- (void)layoutDesktopAccountSwitcher {
+    if (!self.desktopAccountSwitcher || !self.rootView) return;
+    CGFloat width = NSWidth(self.rootView.bounds);
+    CGFloat switcherWidth = MIN(260.0, MAX(190.0, width * 0.24));
+    CGFloat x = MAX(24.0, width - switcherWidth - 58.0);
+    self.desktopAccountSwitcher.frame = NSMakeRect(x, 58.0, switcherWidth, 36.0);
+}
+
 - (void)updateDesktopNavigationBar {
     [self installDesktopNavigationBarIfNeeded];
+    [self updateDesktopAccountSwitcher];
     if (!self.desktopNavigationBar) return;
     BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopNavigationBar.hidden = !visible;
@@ -744,6 +788,55 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 }
 
+- (void)updateDesktopAccountSwitcher {
+    [self installDesktopAccountSwitcherIfNeeded];
+    if (!self.desktopAccountSwitcher) return;
+    BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
+    self.desktopAccountSwitcher.hidden = !visible;
+    if (!visible) return;
+    [self layoutDesktopAccountSwitcher];
+}
+
+- (void)rebuildDesktopAccountSwitcher {
+    if (!self.desktopAccountSwitcher) return;
+    [self.desktopAccountSwitcher removeAllItems];
+
+    std::string currentIdentifier = OPNAuthSessionIdentifier(self.currentSession);
+    NSString *currentIdentifierString = currentIdentifier.empty() ? @"" : [NSString stringWithUTF8String:currentIdentifier.c_str()];
+    NSInteger selectedIndex = 0;
+    BOOL addedAnyAccount = NO;
+
+    for (const OPN::AuthSession &session : OPN::AuthService::Shared().LoadSavedSessions()) {
+        std::string identifier = OPNAuthSessionIdentifier(session);
+        if (identifier.empty()) continue;
+        NSString *identifierString = [NSString stringWithUTF8String:identifier.c_str()];
+        NSString *label = OPNAuthSessionDisplayName(session);
+        NSString *title = [identifierString isEqualToString:currentIdentifierString]
+            ? [NSString stringWithFormat:@"%@  (Current)", label]
+            : label;
+        [self.desktopAccountSwitcher addItemWithTitle:title];
+        NSMenuItem *item = self.desktopAccountSwitcher.lastItem;
+        item.representedObject = identifierString;
+        if ([identifierString isEqualToString:currentIdentifierString]) selectedIndex = self.desktopAccountSwitcher.numberOfItems - 1;
+        addedAnyAccount = YES;
+    }
+
+    if (!addedAnyAccount && self.currentSession.isAuthenticated) {
+        [self.desktopAccountSwitcher addItemWithTitle:OPNAuthSessionDisplayName(self.currentSession)];
+        self.desktopAccountSwitcher.lastItem.representedObject = currentIdentifierString;
+    }
+
+    if (self.desktopAccountSwitcher.numberOfItems > 0) {
+        [[self.desktopAccountSwitcher menu] addItem:[NSMenuItem separatorItem]];
+    }
+    [self.desktopAccountSwitcher addItemWithTitle:@"Add Account..." ];
+    self.desktopAccountSwitcher.lastItem.representedObject = @"__opennow_add_account__";
+
+    if (selectedIndex >= 0 && selectedIndex < self.desktopAccountSwitcher.numberOfItems) {
+        [self.desktopAccountSwitcher selectItemAtIndex:selectedIndex];
+    }
+}
+
 - (void)desktopNavigationButtonClicked:(NSButton *)sender {
     if (sender.tag == 0) {
         if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
@@ -756,6 +849,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (sender.tag == 2 && self.currentScreen != OPN::AuthScreen::Settings) {
         [self transitionToScreen:OPN::AuthScreen::Settings];
     }
+}
+
+- (void)desktopAccountSwitcherChanged:(NSPopUpButton *)sender {
+    id representedObject = sender.selectedItem.representedObject;
+    NSString *identifier = [representedObject isKindOfClass:NSString.class] ? representedObject : @"";
+    if ([identifier isEqualToString:@"__opennow_add_account__"]) {
+        [self addAccount];
+        return;
+    }
+    [self switchToAccountIdentifier:identifier];
+    [self rebuildDesktopAccountSwitcher];
 }
 
 - (BOOL)hasVisibleStreamingController {
@@ -1063,21 +1167,26 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     __weak __typeof__(self) weakSelf = self;
     __weak OPNCloudmatchServerPickerView *weakPicker = picker;
     std::string tokenCopy = apiToken;
-    OPN::FetchStreamRegions(tokenCopy, OPN::DefaultStreamingBaseUrl(), [weakSelf, weakPicker, generation](const std::vector<OPN::StreamRegionOption> &regions) {
-        __typeof__(self) strongSelf = weakSelf;
-        OPNCloudmatchServerPickerView *strongPicker = weakPicker;
-        if (!strongSelf || !strongPicker) return;
-        if (generation != strongSelf.cloudmatchServerPickerGeneration || strongSelf.cloudmatchServerPickerView != strongPicker) return;
+    std::string idpId = self.currentSession.idpId;
+    OPN::GameService::Shared().SetAccessToken(tokenCopy);
+    OPN::GameService::Shared().FetchProviderInfo(idpId, [weakSelf, weakPicker, generation, tokenCopy](bool, const OPN::GameProviderInfo &, const OPN::GameProviderEndpoint &endpoint, const std::string &) {
+        std::string providerBaseUrl = endpoint.streamingServiceUrl.empty() ? OPN::GameService::Shared().ProviderStreamingBaseUrl() : endpoint.streamingServiceUrl;
+        OPN::FetchStreamRegions(tokenCopy, providerBaseUrl, [weakSelf, weakPicker, generation](const std::vector<OPN::StreamRegionOption> &regions) {
+            __typeof__(self) strongSelf = weakSelf;
+            OPNCloudmatchServerPickerView *strongPicker = weakPicker;
+            if (!strongSelf || !strongPicker) return;
+            if (generation != strongSelf.cloudmatchServerPickerGeneration || strongSelf.cloudmatchServerPickerView != strongPicker) return;
 
-        NSString *selectedRegionUrl = OPNAppStringFromStdString(OPN::LoadSelectedStreamRegionUrl(), @"");
-        [strongPicker setOptions:OPNCloudmatchServerOptionsFromRegions(regions)
-               selectedRegionUrl:selectedRegionUrl
-                      refreshing:NO];
-        if (regions.empty()) {
-            [strongPicker setStatusMessage:@"Server discovery failed. Automatic can still launch using the default route." isError:YES];
-        } else {
-            [strongPicker setStatusMessage:@"Latency updated. Lower ping usually means a more responsive stream." isError:NO];
-        }
+            NSString *selectedRegionUrl = OPNAppStringFromStdString(OPN::LoadSelectedStreamRegionUrl(), @"");
+            [strongPicker setOptions:OPNCloudmatchServerOptionsFromRegions(regions)
+                   selectedRegionUrl:selectedRegionUrl
+                          refreshing:NO];
+            if (regions.empty()) {
+                [strongPicker setStatusMessage:@"Server discovery failed. Automatic can still launch using the default route." isError:YES];
+            } else {
+                [strongPicker setStatusMessage:@"Latency updated. Lower ping usually means a more responsive stream." isError:NO];
+            }
+        });
     });
 }
 
@@ -1526,15 +1635,33 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             OPNEmailEntryView *view = [[OPNEmailEntryView alloc] initWithFrame:bounds];
             view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             __weak __typeof__(self) weakSelf = self;
+            __weak OPNEmailEntryView *weakSignInView = view;
 
             view.onSignInWithBrowser = ^{
                 __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
+                OPNEmailEntryView *signInView = weakSignInView;
+                if (!strongSelf || !signInView) return;
                 OPN::AuthCredentials creds = strongSelf.pendingCredentials;
+                creds.providerIdpId = [signInView selectedProviderIdpId];
                 creds.stayLoggedIn = OPN::AuthService::Shared().GetStayLoggedIn();
                 strongSelf.pendingCredentials = creds;
                 [strongSelf transitionToScreen:OPN::AuthScreen::OAuthBrowser];
             };
+
+            __weak OPNEmailEntryView *weakProviderView = view;
+            OPN::GameService::Shared().FetchProviderInfo(self.pendingCredentials.providerIdpId, [weakSelf, weakProviderView](bool success,
+                                                                                                                            const OPN::GameProviderInfo &providerInfo,
+                                                                                                                            const OPN::GameProviderEndpoint &selectedEndpoint,
+                                                                                                                            const std::string &) {
+                __typeof__(self) strongSelf = weakSelf;
+                OPNEmailEntryView *providerView = weakProviderView;
+                if (!strongSelf || !providerView || providerView.superview != strongSelf.contentContainer) return;
+                std::string selectedIdpId = selectedEndpoint.idpId.empty() ? strongSelf.pendingCredentials.providerIdpId : selectedEndpoint.idpId;
+                [providerView setLoginProviders:providerInfo.endpoints selectedProviderIdpId:selectedIdpId];
+                if (!success) {
+                    OPN::LogError(@"[AppDelegate] Provider discovery failed; using NVIDIA default for login");
+                }
+            });
 
             [self.contentContainer addSubview:view];
             OpnDisableFocusHighlights(view);
@@ -1545,7 +1672,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         case AuthScreen::OAuthBrowser: {
             __weak __typeof__(self) weakSelf = self;
             [self showAuthenticatingWithMessage:@"Opening browser for sign in..."];
-            OPN::AuthService::Shared().StartOAuthLogin(
+            OPN::AuthService::Shared().StartOAuthLogin(self.pendingCredentials.providerIdpId,
                 ^(bool success, const OPN::AuthSession &session, const std::string &error) {
                     __typeof__(self) strongSelf = weakSelf;
                     if (!strongSelf) return;
@@ -1554,7 +1681,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                         if (strongSelf.pendingCredentials.stayLoggedIn)
                             OPN::AuthService::Shared().SaveSession(session);
                         [strongSelf refreshAccountMenu];
-                        [strongSelf transitionToScreen:AuthScreen::Catalog];
+                        [strongSelf transitionToCatalogAfterProviderSelectionForSession:session];
                     } else {
                         [strongSelf showError:error canRetry:YES];
                     }
@@ -1896,10 +2023,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     std::string token = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken
         : self.currentSession.idToken;
-    GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-    FetchStreamRegions(token, DefaultStreamingBaseUrl(), [](const std::vector<StreamRegionOption> &) {
+    GameService::Shared().SetAccessToken(token);
+    GameService::Shared().FetchProviderInfo(self.currentSession.idpId, [token](bool, const GameProviderInfo &, const GameProviderEndpoint &endpoint, const std::string &) {
+        std::string providerBaseUrl = endpoint.streamingServiceUrl.empty() ? GameService::Shared().ProviderStreamingBaseUrl() : endpoint.streamingServiceUrl;
         GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"OpenNOW.StreamRegionsUpdated" object:nil];
+        FetchStreamRegions(token, providerBaseUrl, [](const std::vector<StreamRegionOption> &) {
+            GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"OpenNOW.StreamRegionsUpdated" object:nil];
+        });
     });
 }
 
@@ -1919,13 +2050,30 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.rootView.currentAccountIdentifier = currentIdentifier.empty()
         ? @""
         : [NSString stringWithUTF8String:currentIdentifier.c_str()];
+    [self rebuildDesktopAccountSwitcher];
+    [self updateDesktopAccountSwitcher];
+}
+
+- (void)transitionToCatalogAfterProviderSelectionForSession:(const OPN::AuthSession &)session {
+    using namespace OPN;
+    std::string token = session.idToken.empty() ? session.accessToken : session.idToken;
+    GameService::Shared().SetAccessToken(token);
+    __weak __typeof__(self) weakSelf = self;
+    GameService::Shared().FetchProviderInfo(session.idpId, [weakSelf](bool,
+                                                                      const GameProviderInfo &,
+                                                                      const GameProviderEndpoint &,
+                                                                      const std::string &) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf transitionToScreen:AuthScreen::Catalog];
+    });
 }
 
 - (void)addAccount {
     OPN::AuthCredentials creds = self.pendingCredentials;
     creds.stayLoggedIn = true;
     self.pendingCredentials = creds;
-    [self transitionToScreen:OPN::AuthScreen::OAuthBrowser];
+    [self transitionToScreen:OPN::AuthScreen::EmailEntry];
 }
 
 - (void)switchToAccountIdentifier:(NSString *)identifier {
@@ -1939,7 +2087,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!selected.isAuthenticated) return;
     self.currentSession = selected;
     if (selected.IsAccessTokenValid()) {
-        [self transitionToScreen:AuthScreen::Catalog];
+        [self transitionToCatalogAfterProviderSelectionForSession:selected];
         return;
     }
 
@@ -1952,14 +2100,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             strongSelf.currentSession = fresh;
             AuthService::Shared().SaveSession(fresh);
             [strongSelf refreshAccountMenu];
-            [strongSelf transitionToScreen:AuthScreen::Catalog];
+            [strongSelf transitionToCatalogAfterProviderSelectionForSession:fresh];
             return;
         }
 
         AuthSession fallback = AuthService::Shared().LoadSavedSession();
         if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
             strongSelf.currentSession = fallback;
-            [strongSelf transitionToScreen:AuthScreen::Catalog];
+            [strongSelf transitionToCatalogAfterProviderSelectionForSession:fallback];
         } else {
             strongSelf.currentSession.Clear();
             [strongSelf transitionToScreen:AuthScreen::EmailEntry];

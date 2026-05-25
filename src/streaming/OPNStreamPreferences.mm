@@ -18,6 +18,9 @@ static NSString *const kFpsIndexKey = @"OpenNOW.Stream.FpsIndex";
 static NSString *const kCodecIndexKey = @"OpenNOW.Stream.CodecIndex";
 static NSString *const kBitrateIndexKey = @"OpenNOW.Stream.BitrateIndex";
 static NSString *const kColorQualityIndexKey = @"OpenNOW.Stream.ColorQualityIndex";
+static NSString *const kPrefilterModeIndexKey = @"OpenNOW.Stream.PrefilterModeIndex";
+static NSString *const kPrefilterSharpnessKey = @"OpenNOW.Stream.PrefilterSharpness";
+static NSString *const kPrefilterDenoiseKey = @"OpenNOW.Stream.PrefilterDenoise";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
@@ -94,6 +97,15 @@ const std::vector<StreamColorQualityOption> &StreamColorQualityOptions() {
         {"8-bit 4:4:4", "8bit_444"},
         {"10-bit 4:2:0", "10bit_420"},
         {"10-bit 4:4:4", "10bit_444"},
+    };
+    return options;
+}
+
+const std::vector<StreamPrefilterModeOption> &StreamPrefilterModeOptions() {
+    static const std::vector<StreamPrefilterModeOption> options = {
+        {"Off", 0},
+        {"Auto", 1},
+        {"Custom", 2},
     };
     return options;
 }
@@ -512,6 +524,13 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.colorQualityIndex = ClampedStoredInteger(kColorQualityIndexKey, 0, (int)colorQualityOptions.size());
     profile.colorQuality = colorQualityOptions[(size_t)profile.colorQualityIndex];
 
+    const auto &prefilterModeOptions = StreamPrefilterModeOptions();
+    profile.prefilterModeIndex = ClampedStoredInteger(kPrefilterModeIndexKey, 0, (int)prefilterModeOptions.size());
+    profile.prefilterModeOption = prefilterModeOptions[(size_t)profile.prefilterModeIndex];
+    profile.prefilterMode = profile.prefilterModeOption.value;
+    profile.prefilterSharpness = ClampedStoredInteger(kPrefilterSharpnessKey, 0, 11);
+    profile.prefilterDenoise = ClampedStoredInteger(kPrefilterDenoiseKey, 0, 11);
+
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
     profile.enablePowerSaver = [NSUserDefaults.standardUserDefaults boolForKey:kPowerSaverEnabledKey];
     id suppressInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kSuppressInputWhenInactiveKey];
@@ -832,6 +851,21 @@ void SaveStreamBitrateIndex(int bitrateIndex) {
 void SaveStreamColorQualityIndex(int colorQualityIndex) {
     int clamped = std::max(0, std::min(colorQualityIndex, (int)StreamColorQualityOptions().size() - 1));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kColorQualityIndexKey];
+}
+
+void SaveStreamPrefilterModeIndex(int prefilterModeIndex) {
+    int clamped = std::max(0, std::min(prefilterModeIndex, (int)StreamPrefilterModeOptions().size() - 1));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterModeIndexKey];
+}
+
+void SaveStreamPrefilterSharpness(int sharpness) {
+    int clamped = std::max(0, std::min(sharpness, 10));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterSharpnessKey];
+}
+
+void SaveStreamPrefilterDenoise(int denoise) {
+    int clamped = std::max(0, std::min(denoise, 10));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterDenoiseKey];
 }
 
 void SaveStreamL4SEnabled(bool enabled) {
