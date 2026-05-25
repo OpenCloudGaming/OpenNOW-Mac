@@ -466,7 +466,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     (void)notification;
     using namespace OPN;
 
-    OPN::StartLogCapture();
     NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
 
     NSRect frame = NSMakeRect(0, 0, kWindowWidth, kWindowHeight);

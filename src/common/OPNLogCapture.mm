@@ -107,10 +107,34 @@ static BOOL OPNShouldPersistCapturedLogLine(NSString *line) {
     return !OPNIsKnownFrameworkNoiseLine(line);
 }
 
+static BOOL OPNCapturedLineOriginatedFromAppLogger(NSString *line) {
+    if (line.length == 0) return YES;
+    if ([line hasPrefix:@"[Sentry]"]) return YES;
+    if ([line hasPrefix:@"[OpenNOW]"]) return YES;
+    if ([line hasPrefix:@"[AppDelegate]"]) return YES;
+    if ([line hasPrefix:@"[CatalogBrowse]"]) return YES;
+    if ([line hasPrefix:@"[CatalogView]"]) return YES;
+    if ([line hasPrefix:@"[GameCard]"]) return YES;
+    if ([line hasPrefix:@"[StreamVC]"]) return YES;
+    if ([line hasPrefix:@"[StreamView]"]) return YES;
+    if ([line hasPrefix:@"[Recording]"]) return YES;
+    if ([line hasPrefix:@"[LibWebRTC]"]) return YES;
+    if ([line hasPrefix:@"[Signaling]"]) return YES;
+    if ([line hasPrefix:@"[SessionManager]"]) return YES;
+    if ([line hasPrefix:@"[PollSession]"]) return YES;
+    if ([line hasPrefix:@"[ClaimSession]"]) return YES;
+    if ([line hasPrefix:@"[GameService]"]) return YES;
+    if ([line hasPrefix:@"[LogCapture]"]) return YES;
+    return NO;
+}
+
 static void OPNAppendCapturedLineToLog(NSData *lineData) {
     if (lineData.length == 0) return;
     NSString *line = [[NSString alloc] initWithData:lineData encoding:NSUTF8StringEncoding];
     if (line && !OPNShouldPersistCapturedLogLine(line)) return;
+    if (line && !OPNCapturedLineOriginatedFromAppLogger(line)) {
+        OPN::CaptureExternalLogLine(line);
+    }
 
     NSMutableData *data = [lineData mutableCopy];
     const char newline = '\n';
