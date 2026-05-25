@@ -479,6 +479,10 @@ static std::string GenerateOpenNOWDeviceId() {
 }
 
 void AuthService::StartOAuthLogin(AuthCallback completion) {
+    StartOAuthLogin(kDefaultIdpId, completion);
+}
+
+void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback completion) {
     int port = FindAvailablePort();
     if (port == 0) {
         completion(false, AuthSession{}, "No available port for OAuth callback");
@@ -489,6 +493,7 @@ void AuthService::StartOAuthLogin(AuthCallback completion) {
     std::string deviceId = GenerateOpenNOWDeviceId();
     std::string nonceHex = GenerateRandomString(32);
     std::string redirectUri = "http://localhost:" + std::to_string(port);
+    std::string selectedProviderIdpId = providerIdpId.empty() ? kDefaultIdpId : providerIdpId;
 
     NSString *authorizeURLStr = [NSString stringWithFormat:
         @"%s?response_type=code"
@@ -510,7 +515,7 @@ void AuthService::StartOAuthLogin(AuthCallback completion) {
         URLEncode(redirectUri).c_str(),
         URLEncode(nonceHex).c_str(),
         pkce.codeChallenge.c_str(),
-        kDefaultIdpId,
+        URLEncode(selectedProviderIdpId).c_str(),
         pkce.state.c_str()];
 
     int serverSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -526,6 +531,7 @@ void AuthService::StartOAuthLogin(AuthCallback completion) {
     __block bool completed = NO;
     __block int blockSock = serverSock;
     __block OAuthState blockPkce = pkce;
+    __block std::string blockProviderIdpId = selectedProviderIdpId;
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         int clientSock = accept(blockSock, NULL, NULL);
@@ -837,7 +843,7 @@ setTimeout(function () {
             completed = YES;
             NSString *codeVerifier = [NSString stringWithUTF8String:blockPkce.codeVerifier.c_str()];
             NSString *redirectStr = [NSString stringWithUTF8String:redirectUri.c_str()];
-            doOAuthTokenExchange(code, codeVerifier, redirectStr, completion);
+            doOAuthTokenExchange(code, codeVerifier, redirectStr, blockProviderIdpId, completion);
         }
     });
 
@@ -848,7 +854,9 @@ setTimeout(function () {
 }
 
 void AuthService::doOAuthTokenExchange(NSString *authCode, NSString *codeVerifier,
-                                        NSString *redirectUri, AuthCallback completion) {
+                                         NSString *redirectUri, const std::string &providerIdpId,
+                                         AuthCallback completion) {
+    std::string providerIdpIdCopy = providerIdpId;
     NSString *tokenURLStr = [NSString stringWithUTF8String:kOAuthTokenURL];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:tokenURLStr]];
     req.HTTPMethod = @"POST";
@@ -893,7 +901,9 @@ void AuthService::doOAuthTokenExchange(NSString *authCode, NSString *codeVerifie
 
             dispatch_async(dispatch_get_main_queue(), ^{
                 AuthSession session = ParseOAuthSession(json);
-                EnsureClientToken(session, [completion](AuthSession enriched) {
+                if (!providerIdpIdCopy.empty()) session.idpId = providerIdpIdCopy;
+                EnsureClientToken(session, [completion, providerIdpIdCopy](AuthSession enriched) {
+                    if (!providerIdpIdCopy.empty()) enriched.idpId = providerIdpIdCopy;
                     completion(true, enriched, "");
                 });
             });
@@ -1009,6 +1019,7 @@ static NSMutableDictionary *DictionaryFromSession(const AuthSession &session) {
     putStr(@"display_name",  session.displayName);
     putStr(@"email",         session.email);
     putStr(@"membership_tier", session.membershipTier);
+    putStr(@"idp_id", session.idpId);
     dict[@"expires_at"]                 = @(session.expiresAt);
     dict[@"access_token_expiry"]        = @(session.accessTokenExpiry);
     dict[@"client_token_expiry"]        = @(session.clientTokenExpiry);
@@ -1036,6 +1047,8 @@ static AuthSession SessionFromDictionary(NSDictionary *dict) {
     session.email                 = getStr(@"email");
     session.membershipTier        = getStr(@"membership_tier").empty()
                                         ? "Free" : getStr(@"membership_tier");
+    session.idpId                 = getStr(@"idp_id");
+    if (session.idpId.empty()) session.idpId = AuthService::kDefaultIdpId;
 
     auto getInt64 = [&](NSString *key) -> int64_t {
         NSNumber *n = [dict[key] isKindOfClass:NSNumber.class] ? dict[key] : nil;
@@ -1322,9 +1335,14 @@ AuthSession AuthService::ParseOAuthSession(NSDictionary *json) {
                     NSString *v = claims[@"membership_tier"];
                     s.membershipTier = v ? std::string([v UTF8String]) : "Free";
                 }
+                {
+                    NSString *v = claims[@"idp_id"];
+                    s.idpId = v ? std::string([v UTF8String]) : std::string();
+                }
             }
         }
     }
+    if (s.idpId.empty()) s.idpId = AuthService::kDefaultIdpId;
     if (s.expiresAt == 0) {
         s.expiresAt = static_cast<int64_t>([[NSDate date] timeIntervalSince1970]) + 86400;
         s.accessTokenExpiry = AuthSession::CurrentEpochMs() + 86400000;

@@ -21,9 +21,12 @@ using LaunchCallback = std::function<void(bool success, const SessionInfo &sessi
                                              const std::string &error)>;
 using LaunchProgressCallback = std::function<void(const std::string &message, const SessionInfo &session)>;
 using SubscriptionCallback = std::function<void(bool success, const SubscriptionInfo &subscription,
-                                                 const std::string &error)>;
+                                                  const std::string &error)>;
 using StoreURLCallback = std::function<void(bool success, const std::string &storeURL,
-                                            const std::string &error)>;
+                                             const std::string &error)>;
+using ProviderInfoCallback = std::function<void(bool success, const GameProviderInfo &providerInfo,
+                                                const GameProviderEndpoint &selectedEndpoint,
+                                                const std::string &error)>;
 
 class GameService {
 public:
@@ -33,7 +36,9 @@ public:
     void SetVpcId(const std::string &id);
     void SetUserId(const std::string &id);
     void SetStreamingBaseUrl(const std::string &url);
+    std::string ProviderStreamingBaseUrl() const;
 
+    void FetchProviderInfo(const std::string &idpId, ProviderInfoCallback completion);
     void FetchMarqueePanels(PanelCallback completion);
     void FetchMainPanels(PanelCallback completion);
     void BrowseCatalogGames(const std::string &searchQuery,
@@ -80,6 +85,7 @@ private:
     std::string m_userId;
     std::string m_graphqlURL;
     std::string m_streamingBaseUrl;
+    std::string m_providerStreamingBaseUrl;
 };
 
 }

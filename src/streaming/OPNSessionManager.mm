@@ -4,6 +4,7 @@
 #include "OPNStreamTypes.h"
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonCrypto.h>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -155,6 +156,9 @@ static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &setti
     int bitDepth = 0;
     int chromaFormat = 0;
     StreamColorProfileFields(settings, bitDepth, chromaFormat);
+    const int prefilterMode = std::max(0, std::min(settings.prefilterMode, 2));
+    const int prefilterSharpness = std::max(0, std::min(settings.prefilterSharpness, 10));
+    const int prefilterDenoise = std::max(0, std::min(settings.prefilterDenoise, 10));
     return @{
         @"reflex": @(settings.enableReflex),
         @"bitDepth": @(bitDepth),
@@ -167,9 +171,9 @@ static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &setti
         @"fallbackToLogicalResolution": @NO,
         @"hidDevices": [NSNull null],
         @"chromaFormat": @(chromaFormat),
-        @"prefilterMode": @0,
-        @"prefilterSharpness": @0,
-        @"prefilterNoiseReduction": @0,
+        @"prefilterMode": @(prefilterMode),
+        @"prefilterSharpness": @(prefilterSharpness),
+        @"prefilterNoiseReduction": @(prefilterDenoise),
         @"hudStreamingMode": @0,
         @"sdrColorSpace": @2,
         @"hdrColorSpace": @0,
@@ -210,6 +214,15 @@ static void ParseStreamProfile(NSDictionary *session, OPN::NegotiatedStreamProfi
               profile.chromaFormat,
               profile.colorQuality.c_str());
     }
+
+    NSNumber *prefilterMode = [features[@"prefilterMode"] isKindOfClass:[NSNumber class]] ? features[@"prefilterMode"] : nil;
+    NSNumber *prefilterSharpness = [features[@"prefilterSharpness"] isKindOfClass:[NSNumber class]] ? features[@"prefilterSharpness"] : nil;
+    NSNumber *prefilterDenoise = [features[@"prefilterNoiseReduction"] isKindOfClass:[NSNumber class]] ? features[@"prefilterNoiseReduction"] : nil;
+    NSNumber *prefilterModel = [features[@"prefilterModel"] isKindOfClass:[NSNumber class]] ? features[@"prefilterModel"] : nil;
+    if (prefilterMode) profile.prefilterMode = std::max(0, std::min([prefilterMode intValue], 2));
+    if (prefilterSharpness) profile.prefilterSharpness = std::max(0, std::min([prefilterSharpness intValue], 10));
+    if (prefilterDenoise) profile.prefilterDenoise = std::max(0, std::min([prefilterDenoise intValue], 10));
+    if (prefilterModel) profile.prefilterModel = std::max(0, [prefilterModel intValue]);
 }
 
 static void ParseQueueProgress(NSDictionary *session, OPN::SessionInfo &info) {

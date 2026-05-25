@@ -13,6 +13,10 @@ struct StreamSettings {
     std::string codec = "H264";
     std::string colorQuality = "8bit_420";
     int maxBitrateMbps = 50;
+    int prefilterMode = 0;
+    int prefilterSharpness = 0;
+    int prefilterDenoise = 0;
+    int prefilterModel = 0;
     bool enableCloudGsync = false;
     bool enableL4S = false;
     bool enableReflex = true;
@@ -52,6 +56,10 @@ struct NegotiatedStreamProfile {
     std::string colorQuality;
     int bitDepth = -1;
     int chromaFormat = -1;
+    int prefilterMode = -1;
+    int prefilterSharpness = -1;
+    int prefilterDenoise = -1;
+    int prefilterModel = -1;
 };
 
 struct SessionAdMediaFile {

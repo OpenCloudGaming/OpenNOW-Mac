@@ -18,6 +18,7 @@
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
 #include "../src/games/OPNGameDataCache.h"
+#include "../src/games/OPNGameService.h"
 
 namespace {
 
@@ -114,7 +115,9 @@ static std::function<MockHTTPResponse(NSURLRequest *)> gMockURLHandler;
 @implementation OPNTestURLProtocol
 
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
-    return gMockURLHandler && [request.URL.host isEqualToString:@"login.nvidia.com"];
+    return gMockURLHandler && ([request.URL.host isEqualToString:@"login.nvidia.com"] ||
+                               [request.URL.host isEqualToString:@"pcs.geforcenow.com"] ||
+                               [request.URL.host isEqualToString:@"prod.cloudmatchbeta.nvidiagrid.net"]);
 }
 
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
@@ -340,6 +343,29 @@ private:
     id originalValue;
 };
 
+class ScopedStreamIntegerPreference final {
+public:
+    explicit ScopedStreamIntegerPreference(NSString *preferenceKey)
+        : key(preferenceKey),
+          originalValue([NSUserDefaults.standardUserDefaults objectForKey:key]) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+    ~ScopedStreamIntegerPreference() {
+        if (originalValue) {
+            [NSUserDefaults.standardUserDefaults setObject:originalValue forKey:key];
+        } else {
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        }
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+private:
+    NSString *key;
+    id originalValue;
+};
+
 static OPN::StreamPreferenceProfile ProfileWithSelections(int codecIndex, int fpsIndex, int colorQualityIndex) {
     OPN::StreamPreferenceProfile profile;
     const std::vector<OPN::StreamCodecOption> &codecs = OPN::StreamCodecOptions();
@@ -394,6 +420,26 @@ TEST_CASE("DirectMouseInputPreferenceDefaultsOnAndPersistsChanges") {
 
     preference.Reset();
     CHECK(OPN::LoadStreamPreferenceProfile().directMouseInput);
+}
+
+TEST_CASE("PrefilterPreferencesDefaultOffAndClampCustomLevels") {
+    ScopedStreamIntegerPreference mode(@"OpenNOW.Stream.PrefilterModeIndex");
+    ScopedStreamIntegerPreference sharpness(@"OpenNOW.Stream.PrefilterSharpness");
+    ScopedStreamIntegerPreference denoise(@"OpenNOW.Stream.PrefilterDenoise");
+
+    OPN::StreamPreferenceProfile defaults = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(defaults.prefilterMode, 0);
+    CHECK_EQ(defaults.prefilterSharpness, 0);
+    CHECK_EQ(defaults.prefilterDenoise, 0);
+
+    OPN::SaveStreamPrefilterModeIndex(2);
+    OPN::SaveStreamPrefilterSharpness(99);
+    OPN::SaveStreamPrefilterDenoise(-4);
+
+    OPN::StreamPreferenceProfile custom = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(custom.prefilterMode, 2);
+    CHECK_EQ(custom.prefilterSharpness, 10);
+    CHECK_EQ(custom.prefilterDenoise, 0);
 }
 
 }
@@ -1301,6 +1347,7 @@ TEST_CASE("StartOAuthLoginExchangesMatchingCallbackCode") {
     });
 
     CHECK(WaitUntil([&] { return workspace.LastURL() != nil; }));
+    CHECK_EQ(std::string([QueryValue(workspace.LastURL(), @"idp_id") UTF8String]), OPN::AuthService::kDefaultIdpId);
     NSString *state = QueryValue(workspace.LastURL(), @"state");
     REQUIRE(state.length > 0);
     std::string request = "GET /?code=auth-code&state=" + std::string([state UTF8String]) + " HTTP/1.1\r\nHost: localhost\r\n\r\n";
@@ -1310,8 +1357,49 @@ TEST_CASE("StartOAuthLoginExchangesMatchingCallbackCode") {
     CHECK_EQ(session.accessToken, "oauth-callback-access");
     CHECK_EQ(session.refreshToken, "oauth-callback-refresh");
     CHECK_EQ(session.clientToken, "oauth-callback-client");
+    CHECK_EQ(session.idpId, OPN::AuthService::kDefaultIdpId);
     CHECK_EQ(error, "");
     CHECK_EQ(callIndex, 2);
+}
+
+TEST_CASE("StartOAuthLoginUsesSelectedProviderIdp") {
+    AuthTestEnvironment environment;
+    ScopedWorkspaceOpenURLStub workspace;
+    ScopedBoundPorts reservedPorts;
+    int callbackPort = reservedPorts.BindAllButOneCandidatePort();
+    REQUIRE(callbackPort != 0);
+
+    ScopedURLMock mock([](NSURLRequest *request) -> MockHTTPResponse {
+        if ([request.URL.path isEqualToString:@"/token"]) {
+            return MockHTTPResponse{200, JSONData(@{
+                @"access_token": @"alliance-access",
+                @"refresh_token": @"alliance-refresh",
+                @"expires_in": @"1800"
+            }), nil};
+        }
+        return MockHTTPResponse{200, JSONData(@{@"client_token": @"alliance-client", @"expires_in": @"600"}), nil};
+    });
+
+    bool done = false;
+    bool success = false;
+    OPN::AuthSession session;
+    OPN::AuthService::Shared().StartOAuthLogin("ally-idp", [&](bool ok, const OPN::AuthSession &authSession, const std::string &) {
+        success = ok;
+        session = authSession;
+        done = true;
+    });
+
+    CHECK(WaitUntil([&] { return workspace.LastURL() != nil; }));
+    CHECK_EQ(std::string([QueryValue(workspace.LastURL(), @"idp_id") UTF8String]), "ally-idp");
+    NSString *state = QueryValue(workspace.LastURL(), @"state");
+    REQUIRE(state.length > 0);
+    std::string request = "GET /?code=auth-code&state=" + std::string([state UTF8String]) + " HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    SendOAuthCallbackRequest(callbackPort, request);
+
+    CHECK(WaitUntil([&] { return done; }));
+    CHECK(success);
+    CHECK_EQ(session.accessToken, "alliance-access");
+    CHECK_EQ(session.idpId, "ally-idp");
 }
 
 TEST_CASE("StartOAuthLoginReportsTokenExchangeHttpError") {
@@ -1405,6 +1493,63 @@ TEST_CASE("game-cache/catalog definitions freshness") {
     NSDictionary *stale = nil;
     CHECK(!cache.LoadCatalogDefinitions(locale, 0.0, &stale));
     CHECK(stale == nil);
+}
+
+TEST_CASE("game-service/provider info selects matching idp endpoint") {
+    ScopedURLMock mock([](NSURLRequest *request) {
+        CHECK([request.URL.host isEqualToString:@"pcs.geforcenow.com"]);
+        CHECK([request.URL.path isEqualToString:@"/v1/serviceUrls"]);
+        NSDictionary *body = @{
+            @"gfnServiceInfo": @{
+                @"defaultProvider": @"nvidia",
+                @"loginRequired": @YES,
+                @"loginPreferredProviders": @[@"nvidia", @"ally"],
+                @"gfnServiceEndpoints": @[
+                    @{
+                        @"loginProvider": @"nvidia",
+                        @"loginProviderCode": @"NV",
+                        @"loginProviderDisplayName": @"NVIDIA",
+                        @"streamingServiceUrl": @"https://prod.cloudmatchbeta.nvidiagrid.net/",
+                        @"idpId": @"default-idp",
+                        @"loginProviderPriority": @0
+                    },
+                    @{
+                        @"loginProvider": @"ally",
+                        @"loginProviderCode": @"AL",
+                        @"loginProviderDisplayName": @"Alliance",
+                        @"streamingServiceUrl": @"https://ally.cloudmatch.example.net",
+                        @"idpId": @"ally-idp",
+                        @"redeemRedirectUrl": @"https://ally.example.net/redeem",
+                        @"loginProviderPriority": @2
+                    }
+                ]
+            }
+        };
+        return MockHTTPResponse{200, JSONData(body), nil};
+    });
+
+    OPN::GameService::Shared().SetAccessToken("provider-token");
+    bool done = false;
+    bool success = false;
+    OPN::GameProviderInfo info;
+    OPN::GameProviderEndpoint endpoint;
+    OPN::GameService::Shared().FetchProviderInfo("ally-idp", [&](bool ok,
+                                                                   const OPN::GameProviderInfo &providerInfo,
+                                                                   const OPN::GameProviderEndpoint &selectedEndpoint,
+                                                                   const std::string &) {
+        success = ok;
+        info = providerInfo;
+        endpoint = selectedEndpoint;
+        done = true;
+    });
+
+    CHECK(WaitUntil([&] { return done; }));
+    CHECK(success);
+    CHECK_EQ(info.defaultProvider, "nvidia");
+    REQUIRE(info.endpoints.size() == 2);
+    CHECK_EQ(endpoint.loginProvider, "ally");
+    CHECK_EQ(endpoint.streamingServiceUrl, "https://ally.cloudmatch.example.net/");
+    CHECK_EQ(OPN::GameService::Shared().ProviderStreamingBaseUrl(), "https://ally.cloudmatch.example.net/");
 }
 
 }
