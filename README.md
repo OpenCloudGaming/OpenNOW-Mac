@@ -64,6 +64,10 @@ make clean
 - `src/common/` - shared types and helpers
 - `assets/` - artwork and icons
 
+## Vendor Parity
+
+- `docs/vendor-functional-parity.md` tracks native OpenNOW behavior against the vendored GeForce NOW web app and records telemetry/feedback/PWA/Tizen surfaces as intentional non-goals.
+
 ## Contributing
 
 Open issues for bugs or feature requests and submit pull requests for improvements.

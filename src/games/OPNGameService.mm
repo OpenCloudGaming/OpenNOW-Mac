@@ -4,6 +4,7 @@
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamPreferences.h"
 #include "streaming/OPNStreamSession.h"
+#include "common/OPNLocale.h"
 #include <CommonCrypto/CommonCrypto.h>
 #include <algorithm>
 #include <cctype>
@@ -132,7 +133,6 @@ static constexpr int kDefaultCatalogFetchCount = 96;
 static constexpr int kMaxCatalogPages = 3;
 static constexpr NSTimeInterval kCatalogCacheFreshSeconds = 15.0 * 60.0;
 static constexpr NSTimeInterval kCatalogDefinitionsFreshSeconds = 24.0 * 60.0 * 60.0;
-static NSString *const kCatalogLocale = @"en_US";
 static void GetServerVpcId(const std::string &token,
                            const std::string &providerStreamingBaseUrl,
                            std::function<void(const std::string &vpcId)> completion);
@@ -939,7 +939,7 @@ void GameService::fetchAppMetadata(NSArray<NSString *> *appIds,
                                    std::function<void(NSDictionary *, NSString *)> completion) {
     NSDictionary *variables = @{
         @"vpcId": vpcId.length > 0 ? vpcId : @"GFN-PC",
-        @"locale": @"en_US",
+        @"locale": [NSString stringWithUTF8String:CurrentGFNLocale().c_str()],
         @"appIds": appIds ?: @[],
     };
     postGraphQL("appMetaData", [kAppMetaDataHash UTF8String], variables, completion);
@@ -1024,15 +1024,16 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                      CatalogBrowseCallback completion) {
     std::string token = m_accessToken;
     CatalogBrowseCallback callback = completion;
+    NSString *catalogLocale = [NSString stringWithUTF8String:CurrentGFNLocale().c_str()];
     OPN::LogInfo(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
     std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
     int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
-    std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
+    std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(m_userId, searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
 
     CatalogBrowseResult freshCachedResult;
     NSDictionary *freshDefinitions = nil;
     if (GameDataCache::Shared().LoadFreshCatalog(catalogCacheKey, kCatalogCacheFreshSeconds, freshCachedResult) &&
-        GameDataCache::Shared().LoadCatalogDefinitions(kCatalogLocale, kCatalogDefinitionsFreshSeconds, &freshDefinitions)) {
+        GameDataCache::Shared().LoadCatalogDefinitions(catalogLocale, kCatalogDefinitionsFreshSeconds, &freshDefinitions)) {
         NSMutableDictionary<NSString *, NSDictionary *> *unusedFilterPayloads = [NSMutableDictionary dictionary];
         ParseCatalogDefinitions(freshDefinitions, freshCachedResult, unusedFilterPayloads);
         OPN::LogInfo(@"[GameService] catalog fresh cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)freshCachedResult.games.size());
@@ -1048,7 +1049,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         }
     });
 
-    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey](const std::string &vpcId) {
+    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey, catalogLocale](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         std::string requestedSearch = searchQuery;
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
@@ -1067,7 +1068,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         }
         )";
 
-        auto handleDefinitions = [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey](NSDictionary *definitionsData, NSString *definitionsError) {
+        auto handleDefinitions = [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey, catalogLocale](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
                     OPN::LogError(@"[GameService] catalog definitions failed error=%@", definitionsError);
                     DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, [definitionsError UTF8String]);
@@ -1192,7 +1193,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 *fetchPage = [=] {
                     NSMutableDictionary *vars = [@{
                         @"vpcId": vpcIdObj,
-                        @"locale": @"en_US",
+                        @"locale": catalogLocale,
                         @"sortString": sortString,
                         @"fetchCount": @(requestedFetchCount),
                         @"cursor": *cursor ?: @"",
@@ -1342,16 +1343,16 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
             };
 
         NSDictionary *cachedDefinitions = nil;
-        if (GameDataCache::Shared().LoadCatalogDefinitions(kCatalogLocale, kCatalogDefinitionsFreshSeconds, &cachedDefinitions)) {
-            OPN::LogInfo(@"[GameService] catalog definitions cache hit locale=%@", kCatalogLocale);
+        if (GameDataCache::Shared().LoadCatalogDefinitions(catalogLocale, kCatalogDefinitionsFreshSeconds, &cachedDefinitions)) {
+            OPN::LogInfo(@"[GameService] catalog definitions cache hit locale=%@", catalogLocale);
             dispatch_async(GameServiceWorkQueue(), ^{
                 handleDefinitions(cachedDefinitions, @"");
             });
         } else {
-            postGraphQlJson(definitionsQuery, @{@"locale": kCatalogLocale},
-                [handleDefinitions](NSDictionary *definitionsData, NSString *definitionsError) {
+            postGraphQlJson(definitionsQuery, @{@"locale": catalogLocale},
+                [handleDefinitions, catalogLocale](NSDictionary *definitionsData, NSString *definitionsError) {
                     if (definitionsError.length == 0 && [definitionsData isKindOfClass:[NSDictionary class]]) {
-                        GameDataCache::Shared().SaveCatalogDefinitions(kCatalogLocale, definitionsData);
+                        GameDataCache::Shared().SaveCatalogDefinitions(catalogLocale, definitionsData);
                     }
                     handleDefinitions(definitionsData, definitionsError);
                 });
@@ -1371,8 +1372,9 @@ void GameService::FetchCatalogGames(CatalogCallback completion) {
 
 
 void GameService::FetchPublicGames(CatalogCallback completion) {
+    NSString *publicLocale = [NSString stringWithUTF8String:CurrentGFNLocaleURLPathComponent().c_str()];
     NSURL *url = [NSURL URLWithString:
-        @"https://static.nvidiagrid.net/supported-public-game-list/locales/gfnpc-en-US.json"];
+        [NSString stringWithFormat:@"https://static.nvidiagrid.net/supported-public-game-list/locales/gfnpc-%@.json", publicLocale]];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.timeoutInterval = 20.0;
             [req setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -1464,7 +1466,7 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
         NSURLComponents *components = [NSURLComponents componentsWithString:@"https://mes.geforcenow.com/v4/subscriptions"];
         components.queryItems = @[
             [NSURLQueryItem queryItemWithName:@"serviceName" value:@"gfn_pc"],
-            [NSURLQueryItem queryItemWithName:@"languageCode" value:@"en_US"],
+            [NSURLQueryItem queryItemWithName:@"languageCode" value:[NSString stringWithUTF8String:CurrentGFNLocale().c_str()]],
             [NSURLQueryItem queryItemWithName:@"vpcId" value:[NSString stringWithUTF8String:subscriptionVpcId.c_str()]],
             [NSURLQueryItem queryItemWithName:@"userId" value:[NSString stringWithUTF8String:userId.c_str()]],
         ];
@@ -1583,7 +1585,7 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         NSDictionary *vars = @{
             @"vpcId": vpcIdObj,
-            @"locale": @"en_US",
+            @"locale": [NSString stringWithUTF8String:CurrentGFNLocale().c_str()],
             @"panelNames": @[@"LIBRARY"]
         };
 
@@ -1818,7 +1820,7 @@ void GameService::FetchMarqueePanels(PanelCallback completion) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         NSDictionary *vars = @{
             @"vpcId": vpcIdObj,
-            @"locale": @"en_US",
+            @"locale": [NSString stringWithUTF8String:CurrentGFNLocale().c_str()],
             @"panelNames": @[@"MARQUEE"]
         };
 
@@ -1851,7 +1853,7 @@ void GameService::FetchMainPanels(PanelCallback completion) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         NSDictionary *vars = @{
             @"vpcId": vpcIdObj,
-            @"locale": @"en_US",
+            @"locale": [NSString stringWithUTF8String:CurrentGFNLocale().c_str()],
             @"panelNames": @[@"MAIN"]
         };
 

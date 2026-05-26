@@ -15,6 +15,8 @@
 #import "common/OPNColorTokens.h"
 #import "common/OPNUIHelpers.h"
 #include "common/OPNLogCapture.h"
+#include "common/OPNLocale.h"
+#include "common/OPNGFNError.h"
 #import "common/OPNAuthTypes.h"
 #import "common/OPNGameTypes.h"
 #import <CommonCrypto/CommonDigest.h>
@@ -102,6 +104,10 @@
 - (void)dismissCloudmatchServerPicker;
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen;
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex;
+- (BOOL)presentOwnershipRemediationIfNeededForGame:(const OPN::GameInfo &)game
+                                      variantIndex:(int)variantIndex
+                                     accountLinked:(bool)accountLinked
+                                   continueHandler:(void (^)(void))continueHandler;
 - (void)startStreamWithTitle:(const std::string &)title
                        appId:(const std::string &)appId
                     apiToken:(const std::string &)apiToken
@@ -288,6 +294,34 @@ static bool OPNChooseAccountLinked(const OPN::GameInfo &game, const OPN::GameVar
         if (OPNIsOwnedLibraryStatus(variant.serviceStatus)) return true;
     }
     return false;
+}
+
+static const OPN::GameVariant *OPNVariantAtIndex(const OPN::GameInfo &game, int variantIndex) {
+    if (variantIndex < 0 || variantIndex >= (int)game.variants.size()) return nullptr;
+    return &game.variants[(size_t)variantIndex];
+}
+
+static bool OPNVariantIsOwnedForLaunch(const OPN::GameVariant &variant) {
+    return variant.inLibrary || variant.librarySelected || OPNIsOwnedLibraryStatus(variant.serviceStatus);
+}
+
+static const OPN::GameVariant *OPNFirstVariantWithStoreURL(const OPN::GameInfo &game) {
+    for (const OPN::GameVariant &variant : game.variants) {
+        if (!variant.storeUrl.empty()) return &variant;
+    }
+    return nullptr;
+}
+
+static NSString *OPNStoreDisplayName(const std::string &store) {
+    NSString *value = [[NSString stringWithUTF8String:store.c_str()] ?: @"" uppercaseString];
+    if ([value containsString:@"STEAM"]) return @"Steam";
+    if ([value containsString:@"EPIC"] || [value containsString:@"EGS"]) return @"Epic Games";
+    if ([value containsString:@"UBISOFT"] || [value containsString:@"UPLAY"]) return @"Ubisoft";
+    if ([value containsString:@"BATTLE"]) return @"Battle.net";
+    if ([value containsString:@"XBOX"] || [value containsString:@"MICROSOFT"]) return @"Xbox";
+    if ([value containsString:@"EA"] || [value containsString:@"ORIGIN"]) return @"EA";
+    if ([value containsString:@"GOG"]) return @"GOG";
+    return value.length > 0 ? value.capitalizedString : @"the selected store";
 }
 
 static NSString *OPNTitleForActiveSessionAppId(int appId, const std::vector<OPN::GameInfo> &games) {
@@ -696,7 +730,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 }
 
 - (void)installDesktopNavigationBarIfNeeded {
-    if (!self.rootView || self.desktopNavigationBar) return;
+    if (!self.rootView) return;
+    if (self.desktopNavigationBar && self.desktopNavigationBar.superview != self.rootView) {
+        self.desktopNavigationBar = nil;
+        self.desktopNavigationButtons = @[];
+    }
+    if (self.desktopNavigationBar) return;
     NSView *bar = [[NSView alloc] initWithFrame:NSZeroRect];
     bar.wantsLayer = YES;
     bar.layer.cornerRadius = 18.0;
@@ -722,7 +761,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 }
 
 - (void)installDesktopAccountSwitcherIfNeeded {
-    if (!self.rootView || self.desktopAccountSwitcher) return;
+    if (!self.rootView) return;
+    if (self.desktopAccountSwitcher && self.desktopAccountSwitcher.superview != self.rootView) {
+        self.desktopAccountSwitcher = nil;
+    }
+    if (self.desktopAccountSwitcher) return;
     NSPopUpButton *switcher = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     switcher.target = self;
     switcher.action = @selector(desktopAccountSwitcherChanged:);
@@ -1393,13 +1436,64 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         });
     };
 
-    NSString *pickerGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
-    [self showCloudmatchServerPickerForGameTitle:pickerGameTitle
-                                        apiToken:apiToken
-                                      completion:^(BOOL confirmed) {
-        if (!confirmed) return;
-        continueLaunchAfterServerSelection();
+    auto beginServerSelection = ^{
+        NSString *pickerGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
+        [self showCloudmatchServerPickerForGameTitle:pickerGameTitle
+                                            apiToken:apiToken
+                                          completion:^(BOOL confirmed) {
+            if (!confirmed) return;
+            continueLaunchAfterServerSelection();
+        }];
+    };
+
+    if ([self presentOwnershipRemediationIfNeededForGame:game
+                                            variantIndex:variantIndex
+                                           accountLinked:accountLinked
+                                         continueHandler:beginServerSelection]) {
+        return;
+    }
+    beginServerSelection();
+}
+
+- (BOOL)presentOwnershipRemediationIfNeededForGame:(const OPN::GameInfo &)game
+                                      variantIndex:(int)variantIndex
+                                     accountLinked:(bool)accountLinked
+                                   continueHandler:(void (^)(void))continueHandler {
+    const OPN::GameVariant *selectedVariant = OPNVariantAtIndex(game, variantIndex);
+    const OPN::GameVariant *storeVariant = selectedVariant && !selectedVariant->storeUrl.empty()
+        ? selectedVariant
+        : OPNFirstVariantWithStoreURL(game);
+    if (!storeVariant) return NO;
+
+    bool selectedOwned = selectedVariant ? OPNVariantIsOwnedForLaunch(*selectedVariant) : game.isInLibrary;
+    bool requiresRemediation = !selectedOwned || !accountLinked || game.playType == "INSTALL_TO_PLAY";
+    if (!requiresRemediation) return NO;
+
+    OPN::GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    NSString *gameTitle = game.title.empty() ? @"Selected Game" : [NSString stringWithUTF8String:game.title.c_str()];
+    NSString *storeName = OPNStoreDisplayName(storeVariant->appStore);
+    NSString *reason = !selectedOwned
+        ? [NSString stringWithFormat:@"%@ is not marked as owned in your GeForce NOW library for %@.", gameTitle, storeName]
+        : [NSString stringWithFormat:@"%@ may require account linking or installation through %@ before launch.", gameTitle, storeName];
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Store Account Required";
+    alert.informativeText = [NSString stringWithFormat:@"%@ Open the store to link, install, or purchase it. If you already completed that step, you can continue anyway.", reason];
+    [alert addButtonWithTitle:@"Open Store"];
+    [alert addButtonWithTitle:@"Continue Anyway"];
+    [alert addButtonWithTitle:@"Cancel"];
+    __weak __typeof__(self) weakSelf = self;
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (returnCode == NSAlertFirstButtonReturn) {
+            [strongSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
+            return;
+        }
+        if (returnCode == NSAlertSecondButtonReturn && continueHandler) continueHandler();
     }];
+    return YES;
 }
 
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
@@ -1597,6 +1691,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self.rootView addSubview:self.contentContainer];
     }
     [self installDesktopNavigationBarIfNeeded];
+    [self installDesktopAccountSwitcherIfNeeded];
 }
 
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen {
@@ -2085,7 +2180,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     AuthService::Shared().SetActiveSessionUserId(accountId);
     AuthSession selected = AuthService::Shared().LoadSavedSessionForUserId(accountId);
     if (!selected.isAuthenticated) return;
+    self.catalogBrowseGeneration++;
+    self.gameLibraryRefreshInFlight = NO;
+    self.featuredGamesRefreshInFlight = NO;
+    self.activeSessionsRefreshInFlight = NO;
+    [self stopGameLibraryRefreshTimer];
     self.currentSession = selected;
+    GameService::Shared().SetUserId(OPNAuthSessionIdentifier(selected));
     if (selected.IsAccessTokenValid()) {
         [self transitionToCatalogAfterProviderSelectionForSession:selected];
         return;
@@ -2399,6 +2500,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
     GameService::Shared().SetAccessToken(apiToken);
+    GameService::Shared().SetUserId(accountIdentifier);
     GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
     GameService::Shared().SetVpcId("GFN-PC");
     [self.catalogView setLoading:YES];
@@ -2476,16 +2578,22 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
+    std::string accountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     GameService::Shared().SetAccessToken(apiToken);
+    GameService::Shared().SetUserId(accountIdentifier);
     GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
     GameService::Shared().SetVpcId("GFN-PC");
 
     auto terminalFailureDelivered = std::make_shared<bool>(false);
     __weak __typeof__(self) weakSelf = self;
     GameService::Shared().BrowseCatalogGames("", "last_played", {}, 96,
-        [weakSelf, canRetry, completion, terminalFailureDelivered](bool success, const CatalogBrowseResult &result, const std::string &error) {
+        [weakSelf, canRetry, completion, terminalFailureDelivered, accountIdentifier](bool success, const CatalogBrowseResult &result, const std::string &error) {
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || *terminalFailureDelivered) return;
+            if (accountIdentifier != OPNAuthSessionIdentifier(strongSelf.currentSession)) {
+                completion(false, std::vector<GameInfo>());
+                return;
+            }
             if (!success && canRetry && error.find("401") != std::string::npos) {
                 AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
                     __typeof__(self) retrySelf = weakSelf;
@@ -2524,7 +2632,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     [self showAuthenticatingWithMessage:@"Signing out..."];
 
-    AuthService::Shared().ServerLogout(idToken, "en_US",
+    AuthService::Shared().ServerLogout(idToken, OPN::CurrentGFNLocale(),
         ^(bool, const std::string &) {
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf) return;
@@ -2574,7 +2682,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     for (NSView *subview in [self.contentContainer.subviews copy]) {
         [subview removeFromSuperview];
     }
-    NSString *msg = [NSString stringWithUTF8String:errorMessage.c_str()];
+    std::string mappedError = OPN::UserFacingGFNErrorMessage(errorMessage, self.currentStreamTitle.UTF8String ? self.currentStreamTitle.UTF8String : "");
+    NSString *msg = [NSString stringWithUTF8String:mappedError.c_str()];
     if (!msg || msg.length == 0) {
         msg = @"An unknown error occurred.";
     }

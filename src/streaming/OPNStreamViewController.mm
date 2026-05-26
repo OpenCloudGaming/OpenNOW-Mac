@@ -6,6 +6,8 @@
 #include "OPNStreamBackend.h"
 #include "OPNStreamPreferences.h"
 #include "../common/OPNLogCapture.h"
+#include "../common/OPNLocale.h"
+#include "../common/OPNGFNError.h"
 #include "OPNSessionManager.h"
 #include "../games/OPNGameService.h"
 #import <QuartzCore/QuartzCore.h>
@@ -311,6 +313,30 @@ static int OPNEffectiveMaxBitrateMbps(const OPN::StreamPreferenceProfile &profil
     return profile.maxBitrateMbps;
 }
 
+static BOOL OPNNetworkPreflightWarning(const OPN::StreamNetworkPreflightResult &preflight,
+                                       int requestedMaxBitrateMbps,
+                                       int effectiveMaxBitrateMbps,
+                                       NSString **messageOut) {
+    NSMutableArray<NSString *> *issues = [NSMutableArray array];
+    if (preflight.latencyMs >= 150) {
+        [issues addObject:[NSString stringWithFormat:@"Latency is very high (%d ms).", preflight.latencyMs]];
+    } else if (preflight.latencyMs >= 80) {
+        [issues addObject:[NSString stringWithFormat:@"Latency is elevated (%d ms).", preflight.latencyMs]];
+    }
+    if (effectiveMaxBitrateMbps > 0 && requestedMaxBitrateMbps > effectiveMaxBitrateMbps) {
+        [issues addObject:[NSString stringWithFormat:@"OpenNOW lowered the stream bitrate from %d Mbps to %d Mbps for this route.", requestedMaxBitrateMbps, effectiveMaxBitrateMbps]];
+    }
+    if (issues.count == 0) return NO;
+
+    NSString *networkType = preflight.networkType.empty() ? @"Unknown" : OPNStringFromStdString(preflight.networkType, @"Unknown");
+    NSString *route = preflight.usedAutomaticRegion ? @"Automatic region" : @"Selected region";
+    NSString *details = [issues componentsJoinedByString:@" "];
+    if (messageOut) {
+        *messageOut = [NSString stringWithFormat:@"%@ reported poor network conditions on %@ (%@). You can continue anyway, but the stream may stutter, drop quality, or disconnect.", route, networkType, details];
+    }
+    return YES;
+}
+
 static std::string OPNEffectiveStreamCodec(const OPN::StreamPreferenceProfile &profile,
                                             const OPN::StreamResolutionOption &resolution,
                                             OPN::StreamWebRTCBackend backend,
@@ -361,13 +387,49 @@ static std::string ExtractIceUfragFromOffer(const std::string &sdp) {
     return "";
 }
 
-static void InjectManualIceCandidate(OPN::IStreamSession *session, const OPN::SessionInfo &sessionInfo, const std::string &serverIceUfrag) {
+struct OPNIceMediaTarget {
+    std::string sdpMid;
+    int sdpMLineIndex = 0;
+};
+
+static OPNIceMediaTarget ExtractVideoIceTargetFromOffer(const std::string &sdp) {
+    OPNIceMediaTarget target;
+    std::stringstream ss(sdp);
+    std::string line;
+    bool inVideoSection = false;
+    int mediaIndex = -1;
+    while (std::getline(ss, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("m=", 0) == 0) {
+            mediaIndex++;
+            inVideoSection = line.rfind("m=video ", 0) == 0;
+            if (inVideoSection) {
+                target.sdpMLineIndex = mediaIndex;
+                target.sdpMid = std::to_string(mediaIndex);
+            }
+            continue;
+        }
+        if (inVideoSection && line.rfind("a=mid:", 0) == 0) {
+            target.sdpMid = line.substr(strlen("a=mid:"));
+            break;
+        }
+    }
+    return target;
+}
+
+static void InjectManualIceCandidate(OPN::IStreamSession *session,
+                                     const OPN::SessionInfo &sessionInfo,
+                                     const std::string &offerSdp,
+                                     const std::string &serverIceUfrag) {
     if (!session) return;
-    const char *enabled = getenv("OPN_INJECT_MANUAL_ICE");
-    if (!enabled || strcmp(enabled, "1") != 0) {
-        OPN::LogInfo(@"[StreamVC] Manual ICE candidate injection disabled; relying on offer and signaled remote candidates");
+    const char *manualIce = getenv("OPN_INJECT_MANUAL_ICE");
+    if (manualIce && strcmp(manualIce, "0") == 0) {
+        OPN::LogInfo(@"[StreamVC] Manual ICE candidate injection disabled by OPN_INJECT_MANUAL_ICE=0");
         return;
     }
+    const bool offerHasPlaceholders = offerSdp.find("0.0.0.0") != std::string::npos;
+    const bool forceManualIce = manualIce && strcmp(manualIce, "1") == 0;
+    if (!offerHasPlaceholders && !forceManualIce) return;
 
     std::string ip = ExtractPublicIp(sessionInfo.mediaConnectionInfo.ip);
     int port = sessionInfo.mediaConnectionInfo.port;
@@ -377,16 +439,21 @@ static void InjectManualIceCandidate(OPN::IStreamSession *session, const OPN::Se
         return;
     }
 
+    OPNIceMediaTarget target = ExtractVideoIceTargetFromOffer(offerSdp);
     std::string candidate = "candidate:1 1 udp 2130706431 " + ip + " " + std::to_string(port) + " typ host";
     OPN::IceCandidatePayload payload;
     payload.candidate = candidate;
-    payload.sdpMid = "0";
-    payload.sdpMLineIndex = 0;
+    payload.sdpMid = target.sdpMid;
+    payload.sdpMLineIndex = target.sdpMLineIndex;
     payload.usernameFragment = serverIceUfrag;
-    OPN::LogInfo(@"[StreamVC] Injecting manual ICE candidate: %s:%d (sdpMid=0 ufrag=%s)",
+    OPN::LogInfo(@"[StreamVC] Injecting fallback ICE candidate: %s:%d (sdpMid=%s mline=%d ufrag=%s placeholders=%d forced=%d)",
           ip.c_str(),
           port,
-          serverIceUfrag.empty() ? "(none)" : serverIceUfrag.c_str());
+          payload.sdpMid.empty() ? "(none)" : payload.sdpMid.c_str(),
+          payload.sdpMLineIndex,
+          serverIceUfrag.empty() ? "(none)" : serverIceUfrag.c_str(),
+          offerHasPlaceholders ? 1 : 0,
+          forceManualIce ? 1 : 0);
     session->AddRemoteIceCandidate(payload);
 }
 
@@ -1976,13 +2043,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             return;
         }
         std::string serverIceUfrag = ExtractIceUfragFromOffer(sdp);
+        std::string offerSdpCopy = sdp;
         s->_remoteIceReceived = NO;
         [s startRemoteIceGraceTimerForLaunchGeneration:launchGeneration];
 
         [s setLaunchStep:4 message:@"Negotiating stream..."];
         s->_session->SetNativeWindow((__bridge void *)[s.streamView nativeVideoView]);
 
-        s->_session->OnAnswerReady([weakSelf, activeSessionInfo, serverIceUfrag, launchGeneration](const OPN::SendAnswerRequest &answer) {
+        s->_session->OnAnswerReady([weakSelf, activeSessionInfo, offerSdpCopy, serverIceUfrag, launchGeneration](const OPN::SendAnswerRequest &answer) {
             __typeof__(self) s2 = weakSelf;
             if (!s2 || !s2->_signaling || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
             OPN::LogInfo(@"[StreamVC] Sending WebRTC answer (sdp=%zu, nvstSdp=%zu)",
@@ -1991,7 +2059,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) s3 = weakSelf;
                 if (!s3 || !s3->_session || s3->_streamEnded || s3->_launchGeneration != launchGeneration) return;
-                InjectManualIceCandidate(s3->_session, activeSessionInfo, serverIceUfrag);
+                InjectManualIceCandidate(s3->_session, activeSessionInfo, offerSdpCopy, serverIceUfrag);
             });
         });
 
@@ -2036,7 +2104,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     if (streamErrorCopy.empty()) {
                         [s2 endStreamWithSuccess:YES errorMessage:""];
                     } else {
-                        [s2 setStatus:[NSString stringWithFormat:@"Stream error: %s", streamErrorCopy.c_str()]];
+                        std::string displayError = OPN::UserFacingGFNErrorMessage(streamErrorCopy, s2->_gameTitle);
+                        [s2 setStatus:[NSString stringWithFormat:@"Stream error: %s", displayError.c_str()]];
                         if ([s2 beginAutomaticRecoveryForError:streamErrorCopy]) return;
                         [s2 endStreamWithSuccess:NO errorMessage:streamErrorCopy];
                     }
@@ -2072,7 +2141,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             std::string errCopy = err;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!s || s->_streamEnded || s->_launchGeneration != launchGeneration) return;
-                [s setStatus:[NSString stringWithFormat:@"Signaling error: %s", errCopy.c_str()]];
+                std::string displayError = OPN::UserFacingGFNErrorMessage(errCopy, s->_gameTitle);
+                [s setStatus:[NSString stringWithFormat:@"Signaling error: %s", displayError.c_str()]];
                 if ([s beginAutomaticRecoveryForError:errCopy]) return;
                 [s endStreamWithSuccess:NO errorMessage:errCopy];
             });
@@ -2229,7 +2299,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         });
                         return;
                     }
-                    NSString *errMsg = [NSString stringWithFormat:@"Resume failed: %s", error.c_str()];
+                    std::string displayError = OPN::UserFacingGFNErrorMessage(error, strongSelf->_gameTitle);
+                    NSString *errMsg = [NSString stringWithFormat:@"Resume failed: %s", displayError.c_str()];
                     [strongSelf setStatus:errMsg];
                     if ([strongSelf beginAutomaticRecoveryForError:error]) return;
                     [strongSelf endStreamWithSuccess:NO errorMessage:error];
@@ -2271,7 +2342,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
             OPN::LogInfo(@"[StreamVC] LaunchGame result: success=%d", success);
             if (!success) {
-                NSString *errMsg = [NSString stringWithFormat:@"Session failed: %s", error.c_str()];
+                std::string displayError = OPN::UserFacingGFNErrorMessage(error, strongSelf->_gameTitle);
+                NSString *errMsg = [NSString stringWithFormat:@"Session failed: %s", displayError.c_str()];
                 OPN::LogInfo(@"[StreamVC] %@", errMsg);
                 [strongSelf setStatus:errMsg];
                 if ([strongSelf beginAutomaticRecoveryForError:error]) return;
@@ -2348,6 +2420,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.microphonePushToTalkModifierMask = streamProfile.microphonePushToTalkModifierMask;
     settings.gameVolume = streamProfile.gameVolume;
     settings.microphoneVolume = streamProfile.microphoneVolume;
+    settings.gameLanguage = OPN::CurrentGFNLocale();
     settings.accountLinked = _accountLinked;
     settings.selectedStore = _selectedStore;
     settings.remoteControllersBitmap = OPNConnectedControllerBitmap();
@@ -2421,11 +2494,34 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                       finalSettings.maxBitrateMbps,
                       finalSettings.networkTestSessionId.c_str(),
                       preflightCopy.usedAutomaticRegion);
-                [strongSelf beginSessionAllocationWithSettings:finalSettings
-                                                 streamProfile:preflightProfile
-                                              streamingBaseUrl:baseUrl
-                                              launchGeneration:launchGeneration
-                                              recoveringLaunch:recoveringLaunch];
+                void (^continueAfterNetworkWarning)(void) = ^{
+                    __typeof__(self) launchSelf = weakSelf;
+                    if (!launchSelf || launchSelf->_streamEnded || launchSelf->_launchGeneration != launchGeneration) return;
+                    [launchSelf beginSessionAllocationWithSettings:finalSettings
+                                                     streamProfile:preflightProfile
+                                                  streamingBaseUrl:baseUrl
+                                                  launchGeneration:launchGeneration
+                                                  recoveringLaunch:recoveringLaunch];
+                };
+                NSString *networkWarning = nil;
+                if (!recoveringLaunch && OPNNetworkPreflightWarning(preflightCopy, preflightSettings.maxBitrateMbps, finalSettings.maxBitrateMbps, &networkWarning)) {
+                    NSAlert *alert = [[NSAlert alloc] init];
+                    alert.messageText = @"Network Test Warning";
+                    alert.informativeText = networkWarning ?: @"OpenNOW detected poor network conditions. You can continue anyway, but stream quality may be reduced.";
+                    [alert addButtonWithTitle:@"Continue Anyway"];
+                    [alert addButtonWithTitle:@"Cancel"];
+                    [alert beginSheetModalForWindow:strongSelf.view.window completionHandler:^(NSModalResponse returnCode) {
+                        if (returnCode == NSAlertFirstButtonReturn) {
+                            continueAfterNetworkWarning();
+                            return;
+                        }
+                        __typeof__(self) cancelSelf = weakSelf;
+                        if (!cancelSelf || cancelSelf->_streamEnded || cancelSelf->_launchGeneration != launchGeneration) return;
+                        [cancelSelf endStreamWithSuccess:NO errorMessage:"Launch cancelled after network test warning."];
+                    }];
+                    return;
+                }
+                continueAfterNetworkWarning();
             });
         });
 }
@@ -2444,9 +2540,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded) return;
     _streamEnded = YES;
+    std::string displayError = success ? std::string() : OPN::UserFacingGFNErrorMessage(errorMessage, _gameTitle);
     NSString *reason = success
         ? @"ended"
-        : (errorMessage.empty() ? @"failed" : OPNStringFromStdString(errorMessage, @"failed"));
+        : (displayError.empty() ? @"failed" : OPNStringFromStdString(displayError, @"failed"));
     [self finishLaunchMeasurementWithSuccess:success reason:reason];
     if (!success) {
         NSString *message = reason.length > 0 ? reason : @"Stream failed";
@@ -2467,7 +2564,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self cleanup];
 
     if (self.onStreamEnd) {
-        self.onStreamEnd(success, errorMessage);
+        self.onStreamEnd(success, displayError);
     }
 }
 

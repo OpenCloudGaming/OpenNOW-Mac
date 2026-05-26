@@ -176,7 +176,8 @@ GameDataCache::GameDataCache() {
     [[NSFileManager defaultManager] createDirectoryAtPath:m_imagePath withIntermediateDirectories:YES attributes:nil error:nil];
 }
 
-std::string GameDataCache::CatalogKey(const std::string &searchQuery,
+std::string GameDataCache::CatalogKey(const std::string &accountIdentifier,
+                                      const std::string &searchQuery,
                                       const std::string &sortId,
                                       const std::vector<std::string> &filterIds,
                                       int fetchCount) const {
@@ -185,11 +186,12 @@ std::string GameDataCache::CatalogKey(const std::string &searchQuery,
     NSMutableArray<NSString *> *filters = [NSMutableArray arrayWithCapacity:sortedFilters.size()];
     for (const std::string &filter : sortedFilters) [filters addObject:OPNStringFromStd(filter)];
     NSDictionary *key = @{
+        @"a": OPNStringFromStd(accountIdentifier),
         @"q": OPNStringFromStd(searchQuery),
         @"s": OPNStringFromStd(sortId),
         @"f": filters,
         @"c": @(fetchCount),
-        @"v": @2,
+        @"v": @3,
     };
     NSData *data = [NSJSONSerialization dataWithJSONObject:key options:0 error:nil];
     NSString *string = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";

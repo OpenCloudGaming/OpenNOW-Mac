@@ -76,6 +76,28 @@ static OSStatus OPNAudioDevicesChanged(AudioObjectID,
     return value ? std::string(value.UTF8String ?: "") : std::string();
 }
 
+static uint32_t OPNReadU32LE(const uint8_t *data) {
+    return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
+static std::string OPNValidUtf8StringFromBytes(const uint8_t *data, size_t len) {
+    if (!data || len == 0) return "";
+    NSString *string = [[NSString alloc] initWithBytes:data length:len encoding:NSUTF8StringEncoding];
+    return string.length > 0 ? std::string(string.UTF8String ?: "") : std::string();
+}
+
+static std::string OPNClipboardTextFromJsonData(NSData *data) {
+    if (!data) return "";
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSDictionary *dict = [json isKindOfClass:NSDictionary.class] ? (NSDictionary *)json : nil;
+    if (!dict) return "";
+    for (NSString *key in @[@"clipboard", @"text", @"content", @"payload"]) {
+        NSString *value = [dict[key] isKindOfClass:NSString.class] ? dict[key] : nil;
+        if (value.length > 0) return std::string(value.UTF8String ?: "");
+    }
+    return "";
+}
+
 static void OPNLockRTCAudioSession(id audioSession) {
     SEL selector = NSSelectorFromString(@"lockForConfiguration");
     if ([audioSession respondsToSelector:selector]) {
@@ -1897,11 +1919,21 @@ void LibWebRTCStreamSession::AddRemoteIceCandidate(const IceCandidatePayload &ca
 #if defined(OPN_HAVE_LIBWEBRTC)
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.peerConnection || candidate.candidate.empty()) return;
+    OPN::LogInfo(@"[LibWebRTC] Adding remote ICE candidate mid=%s mline=%d length=%zu",
+          candidate.sdpMid.empty() ? "(none)" : candidate.sdpMid.c_str(),
+          candidate.sdpMLineIndex,
+          candidate.candidate.size());
     RTCIceCandidate *rtcCandidate = [[RTCIceCandidate alloc] initWithSdp:OPNStringToNSString(candidate.candidate)
-                                                           sdpMLineIndex:candidate.sdpMLineIndex
-                                                                  sdpMid:candidate.sdpMid.empty() ? nil : OPNStringToNSString(candidate.sdpMid)];
+                                                            sdpMLineIndex:candidate.sdpMLineIndex
+                                                                   sdpMid:candidate.sdpMid.empty() ? nil : OPNStringToNSString(candidate.sdpMid)];
     [impl.peerConnection addIceCandidate:rtcCandidate completionHandler:^(NSError *error) {
-        if (error) OPN::LogError(@"[LibWebRTC] addIceCandidate failed: %@", error.localizedDescription);
+        if (error) {
+            OPN::LogError(@"[LibWebRTC] addIceCandidate failed: %@", error.localizedDescription);
+        } else {
+            OPN::LogInfo(@"[LibWebRTC] addIceCandidate succeeded mid=%s mline=%d",
+                  candidate.sdpMid.empty() ? "(none)" : candidate.sdpMid.c_str(),
+                  candidate.sdpMLineIndex);
+        }
     }];
 #else
     (void)candidate;
@@ -2001,6 +2033,11 @@ void LibWebRTCStreamSession::SendMouseWheel(int16_t delta) {
     payload.timestampUs = Input::TimestampUs();
     const std::vector<uint8_t> encoded = m_inputEncoder.EncodeMouseWheel(payload);
     SendInput(encoded.data(), encoded.size());
+}
+
+void LibWebRTCStreamSession::SendUtf8Text(const std::string &text) {
+    const std::vector<uint8_t> encoded = m_inputEncoder.EncodeUtf8Text(text);
+    if (!encoded.empty()) SendInput(encoded.data(), encoded.size());
 }
 
 void LibWebRTCStreamSession::SendGamepadState(const Input::GamepadState &state, uint16_t bitmap) {
@@ -2145,7 +2182,21 @@ void LibWebRTCStreamSession::OnGameAudioFrame(GameAudioFrameCallback cb) {
     m_onGameAudioFrame = std::move(cb);
 }
 
+void LibWebRTCStreamSession::OnClipboardText(ClipboardTextCallback cb) {
+    m_onClipboardText = std::move(cb);
+}
+
 void LibWebRTCStreamSession::HandleVideoFrame(void *frame) {
+#if defined(OPN_HAVE_LIBWEBRTC)
+    RTCVideoFrame *videoFrame = (__bridge RTCVideoFrame *)frame;
+    if (videoFrame && videoFrame.width > 0 && videoFrame.height > 0) {
+        std::string frameResolution = std::to_string(videoFrame.width) + "x" + std::to_string(videoFrame.height);
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_latestStats.resolution = frameResolution;
+    }
+#else
+    (void)frame;
+#endif
     if (m_onVideoFrame) m_onVideoFrame(frame);
 }
 
@@ -2698,7 +2749,38 @@ void LibWebRTCStreamSession::HandleDataChannelState(const std::string &label, bo
 }
 
 void LibWebRTCStreamSession::HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len) {
-    if (label != "input_channel_v1" || !data || len < 2 || m_inputReady) return;
+    if (label != "input_channel_v1" || !data || len < 2) return;
+
+    if (m_inputReady) {
+        std::string clipboardText;
+        const uint8_t *payload = data;
+        size_t payloadLength = len;
+        if (len > 10 && data[0] == 0x23 && data[9] == 0x22) {
+            payload = data + 10;
+            payloadLength = len - 10;
+        } else if (len > 12 && data[0] == 0x23 && data[9] == 0x21) {
+            uint16_t wrappedLength = ((uint16_t)data[10] << 8) | (uint16_t)data[11];
+            if (wrappedLength > 0 && wrappedLength <= len - 12) {
+                payload = data + 12;
+                payloadLength = wrappedLength;
+            }
+        }
+        if (payloadLength >= 8 && OPNReadU32LE(payload) == Input::INPUT_UTF8_TEXT) {
+            uint32_t textLength = OPNReadU32LE(payload + 4);
+            if (textLength > 0 && textLength <= payloadLength - 8) {
+                clipboardText = OPNValidUtf8StringFromBytes(payload + 8, textLength);
+            }
+        }
+        if (clipboardText.empty() && payloadLength > 0 && (payload[0] == '{' || payload[0] == '[')) {
+            NSData *jsonData = [NSData dataWithBytes:payload length:payloadLength];
+            clipboardText = OPNClipboardTextFromJsonData(jsonData);
+        }
+        if (!clipboardText.empty() && m_onClipboardText) {
+            m_onClipboardText(clipboardText);
+            OPN::LogInfo(@"[LibWebRTC] remote clipboard text received bytes=%zu", len);
+        }
+        return;
+    }
 
     const uint16_t firstWord = (uint16_t)data[0] | ((uint16_t)data[1] << 8);
     uint16_t version = 2;

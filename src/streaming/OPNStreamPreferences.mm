@@ -1,4 +1,5 @@
 #include "OPNStreamPreferences.h"
+#include "common/OPNDeviceIdentity.h"
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
@@ -344,6 +345,8 @@ StreamDeviceCapabilities LoadStreamDeviceCapabilities() {
 
     NSScreen *screen = NSScreen.mainScreen;
     if (screen) {
+        CGFloat scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1.0;
+        capabilities.displayDpi = std::max(100, (int)std::llround(100.0 * scale));
         NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
         if ([screenNumber isKindOfClass:NSNumber.class]) {
             CGDirectDisplayID displayId = (CGDirectDisplayID)screenNumber.unsignedIntValue;
@@ -363,7 +366,6 @@ StreamDeviceCapabilities LoadStreamDeviceCapabilities() {
             }
         }
         if (capabilities.maxDisplayWidth == 0 || capabilities.maxDisplayHeight == 0) {
-            CGFloat scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1.0;
             capabilities.maxDisplayWidth = (int)std::llround(NSWidth(screen.frame) * scale);
             capabilities.maxDisplayHeight = (int)std::llround(NSHeight(screen.frame) * scale);
         }
@@ -674,6 +676,7 @@ static NSMutableURLRequest *ServerInfoRequest(const std::string &baseUrl, const 
     [request setValue:@"WEBRTC" forHTTPHeaderField:@"nv-client-streamer"];
     [request setValue:@"WINDOWS" forHTTPHeaderField:@"nv-device-os"];
     [request setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
+    [request setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
     if (!token.empty()) {
         NSString *tokenString = [NSString stringWithUTF8String:token.c_str()];
         if (tokenString.length > 0) {
@@ -681,6 +684,93 @@ static NSMutableURLRequest *ServerInfoRequest(const std::string &baseUrl, const 
         }
     }
     return request;
+}
+
+static void ApplyCloudmatchHeaders(NSMutableURLRequest *request, const std::string &token) {
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
+    [request setValue:@"BROWSER" forHTTPHeaderField:@"nv-client-type"];
+    [request setValue:kNvClientVersion forHTTPHeaderField:@"nv-client-version"];
+    [request setValue:@"WEBRTC" forHTTPHeaderField:@"nv-client-streamer"];
+    [request setValue:@"WINDOWS" forHTTPHeaderField:@"nv-device-os"];
+    [request setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
+    if (!token.empty()) {
+        NSString *tokenString = [NSString stringWithUTF8String:token.c_str()];
+        if (tokenString.length > 0) {
+            [request setValue:[@"GFNJWT " stringByAppendingString:tokenString] forHTTPHeaderField:@"Authorization"];
+        }
+    }
+}
+
+static NSString *StringFromJSONValue(id value) {
+    if ([value isKindOfClass:NSString.class]) return (NSString *)value;
+    if ([value isKindOfClass:NSNumber.class]) return [(NSNumber *)value stringValue];
+    return nil;
+}
+
+static NSString *NetworkTestSessionIdFromJSON(id json) {
+    if (![json isKindOfClass:NSDictionary.class]) return nil;
+    NSDictionary *dict = (NSDictionary *)json;
+    NSArray<NSString *> *keys = @[@"networkTestSessionId", @"networkSessionId", @"sessionId", @"id"];
+    for (NSString *key in keys) {
+        NSString *value = StringFromJSONValue(dict[key]);
+        if (value.length > 0) return value;
+    }
+    for (NSString *key in @[@"session", @"networkTestSession", @"data", @"requestStatus"]) {
+        NSString *value = NetworkTestSessionIdFromJSON(dict[key]);
+        if (value.length > 0) return value;
+    }
+    return nil;
+}
+
+static NSDictionary *NetworkTestRequestBody(const StreamNetworkPreflightResult &preflight,
+                                           int requestedMaxBitrateMbps) {
+    NSString *networkType = [NSString stringWithUTF8String:preflight.networkType.c_str()] ?: @"Unknown";
+    NSString *deviceId = [NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] ?: @"";
+    NSMutableDictionary *requestData = [@{
+        @"clientIdentification": @"GFN-PC",
+        @"clientVersion": @"30.0",
+        @"deviceHashId": deviceId,
+        @"sdkVersion": @"1.0",
+        @"streamerVersion": @1,
+        @"clientPlatformName": @"windows",
+        @"networkType": networkType,
+        @"requestedMaxBitrateKbps": @(std::max(1, requestedMaxBitrateMbps) * 1000),
+    } mutableCopy];
+    if (preflight.latencyMs >= 0) requestData[@"clientMeasuredLatencyMs"] = @(preflight.latencyMs);
+    return @{@"networkTestRequestData": requestData};
+}
+
+static void CreateNetworkTestSession(StreamNetworkPreflightResult preflight,
+                                     const std::string &token,
+                                     int requestedMaxBitrateMbps,
+                                     std::function<void(const StreamNetworkPreflightResult &result)> completion) {
+    NSString *base = [NSString stringWithUTF8String:NormalizedBaseUrl(preflight.streamingBaseUrl).c_str()] ?: @"";
+    NSURL *url = [NSURL URLWithString:[base stringByAppendingString:@"v2/nettestsession"]];
+    if (!url) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(preflight); });
+        return;
+    }
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    request.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+    request.timeoutInterval = 5.0;
+    ApplyCloudmatchHeaders(request, token);
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:NetworkTestRequestBody(preflight, requestedMaxBitrateMbps) options:0 error:nil];
+    request.HTTPBody = bodyData ?: [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
+
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        StreamNetworkPreflightResult result = preflight;
+        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+        if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            NSString *sessionId = NetworkTestSessionIdFromJSON(json);
+            if (sessionId.length > 0) result.networkTestSessionId = [sessionId UTF8String];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
+    }] resume];
 }
 
 static constexpr int kRegionLatencyProbeCount = 2;
@@ -789,8 +879,9 @@ void RunStreamNetworkPreflight(const std::string &token,
     initial.networkType = CurrentNetworkType();
     initial.recommendedMaxBitrateMbps = std::max(1, requestedMaxBitrateMbps);
 
+    std::string tokenCopy = token;
     std::string selectedRegionUrl = LoadSelectedStreamRegionUrl();
-    FetchStreamRegions(token, providerStreamingBaseUrl, [initial, selectedRegionUrl, requestedMaxBitrateMbps, completion](const std::vector<StreamRegionOption> &regions) mutable {
+    FetchStreamRegions(tokenCopy, providerStreamingBaseUrl, [initial, tokenCopy, selectedRegionUrl, requestedMaxBitrateMbps, completion](const std::vector<StreamRegionOption> &regions) mutable {
         StreamNetworkPreflightResult result = initial;
         const StreamRegionOption *chosen = nullptr;
         if (!selectedRegionUrl.empty()) {
@@ -814,7 +905,7 @@ void RunStreamNetworkPreflight(const std::string &token,
             result.latencyMs = chosen->latencyMs;
         }
         result.recommendedMaxBitrateMbps = RecommendedPreflightBitrate(requestedMaxBitrateMbps, result.latencyMs);
-        completion(result);
+        CreateNetworkTestSession(result, tokenCopy, requestedMaxBitrateMbps, completion);
     });
 }
 

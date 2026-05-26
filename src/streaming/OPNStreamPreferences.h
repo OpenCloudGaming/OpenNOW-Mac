@@ -77,6 +77,7 @@ struct StreamDeviceCapabilities {
     int maxDisplayWidth = 0;
     int maxDisplayHeight = 0;
     int maxDisplayRefreshRate = 0;
+    int displayDpi = 100;
 };
 
 struct StreamPreferenceProfile {

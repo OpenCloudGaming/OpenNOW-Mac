@@ -1435,7 +1435,8 @@ TEST_CASE("StartOAuthLoginReportsTokenExchangeHttpError") {
 TEST_CASE("game-cache/catalog freshness metadata") {
     OPN::GameDataCache &cache = OPN::GameDataCache::Shared();
     std::string unique = [[[NSUUID UUID] UUIDString] UTF8String];
-    std::string key = cache.CatalogKey("unit-" + unique, "last_played", {"owned"}, 24);
+    std::string key = cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24);
+    CHECK(cache.CatalogKey("other-account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24) != key);
 
     OPN::CatalogBrowseResult saved;
     saved.numberReturned = 1;

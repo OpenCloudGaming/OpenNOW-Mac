@@ -11,7 +11,8 @@ class GameDataCache {
 public:
     static GameDataCache &Shared();
 
-    std::string CatalogKey(const std::string &searchQuery,
+    std::string CatalogKey(const std::string &accountIdentifier,
+                           const std::string &searchQuery,
                            const std::string &sortId,
                            const std::vector<std::string> &filterIds,
                            int fetchCount) const;

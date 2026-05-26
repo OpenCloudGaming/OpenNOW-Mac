@@ -38,6 +38,7 @@ struct OPNPadSnapshot {
 };
 
 static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
+static NSString *OPNClipboardString(void);
 
 @interface OPNVideoSurfaceView : NSView
 @end
@@ -364,6 +365,17 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
                                                           frameCount:(UInt32)frameCount
                                                           sampleRate:sampleRate
                                                             channels:(UInt32)channels];
+        });
+        session->OnClipboardText([](const std::string &text) {
+            std::string textCopy = text;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *clipboardText = [[NSString alloc] initWithBytes:textCopy.data() length:textCopy.size() encoding:NSUTF8StringEncoding];
+                if (clipboardText.length == 0) return;
+                NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
+                [pasteboard clearContents];
+                [pasteboard setString:clipboardText forType:NSPasteboardTypeString];
+                OPN::LogInfo(@"[StreamView] Remote clipboard copied to macOS pasteboard (%lu chars)", (unsigned long)clipboardText.length);
+            });
         });
         [self startGamepadPolling];
         [self applyMicrophoneShortcutState];
@@ -737,6 +749,19 @@ static uint16_t OPNPushToTalkModifierFlags(NSEvent *event) {
     return out;
 }
 
+static NSString *OPNClipboardString(void) {
+    NSString *value = [NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString];
+    return [value isKindOfClass:NSString.class] ? value : @"";
+}
+
+static BOOL OPNEventIsCommandClipboardShortcut(NSEvent *event, NSString *characters) {
+    NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    if ((flags & NSEventModifierFlagCommand) == 0) return NO;
+    if ((flags & (NSEventModifierFlagControl | NSEventModifierFlagOption)) != 0) return NO;
+    NSString *lower = characters.lowercaseString ?: @"";
+    return [lower isEqualToString:@"a"] || [lower isEqualToString:@"c"] || [lower isEqualToString:@"v"] || [lower isEqualToString:@"x"];
+}
+
 static uint16_t OPNPushToTalkModifierBitForKeyCode(uint16_t keyCode) {
     switch (keyCode) {
         case 55: return 0x08;
@@ -842,6 +867,29 @@ static uint8_t OPNMouseButtonMask(uint8_t button) {
     }
 
     if (!_streamSession->InputReady()) return;
+
+    NSString *characters = event.charactersIgnoringModifiers ?: @"";
+    if (down && !event.isARepeat && OPNEventIsCommandClipboardShortcut(event, characters)) {
+        NSString *shortcut = characters.lowercaseString;
+        if ([shortcut isEqualToString:@"v"]) {
+            NSString *clipboard = OPNClipboardString();
+            if (clipboard.length > 0) {
+                _streamSession->SendUtf8Text(std::string(clipboard.UTF8String ?: ""));
+                OPN::LogInfo(@"[StreamView] macOS clipboard sent to stream (%lu chars)", (unsigned long)clipboard.length);
+                return;
+            }
+        }
+
+        uint16_t keycode = (uint16_t)([shortcut characterAtIndex:0] - 'a' + 0x41);
+        uint16_t scancode = 0;
+        auto shortcutMapping = OPN::Input::MapMacKeyCode((uint16_t)event.keyCode);
+        if (shortcutMapping) scancode = shortcutMapping->scancode;
+        _streamSession->SendKeyEvent(0xa2, 0x001d, 0x02, true);
+        _streamSession->SendKeyEvent(keycode, scancode, 0x02, true);
+        _streamSession->SendKeyEvent(keycode, scancode, 0x02, false);
+        _streamSession->SendKeyEvent(0xa2, 0x001d, 0, false);
+        return;
+    }
 
     auto mapping = OPN::Input::MapMacKeyCode((uint16_t)event.keyCode);
     if (!mapping) {

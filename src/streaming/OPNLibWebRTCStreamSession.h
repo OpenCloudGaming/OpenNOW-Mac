@@ -34,6 +34,7 @@ public:
     void SendMouseButton(uint8_t button, bool down) override;
     void SendMouseWheel(int16_t delta) override;
     void SendGamepadState(const Input::GamepadState &state, uint16_t bitmap) override;
+    void SendUtf8Text(const std::string &text) override;
     void SetMicrophoneEnabled(bool enabled) override;
     void SetGameVolume(double volume) override;
     void SetMicrophoneVolume(double volume) override;
@@ -41,6 +42,7 @@ public:
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
     void OnGameAudioFrame(GameAudioFrameCallback cb) override;
+    void OnClipboardText(ClipboardTextCallback cb) override;
     void RefreshAudioDevices() override;
     void RequestStats() override;
     StreamStats GetLatestStats() const override;
@@ -119,6 +121,7 @@ private:
     MicrophoneLevelCallback m_onMicrophoneLevel;
     VideoFrameCallback m_onVideoFrame;
     GameAudioFrameCallback m_onGameAudioFrame;
+    ClipboardTextCallback m_onClipboardText;
 };
 
 }

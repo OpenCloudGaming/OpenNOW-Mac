@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace OPN::Input {
@@ -16,6 +17,7 @@ constexpr uint32_t INPUT_MOUSE_BUTTON_UP = 9;
 constexpr uint32_t INPUT_MOUSE_WHEEL = 10;
 constexpr uint32_t INPUT_GAMEPAD = 12;
 constexpr uint32_t INPUT_HAPTICS_ENABLED = 13;
+constexpr uint32_t INPUT_UTF8_TEXT = 23;
 
 constexpr uint8_t MOUSE_LEFT = 1;
 constexpr uint8_t MOUSE_MIDDLE = 2;
@@ -102,6 +104,7 @@ public:
     std::vector<uint8_t> EncodeMouseButtonUp(const MouseButtonPayload &payload) const;
     std::vector<uint8_t> EncodeMouseWheel(const MouseWheelPayload &payload) const;
     std::vector<uint8_t> EncodeHapticsEnabled(bool enabled) const;
+    std::vector<uint8_t> EncodeUtf8Text(const std::string &text) const;
     std::vector<uint8_t> EncodeGamepadState(const GamepadState &payload, uint16_t bitmap, bool partiallyReliable);
 
 private:

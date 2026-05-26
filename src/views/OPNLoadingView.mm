@@ -31,6 +31,7 @@
 @property (nonatomic, assign) BOOL adVisible;
 @property (nonatomic, assign) BOOL adStartReported;
 @property (nonatomic, assign) BOOL adFinishReported;
+@property (nonatomic, assign) BOOL adCancelReported;
 - (BOOL)shouldShowQueueBadge;
 - (BOOL)messageRepresentsQueue;
 - (void)applyAccentColors;
@@ -281,12 +282,21 @@
         if (self.adFinishReported) return;
         self.adFinishReported = YES;
     }
+    if ([action isEqualToString:@"cancel"]) {
+        if (self.adCancelReported) return;
+        self.adCancelReported = YES;
+    }
     self.adPlaybackEventHandler(self.activeAdId, action, [self currentAdWatchedTimeInMs], 0, cancelReason ?: @"");
 }
 
 - (void)handleAdFinished:(NSNotification *)notification {
     if (notification.object != self.adPlayer.currentItem) return;
     [self reportAdAction:@"finish" cancelReason:@""];
+}
+
+- (void)handleAdPlaybackFailed:(NSNotification *)notification {
+    if (notification.object != self.adPlayer.currentItem) return;
+    [self reportAdAction:@"cancel" cancelReason:@"playback-failed"];
 }
 
 - (void)handleFallbackAdTimer:(NSTimer *)timer {
@@ -330,12 +340,14 @@
     [self.adFallbackTimer invalidate];
     self.adFallbackTimer = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemFailedToPlayToEndTimeNotification object:nil];
     [self removeAdTimeObserver];
     self.activeAdId = adId;
     self.activeAdDurationMs = durationMs;
     self.adStartedAt = [NSDate date];
     self.adStartReported = NO;
     self.adFinishReported = NO;
+    self.adCancelReported = NO;
 
     if (mediaUrl.length > 0) {
         NSURL *url = [NSURL URLWithString:mediaUrl];
@@ -346,6 +358,7 @@
             self.adPlayerView.player = self.adPlayer;
             self.adPlayerView.hidden = NO;
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAdFinished:) name:AVPlayerItemDidPlayToEndTimeNotification object:item];
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAdPlaybackFailed:) name:AVPlayerItemFailedToPlayToEndTimeNotification object:item];
             __weak __typeof__(self) weakSelf = self;
             self.adTimeObserver = [self.adPlayer addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(0.25, NSEC_PER_SEC)
                                                                               queue:dispatch_get_main_queue()
@@ -377,6 +390,7 @@
     [self.adFallbackTimer invalidate];
     self.adFallbackTimer = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemFailedToPlayToEndTimeNotification object:nil];
     [self removeAdTimeObserver];
     [self.adPlayer pause];
     self.adPlayer = nil;
@@ -599,6 +613,7 @@
 
 - (void)dealloc {
     [self.adFallbackTimer invalidate];
+    [self removeAdTimeObserver];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
