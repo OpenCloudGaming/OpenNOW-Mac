@@ -437,6 +437,11 @@ void SignalingClient::HandleMessage(const std::string &text) {
         NSString *usernameFragment = payload[@"usernameFragment"];
         if (![usernameFragment isKindOfClass:[NSString class]]) usernameFragment = payload[@"ufrag"];
         if ([usernameFragment isKindOfClass:[NSString class]]) ice.usernameFragment = [usernameFragment UTF8String];
+        OPN::LogInfo(@"[Signaling] Remote ICE candidate received mid=%s mline=%d ufrag=%s length=%zu",
+              ice.sdpMid.empty() ? "(none)" : ice.sdpMid.c_str(),
+              ice.sdpMLineIndex,
+              ice.usernameFragment.empty() ? "(none)" : ice.usernameFragment.c_str(),
+              ice.candidate.size());
         if (m_onIceCandidate) {
             m_onIceCandidate(ice);
         }

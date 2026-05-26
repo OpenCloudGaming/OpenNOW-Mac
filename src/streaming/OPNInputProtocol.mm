@@ -262,6 +262,15 @@ std::vector<uint8_t> Encoder::EncodeHapticsEnabled(bool enabled) const {
     return WrapSingleEvent(bytes);
 }
 
+std::vector<uint8_t> Encoder::EncodeUtf8Text(const std::string &text) const {
+    if (text.empty()) return {};
+    std::vector<uint8_t> bytes(8 + text.size(), 0);
+    WriteU32LE(bytes, 0, INPUT_UTF8_TEXT);
+    WriteU32LE(bytes, 4, (uint32_t)text.size());
+    std::copy(text.begin(), text.end(), bytes.begin() + 8);
+    return WrapSingleEvent(bytes);
+}
+
 std::vector<uint8_t> Encoder::EncodeGamepadState(const GamepadState &payload, uint16_t bitmap, bool partiallyReliable) {
     std::vector<uint8_t> bytes(38, 0);
     WriteU32LE(bytes, 0, INPUT_GAMEPAD);

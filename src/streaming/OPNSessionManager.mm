@@ -1,7 +1,10 @@
 
 #include "OPNSessionManager.h"
 #include "common/OPNSentry.h"
+#include "common/OPNLocale.h"
+#include "common/OPNDeviceIdentity.h"
 #include "OPNStreamTypes.h"
+#include "OPNStreamPreferences.h"
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonCrypto.h>
 #include <algorithm>
@@ -152,7 +155,55 @@ static void StreamColorProfileFields(const OPN::StreamSettings &settings, int &b
     }
 }
 
-static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &settings) {
+static bool RequestedHdrEnabled(const OPN::StreamSettings &settings, const OPN::StreamDeviceCapabilities &capabilities) {
+    return settings.enableHdr && capabilities.hdrDisplaySupported;
+}
+
+static NSDictionary *ClientDisplayHdrCapabilities(const OPN::StreamDeviceCapabilities &capabilities) {
+    NSMutableDictionary *payload = [@{
+        @"hdrSupported": @(capabilities.hdrDisplaySupported),
+        @"bitDepth": @(capabilities.hdrDisplaySupported ? 10 : 8),
+        @"maxDisplayWidth": @(std::max(0, capabilities.maxDisplayWidth)),
+        @"maxDisplayHeight": @(std::max(0, capabilities.maxDisplayHeight)),
+        @"maxDisplayRefreshRate": @(std::max(0, capabilities.maxDisplayRefreshRate)),
+    } mutableCopy];
+    if (capabilities.hdrDisplaySupported) payload[@"supportedHdrModes"] = @[@"HDR"];
+    else payload[@"supportedHdrModes"] = @[];
+    return payload;
+}
+
+static id MonitorDisplayData(const OPN::StreamDeviceCapabilities &capabilities, bool hdrEnabled) {
+    if (!hdrEnabled || !capabilities.hdrDisplaySupported) return [NSNull null];
+    return @{
+        @"desiredContentMaxLuminance": @1000,
+        @"desiredContentMinLuminance": @0,
+        @"desiredContentMaxFrameAverageLuminance": @400,
+    };
+}
+
+static NSDictionary *MonitorSettings(const OPN::StreamSettings &settings,
+                                    const OPN::StreamDeviceCapabilities &capabilities,
+                                    bool hdrEnabled) {
+    int width = 1920;
+    int height = 1080;
+    sscanf(settings.resolution.c_str(), "%dx%d", &width, &height);
+    width = std::max(640, width);
+    height = std::max(360, height);
+    return @{
+        @"monitorId": @0,
+        @"positionX": @0,
+        @"positionY": @0,
+        @"widthInPixels": @(width),
+        @"heightInPixels": @(height),
+        @"framesPerSecond": @(settings.fps),
+        @"sdrHdrMode": hdrEnabled ? @1 : @0,
+        @"displayData": MonitorDisplayData(capabilities, hdrEnabled),
+        @"hdr10PlusGamingData": [NSNull null],
+        @"dpi": @(std::max(0, capabilities.displayDpi)),
+    };
+}
+
+static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &settings, bool hdrEnabled) {
     int bitDepth = 0;
     int chromaFormat = 0;
     StreamColorProfileFields(settings, bitDepth, chromaFormat);
@@ -165,7 +216,7 @@ static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &setti
         @"cloudGsync": @(settings.enableCloudGsync),
         @"enabledL4S": @(settings.enableL4S),
         @"mouseMovementFlags": @0,
-        @"trueHdr": @NO,
+        @"trueHdr": @(hdrEnabled),
         @"supportedHidDevices": @((unsigned long long)settings.supportedHidDevices),
         @"profile": @0,
         @"fallbackToLogicalResolution": @NO,
@@ -249,9 +300,13 @@ static void ParseQueueProgress(NSDictionary *session, OPN::SessionInfo &info) {
 
 static int AdMediaProfileRank(const std::string &profile) {
     if (profile == "mp4deinterlaced720p") return 0;
-    if (profile == "webm") return 1;
-    if (profile == "hlsadaptive") return 2;
+    if (profile == "hlsadaptive") return 1;
+    if (profile == "webm") return 2;
     return 100;
+}
+
+static bool IsTerminalAdState(int adState) {
+    return adState == 5 || adState == 6;
 }
 
 static OPN::SessionAdInfo ParseSessionAd(NSDictionary *ad, NSUInteger index) {
@@ -314,6 +369,7 @@ static void ParseSessionAds(NSDictionary *session, OPN::SessionAdState &adState)
     for (NSDictionary *ad in ads) {
         if (![ad isKindOfClass:[NSDictionary class]]) continue;
         OPN::SessionAdInfo parsed = ParseSessionAd(ad, index++);
+        if (IsTerminalAdState(parsed.adState)) continue;
         if (!parsed.adId.empty() || !parsed.mediaUrl.empty() || !parsed.title.empty() || !parsed.description.empty()) {
             adState.sessionAds.push_back(parsed);
         }
@@ -503,33 +559,6 @@ static std::string RandomUUID() {
     return std::string(str);
 }
 
-static std::string GetStableDeviceId() {
-    static std::string s_deviceId;
-    if (!s_deviceId.empty()) return s_deviceId;
-
-    NSString *supportDir = [@"~/Library/Application Support/OpenNOW" stringByExpandingTildeInPath];
-    NSString *path = [supportDir stringByAppendingPathComponent:@"device-id.plist"];
-    NSString *legacyPath = [@"~/Library/Application Support/com.nvidia.gfn-device-id" stringByExpandingTildeInPath];
-    NSDictionary *existing = [NSDictionary dictionaryWithContentsOfFile:path];
-    if (!existing) {
-        existing = [NSDictionary dictionaryWithContentsOfFile:legacyPath];
-    }
-    NSString *devId = existing[@"deviceId"];
-    if ([devId isKindOfClass:[NSString class]] && devId.length > 0) {
-        s_deviceId = [devId UTF8String];
-        return s_deviceId;
-    }
-
-    s_deviceId = RandomUUID();
-    NSDictionary *plist = @{@"deviceId": [NSString stringWithUTF8String:s_deviceId.c_str()]};
-    [[NSFileManager defaultManager] createDirectoryAtPath:supportDir
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:nil];
-    [plist writeToFile:path atomically:YES];
-    return s_deviceId;
-}
-
 namespace OPN {
 
 SessionManager &SessionManager::Shared() {
@@ -573,12 +602,10 @@ void SessionManager::CreateSession(const std::string &appId,
         : m_streamingBaseUrl;
 
     std::string clientId = RandomUUID();
-    std::string deviceId = GetStableDeviceId();
+    std::string deviceId = StableCloudmatchDeviceId();
 
-    int w = 1920, h = 1080;
-    sscanf(settingsCopy.resolution.c_str(), "%dx%d", &w, &h);
-
-    bool hdrEnabled = false;
+    StreamDeviceCapabilities displayCapabilities = LoadStreamDeviceCapabilities();
+    bool hdrEnabled = RequestedHdrEnabled(settingsCopy, displayCapabilities);
 
     NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
 
@@ -610,18 +637,7 @@ void SessionManager::CreateSession(const std::string &appId,
         @"sdkVersion": @"1.0",
         @"streamerVersion": @1,
         @"clientPlatformName": @"windows",
-        @"clientRequestMonitorSettings": @[@{
-            @"monitorId": @0,
-            @"positionX": @0,
-            @"positionY": @0,
-            @"widthInPixels": @(w),
-            @"heightInPixels": @(h),
-            @"framesPerSecond": @(settingsCopy.fps),
-            @"sdrHdrMode": hdrEnabled ? @1 : @0,
-            @"displayData": [NSNull null],
-            @"hdr10PlusGamingData": [NSNull null],
-            @"dpi": @100,
-        }],
+        @"clientRequestMonitorSettings": @[MonitorSettings(settingsCopy, displayCapabilities, hdrEnabled)],
         @"useOps": @YES,
         @"audioMode": @2,
         @"metaData": @[
@@ -631,12 +647,12 @@ void SessionManager::CreateSession(const std::string &appId,
             @{@"key": @"networkType", @"value": NetworkTypeValue(settingsCopy)},
             @{@"key": @"networkLatencyMs", @"value": NetworkLatencyValue(settingsCopy)},
             @{@"key": @"ClientImeSupport", @"value": @"0"},
-            @{@"key": @"clientPhysicalResolution", @"value": [NSString stringWithFormat:@"{\"horizontalPixels\":%d,\"verticalPixels\":%d}", w, h]},
+            @{@"key": @"clientPhysicalResolution", @"value": [NSString stringWithFormat:@"{\"horizontalPixels\":%d,\"verticalPixels\":%d}", std::max(0, displayCapabilities.maxDisplayWidth), std::max(0, displayCapabilities.maxDisplayHeight)]},
             @{@"key": @"surroundAudioInfo", @"value": @"2"},
             @{@"key": @"store", @"value": selectedStoreStr},
         ],
         @"sdrHdrMode": hdrEnabled ? @1 : @0,
-        @"clientDisplayHdrCapabilities": [NSNull null],
+        @"clientDisplayHdrCapabilities": ClientDisplayHdrCapabilities(displayCapabilities),
         @"surroundAudioInfo": @0,
         @"remoteControllersBitmap": @((unsigned long long)settingsCopy.remoteControllersBitmap),
         @"clientTimezoneOffset": @(timezoneOffset),
@@ -647,7 +663,7 @@ void SessionManager::CreateSession(const std::string &appId,
         @"accountLinked": @(settingsCopy.accountLinked),
         @"enablePersistingInGameSettings": @YES,
         @"userAge": @26,
-        @"requestedStreamingFeatures": RequestedStreamingFeatures(settingsCopy),
+        @"requestedStreamingFeatures": RequestedStreamingFeatures(settingsCopy, hdrEnabled),
     };
 
 
@@ -656,7 +672,7 @@ void SessionManager::CreateSession(const std::string &appId,
     };
 
     NSString *layout = StringFromStdString(settingsCopy.keyboardLayout, @"us");
-    NSString *lang = StringFromStdString(settingsCopy.gameLanguage, @"en_US");
+    NSString *lang = StringFromStdString(settingsCopy.gameLanguage, [NSString stringWithUTF8String:OPN::CurrentGFNLocale().c_str()]);
     NSString *baseUrlString = StringFromStdString(baseUrl);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session?keyboardLayout=%@&languageCode=%@",
                         baseUrlString, layout, lang];
@@ -891,7 +907,7 @@ void SessionManager::PollSession(const std::string &sessionId,
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-make"];
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-model"];
     [req setValue:@"CHROME" forHTTPHeaderField:@"nv-browser-type"];
-    [req setValue:[NSString stringWithUTF8String:GetStableDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
+    [req setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
 
     SessionPollCallback cb = completion;
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
@@ -1039,14 +1055,12 @@ void SessionManager::StopSession(const std::string &sessionId,
         return;
     }
 
-    NSString *urlStr = [NSString stringWithFormat:@"https://%s/v2/session/%s",
-                        serverIp.c_str(), sessionId.c_str()];
+    std::string base = ResolveSessionBaseUrl(m_streamingBaseUrl, serverIp);
+    NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s",
+                        StringFromStdString(base), sessionId.c_str()];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"DELETE";
-    [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
-    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    [req setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
+    ApplyCommonCloudMatchHeaders(req, m_accessToken, StableCloudmatchDeviceId(), true);
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error || !data) {
@@ -1086,7 +1100,7 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
                         session.sessionId.c_str()];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"PUT";
-    ApplyCommonCloudMatchHeaders(req, m_accessToken, session.deviceId.empty() ? GetStableDeviceId() : session.deviceId, true);
+    ApplyCommonCloudMatchHeaders(req, m_accessToken, session.deviceId.empty() ? StableCloudmatchDeviceId() : session.deviceId, true);
 
     NSMutableDictionary *adUpdate = [@{
         @"adId": [NSString stringWithUTF8String:adId.c_str()],
@@ -1166,7 +1180,7 @@ void SessionManager::GetActiveSessions(std::function<void(bool, const std::vecto
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-make"];
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-model"];
     [req setValue:@"CHROME" forHTTPHeaderField:@"nv-browser-type"];
-    [req setValue:[NSString stringWithUTF8String:GetStableDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
+    [req setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
 
     auto cb = completion;
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
@@ -1373,7 +1387,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         return;
     }
 
-    std::string deviceId = GetStableDeviceId();
+    std::string deviceId = StableCloudmatchDeviceId();
     std::string clientId = RandomUUID();
 
 
@@ -1395,6 +1409,8 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     NSString *deviceIdString = StringFromStdString(deviceId);
     NSString *selectedStore = settings.selectedStore.empty() ? @"unknown" : StringFromStdString(settings.selectedStore, @"unknown");
     NSString *appIdString = StringFromStdString(appId);
+    StreamDeviceCapabilities displayCapabilities = LoadStreamDeviceCapabilities();
+    bool hdrEnabled = RequestedHdrEnabled(settings, displayCapabilities);
 
     NSDictionary *payload = @{
         @"action": @2,
@@ -1402,13 +1418,14 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         @"sessionRequestData": @{
             @"audioMode": @2,
             @"remoteControllersBitmap": @((unsigned long long)settings.remoteControllersBitmap),
-            @"sdrHdrMode": @0,
+            @"sdrHdrMode": hdrEnabled ? @1 : @0,
             @"networkTestSessionId": NetworkTestSessionIdValue(settings),
             @"availableSupportedControllers": AvailableSupportedControllersValue(settings),
             @"clientVersion": @"30.0",
             @"deviceHashId": deviceIdString,
             @"internalTitle": [NSNull null],
             @"clientPlatformName": @"windows",
+            @"clientRequestMonitorSettings": @[MonitorSettings(settings, displayCapabilities, hdrEnabled)],
             @"metaData": @[
                 @{@"key": @"SubSessionId", @"value": subSessionId},
                 @{@"key": @"wssignaling", @"value": @"1"},
@@ -1429,19 +1446,19 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             @"sdkVersion": @"1.0",
             @"enhancedStreamMode": @1,
             @"useOps": @YES,
-            @"clientDisplayHdrCapabilities": [NSNull null],
+            @"clientDisplayHdrCapabilities": ClientDisplayHdrCapabilities(displayCapabilities),
             @"accountLinked": @(settings.accountLinked),
             @"partnerCustomData": @"",
             @"enablePersistingInGameSettings": @YES,
             @"secureRTSPSupported": @NO,
             @"userAge": @26,
-            @"requestedStreamingFeatures": RequestedStreamingFeatures(settings),
+            @"requestedStreamingFeatures": RequestedStreamingFeatures(settings, hdrEnabled),
         },
         @"metaData": @[],
     };
 
     NSString *layout = StringFromStdString(settings.keyboardLayout, @"us");
-    NSString *lang = StringFromStdString(settings.gameLanguage, @"en_US");
+    NSString *lang = StringFromStdString(settings.gameLanguage, [NSString stringWithUTF8String:OPN::CurrentGFNLocale().c_str()]);
 
     NSString *claimUrl = [NSString stringWithFormat:@"https://%@/v2/session/%@?keyboardLayout=%@&languageCode=%@",
                           sip, sid, layout, lang];

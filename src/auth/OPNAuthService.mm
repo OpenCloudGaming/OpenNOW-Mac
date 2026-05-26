@@ -1,5 +1,6 @@
 #include "OPNAuthService.h"
 #include "common/OPNSentry.h"
+#include "common/OPNLocale.h"
 
 #include <CommonCrypto/CommonCrypto.h>
 #include <AppKit/NSWorkspace.h>
@@ -416,7 +417,7 @@ void AuthService::ServerLogout(const std::string &idToken,
         return;
     }
 
-    std::string loc = locale.empty() ? "en_US" : locale;
+    std::string loc = locale.empty() ? CurrentGFNLocale() : locale;
     NSString *urlStr = [NSString stringWithFormat:@"%s?id_token_hint=%s&ui_locales=%s",
                         kOAuthLogoutURL,
                         URLEncode(idToken).c_str(),
@@ -501,7 +502,7 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
         @"&scope=%s"
         @"&client_id=%s"
         @"&redirect_uri=%s"
-        @"&ui_locales=en_US"
+        @"&ui_locales=%s"
         @"&nonce=%s"
         @"&prompt=select_account"
         @"&code_challenge=%s"
@@ -513,6 +514,7 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
         URLEncode(kOAuthScope).c_str(),
         kOAuthClientId,
         URLEncode(redirectUri).c_str(),
+        URLEncode(CurrentGFNLocale()).c_str(),
         URLEncode(nonceHex).c_str(),
         pkce.codeChallenge.c_str(),
         URLEncode(selectedProviderIdpId).c_str(),

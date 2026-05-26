@@ -20,6 +20,7 @@ struct StreamSettings {
     bool enableCloudGsync = false;
     bool enableL4S = false;
     bool enableReflex = true;
+    bool enableHdr = false;
     std::string microphoneMode = "disabled";
     std::string microphoneDeviceId;
     int microphonePushToTalkKeyCode = 9;

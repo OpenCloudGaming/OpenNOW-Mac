@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <atomic>
+#include <utility>
 #include <vector>
 
 namespace OPN {
@@ -19,6 +20,7 @@ using StreamStateCallback = std::function<void(bool connected, const std::string
 using MicrophoneLevelCallback = std::function<void(double level)>;
 using VideoFrameCallback = std::function<void(void *frame)>;
 using GameAudioFrameCallback = std::function<void(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels)>;
+using ClipboardTextCallback = std::function<void(const std::string &text)>;
 
 struct StreamStats {
     bool available = false;
@@ -71,6 +73,7 @@ public:
     virtual void SendMouseButton(uint8_t button, bool down) = 0;
     virtual void SendMouseWheel(int16_t delta) = 0;
     virtual void SendGamepadState(const Input::GamepadState &state, uint16_t bitmap) = 0;
+    virtual void SendUtf8Text(const std::string &text) = 0;
     virtual void SetMicrophoneEnabled(bool enabled) = 0;
     virtual void SetGameVolume(double volume) = 0;
     virtual void SetMicrophoneVolume(double volume) = 0;
@@ -78,6 +81,7 @@ public:
     virtual void OnMicrophoneLevel(MicrophoneLevelCallback cb) = 0;
     virtual void OnVideoFrame(VideoFrameCallback cb) = 0;
     virtual void OnGameAudioFrame(GameAudioFrameCallback cb) = 0;
+    virtual void OnClipboardText(ClipboardTextCallback cb) = 0;
     virtual void RefreshAudioDevices() = 0;
     virtual void RequestStats() = 0;
     virtual StreamStats GetLatestStats() const = 0;
@@ -111,6 +115,7 @@ public:
     void SendMouseButton(uint8_t button, bool down) override;
     void SendMouseWheel(int16_t delta) override;
     void SendGamepadState(const Input::GamepadState &state, uint16_t bitmap) override;
+    void SendUtf8Text(const std::string &text) override;
     void SetMicrophoneEnabled(bool enabled) override;
     void SetGameVolume(double volume) override;
     void SetMicrophoneVolume(double volume) override;
@@ -118,6 +123,7 @@ public:
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
     void OnGameAudioFrame(GameAudioFrameCallback cb) override;
+    void OnClipboardText(ClipboardTextCallback cb) override { m_onClipboardText = std::move(cb); }
     void RefreshAudioDevices() override;
     void RequestStats() override;
     StreamStats GetLatestStats() const override;
@@ -175,6 +181,7 @@ private:
     std::function<void(const IceCandidatePayload &)> m_onIceCandidate;
     MicrophoneLevelCallback m_onMicrophoneLevel;
     VideoFrameCallback m_onVideoFrame;
+    ClipboardTextCallback m_onClipboardText;
     StreamStateCallback m_onState;
     Input::Encoder m_inputEncoder;
     std::shared_ptr<StreamStatsState> m_statsState;

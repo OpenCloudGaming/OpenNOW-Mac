@@ -175,6 +175,8 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSView *storeChipsContainer;
 @property (nonatomic, strong) NSView *currentStoreLogoContainer;
 @property (nonatomic, strong) NSImageView *currentStoreLogoView;
+@property (nonatomic, strong) NSView *installToPlayPillView;
+@property (nonatomic, strong) NSTextField *installToPlayPillLabel;
 @property (nonatomic, strong) NSTrackingArea *trackingArea;
 @property (nonatomic, strong) NSButton *playButton;
 @property (nonatomic, strong) CALayer *reflectionLayer;
@@ -184,6 +186,7 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
 - (void)updateCurrentStoreLogo;
+- (void)updateInstallToPlayPill;
 @end
 
 @implementation OPNGameCardView
@@ -270,6 +273,18 @@ using namespace OPN;
         _currentStoreLogoView.contentTintColor = OpnColor(0xD7D8DC, 0.88);
         [_currentStoreLogoContainer addSubview:_currentStoreLogoView];
 
+        _installToPlayPillView = [[NSView alloc] initWithFrame:NSZeroRect];
+        _installToPlayPillView.wantsLayer = YES;
+        _installToPlayPillView.layer.cornerRadius = 11.0;
+        _installToPlayPillView.layer.backgroundColor = OpnColor(0x030506, 0.76).CGColor;
+        _installToPlayPillView.layer.borderWidth = 1.0;
+        _installToPlayPillView.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.42).CGColor;
+        [_contentView addSubview:_installToPlayPillView];
+
+        _installToPlayPillLabel = OpnLabel(@"Install to Play", NSZeroRect, 10.0, OpnColor(0xEAF7EE, 0.96), NSFontWeightBlack, NSTextAlignmentCenter);
+        _installToPlayPillLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [_installToPlayPillView addSubview:_installToPlayPillLabel];
+
         _controllerStoreLabel = OpnLabel(@"", NSZeroRect, 13.0, OpnColor(0xFFFFFF, 0.88), NSFontWeightMedium);
         _controllerStoreLabel.hidden = !OpnControllerModeEnabled();
         [_contentView addSubview:_controllerStoreLabel];
@@ -320,6 +335,7 @@ using namespace OPN;
         [self updateDesktopLabels];
         [self updateControllerLabels];
         [self updateCurrentStoreLogo];
+        [self updateInstallToPlayPill];
 
         [self loadImage];
 
@@ -422,6 +438,12 @@ using namespace OPN;
     CGFloat playY = OpnControllerModeEnabled() ? MAX(0.0, height - height * (52.0 / 180.0)) : 10.0;
     self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, playY, playWidth, playHeight);
     self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
+    CGFloat pillHeight = MAX(20.0, floor(height * (22.0 / 180.0)));
+    CGFloat pillWidth = MIN(width - 18.0, MAX(94.0, floor(width * (112.0 / 180.0))));
+    CGFloat pillMargin = MAX(8.0, floor(width * (9.0 / 180.0)));
+    self.installToPlayPillView.frame = NSMakeRect(pillMargin, height - pillMargin - pillHeight, pillWidth, pillHeight);
+    self.installToPlayPillView.layer.cornerRadius = pillHeight * 0.5;
+    self.installToPlayPillLabel.frame = NSInsetRect(self.installToPlayPillView.bounds, 8.0, MAX(1.0, floor((pillHeight - 12.0) * 0.5)));
     CGFloat logoContainerSize = MAX(24.0, floor(width * (30.0 / 164.0)));
     CGFloat logoMargin = MAX(8.0, floor(width * (9.0 / 164.0)));
     self.currentStoreLogoContainer.frame = NSMakeRect(width - logoMargin - logoContainerSize,
@@ -451,6 +473,10 @@ using namespace OPN;
     self.currentStoreLogoContainer.toolTip = store.length > 0 ? OPNStorePrettyName(store) : @"";
 }
 
+- (void)updateInstallToPlayPill {
+    self.installToPlayPillView.hidden = _gameData.playType != "INSTALL_TO_PLAY";
+}
+
 - (void)playClicked {
     if (self.onPlay) self.onPlay();
 }
@@ -469,6 +495,7 @@ using namespace OPN;
     [self updateDesktopLabels];
     [self updateControllerLabels];
     [self updateCurrentStoreLogo];
+    [self updateInstallToPlayPill];
     if (previousImageSignature != nextImageSignature) {
         self.imageView.image = nil;
         [self loadImage];
