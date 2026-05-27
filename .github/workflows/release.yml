@@ -1,11 +1,6 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - OpenNOW-Info.plist
   workflow_dispatch:
     inputs:
       version:
@@ -15,6 +10,10 @@ on:
       build:
         description: "Bundle build number. Defaults to the GitHub run number."
         required: false
+        type: string
+      release_notes:
+        description: "Detailed Markdown release description. Do not use the default generated GitHub notes."
+        required: true
         type: string
 
 permissions:
@@ -37,14 +36,6 @@ jobs:
           set -euo pipefail
           version="${{ inputs.version }}"
           build="${{ inputs.build }}"
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            current_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" OpenNOW-Info.plist)"
-            if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              echo "Current bundle version must be MAJOR.MINOR.PATCH for automatic releases" >&2
-              exit 1
-            fi
-            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
-          fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Version must be semantic, for example 0.2.0" >&2
             exit 1
@@ -66,6 +57,26 @@ jobs:
             printf 'RELEASE_TAG=v%s\n' "${version}"
             printf 'RELEASE_ARCHIVE=OpenNOW-%s-macOS.zip\n' "${version}"
           } >> "$GITHUB_ENV"
+
+      - name: Validate release notes
+        shell: bash
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_NOTES//[[:space:]]/}" ]]; then
+            echo "Release notes are required" >&2
+            exit 1
+          fi
+          if [[ "${RELEASE_NOTES}" == *"Automatically generated release notes"* ]]; then
+            echo "Release notes must be a custom description, not GitHub's generated default" >&2
+            exit 1
+          fi
+          if (( ${#RELEASE_NOTES} < 80 )); then
+            echo "Release notes must be at least 80 characters and describe the release in detail" >&2
+            exit 1
+          fi
+          printf '%s\n' "${RELEASE_NOTES}" > RELEASE_NOTES.md
 
       - name: Bump bundle version
         shell: bash
@@ -165,5 +176,5 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: OpenNOW ${{ env.RELEASE_TAG }}
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: dist/${{ env.RELEASE_ARCHIVE }}
