@@ -216,6 +216,7 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
                    widths:(NSArray<NSNumber *> *)widths
                   enabled:(NSArray<NSNumber *> *)enabled;
 - (void)audioDevicesChanged;
+- (void)checkForUpdatesClicked:(NSButton *)sender;
 - (void)startGamepadNavigationIfNeeded;
 - (void)stopGamepadNavigation;
 - (void)pollGamepadNavigation;
@@ -546,6 +547,8 @@ using namespace OPN;
         [self buildInputContent];
     } else if ([section isEqualToString:@"Interface"]) {
         [self buildInterfaceContent];
+    } else if ([section isEqualToString:@"About"]) {
+        [self buildAboutContent];
     } else {
         [self buildSimpleSectionContent:section];
     }
@@ -990,6 +993,36 @@ using namespace OPN;
     [self.documentView addSubview:panel];
 }
 
+- (void)buildAboutContent {
+    NSView *panel = [self panelWithTitle:@"About" height:332.0];
+    CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
+    CGFloat controlX = [self controlXForPanelWidth:panelWidth];
+    CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+    NSString *version = [info[@"CFBundleShortVersionString"] isKindOfClass:NSString.class] ? info[@"CFBundleShortVersionString"] : @"0.0.0";
+    NSString *build = [info[@"CFBundleVersion"] isKindOfClass:NSString.class] ? info[@"CFBundleVersion"] : @"0";
+    NSString *bundleIdentifier = NSBundle.mainBundle.bundleIdentifier ?: @"Unavailable";
+
+    NSTextField *summary = OpnLabel(@"OpenNOW is an open-source macOS client for launching and streaming cloud games.",
+                                    NSMakeRect(24.0, 92.0, MAX(260.0, panelWidth - 48.0), 38.0),
+                                    13.0,
+                                    OpnColor(kTextSecondary),
+                                    NSFontWeightRegular);
+    summary.maximumNumberOfLines = 2;
+    [panel addSubview:summary];
+
+    [self addInfoRowToPanel:panel title:@"Version" value:[NSString stringWithFormat:@"%@ (%@)", version, build] y:154.0 valueWidth:controlWidth monospaceValue:NO];
+    [self addInfoRowToPanel:panel title:@"Bundle ID" value:bundleIdentifier y:206.0 valueWidth:controlWidth monospaceValue:YES];
+
+    NSButton *updateButton = OpnButton(@"Check for Updates", NSMakeRect(controlX, 268.0, MIN(210.0, controlWidth), 40.0), OpnColor(kBrandGreen, 0.18), OpnColor(kBrandGreen), true, OpnColor(kBrandGreen, 0.45));
+    updateButton.target = self;
+    updateButton.action = @selector(checkForUpdatesClicked:);
+    [panel addSubview:updateButton];
+    [self registerControllerFocusableControl:updateButton];
+
+    [self.documentView addSubview:panel];
+}
+
 - (void)buildSimpleSectionContent:(NSString *)section {
     NSView *panel = [self panelWithTitle:section height:220.0];
     NSDictionary<NSString *, NSString *> *messages = @{
@@ -1003,6 +1036,11 @@ using namespace OPN;
     label.maximumNumberOfLines = 2;
     [panel addSubview:label];
     [self.documentView addSubview:panel];
+}
+
+- (void)checkForUpdatesClicked:(NSButton *)sender {
+    (void)sender;
+    if (self.onCheckForUpdatesRequested) self.onCheckForUpdatesRequested();
 }
 
 - (NSTextField *)rowLabel:(NSString *)text y:(CGFloat)y {

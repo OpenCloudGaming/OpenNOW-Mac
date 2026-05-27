@@ -17,6 +17,7 @@
 #include "common/OPNLogCapture.h"
 #include "common/OPNLocale.h"
 #include "common/OPNGFNError.h"
+#import "common/OPNGitHubUpdater.h"
 #import "common/OPNAuthTypes.h"
 #import "common/OPNGameTypes.h"
 #import <CommonCrypto/CommonDigest.h>
@@ -66,6 +67,8 @@
 @property (nonatomic, strong) NSView *desktopNavigationBar;
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
+@property (nonatomic, strong) OPNGitHubUpdater *githubUpdater;
+@property (nonatomic, assign) BOOL updateCheckInFlight;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
 - (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
@@ -147,6 +150,7 @@
 - (void)rebuildDesktopAccountSwitcher;
 - (void)desktopNavigationButtonClicked:(NSButton *)sender;
 - (void)desktopAccountSwitcherChanged:(NSPopUpButton *)sender;
+- (void)checkForApplicationUpdates;
 @end
 
 @implementation AppDelegate
@@ -560,6 +564,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                                  name:OPNInterfacePreferencesDidChangeNotification
                                                object:nil];
     [self installControllerModeShortcutMonitor];
+    self.githubUpdater = [[OPNGitHubUpdater alloc] initWithOwner:@"OpenCloudGaming" repository:@"OpenNOW-Mac"];
     {
         OPN::AuthCredentials creds = self.pendingCredentials;
         creds.stayLoggedIn = AuthService::Shared().GetStayLoggedIn();
@@ -668,6 +673,69 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (launched) {
         [NSApp terminate:self];
     }
+}
+
+- (void)checkForApplicationUpdates {
+    if (self.updateCheckInFlight) return;
+    self.updateCheckInFlight = YES;
+    if (!self.githubUpdater) {
+        self.githubUpdater = [[OPNGitHubUpdater alloc] initWithOwner:@"OpenCloudGaming" repository:@"OpenNOW-Mac"];
+    }
+
+    __weak __typeof__(self) weakSelf = self;
+    [self.githubUpdater checkForUpdateWithCompletion:^(OPNGitHubRelease *release, NSError *error) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.updateCheckInFlight = NO;
+        if (error) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.alertStyle = NSAlertStyleWarning;
+            alert.messageText = @"Update check failed";
+            alert.informativeText = error.localizedDescription ?: @"OpenNOW could not check GitHub Releases.";
+            [alert addButtonWithTitle:@"OK"];
+            [alert beginSheetModalForWindow:strongSelf.window completionHandler:nil];
+            return;
+        }
+        if (!release) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"OpenNOW is up to date";
+            alert.informativeText = [NSString stringWithFormat:@"Version %@ is the latest release available on GitHub.", strongSelf.githubUpdater.currentVersion];
+            [alert addButtonWithTitle:@"OK"];
+            [alert beginSheetModalForWindow:strongSelf.window completionHandler:nil];
+            return;
+        }
+
+        NSString *notes = release.releaseNotes.length > 0 ? release.releaseNotes : @"No release notes were provided.";
+        if (notes.length > 1400) notes = [[notes substringToIndex:1400] stringByAppendingString:@"\n..."];
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = [NSString stringWithFormat:@"OpenNOW %@ is available", release.version];
+        alert.informativeText = [NSString stringWithFormat:@"Current version: %@\n\n%@", strongSelf.githubUpdater.currentVersion, notes];
+        [alert addButtonWithTitle:@"Install and Relaunch"];
+        [alert addButtonWithTitle:@"View on GitHub"];
+        [alert addButtonWithTitle:@"Cancel"];
+        [alert beginSheetModalForWindow:strongSelf.window completionHandler:^(NSModalResponse response) {
+            if (response == NSAlertSecondButtonReturn) {
+                NSURL *url = [NSURL URLWithString:release.releaseURL];
+                if (url) [NSWorkspace.sharedWorkspace openURL:url];
+                return;
+            }
+            if (response != NSAlertFirstButtonReturn) return;
+            strongSelf.updateCheckInFlight = YES;
+            [strongSelf.githubUpdater installRelease:release completion:^(BOOL launchedInstaller, NSError *installError) {
+                strongSelf.updateCheckInFlight = NO;
+                if (!launchedInstaller || installError) {
+                    NSAlert *installAlert = [[NSAlert alloc] init];
+                    installAlert.alertStyle = NSAlertStyleWarning;
+                    installAlert.messageText = @"Update install failed";
+                    installAlert.informativeText = installError.localizedDescription ?: @"OpenNOW could not install the downloaded update.";
+                    [installAlert addButtonWithTitle:@"OK"];
+                    [installAlert beginSheetModalForWindow:strongSelf.window completionHandler:nil];
+                    return;
+                }
+                [NSApp terminate:strongSelf];
+            }];
+        }];
+    }];
 }
 
 - (void)windowFullScreenStateChanged:(NSNotification *)notification {
@@ -2020,6 +2088,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf switchControllerPageBy:1];
+            };
+            settings.onCheckForUpdatesRequested = ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf checkForApplicationUpdates];
             };
             self.settingsView = settings;
             [self.contentContainer addSubview:settings];
