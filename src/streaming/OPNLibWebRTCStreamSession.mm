@@ -2651,6 +2651,8 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
         NSNumber *framesDecoded = OPNRTCStatsNumberForKey(stat.values, @"framesDecoded");
         NSNumber *framesDropped = OPNRTCStatsNumberForKey(stat.values, @"framesDropped");
         NSNumber *framesPerSecond = OPNRTCStatsNumberForKey(stat.values, @"framesPerSecond");
+        NSNumber *frameWidth = OPNRTCStatsNumberForKey(stat.values, @"frameWidth") ?: OPNRTCStatsNumberForKey(stat.values, @"width");
+        NSNumber *frameHeight = OPNRTCStatsNumberForKey(stat.values, @"frameHeight") ?: OPNRTCStatsNumberForKey(stat.values, @"height");
         NSNumber *totalDecodeTime = OPNRTCStatsNumberForKey(stat.values, @"totalDecodeTime");
         NSString *codecId = OPNRTCStatsStringForKey(stat.values, @"codecId");
 
@@ -2671,6 +2673,9 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
         if (framesReceived) parsed.framesReceived = framesReceived.unsignedLongLongValue;
         if (framesDecoded) parsed.framesDecoded = selectedFramesDecoded;
         if (framesDropped) parsed.framesDropped = framesDropped.unsignedLongLongValue;
+        if (frameWidth && frameHeight && frameWidth.intValue > 0 && frameHeight.intValue > 0) {
+            parsed.resolution = std::to_string(frameWidth.intValue) + "x" + std::to_string(frameHeight.intValue);
+        }
         if (framesPerSecond && framesPerSecond.doubleValue > 0) parsed.renderFps = framesPerSecond.doubleValue;
         if (totalDecodeTime && totalDecodeTime.doubleValue > 0 && selectedFramesDecoded > 0) {
             parsed.decodeTimeMs = OPNStatsSecondsToMs(totalDecodeTime.doubleValue) / (double)selectedFramesDecoded;

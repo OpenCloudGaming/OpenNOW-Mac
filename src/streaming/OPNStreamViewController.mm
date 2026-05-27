@@ -18,7 +18,6 @@
 #import <os/signpost.h>
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <sstream>
 #include <vector>
 #include <cctype>
@@ -237,42 +236,15 @@ static OPNDisplayStreamProfile ResolveDisplayStreamProfile(NSWindow *window) {
     NSSize displayPixels = CurrentDisplayPixelSize(window);
     int displayWidth = std::max(640, (int)std::llround(displayPixels.width));
     int displayHeight = std::max(360, (int)std::llround(displayPixels.height));
-
-    struct Candidate {
-        int width;
-        int height;
-    };
-    static const Candidate candidates[] = {
-        {1280, 720}, {1280, 800}, {1366, 768}, {1440, 900},
-        {1600, 900}, {1680, 1050}, {1920, 1080}, {1920, 1200},
-        {2560, 1080}, {2560, 1440}, {2560, 1600}, {2880, 1800},
-        {3440, 1440}, {3456, 2160}, {3840, 1600}, {3840, 2160},
-    };
-
-    double targetAspect = (double)displayWidth / (double)displayHeight;
-    double targetPixels = (double)displayWidth * (double)displayHeight;
-    const Candidate *best = &candidates[0];
-    double bestScore = std::numeric_limits<double>::max();
-
-    for (const Candidate &candidate : candidates) {
-        double candidateAspect = (double)candidate.width / (double)candidate.height;
-        double candidatePixels = (double)candidate.width * (double)candidate.height;
-        double aspectScore = std::fabs(std::log(candidateAspect / targetAspect));
-        double pixelScore = std::fabs(candidatePixels - targetPixels) / targetPixels;
-        double oversizePenalty = candidatePixels > targetPixels ? 0.05 : 0.0;
-        double score = (aspectScore * 20.0) + pixelScore + oversizePenalty;
-        if (score < bestScore) {
-            bestScore = score;
-            best = &candidate;
-        }
-    }
+    displayWidth -= displayWidth % 2;
+    displayHeight -= displayHeight % 2;
 
     OPNDisplayStreamProfile profile;
     profile.displayWidth = displayWidth;
     profile.displayHeight = displayHeight;
-    profile.streamWidth = best->width;
-    profile.streamHeight = best->height;
-    profile.resolution = std::to_string(best->width) + "x" + std::to_string(best->height);
+    profile.streamWidth = displayWidth;
+    profile.streamHeight = displayHeight;
+    profile.resolution = std::to_string(displayWidth) + "x" + std::to_string(displayHeight);
     return profile;
 }
 
