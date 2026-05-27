@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="OpenNOW"
-BUNDLE_ID="com.opennow.mac"
+BUNDLE_ID="io.github.opencloudgaming.opennow"
 VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 MIN_MACOS="${MIN_MACOS:-14.0}"

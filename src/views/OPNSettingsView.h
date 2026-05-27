@@ -5,6 +5,7 @@
 @property (nonatomic, copy) void (^onBackRequested)(void);
 @property (nonatomic, copy) void (^onPreviousPageRequested)(void);
 @property (nonatomic, copy) void (^onNextPageRequested)(void);
+@property (nonatomic, copy) void (^onCheckForUpdatesRequested)(void);
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (instancetype)initWithFrame:(NSRect)frame selectedSectionName:(NSString *)selectedSectionName;
