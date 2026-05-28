@@ -68,6 +68,7 @@
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 @property (nonatomic, strong) OPNGitHubUpdater *githubUpdater;
+@property (nonatomic, strong) NSTimer *applicationUpdateCheckTimer;
 @property (nonatomic, assign) BOOL updateCheckInFlight;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
@@ -150,7 +151,11 @@
 - (void)rebuildDesktopAccountSwitcher;
 - (void)desktopNavigationButtonClicked:(NSButton *)sender;
 - (void)desktopAccountSwitcherChanged:(NSPopUpButton *)sender;
+- (void)startApplicationUpdateChecks;
+- (void)stopApplicationUpdateChecks;
+- (void)applicationUpdateCheckTimerFired:(NSTimer *)timer;
 - (void)checkForApplicationUpdates;
+- (void)checkForApplicationUpdatesShowingCurrentStatus:(BOOL)showCurrentStatus;
 @end
 
 @implementation AppDelegate
@@ -607,6 +612,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     [self restoreSavedWindowPresentation];
+    [self startApplicationUpdateChecks];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -614,6 +620,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.window saveFrameUsingName:OPNMainWindowFrameAutosaveName];
     [self saveWindowPresentation];
+    [self stopApplicationUpdateChecks];
     [self stopGameLibraryRefreshTimer];
     [self stopActiveSessionPromptControllerPolling];
     [self stopStreamDashboardControllerPolling];
@@ -675,7 +682,33 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 }
 
+- (void)startApplicationUpdateChecks {
+    if (self.applicationUpdateCheckTimer) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self checkForApplicationUpdatesShowingCurrentStatus:NO];
+    });
+    self.applicationUpdateCheckTimer = [NSTimer scheduledTimerWithTimeInterval:60.0 * 60.0
+                                                                        target:self
+                                                                      selector:@selector(applicationUpdateCheckTimerFired:)
+                                                                      userInfo:nil
+                                                                       repeats:YES];
+}
+
+- (void)stopApplicationUpdateChecks {
+    [self.applicationUpdateCheckTimer invalidate];
+    self.applicationUpdateCheckTimer = nil;
+}
+
+- (void)applicationUpdateCheckTimerFired:(NSTimer *)timer {
+    (void)timer;
+    [self checkForApplicationUpdatesShowingCurrentStatus:NO];
+}
+
 - (void)checkForApplicationUpdates {
+    [self checkForApplicationUpdatesShowingCurrentStatus:YES];
+}
+
+- (void)checkForApplicationUpdatesShowingCurrentStatus:(BOOL)showCurrentStatus {
     if (self.updateCheckInFlight) return;
     self.updateCheckInFlight = YES;
     if (!self.githubUpdater) {
@@ -688,6 +721,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (!strongSelf) return;
         strongSelf.updateCheckInFlight = NO;
         if (error) {
+            if (!showCurrentStatus) return;
             NSAlert *alert = [[NSAlert alloc] init];
             alert.alertStyle = NSAlertStyleWarning;
             alert.messageText = @"Update check failed";
@@ -697,6 +731,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             return;
         }
         if (!release) {
+            if (!showCurrentStatus) return;
             NSAlert *alert = [[NSAlert alloc] init];
             alert.messageText = @"OpenNOW is up to date";
             alert.informativeText = [NSString stringWithFormat:@"Version %@ is the latest release available on GitHub.", strongSelf.githubUpdater.currentVersion];
@@ -709,17 +744,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (notes.length > 1400) notes = [[notes substringToIndex:1400] stringByAppendingString:@"\n..."];
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = [NSString stringWithFormat:@"OpenNOW %@ is available", release.version];
-        alert.informativeText = [NSString stringWithFormat:@"Current version: %@\n\n%@", strongSelf.githubUpdater.currentVersion, notes];
+        alert.informativeText = [NSString stringWithFormat:@"Current version: %@\n\nThis update is required to continue using OpenNOW.\n\n%@", strongSelf.githubUpdater.currentVersion, notes];
         [alert addButtonWithTitle:@"Install and Relaunch"];
-        [alert addButtonWithTitle:@"View on GitHub"];
-        [alert addButtonWithTitle:@"Cancel"];
         [alert beginSheetModalForWindow:strongSelf.window completionHandler:^(NSModalResponse response) {
-            if (response == NSAlertSecondButtonReturn) {
-                NSURL *url = [NSURL URLWithString:release.releaseURL];
-                if (url) [NSWorkspace.sharedWorkspace openURL:url];
-                return;
-            }
-            if (response != NSAlertFirstButtonReturn) return;
+            (void)response;
             strongSelf.updateCheckInFlight = YES;
             [strongSelf.githubUpdater installRelease:release completion:^(BOOL launchedInstaller, NSError *installError) {
                 strongSelf.updateCheckInFlight = NO;
