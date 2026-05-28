@@ -9,6 +9,7 @@ namespace OPN {
 using SignalingOfferCallback = std::function<void(const std::string &sdp)>;
 using SignalingIceCallback = std::function<void(const IceCandidatePayload &candidate)>;
 using SignalingConnectCallback = std::function<void(bool success, const std::string &error)>;
+using SignalingClosedCallback = std::function<void(bool clean, const std::string &reason)>;
 
 class SignalingClient {
 public:
@@ -25,6 +26,7 @@ public:
 
     void OnOffer(SignalingOfferCallback cb);
     void OnIceCandidate(SignalingIceCallback cb);
+    void OnClosed(SignalingClosedCallback cb);
 
     bool IsConnected() const;
 
@@ -40,6 +42,7 @@ private:
 
     SignalingOfferCallback m_onOffer;
     SignalingIceCallback m_onIceCandidate;
+    SignalingClosedCallback m_onClosed;
 
     void *m_webSocketTask = nullptr;
     void *m_urlSession = nullptr;

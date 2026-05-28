@@ -2092,6 +2092,25 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             [s2 cancelRemoteIceGraceTimer];
             s2->_session->AddRemoteIceCandidate(candidate);
         });
+
+        s->_signaling->OnClosed([weakSelf, launchGeneration](bool clean, const std::string &reason) {
+            __typeof__(self) s2 = weakSelf;
+            if (!s2 || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
+            std::string reasonCopy = reason;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
+                if (clean && strongSelf->_connectedOnce) {
+                    OPN::LogInfo(@"[StreamVC] Signaling closed cleanly after connection; ending stream normally");
+                    [strongSelf endStreamWithSuccess:YES errorMessage:""];
+                    return;
+                }
+                std::string error = reasonCopy.empty() ? std::string("Signaling connection closed") : reasonCopy;
+                OPN::LogError(@"[StreamVC] Signaling closed unexpectedly: clean=%d reason=%s", clean, error.c_str());
+                if ([strongSelf beginAutomaticRecoveryForError:error]) return;
+                [strongSelf endStreamWithSuccess:NO errorMessage:error];
+            });
+        });
     });
 
     _signaling->Connect([weakSelf, launchGeneration](bool ok, const std::string &err) {

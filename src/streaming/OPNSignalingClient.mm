@@ -184,8 +184,11 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
         if (m_didOpen) {
             if (IsSocketNotConnectedError(error)) {
                 OPN::LogInfo(@"[Signaling] Post-connection socket closed: %@", error.localizedDescription ?: @"unknown error");
+                if (m_onClosed) m_onClosed(true, "");
             } else {
                 OPN::LogError(@"[Signaling] Post-connection error: %@", error);
+                NSString *message = error.localizedDescription ?: @"Signaling connection closed with error";
+                if (m_onClosed) m_onClosed(false, message.UTF8String ?: "Signaling connection closed with error");
             }
             return;
         }
@@ -201,6 +204,10 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
         OPN::LogInfo(@"[Signaling] WebSocket closed: code=%ld, reason=%@", (long)code, reason);
         ClearHeartbeat();
         m_webSocketTask = nullptr;
+        if (m_didOpen && m_onClosed) {
+            BOOL clean = code == NSURLSessionWebSocketCloseCodeNormalClosure || code == NSURLSessionWebSocketCloseCodeGoingAway;
+            m_onClosed(clean, reason.UTF8String ?: "");
+        }
     };
 
 
@@ -456,6 +463,10 @@ void SignalingClient::OnOffer(SignalingOfferCallback cb) {
 
 void SignalingClient::OnIceCandidate(SignalingIceCallback cb) {
     m_onIceCandidate = cb;
+}
+
+void SignalingClient::OnClosed(SignalingClosedCallback cb) {
+    m_onClosed = cb;
 }
 
 
