@@ -11,6 +11,7 @@
 @property (nonatomic, copy) void (^onPreviousPageRequested)(void);
 @property (nonatomic, copy) void (^onNextPageRequested)(void);
 @property (nonatomic, assign) BOOL controllerInputSuspended;
+@property (nonatomic, readonly) BOOL hasContent;
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setLoading:(BOOL)loading;

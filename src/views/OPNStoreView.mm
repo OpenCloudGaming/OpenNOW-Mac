@@ -540,6 +540,44 @@ static uint16_t OPNStoreGamepadButtons(void) {
     return buttons;
 }
 
+static void OPNStoreAppendFingerprintField(std::string &fingerprint, const std::string &value) {
+    fingerprint.append(std::to_string(value.size()));
+    fingerprint.push_back(':');
+    fingerprint.append(value);
+    fingerprint.push_back('|');
+}
+
+static std::string OPNStorePanelsFingerprint(const std::vector<OPN::PanelResult> &panels) {
+    std::string fingerprint;
+    fingerprint.reserve(panels.size() * 64);
+    for (const OPN::PanelResult &panel : panels) {
+        OPNStoreAppendFingerprintField(fingerprint, panel.id);
+        OPNStoreAppendFingerprintField(fingerprint, panel.title);
+        for (const OPN::PanelSection &section : panel.sections) {
+            OPNStoreAppendFingerprintField(fingerprint, section.id);
+            OPNStoreAppendFingerprintField(fingerprint, section.title);
+            for (const OPN::GameInfo &game : section.games) {
+                OPNStoreAppendFingerprintField(fingerprint, game.id);
+                OPNStoreAppendFingerprintField(fingerprint, game.title);
+                OPNStoreAppendFingerprintField(fingerprint, game.imageUrl);
+                OPNStoreAppendFingerprintField(fingerprint, game.heroImageUrl);
+                fingerprint.append(game.isInLibrary ? "1" : "0");
+                fingerprint.push_back('|');
+                for (const OPN::GameVariant &variant : game.variants) {
+                    OPNStoreAppendFingerprintField(fingerprint, variant.id);
+                    OPNStoreAppendFingerprintField(fingerprint, variant.appStore);
+                    OPNStoreAppendFingerprintField(fingerprint, variant.storeUrl);
+                    OPNStoreAppendFingerprintField(fingerprint, variant.serviceStatus);
+                    fingerprint.append(variant.inLibrary ? "1" : "0");
+                    fingerprint.append(variant.librarySelected ? "1" : "0");
+                    fingerprint.push_back('|');
+                }
+            }
+        }
+    }
+    return fingerprint;
+}
+
 static BOOL OPNStoreGamepadNavigationActive(NSView *view) {
     NSWindow *window = view.window;
     if (!window || window.contentViewController != nil) return NO;
@@ -607,6 +645,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @interface OPNStoreGameTile : NSView
 @property (nonatomic, readonly) OPN::GameInfo game;
 @property (nonatomic, assign) int selectedVariantIndex;
+@property (nonatomic, assign) NSTimeInterval imageRevealDelay;
 @property (nonatomic, copy) void (^onSelect)(void);
 @property (nonatomic, copy) void (^onBuy)(NSString *purchaseURL);
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game prominent:(BOOL)prominent;
@@ -760,6 +799,18 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (BOOL)isFlipped { return YES; }
 - (OPN::GameInfo)game { return _gameData; }
 
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
+    return YES;
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+    NSView *hitView = [super hitTest:point];
+    if (!hitView) return nil;
+    if (hitView == self.playButton || [hitView isDescendantOf:self.playButton]) return hitView;
+    return self;
+}
+
 - (void)layout {
     [super layout];
     CGFloat width = NSWidth(self.bounds);
@@ -893,7 +944,18 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
             [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
             return;
         }
+        NSTimeInterval revealDelay = strongSelf.imageView.image ? 0.0 : strongSelf.imageRevealDelay;
+        strongSelf.imageView.alphaValue = 0.0;
         strongSelf.imageView.image = image;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(revealDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            __typeof__(self) revealSelf = weakSelf;
+            if (!revealSelf || generation != revealSelf.imageLoadGeneration) return;
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.22;
+                context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+                revealSelf.imageView.animator.alphaValue = 1.0;
+            } completionHandler:nil];
+        });
     });
 }
 
@@ -911,7 +973,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
 @property (nonatomic, strong) OPNStoreGameTile *heroTile;
 @property (nonatomic, strong) NSMutableArray<NSView *> *controllerFeaturedHeroViews;
+@property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
 @property (nonatomic, assign) NSRect controllerFeaturedHeroFrame;
+@property (nonatomic, assign) NSRect desktopFeaturedHeroFrame;
 @property (nonatomic, assign) NSInteger currentHeroIndex;
 @property (nonatomic, assign) NSInteger focusedRowIndex;
 @property (nonatomic, assign) NSInteger focusedColumnIndex;
@@ -919,6 +983,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
+@property (nonatomic, assign) std::string panelsFingerprint;
 @property (nonatomic, assign) OPN::GameInfo controllerFeaturedHeroGame;
 @property (nonatomic, assign) int controllerFeaturedHeroVariantIndex;
 - (void)startGamepadNavigationIfNeeded;
@@ -932,6 +997,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)loadControllerFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)controllerFeaturedHeroLaunchClicked:(id)sender;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
+- (void)updateDesktopFeaturedHeroOnly;
 - (void)addStoreMetricPillWithTitle:(NSString *)title value:(NSString *)value frame:(NSRect)frame;
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
@@ -955,7 +1021,9 @@ using namespace OPN;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
         _rowCards = [NSMutableArray array];
         _controllerFeaturedHeroViews = [NSMutableArray array];
+        _desktopFeaturedHeroViews = [NSMutableArray array];
         _controllerFeaturedHeroFrame = NSZeroRect;
+        _desktopFeaturedHeroFrame = NSZeroRect;
         _focusedRowIndex = 0;
         _focusedColumnIndex = 0;
         _scrollView = [[NSScrollView alloc] initWithFrame:self.bounds];
@@ -998,6 +1066,7 @@ using namespace OPN;
 
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
+- (BOOL)hasContent { return self.heroTile != nil || self.rowCards.count > 0 || self.controllerFeaturedHeroViews.count > 0; }
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -1021,9 +1090,10 @@ using namespace OPN;
 }
 
 - (void)setLoading:(BOOL)loading {
-    self.loadingView.hidden = !loading;
+    BOOL showBlockingLoader = loading && !self.hasContent;
+    self.loadingView.hidden = !showBlockingLoader;
     self.statusLabel.stringValue = @"";
-    if (loading) {
+    if (showBlockingLoader) {
         [self.loadingView startAnimating];
     } else {
         [self.loadingView stopAnimating];
@@ -1038,7 +1108,15 @@ using namespace OPN;
 }
 
 - (void)setPanels:(const std::vector<OPN::PanelResult> &)panels {
+    std::string fingerprint = OPNStorePanelsFingerprint(panels);
+    if (self.hasContent && fingerprint == self.panelsFingerprint) {
+        _panels = panels;
+        [self mergeKnownStoreMetadataIntoPanels];
+        [self refreshLibrarySelections];
+        return;
+    }
     _panels = panels;
+    self.panelsFingerprint = fingerprint;
     [self mergeKnownStoreMetadataIntoPanels];
     self.currentHeroIndex = 0;
     [self configureHeroRotationTimer];
@@ -1047,11 +1125,7 @@ using namespace OPN;
 
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
-    BOOL mergedStoreMetadata = [self mergeKnownStoreMetadataIntoPanels];
-    if (mergedStoreMetadata) {
-        [self renderStore];
-        return;
-    }
+    [self mergeKnownStoreMetadataIntoPanels];
     if (self.rowCards.count > 0 || self.heroTile) {
         [self refreshLibrarySelections];
     } else if (!_panels.empty()) {
@@ -1180,7 +1254,9 @@ using namespace OPN;
     }
     [self.rowCards removeAllObjects];
     [self.controllerFeaturedHeroViews removeAllObjects];
+    [self.desktopFeaturedHeroViews removeAllObjects];
     self.controllerFeaturedHeroFrame = NSZeroRect;
+    self.desktopFeaturedHeroFrame = NSZeroRect;
 
     if (OpnControllerModeEnabled()) {
         [self renderControllerStore];
@@ -1296,8 +1372,9 @@ using namespace OPN;
 - (void)addDesktopHeroStageForGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
     self.controllerFeaturedHeroGame = game;
     self.controllerFeaturedHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
+    self.desktopFeaturedHeroFrame = NSMakeRect(contentX, y, width, height);
 
-    OPNStoreDocumentView *stage = [[OPNStoreDocumentView alloc] initWithFrame:NSMakeRect(contentX, y, width, height)];
+    OPNStoreDocumentView *stage = [[OPNStoreDocumentView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
     stage.wantsLayer = YES;
     CAGradientLayer *stageGradient = [CAGradientLayer layer];
     stageGradient.frame = stage.bounds;
@@ -1411,6 +1488,7 @@ using namespace OPN;
     NSTextField *hint = OpnLabel(@"Store variant follows your library selection when available", NSMakeRect(206.0, height - 70.0, textWidth - 206.0, 22.0), 12.0, OpnColor(kTextMuted), NSFontWeightSemibold);
     hint.lineBreakMode = NSLineBreakByTruncatingTail;
     [stage addSubview:hint];
+    [self.desktopFeaturedHeroViews addObject:stage];
 }
 
 - (void)renderControllerStore {
@@ -1692,6 +1770,7 @@ using namespace OPN;
 
 - (OPNStoreGameTile *)configuredHeroGameTile:(const GameInfo &)game frame:(NSRect)frame {
     OPNStoreGameTile *hero = [[OPNStoreGameTile alloc] initWithFrame:frame game:game prominent:YES];
+    hero.imageRevealDelay = 0.04;
     hero.selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
     __weak __typeof__(self) weakSelf = self;
     __weak OPNStoreGameTile *weakHero = hero;
@@ -1716,6 +1795,33 @@ using namespace OPN;
         [self updateControllerFeaturedHeroOnly];
         return;
     }
+
+    [self updateDesktopFeaturedHeroOnly];
+}
+
+- (void)updateDesktopFeaturedHeroOnly {
+    const GameInfo *heroGame = [self currentHeroGame];
+    if (!heroGame || self.desktopFeaturedHeroViews.count == 0 || NSIsEmptyRect(self.desktopFeaturedHeroFrame)) {
+        [self renderStore];
+        return;
+    }
+
+    NSArray<NSView *> *oldViews = [self.desktopFeaturedHeroViews copy];
+    [self.desktopFeaturedHeroViews removeAllObjects];
+    NSRect frame = self.desktopFeaturedHeroFrame;
+    [self addDesktopHeroStageForGame:*heroGame y:NSMinY(frame) contentX:NSMinX(frame) width:NSWidth(frame) height:NSHeight(frame)];
+    for (NSView *newView in self.desktopFeaturedHeroViews) newView.alphaValue = 0.0;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.18;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        for (NSView *oldView in oldViews) oldView.animator.alphaValue = 0.0;
+        for (NSView *newView in self.desktopFeaturedHeroViews) newView.animator.alphaValue = 1.0;
+    } completionHandler:^{
+        for (NSView *oldView in oldViews) [oldView removeFromSuperview];
+    }];
+}
+
+- (void)updateLegacyHeroTileOnly {
 
     const GameInfo *heroGame = [self currentHeroGame];
     if (!heroGame || !self.heroTile || self.heroTile.superview != self.documentView) {
@@ -1779,6 +1885,7 @@ using namespace OPN;
         CGFloat cardHeight = focused ? kStoreTileHeight + 16.0 : kStoreTileHeight;
         CGFloat cardY = focused ? 0.0 : 10.0;
         OPNStoreGameTile *card = [[OPNStoreGameTile alloc] initWithFrame:NSMakeRect(x, cardY, cardWidth, cardHeight) game:game prominent:NO];
+        card.imageRevealDelay = MIN(0.42, 0.035 * column + 0.025 * sectionIndex);
         card.selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
         [card setStoreFocused:focused];
         __weak __typeof__(self) weakSelf = self;

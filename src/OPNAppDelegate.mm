@@ -45,11 +45,14 @@
 @property (nonatomic, strong) NSTimer *gameLibraryRefreshTimer;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> cachedGameLibrary;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> cachedFeaturedGames;
+@property (nonatomic, assign) std::vector<OPN::PanelResult> cachedStorePanels;
 @property (nonatomic, assign) std::string cachedGameLibraryFingerprint;
 @property (nonatomic, assign) std::string cachedGameLibraryAccountIdentifier;
 @property (nonatomic, assign) std::string cachedFeaturedGamesAccountIdentifier;
+@property (nonatomic, assign) std::string cachedStorePanelsAccountIdentifier;
 @property (nonatomic, assign) BOOL hasCachedGameLibrary;
 @property (nonatomic, assign) BOOL hasCachedFeaturedGames;
+@property (nonatomic, assign) BOOL hasCachedStorePanels;
 @property (nonatomic, assign) BOOL gameLibraryRefreshInFlight;
 @property (nonatomic, assign) BOOL featuredGamesRefreshInFlight;
 @property (nonatomic, assign) BOOL activeSessionsRefreshInFlight;
@@ -274,6 +277,16 @@ static NSString *OPNGravatarURLStringForEmail(const std::string &email) {
         [hash appendFormat:@"%02x", digest[i]];
     }
     return [NSString stringWithFormat:@"https://www.gravatar.com/avatar/%@?s=96&d=identicon", hash];
+}
+
+static NSImage *OPNAccountSwitcherImageForSession(const OPN::AuthSession &session, NSImage *currentAvatar) {
+    (void)session;
+    if (currentAvatar) {
+        NSImage *image = [currentAvatar copy];
+        image.size = NSMakeSize(22.0, 22.0);
+        return image;
+    }
+    return nil;
 }
 
 static bool OPNIsTransientNetworkLostError(const std::string &error) {
@@ -871,13 +884,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.focusRingType = NSFocusRingTypeNone;
     switcher.wantsLayer = YES;
     switcher.layer.cornerRadius = 18.0;
-    switcher.layer.backgroundColor = OpnColor(0x050A08, 0.78).CGColor;
-    switcher.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+    switcher.layer.backgroundColor = OpnColor(0x07140D, 0.86).CGColor;
+    switcher.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.24).CGColor;
     switcher.layer.borderWidth = 1.0;
     switcher.layer.shadowColor = NSColor.blackColor.CGColor;
-    switcher.layer.shadowOpacity = 0.24;
-    switcher.layer.shadowRadius = 18.0;
-    switcher.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    switcher.layer.shadowOpacity = 0.34;
+    switcher.layer.shadowRadius = 20.0;
+    switcher.layer.shadowOffset = CGSizeMake(0.0, 10.0);
     self.desktopAccountSwitcher = switcher;
     [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.contentContainer];
     [self rebuildDesktopAccountSwitcher];
@@ -903,8 +916,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)layoutDesktopAccountSwitcher {
     if (!self.desktopAccountSwitcher || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
-    CGFloat switcherWidth = MIN(260.0, MAX(190.0, width * 0.24));
-    CGFloat x = MAX(24.0, width - switcherWidth - 58.0);
+    CGFloat switcherWidth = MIN(248.0, MAX(208.0, width * 0.18));
+    CGFloat x = MAX(24.0, width - switcherWidth - 70.0);
     self.desktopAccountSwitcher.frame = NSMakeRect(x, 58.0, switcherWidth, 36.0);
 }
 
@@ -956,6 +969,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self.desktopAccountSwitcher addItemWithTitle:title];
         NSMenuItem *item = self.desktopAccountSwitcher.lastItem;
         item.representedObject = identifierString;
+        item.image = OPNAccountSwitcherImageForSession(session, [identifierString isEqualToString:currentIdentifierString] ? self.rootView.accountAvatarImage : nil);
         if ([identifierString isEqualToString:currentIdentifierString]) selectedIndex = self.desktopAccountSwitcher.numberOfItems - 1;
         addedAnyAccount = YES;
     }
@@ -963,6 +977,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!addedAnyAccount && self.currentSession.isAuthenticated) {
         [self.desktopAccountSwitcher addItemWithTitle:OPNAuthSessionDisplayName(self.currentSession)];
         self.desktopAccountSwitcher.lastItem.representedObject = currentIdentifierString;
+        self.desktopAccountSwitcher.lastItem.image = OPNAccountSwitcherImageForSession(self.currentSession, self.rootView.accountAvatarImage);
     }
 
     if (self.desktopAccountSwitcher.numberOfItems > 0) {
@@ -1898,6 +1913,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             store.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             self.storeView = store;
 
+            std::string storePanelsAccountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
+            if (self.hasCachedStorePanels && self.cachedStorePanelsAccountIdentifier == storePanelsAccountIdentifier) {
+                [store setPanels:self.cachedStorePanels];
+            }
+
             std::string storeAccountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
             if (self.hasCachedGameLibrary && self.cachedGameLibraryAccountIdentifier == storeAccountIdentifier) {
                 [store setLibraryGames:self.cachedGameLibrary];
@@ -2207,6 +2227,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             NSString *currentEmail = strongSelf.currentSession.email.empty() ? @"" : [NSString stringWithUTF8String:strongSelf.currentSession.email.c_str()];
             if (![currentEmail isEqualToString:email]) return;
             strongSelf.rootView.accountAvatarImage = image;
+            [strongSelf rebuildDesktopAccountSwitcher];
         });
     }] resume];
 }
@@ -2372,6 +2393,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 return;
             }
 
+            strongSelf.cachedStorePanels = panels;
+            strongSelf.cachedStorePanelsAccountIdentifier = accountIdentifier;
+            strongSelf.hasCachedStorePanels = YES;
             [strongSelf.storeView setPanels:panels];
             [strongSelf.storeView setLoading:NO];
         });
