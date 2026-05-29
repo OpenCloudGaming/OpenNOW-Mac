@@ -387,9 +387,6 @@ static void ParseSessionAds(NSDictionary *session, OPN::SessionAdState &adState)
     }
 
     adState.isAdsRequired = required || !adState.sessionAds.empty() || adState.isQueuePaused;
-    if (adState.message.empty() && adState.isAdsRequired) {
-        adState.message = adState.isQueuePaused ? "Resume ads to stay in queue." : "Finish ads to stay in queue.";
-    }
 }
 
 static void MergeSessionAdState(OPN::SessionAdState &target, const OPN::SessionAdState &previous) {

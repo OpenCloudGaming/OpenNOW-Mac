@@ -34,7 +34,6 @@
 @property (nonatomic, assign) BOOL adFinishReported;
 @property (nonatomic, assign) BOOL adCancelReported;
 - (BOOL)shouldShowQueueBadge;
-- (BOOL)messageRepresentsQueue;
 - (void)applyAccentColors;
 @end
 
@@ -137,12 +136,12 @@
         _adContainerView.hidden = YES;
         [self addSubview:_adContainerView];
 
-        _adChipLabel = OpnLabel(@"Ad Queue", NSZeroRect, 12.0, OpnColor(OPN::kBrandGreen), NSFontWeightSemibold, NSTextAlignmentLeft);
+        _adChipLabel = OpnLabel(@"Sponsored Break", NSZeroRect, 12.0, OpnColor(OPN::kBrandGreen), NSFontWeightSemibold, NSTextAlignmentLeft);
         [_adContainerView addSubview:_adChipLabel];
-        _adTitleLabel = OpnLabel(@"Ad playback required", NSZeroRect, 20.0, OpnColor(OPN::kTextPrimary), NSFontWeightBold, NSTextAlignmentLeft);
+        _adTitleLabel = OpnLabel(@"Watch to continue", NSZeroRect, 20.0, OpnColor(OPN::kTextPrimary), NSFontWeightBold, NSTextAlignmentLeft);
         _adTitleLabel.maximumNumberOfLines = 2;
         [_adContainerView addSubview:_adTitleLabel];
-        _adMessageLabel = OpnLabel(@"Finish this ad to keep your free-tier session moving.", NSZeroRect, 13.0, OpnColor(OPN::kTextSecondary), NSFontWeightRegular, NSTextAlignmentLeft);
+        _adMessageLabel = OpnLabel(@"Your launch will resume automatically after the ad.", NSZeroRect, 13.0, OpnColor(OPN::kTextSecondary), NSFontWeightRegular, NSTextAlignmentLeft);
         _adMessageLabel.maximumNumberOfLines = 3;
         [_adContainerView addSubview:_adMessageLabel];
         _adPlayerView = [[AVPlayerView alloc] initWithFrame:NSZeroRect];
@@ -235,7 +234,6 @@
 
 - (BOOL)shouldShowQueueBadge {
     if (self.queuePosition <= 0) return NO;
-    if ([self messageRepresentsQueue]) return NO;
     NSString *lowerMessage = self.message.lowercaseString ?: @"";
     if ([lowerMessage containsString:@"previous session"] ||
         [lowerMessage containsString:@"cleanup"] ||
@@ -245,11 +243,6 @@
         return NO;
     }
     return YES;
-}
-
-- (BOOL)messageRepresentsQueue {
-    NSString *lowerMessage = self.message.lowercaseString ?: @"";
-    return [lowerMessage containsString:@"queue"] || [lowerMessage containsString:@"position"];
 }
 
 - (void)setLoadingChromeHidden:(BOOL)hidden {
@@ -320,9 +313,9 @@
 
     self.adVisible = YES;
     self.adContainerView.hidden = NO;
-    self.adChipLabel.stringValue = presentation.chipText.empty() ? @"Ad Queue" : [NSString stringWithUTF8String:presentation.chipText.c_str()];
-    self.adTitleLabel.stringValue = presentation.title.empty() ? @"Ad playback required" : [NSString stringWithUTF8String:presentation.title.c_str()];
-    self.adMessageLabel.stringValue = presentation.message.empty() ? @"Finish this ad to keep your free-tier session moving." : [NSString stringWithUTF8String:presentation.message.c_str()];
+    self.adChipLabel.stringValue = presentation.chipText.empty() ? @"Sponsored Break" : [NSString stringWithUTF8String:presentation.chipText.c_str()];
+    self.adTitleLabel.stringValue = presentation.title.empty() ? @"Watch to continue" : [NSString stringWithUTF8String:presentation.title.c_str()];
+    self.adMessageLabel.stringValue = presentation.message.empty() ? @"Your launch will resume automatically after the ad." : [NSString stringWithUTF8String:presentation.message.c_str()];
     [self setLoadingChromeHidden:YES];
     [self stopAnimating];
 
@@ -497,7 +490,7 @@
         self.dotLayers[i].frame = NSMakeRect(dotStart + (CGFloat)i * 13.0, barY + 45.0, 5.0, 5.0);
     }
     self.messageLabel.frame = NSMakeRect(panelX + 36.0, barY + 66.0, MAX(80.0, panelWidth - 72.0), 42.0);
-    if (showQueueBadge && ![self messageRepresentsQueue]) {
+    if (showQueueBadge) {
         self.queuePositionLabel.frame = NSMakeRect(centerX - 54.0, barY + 114.0, 108.0, 28.0);
     }
 
@@ -515,7 +508,7 @@
         self.adTitleLabel.frame = NSMakeRect(20.0, mediaHeight + 54.0, adWidth - 40.0 - (showQueueBadge ? queueBadgeWidth + 14.0 : 0.0), 54.0);
         self.adMessageLabel.frame = NSMakeRect(20.0, mediaHeight + 112.0, adWidth - 40.0, 56.0);
         self.messageLabel.frame = NSMakeRect(panelX + 36.0, NSMaxY(panelRect) - 52.0, MAX(80.0, panelWidth - 72.0), 24.0);
-        if (showQueueBadge && ![self messageRepresentsQueue]) {
+        if (showQueueBadge) {
             self.queuePositionLabel.frame = NSMakeRect(centerX - 54.0,
                                                        NSMaxY(self.adContainerView.frame) + 10.0,
                                                        108.0,
@@ -529,7 +522,7 @@
         CGFloat railWidth = MIN(240.0, panelWidth - 112.0);
         CGFloat segmentWidth = floor((railWidth - gap * (CGFloat)(stepCount - 1)) / (CGFloat)stepCount);
         CGFloat segmentX = centerX - railWidth * 0.5;
-        CGFloat segmentY = showQueueBadge && ![self messageRepresentsQueue] ? barY + 154.0 : barY + 126.0;
+        CGFloat segmentY = showQueueBadge ? barY + 154.0 : barY + 126.0;
         for (NSUInteger i = 0; i < stepCount; i++) {
             self.stepIndicatorLayers[i].frame = NSMakeRect(segmentX + (segmentWidth + gap) * (CGFloat)i,
                                                            segmentY,

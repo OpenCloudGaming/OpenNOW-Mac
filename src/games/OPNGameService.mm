@@ -1924,7 +1924,7 @@ static std::string QueueProgressMessage(int queuePosition) {
 static std::string ProgressMessageForSession(const SessionInfo &session) {
     if (session.adState.isAdsRequired) {
         if (!session.adState.message.empty()) return session.adState.message;
-        return session.adState.isQueuePaused ? "Session queue paused for ads." : "Ad playback is required while waiting in queue.";
+        return session.adState.isQueuePaused ? "Launch paused for ads." : "Watch the ad to continue.";
     }
     if (session.status == 6) {
         return "Previous session is ending. Waiting for GeForce NOW to finish cleanup...";

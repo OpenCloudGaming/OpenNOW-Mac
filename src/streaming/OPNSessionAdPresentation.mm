@@ -21,9 +21,9 @@ SessionAdPresentation SessionAdPresentationForState(const SessionAdState &state)
     if (!state.sessionAds.empty()) {
         const SessionAdInfo &ad = state.sessionAds.front();
         presentation.kind = SessionAdPresentationKind::PlayableAd;
-        presentation.chipText = state.isQueuePaused ? "Queue Paused" : "Ad Queue";
-        presentation.title = ad.title.empty() ? "Ad playback required" : ad.title;
-        presentation.message = MessageOrFallback(state, "Finish this ad to keep your free-tier session moving.");
+        presentation.chipText = state.isQueuePaused ? "Queue Paused" : "Sponsored Break";
+        presentation.title = ad.title.empty() ? "Watch to continue" : ad.title;
+        presentation.message = MessageOrFallback(state, "Your launch will resume automatically after the ad.");
         presentation.ad = &ad;
         return presentation;
     }
@@ -31,19 +31,19 @@ SessionAdPresentation SessionAdPresentationForState(const SessionAdState &state)
     if (state.isQueuePaused) {
         presentation.kind = SessionAdPresentationKind::QueuePaused;
         presentation.chipText = "Queue Paused";
-        presentation.title = "Queue paused for ads";
+        presentation.title = "Paused for ads";
         presentation.message = MessageOrFallback(state, state.gracePeriodSeconds > 0
-            ? "Resume ads before the grace period ends to keep your queue position."
-            : "Resume ads to keep your free-tier queue position.");
+            ? "Resume before the grace period ends."
+            : "Resume ads to continue.");
         return presentation;
     }
 
     presentation.kind = SessionAdPresentationKind::WaitingForAd;
-    presentation.chipText = "Ad Queue";
-    presentation.title = "Waiting for ad availability";
+    presentation.chipText = "Ad Pending";
+    presentation.title = "Waiting for an ad";
     presentation.message = MessageOrFallback(state, state.serverSentEmptyAds
-        ? "GeForce NOW has not returned a playable ad yet. OpenNOW will continue waiting for the next queue update."
-        : "GeForce NOW requires ads before this session can continue. Waiting for the next queue update.");
+        ? "GeForce NOW has not returned one yet. OpenNOW will keep checking."
+        : "GeForce NOW requires an ad before launch can continue.");
     return presentation;
 }
 

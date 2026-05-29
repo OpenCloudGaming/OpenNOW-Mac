@@ -676,7 +676,7 @@ TEST_CASE("SessionAdPresentationShowsWaitingForRequiredEmptyAds") {
     CHECK(presentation.Visible());
     CHECK(!presentation.HasPlayableAd());
     CHECK(presentation.kind == OPN::SessionAdPresentationKind::WaitingForAd);
-    CHECK_EQ(presentation.title, "Waiting for ad availability");
+    CHECK_EQ(presentation.title, "Waiting for an ad");
 }
 
 TEST_CASE("SessionAdPresentationShowsQueuePausedGracePeriod") {
