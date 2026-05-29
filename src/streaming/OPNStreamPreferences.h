@@ -1,5 +1,6 @@
 #pragma once
 
+#include "OPNStreamTypes.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -65,8 +66,26 @@ struct StreamNetworkPreflightResult {
     std::string networkTestSessionId;
     std::string networkType = "Unknown";
     int latencyMs = -1;
+    double measuredBandwidthMbps = 0.0;
+    double packetLossPercent = -1.0;
+    int jitterMs = -1;
     int recommendedMaxBitrateMbps = 0;
+    bool serverReportedWarning = false;
+    bool continueRecommended = true;
     bool usedAutomaticRegion = false;
+    std::string warningMessage;
+};
+
+struct StreamCloudVariables {
+    bool fetched = false;
+    bool allowH265 = true;
+    bool allowAV1 = true;
+    bool allowHDR = true;
+    bool allowL4S = true;
+    bool allowReflex = true;
+    int maxBitrateMbps = 0;
+    int refreshIntervalSeconds = 3600;
+    std::string gpuName;
 };
 
 struct StreamDeviceCapabilities {
@@ -95,6 +114,7 @@ struct StreamPreferenceProfile {
     int prefilterDenoise = 0;
     int prefilterModel = 0;
     bool enableL4S = false;
+    bool enableHdr = false;
     bool enablePowerSaver = false;
     bool suppressInputWhenInactive = true;
     bool directMouseInput = true;
@@ -136,9 +156,21 @@ bool StreamColorQualitySupportedByCapabilities(const StreamColorQualityOption &c
 StreamPreferenceProfile EffectiveStreamPreferenceProfileForCapabilities(StreamPreferenceProfile profile,
                                                                         const StreamDeviceCapabilities &capabilities);
 std::string ResolveStreamCodecForCapabilities(const StreamPreferenceProfile &profile,
-                                              const StreamResolutionOption &resolution,
-                                              const StreamDeviceCapabilities &capabilities,
-                                              bool libWebRTCAvailable);
+                                               const StreamResolutionOption &resolution,
+                                               const StreamDeviceCapabilities &capabilities,
+                                               bool libWebRTCAvailable);
+StreamNetworkPreflightResult StreamNetworkPreflightResultFromJSONString(const std::string &jsonText,
+                                                                       StreamNetworkPreflightResult seed,
+                                                                       int requestedMaxBitrateMbps);
+int RecommendedStreamBitrateForNetwork(int requestedMaxBitrateMbps,
+                                       int latencyMs,
+                                       double measuredBandwidthMbps,
+                                       double packetLossPercent,
+                                       int jitterMs);
+StreamCloudVariables StreamCloudVariablesFromJSONString(const std::string &jsonText);
+StreamSettings StreamSettingsByApplyingCloudVariables(StreamSettings settings,
+                                                      const StreamCloudVariables &variables,
+                                                      const StreamDeviceCapabilities &capabilities);
 
 StreamPreferenceProfile LoadStreamPreferenceProfile();
 const char *DefaultStreamingBaseUrl();
@@ -150,6 +182,10 @@ void SaveCachedStreamRegions(const std::vector<StreamRegionOption> &regions);
 void FetchStreamRegions(const std::string &token,
                         const std::string &providerStreamingBaseUrl,
                         std::function<void(const std::vector<StreamRegionOption> &regions)> completion);
+StreamCloudVariables LoadCachedStreamCloudVariables();
+void SaveCachedStreamCloudVariables(const StreamCloudVariables &variables, const std::string &rawJSON);
+void FetchStreamCloudVariables(const std::string &token,
+                               std::function<void(const StreamCloudVariables &variables)> completion);
 void RunStreamNetworkPreflight(const std::string &token,
                                const std::string &providerStreamingBaseUrl,
                                int requestedMaxBitrateMbps,
@@ -164,6 +200,7 @@ void SaveStreamPrefilterModeIndex(int prefilterModeIndex);
 void SaveStreamPrefilterSharpness(int sharpness);
 void SaveStreamPrefilterDenoise(int denoise);
 void SaveStreamL4SEnabled(bool enabled);
+void SaveStreamHDREnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);
 void SaveStreamSuppressInputWhenInactive(bool enabled);
 void SaveStreamDirectMouseInputEnabled(bool enabled);

@@ -17,6 +17,7 @@
 #include "../src/streaming/OPNStreamPreferences.h"
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
+#include "../src/common/OPNGFNError.h"
 #include "../src/games/OPNGameDataCache.h"
 #include "../src/games/OPNGameService.h"
 
@@ -366,6 +367,29 @@ private:
     id originalValue;
 };
 
+class ScopedStreamObjectPreference final {
+public:
+    explicit ScopedStreamObjectPreference(NSString *preferenceKey)
+        : key(preferenceKey),
+          originalValue([NSUserDefaults.standardUserDefaults objectForKey:key]) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+    ~ScopedStreamObjectPreference() {
+        if (originalValue) {
+            [NSUserDefaults.standardUserDefaults setObject:originalValue forKey:key];
+        } else {
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        }
+        [NSUserDefaults.standardUserDefaults synchronize];
+    }
+
+private:
+    NSString *key;
+    id originalValue;
+};
+
 static OPN::StreamPreferenceProfile ProfileWithSelections(int codecIndex, int fpsIndex, int colorQualityIndex) {
     OPN::StreamPreferenceProfile profile;
     const std::vector<OPN::StreamCodecOption> &codecs = OPN::StreamCodecOptions();
@@ -440,6 +464,98 @@ TEST_CASE("PrefilterPreferencesDefaultOffAndClampCustomLevels") {
     CHECK_EQ(custom.prefilterMode, 2);
     CHECK_EQ(custom.prefilterSharpness, 10);
     CHECK_EQ(custom.prefilterDenoise, 0);
+}
+
+TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {
+    ScopedStreamObjectPreference preference(@"OpenNOW.Stream.HDREnabled");
+
+    CHECK(!OPN::LoadStreamPreferenceProfile().enableHdr);
+
+    OPN::SaveStreamHDREnabled(true);
+    CHECK(OPN::LoadStreamPreferenceProfile().enableHdr);
+
+    OPN::SaveStreamHDREnabled(false);
+    CHECK(!OPN::LoadStreamPreferenceProfile().enableHdr);
+}
+
+TEST_CASE("NetworkPreflightParsesMeasurementsAndRecommendsBitrate") {
+    OPN::StreamNetworkPreflightResult seed;
+    seed.latencyMs = 40;
+    seed.networkType = "WiFi";
+    std::string json = R"({
+        "requestStatus": {"statusCode": 0, "statusDescription": "ok"},
+        "networkTestSessionId": "net-123",
+        "results": {
+            "latencyMs": 92,
+            "measuredBandwidthKbps": 41000,
+            "packetLoss": 0.015,
+            "jitterMs": 34,
+            "recommendedMaxBitrateKbps": 30000
+        },
+        "warning": true,
+        "warningMessage": "Selected zone is degraded"
+    })";
+
+    OPN::StreamNetworkPreflightResult parsed = OPN::StreamNetworkPreflightResultFromJSONString(json, seed, 75);
+
+    CHECK_EQ(parsed.networkTestSessionId, "net-123");
+    CHECK_EQ(parsed.latencyMs, 92);
+    CHECK_EQ((int)parsed.measuredBandwidthMbps, 41);
+    CHECK(parsed.packetLossPercent > 1.4);
+    CHECK_EQ(parsed.jitterMs, 34);
+    CHECK_EQ(parsed.recommendedMaxBitrateMbps, 30);
+    CHECK(parsed.serverReportedWarning);
+    CHECK_EQ(parsed.warningMessage, "Selected zone is degraded");
+}
+
+TEST_CASE("CloudVariablesParseAndClampNativeSettings") {
+    std::string json = R"({
+        "variables": [
+            {"key": "enableHevc", "value": false},
+            {"key": "enableAV1", "value": false},
+            {"key": "enableHDR", "value": false},
+            {"key": "enableL4S", "value": false},
+            {"key": "enableReflex", "value": false},
+            {"key": "maxBitrateKbps", "value": 25000},
+            {"key": "gpuName", "value": "RTX 4080"}
+        ],
+        "ttlSeconds": 120
+    })";
+
+    OPN::StreamCloudVariables variables = OPN::StreamCloudVariablesFromJSONString(json);
+    OPN::StreamSettings settings;
+    settings.codec = "H265";
+    settings.maxBitrateMbps = 75;
+    settings.enableHdr = true;
+    settings.enableL4S = true;
+    settings.enableReflex = true;
+    OPN::StreamDeviceCapabilities capabilities;
+    capabilities.hdrDisplaySupported = true;
+
+    OPN::StreamSettings applied = OPN::StreamSettingsByApplyingCloudVariables(settings, variables, capabilities);
+
+    CHECK(variables.fetched);
+    CHECK_EQ(variables.maxBitrateMbps, 25);
+    CHECK_EQ(variables.gpuName, "RTX 4080");
+    CHECK_EQ(applied.codec, "H264");
+    CHECK_EQ(applied.maxBitrateMbps, 25);
+    CHECK(!applied.enableHdr);
+    CHECK(!applied.enableL4S);
+    CHECK(!applied.enableReflex);
+}
+
+}
+
+namespace gfn_error_tests {
+
+TEST_SUITE("gfn/errors")
+
+TEST_CASE("UserFacingGFNErrorMessageMapsHexAndGSECDiagnostics") {
+    std::string queue = OPN::UserFacingGFNErrorMessage("backend failed with 0xC0F5213E");
+    CHECK(queue.find("queue") != std::string::npos);
+
+    std::string gsec = OPN::UserFacingGFNErrorMessage("SRC_GSEC_AUTH_FAILED");
+    CHECK(gsec.find("internal game-seat service error") != std::string::npos);
 }
 
 }

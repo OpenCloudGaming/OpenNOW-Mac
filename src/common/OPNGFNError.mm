@@ -3,6 +3,7 @@
 #import <Foundation/Foundation.h>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <limits>
 #include <string>
 
@@ -44,9 +45,10 @@ static NSNumber *NumberValue(id value) {
     if ([value isKindOfClass:NSString.class]) {
         NSString *string = (NSString *)value;
         if (string.length == 0) return nil;
-        NSScanner *scanner = [NSScanner scannerWithString:string];
-        long long result = 0;
-        if ([scanner scanLongLong:&result] && scanner.isAtEnd) return @(result);
+        std::string text([string UTF8String] ?: "");
+        char *end = nullptr;
+        long long parsed = std::strtoll(text.c_str(), &end, 0);
+        if (end && *end == '\0') return @(parsed);
     }
     return nil;
 }
@@ -113,8 +115,51 @@ static long long HTTPStatusCodeFromError(const std::string &lowerError) {
     return value;
 }
 
+static long long HexErrorCodeFromError(const std::string &lowerError) {
+    size_t index = lowerError.find("0x");
+    if (index == std::string::npos) return kNoGFNErrorCode;
+    size_t digitIndex = index + 2;
+    if (digitIndex >= lowerError.size() || !std::isxdigit((unsigned char)lowerError[digitIndex])) return kNoGFNErrorCode;
+
+    long long value = 0;
+    while (digitIndex < lowerError.size() && std::isxdigit((unsigned char)lowerError[digitIndex])) {
+        char character = lowerError[digitIndex];
+        int digit = std::isdigit((unsigned char)character) ? character - '0' : character - 'a' + 10;
+        value = (value * 16) + digit;
+        digitIndex++;
+    }
+    return value;
+}
+
 static bool MatchesCode(long long code, const std::string &lowerError, long long expectedCode, const char *name) {
     return code == expectedCode || Contains(lowerError, name);
+}
+
+struct GFNErrorRule {
+    long long code;
+    const char *symbol;
+    const char *needle;
+    const char *message;
+};
+
+static const GFNErrorRule kStructuredGFNErrorRules[] = {
+    {0xC0F5213DLL, "SRC_TOO_MANY_REQUESTS", "src_too_many", "Too many GeForce NOW launch requests were sent. Wait a few minutes, then try again."},
+    {0xC0F52156LL, "SRC_INSUFFICIENT_PLAYABILITY_LEVEL", "src_insufficient_playability_level", "This stream quality is not available for your current GeForce NOW membership. Lower the streaming quality or upgrade your membership, then try again."},
+    {0xC0F52147LL, "SRC_MAINTENANCE", "src_maintenance", "GeForce NOW is temporarily unavailable for maintenance. Try again later."},
+    {0xC0F5213ELL, "SRC_QUEUE_LENGTH_EXCEEDED", "src_queue_length_exceeded", "The GeForce NOW queue is currently full. Try again later."},
+    {0xC0F5215ALL, "SRC_STORAGE_NOT_AVAILABLE", "src_storage_not_available", "GeForce NOW cloud storage is not available for this session. Try again later."},
+    {0xC0F52142LL, "SRC_GAME_BINARIES_NOT_AVAILABLE", "src_game_binaries_not_available", "This game is not available in the selected GeForce NOW region. Choose Automatic or another region, then try again."},
+    {0xC0F52005LL, "SRC_SYSTEM_SLEEP", "src_system_sleep", "Session setup was interrupted by system sleep. Keep your Mac awake, then try again."},
+    {0xC0F22206LL, "NVB_ICE_CONNECTION_FAILED", "ice_connection_failed", "There was a network problem connecting to GeForce NOW. Check your connection, then try again."},
+    {0xC0F30002LL, "NVB_FRAME_LOSS_TIMEOUT", "frame_loss_timeout", "There was a network problem connecting to GeForce NOW. Check your connection, then try again."},
+    {0x00F13001LL, "GAME_NOT_OWNED", "game_not_owned", "This game is not owned or linked on your account. Open the Store or link the required account, then try again."},
+};
+
+static const GFNErrorRule *StructuredRuleForError(long long code, const std::string &lowerError) {
+    for (const GFNErrorRule &rule : kStructuredGFNErrorRules) {
+        if (code == rule.code || Contains(lowerError, rule.symbol) || Contains(lowerError, rule.needle)) return &rule;
+    }
+    return nullptr;
 }
 
 static std::string MessageWithDetails(NSString *message, long long code, NSString *description) {
@@ -136,9 +181,21 @@ std::string UserFacingGFNErrorMessage(const std::string &errorMessage, const std
     NSDictionary *json = JSONDictionaryFromError(errorMessage);
     long long code = ErrorCodeFromDictionary(json);
     long long httpCode = HTTPStatusCodeFromError(lower);
+    long long hexCode = HexErrorCodeFromError(lower);
     NSString *description = ErrorDescriptionFromDictionary(json);
 
     if (code == kNoGFNErrorCode && httpCode != kNoGFNErrorCode) code = httpCode;
+    if (code == kNoGFNErrorCode && hexCode != kNoGFNErrorCode) code = hexCode;
+
+    if (Contains(lower, "gsec_") || Contains(lower, "src_gsec") || Contains(lower, "gfn_gsec")) {
+        return MessageWithDetails(@"GeForce NOW reported an internal game-seat service error. Try launching again; if it keeps happening, choose another region or wait for NVIDIA to recover the service.", code, description);
+    }
+
+    const GFNErrorRule *structuredRule = StructuredRuleForError(code, lower);
+    if (structuredRule) {
+        NSString *message = [NSString stringWithUTF8String:structuredRule->message] ?: @"A GeForce NOW service error occurred.";
+        return MessageWithDetails(message, code, description);
+    }
 
     if (httpCode == 401 || Contains(lower, "unauthorized") || Contains(lower, "auth_err")) {
         return MessageWithDetails(@"Your NVIDIA session expired. Sign in again, then try launching the game.", code, description);
