@@ -34,6 +34,9 @@ static NSString *const kMicrophonePushToTalkKeyCodeKey = @"OpenNOW.Stream.Microp
 static NSString *const kMicrophonePushToTalkModifierMaskKey = @"OpenNOW.Stream.MicrophonePushToTalkModifierMask";
 static NSString *const kSelectedRegionUrlKey = @"OpenNOW.Stream.RegionUrl";
 static NSString *const kCachedRegionsKey = @"OpenNOW.Stream.CachedRegions";
+static NSString *const kCachedCloudVariablesJSONKey = @"OpenNOW.Stream.CloudVariablesJSON";
+static NSString *const kCachedCloudVariablesTimestampKey = @"OpenNOW.Stream.CloudVariablesTimestamp";
+static NSString *const kHDREnabledKey = @"OpenNOW.Stream.HDREnabled";
 static NSString *const kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *const kNvClientVersion = @"2.0.80.173";
 static constexpr const char *kDefaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/";
@@ -534,6 +537,7 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.prefilterDenoise = ClampedStoredInteger(kPrefilterDenoiseKey, 0, 11);
 
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
+    profile.enableHdr = [NSUserDefaults.standardUserDefaults boolForKey:kHDREnabledKey];
     profile.enablePowerSaver = [NSUserDefaults.standardUserDefaults boolForKey:kPowerSaverEnabledKey];
     id suppressInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kSuppressInputWhenInactiveKey];
     profile.suppressInputWhenInactive = [suppressInputValue isKindOfClass:NSNumber.class] ? [(NSNumber *)suppressInputValue boolValue] : true;
@@ -594,13 +598,26 @@ static std::string CurrentNetworkType() {
     return "Unknown";
 }
 
-static int RecommendedPreflightBitrate(int requestedMaxBitrateMbps, int latencyMs) {
+int RecommendedStreamBitrateForNetwork(int requestedMaxBitrateMbps,
+                                       int latencyMs,
+                                       double measuredBandwidthMbps,
+                                       double packetLossPercent,
+                                       int jitterMs) {
     int requested = std::max(1, requestedMaxBitrateMbps);
-    if (latencyMs < 0) return requested;
-    if (latencyMs >= 120) return std::min(requested, 25);
-    if (latencyMs >= 85) return std::min(requested, 50);
-    if (latencyMs >= 60) return std::min(requested, 75);
-    return requested;
+    int recommended = requested;
+    if (measuredBandwidthMbps > 1.0 && std::isfinite(measuredBandwidthMbps)) {
+        recommended = std::min(recommended, std::max(5, (int)std::floor(measuredBandwidthMbps * 0.85)));
+    }
+    if (packetLossPercent >= 5.0) recommended = std::min(recommended, 15);
+    else if (packetLossPercent >= 2.0) recommended = std::min(recommended, 25);
+    else if (packetLossPercent >= 1.0) recommended = std::min(recommended, 50);
+    if (jitterMs >= 50) recommended = std::min(recommended, 25);
+    else if (jitterMs >= 30) recommended = std::min(recommended, 50);
+    if (latencyMs < 0) return recommended;
+    if (latencyMs >= 120) return std::min(recommended, 25);
+    if (latencyMs >= 85) return std::min(recommended, 50);
+    if (latencyMs >= 60) return std::min(recommended, 75);
+    return recommended;
 }
 
 std::string LoadSelectedStreamRegionUrl() {
@@ -708,6 +725,273 @@ static NSString *StringFromJSONValue(id value) {
     return nil;
 }
 
+static NSString *NetworkTestSessionIdFromJSON(id json);
+
+static id JSONValueFromData(NSData *data) {
+    if (!data) return nil;
+    return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+}
+
+static id JSONValueFromString(const std::string &jsonText) {
+    if (jsonText.empty()) return nil;
+    NSData *data = [[NSData alloc] initWithBytes:jsonText.data() length:jsonText.size()];
+    return JSONValueFromData(data);
+}
+
+static id FirstRecursiveJSONValue(id json, NSArray<NSString *> *keys) {
+    if ([json isKindOfClass:NSDictionary.class]) {
+        NSDictionary *dict = (NSDictionary *)json;
+        for (NSString *key in keys) {
+            id value = dict[key];
+            if (value && value != NSNull.null) return value;
+        }
+        for (id value in dict.allValues) {
+            id nested = FirstRecursiveJSONValue(value, keys);
+            if (nested) return nested;
+        }
+    } else if ([json isKindOfClass:NSArray.class]) {
+        for (id value in (NSArray *)json) {
+            id nested = FirstRecursiveJSONValue(value, keys);
+            if (nested) return nested;
+        }
+    }
+    return nil;
+}
+
+static NSNumber *NumberFromJSONValue(id value) {
+    if ([value isKindOfClass:NSNumber.class]) return (NSNumber *)value;
+    NSString *string = [value isKindOfClass:NSString.class] ? (NSString *)value : nil;
+    if (string.length == 0) return nil;
+    NSScanner *scanner = [NSScanner scannerWithString:string];
+    double number = 0.0;
+    if ([scanner scanDouble:&number] && scanner.isAtEnd && std::isfinite(number)) return @(number);
+    return nil;
+}
+
+static NSNumber *FirstRecursiveNumber(id json, NSArray<NSString *> *keys) {
+    return NumberFromJSONValue(FirstRecursiveJSONValue(json, keys));
+}
+
+static NSString *FirstRecursiveString(id json, NSArray<NSString *> *keys) {
+    NSString *value = StringFromJSONValue(FirstRecursiveJSONValue(json, keys));
+    return value.length > 0 ? value : nil;
+}
+
+static BOOL BoolFromJSONValue(id value, BOOL fallback) {
+    if ([value isKindOfClass:NSNumber.class]) return [(NSNumber *)value boolValue];
+    if (![value isKindOfClass:NSString.class]) return fallback;
+    NSString *lower = [(NSString *)value lowercaseString];
+    if ([lower isEqualToString:@"true"] || [lower isEqualToString:@"yes"] || [lower isEqualToString:@"1"] || [lower isEqualToString:@"enabled"]) return YES;
+    if ([lower isEqualToString:@"false"] || [lower isEqualToString:@"no"] || [lower isEqualToString:@"0"] || [lower isEqualToString:@"disabled"]) return NO;
+    return fallback;
+}
+
+static BOOL FirstRecursiveBool(id json, NSArray<NSString *> *keys, BOOL fallback) {
+    return BoolFromJSONValue(FirstRecursiveJSONValue(json, keys), fallback);
+}
+
+static BOOL NSStringEqualsAnyCaseInsensitive(NSString *value, NSArray<NSString *> *candidates) {
+    if (value.length == 0) return NO;
+    for (NSString *candidate in candidates) {
+        if ([value caseInsensitiveCompare:candidate] == NSOrderedSame) return YES;
+    }
+    return NO;
+}
+
+static id CloudVariableValue(id json, NSArray<NSString *> *names) {
+    if ([json isKindOfClass:NSDictionary.class]) {
+        NSDictionary *dict = (NSDictionary *)json;
+        NSString *variableName = StringFromJSONValue(dict[@"key"] ?: dict[@"name"] ?: dict[@"variableName"] ?: dict[@"id"]);
+        if (NSStringEqualsAnyCaseInsensitive(variableName, names)) {
+            id value = dict[@"value"] ?: dict[@"defaultValue"] ?: dict[@"currentValue"];
+            if (value && value != NSNull.null) return value;
+        }
+        for (NSString *name in names) {
+            id direct = dict[name];
+            if (direct && direct != NSNull.null) return direct;
+        }
+        for (id value in dict.allValues) {
+            id nested = CloudVariableValue(value, names);
+            if (nested) return nested;
+        }
+    } else if ([json isKindOfClass:NSArray.class]) {
+        for (id value in (NSArray *)json) {
+            id nested = CloudVariableValue(value, names);
+            if (nested) return nested;
+        }
+    }
+    return nil;
+}
+
+static BOOL CloudVariableBool(id json, NSArray<NSString *> *names, BOOL fallback) {
+    return BoolFromJSONValue(CloudVariableValue(json, names), fallback);
+}
+
+static NSNumber *CloudVariableNumber(id json, NSArray<NSString *> *names) {
+    return NumberFromJSONValue(CloudVariableValue(json, names));
+}
+
+static NSString *CloudVariableString(id json, NSArray<NSString *> *names) {
+    NSString *value = StringFromJSONValue(CloudVariableValue(json, names));
+    return value.length > 0 ? value : nil;
+}
+
+static int BitrateMbpsFromJSON(id json, NSArray<NSString *> *mbpsKeys, NSArray<NSString *> *kbpsKeys) {
+    NSNumber *mbps = FirstRecursiveNumber(json, mbpsKeys);
+    if (mbps && mbps.doubleValue > 0.0) return std::max(1, (int)std::floor(mbps.doubleValue));
+    NSNumber *kbps = FirstRecursiveNumber(json, kbpsKeys);
+    if (kbps && kbps.doubleValue > 0.0) return std::max(1, (int)std::floor(kbps.doubleValue / 1000.0));
+    return 0;
+}
+
+static double PercentFromJSON(id json, NSArray<NSString *> *keys) {
+    NSNumber *value = FirstRecursiveNumber(json, keys);
+    if (!value) return -1.0;
+    double percent = value.doubleValue;
+    if (percent >= 0.0 && percent <= 1.0) percent *= 100.0;
+    return percent >= 0.0 && std::isfinite(percent) ? percent : -1.0;
+}
+
+StreamNetworkPreflightResult StreamNetworkPreflightResultFromJSONString(const std::string &jsonText,
+                                                                       StreamNetworkPreflightResult seed,
+                                                                       int requestedMaxBitrateMbps) {
+    id json = JSONValueFromString(jsonText);
+    if (!json) {
+        seed.recommendedMaxBitrateMbps = RecommendedStreamBitrateForNetwork(requestedMaxBitrateMbps,
+                                                                           seed.latencyMs,
+                                                                           seed.measuredBandwidthMbps,
+                                                                           seed.packetLossPercent,
+                                                                           seed.jitterMs);
+        return seed;
+    }
+
+    NSString *sessionId = NetworkTestSessionIdFromJSON(json);
+    if (sessionId.length > 0) seed.networkTestSessionId = [sessionId UTF8String];
+
+    NSNumber *latency = FirstRecursiveNumber(json, @[@"latencyMs", @"clientMeasuredLatencyMs", @"rttMs", @"roundTripTimeMs", @"pingMs"]);
+    if (latency && latency.intValue >= 0) seed.latencyMs = latency.intValue;
+
+    int bandwidthMbps = BitrateMbpsFromJSON(json,
+                                            @[@"bandwidthMbps", @"availableBandwidthMbps", @"downloadBandwidthMbps", @"measuredBandwidthMbps"],
+                                            @[@"bandwidthKbps", @"availableBandwidthKbps", @"downloadBandwidthKbps", @"measuredBandwidthKbps"]);
+    if (bandwidthMbps > 0) seed.measuredBandwidthMbps = (double)bandwidthMbps;
+
+    double packetLoss = PercentFromJSON(json, @[@"packetLossPercent", @"packetLossPercentage", @"packetLoss"]);
+    if (packetLoss >= 0.0) seed.packetLossPercent = packetLoss;
+
+    NSNumber *jitter = FirstRecursiveNumber(json, @[@"jitterMs", @"jitter", @"networkJitterMs"]);
+    if (jitter && jitter.intValue >= 0) seed.jitterMs = jitter.intValue;
+
+    seed.serverReportedWarning = FirstRecursiveBool(json, @[@"warning", @"hasWarning", @"shouldWarn", @"networkWarning"], seed.serverReportedWarning);
+    seed.continueRecommended = FirstRecursiveBool(json, @[@"continueRecommended", @"shouldContinue", @"continueAllowed"], seed.continueRecommended);
+    if (FirstRecursiveBool(json, @[@"blockLaunch", @"stopLaunch", @"failLaunch"], NO)) seed.continueRecommended = false;
+
+    NSString *warning = FirstRecursiveString(json, @[@"warningMessage", @"warningDescription", @"message", @"statusDescription"]);
+    if (warning.length > 0) seed.warningMessage = [warning UTF8String];
+
+    int serverRecommended = BitrateMbpsFromJSON(json,
+                                               @[@"recommendedMaxBitrateMbps", @"recommendedBitrateMbps", @"maxRecommendedBitrateMbps"],
+                                               @[@"recommendedMaxBitrateKbps", @"recommendedBitrateKbps", @"maxRecommendedBitrateKbps"]);
+    int measuredRecommended = RecommendedStreamBitrateForNetwork(requestedMaxBitrateMbps,
+                                                                seed.latencyMs,
+                                                                seed.measuredBandwidthMbps,
+                                                                seed.packetLossPercent,
+                                                                seed.jitterMs);
+    seed.recommendedMaxBitrateMbps = serverRecommended > 0 ? std::min(measuredRecommended, serverRecommended) : measuredRecommended;
+    return seed;
+}
+
+StreamCloudVariables StreamCloudVariablesFromJSONString(const std::string &jsonText) {
+    StreamCloudVariables variables;
+    id json = JSONValueFromString(jsonText);
+    if (!json) return variables;
+
+    variables.fetched = true;
+    variables.allowH265 = CloudVariableBool(json, @[@"allowH265", @"enableH265", @"h265Enabled", @"allowHevc", @"enableHevc", @"hevcEnabled"], variables.allowH265);
+    variables.allowAV1 = CloudVariableBool(json, @[@"allowAV1", @"enableAV1", @"av1Enabled"], variables.allowAV1);
+    variables.allowHDR = CloudVariableBool(json, @[@"allowHDR", @"enableHDR", @"hdrEnabled", @"trueHdrEnabled", @"enableTrueHdr"], variables.allowHDR);
+    variables.allowL4S = CloudVariableBool(json, @[@"allowL4S", @"enableL4S", @"l4sEnabled"], variables.allowL4S);
+    variables.allowReflex = CloudVariableBool(json, @[@"allowReflex", @"enableReflex", @"reflexEnabled"], variables.allowReflex);
+
+    NSNumber *maxBitrateMbps = CloudVariableNumber(json, @[@"maxBitrateMbps", @"maximumBitrateMbps", @"streamMaxBitrateMbps"]);
+    NSNumber *maxBitrateKbps = CloudVariableNumber(json, @[@"maxBitrateKbps", @"maximumBitrateKbps", @"streamMaxBitrateKbps"]);
+    if (maxBitrateMbps && maxBitrateMbps.doubleValue > 0.0) variables.maxBitrateMbps = std::max(1, (int)std::floor(maxBitrateMbps.doubleValue));
+    else if (maxBitrateKbps && maxBitrateKbps.doubleValue > 0.0) variables.maxBitrateMbps = std::max(1, (int)std::floor(maxBitrateKbps.doubleValue / 1000.0));
+
+    NSNumber *refresh = CloudVariableNumber(json, @[@"refreshIntervalSeconds", @"ttlSeconds", @"cacheTtlSeconds"]);
+    if (refresh && refresh.intValue > 0) variables.refreshIntervalSeconds = std::max(60, std::min(refresh.intValue, 86400));
+    NSString *gpu = CloudVariableString(json, @[@"gpuName", @"gpuType", @"defaultGpuName", @"preferredGpuName"]);
+    if (gpu.length > 0) variables.gpuName = [gpu UTF8String];
+    return variables;
+}
+
+StreamSettings StreamSettingsByApplyingCloudVariables(StreamSettings settings,
+                                                      const StreamCloudVariables &variables,
+                                                      const StreamDeviceCapabilities &capabilities) {
+    if (!variables.allowH265 && settings.codec == "H265") settings.codec = "H264";
+    if (!variables.allowAV1 && settings.codec == "AV1") settings.codec = "H264";
+    if (!variables.allowHDR || !capabilities.hdrDisplaySupported) settings.enableHdr = false;
+    if (!variables.allowL4S) settings.enableL4S = false;
+    if (!variables.allowReflex) settings.enableReflex = false;
+    if (variables.maxBitrateMbps > 0) settings.maxBitrateMbps = std::min(settings.maxBitrateMbps, variables.maxBitrateMbps);
+    return settings;
+}
+
+StreamCloudVariables LoadCachedStreamCloudVariables() {
+    NSString *json = [NSUserDefaults.standardUserDefaults stringForKey:kCachedCloudVariablesJSONKey];
+    if (json.length == 0) return StreamCloudVariables{};
+    StreamCloudVariables variables = StreamCloudVariablesFromJSONString([json UTF8String]);
+    variables.fetched = variables.fetched && variables.refreshIntervalSeconds > 0;
+    return variables;
+}
+
+void SaveCachedStreamCloudVariables(const StreamCloudVariables &variables, const std::string &rawJSON) {
+    if (!variables.fetched || rawJSON.empty()) return;
+    NSString *json = [[NSString alloc] initWithBytes:rawJSON.data() length:rawJSON.size() encoding:NSUTF8StringEncoding];
+    if (json.length == 0) return;
+    [NSUserDefaults.standardUserDefaults setObject:json forKey:kCachedCloudVariablesJSONKey];
+    [NSUserDefaults.standardUserDefaults setDouble:[[NSDate date] timeIntervalSince1970] forKey:kCachedCloudVariablesTimestampKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
+}
+
+void FetchStreamCloudVariables(const std::string &token,
+                               std::function<void(const StreamCloudVariables &variables)> completion) {
+    StreamCloudVariables cached = LoadCachedStreamCloudVariables();
+    NSTimeInterval cachedAt = [NSUserDefaults.standardUserDefaults doubleForKey:kCachedCloudVariablesTimestampKey];
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (cached.fetched && cachedAt > 0 && now - cachedAt < cached.refreshIntervalSeconds) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(cached); });
+        return;
+    }
+
+    NSURL *url = [NSURL URLWithString:@"https://api.gdn.nvidia.com/cloudvariables/v3"];
+    if (!url) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(cached); });
+        return;
+    }
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+    request.timeoutInterval = 4.0;
+    ApplyCloudmatchHeaders(request, token);
+
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        StreamCloudVariables result = cached;
+        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+        if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
+            NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            if (json.length > 0) {
+                std::string raw([json UTF8String]);
+                StreamCloudVariables parsed = StreamCloudVariablesFromJSONString(raw);
+                if (parsed.fetched) {
+                    result = parsed;
+                    SaveCachedStreamCloudVariables(result, raw);
+                }
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
+    }] resume];
+}
+
 static NSString *NetworkTestSessionIdFromJSON(id json) {
     if (![json isKindOfClass:NSDictionary.class]) return nil;
     NSDictionary *dict = (NSDictionary *)json;
@@ -765,9 +1049,8 @@ static void CreateNetworkTestSession(StreamNetworkPreflightResult preflight,
         StreamNetworkPreflightResult result = preflight;
         NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
-            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-            NSString *sessionId = NetworkTestSessionIdFromJSON(json);
-            if (sessionId.length > 0) result.networkTestSessionId = [sessionId UTF8String];
+            NSString *jsonText = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            if (jsonText.length > 0) result = StreamNetworkPreflightResultFromJSONString([jsonText UTF8String], result, requestedMaxBitrateMbps);
         }
         dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
     }] resume];
@@ -904,7 +1187,11 @@ void RunStreamNetworkPreflight(const std::string &token,
             result.streamingBaseUrl = NormalizedBaseUrl(chosen->url);
             result.latencyMs = chosen->latencyMs;
         }
-        result.recommendedMaxBitrateMbps = RecommendedPreflightBitrate(requestedMaxBitrateMbps, result.latencyMs);
+        result.recommendedMaxBitrateMbps = RecommendedStreamBitrateForNetwork(requestedMaxBitrateMbps,
+                                                                             result.latencyMs,
+                                                                             result.measuredBandwidthMbps,
+                                                                             result.packetLossPercent,
+                                                                             result.jitterMs);
         CreateNetworkTestSession(result, tokenCopy, requestedMaxBitrateMbps, completion);
     });
 }
@@ -961,6 +1248,10 @@ void SaveStreamPrefilterDenoise(int denoise) {
 
 void SaveStreamL4SEnabled(bool enabled) {
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kL4SEnabledKey];
+}
+
+void SaveStreamHDREnabled(bool enabled) {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kHDREnabledKey];
 }
 
 void SaveStreamPowerSaverEnabled(bool enabled) {

@@ -605,6 +605,7 @@ void SessionManager::CreateSession(const std::string &appId,
     std::string deviceId = StableCloudmatchDeviceId();
 
     StreamDeviceCapabilities displayCapabilities = LoadStreamDeviceCapabilities();
+    settingsCopy = StreamSettingsByApplyingCloudVariables(settingsCopy, LoadCachedStreamCloudVariables(), displayCapabilities);
     bool hdrEnabled = RequestedHdrEnabled(settingsCopy, displayCapabilities);
 
     NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
