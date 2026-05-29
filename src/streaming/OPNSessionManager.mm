@@ -3,6 +3,7 @@
 #include "common/OPNSentry.h"
 #include "common/OPNLocale.h"
 #include "common/OPNDeviceIdentity.h"
+#include "common/OPNProtocolDebug.h"
 #include "OPNStreamTypes.h"
 #include "OPNStreamPreferences.h"
 #import <Foundation/Foundation.h>
@@ -704,6 +705,7 @@ void SessionManager::CreateSession(const std::string &appId,
     if (VerboseSessionHttpLoggingEnabled()) {
         OPN::LogInfo(@"[SessionManager] HTTP Body: %@", bodyStr);
     }
+    LogProtocolJSONObject(@"session create request", body);
     req.HTTPBody = bodyData;
 
     SessionCreateCallback cb = completion;
@@ -715,6 +717,7 @@ void SessionManager::CreateSession(const std::string &appId,
                 return;
             }
             NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+            LogProtocolJSONData(@"session create response", data);
             if (http.statusCode != 200) {
                 NSString *responseBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
                 NSString *originalErrorString = [NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, responseBody];
@@ -1522,13 +1525,14 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             return;
         }
 
-        if (recoveryMode && (preClaimStatus == 2 || preClaimStatus == 3)) {
-            OPN::LogInfo(@"[ClaimSession] Recovery mode with ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
+        if (IsReadyActiveSessionStatus(preClaimStatus)) {
+            OPN::LogInfo(@"[ClaimSession] Ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
             this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
             return;
         }
 
         OPN::LogInfo(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
+        LogProtocolJSONObject(@"session claim request", payload);
         NSURL *claimURL = [NSURL URLWithString:claimUrl];
         if (!claimURL) {
             cb(false, SessionInfo{}, "Invalid claim URL");
@@ -1559,6 +1563,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                 return;
             }
             NSHTTPURLResponse *cHttp = (NSHTTPURLResponse *)cResp;
+            LogProtocolJSONData(@"session claim response", cData);
             NSString *cBody = [[NSString alloc] initWithData:cData encoding:NSUTF8StringEncoding];
             if (VerboseSessionHttpLoggingEnabled()) {
                 OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);

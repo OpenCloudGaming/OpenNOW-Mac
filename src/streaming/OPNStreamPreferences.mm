@@ -1,5 +1,6 @@
 #include "OPNStreamPreferences.h"
 #include "common/OPNDeviceIdentity.h"
+#include "common/OPNProtocolDebug.h"
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
@@ -978,6 +979,7 @@ void FetchStreamCloudVariables(const std::string &token,
         StreamCloudVariables result = cached;
         NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
+            LogProtocolJSONData(@"cloudvariables/v3 response", data);
             NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
             if (json.length > 0) {
                 std::string raw([json UTF8String]);
@@ -1042,13 +1044,16 @@ static void CreateNetworkTestSession(StreamNetworkPreflightResult preflight,
     request.timeoutInterval = 5.0;
     ApplyCloudmatchHeaders(request, token);
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:NetworkTestRequestBody(preflight, requestedMaxBitrateMbps) options:0 error:nil];
+    NSDictionary *body = NetworkTestRequestBody(preflight, requestedMaxBitrateMbps);
+    LogProtocolJSONObject(@"nettestsession request", body);
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     request.HTTPBody = bodyData ?: [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         StreamNetworkPreflightResult result = preflight;
         NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
+            LogProtocolJSONData(@"nettestsession response", data);
             NSString *jsonText = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
             if (jsonText.length > 0) result = StreamNetworkPreflightResultFromJSONString([jsonText UTF8String], result, requestedMaxBitrateMbps);
         }

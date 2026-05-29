@@ -1,6 +1,7 @@
 #import "OPNLoadingView.h"
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNUIHelpers.h"
+#include "../streaming/OPNSessionAdPresentation.h"
 #import <AVKit/AVKit.h>
 #include <QuartzCore/QuartzCore.h>
 #include <cmath>
@@ -311,27 +312,42 @@
 }
 
 - (void)updateAdState:(const OPN::SessionAdState &)adState {
-    if (!adState.isAdsRequired || adState.sessionAds.empty()) {
+    OPN::SessionAdPresentation presentation = OPN::SessionAdPresentationForState(adState);
+    if (!presentation.Visible()) {
         [self clearAdPresentation];
         return;
     }
 
-    const OPN::SessionAdInfo &ad = adState.sessionAds.front();
+    self.adVisible = YES;
+    self.adContainerView.hidden = NO;
+    self.adChipLabel.stringValue = presentation.chipText.empty() ? @"Ad Queue" : [NSString stringWithUTF8String:presentation.chipText.c_str()];
+    self.adTitleLabel.stringValue = presentation.title.empty() ? @"Ad playback required" : [NSString stringWithUTF8String:presentation.title.c_str()];
+    self.adMessageLabel.stringValue = presentation.message.empty() ? @"Finish this ad to keep your free-tier session moving." : [NSString stringWithUTF8String:presentation.message.c_str()];
+    [self setLoadingChromeHidden:YES];
+    [self stopAnimating];
+
+    if (!presentation.HasPlayableAd()) {
+        [self.adFallbackTimer invalidate];
+        self.adFallbackTimer = nil;
+        [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
+        [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemFailedToPlayToEndTimeNotification object:nil];
+        [self removeAdTimeObserver];
+        [self.adPlayer pause];
+        self.adPlayer = nil;
+        self.adPlayerView.player = nil;
+        self.adPlayerView.hidden = YES;
+        self.activeAdId = nil;
+        [self setNeedsLayout:YES];
+        return;
+    }
+
+    const OPN::SessionAdInfo &ad = *presentation.ad;
     NSString *adId = ad.adId.empty() ? @"ad" : [NSString stringWithUTF8String:ad.adId.c_str()];
     if (!adId) adId = @"ad";
-    NSString *title = ad.title.empty() ? @"Ad playback required" : [NSString stringWithUTF8String:ad.title.c_str()];
-    NSString *message = adState.message.empty() ? @"Finish this ad to keep your free-tier session moving." : [NSString stringWithUTF8String:adState.message.c_str()];
     NSString *mediaUrl = ad.mediaUrl.empty() ? @"" : [NSString stringWithUTF8String:ad.mediaUrl.c_str()];
     NSInteger durationMs = ad.durationMs > 0 ? ad.durationMs : (ad.adLengthInSeconds > 0 ? ad.adLengthInSeconds * 1000 : 30000);
 
     BOOL sameAd = self.activeAdId && [self.activeAdId isEqualToString:adId];
-    self.adVisible = YES;
-    self.adContainerView.hidden = NO;
-    self.adTitleLabel.stringValue = title ?: @"Ad playback required";
-    self.adMessageLabel.stringValue = message ?: @"Finish this ad to keep your free-tier session moving.";
-    [self setLoadingChromeHidden:YES];
-    [self stopAnimating];
-
     if (sameAd) {
         [self setNeedsLayout:YES];
         return;

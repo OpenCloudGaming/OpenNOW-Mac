@@ -65,6 +65,9 @@ static long long ErrorCodeFromDictionary(NSDictionary *json) {
     if (!json) return kNoGFNErrorCode;
 
     NSDictionary *requestStatus = DictionaryValue(json[@"requestStatus"]);
+    NSNumber *unifiedErrorCode = NumberValue(requestStatus[@"unifiedErrorCode"]);
+    if (unifiedErrorCode && unifiedErrorCode.longLongValue != 0) return unifiedErrorCode.longLongValue;
+
     NSNumber *requestStatusCode = NumberValue(requestStatus[@"statusCode"]);
     if (requestStatusCode) return requestStatusCode.longLongValue;
 
@@ -80,6 +83,9 @@ static long long ErrorCodeFromDictionary(NSDictionary *json) {
 
     NSNumber *errorCode = NumberValue(json[@"errorCode"]);
     if (errorCode) return errorCode.longLongValue;
+
+    unifiedErrorCode = NumberValue(json[@"unifiedErrorCode"]);
+    if (unifiedErrorCode && unifiedErrorCode.longLongValue != 0) return unifiedErrorCode.longLongValue;
 
     return kNoGFNErrorCode;
 }
@@ -117,9 +123,29 @@ static long long HTTPStatusCodeFromError(const std::string &lowerError) {
 
 static long long HexErrorCodeFromError(const std::string &lowerError) {
     size_t index = lowerError.find("0x");
-    if (index == std::string::npos) return kNoGFNErrorCode;
-    size_t digitIndex = index + 2;
-    if (digitIndex >= lowerError.size() || !std::isxdigit((unsigned char)lowerError[digitIndex])) return kNoGFNErrorCode;
+    size_t digitIndex = std::string::npos;
+    if (index != std::string::npos) {
+        digitIndex = index + 2;
+        if (digitIndex >= lowerError.size() || !std::isxdigit((unsigned char)lowerError[digitIndex])) return kNoGFNErrorCode;
+    } else {
+        size_t scanIndex = 0;
+        while (scanIndex < lowerError.size()) {
+            while (scanIndex < lowerError.size() && !std::isxdigit((unsigned char)lowerError[scanIndex])) scanIndex++;
+            size_t tokenStart = scanIndex;
+            bool hasDigit = false;
+            bool hasAlpha = false;
+            while (scanIndex < lowerError.size() && std::isxdigit((unsigned char)lowerError[scanIndex])) {
+                hasDigit = hasDigit || std::isdigit((unsigned char)lowerError[scanIndex]);
+                hasAlpha = hasAlpha || std::isalpha((unsigned char)lowerError[scanIndex]);
+                scanIndex++;
+            }
+            if (scanIndex - tokenStart >= 6 && hasDigit && hasAlpha) {
+                digitIndex = tokenStart;
+                break;
+            }
+        }
+        if (digitIndex == std::string::npos) return kNoGFNErrorCode;
+    }
 
     long long value = 0;
     while (digitIndex < lowerError.size() && std::isxdigit((unsigned char)lowerError[digitIndex])) {
@@ -205,6 +231,21 @@ std::string UserFacingGFNErrorMessage(const std::string &errorMessage, const std
         return MessageWithDetails(@"Too many GeForce NOW launch requests were sent. Wait a few minutes, then try again.", code, description);
     }
 
+    if (Contains(lower, "account_link") ||
+        Contains(lower, "account link") ||
+        Contains(lower, "store account") ||
+        Contains(lower, "link_required") ||
+        Contains(lower, "link required")) {
+        return MessageWithDetails(@"The store account for this game is not linked to GeForce NOW. Open the Store to link the account, then try launching again.", code, description);
+    }
+
+    if (Contains(lower, "install_to_play") ||
+        Contains(lower, "install to play") ||
+        Contains(lower, "install required") ||
+        Contains(lower, "game installation required")) {
+        return MessageWithDetails(@"This game must be installed or prepared through its store before GeForce NOW can launch it. Open the Store, finish setup, then try again.", code, description);
+    }
+
     if (MatchesCode(code, lower, 86, "insufficient_playability_level") ||
         MatchesCode(code, lower, 3237290326LL, "insufficient_playability_level")) {
         return MessageWithDetails(@"This stream quality is not available for your current GeForce NOW membership. Lower the streaming quality or upgrade your membership, then try again.", code, description);
@@ -226,8 +267,28 @@ std::string UserFacingGFNErrorMessage(const std::string &errorMessage, const std
         return MessageWithDetails(@"This GeForce NOW session ended because your NVIDIA account was used on another device.", code, description);
     }
 
-    if (MatchesCode(code, lower, 15806465LL, "game_not_owned") || Contains(lower, "not entitled") || Contains(lower, "not_entitled")) {
+    if (MatchesCode(code, lower, 15806465LL, "game_not_owned") ||
+        Contains(lower, "not entitled") ||
+        Contains(lower, "not_entitled") ||
+        Contains(lower, "entitlement required") ||
+        Contains(lower, "ownership required") ||
+        Contains(lower, "purchase required") ||
+        Contains(lower, "license required")) {
         return MessageWithDetails(@"This game is not owned or linked on your account. Open the Store or link the required account, then try again.", code, description);
+    }
+
+    if (Contains(lower, "session_ads_required") ||
+        Contains(lower, "isadsrequired") ||
+        Contains(lower, "ad_required") ||
+        Contains(lower, "ads required") ||
+        Contains(lower, "queuepaused") ||
+        Contains(lower, "queue paused") ||
+        Contains(lower, "graceperiodstart")) {
+        return MessageWithDetails(@"GeForce NOW requires ad playback before this free-tier session can continue. Wait for the ad prompt, finish the ad, then continue launching.", code, description);
+    }
+
+    if (Contains(lower, "parental") || Contains(lower, "age_restricted") || Contains(lower, "age restricted")) {
+        return MessageWithDetails(@"This game is restricted by account age or parental controls. Check the NVIDIA account settings, then try again.", code, description);
     }
 
     if (MatchesCode(code, lower, 3237290311LL, "maintenance") ||

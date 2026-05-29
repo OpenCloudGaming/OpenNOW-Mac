@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #include <algorithm>
 #include <cctype>
+#include <vector>
 
 namespace OPN {
 
@@ -53,6 +54,36 @@ std::string CurrentGFNLocaleURLPathComponent() {
     std::string locale = CurrentGFNLocale();
     std::replace(locale.begin(), locale.end(), '_', '-');
     return locale;
+}
+
+static void PushUniqueLocale(std::vector<std::string> &locales, const std::string &locale) {
+    if (locale.empty()) return;
+    if (std::find(locales.begin(), locales.end(), locale) == locales.end()) locales.push_back(locale);
+}
+
+std::vector<std::string> GFNLocaleFallbacksForLocale(const std::string &locale) {
+    std::string normalized = NormalizedLocale(locale);
+    std::vector<std::string> fallbacks;
+    PushUniqueLocale(fallbacks, normalized);
+
+    size_t separator = normalized.find('_');
+    std::string language = separator == std::string::npos ? normalized : normalized.substr(0, separator);
+    if (!language.empty() && language != "en") PushUniqueLocale(fallbacks, language);
+    PushUniqueLocale(fallbacks, "en_US");
+    return fallbacks;
+}
+
+std::vector<std::string> CurrentGFNLocaleFallbacks() {
+    return GFNLocaleFallbacksForLocale(CurrentGFNLocale());
+}
+
+std::vector<std::string> CurrentGFNLocaleURLPathComponentFallbacks() {
+    std::vector<std::string> result;
+    for (std::string locale : CurrentGFNLocaleFallbacks()) {
+        std::replace(locale.begin(), locale.end(), '_', '-');
+        PushUniqueLocale(result, locale);
+    }
+    return result;
 }
 
 }

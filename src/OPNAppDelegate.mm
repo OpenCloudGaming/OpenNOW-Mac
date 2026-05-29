@@ -17,6 +17,7 @@
 #include "common/OPNLogCapture.h"
 #include "common/OPNLocale.h"
 #include "common/OPNGFNError.h"
+#include "common/OPNGameRemediation.h"
 #import "common/OPNGitHubUpdater.h"
 #import "common/OPNAuthTypes.h"
 #import "common/OPNGameTypes.h"
@@ -305,7 +306,7 @@ static bool OPNIsUnauthorizedError(const std::string &error) {
 }
 
 static bool OPNIsOwnedLibraryStatus(const std::string &status) {
-    return status == "MANUAL" || status == "PLATFORM_SYNC" || status == "IN_LIBRARY";
+    return OPN::GameServiceStatusOwnedForLaunch(status);
 }
 
 static bool OPNChooseAccountLinked(const OPN::GameInfo &game, const OPN::GameVariant *selectedVariant) {
@@ -321,29 +322,6 @@ static bool OPNChooseAccountLinked(const OPN::GameInfo &game, const OPN::GameVar
 static const OPN::GameVariant *OPNVariantAtIndex(const OPN::GameInfo &game, int variantIndex) {
     if (variantIndex < 0 || variantIndex >= (int)game.variants.size()) return nullptr;
     return &game.variants[(size_t)variantIndex];
-}
-
-static bool OPNVariantIsOwnedForLaunch(const OPN::GameVariant &variant) {
-    return variant.inLibrary || variant.librarySelected || OPNIsOwnedLibraryStatus(variant.serviceStatus);
-}
-
-static const OPN::GameVariant *OPNFirstVariantWithStoreURL(const OPN::GameInfo &game) {
-    for (const OPN::GameVariant &variant : game.variants) {
-        if (!variant.storeUrl.empty()) return &variant;
-    }
-    return nullptr;
-}
-
-static NSString *OPNStoreDisplayName(const std::string &store) {
-    NSString *value = [[NSString stringWithUTF8String:store.c_str()] ?: @"" uppercaseString];
-    if ([value containsString:@"STEAM"]) return @"Steam";
-    if ([value containsString:@"EPIC"] || [value containsString:@"EGS"]) return @"Epic Games";
-    if ([value containsString:@"UBISOFT"] || [value containsString:@"UPLAY"]) return @"Ubisoft";
-    if ([value containsString:@"BATTLE"]) return @"Battle.net";
-    if ([value containsString:@"XBOX"] || [value containsString:@"MICROSOFT"]) return @"Xbox";
-    if ([value containsString:@"EA"] || [value containsString:@"ORIGIN"]) return @"EA";
-    if ([value containsString:@"GOG"]) return @"GOG";
-    return value.length > 0 ? value.capitalizedString : @"the selected store";
 }
 
 static NSString *OPNTitleForActiveSessionAppId(int appId, const std::vector<OPN::GameInfo> &games) {
@@ -1570,28 +1548,23 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                       variantIndex:(int)variantIndex
                                      accountLinked:(bool)accountLinked
                                    continueHandler:(void (^)(void))continueHandler {
-    const OPN::GameVariant *selectedVariant = OPNVariantAtIndex(game, variantIndex);
-    const OPN::GameVariant *storeVariant = selectedVariant && !selectedVariant->storeUrl.empty()
-        ? selectedVariant
-        : OPNFirstVariantWithStoreURL(game);
+    OPN::GameOwnershipRemediation remediation = OPN::GameOwnershipRemediationForLaunch(game, variantIndex, accountLinked);
+    if (!remediation.Required()) return NO;
+    int storeVariantIndex = remediation.storeVariantIndex >= 0 ? remediation.storeVariantIndex : variantIndex;
+    const OPN::GameVariant *storeVariant = OPNVariantAtIndex(game, storeVariantIndex);
     if (!storeVariant) return NO;
 
-    bool selectedOwned = selectedVariant ? OPNVariantIsOwnedForLaunch(*selectedVariant) : game.isInLibrary;
-    bool requiresRemediation = !selectedOwned || !accountLinked || game.playType == "INSTALL_TO_PLAY";
-    if (!requiresRemediation) return NO;
-
     OPN::GameInfo gameCopy = game;
-    int variantIndexCopy = variantIndex;
-    NSString *gameTitle = game.title.empty() ? @"Selected Game" : [NSString stringWithUTF8String:game.title.c_str()];
-    NSString *storeName = OPNStoreDisplayName(storeVariant->appStore);
-    NSString *reason = !selectedOwned
-        ? [NSString stringWithFormat:@"%@ is not marked as owned in your GeForce NOW library for %@.", gameTitle, storeName]
-        : [NSString stringWithFormat:@"%@ may require account linking or installation through %@ before launch.", gameTitle, storeName];
+    int variantIndexCopy = storeVariantIndex;
+    NSString *title = [NSString stringWithUTF8String:remediation.title.c_str()] ?: @"Store Account Required";
+    NSString *reason = [NSString stringWithUTF8String:remediation.reason.c_str()] ?: @"This game requires store account setup before launch.";
+    NSString *guidance = [NSString stringWithUTF8String:remediation.guidance.c_str()] ?: @"Open the store to finish setup. If you already completed that step, continue anyway.";
+    NSString *actionLabel = [NSString stringWithUTF8String:remediation.actionLabel.c_str()] ?: @"Open Store";
 
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Store Account Required";
-    alert.informativeText = [NSString stringWithFormat:@"%@ Open the store to link, install, or purchase it. If you already completed that step, you can continue anyway.", reason];
-    [alert addButtonWithTitle:@"Open Store"];
+    alert.messageText = title;
+    alert.informativeText = [NSString stringWithFormat:@"%@ %@", reason, guidance];
+    [alert addButtonWithTitle:actionLabel];
     [alert addButtonWithTitle:@"Continue Anyway"];
     [alert addButtonWithTitle:@"Cancel"];
     __weak __typeof__(self) weakSelf = self;

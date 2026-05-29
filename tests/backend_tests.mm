@@ -14,10 +14,14 @@
 #include <vector>
 
 #include "../src/streaming/OPNStreamBackend.h"
+#include "../src/streaming/OPNSessionAdPresentation.h"
 #include "../src/streaming/OPNStreamPreferences.h"
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
+#include "../src/common/OPNGameRemediation.h"
 #include "../src/common/OPNGFNError.h"
+#include "../src/common/OPNLocale.h"
+#include "../src/common/OPNProtocolDebug.h"
 #include "../src/games/OPNGameDataCache.h"
 #include "../src/games/OPNGameService.h"
 
@@ -554,8 +558,259 @@ TEST_CASE("UserFacingGFNErrorMessageMapsHexAndGSECDiagnostics") {
     std::string queue = OPN::UserFacingGFNErrorMessage("backend failed with 0xC0F5213E");
     CHECK(queue.find("queue") != std::string::npos);
 
+    std::string sessionLimitHex = OPN::UserFacingGFNErrorMessage("SESSION_LIMIT_EXCEEDED_STATUS 41F1C0A5", "Test Game");
+    CHECK(sessionLimitHex.find("already running") != std::string::npos);
+    CHECK(sessionLimitHex.find("1106362533") != std::string::npos);
+
     std::string gsec = OPN::UserFacingGFNErrorMessage("SRC_GSEC_AUTH_FAILED");
     CHECK(gsec.find("internal game-seat service error") != std::string::npos);
+}
+
+TEST_CASE("UserFacingGFNErrorMessageUsesUnifiedRequestStatusCode") {
+    std::string response = R"json({"requestStatus":{"statusCode":11,"statusDescription":"SESSION_LIMIT_EXCEEDED_STATUS 41F1C0A5","unifiedErrorCode":1106362533}})json";
+    std::string message = OPN::UserFacingGFNErrorMessage(response, "Test Game");
+    CHECK(message.find("Test Game is already running") != std::string::npos);
+    CHECK(message.find("1106362533") != std::string::npos);
+    CHECK(message.find("SESSION_LIMIT_EXCEEDED_STATUS 41F1C0A5") != std::string::npos);
+}
+
+TEST_CASE("UserFacingGFNErrorMessageMapsActionableStoreAndAdFailures") {
+    std::string accountLink = OPN::UserFacingGFNErrorMessage("API error: STORE_ACCOUNT_LINK_REQUIRED");
+    CHECK(accountLink.find("not linked") != std::string::npos);
+
+    std::string install = OPN::UserFacingGFNErrorMessage("launch failed: INSTALL_TO_PLAY");
+    CHECK(install.find("installed or prepared") != std::string::npos);
+
+    std::string entitlement = OPN::UserFacingGFNErrorMessage("launch failed: purchase required");
+    CHECK(entitlement.find("not owned or linked") != std::string::npos);
+
+    std::string ads = OPN::UserFacingGFNErrorMessage("sessionAdsRequired=true queuePaused=true");
+    CHECK(ads.find("ad playback") != std::string::npos);
+}
+
+}
+
+namespace game_remediation_tests {
+
+TEST_SUITE("games/remediation")
+
+static OPN::GameInfo GameWithSteamVariant() {
+    OPN::GameInfo game;
+    game.title = "Test Game";
+    OPN::GameVariant variant;
+    variant.id = "123";
+    variant.appStore = "STEAM";
+    variant.storeUrl = "https://store.steampowered.com/app/123";
+    game.variants.push_back(variant);
+    return game;
+}
+
+TEST_CASE("GameOwnershipRemediationClassifiesUnownedGame") {
+    OPN::GameInfo game = GameWithSteamVariant();
+
+    OPN::GameOwnershipRemediation remediation = OPN::GameOwnershipRemediationForLaunch(game, 0, true);
+
+    CHECK(remediation.Required());
+    CHECK(remediation.kind == OPN::GameOwnershipRemediationKind::PurchaseOrAdd);
+    CHECK_EQ(remediation.storeVariantIndex, 0);
+    CHECK_EQ(remediation.storeName, "Steam");
+    CHECK(remediation.reason.find("not marked as owned") != std::string::npos);
+}
+
+TEST_CASE("GameOwnershipRemediationClassifiesLinkedAccountRequirement") {
+    OPN::GameInfo game = GameWithSteamVariant();
+    game.variants[0].inLibrary = true;
+
+    OPN::GameOwnershipRemediation remediation = OPN::GameOwnershipRemediationForLaunch(game, 0, false);
+
+    CHECK(remediation.Required());
+    CHECK(remediation.kind == OPN::GameOwnershipRemediationKind::LinkAccount);
+    CHECK(remediation.reason.find("linked Steam account") != std::string::npos);
+}
+
+TEST_CASE("GameOwnershipRemediationClassifiesInstallToPlayBeforeOwnership") {
+    OPN::GameInfo game = GameWithSteamVariant();
+    game.playType = "INSTALL_TO_PLAY";
+    game.variants[0].inLibrary = true;
+
+    OPN::GameOwnershipRemediation remediation = OPN::GameOwnershipRemediationForLaunch(game, 0, true);
+
+    CHECK(remediation.Required());
+    CHECK(remediation.kind == OPN::GameOwnershipRemediationKind::InstallToPlay);
+    CHECK(remediation.reason.find("installed or prepared") != std::string::npos);
+}
+
+TEST_CASE("GameOwnershipRemediationAllowsOwnedLinkedGame") {
+    OPN::GameInfo game = GameWithSteamVariant();
+    game.variants[0].serviceStatus = "IN_LIBRARY";
+
+    OPN::GameOwnershipRemediation remediation = OPN::GameOwnershipRemediationForLaunch(game, 0, true);
+
+    CHECK(!remediation.Required());
+}
+
+}
+
+namespace session_ad_tests {
+
+TEST_SUITE("streaming/session-ads")
+
+TEST_CASE("SessionAdPresentationHiddenWhenAdsNotRequired") {
+    OPN::SessionAdState state;
+
+    OPN::SessionAdPresentation presentation = OPN::SessionAdPresentationForState(state);
+
+    CHECK(!presentation.Visible());
+    CHECK(!presentation.HasPlayableAd());
+    CHECK(presentation.kind == OPN::SessionAdPresentationKind::None);
+}
+
+TEST_CASE("SessionAdPresentationShowsWaitingForRequiredEmptyAds") {
+    OPN::SessionAdState state;
+    state.isAdsRequired = true;
+    state.sessionAdsRequired = true;
+    state.serverSentEmptyAds = true;
+
+    OPN::SessionAdPresentation presentation = OPN::SessionAdPresentationForState(state);
+
+    CHECK(presentation.Visible());
+    CHECK(!presentation.HasPlayableAd());
+    CHECK(presentation.kind == OPN::SessionAdPresentationKind::WaitingForAd);
+    CHECK_EQ(presentation.title, "Waiting for ad availability");
+}
+
+TEST_CASE("SessionAdPresentationShowsQueuePausedGracePeriod") {
+    OPN::SessionAdState state;
+    state.isAdsRequired = true;
+    state.isQueuePaused = true;
+    state.gracePeriodSeconds = 30;
+
+    OPN::SessionAdPresentation presentation = OPN::SessionAdPresentationForState(state);
+
+    CHECK(presentation.Visible());
+    CHECK(!presentation.HasPlayableAd());
+    CHECK(presentation.kind == OPN::SessionAdPresentationKind::QueuePaused);
+    CHECK_EQ(presentation.chipText, "Queue Paused");
+}
+
+TEST_CASE("SessionAdPresentationReturnsPlayableAd") {
+    OPN::SessionAdState state;
+    state.isAdsRequired = true;
+    OPN::SessionAdInfo ad;
+    ad.adId = "ad-1";
+    ad.title = "Sponsored Session";
+    ad.mediaUrl = "https://example.invalid/ad.mp4";
+    state.sessionAds.push_back(ad);
+
+    OPN::SessionAdPresentation presentation = OPN::SessionAdPresentationForState(state);
+
+    CHECK(presentation.Visible());
+    CHECK(presentation.HasPlayableAd());
+    CHECK(presentation.kind == OPN::SessionAdPresentationKind::PlayableAd);
+    REQUIRE(presentation.ad != nullptr);
+    CHECK_EQ(presentation.ad->adId, "ad-1");
+    CHECK_EQ(presentation.title, "Sponsored Session");
+}
+
+}
+
+namespace protocol_debug_tests {
+
+TEST_SUITE("protocol/debug")
+
+TEST_CASE("SanitizedProtocolJSONStringRedactsSensitiveFields") {
+    NSDictionary *payload = @{
+        @"Authorization": @"GFNJWT abc.def",
+        @"clientIp": @"203.0.113.10",
+        @"sessionRequestData": @{
+            @"deviceHashId": @"device-123",
+            @"networkTestSessionId": @"net-123",
+            @"appId": @"12345",
+            @"metaData": @[
+                @{@"key": @"SubSessionId", @"value": @"sub-session-secret"},
+                @{@"key": @"store", @"value": @"STEAM"},
+            ],
+            @"resourcePath": @"/v2/session/secret-session-id",
+            @"requestedStreamingFeatures": @{
+                @"reflex": @YES,
+            },
+        },
+    };
+
+    NSString *sanitized = OPN::SanitizedProtocolJSONStringFromJSONObject(payload);
+    std::string text([sanitized UTF8String] ?: "");
+
+    CHECK(text.find("abc.def") == std::string::npos);
+    CHECK(text.find("203.0.113.10") == std::string::npos);
+    CHECK(text.find("device-123") == std::string::npos);
+    CHECK(text.find("net-123") == std::string::npos);
+    CHECK(text.find("sub-session-secret") == std::string::npos);
+    CHECK(text.find("secret-session-id") == std::string::npos);
+    CHECK(text.find("12345") != std::string::npos);
+    CHECK(text.find("STEAM") != std::string::npos);
+    CHECK(text.find("<redacted>") != std::string::npos);
+}
+
+TEST_CASE("ProtocolDebugCaptureFilenameSanitizesLabels") {
+    NSString *filename = OPN::ProtocolDebugCaptureFilename(@"NetTest Session / Request", 7);
+    std::string text([filename UTF8String] ?: "");
+
+    CHECK(text.find("nettest-session-request") != std::string::npos);
+    CHECK(text.find("/") == std::string::npos);
+    CHECK(text.find(" ") == std::string::npos);
+    CHECK(text.rfind(".json") == text.size() - 5);
+}
+
+TEST_CASE("ProtocolDebugCaptureDirectoryWritesSanitizedPayload") {
+    NSString *captureDir = [NSTemporaryDirectory() stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"opennow-protocol-capture-%@", [[NSUUID UUID] UUIDString]]];
+    const char *oldCaptureDir = std::getenv("OPN_PROTOCOL_CAPTURE_DIR");
+    std::string oldCaptureDirValue = oldCaptureDir ? oldCaptureDir : "";
+    setenv("OPN_PROTOCOL_CAPTURE_DIR", [captureDir UTF8String], 1);
+
+    NSDictionary *payload = @{
+        @"networkTestSessionId": @"secret-session",
+        @"requestedMaxBitrateKbps": @50000,
+    };
+    OPN::LogProtocolJSONObject(@"NetTest Session / Request", payload);
+
+    if (oldCaptureDir) setenv("OPN_PROTOCOL_CAPTURE_DIR", oldCaptureDirValue.c_str(), 1);
+    else unsetenv("OPN_PROTOCOL_CAPTURE_DIR");
+
+    NSArray<NSString *> *files = [NSFileManager.defaultManager contentsOfDirectoryAtPath:captureDir error:nil];
+    REQUIRE_EQ(files.count, 1);
+    NSString *path = [captureDir stringByAppendingPathComponent:files.firstObject];
+    NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    std::string contents([text UTF8String] ?: "");
+
+    CHECK(contents.find("secret-session") == std::string::npos);
+    CHECK(contents.find("<redacted>") != std::string::npos);
+    CHECK(contents.find("50000") != std::string::npos);
+
+    [NSFileManager.defaultManager removeItemAtPath:captureDir error:nil];
+}
+
+}
+
+namespace locale_tests {
+
+TEST_SUITE("locale/fallbacks")
+
+TEST_CASE("GFNLocaleFallbacksPreserveRegionThenLanguageThenEnglish") {
+    std::vector<std::string> fallbacks = OPN::GFNLocaleFallbacksForLocale("pt-BR");
+
+    REQUIRE_EQ(fallbacks.size(), 3);
+    CHECK_EQ(fallbacks[0], "pt_BR");
+    CHECK_EQ(fallbacks[1], "pt");
+    CHECK_EQ(fallbacks[2], "en_US");
+}
+
+TEST_CASE("GFNLocaleFallbacksAvoidDuplicateEnglish") {
+    std::vector<std::string> fallbacks = OPN::GFNLocaleFallbacksForLocale("en-GB");
+
+    REQUIRE_EQ(fallbacks.size(), 2);
+    CHECK_EQ(fallbacks[0], "en_GB");
+    CHECK_EQ(fallbacks[1], "en_US");
 }
 
 }

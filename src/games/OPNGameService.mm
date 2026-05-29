@@ -1372,81 +1372,95 @@ void GameService::FetchCatalogGames(CatalogCallback completion) {
 
 
 void GameService::FetchPublicGames(CatalogCallback completion) {
-    NSString *publicLocale = [NSString stringWithUTF8String:CurrentGFNLocaleURLPathComponent().c_str()];
-    NSURL *url = [NSURL URLWithString:
-        [NSString stringWithFormat:@"https://static.nvidiagrid.net/supported-public-game-list/locales/gfnpc-%@.json", publicLocale]];
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-    req.timeoutInterval = 20.0;
-            [req setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        forHTTPHeaderField:@"User-Agent"];
+    auto locales = std::make_shared<std::vector<std::string>>(CurrentGFNLocaleURLPathComponentFallbacks());
+    if (locales->empty()) locales->push_back("en-US");
+    auto fetchLocale = std::make_shared<std::function<void(size_t)>>();
+    *fetchLocale = [completion, locales, fetchLocale](size_t index) {
+        if (index >= locales->size()) {
+            DispatchCatalogCallback(completion, false, {}, "No public game locale fallback succeeded");
+            return;
+        }
 
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession]
-        dataTaskWithRequest:req
-        completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
-            dispatch_async(GameServiceWorkQueue(), ^{
-                if (error) {
-                    DispatchCatalogCallback(completion, false, {}, [[error localizedDescription] UTF8String]);
-                    return;
-                }
-                NSArray *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-                if (![json isKindOfClass:[NSArray class]]) {
-                    DispatchCatalogCallback(completion, false, {}, "Invalid public games JSON");
-                    return;
-                }
+        NSString *publicLocale = [NSString stringWithUTF8String:(*locales)[index].c_str()];
+        NSURL *url = [NSURL URLWithString:
+            [NSString stringWithFormat:@"https://static.nvidiagrid.net/supported-public-game-list/locales/gfnpc-%@.json", publicLocale]];
+        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+        req.timeoutInterval = 20.0;
+        [req setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+   forHTTPHeaderField:@"User-Agent"];
 
-                std::vector<GameInfo> games;
-                for (id item in json) {
-                    if (![item isKindOfClass:[NSDictionary class]]) continue;
-                    NSString *status = item[@"status"];
-                    if (![status isEqualToString:@"AVAILABLE"]) continue;
-                    NSString *title = item[@"title"];
-                    if (![title isKindOfClass:[NSString class]] || title.length == 0) continue;
-
-                    GameInfo g;
-                    g.title = [title UTF8String];
-                    { NSString *v = FirstSafeString(item, @[@"description", @"longDescription", @"shortDescription", @"summary"]); g.description = v ? [v UTF8String] : ""; }
-                    id rawId = item[@"id"];
-                    NSString *sid = [rawId isKindOfClass:[NSNumber class]]
-                        ? [(NSNumber *)rawId stringValue]
-                        : ([rawId isKindOfClass:[NSString class]] ? (NSString *)rawId : title);
-
-                    NSString *steamAppId = nil;
-                    NSString *steamUrl = item[@"steamUrl"];
-                    if ([steamUrl isKindOfClass:[NSString class]]) {
-                        NSArray *parts = [steamUrl componentsSeparatedByString:@"/app/"];
-                        if (parts.count >= 2) {
-                            steamAppId = [parts[1] componentsSeparatedByString:@"/"][0];
+        NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+            dataTaskWithRequest:req
+            completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
+                dispatch_async(GameServiceWorkQueue(), ^{
+                    NSArray *json = (!error && data) ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+                    if (![json isKindOfClass:[NSArray class]]) {
+                        if (index + 1 < locales->size()) {
+                            OPN::LogInfo(@"[GameService] public games locale %@ unavailable; trying fallback", publicLocale);
+                            (*fetchLocale)(index + 1);
+                            return;
                         }
+                        NSString *localizedError = error ? [error localizedDescription] : nil;
+                        std::string message = localizedError.length > 0 ? [localizedError UTF8String] : "Invalid public games JSON";
+                        DispatchCatalogCallback(completion, false, {}, message);
+                        return;
                     }
-                    NSString *finalAppId = (steamAppId && steamAppId.length > 0)
-                        ? steamAppId
-                        : ([sid length] > 0 ? sid : title);
-                    g.id = [finalAppId UTF8String];
-                    g.uuid = [sid UTF8String];
-                    if ([steamUrl isKindOfClass:[NSString class]]) {
+
+                    std::vector<GameInfo> games;
+                    for (id item in json) {
+                        if (![item isKindOfClass:[NSDictionary class]]) continue;
+                        NSString *status = item[@"status"];
+                        if (![status isEqualToString:@"AVAILABLE"]) continue;
+                        NSString *title = item[@"title"];
+                        if (![title isKindOfClass:[NSString class]] || title.length == 0) continue;
+
+                        GameInfo g;
+                        g.title = [title UTF8String];
+                        { NSString *v = FirstSafeString(item, @[@"description", @"longDescription", @"shortDescription", @"summary"]); g.description = v ? [v UTF8String] : ""; }
+                        id rawId = item[@"id"];
+                        NSString *sid = [rawId isKindOfClass:[NSNumber class]]
+                            ? [(NSNumber *)rawId stringValue]
+                            : ([rawId isKindOfClass:[NSString class]] ? (NSString *)rawId : title);
+
                         NSString *steamAppId = nil;
-                        NSArray *parts = [steamUrl componentsSeparatedByString:@"/app/"];
-                        if (parts.count >= 2) {
-                            steamAppId = [parts[1] componentsSeparatedByString:@"/"][0];
+                        NSString *steamUrl = item[@"steamUrl"];
+                        if ([steamUrl isKindOfClass:[NSString class]]) {
+                            NSArray *parts = [steamUrl componentsSeparatedByString:@"/app/"];
+                            if (parts.count >= 2) {
+                                steamAppId = [parts[1] componentsSeparatedByString:@"/"][0];
+                            }
                         }
-                        if (steamAppId && steamAppId.length > 0) {
-                            NSString *heroUrl = [NSString stringWithFormat:
-                                @"https://cdn.cloudflare.steamstatic.com/steam/apps/%@/library_hero.jpg",
-                                steamAppId];
-                            NSString *imgUrl = [NSString stringWithFormat:
-                                @"https://cdn.cloudflare.steamstatic.com/steam/apps/%@/header.jpg",
-                                steamAppId];
-                            g.heroImageUrl = [heroUrl UTF8String];
-                            g.imageUrl = [imgUrl UTF8String];
+                        NSString *finalAppId = (steamAppId && steamAppId.length > 0)
+                            ? steamAppId
+                            : ([sid length] > 0 ? sid : title);
+                        g.id = [finalAppId UTF8String];
+                        g.uuid = [sid UTF8String];
+                        if ([steamUrl isKindOfClass:[NSString class]]) {
+                            NSString *steamAppId = nil;
+                            NSArray *parts = [steamUrl componentsSeparatedByString:@"/app/"];
+                            if (parts.count >= 2) {
+                                steamAppId = [parts[1] componentsSeparatedByString:@"/"][0];
+                            }
+                            if (steamAppId && steamAppId.length > 0) {
+                                NSString *heroUrl = [NSString stringWithFormat:
+                                    @"https://cdn.cloudflare.steamstatic.com/steam/apps/%@/library_hero.jpg",
+                                    steamAppId];
+                                NSString *imgUrl = [NSString stringWithFormat:
+                                    @"https://cdn.cloudflare.steamstatic.com/steam/apps/%@/header.jpg",
+                                    steamAppId];
+                                g.heroImageUrl = [heroUrl UTF8String];
+                                g.imageUrl = [imgUrl UTF8String];
+                            }
                         }
-                    }
 
-                    games.push_back(g);
-                }
-                DispatchCatalogCallback(completion, true, games, "");
-            });
-        }];
-    [task resume];
+                        games.push_back(g);
+                    }
+                    DispatchCatalogCallback(completion, true, games, "");
+                });
+            }];
+        [task resume];
+    };
+    (*fetchLocale)(0);
 }
 
 void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionCallback completion) {

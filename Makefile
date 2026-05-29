@@ -42,7 +42,7 @@ CXXFLAGS := $(ARCHFLAGS) $(OPTFLAGS) -std=c++20 -Wall -Wextra -Wpedantic -Wno-de
 LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework AudioUnit -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS) $(SENTRY_LIBS)
 TEST_SRC := tests/backend_tests.mm
 TEST_HEADERS := tests/doctest.h
-TEST_DEPS := src/streaming/OPNStreamBackend.mm src/streaming/OPNStreamPreferences.mm src/auth/OPNAuthService.mm src/games/OPNGameDataCache.mm src/games/OPNGameService.mm src/common/OPNLocale.mm src/common/OPNGFNError.mm src/common/OPNSentry.mm
+TEST_DEPS := src/streaming/OPNStreamBackend.mm src/streaming/OPNStreamPreferences.mm src/streaming/OPNSessionAdPresentation.mm src/auth/OPNAuthService.mm src/games/OPNGameDataCache.mm src/games/OPNGameService.mm src/common/OPNLocale.mm src/common/OPNGameRemediation.mm src/common/OPNGFNError.mm src/common/OPNProtocolDebug.mm src/common/OPNSentry.mm
 TEST_BIN := $(BUILD_DIR)/backend_tests
 
 .PHONY: all run logs clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
