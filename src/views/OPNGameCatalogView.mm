@@ -2077,6 +2077,7 @@ using namespace OPN;
 
 - (std::vector<OPN::GameInfo>)controllerLibraryDisplayGames {
     std::vector<OPN::GameInfo> displayGames;
+    displayGames.reserve(_allGames.size());
     BOOL categoryFiltered = self.selectedCategoryId.length > 0 && ![self.selectedCategoryId isEqualToString:@"all"] && ![self.selectedCategoryId isEqualToString:@"library"];
     for (const OPN::GameInfo &game : _allGames) {
         if (!game.isInLibrary) continue;
@@ -2285,6 +2286,7 @@ using namespace OPN;
     CGFloat yPos = controllerMode ? 34.0 + kControllerRailSelectorOverlap : kGridPadding;
 
     std::vector<OPN::GameInfo> displayGames;
+    displayGames.reserve(_allGames.size());
     for (const OPN::GameInfo &game : _allGames) {
         if ([self game:game matchesCategory:self.selectedCategoryId]) displayGames.push_back(game);
     }
@@ -2326,7 +2328,6 @@ using namespace OPN;
             [card updateGame:game];
         } else {
             card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:game];
-            OPN::LogInfo(@"[CatalogView] create card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)gameIndex, OPNCatalogString(game.title, @"<untitled>"), OPNCatalogString(game.id, @""), OPNCatalogString(game.uuid, @""), !game.description.empty(), (unsigned long)game.featureLabels.size(), !game.imageUrl.empty(), !game.heroImageUrl.empty(), (unsigned long)game.variants.size());
         }
         GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
@@ -2378,7 +2379,6 @@ using namespace OPN;
     [self focusCardAtIndex:self.focusedCardIndex scrollIntoView:NO];
     [self updateControllerDetailContent];
     [self layoutCatalogSubviews];
-    OPN::LogInfo(@"[CatalogView] renderGrid end cards=%lu totalDisplay=%ld contentWidth=%.1f focused=%ld", (unsigned long)self.cardViews.count, (long)totalVisibleCount, NSWidth(self.gridContentView.frame), (long)self.focusedCardIndex);
 }
 
 - (NSInteger)controllerHomeLibraryCount {
@@ -2400,6 +2400,7 @@ using namespace OPN;
 - (std::vector<OPN::GameInfo>)controllerHomeQueueGamesWithLimit:(NSInteger)limit {
     std::vector<OPN::GameInfo> games;
     if (limit <= 0) return games;
+    games.reserve((size_t)MIN(limit, (NSInteger)(_allGames.size() + _featuredGames.size())));
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
     auto appendGame = [&](const OPN::GameInfo &game) {
         if ((NSInteger)games.size() >= limit) return;
