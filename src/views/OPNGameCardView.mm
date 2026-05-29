@@ -624,10 +624,9 @@ using namespace OPN;
             [urlStrings addObject:candidate];
         }
     }
-    NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
-    NSString *gameId = self.gameData.id.empty() ? @"" : [NSString stringWithUTF8String:self.gameData.id.c_str()];
-    OPN::LogInfo(@"[GameCard] image candidates title=%@ id=%@ hero=%d primary=%d steam=%d total=%lu", title, gameId, heroUrl.length > 0, primaryUrl.length > 0, steamUrl.length > 0, (unsigned long)urlStrings.count);
     if (urlStrings.count == 0) {
+        NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
+        NSString *gameId = self.gameData.id.empty() ? @"" : [NSString stringWithUTF8String:self.gameData.id.c_str()];
         OPN::LogInfo(@"[GameCard] no image candidates title=%@ id=%@ variants=%lu", title, gameId, (unsigned long)self.gameData.variants.size());
         return;
     }
@@ -648,7 +647,6 @@ using namespace OPN;
     NSString *urlStr = urlStrings[index];
     NSString *title = self.gameData.title.empty() ? @"<untitled>" : [NSString stringWithUTF8String:self.gameData.title.c_str()];
     __weak __typeof__(self) weakSelf = self;
-    OPN::LogInfo(@"[GameCard] image request start title=%@ index=%lu/%lu url=%@", title, (unsigned long)index + 1, (unsigned long)urlStrings.count, urlStr);
     self.imageLoadToken = OpnLoadImageForURLCancellable(urlStr, 720.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
         (void)resolvedURL;
         (void)data;
@@ -659,7 +657,6 @@ using namespace OPN;
             [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
             return;
         }
-        OPN::LogInfo(@"[GameCard] image loaded title=%@ size=%.0fx%.0f url=%@", title, image.size.width, image.size.height, urlStr);
         strongSelf.imageView.image = image;
     });
 }

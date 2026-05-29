@@ -45,28 +45,12 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 
 @interface OPNStatsOverlayView : NSView
 - (void)updateLatencyMs:(NSInteger)latencyMs
-               jitterMs:(NSInteger)jitterMs
             bitrateMbps:(double)bitrateMbps
             packetsLost:(int64_t)packetsLost
-       packetLossPercent:(double)packetLossPercent
-                     gpu:(NSString *)gpu
-              resolution:(NSString *)resolution
-                     fps:(NSInteger)fps
-               renderFps:(double)renderFps
-                   codec:(NSString *)codec
-                    zone:(NSString *)zone
-             decoder:(NSString *)decoder
-        decodeTimeMs:(double)decodeTimeMs
-                 sink:(NSString *)sink
-        pipelineMode:(NSString *)pipelineMode
-          pixelFormat:(NSString *)pixelFormat
-           renderMode:(NSString *)renderMode
-          frameSource:(NSString *)frameSource
-           renderPath:(NSString *)renderPath
-     rendererFallback:(NSString *)rendererFallback
-        webrtcBackend:(NSString *)webrtcBackend
-       framesReceived:(uint64_t)framesReceived
-        framesDecoded:(uint64_t)framesDecoded
+             resolution:(NSString *)resolution
+                    fps:(NSInteger)fps
+              renderFps:(double)renderFps
+                  codec:(NSString *)codec
         framesDropped:(uint64_t)framesDropped;
 @end
 
@@ -802,34 +786,15 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
 }
 
 - (void)updateLatencyMs:(NSInteger)latencyMs
-               jitterMs:(NSInteger)jitterMs
             bitrateMbps:(double)bitrateMbps
             packetsLost:(int64_t)packetsLost
-       packetLossPercent:(double)packetLossPercent
-                     gpu:(NSString *)gpu
-              resolution:(NSString *)resolution
-                     fps:(NSInteger)fps
-               renderFps:(double)renderFps
-                   codec:(NSString *)codec
-                    zone:(NSString *)zone
-                 decoder:(NSString *)decoder
-            decodeTimeMs:(double)decodeTimeMs
-                     sink:(NSString *)sink
-            pipelineMode:(NSString *)pipelineMode
-              pixelFormat:(NSString *)pixelFormat
-               renderMode:(NSString *)renderMode
-              frameSource:(NSString *)frameSource
-               renderPath:(NSString *)renderPath
-         rendererFallback:(NSString *)rendererFallback
-            webrtcBackend:(NSString *)webrtcBackend
-           framesReceived:(uint64_t)framesReceived
-             framesDecoded:(uint64_t)framesDecoded
+             resolution:(NSString *)resolution
+                    fps:(NSInteger)fps
+              renderFps:(double)renderFps
+                  codec:(NSString *)codec
              framesDropped:(uint64_t)framesDropped {
     NSString *latencyText = latencyMs >= 0 ? [NSString stringWithFormat:@"%ld ms", (long)latencyMs] : @"measuring";
     NSString *bitrateText = bitrateMbps >= 0.0 ? [NSString stringWithFormat:@"%.1f Mbps", bitrateMbps] : @"--";
-    (void)gpu;
-    (void)jitterMs;
-    (void)packetLossPercent;
 
     NSString *streamText = @"--";
     if (resolution.length > 0 && fps > 0) {
@@ -850,19 +815,6 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
                            renderText,
                            dropText,
                            lossText];
-    (void)zone;
-    (void)decoder;
-    (void)decodeTimeMs;
-    (void)sink;
-    (void)pipelineMode;
-    (void)pixelFormat;
-    (void)renderMode;
-    (void)frameSource;
-    (void)renderPath;
-    (void)rendererFallback;
-    (void)webrtcBackend;
-    (void)framesReceived;
-    (void)framesDecoded;
     _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(statsText);
 }
 
@@ -1526,44 +1478,16 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     if (!self.statsOverlay) return;
 
     NSInteger latencyMs = stats.latencyMs >= 0 ? (NSInteger)std::llround(stats.latencyMs) : -1;
-    NSInteger jitterMs = stats.jitterMs >= 0 ? (NSInteger)std::llround(stats.jitterMs) : -1;
     int64_t packetsLost = stats.available ? stats.packetsLost : -1;
-    NSString *gpu = [NSString stringWithUTF8String:stats.gpuType.c_str()];
     NSString *resolution = [NSString stringWithUTF8String:stats.resolution.c_str()];
     NSString *codec = [NSString stringWithUTF8String:stats.codec.c_str()];
-    NSString *zone = [NSString stringWithUTF8String:stats.zone.c_str()];
-    NSString *decoder = [NSString stringWithUTF8String:stats.videoDecoder.c_str()];
-    NSString *sink = [NSString stringWithUTF8String:stats.videoSink.c_str()];
-    NSString *pipelineMode = [NSString stringWithUTF8String:stats.videoPipelineMode.c_str()];
-    NSString *pixelFormat = [NSString stringWithUTF8String:stats.videoPixelFormat.c_str()];
-    NSString *renderMode = [NSString stringWithUTF8String:stats.videoRenderMode.c_str()];
-    NSString *frameSource = [NSString stringWithUTF8String:stats.videoFrameSource.c_str()];
-    NSString *renderPath = [NSString stringWithUTF8String:stats.videoRenderPath.c_str()];
-    NSString *rendererFallback = [NSString stringWithUTF8String:stats.videoRendererFallback.c_str()];
-    NSString *webrtcBackend = [NSString stringWithUTF8String:_webRTCBackendName.c_str()];
     [self.statsOverlay updateLatencyMs:latencyMs
-                               jitterMs:jitterMs
                             bitrateMbps:stats.inboundBitrateMbps
                            packetsLost:packetsLost
-                      packetLossPercent:stats.packetLossPercent
-                                     gpu:gpu
                               resolution:resolution
-                                      fps:stats.fps
-                                renderFps:stats.renderFps
-                                    codec:codec
-                                     zone:zone
-                                  decoder:decoder
-                             decodeTimeMs:stats.decodeTimeMs
-                                       sink:sink
-                               pipelineMode:pipelineMode
-                                pixelFormat:pixelFormat
-                                 renderMode:renderMode
-                                frameSource:frameSource
-                                 renderPath:renderPath
-                           rendererFallback:rendererFallback
-                               webrtcBackend:webrtcBackend
-                            framesReceived:stats.framesReceived
-                             framesDecoded:stats.framesDecoded
+                                     fps:stats.fps
+                               renderFps:stats.renderFps
+                                     codec:codec
                              framesDropped:stats.framesDropped];
 }
 

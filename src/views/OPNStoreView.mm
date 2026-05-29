@@ -899,6 +899,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 }
 
 - (void)updateTrackingAreas {
+    [super updateTrackingAreas];
     if (self.trackingArea && [self.trackingAreas containsObject:self.trackingArea]) {
         [self removeTrackingArea:self.trackingArea];
     }
