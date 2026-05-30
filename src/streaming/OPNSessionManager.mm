@@ -4,6 +4,7 @@
 #include "common/OPNLocale.h"
 #include "common/OPNDeviceIdentity.h"
 #include "common/OPNProtocolDebug.h"
+#include "OPNSessionParsing.h"
 #include "OPNStreamTypes.h"
 #include "OPNStreamPreferences.h"
 #import <Foundation/Foundation.h>
@@ -11,6 +12,12 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+
+using OPN::ArrayValue;
+using OPN::BoolValue;
+using OPN::DictionaryValue;
+using OPN::PositiveIntValue;
+using OPN::StringValue;
 
 static NSString *kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *kNvClientVersion = @"2.0.80.173";
@@ -45,18 +52,6 @@ static bool IsUsableEndpointHost(NSString *host) {
     return [host isKindOfClass:[NSString class]] && host.length > 0 && ![host hasPrefix:@"."];
 }
 
-static NSArray *ArrayValue(id value) {
-    return [value isKindOfClass:[NSArray class]] ? (NSArray *)value : @[];
-}
-
-static NSDictionary *DictionaryValue(id value) {
-    return [value isKindOfClass:[NSDictionary class]] ? (NSDictionary *)value : nil;
-}
-
-static NSString *StringValue(id value) {
-    return [value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0 ? (NSString *)value : nil;
-}
-
 static NSString *StringFromStdString(const std::string &value, NSString *fallback = @"") {
     if (value.empty()) return fallback ?: @"";
     NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
@@ -87,18 +82,6 @@ static NSArray *AvailableSupportedControllersValue(const OPN::StreamSettings &se
     return controllers;
 }
 
-static int PositiveIntValue(id value) {
-    if ([value isKindOfClass:[NSNumber class]]) {
-        int parsed = [(NSNumber *)value intValue];
-        return parsed > 0 ? parsed : 0;
-    }
-    if ([value isKindOfClass:[NSString class]]) {
-        int parsed = [(NSString *)value intValue];
-        return parsed > 0 ? parsed : 0;
-    }
-    return 0;
-}
-
 static int IntValue(id value, int fallback = 0) {
     if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value intValue];
     if ([value isKindOfClass:[NSString class]]) return [(NSString *)value intValue];
@@ -118,16 +101,6 @@ static OPN::SessionProgressState ProgressStateForSeatSetupStep(int seatSetupStep
         default:
             return OPN::SessionProgressState::SettingUp;
     }
-}
-
-static bool BoolValue(id value, bool fallback = false) {
-    if ([value isKindOfClass:[NSNumber class]]) return [(NSNumber *)value boolValue];
-    if ([value isKindOfClass:[NSString class]]) {
-        NSString *lower = [(NSString *)value lowercaseString];
-        if ([lower isEqualToString:@"true"] || [lower isEqualToString:@"1"] || [lower isEqualToString:@"yes"]) return true;
-        if ([lower isEqualToString:@"false"] || [lower isEqualToString:@"0"] || [lower isEqualToString:@"no"]) return false;
-    }
-    return fallback;
 }
 
 static bool VerboseSessionHttpLoggingEnabled() {

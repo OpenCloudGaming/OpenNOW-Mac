@@ -1,6 +1,7 @@
 APP_NAME := OpenNOW
 BUILD_DIR := build
-SRC := $(shell find src -name '*.mm')
+OBJ_DIR := $(BUILD_DIR)/obj
+SRC := $(shell find src -name '*.mm' | sort)
 BIN := $(BUILD_DIR)/$(APP_NAME)
 INFO_PLIST := OpenNOW-Info.plist
 LOG_DIR ?= $${TMPDIR:-/tmp/}OpenNOW
@@ -42,20 +43,30 @@ CXXFLAGS := $(ARCHFLAGS) $(OPTFLAGS) -std=c++20 -Wall -Wextra -Wpedantic -Wno-de
 LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit -framework CoreImage -framework AuthenticationServices -framework AVFoundation -framework AVKit -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework OpenGL -framework GameController -framework ApplicationServices -framework CoreAudio -framework AudioUnit -framework ScreenCaptureKit -Wl,-sectcreate,__TEXT,__info_plist,$(INFO_PLIST) $(WEBRTC_LIBS) $(SENTRY_LIBS)
 TEST_SRC := tests/backend_tests.mm
 TEST_HEADERS := tests/doctest.h
-TEST_DEPS := src/streaming/OPNStreamBackend.mm src/streaming/OPNStreamPreferences.mm src/streaming/OPNSessionAdPresentation.mm src/auth/OPNAuthService.mm src/games/OPNGameDataCache.mm src/games/OPNGameService.mm src/common/OPNLocale.mm src/common/OPNGameRemediation.mm src/common/OPNGFNError.mm src/common/OPNProtocolDebug.mm src/common/OPNSentry.mm
+TEST_DEPS := src/streaming/OPNStreamBackend.mm src/streaming/OPNStreamPreferences.mm src/streaming/OPNSessionAdPresentation.mm src/streaming/OPNSessionParsing.mm src/auth/OPNAuthService.mm src/games/OPNGameDataCache.mm src/games/OPNGameService.mm src/common/OPNLocale.mm src/common/OPNGameRemediation.mm src/common/OPNGFNError.mm src/common/OPNProtocolDebug.mm src/common/OPNHTTP.mm src/common/OPNSentry.mm
 TEST_BIN := $(BUILD_DIR)/backend_tests
+APP_OBJS := $(patsubst %.mm,$(OBJ_DIR)/%.o,$(SRC))
+TEST_OBJS := $(patsubst %.mm,$(OBJ_DIR)/%.o,$(TEST_SRC) $(TEST_DEPS))
+DEPS := $(sort $(APP_OBJS:.o=.d) $(TEST_OBJS:.o=.d))
 
 .PHONY: all run logs clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
 
 all: $(BIN)
 
-$(BIN): $(SRC)
-	mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(SRC) $(LDFLAGS) -o $(BIN)
 
-$(TEST_BIN): $(TEST_SRC) $(TEST_HEADERS) $(TEST_DEPS)
+$(OBJ_DIR)/%.o: %.mm
+	mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+$(OBJ_DIR)/tests/backend_tests.o: $(TEST_HEADERS)
+
+$(BIN): $(APP_OBJS) $(INFO_PLIST)
 	mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(TEST_SRC) $(TEST_DEPS) $(LDFLAGS) -Wl,-undefined,dynamic_lookup -framework Foundation -o $(TEST_BIN)
+	$(CXX) $(APP_OBJS) $(LDFLAGS) -o $(BIN)
+
+$(TEST_BIN): $(TEST_OBJS) $(INFO_PLIST)
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $(TEST_OBJS) $(LDFLAGS) -Wl,-undefined,dynamic_lookup -framework Foundation -o $(TEST_BIN)
 
 test: $(TEST_BIN)
 	./$(TEST_BIN)
@@ -96,3 +107,5 @@ qt-build-webrtc: qt-configure-webrtc
 
 qt-run-webrtc: qt-build-webrtc
 	cmake --build $(BUILD_DIR)/qt-webrtc --target run
+
+-include $(DEPS)

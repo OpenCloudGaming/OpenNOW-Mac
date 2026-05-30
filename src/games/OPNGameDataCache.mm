@@ -1,4 +1,5 @@
 #include "OPNGameDataCache.h"
+#include "common/OPNSentry.h"
 #include <CommonCrypto/CommonCrypto.h>
 #include <algorithm>
 
@@ -68,6 +69,47 @@ static bool OPNCacheDictionaryIsFresh(NSDictionary *dict, NSTimeInterval maxAgeS
     if (!timestamp) return false;
     NSTimeInterval age = [[NSDate date] timeIntervalSince1970] - timestamp.doubleValue;
     return age >= 0.0 && age <= maxAgeSeconds;
+}
+
+static void OPNCreateCacheDirectory(NSString *path) {
+    NSError *error = nil;
+    if (![[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:&error]) {
+        OPN::LogError(@"[GameDataCache] Failed to create cache directory %@: %@", path, error.localizedDescription ?: @"unknown error");
+    }
+}
+
+static NSDictionary *OPNReadCacheDictionary(NSString *path, bool requireFreshness, NSTimeInterval maxAgeSeconds) {
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (!data) return nil;
+    NSError *error = nil;
+    id object = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:nil error:&error];
+    NSDictionary *dict = [object isKindOfClass:[NSDictionary class]] ? (NSDictionary *)object : nil;
+    if (!dict) {
+        OPN::LogError(@"[GameDataCache] Failed to read cache plist %@: %@", path, error.localizedDescription ?: @"invalid plist dictionary");
+        return nil;
+    }
+    if (requireFreshness && !OPNCacheDictionaryIsFresh(dict, maxAgeSeconds)) return nil;
+    return dict;
+}
+
+static void OPNWriteCacheDictionary(NSString *path, NSDictionary *dict) {
+    NSError *serializationError = nil;
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:dict format:NSPropertyListBinaryFormat_v1_0 options:0 error:&serializationError];
+    if (!data) {
+        OPN::LogError(@"[GameDataCache] Failed to serialize cache plist %@: %@", path, serializationError.localizedDescription ?: @"unknown error");
+        return;
+    }
+    NSError *writeError = nil;
+    if (![data writeToFile:path options:NSDataWritingAtomic error:&writeError]) {
+        OPN::LogError(@"[GameDataCache] Failed to write cache plist %@: %@", path, writeError.localizedDescription ?: @"unknown error");
+    }
+}
+
+static void OPNWriteCacheData(NSString *path, NSData *data) {
+    NSError *error = nil;
+    if (![data writeToFile:path options:NSDataWritingAtomic error:&error]) {
+        OPN::LogError(@"[GameDataCache] Failed to write cache data %@: %@", path, error.localizedDescription ?: @"unknown error");
+    }
 }
 
 static NSDictionary *OPNVariantToDictionary(const GameVariant &variant) {
@@ -171,9 +213,9 @@ GameDataCache::GameDataCache() {
     m_catalogPath = [[m_rootPath stringByAppendingPathComponent:@"catalog"] copy];
     m_catalogDefinitionsPath = [[m_rootPath stringByAppendingPathComponent:@"catalog-definitions"] copy];
     m_imagePath = [[m_rootPath stringByAppendingPathComponent:@"images"] copy];
-    [[NSFileManager defaultManager] createDirectoryAtPath:m_catalogPath withIntermediateDirectories:YES attributes:nil error:nil];
-    [[NSFileManager defaultManager] createDirectoryAtPath:m_catalogDefinitionsPath withIntermediateDirectories:YES attributes:nil error:nil];
-    [[NSFileManager defaultManager] createDirectoryAtPath:m_imagePath withIntermediateDirectories:YES attributes:nil error:nil];
+    OPNCreateCacheDirectory(m_catalogPath);
+    OPNCreateCacheDirectory(m_catalogDefinitionsPath);
+    OPNCreateCacheDirectory(m_imagePath);
 }
 
 std::string GameDataCache::CatalogKey(const std::string &accountIdentifier,
@@ -200,10 +242,8 @@ std::string GameDataCache::CatalogKey(const std::string &accountIdentifier,
 
 bool GameDataCache::LoadCatalog(const std::string &key, CatalogBrowseResult &result) const {
     NSString *path = [m_catalogPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.bplist", key.c_str()]];
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    if (!data) return false;
-    NSDictionary *dict = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:nil error:nil];
-    if (![dict isKindOfClass:[NSDictionary class]]) return false;
+    NSDictionary *dict = OPNReadCacheDictionary(path, false, 0.0);
+    if (!dict) return false;
     result = CatalogBrowseResult{};
     result.numberReturned = [dict[@"nr"] intValue];
     result.numberSupported = [dict[@"ns"] intValue];
@@ -222,10 +262,8 @@ bool GameDataCache::LoadFreshCatalog(const std::string &key,
                                      NSTimeInterval maxAgeSeconds,
                                      CatalogBrowseResult &result) const {
     NSString *path = [m_catalogPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.bplist", key.c_str()]];
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    if (!data) return false;
-    NSDictionary *dict = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:nil error:nil];
-    if (!OPNCacheDictionaryIsFresh(dict, maxAgeSeconds)) return false;
+    NSDictionary *dict = OPNReadCacheDictionary(path, true, maxAgeSeconds);
+    if (!dict) return false;
     result = CatalogBrowseResult{};
     result.numberReturned = [dict[@"nr"] intValue];
     result.numberSupported = [dict[@"ns"] intValue];
@@ -255,10 +293,8 @@ void GameDataCache::SaveCatalog(const std::string &key, const CatalogBrowseResul
         @"sf": OPNArrayFromStrings(result.selectedFilterIds),
         @"g": games,
     };
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:dict format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
-    if (!data) return;
     NSString *path = [m_catalogPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.bplist", key.c_str()]];
-    [data writeToFile:path options:NSDataWritingAtomic error:nil];
+    OPNWriteCacheDictionary(path, dict);
 }
 
 bool GameDataCache::LoadCatalogDefinitions(NSString *locale,
@@ -267,10 +303,8 @@ bool GameDataCache::LoadCatalogDefinitions(NSString *locale,
     if (definitions) *definitions = nil;
     NSString *cacheKey = OPNSHA256String(locale.length > 0 ? locale : @"default");
     NSString *path = [m_catalogDefinitionsPath stringByAppendingPathComponent:[cacheKey stringByAppendingPathExtension:@"bplist"]];
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    if (!data) return false;
-    NSDictionary *dict = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:nil error:nil];
-    if (!OPNCacheDictionaryIsFresh(dict, maxAgeSeconds)) return false;
+    NSDictionary *dict = OPNReadCacheDictionary(path, true, maxAgeSeconds);
+    if (!dict) return false;
     NSDictionary *payload = [dict[@"data"] isKindOfClass:[NSDictionary class]] ? dict[@"data"] : nil;
     if (!payload) return false;
     if (definitions) *definitions = payload;
@@ -284,10 +318,8 @@ void GameDataCache::SaveCatalogDefinitions(NSString *locale, NSDictionary *defin
         @"ts": @([[NSDate date] timeIntervalSince1970]),
         @"data": definitions,
     };
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:dict format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
-    if (!data) return;
     NSString *path = [m_catalogDefinitionsPath stringByAppendingPathComponent:[cacheKey stringByAppendingPathExtension:@"bplist"]];
-    [data writeToFile:path options:NSDataWritingAtomic error:nil];
+    OPNWriteCacheDictionary(path, dict);
 }
 
 NSData *GameDataCache::LoadImage(NSString *urlString) const {
@@ -299,7 +331,7 @@ NSData *GameDataCache::LoadImage(NSString *urlString) const {
 void GameDataCache::SaveImage(NSString *urlString, NSData *data) const {
     if (urlString.length == 0 || data.length == 0) return;
     NSString *path = [m_imagePath stringByAppendingPathComponent:[OPNSHA256String(urlString) stringByAppendingPathExtension:@"img"]];
-    [data writeToFile:path options:NSDataWritingAtomic error:nil];
+    OPNWriteCacheData(path, data);
 }
 
 }

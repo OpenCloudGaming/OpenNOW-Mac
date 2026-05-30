@@ -1,4 +1,5 @@
 #include "OPNAuthService.h"
+#include "common/OPNHTTP.h"
 #include "common/OPNSentry.h"
 #include "common/OPNLocale.h"
 
@@ -158,29 +159,28 @@ std::string AuthService::GetPersistentDeviceUUID() {
 
 void AuthService::FetchStarFleetUserInfo(const std::string &accessToken,
                                           std::function<void(bool, NSDictionary *, const std::string &)> completion) {
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:
-        [NSURL URLWithString:@"https://login.nvidia.com/userinfo"]];
-    req.HTTPMethod = @"GET";
-    req.timeoutInterval = 10.0;
-    [req setValue:[NSString stringWithFormat:@"Bearer %s", accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
-    [req setValue:@"https://nvfile" forHTTPHeaderField:@"Origin"];
-    [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [req setValue:[NSString stringWithUTF8String:kDefaultUserAgent] forHTTPHeaderField:@"User-Agent"];
+    NSMutableURLRequest *req = MakeHTTPRequest(@"https://login.nvidia.com/userinfo", @"GET", 10.0, @{
+        @"Authorization": [NSString stringWithFormat:@"Bearer %s", accessToken.c_str()],
+        @"Origin": @"https://nvfile",
+        @"Accept": @"application/json",
+        @"User-Agent": [NSString stringWithUTF8String:kDefaultUserAgent],
+    });
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (error) {
-                    completion(false, nil, [[error localizedDescription] UTF8String]);
+                NSString *message = nil;
+                if (!ValidateHTTPResponse(response, data, error, 200, &message)) {
+                    completion(false, nil, [message UTF8String]);
                     return;
                 }
-                NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
-                if (http.statusCode != 200 || !data) {
-                    completion(false, nil, [[NSString stringWithFormat:@"HTTP %ld", (long)http.statusCode] UTF8String]);
+                id object = JSONObjectFromData(data, &message);
+                NSDictionary *info = [object isKindOfClass:NSDictionary.class] ? (NSDictionary *)object : nil;
+                if (!info) {
+                    completion(false, nil, [(message ?: @"Invalid JSON response") UTF8String]);
                     return;
                 }
-                NSDictionary *info = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
                 completion(true, info, "");
             });
         }];
@@ -193,30 +193,29 @@ void AuthService::FetchStarFleetUserInfo(const std::string &accessToken,
 
 void AuthService::FetchClientToken(const std::string &accessToken,
     std::function<void(bool, const std::string &, const std::string &)> completion) {
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:
-        [NSURL URLWithString:@"https://login.nvidia.com/client_token"]];
-    req.HTTPMethod = @"GET";
-    req.timeoutInterval = 10.0;
+    NSMutableURLRequest *req = MakeHTTPRequest(@"https://login.nvidia.com/client_token", @"GET", 10.0, @{
+        @"Authorization": [NSString stringWithFormat:@"Bearer %s", accessToken.c_str()],
+        @"Origin": @"https://nvfile",
+        @"Accept": @"application/json, text/plain, */*",
+        @"User-Agent": [NSString stringWithUTF8String:kDefaultUserAgent],
+    });
     OPN::LogInfo(@"[OpenNOW] FetchClientToken: accessToken length=%zu", accessToken.size());
-    [req setValue:[NSString stringWithFormat:@"Bearer %s", accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
-    [req setValue:@"https://nvfile" forHTTPHeaderField:@"Origin"];
-    [req setValue:@"application/json, text/plain, */*" forHTTPHeaderField:@"Accept"];
-    [req setValue:[NSString stringWithUTF8String:kDefaultUserAgent] forHTTPHeaderField:@"User-Agent"];
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (error) {
-                    completion(false, "", [[error localizedDescription] UTF8String]);
+                NSString *message = nil;
+                if (!ValidateHTTPResponse(response, data, error, 200, &message)) {
+                    completion(false, "", [message UTF8String]);
                     return;
                 }
-                NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
-                if (http.statusCode != 200 || !data) {
-                    completion(false, "", [[NSString stringWithFormat:@"HTTP %ld", (long)http.statusCode] UTF8String]);
+                id object = JSONObjectFromData(data, &message);
+                NSDictionary *json = [object isKindOfClass:NSDictionary.class] ? (NSDictionary *)object : nil;
+                if (!json) {
+                    completion(false, "", [(message ?: @"Invalid JSON response") UTF8String]);
                     return;
                 }
-                NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
                 NSString *ct = json[@"client_token"];
                 if (!ct || ct.length == 0) {
                     completion(false, "", "No client_token in response");
