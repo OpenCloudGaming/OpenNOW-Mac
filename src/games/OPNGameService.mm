@@ -173,6 +173,10 @@ std::string GameService::ProviderStreamingBaseUrl() const {
 
 static std::string NormalizeStreamingBaseUrl(const std::string &url) {
     if (url.empty()) return DefaultStreamingBaseUrl();
+    NSString *text = [[NSString alloc] initWithBytes:url.data() length:url.size() encoding:NSUTF8StringEncoding];
+    NSURLComponents *components = text.length > 0 ? [NSURLComponents componentsWithString:text] : nil;
+    NSString *scheme = components.scheme.lowercaseString;
+    if (![scheme isEqualToString:@"https"] || components.host.length == 0) return std::string();
     return url.back() == '/' ? url : url + "/";
 }
 

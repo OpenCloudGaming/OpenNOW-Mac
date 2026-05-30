@@ -571,9 +571,18 @@ const char *DefaultStreamingBaseUrl() {
     return kDefaultStreamingBaseUrl;
 }
 
-static std::string NormalizedBaseUrl(const std::string &url) {
-    if (url.empty()) return kDefaultStreamingBaseUrl;
+static std::string NormalizedHTTPSBaseUrlOrEmpty(const std::string &url) {
+    if (url.empty()) return std::string();
+    NSString *text = [[NSString alloc] initWithBytes:url.data() length:url.size() encoding:NSUTF8StringEncoding];
+    NSURLComponents *components = text.length > 0 ? [NSURLComponents componentsWithString:text] : nil;
+    NSString *scheme = components.scheme.lowercaseString;
+    if (![scheme isEqualToString:@"https"] || components.host.length == 0) return std::string();
     return url.back() == '/' ? url : url + "/";
+}
+
+static std::string NormalizedBaseUrl(const std::string &url) {
+    std::string normalized = NormalizedHTTPSBaseUrlOrEmpty(url);
+    return normalized.empty() ? kDefaultStreamingBaseUrl : normalized;
 }
 
 static std::string CurrentNetworkType() {
@@ -638,10 +647,11 @@ std::string LoadSelectedStreamingBaseUrl() {
 
 void SaveSelectedStreamRegionUrl(const std::string &url) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if (url.empty()) {
+    std::string normalized = NormalizedHTTPSBaseUrlOrEmpty(url);
+    if (normalized.empty()) {
         [defaults removeObjectForKey:kSelectedRegionUrlKey];
     } else {
-        [defaults setObject:[NSString stringWithUTF8String:NormalizedBaseUrl(url).c_str()] forKey:kSelectedRegionUrlKey];
+        [defaults setObject:[NSString stringWithUTF8String:normalized.c_str()] forKey:kSelectedRegionUrlKey];
     }
     [defaults synchronize];
 }
@@ -656,9 +666,11 @@ std::vector<StreamRegionOption> LoadCachedStreamRegions() {
         NSString *url = [item[@"url"] isKindOfClass:NSString.class] ? item[@"url"] : nil;
         NSNumber *latency = [item[@"latencyMs"] isKindOfClass:NSNumber.class] ? item[@"latencyMs"] : nil;
         if (name.length == 0 || url.length == 0) continue;
+        std::string normalizedUrl = NormalizedHTTPSBaseUrlOrEmpty([url UTF8String]);
+        if (normalizedUrl.empty()) continue;
         StreamRegionOption region;
         region.name = [name UTF8String];
-        region.url = NormalizedBaseUrl([url UTF8String]);
+        region.url = normalizedUrl;
         region.latencyMs = latency ? latency.intValue : -1;
         regions.push_back(region);
     }
@@ -669,9 +681,11 @@ void SaveCachedStreamRegions(const std::vector<StreamRegionOption> &regions) {
     NSMutableArray *items = [NSMutableArray array];
     for (const StreamRegionOption &region : regions) {
         if (region.automatic || region.name.empty() || region.url.empty()) continue;
+        std::string normalizedUrl = NormalizedHTTPSBaseUrlOrEmpty(region.url);
+        if (normalizedUrl.empty()) continue;
         NSMutableDictionary *item = [@{
             @"name": [NSString stringWithUTF8String:region.name.c_str()],
-            @"url": [NSString stringWithUTF8String:NormalizedBaseUrl(region.url).c_str()],
+            @"url": [NSString stringWithUTF8String:normalizedUrl.c_str()],
         } mutableCopy];
         if (region.latencyMs >= 0) item[@"latencyMs"] = @(region.latencyMs);
         [items addObject:item];

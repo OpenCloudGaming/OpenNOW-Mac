@@ -37,13 +37,24 @@ static int AdActionCode(const std::string &action) {
 }
 
 static std::string ResolveSessionBaseUrl(const std::string &streamingBaseUrl, const std::string &serverIp) {
-    if (serverIp.empty()) {
-        return streamingBaseUrl.empty() ? "https://prod.cloudmatchbeta.nvidiagrid.net" : streamingBaseUrl;
-    }
-    if (serverIp.rfind("https://", 0) == 0 || serverIp.rfind("http://", 0) == 0) {
-        std::string base = serverIp;
+    auto normalizedHTTPSBaseUrl = [](const std::string &url) -> std::string {
+        if (url.empty()) return std::string();
+        NSString *text = [[NSString alloc] initWithBytes:url.data() length:url.size() encoding:NSUTF8StringEncoding];
+        NSURLComponents *components = text.length > 0 ? [NSURLComponents componentsWithString:text] : nil;
+        NSString *scheme = components.scheme.lowercaseString;
+        if (![scheme isEqualToString:@"https"] || components.host.length == 0) return std::string();
+        std::string base = url;
         while (!base.empty() && base.back() == '/') base.pop_back();
         return base;
+    };
+
+    if (serverIp.empty()) {
+        std::string base = normalizedHTTPSBaseUrl(streamingBaseUrl);
+        return base.empty() ? "https://prod.cloudmatchbeta.nvidiagrid.net" : base;
+    }
+    if (serverIp.rfind("https://", 0) == 0 || serverIp.rfind("http://", 0) == 0) {
+        std::string base = normalizedHTTPSBaseUrl(serverIp);
+        return base.empty() ? "https://prod.cloudmatchbeta.nvidiagrid.net" : base;
     }
     return "https://" + serverIp;
 }
@@ -106,14 +117,6 @@ static OPN::SessionProgressState ProgressStateForSeatSetupStep(int seatSetupStep
 static bool VerboseSessionHttpLoggingEnabled() {
     const char *value = std::getenv("OPN_VERBOSE_SESSION_HTTP");
     return value && std::strcmp(value, "1") == 0;
-}
-
-static std::string NormalizeCloudMatchBaseUrl(const std::string &url) {
-    std::string normalized = url;
-    while (!normalized.empty() && normalized.back() == '/') {
-        normalized.pop_back();
-    }
-    return normalized;
 }
 
 static void StreamColorProfileFields(const OPN::StreamSettings &settings, int &bitDepth, int &chromaFormat) {
@@ -542,7 +545,7 @@ void SessionManager::SetAccessToken(const std::string &token) {
 }
 
 void SessionManager::SetStreamingBaseUrl(const std::string &url) {
-    m_streamingBaseUrl = NormalizeCloudMatchBaseUrl(url);
+    m_streamingBaseUrl = ResolveSessionBaseUrl(url, "");
 }
 
 void SessionManager::MergeAndStoreAdState(SessionInfo &info) {

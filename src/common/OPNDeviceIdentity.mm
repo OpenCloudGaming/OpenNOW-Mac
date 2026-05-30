@@ -16,12 +16,16 @@ std::string StableCloudmatchDeviceId() {
     NSString *deviceId = [existing[@"deviceId"] isKindOfClass:NSString.class] ? existing[@"deviceId"] : nil;
     if (deviceId.length == 0) deviceId = NSUUID.UUID.UUIDString.lowercaseString;
 
+    NSDictionary *directoryAttributes = @{NSFilePosixPermissions: @(0700)};
     [[NSFileManager defaultManager] createDirectoryAtPath:supportDir
                               withIntermediateDirectories:YES
-                                               attributes:nil
+                                               attributes:directoryAttributes
                                                     error:nil];
     NSDictionary *plist = @{@"deviceId": deviceId};
     [plist writeToFile:path atomically:YES];
+    [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @(0600)}
+                                     ofItemAtPath:path
+                                           error:nil];
 
     cachedDeviceId = deviceId.UTF8String;
     return cachedDeviceId;

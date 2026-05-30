@@ -65,6 +65,33 @@ static BOOL OPNLogLineContainsAny(NSString *line, NSArray<NSString *> *needles) 
     return NO;
 }
 
+static NSString *OPNStringByReplacingMatches(NSString *message, NSString *pattern, NSString *replacement) {
+    if (message.length == 0) return @"";
+    NSError *error = nil;
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:pattern
+                                                                                options:NSRegularExpressionCaseInsensitive
+                                                                                  error:&error];
+    if (!expression) return message;
+    NSRange fullRange = NSMakeRange(0, message.length);
+    return [expression stringByReplacingMatchesInString:message
+                                                options:0
+                                                  range:fullRange
+                                           withTemplate:replacement];
+}
+
+static NSString *OPNRedactedLogLine(NSString *line) {
+    if (line.length == 0) return @"";
+    NSString *redacted = line;
+    redacted = OPNStringByReplacingMatches(redacted, @"\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", @"[redacted-email]");
+    redacted = OPNStringByReplacingMatches(redacted, @"\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", @"[redacted-ip]");
+    redacted = OPNStringByReplacingMatches(redacted, @"\\b[0-9A-F]{8}-[0-9A-F]{4}-[1-5][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}\\b", @"[redacted-id]");
+    redacted = OPNStringByReplacingMatches(redacted, @"\\b[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\b", @"[redacted-token]");
+    redacted = OPNStringByReplacingMatches(redacted, @"(bearer|basic|gfnjwt)\\s+[^\\s,;]+", @"$1 [redacted-token]");
+    redacted = OPNStringByReplacingMatches(redacted, @"((?:access|refresh|id|client)?_?token|authorization|password|secret|api[_-]?key|session[_-]?id|credential|ice[_-]?pwd)([=:]\\s*|\\\"\\s*:\\s*\\\")[^\\s,;\\}\\\"]+", @"$1$2[redacted-secret]");
+    redacted = OPNStringByReplacingMatches(redacted, @"/Users/[^/\\s]+", @"/Users/[redacted-user]");
+    return redacted;
+}
+
 static BOOL OPNIsCoreGraphicsInvalidContextLine(NSString *line) {
     return OPNLogLineContainsAny(line, @[
         @"CGContextSetFillColorWithColor: invalid context",
@@ -131,9 +158,18 @@ static BOOL OPNCapturedLineOriginatedFromAppLogger(NSString *line) {
 static void OPNAppendCapturedLineToLog(NSData *lineData) {
     if (lineData.length == 0) return;
     NSString *line = [[NSString alloc] initWithData:lineData encoding:NSUTF8StringEncoding];
-    if (line && !OPNShouldPersistCapturedLogLine(line)) return;
-    if (line && !OPNCapturedLineOriginatedFromAppLogger(line)) {
-        OPN::CaptureExternalLogLine(line);
+    if (line) {
+        if (!OPNShouldPersistCapturedLogLine(line)) return;
+        NSString *redactedLine = OPNRedactedLogLine(line);
+        if (!OPNCapturedLineOriginatedFromAppLogger(redactedLine)) {
+            OPN::CaptureExternalLogLine(redactedLine);
+        }
+
+        NSMutableData *data = [[redactedLine dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
+        const char newline = '\n';
+        [data appendBytes:&newline length:sizeof(newline)];
+        OPNAppendDataToLog(data);
+        return;
     }
 
     NSMutableData *data = [lineData mutableCopy];
@@ -170,7 +206,7 @@ static NSString *OPNFilteredCopiedLog(NSString *rawLog, NSUInteger *filteredLine
     [rawLog enumerateLinesUsingBlock:^(NSString *line, BOOL *) {
         if (OPNIsCoreGraphicsInvalidContextLine(line)) {
             if (!includedInvalidContextLine) {
-                [filteredLog appendString:line];
+                [filteredLog appendString:OPNRedactedLogLine(line)];
                 [filteredLog appendString:@"\n"];
                 includedInvalidContextLine = YES;
             } else {
@@ -180,7 +216,7 @@ static NSString *OPNFilteredCopiedLog(NSString *rawLog, NSUInteger *filteredLine
         }
 
         if (OPNShouldIncludeCopiedLogLine(line)) {
-            [filteredLog appendString:line];
+            [filteredLog appendString:OPNRedactedLogLine(line)];
             [filteredLog appendString:@"\n"];
         } else {
             skipped++;
@@ -250,7 +286,7 @@ void StartLogCapture() {
 
 void AppendLogEvent(NSString *message) {
     if (message.length == 0) return;
-    NSString *line = [NSString stringWithFormat:@"%@ %@\n", NSDate.date, message];
+    NSString *line = [NSString stringWithFormat:@"%@ %@\n", NSDate.date, OPNRedactedLogLine(message)];
     NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
     OPNAppendDataToLog(data);
 }

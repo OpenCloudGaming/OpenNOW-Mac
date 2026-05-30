@@ -105,6 +105,10 @@ static std::string URLEncode(const std::string &value) {
     return encoded ? std::string([encoded UTF8String]) : value;
 }
 
+static std::string StdStringFromNSString(NSString *value) {
+    return value ? std::string(value.UTF8String ?: "") : std::string();
+}
+
 static std::string FormURLEncode(const std::string &value) {
     NSString *str = [NSString stringWithUTF8String:value.c_str()];
     NSMutableCharacterSet *allowed = [NSMutableCharacterSet alphanumericCharacterSet];
@@ -451,10 +455,8 @@ static int FindAvailablePort() {
         if (sock < 0) continue;
         struct sockaddr_in addr = {};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         addr.sin_port = htons(port);
-        int reuse = 1;
-        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
         if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
             close(sock);
             return port;
@@ -492,7 +494,7 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
     OAuthState pkce = GeneratePKCEState();
     std::string deviceId = GenerateOpenNOWDeviceId();
     std::string nonceHex = GenerateRandomString(32);
-    std::string redirectUri = "http://localhost:" + std::to_string(port);
+    std::string redirectUri = "http://127.0.0.1:" + std::to_string(port);
     std::string selectedProviderIdpId = providerIdpId.empty() ? kDefaultIdpId : providerIdpId;
 
     NSString *authorizeURLStr = [NSString stringWithFormat:
@@ -520,14 +522,21 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
         pkce.state.c_str()];
 
     int serverSock = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSock < 0) {
+        completion(false, AuthSession{}, "Failed to create OAuth callback listener");
+        return;
+    }
     int reuse = 1;
     setsockopt(serverSock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = htons(port);
-    bind(serverSock, (struct sockaddr *)&addr, sizeof(addr));
-    listen(serverSock, 1);
+    if (bind(serverSock, (struct sockaddr *)&addr, sizeof(addr)) != 0 || listen(serverSock, 1) != 0) {
+        close(serverSock);
+        completion(false, AuthSession{}, "Failed to bind OAuth callback listener");
+        return;
+    }
 
     __block bool completed = NO;
     __block int blockSock = serverSock;
@@ -870,12 +879,12 @@ void AuthService::doOAuthTokenExchange(NSString *authCode, NSString *codeVerifie
 
     NSString *bodyStr = [NSString stringWithFormat:
         @"grant_type=authorization_code"
-        @"&code=%@"
-        @"&redirect_uri=%@"
-        @"&code_verifier=%@",
-        authCode,
-        redirectUri,
-        codeVerifier];
+        @"&code=%s"
+        @"&redirect_uri=%s"
+        @"&code_verifier=%s",
+        FormURLEncode(StdStringFromNSString(authCode)).c_str(),
+        FormURLEncode(StdStringFromNSString(redirectUri)).c_str(),
+        FormURLEncode(StdStringFromNSString(codeVerifier)).c_str()];
     req.HTTPBody = [bodyStr dataUsingEncoding:NSUTF8StringEncoding];
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]

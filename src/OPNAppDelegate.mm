@@ -1659,40 +1659,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
             std::string appId = std::to_string(activeSession.appId);
             NSString *streamTitle = OPNTitleForActiveSessionAppId(activeSession.appId, strongSelf.cachedGameLibrary);
-            OPNStreamViewController *streamVC = [[OPNStreamViewController alloc] initWithGameTitle:[streamTitle UTF8String]
-                                                                                             appId:appId
-                                                                                          apiToken:apiToken
-                                                                                     accountLinked:true
-                                                                                     selectedStore:""
-                                                                                   resumeSessionId:activeSession.sessionId
-                                                                                       resumeServer:activeSession.serverIp];
-            strongSelf.currentStreamTitle = streamTitle;
-            strongSelf.activeStreamReturnScreen = screen;
-            __weak __typeof__(strongSelf) streamWeakSelf = strongSelf;
-            streamVC.onStreamEnd = ^(BOOL success, const std::string &streamError) {
-                __typeof__(strongSelf) streamStrongSelf = streamWeakSelf;
-                if (!streamStrongSelf) return;
-                std::string errorCopy = streamError;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    OPN::AuthScreen returnScreen = streamStrongSelf.activeStreamReturnScreen;
-                    [streamStrongSelf stopStreamDashboardControllerPolling];
-                    streamStrongSelf.streamDashboardHomeVisible = NO;
-                    streamStrongSelf.streamingController = nil;
-                    streamStrongSelf.currentStreamTitle = nil;
-                    [streamStrongSelf transitionToScreen:returnScreen];
-                    if (!success && !errorCopy.empty()) [streamStrongSelf showError:errorCopy canRetry:YES];
-                });
-            };
-            streamVC.onDashboardToggleRequested = ^{
-                __typeof__(strongSelf) dashboardSelf = streamWeakSelf;
-                if (!dashboardSelf) return;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [dashboardSelf toggleStreamDashboardHome];
-                });
-            };
-            [streamVC setInitialViewFrame:strongSelf.window.contentView.bounds];
-            strongSelf.streamingController = streamVC;
-            [streamVC startStreamIfNeeded];
+            std::string title = streamTitle.length > 0 ? streamTitle.UTF8String : "Current Stream";
+            [strongSelf startStreamWithTitle:title
+                                       appId:appId
+                                    apiToken:apiToken
+                               accountLinked:true
+                                selectedStore:""
+                                returnScreen:screen
+                              resumeSessionId:activeSession.sessionId
+                                  resumeServer:activeSession.serverIp];
             OPN::LogInfo(@"[AppDelegate] Silently resuming active session %s for appId=%d", activeSession.sessionId.c_str(), activeSession.appId);
         });
     });

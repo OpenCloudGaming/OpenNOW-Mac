@@ -199,6 +199,17 @@
 			fileRef = 71540FEB572BA7ADB70C4D69;
 			settings = {ATTRIBUTES = (CodeSignOnCopy, ); };
 		};
+		A00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001; };
+		A00000000000000000000002 /* OPNSessionParsing.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003; };
+		A00000000000000000000003 /* OPNSessionAdPresentation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005; };
+		A00000000000000000000004 /* OPNHTTP.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007; };
+		A00000000000000000000005 /* OPNGFNError.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009; };
+		A00000000000000000000006 /* OPNProtocolDebug.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011; };
+		A00000000000000000000007 /* OPNGameRemediation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013; };
+		A00000000000000000000008 /* OPNLocale.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000015; };
+		A00000000000000000000009 /* OPNGitHubUpdater.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000017; };
+		A00000000000000000000010 /* OPNDeviceIdentity.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000019; };
+		A00000000000000000000011 /* AudioUnit.framework in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000021; };
 		/* End PBXBuildFile section */
 		/* Begin PBXCopyFilesBuildPhase section */
 		6F087D5B3D8849F29E9D0C67 /* Embed Frameworks */ = {
@@ -261,6 +272,13 @@
 			lastKnownFileType = wrapper.framework;
 			name = CoreAudio.framework;
 			path = System/Library/Frameworks/CoreAudio.framework;
+			sourceTree = SDKROOT;
+		};
+		B00000000000000000000021 /* AudioUnit.framework in PBXFileReference */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.framework;
+			name = AudioUnit.framework;
+			path = System/Library/Frameworks/AudioUnit.framework;
 			sourceTree = SDKROOT;
 		};
 		5C2052B439E438DCA24889EC /* CoreImage.framework in PBXFileReference */ = {
@@ -788,6 +806,26 @@
 			path = src/common/OPNSentry.h;
 			sourceTree = "<group>";
 		};
+		B00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCDataChannelUtils.mm; path = src/streaming/OPNWebRTCDataChannelUtils.mm; sourceTree = "<group>"; };
+		B00000000000000000000002 /* OPNWebRTCDataChannelUtils.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCDataChannelUtils.h; path = src/streaming/OPNWebRTCDataChannelUtils.h; sourceTree = "<group>"; };
+		B00000000000000000000003 /* OPNSessionParsing.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionParsing.mm; path = src/streaming/OPNSessionParsing.mm; sourceTree = "<group>"; };
+		B00000000000000000000004 /* OPNSessionParsing.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionParsing.h; path = src/streaming/OPNSessionParsing.h; sourceTree = "<group>"; };
+		B00000000000000000000005 /* OPNSessionAdPresentation.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionAdPresentation.mm; path = src/streaming/OPNSessionAdPresentation.mm; sourceTree = "<group>"; };
+		B00000000000000000000006 /* OPNSessionAdPresentation.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionAdPresentation.h; path = src/streaming/OPNSessionAdPresentation.h; sourceTree = "<group>"; };
+		B00000000000000000000007 /* OPNHTTP.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNHTTP.mm; path = src/common/OPNHTTP.mm; sourceTree = "<group>"; };
+		B00000000000000000000008 /* OPNHTTP.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNHTTP.h; path = src/common/OPNHTTP.h; sourceTree = "<group>"; };
+		B00000000000000000000009 /* OPNGFNError.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGFNError.mm; path = src/common/OPNGFNError.mm; sourceTree = "<group>"; };
+		B00000000000000000000010 /* OPNGFNError.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGFNError.h; path = src/common/OPNGFNError.h; sourceTree = "<group>"; };
+		B00000000000000000000011 /* OPNProtocolDebug.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNProtocolDebug.mm; path = src/common/OPNProtocolDebug.mm; sourceTree = "<group>"; };
+		B00000000000000000000012 /* OPNProtocolDebug.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNProtocolDebug.h; path = src/common/OPNProtocolDebug.h; sourceTree = "<group>"; };
+		B00000000000000000000013 /* OPNGameRemediation.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameRemediation.mm; path = src/common/OPNGameRemediation.mm; sourceTree = "<group>"; };
+		B00000000000000000000014 /* OPNGameRemediation.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGameRemediation.h; path = src/common/OPNGameRemediation.h; sourceTree = "<group>"; };
+		B00000000000000000000015 /* OPNLocale.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLocale.mm; path = src/common/OPNLocale.mm; sourceTree = "<group>"; };
+		B00000000000000000000016 /* OPNLocale.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNLocale.h; path = src/common/OPNLocale.h; sourceTree = "<group>"; };
+		B00000000000000000000017 /* OPNGitHubUpdater.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGitHubUpdater.mm; path = src/common/OPNGitHubUpdater.mm; sourceTree = "<group>"; };
+		B00000000000000000000018 /* OPNGitHubUpdater.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGitHubUpdater.h; path = src/common/OPNGitHubUpdater.h; sourceTree = "<group>"; };
+		B00000000000000000000019 /* OPNDeviceIdentity.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNDeviceIdentity.mm; path = src/common/OPNDeviceIdentity.mm; sourceTree = "<group>"; };
+		B00000000000000000000020 /* OPNDeviceIdentity.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNDeviceIdentity.h; path = src/common/OPNDeviceIdentity.h; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 		/* Begin PBXFrameworksBuildPhase section */
 		63FC9122778042047BE28757 = {
@@ -810,6 +848,7 @@
 				D4D1FDD046EF74604BF789F3 /* GameController.framework in PBXBuildFile */,
 				56330183F7065F54C2D88C7F /* ApplicationServices.framework in PBXBuildFile */,
 				A750DCB728A12BBBBF23C682 /* CoreAudio.framework in PBXBuildFile */,
+				A00000000000000000000011 /* AudioUnit.framework in PBXBuildFile */,
 				2EF04056FF33CDBD1E80741E /* ScreenCaptureKit.framework in PBXBuildFile */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -849,14 +888,28 @@
 			isa = PBXGroup;
 			children = (
 				E3E0EB2F1F5D6430392E191A /* OPNCoreAnimationCoordinator.mm in PBXFileReference */,
+				B00000000000000000000019 /* OPNDeviceIdentity.mm in PBXFileReference */,
+				B00000000000000000000013 /* OPNGameRemediation.mm in PBXFileReference */,
+				B00000000000000000000009 /* OPNGFNError.mm in PBXFileReference */,
+				B00000000000000000000017 /* OPNGitHubUpdater.mm in PBXFileReference */,
+				B00000000000000000000007 /* OPNHTTP.mm in PBXFileReference */,
+				B00000000000000000000015 /* OPNLocale.mm in PBXFileReference */,
 				5BA7735A625E53A85F9EFB77 /* OPNLogCapture.mm in PBXFileReference */,
+				B00000000000000000000011 /* OPNProtocolDebug.mm in PBXFileReference */,
 				4C3E83E448564D2B9FBD3A11 /* OPNSentry.mm in PBXFileReference */,
 				957905FB492F42AD9B576509 /* OPNUIHelpers.mm in PBXFileReference */,
 				F541DAC381C7EE67D4F5FDFE /* OPNAuthTypes.h in PBXFileReference */,
 				27524879C46BFC320035B795 /* OPNColorTokens.h in PBXFileReference */,
 				B27906E956075948351DE070 /* OPNCoreAnimationCoordinator.h in PBXFileReference */,
+				B00000000000000000000020 /* OPNDeviceIdentity.h in PBXFileReference */,
+				B00000000000000000000014 /* OPNGameRemediation.h in PBXFileReference */,
 				474A30A992EC925A5C8EAC23 /* OPNGameTypes.h in PBXFileReference */,
+				B00000000000000000000010 /* OPNGFNError.h in PBXFileReference */,
+				B00000000000000000000018 /* OPNGitHubUpdater.h in PBXFileReference */,
+				B00000000000000000000008 /* OPNHTTP.h in PBXFileReference */,
+				B00000000000000000000016 /* OPNLocale.h in PBXFileReference */,
 				26EE21E75DE52A5E70D12537 /* OPNLogCapture.h in PBXFileReference */,
+				B00000000000000000000012 /* OPNProtocolDebug.h in PBXFileReference */,
 				4C3E83E448564D2B9FBD3A12 /* OPNSentry.h in PBXFileReference */,
 				8CC322B1C896AA0557952728 /* OPNUIHelpers.h in PBXFileReference */,
 			);
@@ -903,16 +956,21 @@
 			children = (
 				64F15129224BCD7D6307E131 /* OPNInputProtocol.mm in PBXFileReference */,
 				10F67006C07BB7D2BC133943 /* OPNLibWebRTCStreamSession.mm in PBXFileReference */,
+				B00000000000000000000005 /* OPNSessionAdPresentation.mm in PBXFileReference */,
 				9C912AAA99573BD7E06A7277 /* OPNSessionManager.mm in PBXFileReference */,
+				B00000000000000000000003 /* OPNSessionParsing.mm in PBXFileReference */,
 				86748D9DBD028C6C0D398138 /* OPNSignalingClient.mm in PBXFileReference */,
 				5658CA205DC5850D583D3256 /* OPNStreamBackend.mm in PBXFileReference */,
 				F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */,
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.mm in PBXFileReference */,
 				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.mm in PBXFileReference */,
 				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
+				B00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXFileReference */,
 				F06A283F5317315F846CC92D /* OPNInputProtocol.h in PBXFileReference */,
 				1B53A5DD6FD53397C292235E /* OPNLibWebRTCStreamSession.h in PBXFileReference */,
+				B00000000000000000000006 /* OPNSessionAdPresentation.h in PBXFileReference */,
 				D677A6C2D6C1F5ADA85447E5 /* OPNSessionManager.h in PBXFileReference */,
+				B00000000000000000000004 /* OPNSessionParsing.h in PBXFileReference */,
 				7D3F57F9384D6014B5AA8B92 /* OPNSignalingClient.h in PBXFileReference */,
 				D1280850F847EF1ED1508ACA /* OPNStreamBackend.h in PBXFileReference */,
 				B9C13F571A43AE48E93CFB8B /* OPNStreamPreferences.h in PBXFileReference */,
@@ -921,6 +979,7 @@
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
 				B161D5A795AB0D394456EE9F /* OPNStreamView.h in PBXFileReference */,
 				D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */,
+				B00000000000000000000002 /* OPNWebRTCDataChannelUtils.h in PBXFileReference */,
 			);
 			name = streaming;
 			sourceTree = "<group>";
@@ -1016,15 +1075,25 @@
 				3BC225D2A5926453B554382C /* OPNUIHelpers.mm in PBXBuildFile */,
 				574995CC8CFCD58D8AAF6483 /* OPNGameDataCache.mm in PBXBuildFile */,
 				3B509C71FF2A9B53EA88B9CA /* OPNGameService.mm in PBXBuildFile */,
+				A00000000000000000000010 /* OPNDeviceIdentity.mm in PBXBuildFile */,
+				A00000000000000000000007 /* OPNGameRemediation.mm in PBXBuildFile */,
+				A00000000000000000000005 /* OPNGFNError.mm in PBXBuildFile */,
+				A00000000000000000000009 /* OPNGitHubUpdater.mm in PBXBuildFile */,
+				A00000000000000000000004 /* OPNHTTP.mm in PBXBuildFile */,
 				C7EFD908C9250BA32B7E8B1C /* OPNInputProtocol.mm in PBXBuildFile */,
 				01962D846ADB16CBCA18D4C3 /* OPNLibWebRTCStreamSession.mm in PBXBuildFile */,
+				A00000000000000000000008 /* OPNLocale.mm in PBXBuildFile */,
+				A00000000000000000000003 /* OPNSessionAdPresentation.mm in PBXBuildFile */,
 				33078ABB312F4AD2D88BE57B /* OPNSessionManager.mm in PBXBuildFile */,
+				A00000000000000000000002 /* OPNSessionParsing.mm in PBXBuildFile */,
 				A214A1D8E1EF4F47A57F7515 /* OPNSignalingClient.mm in PBXBuildFile */,
+				A00000000000000000000006 /* OPNProtocolDebug.mm in PBXBuildFile */,
 				FFF8E7B3034DB91B70B547BD /* OPNStreamBackend.mm in PBXBuildFile */,
 				6AD819D53010E3BBC30EF1FA /* OPNStreamPreferences.mm in PBXBuildFile */,
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.mm in PBXBuildFile */,
 				FE6A155D74A6768A507DF3AB /* OPNStreamView.mm in PBXBuildFile */,
 				B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */,
+				A00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXBuildFile */,
 				C174D57D164809AC11FF73C7 /* OPNAuthenticatingView.mm in PBXBuildFile */,
 				96B438E76F776D852AC56D8F /* OPNBackdropView.mm in PBXBuildFile */,
 				916F79FB2547CA9622C74129 /* OPNCarouselFocusLayout.mm in PBXBuildFile */,
