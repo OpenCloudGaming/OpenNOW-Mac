@@ -20,6 +20,7 @@
 #include "../src/common/OPNAuthTypes.h"
 #include "../src/common/OPNGameRemediation.h"
 #include "../src/common/OPNGFNError.h"
+#include "../src/common/OPNHTTP.h"
 #include "../src/common/OPNLocale.h"
 #include "../src/common/OPNProtocolDebug.h"
 #include "../src/games/OPNGameDataCache.h"
@@ -1865,6 +1866,43 @@ TEST_CASE("game-cache/catalog definitions freshness") {
     NSDictionary *stale = nil;
     CHECK(!cache.LoadCatalogDefinitions(locale, 0.0, &stale));
     CHECK(stale == nil);
+}
+
+TEST_CASE("game-cache/images handle missing and empty data") {
+    OPN::GameDataCache &cache = OPN::GameDataCache::Shared();
+    NSString *url = [@"https://images.example.test/" stringByAppendingString:[[NSUUID UUID] UUIDString]];
+
+    CHECK(cache.LoadImage(url) == nil);
+    cache.SaveImage(url, [NSData data]);
+    CHECK(cache.LoadImage(url) == nil);
+
+    NSData *imageData = [@"image-bytes" dataUsingEncoding:NSUTF8StringEncoding];
+    cache.SaveImage(url, imageData);
+    NSData *loaded = cache.LoadImage(url);
+    REQUIRE(loaded != nil);
+    CHECK([loaded isEqualToData:imageData]);
+}
+
+TEST_CASE("http-utils validate responses and parse json") {
+    NSString *jsonError = nil;
+    NSData *jsonData = OPN::JSONDataFromObject(@{@"ok": @YES}, &jsonError);
+    REQUIRE(jsonData != nil);
+    CHECK(jsonError == nil);
+
+    id object = OPN::JSONObjectFromData(jsonData, &jsonError);
+    REQUIRE([object isKindOfClass:NSDictionary.class]);
+    CHECK([object[@"ok"] boolValue]);
+
+    NSString *parseError = nil;
+    CHECK(OPN::JSONObjectFromData([@"not-json" dataUsingEncoding:NSUTF8StringEncoding], &parseError) == nil);
+    REQUIRE(parseError != nil);
+    CHECK([parseError containsString:@"Invalid JSON"]);
+
+    NSURL *url = [NSURL URLWithString:@"https://example.test/status"];
+    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:url statusCode:503 HTTPVersion:@"HTTP/1.1" headerFields:nil];
+    NSString *httpError = nil;
+    CHECK(!OPN::ValidateHTTPResponse(response, [NSData data], nil, 200, &httpError));
+    CHECK([httpError isEqualToString:@"HTTP 503"]);
 }
 
 TEST_CASE("game-service/provider info selects matching idp endpoint") {
