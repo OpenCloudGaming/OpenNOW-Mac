@@ -17,6 +17,10 @@ static const CGFloat kGridPadding = 28.0;
 static const CGFloat kCardSpacing = 18.0;
 static const CGFloat kNavHeight = 62.0;
 static const CGFloat kToolbarHeight = 82.0;
+static const CGFloat kDesktopLibraryTopInset = 146.0;
+static const CGFloat kDesktopLibraryHeroTopOffset = 120.0;
+static const CGFloat kDesktopLibraryHeroHeight = 424.0;
+static const CGFloat kDesktopLibraryGridTopGap = 62.0;
 static const CGFloat kControllerRailSelectorOverlap = 22.0;
 static const CGFloat kControllerRailDetailOverlap = 22.0;
 static const CGFloat kControllerGameHubVerticalReserve = 96.0;
@@ -284,6 +288,46 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
 - (BOOL)isFlipped { return YES; }
 @end
 
+@interface OPNCatalogAmbientView : NSView
+@end
+
+@implementation OPNCatalogAmbientView
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    NSRect bounds = self.bounds;
+    if (NSIsEmptyRect(bounds)) return;
+
+    NSGradient *base = [[NSGradient alloc] initWithColorsAndLocations:
+        OpnColor(0x020405, 1.0), 0.0,
+        OpnColor(0x07120D, 1.0), 0.34,
+        OpnColor(0x11141A, 1.0), 0.62,
+        OpnColor(0x030405, 1.0), 1.0,
+        nil];
+    [base drawInRect:bounds angle:-38.0];
+
+    NSGradient *greenBloom = [[NSGradient alloc] initWithColors:@[
+        OpnColor(OPN::kBrandGreen, 0.22),
+        OpnColor(OPN::kBrandGreen, 0.055),
+        OpnColor(OPN::kBrandGreen, 0.0)
+    ]];
+    [greenBloom drawFromCenter:NSMakePoint(NSMinX(bounds) + NSWidth(bounds) * 0.20, NSMinY(bounds) + 188.0)
+                        radius:12.0
+                      toCenter:NSMakePoint(NSMinX(bounds) + NSWidth(bounds) * 0.24, NSMinY(bounds) + 230.0)
+                        radius:620.0
+                       options:0];
+
+    NSGradient *vignette = [[NSGradient alloc] initWithColorsAndLocations:
+        OpnColor(0x000000, 0.0), 0.0,
+        OpnColor(0x000000, 0.72), 1.0,
+        nil];
+    [vignette drawInRect:bounds angle:-90.0];
+}
+
+@end
+
 @interface OPNControllerPreviewBackgroundView : NSView
 @property (nonatomic, strong) NSImage *image;
 @property (nonatomic, strong) NSColor *derivedBackgroundColor;
@@ -513,6 +557,8 @@ typedef NS_ENUM(NSInteger, OPNControllerPromptMode) {
 - (NSInteger)gameCountForCategory:(NSString *)categoryId;
 - (const OPN::GameInfo *)currentLastPlayedGame;
 - (int)preferredVariantIndexForGame:(const OPN::GameInfo &)game;
+- (void)addDesktopLibraryMetricPillWithTitle:(NSString *)title value:(NSString *)value frame:(NSRect)frame;
+- (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)renderControllerHomeSurface;
 - (void)renderControllerLibrary;
 - (void)renderControllerHero;
@@ -1764,6 +1810,85 @@ using namespace OPN;
     return 0;
 }
 
+- (void)addDesktopLibraryMetricPillWithTitle:(NSString *)title value:(NSString *)value frame:(NSRect)frame {
+    NSView *pill = [[NSView alloc] initWithFrame:frame];
+    pill.wantsLayer = YES;
+    pill.layer.cornerRadius = 18.0;
+    pill.layer.backgroundColor = OpnColor(0xFFFFFF, 0.055).CGColor;
+    pill.layer.borderWidth = 1.0;
+    pill.layer.borderColor = OpnColor(0xFFFFFF, 0.105).CGColor;
+    [self.gridContentView addSubview:pill];
+
+    NSTextField *valueLabel = OpnLabel(value ?: @"0", NSMakeRect(14.0, 8.0, NSWidth(frame) - 28.0, 26.0), 22.0, OpnColor(kTextPrimary), NSFontWeightBold, NSTextAlignmentCenter);
+    [pill addSubview:valueLabel];
+    NSTextField *titleLabel = OpnLabel((title ?: @"").uppercaseString, NSMakeRect(10.0, 35.0, NSWidth(frame) - 20.0, 14.0), 10.0, OpnColor(kTextMuted), NSFontWeightBlack, NSTextAlignmentCenter);
+    [pill addSubview:titleLabel];
+}
+
+- (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame {
+    NSView *stage = [[NSView alloc] initWithFrame:frame];
+    stage.wantsLayer = YES;
+    CAGradientLayer *stageGradient = [CAGradientLayer layer];
+    stageGradient.frame = stage.bounds;
+    stageGradient.colors = @[(id)OpnColor(0x0B1710, 0.96).CGColor,
+                             (id)OpnColor(0x10131A, 0.94).CGColor,
+                             (id)OpnColor(0x030506, 0.98).CGColor];
+    stageGradient.locations = @[@0.0, @0.56, @1.0];
+    stageGradient.startPoint = CGPointMake(0.0, 0.0);
+    stageGradient.endPoint = CGPointMake(1.0, 1.0);
+    stage.layer = stageGradient;
+    stage.layer.cornerRadius = 34.0;
+    stage.layer.borderWidth = 1.0;
+    stage.layer.borderColor = OpnColor(0xFFFFFF, 0.13).CGColor;
+    stage.layer.shadowColor = OpnColor(0x000000, 1.0).CGColor;
+    stage.layer.shadowOpacity = 0.34;
+    stage.layer.shadowRadius = 28.0;
+    stage.layer.shadowOffset = CGSizeMake(0.0, 18.0);
+    [self.gridContentView addSubview:stage];
+
+    CALayer *accent = [CALayer layer];
+    accent.frame = NSMakeRect(0.0, 0.0, NSWidth(frame), 3.0);
+    accent.backgroundColor = OpnColor(kBrandGreen, 0.90).CGColor;
+    [stage.layer addSublayer:accent];
+
+    CGFloat width = NSWidth(frame);
+    CGFloat height = NSHeight(frame);
+    CGFloat artWidth = MIN(width * 0.58, MAX(470.0, width - 420.0));
+    CGFloat artX = width - artWidth - 34.0;
+    CGFloat artHeight = height - 68.0;
+    OPNControllerPreviewBackgroundView *artwork = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:NSMakeRect(artX, 34.0, artWidth, artHeight)];
+    artwork.cornerRadius = 28.0;
+    artwork.wantsLayer = YES;
+    artwork.layer.cornerRadius = 28.0;
+    artwork.layer.masksToBounds = YES;
+    artwork.layer.borderWidth = 1.0;
+    artwork.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
+    [stage addSubview:artwork];
+    [self loadControllerHeroImageForView:artwork candidates:OPNControllerHeroBackgroundCandidates(game) index:0];
+
+    CGFloat textWidth = MAX(320.0, artX - 64.0);
+    NSTextField *kicker = OpnLabel(@"READY TO STREAM", NSMakeRect(34.0, 38.0, textWidth, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBlack);
+    [stage addSubview:kicker];
+
+    NSString *titleText = OPNCatalogString(game.title, @"Untitled");
+    NSTextField *title = OpnLabel(titleText, NSMakeRect(34.0, 64.0, textWidth, 96.0), 42.0, OpnColor(kTextPrimary), NSFontWeightBlack);
+    title.lineBreakMode = NSLineBreakByWordWrapping;
+    title.maximumNumberOfLines = 2;
+    [stage addSubview:title];
+
+    NSString *description = OPNCatalogString(game.description, @"Jump back into your cloud library with your linked PC stores close at hand.");
+    NSTextField *body = OpnLabel(description, NSMakeRect(36.0, 170.0, textWidth - 10.0, 68.0), 14.0, OpnColor(kTextSecondary), NSFontWeightMedium);
+    body.lineBreakMode = NSLineBreakByWordWrapping;
+    body.maximumNumberOfLines = 3;
+    [stage addSubview:body];
+
+    NSString *store = game.availableStores.empty() ? @"Cloud Ready" : OPNStoreCategoryTitle(OPNCatalogString(game.availableStores.front(), @""));
+    NSString *metaText = OPNCatalogJoinedStrings(game.genres, store);
+    NSTextField *meta = OpnLabel(metaText, NSMakeRect(36.0, height - 88.0, textWidth - 10.0, 22.0), 13.0, OpnColor(kTextMuted), NSFontWeightSemibold);
+    meta.lineBreakMode = NSLineBreakByTruncatingTail;
+    [stage addSubview:meta];
+}
+
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result {
     OPN::LogInfo(@"[CatalogView] setCatalogBrowseResult games=%lu total=%d returned=%d supported=%d selectedSort=%s filters=%lu currentCards=%lu", (unsigned long)result.games.size(), result.totalCount, result.numberReturned, result.numberSupported, result.selectedSortId.c_str(), (unsigned long)result.selectedFilterIds.size(), (unsigned long)self.cardViews.count);
     _allGames = result.games;
@@ -2275,21 +2400,65 @@ using namespace OPN;
     NSUInteger reusableCardIndex = 0;
     [_cardViews removeAllObjects];
 
+    CGFloat pageWidth = MAX(980.0, NSWidth(self.bounds));
+    CGFloat contentX = MAX(42.0, MIN(86.0, floor(pageWidth * 0.065)));
+    CGFloat contentWidth = MAX(680.0, pageWidth - contentX * 2.0);
+    CGFloat headerY = kDesktopLibraryTopInset;
+    OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, pageWidth, MAX(NSHeight(self.bounds), 1800.0))];
+    [self.gridContentView addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
+
+    NSTextField *eyebrow = OpnLabel(@"GEFORCE NOW LIBRARY", NSMakeRect(contentX, headerY, 300.0, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBold);
+    [self.gridContentView addSubview:eyebrow];
+    NSTextField *title = OpnLabel(@"Your Cloud Games, Ready to Launch", NSMakeRect(contentX, headerY + 20.0, MIN(760.0, contentWidth - 300.0), 52.0), 39.0, OpnColor(kTextPrimary), NSFontWeightBold);
+    title.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.gridContentView addSubview:title];
+    NSTextField *subtitle = OpnLabel(@"A fast-launch desktop library for the games already tied to your cloud account.", NSMakeRect(contentX, headerY + 74.0, MIN(780.0, contentWidth - 260.0), 24.0), 14.0, OpnColor(kTextSecondary), NSFontWeightMedium);
+    subtitle.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.gridContentView addSubview:subtitle];
+
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
-    CGFloat availableWidth = _scrollView.frame.size.width;
+    CGFloat availableWidth = contentWidth;
     NSInteger cols = controllerMode ? 1 : MAX(1, (NSInteger)((availableWidth + kCardSpacing) / (cardWidth + kCardSpacing)));
     self.gridColumnCount = cols;
     CGFloat gridSpacing = controllerMode ? 26.0 : (cols > 1 ? floor((availableWidth - cols * cardWidth) / (cols - 1)) : kCardSpacing);
     gridSpacing = MAX(kCardSpacing, gridSpacing);
-    CGFloat xStart = controllerMode ? 64.0 : (cols > 1 ? 0.0 : floor(MAX(0.0, (_scrollView.frame.size.width - cardWidth) / 2.0)));
-    CGFloat yPos = controllerMode ? 34.0 + kControllerRailSelectorOverlap : kGridPadding;
+    CGFloat xStart = controllerMode ? 64.0 : contentX + (cols > 1 ? 0.0 : floor(MAX(0.0, (contentWidth - cardWidth) / 2.0)));
 
     std::vector<OPN::GameInfo> displayGames;
     displayGames.reserve(_allGames.size());
     for (const OPN::GameInfo &game : _allGames) {
         if ([self game:game matchesCategory:self.selectedCategoryId]) displayGames.push_back(game);
     }
+    NSInteger totalVisibleCount = (NSInteger)displayGames.size();
+    NSInteger favoriteCount = 0;
+    for (const OPN::GameInfo &game : displayGames) {
+        if ([self isFavoriteGame:game]) favoriteCount++;
+    }
+    CGFloat pillY = headerY + 16.0;
+    CGFloat pillWidth = 112.0;
+    CGFloat pillGap = 10.0;
+    CGFloat pillX = contentX + contentWidth - pillWidth * 3.0 - pillGap * 2.0;
+    [self addDesktopLibraryMetricPillWithTitle:@"Games" value:[NSString stringWithFormat:@"%ld", (long)totalVisibleCount] frame:NSMakeRect(pillX, pillY, pillWidth, 58.0)];
+    [self addDesktopLibraryMetricPillWithTitle:@"Favorites" value:[NSString stringWithFormat:@"%ld", (long)favoriteCount] frame:NSMakeRect(pillX + pillWidth + pillGap, pillY, pillWidth, 58.0)];
+    [self addDesktopLibraryMetricPillWithTitle:@"Stores" value:[NSString stringWithFormat:@"%ld", (long)MAX((NSInteger)1, self.categoryItems.count - 2)] frame:NSMakeRect(pillX + (pillWidth + pillGap) * 2.0, pillY, pillWidth, 58.0)];
+
+    const OPN::GameInfo *heroGame = [self currentLastPlayedGame];
+    if (!heroGame && !displayGames.empty()) heroGame = &displayGames.front();
+    CGFloat heroHeight = 0.0;
+    if (heroGame) {
+        heroHeight = MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36)));
+        [self addDesktopLibraryHeroForGame:*heroGame frame:NSMakeRect(contentX, headerY + kDesktopLibraryHeroTopOffset, contentWidth, heroHeight)];
+    }
+    CGFloat gridTop = heroGame ? headerY + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : headerY + 146.0;
+
+    NSString *sectionTitle = [self activeCategoryTitle];
+    NSTextField *section = OpnLabel(sectionTitle, NSMakeRect(contentX, gridTop, MIN(520.0, contentWidth - 180.0), 34.0), 25.0, OpnColor(kTextPrimary), NSFontWeightBold);
+    section.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.gridContentView addSubview:section];
+    NSTextField *count = OpnLabel([NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"], NSMakeRect(NSMaxX(section.frame) + 12.0, gridTop + 9.0, 140.0, 18.0), 13.0, OpnColor(kTextMuted), NSFontWeightRegular);
+    [self.gridContentView addSubview:count];
+    CGFloat cardStartY = gridTop + 52.0;
     self.controllerDisplayGameCount = controllerMode ? (NSInteger)displayGames.size() : 0;
     NSInteger renderStartIndex = 0;
     NSInteger renderEndIndex = (NSInteger)displayGames.size();
@@ -2302,8 +2471,8 @@ using namespace OPN;
         NSInteger totalRows = displayGames.empty() ? 0 : (NSInteger)ceil((double)displayGames.size() / MAX(1.0, (double)cols));
         CGFloat rowHeight = cardHeight + kCardSpacing;
         NSRect visibleBounds = self.scrollView.contentView.bounds;
-        CGFloat visibleMinY = MAX(0.0, NSMinY(visibleBounds) - kGridPadding);
-        CGFloat visibleMaxY = MAX(visibleMinY, NSMaxY(visibleBounds) - kGridPadding);
+        CGFloat visibleMinY = MAX(0.0, NSMinY(visibleBounds) - cardStartY);
+        CGFloat visibleMaxY = MAX(visibleMinY, NSMaxY(visibleBounds) - cardStartY);
         NSInteger firstVisibleRow = rowHeight > 0.0 ? MAX(0, (NSInteger)floor(visibleMinY / rowHeight)) : 0;
         NSInteger lastVisibleRow = rowHeight > 0.0 ? MAX(firstVisibleRow, (NSInteger)ceil(visibleMaxY / rowHeight)) : firstVisibleRow;
         NSInteger renderStartRow = MAX(0, firstVisibleRow - kDesktopGridRenderBufferRows);
@@ -2320,7 +2489,7 @@ using namespace OPN;
         NSInteger col = controllerMode ? visibleCount : gameIndex % cols;
         NSInteger row = controllerMode ? 0 : gameIndex / cols;
         CGFloat x = controllerMode ? xStart + visibleCount * (cardWidth + gridSpacing) : xStart + col * (cardWidth + gridSpacing);
-        CGFloat y = controllerMode ? yPos : kGridPadding + row * (cardHeight + kCardSpacing);
+        CGFloat y = controllerMode ? 34.0 + kControllerRailSelectorOverlap : cardStartY + row * (cardHeight + kCardSpacing);
         NSRect cardFrame = NSMakeRect(x, y, cardWidth, cardHeight);
         OPNGameCardView *card = reusableCardIndex < reusableCards.count ? reusableCards[reusableCardIndex++] : nil;
         if (card) {
@@ -2358,19 +2527,19 @@ using namespace OPN;
         [reusableCards[index] removeFromSuperview];
     }
 
-    CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : yPos + cardHeight + kGridPadding;
+    CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : cardStartY + cardHeight + kGridPadding;
     if (!controllerMode) {
         NSInteger totalRows = displayGames.empty() ? 0 : (NSInteger)ceil((double)displayGames.size() / MAX(1.0, (double)cols));
-        totalHeight = totalRows > 0 ? kGridPadding + totalRows * cardHeight + MAX(0, totalRows - 1) * kCardSpacing + kGridPadding : _scrollView.frame.size.height;
+        totalHeight = totalRows > 0 ? cardStartY + totalRows * cardHeight + MAX(0, totalRows - 1) * kCardSpacing + 88.0 : gridTop + 220.0;
     }
     CGFloat totalWidth = controllerMode
         ? xStart * 2.0 + visibleCount * cardWidth + MAX(0, visibleCount - 1) * gridSpacing
-        : _scrollView.frame.size.width;
+        : pageWidth;
+    ambient.frame = NSMakeRect(0.0, 0.0, pageWidth, MAX(totalHeight, NSHeight(self.bounds)));
     _gridContentView.frame = NSMakeRect(0, 0,
         MAX(totalWidth, _scrollView.frame.size.width),
         MAX(totalHeight, _scrollView.frame.size.height));
 
-    NSInteger totalVisibleCount = (NSInteger)displayGames.size();
     _gameCountLabel.stringValue = [NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"];
     if (self.onGameCountChanged) self.onGameCountChanged(totalVisibleCount);
     _statusLabel.stringValue = totalVisibleCount == 0 ? @"No games found." : @"";
@@ -3321,7 +3490,7 @@ using namespace OPN;
         [self layoutControllerStoreFilterOverlay];
         return;
     }
-    self.categoryBarView.hidden = controllerMode || self.categoryButtons.count <= 1;
+    self.categoryBarView.hidden = YES;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
     CGFloat minimumDetailHeight = 220.0;
     CGFloat desiredCarouselHeight = cardHeight + 96.0;
@@ -3334,7 +3503,7 @@ using namespace OPN;
     CGFloat carouselHeight = desiredCarouselHeight;
     CGFloat detailY = railY + carouselHeight + detailGap;
     CGFloat detailHeight = 0.0;
-    CGFloat gridY = kNavHeight + (compact ? 116.0 : kToolbarHeight);
+    CGFloat gridY = 0.0;
     if (controllerMode) {
         CGFloat availableContentHeight = MAX(0.0, height - railY - bottomInset);
         carouselHeight = MIN(desiredCarouselHeight, MAX(cardHeight + 62.0, availableContentHeight * 0.32));
@@ -3394,7 +3563,7 @@ using namespace OPN;
     CGFloat railFrameY = controllerMode ? MAX(0.0, gridY - selectorOverlap) : gridY;
     CGFloat railHeight = controllerMode ? MIN(carouselHeight + selectorOverlap, MAX(0.0, height - railFrameY)) : MAX(0.0, height - gridY);
     self.scrollView.frame = NSMakeRect(0, railFrameY, width, railHeight);
-    self.statusLabel.frame = controllerMode ? NSMakeRect(28.0, MAX(kNavHeight + 30.0, gridY - 42.0), width - 56.0, 24.0) : NSMakeRect(0, gridY + 100, width, 24);
+    self.statusLabel.frame = controllerMode ? NSMakeRect(28.0, MAX(kNavHeight + 30.0, gridY - 42.0), width - 56.0, 24.0) : NSMakeRect(0, height * 0.5, width, 24);
     if (controllerMode && self.cardViews.count > 0) {
         self.statusLabel.stringValue = @"";
         self.statusLabel.textColor = OpnColor(kTextSecondary);
@@ -3465,14 +3634,22 @@ using namespace OPN;
         if (!controllerMode) {
             NSInteger columns = MAX(1, self.gridColumnCount);
             NSSize cardSize = [OPNGameCardView cardSize];
-            CGFloat availableWidth = self.scrollView.frame.size.width;
+            CGFloat pageWidth = MAX(980.0, NSWidth(self.bounds));
+            CGFloat contentX = MAX(42.0, MIN(86.0, floor(pageWidth * 0.065)));
+            CGFloat contentWidth = MAX(680.0, pageWidth - contentX * 2.0);
+            const OPN::GameInfo *heroGame = [self currentLastPlayedGame];
+            if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
+            CGFloat heroHeight = heroGame ? MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36))) : 0.0;
+            CGFloat gridTop = heroGame ? kDesktopLibraryTopInset + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : kDesktopLibraryTopInset + 146.0;
+            CGFloat cardStartY = gridTop + 52.0;
+            CGFloat availableWidth = contentWidth;
             CGFloat gridSpacing = columns > 1 ? floor((availableWidth - columns * cardSize.width) / (columns - 1)) : kCardSpacing;
             gridSpacing = MAX(kCardSpacing, gridSpacing);
-            CGFloat xStart = columns > 1 ? 0.0 : floor(MAX(0.0, (availableWidth - cardSize.width) / 2.0));
+            CGFloat xStart = contentX + (columns > 1 ? 0.0 : floor(MAX(0.0, (contentWidth - cardSize.width) / 2.0)));
             NSInteger row = clamped / columns;
             NSInteger column = clamped % columns;
             NSRect targetRect = NSInsetRect(NSMakeRect(xStart + column * (cardSize.width + gridSpacing),
-                                                       kGridPadding + row * (cardSize.height + kCardSpacing),
+                                                       cardStartY + row * (cardSize.height + kCardSpacing),
                                                        cardSize.width,
                                                        cardSize.height), -24.0, -24.0);
             [self.gridContentView scrollRectToVisible:targetRect];
