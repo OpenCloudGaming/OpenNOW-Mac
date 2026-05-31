@@ -481,6 +481,14 @@ using namespace OPN;
     if (self.onPlay) self.onPlay();
 }
 
+- (void)mouseDown:(NSEvent *)event {
+    if (!OpnControllerModeEnabled() && self.onPlay) {
+        self.onPlay();
+        return;
+    }
+    [super mouseDown:event];
+}
+
 - (void)updateGame:(const OPN::GameInfo &)game {
     int selectedVariant = _selectedVariantIndex;
     const std::string previousImageSignature = OPNGameCardImageSignature(_gameData);
