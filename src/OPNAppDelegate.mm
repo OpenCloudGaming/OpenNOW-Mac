@@ -71,6 +71,8 @@
 @property (nonatomic, strong) NSView *desktopNavigationBar;
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
+@property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
+@property (nonatomic, strong) NSTextField *desktopRemainingPlayTimeLabel;
 @property (nonatomic, strong) OPNGitHubUpdater *githubUpdater;
 @property (nonatomic, strong) NSTimer *applicationUpdateCheckTimer;
 @property (nonatomic, assign) BOOL updateCheckInFlight;
@@ -632,6 +634,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopNavigationButtons = @[];
     self.desktopNavigationBar = nil;
     self.desktopAccountSwitcher = nil;
+    self.desktopRemainingPlayTimePill = nil;
+    self.desktopRemainingPlayTimeLabel = nil;
     if (self.streamingController) {
         [self.streamingController shutdownForApplicationTermination];
         self.streamingController = nil;
@@ -861,6 +865,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.rootView) return;
     if (self.desktopAccountSwitcher && self.desktopAccountSwitcher.superview != self.rootView) {
         self.desktopAccountSwitcher = nil;
+        self.desktopRemainingPlayTimePill = nil;
+        self.desktopRemainingPlayTimeLabel = nil;
     }
     if (self.desktopAccountSwitcher) return;
     NSPopUpButton *switcher = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
@@ -881,6 +887,25 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.layer.shadowOffset = CGSizeMake(0.0, 10.0);
     self.desktopAccountSwitcher = switcher;
     [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.contentContainer];
+
+    NSView *playTimePill = [[NSView alloc] initWithFrame:NSZeroRect];
+    playTimePill.wantsLayer = YES;
+    playTimePill.layer.cornerRadius = 14.0;
+    playTimePill.layer.backgroundColor = OpnColor(0x050A08, 0.78).CGColor;
+    playTimePill.layer.borderColor = OpnColor(0xFFFFFF, 0.11).CGColor;
+    playTimePill.layer.borderWidth = 1.0;
+    playTimePill.layer.shadowColor = NSColor.blackColor.CGColor;
+    playTimePill.layer.shadowOpacity = 0.20;
+    playTimePill.layer.shadowRadius = 14.0;
+    playTimePill.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    self.desktopRemainingPlayTimePill = playTimePill;
+
+    NSTextField *playTimeLabel = OpnLabel(@"Playtime: --", NSZeroRect, 11.0, OpnColor(OPN::kTextSecondary), NSFontWeightSemibold, NSTextAlignmentCenter);
+    playTimeLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    self.desktopRemainingPlayTimeLabel = playTimeLabel;
+    [playTimePill addSubview:playTimeLabel];
+    [self.rootView addSubview:playTimePill positioned:NSWindowAbove relativeTo:self.contentContainer];
+
     [self rebuildDesktopAccountSwitcher];
     [self layoutDesktopAccountSwitcher];
     [self updateDesktopAccountSwitcher];
@@ -907,6 +932,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     CGFloat switcherWidth = MIN(248.0, MAX(208.0, width * 0.18));
     CGFloat x = MAX(24.0, width - switcherWidth - 70.0);
     self.desktopAccountSwitcher.frame = NSMakeRect(x, 58.0, switcherWidth, 36.0);
+    self.desktopRemainingPlayTimePill.frame = NSMakeRect(x, 100.0, switcherWidth, 28.0);
+    self.desktopRemainingPlayTimePill.layer.cornerRadius = 14.0;
+    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 10.0, 6.0);
 }
 
 - (void)updateDesktopNavigationBar {
@@ -933,6 +961,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.desktopAccountSwitcher) return;
     BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopAccountSwitcher.hidden = !visible;
+    NSString *remainingPlayTime = [self.rootView.remainingPlayTime ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    BOOL playTimeVisible = visible && remainingPlayTime.length > 0;
+    self.desktopRemainingPlayTimePill.hidden = !playTimeVisible;
+    self.desktopRemainingPlayTimeLabel.stringValue = remainingPlayTime.length > 0 ? [@"Playtime: " stringByAppendingString:remainingPlayTime] : @"Playtime: --";
     if (!visible) return;
     [self layoutDesktopAccountSwitcher];
 }
@@ -2178,6 +2210,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         }
         strongSelf.rootView.accountStatus = OPNDisplayTier(subscription.membershipTier);
         strongSelf.rootView.remainingPlayTime = OPNFormatRemainingPlayTime(subscription);
+        [strongSelf updateDesktopAccountSwitcher];
         strongSelf.currentSession.membershipTier = subscription.membershipTier;
         if (AuthService::Shared().GetStayLoggedIn()) {
             AuthService::Shared().SaveSession(strongSelf.currentSession);
