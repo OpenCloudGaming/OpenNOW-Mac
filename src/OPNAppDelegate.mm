@@ -324,6 +324,16 @@ static const OPN::GameVariant *OPNVariantAtIndex(const OPN::GameInfo &game, int 
     return &game.variants[(size_t)variantIndex];
 }
 
+static bool OPNGameHasAppId(const OPN::GameInfo &game, int appId) {
+    if (appId <= 0) return false;
+    std::string appIdString = std::to_string(appId);
+    if (game.id == appIdString || game.launchAppId == appIdString) return true;
+    for (const OPN::GameVariant &variant : game.variants) {
+        if (variant.id == appIdString) return true;
+    }
+    return false;
+}
+
 static NSString *OPNTitleForActiveSessionAppId(int appId, const std::vector<OPN::GameInfo> &games) {
     if (appId <= 0) return @"Current Stream";
     std::string appIdString = std::to_string(appId);
@@ -1458,7 +1468,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
         SessionManager::Shared().SetAccessToken(apiToken);
         SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+        OPN::GameInfo requestedGame = game;
+        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGame, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             std::vector<ActiveSessionEntry> sessionsCopy = sessions;
             std::string errorCopy = error;
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1471,13 +1482,32 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 }
 
                 ActiveSessionEntry activeSession;
+                ActiveSessionEntry requestedGameSession;
                 BOOL foundActiveSession = NO;
+                BOOL foundRequestedGameSession = NO;
                 for (const ActiveSessionEntry &session : sessionsCopy) {
                     if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
+                        if (!foundRequestedGameSession && OPNGameHasAppId(requestedGame, session.appId)) {
+                            requestedGameSession = session;
+                            foundRequestedGameSession = YES;
+                        }
                         activeSession = session;
                         foundActiveSession = YES;
-                        break;
+                        if (foundRequestedGameSession) break;
                     }
+                }
+                if (foundRequestedGameSession) {
+                    std::string resumeAppId = requestedGameSession.appId > 0 ? std::to_string(requestedGameSession.appId) : effectiveAppId;
+                    std::string resumeTitle = gameTitle.empty() ? std::string("Current Stream") : gameTitle;
+                    [strongSelf startStreamWithTitle:resumeTitle
+                                               appId:resumeAppId
+                                            apiToken:apiToken
+                                       accountLinked:true
+                                        selectedStore:""
+                                        returnScreen:returnScreen
+                                      resumeSessionId:requestedGameSession.sessionId
+                                          resumeServer:requestedGameSession.serverIp];
+                    return;
                 }
                 if (!foundActiveSession) {
                     startRequestedGame();

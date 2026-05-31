@@ -571,6 +571,7 @@ typedef NS_ENUM(NSInteger, OPNControllerPromptMode) {
 - (void)renderControllerHeroAnimated:(BOOL)animated;
 - (void)renderControllerLibraryRail;
 - (void)scrollControllerLibraryRailToCardAtIndex:(NSInteger)index animated:(BOOL)animated;
+- (std::vector<OPN::GameInfo>)featuredLibraryGamesWithFallback:(const std::vector<OPN::GameInfo> &)fallbackGames;
 - (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
 - (void)loadControllerHeroImageForView:(OPNControllerPreviewBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (std::vector<OPN::GameInfo>)controllerFeaturedGamesFromDisplayGames:(const std::vector<OPN::GameInfo> &)displayGames;
@@ -773,10 +774,45 @@ static bool OPNGameVariantStatusIsOwned(const std::string &status) {
     return status == "MANUAL" || status == "PLATFORM_SYNC" || status == "IN_LIBRARY";
 }
 
+static bool OPNGameVariantIsLibraryAccessible(const OPN::GameVariant &variant) {
+    return variant.librarySelected || variant.inLibrary || OPNGameVariantStatusIsOwned(variant.serviceStatus);
+}
+
+static OPN::GameInfo OPNGameWithLibraryAccessibleVariants(const OPN::GameInfo &game) {
+    OPN::GameInfo filtered = game;
+    if (game.variants.empty()) return filtered;
+
+    filtered.variants.clear();
+    filtered.availableStores.clear();
+    for (const OPN::GameVariant &variant : game.variants) {
+        if (!OPNGameVariantIsLibraryAccessible(variant)) continue;
+        filtered.variants.push_back(variant);
+        if (!variant.appStore.empty() && std::find(filtered.availableStores.begin(), filtered.availableStores.end(), variant.appStore) == filtered.availableStores.end()) {
+            filtered.availableStores.push_back(variant.appStore);
+        }
+    }
+    return filtered;
+}
+
+static bool OPNLibraryGameHasAccessibleVariants(const OPN::GameInfo &game) {
+    if (game.variants.empty()) return true;
+    for (const OPN::GameVariant &variant : game.variants) {
+        if (OPNGameVariantIsLibraryAccessible(variant)) return true;
+    }
+    return false;
+}
+
+static bool OPNGameIdentityMatches(const OPN::GameInfo &lhs, const OPN::GameInfo &rhs) {
+    if (!lhs.id.empty() && lhs.id == rhs.id) return true;
+    if (!lhs.uuid.empty() && lhs.uuid == rhs.uuid) return true;
+    if (!lhs.launchAppId.empty() && lhs.launchAppId == rhs.launchAppId) return true;
+    return false;
+}
+
 static bool OPNGameIsOwned(const OPN::GameInfo &game) {
     if (game.isInLibrary) return true;
     for (const OPN::GameVariant &variant : game.variants) {
-        if (variant.librarySelected || variant.inLibrary || OPNGameVariantStatusIsOwned(variant.serviceStatus)) return true;
+        if (OPNGameVariantIsLibraryAccessible(variant)) return true;
     }
     return false;
 }
@@ -1977,6 +2013,9 @@ using namespace OPN;
         [self startControllerHeroRotationIfNeeded];
     } else if (OpnControllerModeEnabled()) {
         [self renderGrid];
+    } else {
+        self.hasDesktopFeaturedGame = NO;
+        [self renderGrid];
     }
 }
 
@@ -1988,7 +2027,7 @@ using namespace OPN;
         } else {
             [self renderGrid];
         }
-    } else if (self.hasDesktopFeaturedGame) {
+    } else {
         [self renderGrid];
     }
 }
@@ -2244,12 +2283,16 @@ using namespace OPN;
     BOOL categoryFiltered = self.selectedCategoryId.length > 0 && ![self.selectedCategoryId isEqualToString:@"all"] && ![self.selectedCategoryId isEqualToString:@"library"];
     for (const OPN::GameInfo &game : _allGames) {
         if (!game.isInLibrary) continue;
-        if (categoryFiltered && ![self game:game matchesCategory:self.selectedCategoryId]) continue;
-        displayGames.push_back(game);
+        if (!OPNLibraryGameHasAccessibleVariants(game)) continue;
+        OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(game);
+        if (categoryFiltered && ![self game:libraryGame matchesCategory:self.selectedCategoryId]) continue;
+        displayGames.push_back(libraryGame);
     }
     if (displayGames.empty() && !categoryFiltered) {
         for (const OPN::GameInfo &game : _allGames) {
-            if ([self game:game matchesCategory:self.selectedCategoryId]) displayGames.push_back(game);
+            if (!OPNLibraryGameHasAccessibleVariants(game)) continue;
+            OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(game);
+            if ([self game:libraryGame matchesCategory:self.selectedCategoryId]) displayGames.push_back(libraryGame);
         }
     }
     return displayGames;
@@ -2428,14 +2471,23 @@ using namespace OPN;
     }
 
     NSMutableArray<OPNGameCardView *> *reusableCards = [NSMutableArray arrayWithCapacity:self.cardViews.count];
+    NSMutableDictionary<NSString *, NSMutableArray<OPNGameCardView *> *> *reusableCardsByIdentifier = [NSMutableDictionary dictionary];
     for (NSView *view in [self.gridContentView.subviews copy]) {
         if ([view isKindOfClass:OPNGameCardView.class]) {
-            [reusableCards addObject:(OPNGameCardView *)view];
+            OPNGameCardView *card = (OPNGameCardView *)view;
+            [reusableCards addObject:card];
+            NSString *identifier = [self favoriteIdentifierForGame:card.game];
+            if (identifier.length == 0) identifier = [NSString stringWithFormat:@"%p", (void *)card];
+            NSMutableArray<OPNGameCardView *> *bucket = reusableCardsByIdentifier[identifier];
+            if (!bucket) {
+                bucket = [NSMutableArray array];
+                reusableCardsByIdentifier[identifier] = bucket;
+            }
+            [bucket addObject:card];
         } else {
             [view removeFromSuperview];
         }
     }
-    NSUInteger reusableCardIndex = 0;
     [_cardViews removeAllObjects];
 
     CGFloat pageWidth = MAX(980.0, NSWidth(self.bounds));
@@ -2466,7 +2518,9 @@ using namespace OPN;
     std::vector<OPN::GameInfo> displayGames;
     displayGames.reserve(_allGames.size());
     for (const OPN::GameInfo &game : _allGames) {
-        if ([self game:game matchesCategory:self.selectedCategoryId]) displayGames.push_back(game);
+        if (!OPNLibraryGameHasAccessibleVariants(game)) continue;
+        OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(game);
+        if ([self game:libraryGame matchesCategory:self.selectedCategoryId]) displayGames.push_back(libraryGame);
     }
     NSInteger totalVisibleCount = (NSInteger)displayGames.size();
     NSInteger favoriteCount = 0;
@@ -2481,13 +2535,16 @@ using namespace OPN;
     [self addDesktopLibraryMetricPillWithTitle:@"Favorites" value:[NSString stringWithFormat:@"%ld", (long)favoriteCount] frame:NSMakeRect(pillX + pillWidth + pillGap, pillY, pillWidth, 58.0)];
     [self addDesktopLibraryMetricPillWithTitle:@"Stores" value:[NSString stringWithFormat:@"%ld", (long)MAX((NSInteger)1, self.categoryItems.count - 2)] frame:NSMakeRect(pillX + (pillWidth + pillGap) * 2.0, pillY, pillWidth, 58.0)];
 
-    const OPN::GameInfo *heroGame = self.hasDesktopFeaturedGame ? &_desktopFeaturedGame : [self currentLastPlayedGame];
-    if (!heroGame && !displayGames.empty()) heroGame = &displayGames.front();
-    if (heroGame && !self.hasDesktopFeaturedGame) {
+    std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:displayGames];
+    const OPN::GameInfo *heroGame = featuredGames.empty() ? nullptr : &featuredGames[(size_t)MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1))];
+    if (heroGame) {
         self.desktopFeaturedGame = *heroGame;
-        self.desktopFeaturedVariantIndex = [self preferredVariantIndexForGame:*heroGame];
+        self.desktopFeaturedVariantIndex = [self preferredVariantIndexForGame:self.desktopFeaturedGame];
         self.hasDesktopFeaturedGame = YES;
         heroGame = &_desktopFeaturedGame;
+    } else {
+        self.hasDesktopFeaturedGame = NO;
+        self.desktopFeaturedVariantIndex = -1;
     }
     CGFloat heroHeight = 0.0;
     if (heroGame) {
@@ -2535,12 +2592,18 @@ using namespace OPN;
         CGFloat x = controllerMode ? xStart + visibleCount * (cardWidth + gridSpacing) : xStart + col * (cardWidth + gridSpacing);
         CGFloat y = controllerMode ? 34.0 + kControllerRailSelectorOverlap : cardStartY + row * (cardHeight + kDesktopLibraryRowSpacing);
         NSRect cardFrame = NSMakeRect(x, y, cardWidth, cardHeight);
-        OPNGameCardView *card = reusableCardIndex < reusableCards.count ? reusableCards[reusableCardIndex++] : nil;
+        NSString *gameIdentifier = [self favoriteIdentifierForGame:game];
+        NSMutableArray<OPNGameCardView *> *matchingCards = gameIdentifier.length > 0 ? reusableCardsByIdentifier[gameIdentifier] : nil;
+        OPNGameCardView *card = matchingCards.count > 0 ? matchingCards.firstObject : nil;
+        if (card) [matchingCards removeObjectAtIndex:0];
+        NSTimeInterval imageRevealDelay = 0.012 * (NSTimeInterval)MIN((NSInteger)18, visibleCount);
         if (card) {
+            card.imageRevealDelay = imageRevealDelay;
             card.frame = cardFrame;
             [card updateGame:game];
         } else {
             card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:game];
+            card.imageRevealDelay = imageRevealDelay;
         }
         GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
@@ -2558,7 +2621,10 @@ using namespace OPN;
                 [s launchFocusedGame];
             } else {
                 if (cardIndex != NSNotFound) {
-                    [s selectDesktopFeaturedGame:gameCopy variantIndex:c.selectedVariantIndex];
+                    if (s.onSelectGame) {
+                        int variantIdx = c.selectedVariantIndex >= 0 ? c.selectedVariantIndex : [s preferredVariantIndexForGame:gameCopy];
+                        s.onSelectGame(gameCopy, variantIdx);
+                    }
                 }
             }
         };
@@ -2568,8 +2634,8 @@ using namespace OPN;
         visibleCount++;
     }
 
-    for (NSUInteger index = reusableCardIndex; index < reusableCards.count; index++) {
-        [reusableCards[index] removeFromSuperview];
+    for (OPNGameCardView *card in reusableCards) {
+        if (![self.cardViews containsObject:card]) [card removeFromSuperview];
     }
 
     CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : cardStartY + cardHeight + kGridPadding;
@@ -2592,6 +2658,7 @@ using namespace OPN;
     if (self.focusedCardIndex < 0 && totalVisibleCount > 0) self.focusedCardIndex = 0;
     [self focusCardAtIndex:self.focusedCardIndex scrollIntoView:NO];
     [self updateControllerDetailContent];
+    [self startControllerHeroRotationIfNeeded];
     [self layoutCatalogSubviews];
 }
 
@@ -2619,11 +2686,12 @@ using namespace OPN;
     auto appendGame = [&](const OPN::GameInfo &game) {
         if ((NSInteger)games.size() >= limit) return;
         if (!OPNGameIsOwned(game)) return;
+        if (!OPNLibraryGameHasAccessibleVariants(game)) return;
         NSString *identifier = [self favoriteIdentifierForGame:game];
         if (identifier.length == 0) identifier = OPNCatalogString(game.title, @"");
         if (identifier.length == 0 || [seen containsObject:identifier]) return;
         [seen addObject:identifier];
-        games.push_back(game);
+        games.push_back(OPNGameWithLibraryAccessibleVariants(game));
     };
 
     const OPN::GameInfo *lastPlayedGame = [self currentLastPlayedGame];
@@ -2911,7 +2979,10 @@ using namespace OPN;
     }
     if ([action isEqualToString:@"game"]) {
         const OPN::GameInfo *game = [self controllerHomeGameForIdentifier:tile.gameIdentifier];
-        if (game && self.onSelectGame) self.onSelectGame(*game, [self preferredVariantIndexForGame:*game]);
+        if (game && self.onSelectGame) {
+            OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(*game);
+            self.onSelectGame(libraryGame, [self preferredVariantIndexForGame:libraryGame]);
+        }
         return;
     }
     if ([action isEqualToString:@"favorites"]) {
@@ -3058,6 +3129,7 @@ using namespace OPN;
         const OPN::GameInfo &game = displayGames[(size_t)index];
         CGFloat x = contentInset + index * (cardWidth + metrics.cardSpacing);
         OPNGameCardView *card = [[OPNGameCardView alloc] initWithFrame:NSMakeRect(x, metrics.cardY, cardWidth, cardHeight) game:game];
+        card.imageRevealDelay = 0.018 * (NSTimeInterval)MIN((NSInteger)10, index - renderStart);
         card.controllerFocused = index == self.focusedCardIndex;
         GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
@@ -3106,11 +3178,32 @@ using namespace OPN;
     }
 }
 
+- (std::vector<OPN::GameInfo>)featuredLibraryGamesWithFallback:(const std::vector<OPN::GameInfo> &)fallbackGames {
+    std::vector<OPN::GameInfo> games;
+    games.reserve(_featuredGames.empty() ? fallbackGames.size() : _featuredGames.size());
+
+    auto appendFeatured = [&](const OPN::GameInfo &sourceGame) {
+        if (!OPNLibraryGameHasAccessibleVariants(sourceGame)) return;
+        OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(sourceGame);
+        for (const OPN::GameInfo &existing : games) {
+            if (OPNGameIdentityMatches(existing, libraryGame)) return;
+        }
+        games.push_back(libraryGame);
+    };
+
+    for (const OPN::GameInfo &game : _featuredGames) appendFeatured(game);
+    if (games.empty()) {
+        for (const OPN::GameInfo &game : fallbackGames) appendFeatured(game);
+    }
+    return games;
+}
+
 - (std::vector<OPN::GameInfo>)controllerFeaturedGamesFromDisplayGames:(const std::vector<OPN::GameInfo> &)displayGames {
     std::vector<OPN::GameInfo> featuredGames;
-    NSInteger limit = MIN((NSInteger)displayGames.size(), 6);
-    for (NSInteger index = 0; index < limit; index++) {
-        featuredGames.push_back(displayGames[(size_t)index]);
+    for (const OPN::GameInfo &game : displayGames) {
+        if (featuredGames.size() >= static_cast<size_t>(6)) break;
+        if (!OPNLibraryGameHasAccessibleVariants(game)) continue;
+        featuredGames.push_back(OPNGameWithLibraryAccessibleVariants(game));
     }
     return featuredGames;
 }
@@ -3119,7 +3212,13 @@ using namespace OPN;
     std::vector<OPN::GameInfo> featuredGames = [self controllerFeaturedGamesFromDisplayGames:_featuredGames];
     if (featuredGames.empty()) return nullptr;
     NSInteger heroIndex = MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1));
-    return &_featuredGames[(size_t)heroIndex];
+    NSInteger visibleIndex = 0;
+    for (const OPN::GameInfo &game : _featuredGames) {
+        if (!OPNLibraryGameHasAccessibleVariants(game)) continue;
+        if (visibleIndex == heroIndex) return &game;
+        visibleIndex++;
+    }
+    return nullptr;
 }
 
 - (OPNControllerHeroPrimaryAction)primaryActionForHeroGame:(const OPN::GameInfo &)game {
@@ -3268,8 +3367,10 @@ using namespace OPN;
 }
 
 - (void)startControllerHeroRotationIfNeeded {
-    std::vector<OPN::GameInfo> featuredGames = [self controllerFeaturedGamesFromDisplayGames:_featuredGames];
-    if (!self.window || !OpnControllerModeEnabled() || featuredGames.size() <= 1) {
+    std::vector<OPN::GameInfo> featuredGames = OpnControllerModeEnabled()
+        ? [self controllerFeaturedGamesFromDisplayGames:_featuredGames]
+        : [self featuredLibraryGamesWithFallback:std::vector<OPN::GameInfo>()];
+    if (!self.window || featuredGames.size() <= 1) {
         [self stopControllerHeroRotation];
         return;
     }
@@ -3289,28 +3390,40 @@ using namespace OPN;
 
 - (void)controllerHeroRotationTimerFired:(NSTimer *)timer {
     (void)timer;
-    std::vector<OPN::GameInfo> featuredGames = [self controllerFeaturedGamesFromDisplayGames:_featuredGames];
-    if (!self.window || !OpnControllerModeEnabled() || featuredGames.size() <= 1) {
+    std::vector<OPN::GameInfo> featuredGames = OpnControllerModeEnabled()
+        ? [self controllerFeaturedGamesFromDisplayGames:_featuredGames]
+        : [self featuredLibraryGamesWithFallback:std::vector<OPN::GameInfo>()];
+    if (!self.window || featuredGames.size() <= 1) {
         [self stopControllerHeroRotation];
         return;
     }
     NSInteger featuredCount = (NSInteger)featuredGames.size();
     if (featuredCount <= 1) return;
     self.controllerHeroIndex = (self.controllerHeroIndex + 1) % featuredCount;
-    [self renderControllerHeroAnimated:YES];
+    if (OpnControllerModeEnabled()) {
+        [self renderControllerHeroAnimated:YES];
+    } else {
+        self.hasDesktopFeaturedGame = NO;
+        [self renderGrid];
+    }
 }
 
 - (void)controllerHeroResumeClicked:(id)sender {
     (void)sender;
     const OPN::GameInfo *heroGame = [self currentControllerHeroGame];
     if (!heroGame) return;
+    if (!OPNLibraryGameHasAccessibleVariants(*heroGame)) {
+        [self controllerHeroMoreInfoClicked:nil];
+        return;
+    }
     if ([self primaryActionForHeroGame:*heroGame] == OPNControllerHeroPrimaryActionBuy) {
         [self controllerHeroMoreInfoClicked:nil];
         return;
     }
     if (!self.onSelectGame) return;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
-    self.onSelectGame(*heroGame, [self preferredVariantIndexForGame:*heroGame]);
+    OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(*heroGame);
+    self.onSelectGame(libraryGame, [self preferredVariantIndexForGame:libraryGame]);
 }
 
 - (void)controllerHeroMoreInfoClicked:(id)sender {
@@ -3777,22 +3890,12 @@ using namespace OPN;
         return NO;
     }
 
-    NSInteger currentIndex = 0;
-    OPN::GameInfo gameToAppend;
-    BOOL foundGameToAppend = NO;
-    for (const OPN::GameInfo &game : _allGames) {
-        if (![self game:game matchesCategory:self.selectedCategoryId]) continue;
-        if (currentIndex == index) {
-            gameToAppend = game;
-            foundGameToAppend = YES;
-            break;
-        }
-        currentIndex++;
-    }
-    if (!foundGameToAppend) {
+    std::vector<OPN::GameInfo> displayGames = [self controllerLibraryDisplayGames];
+    if (index >= (NSInteger)displayGames.size()) {
         OPN::LogError(@"[CatalogView] append failed no matching game index=%ld category=%@ display=%ld", (long)index, self.selectedCategoryId, (long)self.controllerDisplayGameCount);
         return NO;
     }
+    OPN::GameInfo gameToAppend = displayGames[(size_t)index];
     OPN::LogInfo(@"[CatalogView] append card index=%ld title=%@ id=%@ uuid=%@ desc=%d features=%lu image=%d hero=%d variants=%lu", (long)index, OPNCatalogString(gameToAppend.title, @"<untitled>"), OPNCatalogString(gameToAppend.id, @""), OPNCatalogString(gameToAppend.uuid, @""), !gameToAppend.description.empty(), (unsigned long)gameToAppend.featureLabels.size(), !gameToAppend.imageUrl.empty(), !gameToAppend.heroImageUrl.empty(), (unsigned long)gameToAppend.variants.size());
 
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
@@ -3802,6 +3905,7 @@ using namespace OPN;
     CGFloat yPos = 34.0 + kControllerRailSelectorOverlap;
     NSRect cardFrame = NSMakeRect(xStart + index * (cardWidth + gridSpacing), yPos, cardWidth, cardHeight);
     OPNGameCardView *card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:gameToAppend];
+    card.imageRevealDelay = 0.08;
     GameInfo gameCopy = gameToAppend;
     __weak __typeof__(self) weakSelf = self;
     __weak OPNGameCardView *weakCard = card;
@@ -4195,8 +4299,10 @@ using namespace OPN;
 - (void)launchLastPlayedGame {
     const OPN::GameInfo *lastPlayedGame = [self currentLastPlayedGame];
     if (!lastPlayedGame || !self.onSelectGame) return;
+    if (!OPNLibraryGameHasAccessibleVariants(*lastPlayedGame)) return;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
-    self.onSelectGame(*lastPlayedGame, [self preferredVariantIndexForGame:*lastPlayedGame]);
+    OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(*lastPlayedGame);
+    self.onSelectGame(libraryGame, [self preferredVariantIndexForGame:libraryGame]);
 }
 
 - (void)detailsPlayClicked:(id)sender {

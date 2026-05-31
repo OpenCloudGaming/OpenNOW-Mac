@@ -9,6 +9,7 @@ static const CGFloat gCardWidth = 220.0;
 static const CGFloat gControllerCardWidth = 164.0;
 static const CGFloat gImageHeight = gCardWidth;
 static const CGFloat gInfoHeight = 0.0;
+static const NSTimeInterval OPNGameCardImageFadeDuration = 0.20;
 static unsigned OPNControllerAccentSoftRGB(void) {
     return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
 }
@@ -183,7 +184,10 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
 @property (nonatomic, strong) OpnImageLoadToken *imageLoadToken;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
+@property (nonatomic, copy) NSString *displayedImageSignature;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
+- (void)clearImageForNewSignature:(NSString *)signature;
+- (void)displayLoadedImage:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
 - (void)updateCurrentStoreLogo;
 - (void)updateInstallToPlayPill;
@@ -239,6 +243,7 @@ using namespace OPN;
         _imageView.imageScaling = NSImageScaleProportionallyUpOrDown;
         _imageView.wantsLayer = YES;
         _imageView.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
+        _imageView.alphaValue = 0.0;
         [_contentView addSubview:_imageView];
 
         _desktopTitleLabel = OpnLabel(@"", NSZeroRect, 14.0, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
@@ -314,6 +319,8 @@ using namespace OPN;
         [self addSubview:_playButton];
 
         _storeChipButtons = [NSMutableArray array];
+        _imageRevealDelay = 0.0;
+        _displayedImageSignature = @"";
 
         _selectedVariantIndex = -1;
         int idx = 0;
@@ -482,10 +489,6 @@ using namespace OPN;
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    if (!OpnControllerModeEnabled() && self.onPlay) {
-        self.onPlay();
-        return;
-    }
     [super mouseDown:event];
 }
 
@@ -505,9 +508,20 @@ using namespace OPN;
     [self updateCurrentStoreLogo];
     [self updateInstallToPlayPill];
     if (previousImageSignature != nextImageSignature) {
-        self.imageView.image = nil;
+        [self clearImageForNewSignature:[NSString stringWithUTF8String:nextImageSignature.c_str()]];
         [self loadImage];
     }
+}
+
+- (void)clearImageForNewSignature:(NSString *)signature {
+    [self.imageLoadToken cancel];
+    self.displayedImageSignature = signature ?: @"";
+    self.imageView.animator.alphaValue = 0.0;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.imageView.image = nil;
+    self.imageView.alphaValue = 0.0;
+    [CATransaction commit];
 }
 
 - (void)buildStoreChips {
@@ -665,7 +679,28 @@ using namespace OPN;
             [strongSelf loadImageFromCandidates:urlStrings index:index + 1 generation:generation];
             return;
         }
-        strongSelf.imageView.image = image;
+        [strongSelf displayLoadedImage:image signature:[NSString stringWithUTF8String:OPNGameCardImageSignature(strongSelf.gameData).c_str()] generation:generation];
+    });
+}
+
+- (void)displayLoadedImage:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation {
+    if (!image || generation != self.imageLoadGeneration) return;
+    NSString *expectedSignature = [NSString stringWithUTF8String:OPNGameCardImageSignature(self.gameData).c_str()];
+    if (![signature isEqualToString:expectedSignature]) return;
+
+    self.displayedImageSignature = expectedSignature;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.imageView.alphaValue = 0.0;
+    self.imageView.image = image;
+    [CATransaction commit];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.imageRevealDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (generation != self.imageLoadGeneration || ![self.displayedImageSignature isEqualToString:expectedSignature]) return;
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = OPNGameCardImageFadeDuration;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            self.imageView.animator.alphaValue = 1.0;
+        } completionHandler:nil];
     });
 }
 
