@@ -3455,6 +3455,7 @@ using namespace OPN;
 }
 
 - (void)sortClicked:(NSButton *)sender {
+    if (sender.hidden || !sender.enabled) return;
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Sort Games"];
     if (self.catalogSortOptions.empty()) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:self.sortButton.title action:nil keyEquivalent:@""];
@@ -3483,6 +3484,7 @@ using namespace OPN;
 }
 
 - (void)filterClicked:(NSButton *)sender {
+    if (sender.hidden || !sender.enabled) return;
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Filters"];
     BOOL addedAny = NO;
     for (const OPN::CatalogFilterGroup &group : self.catalogFilterGroups) {
@@ -3577,8 +3579,15 @@ using namespace OPN;
     self.gridContentView.layer.opaque = NO;
     self.gridContentView.layer.backgroundColor = NSColor.clearColor.CGColor;
     BOOL compact = width < 900.0;
-    self.searchField.hidden = controllerMode;
-    self.filterButton.hidden = controllerMode || compact;
+    BOOL compactTwoRowToolbar = compact;
+    BOOL searchVisible = !controllerMode;
+    BOOL toolbarButtonsVisible = !controllerMode;
+    self.searchField.hidden = !searchVisible;
+    self.searchField.enabled = searchVisible;
+    self.filterButton.hidden = !toolbarButtonsVisible;
+    self.filterButton.enabled = toolbarButtonsVisible;
+    self.sortButton.hidden = !toolbarButtonsVisible;
+    self.sortButton.enabled = toolbarButtonsVisible;
     self.signOutButton.hidden = YES;
     CGFloat filterWidth = 124.0;
     CGFloat sortWidth = 154.0;
@@ -3589,15 +3598,26 @@ using namespace OPN;
     CGFloat controlsRightEdge = compact ? width - 32.0 : accountSwitcherX - 24.0;
     CGFloat buttonsWidth = filterWidth + sortWidth + (controlGap * 2.0);
     CGFloat availableSearchWidth = MAX(260.0, controlsRightEdge - controlsLeftEdge - buttonsWidth);
-    CGFloat searchWidth = compact ? MAX(240.0, width - 64.0) : MIN(520.0, availableSearchWidth);
-    CGFloat searchX = compact ? floor((width - searchWidth) / 2.0) : controlsLeftEdge;
+    CGFloat searchWidth = compact ? MAX(180.0, width - buttonsWidth - 80.0) : MIN(520.0, availableSearchWidth);
+    CGFloat searchX = compact ? 24.0 : controlsLeftEdge;
+    if (compactTwoRowToolbar) {
+        searchWidth = MAX(240.0, width - 48.0);
+        searchX = floor((width - searchWidth) / 2.0);
+    }
     self.libraryIconLabel.frame = NSMakeRect(0, 0, 0, 0);
     self.titleLabel.frame = NSMakeRect(0, 0, 0, 0);
     self.userLabel.frame = NSMakeRect(24, kNavHeight + 36, 260, 18);
-    self.searchField.frame = NSMakeRect(searchX, compact ? kNavHeight + 62 : kNavHeight + 25, searchWidth, 40);
-    self.sortButton.hidden = controllerMode || compact;
-    self.filterButton.frame = NSMakeRect(NSMaxX(self.searchField.frame) + controlGap, kNavHeight + 26, filterWidth, 38);
-    self.sortButton.frame = NSMakeRect(NSMaxX(self.filterButton.frame) + controlGap, kNavHeight + 26, sortWidth, 38);
+    CGFloat toolbarY = 58.0;
+    CGFloat buttonX = compactTwoRowToolbar ? floor((width - filterWidth - sortWidth - controlGap) / 2.0) : NSMaxX(NSMakeRect(searchX, toolbarY, searchWidth, 40.0)) + controlGap;
+    CGFloat buttonY = compactTwoRowToolbar ? 100.0 : toolbarY;
+    self.searchField.frame = searchVisible ? NSMakeRect(searchX, toolbarY, searchWidth, 40.0) : NSZeroRect;
+    self.filterButton.frame = toolbarButtonsVisible ? NSMakeRect(buttonX, buttonY, filterWidth, 38.0) : NSZeroRect;
+    self.sortButton.frame = toolbarButtonsVisible ? NSMakeRect(NSMaxX(self.filterButton.frame) + controlGap, buttonY, sortWidth, 38.0) : NSZeroRect;
+    if (!controllerMode) {
+        [self addSubview:self.searchField positioned:NSWindowAbove relativeTo:nil];
+        [self addSubview:self.filterButton positioned:NSWindowAbove relativeTo:nil];
+        [self addSubview:self.sortButton positioned:NSWindowAbove relativeTo:nil];
+    }
     self.gameCountLabel.frame = NSMakeRect(0, 0, 0, 0);
     self.gameCountLabel.hidden = YES;
     self.signOutButton.frame = NSMakeRect(width - 116, kNavHeight + 13, 92, 30);
@@ -3611,8 +3631,11 @@ using namespace OPN;
     self.controllerBottomPromptBarView.frame = NSMakeRect(controllerMetrics.contentInset, height - controllerMetrics.bottomInset + height * (20.0 / 720.0), MAX(0.0, width - controllerMetrics.contentInset * 2.0), height * (32.0 / 720.0));
     if (controllerMode) {
         self.searchField.hidden = YES;
+        self.searchField.enabled = NO;
         self.filterButton.hidden = YES;
+        self.filterButton.enabled = NO;
         self.sortButton.hidden = YES;
+        self.sortButton.enabled = NO;
         self.categoryBarView.hidden = YES;
         self.controllerSectionLabel.hidden = YES;
         self.controllerDetailView.hidden = YES;
