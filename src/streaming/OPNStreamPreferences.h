@@ -113,6 +113,8 @@ struct StreamPreferenceProfile {
     int prefilterSharpness = 0;
     int prefilterDenoise = 0;
     int prefilterModel = 0;
+    int recordingVideoBitrateMbps = 0;
+    int recordingAudioBitrateKbps = 160;
     bool enableL4S = false;
     bool enableHdr = false;
     bool enablePowerSaver = false;
@@ -199,6 +201,8 @@ void SaveStreamColorQualityIndex(int colorQualityIndex);
 void SaveStreamPrefilterModeIndex(int prefilterModeIndex);
 void SaveStreamPrefilterSharpness(int sharpness);
 void SaveStreamPrefilterDenoise(int denoise);
+void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps);
+void SaveStreamRecordingAudioBitrateKbps(int bitrateKbps);
 void SaveStreamL4SEnabled(bool enabled);
 void SaveStreamHDREnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);

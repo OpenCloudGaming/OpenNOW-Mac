@@ -218,6 +218,8 @@ static BOOL OPNSettingsGamepadNavigationActive(NSView *view) {
                   enabled:(NSArray<NSNumber *> *)enabled;
 - (void)audioDevicesChanged;
 - (void)checkForUpdatesClicked:(NSButton *)sender;
+- (void)recordingVideoBitrateSliderChanged:(NSSlider *)sender;
+- (void)recordingAudioBitrateSliderChanged:(NSSlider *)sender;
 - (void)startGamepadNavigationIfNeeded;
 - (void)stopGamepadNavigation;
 - (void)pollGamepadNavigation;
@@ -634,7 +636,7 @@ using namespace OPN;
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
     OPN::StreamPreferenceProfile effectiveProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(profile, capabilities);
-    NSView *video = [self panelWithTitle:@"Video" height:908.0];
+    NSView *video = [self panelWithTitle:@"Video" height:1060.0];
     [video addSubview:[self rowLabel:@"Aspect Ratio" y:112.0]];
     NSMutableArray<NSString *> *aspectTitles = [NSMutableArray array];
     for (const OPN::StreamAspectOption &option : OPN::StreamAspectOptions()) {
@@ -660,14 +662,57 @@ using namespace OPN;
     [video addSubview:[self rowLabel:@"Bitrate" y:340.0]];
     [self addOptionGroupTo:video group:8 titles:bitrateTitles selected:self.selectedBitrate y:330.0 widths:@[@86.0, @86.0, @86.0, @86.0, @94.0]];
 
+    [video addSubview:[self rowLabel:@"Recording Video" y:416.0]];
+    NSSlider *recordingVideoSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(controlX, 406.0, controlWidth, 24.0)];
+    recordingVideoSlider.minValue = 0.0;
+    recordingVideoSlider.maxValue = 200.0;
+    recordingVideoSlider.doubleValue = profile.recordingVideoBitrateMbps;
+    recordingVideoSlider.numberOfTickMarks = 7;
+    recordingVideoSlider.allowsTickMarkValuesOnly = NO;
+    recordingVideoSlider.continuous = NO;
+    recordingVideoSlider.target = self;
+    recordingVideoSlider.action = @selector(recordingVideoBitrateSliderChanged:);
+    [video addSubview:recordingVideoSlider];
+    [self registerControllerFocusableControl:recordingVideoSlider];
+    NSString *recordingVideoText = profile.recordingVideoBitrateMbps <= 0
+        ? @"Auto video bitrate (5-60 Mbps by capture resolution), or choose 5-200 Mbps"
+        : [NSString stringWithFormat:@"%d Mbps recording video bitrate", profile.recordingVideoBitrateMbps];
+    NSTextField *recordingVideoHint = OpnLabel(recordingVideoText,
+                                               NSMakeRect(controlX, 438.0, controlWidth, 22.0),
+                                               12.0,
+                                               OpnColor(kTextMuted),
+                                               NSFontWeightRegular);
+    recordingVideoHint.lineBreakMode = NSLineBreakByTruncatingTail;
+    [video addSubview:recordingVideoHint];
+
+    [video addSubview:[self rowLabel:@"Recording Audio" y:492.0]];
+    NSSlider *recordingAudioSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(controlX, 482.0, controlWidth, 24.0)];
+    recordingAudioSlider.minValue = 64.0;
+    recordingAudioSlider.maxValue = 320.0;
+    recordingAudioSlider.doubleValue = profile.recordingAudioBitrateKbps;
+    recordingAudioSlider.numberOfTickMarks = 5;
+    recordingAudioSlider.allowsTickMarkValuesOnly = NO;
+    recordingAudioSlider.continuous = NO;
+    recordingAudioSlider.target = self;
+    recordingAudioSlider.action = @selector(recordingAudioBitrateSliderChanged:);
+    [video addSubview:recordingAudioSlider];
+    [self registerControllerFocusableControl:recordingAudioSlider];
+    NSTextField *recordingAudioHint = OpnLabel([NSString stringWithFormat:@"%d kbps recording audio bitrate", profile.recordingAudioBitrateKbps],
+                                               NSMakeRect(controlX, 514.0, controlWidth, 22.0),
+                                               12.0,
+                                               OpnColor(kTextMuted),
+                                               NSFontWeightRegular);
+    recordingAudioHint.lineBreakMode = NSLineBreakByTruncatingTail;
+    [video addSubview:recordingAudioHint];
+
     NSMutableArray<NSString *> *codecTitles = [NSMutableArray array];
     NSMutableArray<NSNumber *> *codecEnabled = [NSMutableArray array];
     for (const OPN::StreamCodecOption &option : OPN::StreamCodecOptions()) {
         [codecTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
         [codecEnabled addObject:@(OPN::StreamCodecSupportedByCapabilities(option, capabilities))];
     }
-    [video addSubview:[self rowLabel:@"Codec" y:416.0]];
-    [self addOptionGroupTo:video group:4 titles:codecTitles selected:self.selectedCodec y:406.0 widths:@[@142.0, @116.0, @96.0, @70.0] enabled:codecEnabled];
+    [video addSubview:[self rowLabel:@"Codec" y:568.0]];
+    [self addOptionGroupTo:video group:4 titles:codecTitles selected:self.selectedCodec y:558.0 widths:@[@142.0, @116.0, @96.0, @70.0] enabled:codecEnabled];
     NSMutableArray<NSString *> *colorDepthTitles = [NSMutableArray array];
     NSMutableArray<NSNumber *> *colorDepthEnabled = [NSMutableArray array];
     OPN::StreamCodecOption colorCapabilityCodec = OPN::StreamCodecSupportedByCapabilities(profile.codec, capabilities)
@@ -677,10 +722,10 @@ using namespace OPN;
         [colorDepthTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
         [colorDepthEnabled addObject:@(OPN::StreamColorQualitySupportedByCapabilities(option, colorCapabilityCodec, capabilities))];
     }
-    [video addSubview:[self rowLabel:@"Color Depth" y:492.0]];
-    [self addOptionGroupTo:video group:7 titles:colorDepthTitles selected:self.selectedColorDepth y:482.0 widths:@[@112.0, @112.0, @124.0, @124.0] enabled:colorDepthEnabled];
+    [video addSubview:[self rowLabel:@"Color Depth" y:644.0]];
+    [self addOptionGroupTo:video group:7 titles:colorDepthTitles selected:self.selectedColorDepth y:634.0 widths:@[@112.0, @112.0, @124.0, @124.0] enabled:colorDepthEnabled];
 
-    NSButton *hdrToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 548.0, controlWidth, 28.0)];
+    NSButton *hdrToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 700.0, controlWidth, 28.0)];
     hdrToggle.buttonType = NSButtonTypeSwitch;
     hdrToggle.title = capabilities.hdrDisplaySupported ? @"Request HDR when available" : @"Request HDR when available (display unsupported)";
     hdrToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -700,7 +745,7 @@ using namespace OPN;
                                    capabilities.maxDisplayRefreshRate > 0 ? [NSString stringWithFormat:@" @ %dHz", capabilities.maxDisplayRefreshRate] : @"",
                                    capabilities.hdrDisplaySupported ? @" · HDR display" : @""];
     NSTextField *capabilityLabel = OpnLabel(capabilitySummary,
-                                            NSMakeRect(controlX, 594.0, controlWidth, 36.0),
+                                            NSMakeRect(controlX, 746.0, controlWidth, 36.0),
                                             12.0,
                                             OpnColor(kTextMuted),
                                             NSFontWeightRegular);
@@ -717,7 +762,7 @@ using namespace OPN;
            [NSString stringWithUTF8String:effectiveProfile.colorQuality.label.c_str()]]
         : @"Unsupported codec, color, and FPS options are disabled to match this Mac's playback capabilities.";
     NSTextField *adjustmentLabel = OpnLabel(adjustmentText,
-                                            NSMakeRect(controlX, 640.0, controlWidth, 42.0),
+                                            NSMakeRect(controlX, 792.0, controlWidth, 42.0),
                                             12.0,
                                             willAdjustAtLaunch ? OpnColor(0xFFD166) : OpnColor(kTextMuted),
                                             NSFontWeightRegular);
@@ -728,25 +773,25 @@ using namespace OPN;
     for (const OPN::StreamPrefilterModeOption &option : OPN::StreamPrefilterModeOptions()) {
         [prefilterTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
     }
-    [video addSubview:[self rowLabel:@"AI Filter" y:726.0]];
-    [self addOptionGroupTo:video group:10 titles:prefilterTitles selected:self.selectedPrefilterMode y:716.0 widths:@[@72.0, @72.0, @96.0]];
+    [video addSubview:[self rowLabel:@"AI Filter" y:878.0]];
+    [self addOptionGroupTo:video group:10 titles:prefilterTitles selected:self.selectedPrefilterMode y:868.0 widths:@[@72.0, @72.0, @96.0]];
 
-    [video addSubview:[self rowLabel:@"Custom Levels" y:782.0]];
-    [video addSubview:OpnLabel(@"Sharpness", NSMakeRect(controlX, 750.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
-    NSPopUpButton *sharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 770.0, MIN(120.0, controlWidth), 38.0)
+    [video addSubview:[self rowLabel:@"Custom Levels" y:934.0]];
+    [video addSubview:OpnLabel(@"Sharpness", NSMakeRect(controlX, 902.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *sharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 922.0, MIN(120.0, controlWidth), 38.0)
                                                          value:profile.prefilterSharpness
                                                         action:@selector(prefilterSharpnessPopupChanged:)];
     [video addSubview:sharpnessPopup];
 
     CGFloat denoiseX = controlX + MIN(160.0, controlWidth * 0.5);
-    [video addSubview:OpnLabel(@"Denoise", NSMakeRect(denoiseX, 750.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
-    NSPopUpButton *denoisePopup = [self integerPopupWithFrame:NSMakeRect(denoiseX, 770.0, MIN(120.0, controlWidth), 38.0)
+    [video addSubview:OpnLabel(@"Denoise", NSMakeRect(denoiseX, 902.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *denoisePopup = [self integerPopupWithFrame:NSMakeRect(denoiseX, 922.0, MIN(120.0, controlWidth), 38.0)
                                                         value:profile.prefilterDenoise
                                                        action:@selector(prefilterDenoisePopupChanged:)];
     [video addSubview:denoisePopup];
 
     NSTextField *prefilterHint = OpnLabel(@"Auto lets GFN choose supported enhancement. Custom sends the sharpness and denoise levels from 0 to 10.",
-                                          NSMakeRect(controlX, 836.0, controlWidth, 42.0),
+                                           NSMakeRect(controlX, 988.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),
                                           NSFontWeightRegular);
@@ -1316,6 +1361,18 @@ using namespace OPN;
 
 - (void)prefilterDenoisePopupChanged:(NSPopUpButton *)sender {
     OPN::SaveStreamPrefilterDenoise((int)sender.indexOfSelectedItem);
+    [self rebuildContent];
+}
+
+- (void)recordingVideoBitrateSliderChanged:(NSSlider *)sender {
+    int bitrateMbps = (int)std::llround(sender.doubleValue);
+    if (bitrateMbps > 0) bitrateMbps = std::max(5, bitrateMbps);
+    OPN::SaveStreamRecordingVideoBitrateMbps(bitrateMbps);
+    [self rebuildContent];
+}
+
+- (void)recordingAudioBitrateSliderChanged:(NSSlider *)sender {
+    OPN::SaveStreamRecordingAudioBitrateKbps((int)std::llround(sender.doubleValue));
     [self rebuildContent];
 }
 

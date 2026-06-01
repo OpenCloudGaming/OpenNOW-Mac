@@ -39,13 +39,7 @@ make run
 
 Build artifacts are written to `build/OpenNOW`.
 
-`make run` enables `OPN_INFO_LOGS=1` by default so runtime logs are printed in the terminal. To watch logs from another terminal while the app is running, use:
-
-```sh
-make logs
-```
-
-The live log target tails the captured runtime log at `${TMPDIR:-/tmp/}OpenNOW/OpenNOW-current.log`.
+`make run` enables `OPN_INFO_LOGS=1` by default so runtime logs are printed in the terminal.
 
 ## Clean
 

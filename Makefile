@@ -4,8 +4,6 @@ OBJ_DIR := $(BUILD_DIR)/obj
 SRC := $(shell find src -name '*.mm' | sort)
 BIN := $(BUILD_DIR)/$(APP_NAME)
 INFO_PLIST := OpenNOW-Info.plist
-LOG_DIR ?= $${TMPDIR:-/tmp/}OpenNOW
-LOG_FILE ?= $(LOG_DIR)/OpenNOW-current.log
 
 CXX := clang++
 ARCHFLAGS ?= -arch arm64
@@ -49,7 +47,7 @@ APP_OBJS := $(patsubst %.mm,$(OBJ_DIR)/%.o,$(SRC))
 TEST_OBJS := $(patsubst %.mm,$(OBJ_DIR)/%.o,$(TEST_SRC) $(TEST_DEPS))
 DEPS := $(sort $(APP_OBJS:.o=.d) $(TEST_OBJS:.o=.d))
 
-.PHONY: all run logs clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
+.PHONY: all run clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
 
 all: $(BIN)
 
@@ -72,14 +70,8 @@ test: $(TEST_BIN)
 	./$(TEST_BIN)
 
 run: $(BIN)
-	@printf 'Starting $(APP_NAME) with terminal info logs enabled. Captured log: %s\n' "$(LOG_FILE)"
+	@printf 'Starting $(APP_NAME) with terminal info logs enabled.\n'
 	OPN_INFO_LOGS=$${OPN_INFO_LOGS:-1} ./$(BIN)
-
-logs:
-	@mkdir -p "$(LOG_DIR)"
-	@touch "$(LOG_FILE)"
-	@printf 'Tailing $(APP_NAME) log: %s\n' "$(LOG_FILE)"
-	tail -F "$(LOG_FILE)"
 
 clean:
 	rm -rf $(BUILD_DIR)

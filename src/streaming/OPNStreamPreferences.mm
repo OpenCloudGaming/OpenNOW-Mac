@@ -23,6 +23,8 @@ static NSString *const kColorQualityIndexKey = @"OpenNOW.Stream.ColorQualityInde
 static NSString *const kPrefilterModeIndexKey = @"OpenNOW.Stream.PrefilterModeIndex";
 static NSString *const kPrefilterSharpnessKey = @"OpenNOW.Stream.PrefilterSharpness";
 static NSString *const kPrefilterDenoiseKey = @"OpenNOW.Stream.PrefilterDenoise";
+static NSString *const kRecordingVideoBitrateMbpsKey = @"OpenNOW.Stream.RecordingVideoBitrateMbps";
+static NSString *const kRecordingAudioBitrateKbpsKey = @"OpenNOW.Stream.RecordingAudioBitrateKbps";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
@@ -536,6 +538,8 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.prefilterMode = profile.prefilterModeOption.value;
     profile.prefilterSharpness = ClampedStoredInteger(kPrefilterSharpnessKey, 0, 11);
     profile.prefilterDenoise = ClampedStoredInteger(kPrefilterDenoiseKey, 0, 11);
+    profile.recordingVideoBitrateMbps = ClampedStoredInteger(kRecordingVideoBitrateMbpsKey, 0, 201);
+    profile.recordingAudioBitrateKbps = (int)std::llround(ClampedStoredDouble(kRecordingAudioBitrateKbpsKey, 160.0, 64.0, 320.0));
 
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
     profile.enableHdr = [NSUserDefaults.standardUserDefaults boolForKey:kHDREnabledKey];
@@ -1263,6 +1267,16 @@ void SaveStreamPrefilterSharpness(int sharpness) {
 void SaveStreamPrefilterDenoise(int denoise) {
     int clamped = std::max(0, std::min(denoise, 10));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterDenoiseKey];
+}
+
+void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps) {
+    int clamped = std::max(0, std::min(bitrateMbps, 200));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kRecordingVideoBitrateMbpsKey];
+}
+
+void SaveStreamRecordingAudioBitrateKbps(int bitrateKbps) {
+    int clamped = std::max(64, std::min(bitrateKbps, 320));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kRecordingAudioBitrateKbpsKey];
 }
 
 void SaveStreamL4SEnabled(bool enabled) {

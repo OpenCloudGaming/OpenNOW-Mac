@@ -1,4 +1,5 @@
 #import "OPNStreamRecordingManager.h"
+#include "OPNStreamPreferences.h"
 #include "common/OPNSentry.h"
 
 #import <AVFoundation/AVFoundation.h>
@@ -299,12 +300,17 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
 
     NSInteger width = std::max<NSInteger>(2, (NSInteger)std::llround(size.width));
     NSInteger height = std::max<NSInteger>(2, (NSInteger)std::llround(size.height));
+    OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
+    NSInteger automaticVideoBitrate = std::min<NSInteger>(60000000, std::max<NSInteger>(5000000, width * height * 8));
+    NSInteger videoBitrate = profile.recordingVideoBitrateMbps > 0 ? (NSInteger)profile.recordingVideoBitrateMbps * 1000000 : automaticVideoBitrate;
+    NSInteger systemAudioBitrate = std::max<NSInteger>(64000, (NSInteger)profile.recordingAudioBitrateKbps * 1000);
+    NSInteger microphoneAudioBitrate = std::max<NSInteger>(64000, (systemAudioBitrate * 3) / 5);
     NSDictionary *videoSettings = @{
         AVVideoCodecKey: AVVideoCodecTypeH264,
         AVVideoWidthKey: @(width),
         AVVideoHeightKey: @(height),
         AVVideoCompressionPropertiesKey: @{
-            AVVideoAverageBitRateKey: @(std::min<NSInteger>(60000000, std::max<NSInteger>(8000000, width * height * 8))),
+            AVVideoAverageBitRateKey: @(videoBitrate),
             AVVideoExpectedSourceFrameRateKey: @60,
             AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
         },
@@ -319,9 +325,9 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     };
     AVAssetWriterInputPixelBufferAdaptor *adaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc] initWithAssetWriterInput:videoInput sourcePixelBufferAttributes:pixelAttributes];
 
-    AVAssetWriterInput *systemAudio = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:OPNRecordingAudioSettings(2, 160000)];
+    AVAssetWriterInput *systemAudio = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:OPNRecordingAudioSettings(2, systemAudioBitrate)];
     systemAudio.expectsMediaDataInRealTime = YES;
-    AVAssetWriterInput *microphoneAudio = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:OPNRecordingAudioSettings(1, 96000)];
+    AVAssetWriterInput *microphoneAudio = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:OPNRecordingAudioSettings(1, microphoneAudioBitrate)];
     microphoneAudio.expectsMediaDataInRealTime = YES;
 
     if (![writer canAddInput:videoInput]) return NO;

@@ -318,6 +318,28 @@ static NSString *OPNStorePrimaryStoreName(const OPN::GameInfo &game) {
     return name.capitalizedString;
 }
 
+static NSArray<NSString *> *OPNStoreVariantStoreNames(const OPN::GameInfo &game) {
+    NSMutableArray<NSString *> *stores = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    void (^appendStore)(NSString *) = ^(NSString *rawStore) {
+        NSString *store = OPNStoreDisplayLabel(rawStore ?: @"");
+        if (store.length == 0) return;
+        NSString *key = store.uppercaseString;
+        if ([seen containsObject:key]) return;
+        [seen addObject:key];
+        [stores addObject:store];
+    };
+
+    for (const OPN::GameVariant &variant : game.variants) {
+        appendStore(OPNStoreString(variant.appStore, @""));
+    }
+    for (const std::string &store : game.availableStores) {
+        appendStore(OPNStoreString(store, @""));
+    }
+    if (stores.count == 0) [stores addObject:OPNStorePrimaryStoreName(game)];
+    return stores;
+}
+
 static bool OPNStoreStringEqualsCaseInsensitive(const std::string &lhs, const std::string &rhs) {
     if (lhs.size() != rhs.size()) return false;
     for (size_t i = 0; i < lhs.size(); i++) {
@@ -661,7 +683,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) CALayer *shineLayer;
 @property (nonatomic, strong) NSView *storeBadgeView;
 @property (nonatomic, strong) NSImageView *storeIconView;
-@property (nonatomic, strong) NSTextField *storeLabel;
+@property (nonatomic, strong) NSMutableArray<NSImageView *> *storeIconViews;
 @property (nonatomic, strong) NSTextField *titleLabel;
 @property (nonatomic, strong) NSTextField *metaLabel;
 @property (nonatomic, strong) NSTextField *featureLabel;
@@ -677,17 +699,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 
 - (void)setSelectedVariantIndex:(int)selectedVariantIndex {
     _selectedVariantIndex = selectedVariantIndex;
-    NSString *storeName = OPNStorePrimaryStoreName(_gameData);
-    if (_selectedVariantIndex >= 0 && _selectedVariantIndex < (int)_gameData.variants.size()) {
-        NSString *store = OPNStoreString(_gameData.variants[(size_t)_selectedVariantIndex].appStore, @"");
-        if (store.length > 0) {
-            OPN::GameInfo selectedGame = _gameData;
-            selectedGame.variants = {_gameData.variants[(size_t)_selectedVariantIndex]};
-            storeName = OPNStorePrimaryStoreName(selectedGame);
-        }
-    }
-    self.storeLabel.stringValue = storeName;
-    self.storeIconView.image = OPNStoreIconImage(storeName);
     NSInteger storeCount = MAX((NSInteger)_gameData.availableStores.size(), (NSInteger)_gameData.variants.size());
     BOOL needsPurchase = OPNStoreGameNeedsPurchase(_gameData, _selectedVariantIndex);
     self.availabilityLabel.stringValue = needsPurchase
@@ -737,22 +748,36 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         [self.layer addSublayer:_accentLayer];
 
         CGFloat titleSize = prominent ? 31.0 : 15.0;
-        CGFloat storeSize = prominent ? 13.0 : 12.0;
-
         _storeBadgeView = [[NSView alloc] initWithFrame:NSZeroRect];
         _storeBadgeView.wantsLayer = YES;
-        _storeBadgeView.layer.backgroundColor = OpnColor(0x030506, 0.64).CGColor;
-        _storeBadgeView.layer.borderWidth = 1.0;
-        _storeBadgeView.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
+        _storeBadgeView.layer.backgroundColor = NSColor.clearColor.CGColor;
         [self addSubview:_storeBadgeView];
 
+        _storeIconViews = [NSMutableArray array];
+        NSArray<NSString *> *variantStores = OPNStoreVariantStoreNames(game);
         _storeIconView = [[NSImageView alloc] initWithFrame:NSZeroRect];
         _storeIconView.imageScaling = NSImageScaleProportionallyDown;
+        _storeIconView.image = OPNStoreIconImage(variantStores.firstObject ?: OPNStorePrimaryStoreName(game));
+        _storeIconView.toolTip = variantStores.firstObject ?: OPNStorePrimaryStoreName(game);
+        _storeIconView.wantsLayer = YES;
+        _storeIconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
+        _storeIconView.layer.borderWidth = 1.0;
+        _storeIconView.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
         [_storeBadgeView addSubview:_storeIconView];
+        [_storeIconViews addObject:_storeIconView];
 
-        _storeLabel = OpnLabel(OPNStorePrimaryStoreName(game), NSZeroRect, storeSize, OpnColor(0xFFFFFF, 0.88), NSFontWeightSemibold);
-        _storeLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        [_storeBadgeView addSubview:_storeLabel];
+        for (NSUInteger index = 1; index < MIN((NSUInteger)4, variantStores.count); index++) {
+            NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSZeroRect];
+            iconView.imageScaling = NSImageScaleProportionallyDown;
+            iconView.image = OPNStoreIconImage(variantStores[index]);
+            iconView.toolTip = variantStores[index];
+            iconView.wantsLayer = YES;
+            iconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
+            iconView.layer.borderWidth = 1.0;
+            iconView.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
+            [_storeBadgeView addSubview:iconView];
+            [_storeIconViews addObject:iconView];
+        }
 
         NSString *title = game.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:game.title.c_str()];
         _titleLabel = OpnLabel(title, NSZeroRect, titleSize, OpnColor(OPN::kTextPrimary), NSFontWeightBold);
@@ -822,11 +847,15 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.shineLayer.cornerRadius = 2.5;
     self.accentLayer.frame = self.prominent ? NSMakeRect(0.0, 0.0, 5.0, height) : NSMakeRect(0.0, 0.0, width, 3.0);
     if (self.prominent) {
-        CGFloat badgeWidth = MIN(210.0, MAX(148.0, width * 0.30));
+        CGFloat iconSize = 34.0;
+        CGFloat iconGap = 8.0;
+        CGFloat badgeWidth = self.storeIconViews.count * iconSize + MAX((NSUInteger)0, self.storeIconViews.count - 1) * iconGap;
         self.storeBadgeView.frame = NSMakeRect(30.0, 28.0, badgeWidth, 34.0);
-        self.storeBadgeView.layer.cornerRadius = 17.0;
-        self.storeIconView.frame = NSMakeRect(10.0, 8.0, 18.0, 18.0);
-        self.storeLabel.frame = NSMakeRect(36.0, 7.0, badgeWidth - 48.0, 20.0);
+        for (NSUInteger index = 0; index < self.storeIconViews.count; index++) {
+            NSImageView *iconView = self.storeIconViews[index];
+            iconView.frame = NSMakeRect(index * (iconSize + iconGap), 0.0, iconSize, iconSize);
+            iconView.layer.cornerRadius = iconSize * 0.5;
+        }
         self.availabilityLabel.frame = NSMakeRect(width - 188.0, 34.0, 150.0, 20.0);
         self.metaLabel.frame = NSMakeRect(30.0, height - 150.0, width - 220.0, 20.0);
         self.titleLabel.frame = NSMakeRect(30.0, height - 126.0, width - 220.0, 74.0);
@@ -834,11 +863,15 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         self.playButton.frame = NSMakeRect(width - 152.0, height - 70.0, 112.0, 42.0);
         self.playButton.layer.cornerRadius = 21.0;
     } else {
-        CGFloat badgeWidth = MIN(138.0, MAX(106.0, width - 102.0));
+        CGFloat iconSize = 28.0;
+        CGFloat iconGap = 6.0;
+        CGFloat badgeWidth = self.storeIconViews.count * iconSize + MAX((NSUInteger)0, self.storeIconViews.count - 1) * iconGap;
         self.storeBadgeView.frame = NSMakeRect(12.0, 12.0, badgeWidth, 28.0);
-        self.storeBadgeView.layer.cornerRadius = 14.0;
-        self.storeIconView.frame = NSMakeRect(8.0, 6.0, 16.0, 16.0);
-        self.storeLabel.frame = NSMakeRect(30.0, 5.0, badgeWidth - 40.0, 18.0);
+        for (NSUInteger index = 0; index < self.storeIconViews.count; index++) {
+            NSImageView *iconView = self.storeIconViews[index];
+            iconView.frame = NSMakeRect(index * (iconSize + iconGap), 0.0, iconSize, iconSize);
+            iconView.layer.cornerRadius = iconSize * 0.5;
+        }
         self.availabilityLabel.frame = NSMakeRect(width - 92.0, 18.0, 76.0, 15.0);
         self.metaLabel.frame = NSMakeRect(14.0, height - 59.0, width - 28.0, 17.0);
         self.titleLabel.frame = NSMakeRect(14.0, height - 37.0, width - 28.0, 20.0);
@@ -855,7 +888,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     [CATransaction setAnimationDuration:0.18];
     self.layer.borderWidth = focused ? 2.5 : 1.0;
     self.layer.borderColor = (focused ? OpnColor(OPN::kBrandGreen, 0.98) : OpnColor(0xFFFFFF, self.prominent ? 0.18 : 0.12)).CGColor;
-    self.storeBadgeView.layer.borderColor = (focused ? OpnColor(OPN::kBrandGreen, 0.88) : OpnColor(0xFFFFFF, 0.16)).CGColor;
+    for (NSImageView *iconView in self.storeIconViews) {
+        iconView.layer.borderColor = (focused ? OpnColor(OPN::kBrandGreen, 0.88) : OpnColor(0xFFFFFF, 0.18)).CGColor;
+    }
     self.shineLayer.opacity = focused ? 1.0 : (self.prominent ? 0.88 : 0.52);
     self.layer.shadowColor = OpnColor(OPN::kBrandGreen, 1.0).CGColor;
     self.layer.shadowOpacity = focused ? 0.38 : 0.0;
@@ -1001,6 +1036,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)updateDesktopFeaturedHeroOnly;
 - (void)addStoreMetricPillWithTitle:(NSString *)title value:(NSString *)value frame:(NSRect)frame;
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
+- (NSView *)storeIconStripForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (void)scheduleRenderStore;
 - (BOOL)mergeKnownStoreMetadataIntoPanels;
@@ -1353,6 +1389,30 @@ using namespace OPN;
     return chip;
 }
 
+- (NSView *)storeIconStripForGame:(const GameInfo &)game frame:(NSRect)frame {
+    NSView *strip = [[NSView alloc] initWithFrame:frame];
+    NSArray<NSString *> *stores = OPNStoreVariantStoreNames(game);
+    NSUInteger iconCount = MIN((NSUInteger)4, stores.count);
+    if (iconCount == 0) return strip;
+
+    CGFloat iconSize = MIN(NSHeight(frame), 36.0);
+    CGFloat iconGap = MAX(6.0, iconSize * 0.22);
+    for (NSUInteger index = 0; index < iconCount; index++) {
+        NSString *store = stores[index];
+        NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(index * (iconSize + iconGap), 0.0, iconSize, iconSize)];
+        iconView.imageScaling = NSImageScaleProportionallyDown;
+        iconView.image = OPNStoreIconImage(store);
+        iconView.toolTip = store;
+        iconView.wantsLayer = YES;
+        iconView.layer.cornerRadius = iconSize * 0.5;
+        iconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
+        iconView.layer.borderWidth = 1.0;
+        iconView.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
+        [strip addSubview:iconView];
+    }
+    return strip;
+}
+
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
     NSView *emptyPanel = [[NSView alloc] initWithFrame:NSMakeRect(contentX, y, width, 220.0)];
     emptyPanel.wantsLayer = YES;
@@ -1652,9 +1712,13 @@ using namespace OPN;
     [self.documentView addSubview:primary];
     [self.controllerFeaturedHeroViews addObject:primary];
 
-    NSView *storePill = [self storeChipWithTitle:store frame:NSMakeRect(NSMaxX(primary.frame) + 14.0 * heroScale * 0.68, NSMinY(primary.frame), MAX(110.0, store.length * 8.0 + 32.0) * heroScale * 0.68, buttonHeight) highlighted:NO];
-    [self.documentView addSubview:storePill];
-    [self.controllerFeaturedHeroViews addObject:storePill];
+    NSUInteger storeIconCount = MIN((NSUInteger)4, OPNStoreVariantStoreNames(game).count);
+    CGFloat storeIconSize = MIN(buttonHeight, 36.0);
+    CGFloat storeIconGap = MAX(6.0, storeIconSize * 0.22);
+    CGFloat storeIconWidth = storeIconCount * storeIconSize + MAX((NSUInteger)0, storeIconCount - 1) * storeIconGap;
+    NSView *storeIcons = [self storeIconStripForGame:game frame:NSMakeRect(NSMaxX(primary.frame) + 14.0 * heroScale * 0.68, NSMinY(primary.frame), storeIconWidth, buttonHeight)];
+    [self.documentView addSubview:storeIcons];
+    [self.controllerFeaturedHeroViews addObject:storeIcons];
 
     CGFloat dotSpacing = 24.0 * heroScale;
     CGFloat activeDotWidth = 22.0 * heroScale;
