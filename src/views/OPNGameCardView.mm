@@ -218,17 +218,17 @@ using namespace OPN;
         self.layer.borderWidth = 1.0;
         self.layer.borderColor = OpnColor(0xFFFFFF, 0.13).CGColor;
         self.layer.shadowColor = NSColor.blackColor.CGColor;
-        self.layer.shadowOpacity = 0.38;
-        self.layer.shadowRadius = 20.0;
-        self.layer.shadowOffset = CGSizeMake(0.0, 16.0);
+        self.layer.shadowOpacity = OpnControllerModeEnabled() ? 0.0 : 0.38;
+        self.layer.shadowRadius = OpnControllerModeEnabled() ? 0.0 : 20.0;
+        self.layer.shadowOffset = OpnControllerModeEnabled() ? CGSizeZero : CGSizeMake(0.0, 16.0);
 
         _reflectionLayer = [CALayer layer];
         _reflectionLayer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.28).CGColor;
         _reflectionLayer.cornerRadius = 18.0;
         _reflectionLayer.opacity = 0.0;
         _reflectionLayer.shadowColor = OpnColor(OPNControllerAccentSoftRGB()).CGColor;
-        _reflectionLayer.shadowOpacity = 0.68;
-        _reflectionLayer.shadowRadius = 24.0;
+        _reflectionLayer.shadowOpacity = OpnControllerModeEnabled() ? 0.0 : 0.68;
+        _reflectionLayer.shadowRadius = OpnControllerModeEnabled() ? 0.0 : 24.0;
         _reflectionLayer.shadowOffset = CGSizeZero;
         [self.layer addSublayer:_reflectionLayer];
 
@@ -378,6 +378,19 @@ using namespace OPN;
     self.playButton.layer.shadowRadius = selected ? 22.0 : 14.0;
     [CATransaction commit];
 
+    if (OpnControllerModeEnabled()) {
+        [self.layer removeAnimationForKey:@"opn.focus.transform"];
+        [self.reflectionLayer removeAnimationForKey:@"opn.focus.glow"];
+        self.layer.transform = CATransform3DIdentity;
+        self.layer.shadowOpacity = 0.0;
+        self.layer.shadowRadius = 0.0;
+        self.layer.shadowOffset = CGSizeZero;
+        self.reflectionLayer.opacity = 0.0;
+        self.reflectionLayer.shadowOpacity = 0.0;
+        self.reflectionLayer.shadowRadius = 0.0;
+        return;
+    }
+
     CGFloat prominence = selected ? 1.0 : 0.0;
     [[OPNCoreAnimationCoordinator sharedCoordinator] animateFocusForCardLayer:self.layer
                                                                     glowLayer:self.reflectionLayer
@@ -465,9 +478,13 @@ using namespace OPN;
     CGFloat logoInset = logoContainerSize * 0.20;
     self.currentStoreLogoView.frame = NSInsetRect(self.currentStoreLogoContainer.bounds, logoInset, logoInset);
     self.reflectionLayer.frame = NSMakeRect(width * (16.0 / 180.0), height - height * (10.0 / 180.0), MAX(1.0, width - width * (32.0 / 180.0)), height * (18.0 / 180.0));
-    CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
-    self.layer.shadowPath = shadowPath;
-    CGPathRelease(shadowPath);
+    if (OpnControllerModeEnabled()) {
+        self.layer.shadowPath = nil;
+    } else {
+        CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
+        self.layer.shadowPath = shadowPath;
+        CGPathRelease(shadowPath);
+    }
 }
 
 - (void)updateCurrentStoreLogo {
