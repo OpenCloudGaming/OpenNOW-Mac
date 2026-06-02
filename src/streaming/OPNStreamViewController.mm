@@ -316,6 +316,14 @@ static std::string OPNEffectiveStreamCodec(const OPN::StreamPreferenceProfile &p
     return OPN::ResolveStreamCodecForCapabilities(profile, resolution, capabilities, libWebRTCAvailable);
 }
 
+static bool OPNStreamCodecSelectionIsExplicit(const OPN::StreamPreferenceProfile &profile) {
+    std::string codec = profile.codec.value;
+    std::transform(codec.begin(), codec.end(), codec.begin(), [](unsigned char value) {
+        return (char)std::toupper(value);
+    });
+    return !codec.empty() && codec != "AUTO";
+}
+
 static uint32_t OPNConnectedControllerBitmap() {
     NSArray<GCController *> *controllers = GCController.controllers;
     uint32_t bitmap = 0;
@@ -2334,6 +2342,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     OPN::StreamPreferenceProfile requestedStreamProfile = OPN::LoadStreamPreferenceProfile();
     OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
     OPN::StreamPreferenceProfile streamProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(requestedStreamProfile, capabilities);
+    if (OPNStreamCodecSelectionIsExplicit(requestedStreamProfile)) {
+        streamProfile.codecIndex = requestedStreamProfile.codecIndex;
+        streamProfile.codec = requestedStreamProfile.codec;
+    }
     if (requestedStreamProfile.codec.value != streamProfile.codec.value ||
         requestedStreamProfile.fps != streamProfile.fps ||
         requestedStreamProfile.colorQuality.value != streamProfile.colorQuality.value) {
@@ -2426,6 +2438,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
 
             OPN::StreamSettings preflightSettings = OPN::StreamSettingsByApplyingCloudVariables(requestedSettings, variables, launchCapabilities);
+            if (OPNStreamCodecSelectionIsExplicit(preflightProfile)) preflightSettings.codec = requestedSettings.codec;
             [strongSelf resetQualityGuardrailsForBitrate:preflightSettings.maxBitrateMbps];
             [strongSelf.streamView setMaxBitrateMbps:preflightSettings.maxBitrateMbps];
             if (variables.fetched) {

@@ -241,13 +241,14 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     close.contentTintColor = NSColor.whiteColor;
     [panel addSubview:close];
 
+    self.sidebarPlaytimeValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
+    [self addSidebarRowTo:panel title:@"Playtime" value:self.sidebarPlaytimeValue y:66.0];
+
     self.sidebarMicStatusValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
-    [self addSidebarRowTo:panel title:@"Mic" value:self.sidebarMicStatusValue y:66.0];
+    [self addSidebarRowTo:panel title:@"Mic" value:self.sidebarMicStatusValue y:104.0];
 
     self.sidebarBitrateValue = OPNSidebarLabel(@"-- Mbps", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
-    [self addSidebarRowTo:panel title:@"Bitrate" value:self.sidebarBitrateValue y:104.0];
-    self.sidebarPlaytimeValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
-    [self addSidebarRowTo:panel title:@"Playtime" value:self.sidebarPlaytimeValue y:142.0];
+    [self addSidebarRowTo:panel title:@"Bitrate" value:self.sidebarBitrateValue y:142.0];
     [panel addSubview:OPNSidebarLabel(@"Stream Bitrate", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
     panel.subviews.lastObject.frame = NSMakeRect(20.0, 180.0, 180.0, 18.0);
     self.bitrateSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 204.0, NSWidth(panel.frame) - 40.0, 22.0)];
