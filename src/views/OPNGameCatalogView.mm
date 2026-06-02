@@ -775,8 +775,8 @@ static NSArray<NSString *> *OPNControllerHeroBackgroundCandidates(const OPN::Gam
             if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
         }
     };
-    appendImageType("MARQUEE_HERO_IMAGE");
     appendImageType("FEATURE_IMAGE");
+    appendImageType("MARQUEE_HERO_IMAGE");
     appendImageType("HERO_IMAGE");
     appendImageType("TV_BANNER");
     appendImageType("KEY_ART");
