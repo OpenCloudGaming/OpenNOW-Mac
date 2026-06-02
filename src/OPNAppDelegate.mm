@@ -1424,7 +1424,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         OPN::SaveSelectedStreamRegionUrl(selectedUrl);
         OPN::LogInfo(@"[AppDelegate] Cloudmatch server selected: %s", selectedUrl.empty() ? "automatic" : selectedUrl.c_str());
         [strongSelf dismissCloudmatchServerPicker];
-        if (completionCopy) completionCopy(YES);
+        if (completionCopy) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completionCopy(YES);
+            });
+        }
     };
     picker.onCancel = ^{
         __typeof__(self) strongSelf = weakSelf;
@@ -1432,7 +1436,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (!strongSelf || !strongPicker || strongSelf.cloudmatchServerPickerView != strongPicker) return;
         OPN::LogInfo(@"[AppDelegate] Cloudmatch server selection cancelled");
         [strongSelf dismissCloudmatchServerPicker];
-        if (completionCopy) completionCopy(NO);
+        if (completionCopy) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completionCopy(NO);
+            });
+        }
     };
     picker.onRefresh = ^{
         __typeof__(self) strongSelf = weakSelf;
@@ -1599,7 +1607,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     __weak __typeof__(self) weakSelf = self;
     std::string gameTitle = game.title;
-    auto startRequestedGame = ^{
+    void (^startRequestedGame)(void) = [^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         [strongSelf startStreamWithTitle:gameTitle
@@ -1607,19 +1615,20 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                 apiToken:apiToken
                            accountLinked:accountLinked
                             selectedStore:selectedStore
-                            returnScreen:returnScreen
-                          resumeSessionId:""
-                              resumeServer:""];
-    };
+                           returnScreen:returnScreen
+                         resumeSessionId:""
+                             resumeServer:""];
+    } copy];
 
-    auto continueLaunchAfterServerSelection = ^{
+    void (^continueLaunchAfterServerSelection)(void) = [^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
 
         SessionManager::Shared().SetAccessToken(apiToken);
         SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
         OPN::GameInfo requestedGame = game;
-        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGame, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+        void (^startRequestedGameCopy)(void) = [startRequestedGame copy];
+        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             std::vector<ActiveSessionEntry> sessionsCopy = sessions;
             std::string errorCopy = error;
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1627,7 +1636,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
                 if (!ok) {
                     OPN::LogError(@"[AppDelegate] Active session launch probe failed, continuing launch: %s", errorCopy.c_str());
-                    startRequestedGame();
+                    startRequestedGameCopy();
                     return;
                 }
 
@@ -1660,7 +1669,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     return;
                 }
                 if (!foundActiveSession) {
-                    startRequestedGame();
+                    startRequestedGameCopy();
                     return;
                 }
 
@@ -1688,7 +1697,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     [promptSelf showAuthenticatingWithMessage:@"Deleting existing session..."];
                     SessionManager::Shared().SetAccessToken(apiToken);
                     SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-                    SessionManager::Shared().StopSession(activeSession.sessionId, activeSession.serverIp, [weakSelf, startRequestedGame](bool stopOk, const std::string &stopError) {
+                    void (^deleteStartRequestedGame)(void) = [startRequestedGameCopy copy];
+                    SessionManager::Shared().StopSession(activeSession.sessionId, activeSession.serverIp, [weakSelf, deleteStartRequestedGame](bool stopOk, const std::string &stopError) {
                         std::string stopErrorCopy = stopError;
                         dispatch_async(dispatch_get_main_queue(), ^{
                             __typeof__(self) stopSelf = weakSelf;
@@ -1697,15 +1707,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                 [stopSelf showError:stopErrorCopy.empty() ? std::string("Unable to delete the existing session.") : stopErrorCopy canRetry:YES];
                                 return;
                             }
-                            startRequestedGame();
+                            deleteStartRequestedGame();
                         });
                     });
                 }];
             });
         });
-    };
+    } copy];
 
-    auto beginServerSelection = ^{
+    void (^beginServerSelection)(void) = [^{
         NSString *pickerGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
         [self showCloudmatchServerPickerForGameTitle:pickerGameTitle
                                             apiToken:apiToken
@@ -1713,7 +1723,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             if (!confirmed) return;
             continueLaunchAfterServerSelection();
         }];
-    };
+    } copy];
 
     if ([self presentOwnershipRemediationIfNeededForGame:game
                                             variantIndex:variantIndex
