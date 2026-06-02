@@ -1583,30 +1583,32 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         return;
     }
 
-    OPN::LogInfo(@"[AppDelegate] Game selected: title=%@, id=%s, uuid=%s, variantIndex=%d", OPNAppStringFromStdString(game.title, @""), game.id.c_str(), game.uuid.c_str(), variantIndex);
+    OPN::GameInfo launchGameInfo = game;
+
+    OPN::LogInfo(@"[AppDelegate] Game selected: title=%@, id=%s, uuid=%s, variantIndex=%d", OPNAppStringFromStdString(launchGameInfo.title, @""), launchGameInfo.id.c_str(), launchGameInfo.uuid.c_str(), variantIndex);
 
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
 
     std::string effectiveAppId;
     std::string selectedStore;
-    bool accountLinked = OPNChooseAccountLinked(game, nullptr);
-    if (variantIndex >= 0 && variantIndex < (int)game.variants.size()) {
-        const GameVariant &variant = game.variants[(size_t)variantIndex];
+    bool accountLinked = OPNChooseAccountLinked(launchGameInfo, nullptr);
+    if (variantIndex >= 0 && variantIndex < (int)launchGameInfo.variants.size()) {
+        const GameVariant &variant = launchGameInfo.variants[(size_t)variantIndex];
         effectiveAppId = variant.id;
         selectedStore = variant.appStore;
-        accountLinked = OPNChooseAccountLinked(game, &variant);
+        accountLinked = OPNChooseAccountLinked(launchGameInfo, &variant);
         OPN::LogInfo(@"[AppDelegate] Variant: id=%s, store=%s, status=%s, accountLinked=%d",
               variant.id.c_str(), variant.appStore.c_str(), variant.serviceStatus.c_str(), accountLinked);
     }
     if (effectiveAppId.empty()) {
-        effectiveAppId = game.launchAppId.empty() ? game.id : game.launchAppId;
+        effectiveAppId = launchGameInfo.launchAppId.empty() ? launchGameInfo.id : launchGameInfo.launchAppId;
     }
     OPN::LogInfo(@"[AppDelegate] Using appId=%s, store=%s, accountLinked=%d",
           effectiveAppId.c_str(), selectedStore.c_str(), accountLinked);
 
     __weak __typeof__(self) weakSelf = self;
-    std::string gameTitle = game.title;
+    std::string gameTitle = launchGameInfo.title;
     void (^startRequestedGame)(void) = [^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
@@ -1626,7 +1628,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
         SessionManager::Shared().SetAccessToken(apiToken);
         SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
-        OPN::GameInfo requestedGame = game;
+        OPN::GameInfo requestedGame = launchGameInfo;
         void (^startRequestedGameCopy)(void) = [startRequestedGame copy];
         SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             std::vector<ActiveSessionEntry> sessionsCopy = sessions;
@@ -1725,7 +1727,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         }];
     } copy];
 
-    if ([self presentOwnershipRemediationIfNeededForGame:game
+    if ([self presentOwnershipRemediationIfNeededForGame:launchGameInfo
                                             variantIndex:variantIndex
                                            accountLinked:accountLinked
                                          continueHandler:beginServerSelection]) {

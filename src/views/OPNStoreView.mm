@@ -1721,14 +1721,15 @@ using namespace OPN;
 - (void)controllerFeaturedHeroLaunchClicked:(id)sender {
     (void)sender;
     if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
+    OPN::GameInfo featuredGame = self.controllerFeaturedHeroGame;
     int variantIndex = self.controllerFeaturedHeroVariantIndex >= 0 ? self.controllerFeaturedHeroVariantIndex : 0;
-    if (OPNStoreGameNeedsPurchase(self.controllerFeaturedHeroGame, variantIndex)) {
-        NSString *purchaseURL = OPNStorePurchaseURLForGame(self.controllerFeaturedHeroGame, variantIndex);
-        if (self.onBuyGame) self.onBuyGame(self.controllerFeaturedHeroGame, variantIndex, purchaseURL ?: @"");
+    if (OPNStoreGameNeedsPurchase(featuredGame, variantIndex)) {
+        NSString *purchaseURL = OPNStorePurchaseURLForGame(featuredGame, variantIndex);
+        if (self.onBuyGame) self.onBuyGame(featuredGame, variantIndex, purchaseURL ?: @"");
         return;
     }
     if (!self.onSelectGame) return;
-    self.onSelectGame(self.controllerFeaturedHeroGame, variantIndex);
+    self.onSelectGame(featuredGame, variantIndex);
 }
 
 - (void)updateControllerFeaturedHeroOnly {

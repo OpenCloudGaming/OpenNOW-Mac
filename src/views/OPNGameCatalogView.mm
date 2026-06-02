@@ -2080,8 +2080,9 @@ using namespace OPN;
 - (void)desktopHeroPlayClicked:(id)sender {
     (void)sender;
     if (!self.hasDesktopFeaturedGame || !self.onSelectGame) return;
-    int variantIndex = self.desktopFeaturedVariantIndex >= 0 ? self.desktopFeaturedVariantIndex : [self preferredVariantIndexForGame:self.desktopFeaturedGame];
-    self.onSelectGame(self.desktopFeaturedGame, variantIndex);
+    OPN::GameInfo featuredGame = self.desktopFeaturedGame;
+    int variantIndex = self.desktopFeaturedVariantIndex >= 0 ? self.desktopFeaturedVariantIndex : [self preferredVariantIndexForGame:featuredGame];
+    self.onSelectGame(featuredGame, variantIndex);
 }
 
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result {
