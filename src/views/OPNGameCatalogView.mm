@@ -14,15 +14,15 @@
 #include "common/OPNSentry.h"
 
 static const CGFloat kGridPadding = 28.0;
-static const CGFloat kDesktopLibraryPagePadding = 20.0;
-static const CGFloat kDesktopLibraryMaxContentWidth = 1600.0;
+static const CGFloat kDesktopLibraryMinContentInset = 32.0;
+static const CGFloat kDesktopLibraryMaxContentInset = 190.0;
+static const CGFloat kDesktopLibraryContentInsetRatio = 0.049;
 static const CGFloat kDesktopLibraryMinCardWidth = 200.0;
 static const CGFloat kDesktopLibraryColumnSpacing = 12.0;
 static const CGFloat kNavHeight = 62.0;
 static const CGFloat kToolbarHeight = 82.0;
 static const CGFloat kDesktopLibraryTopInset = 170.0;
 static const CGFloat kDesktopLibraryHeroTopOffset = 0.0;
-static const CGFloat kDesktopLibraryHeroHeight = 424.0;
 static const CGFloat kDesktopLibraryGridTopGap = 62.0;
 static const CGFloat kDesktopLibraryRowSpacing = 34.0;
 static const CGFloat kControllerRailSelectorOverlap = 22.0;
@@ -57,9 +57,10 @@ typedef struct {
 
 static OPNDesktopLibraryGridMetrics OPNDesktopLibraryGridMetricsForWidth(CGFloat width) {
     CGFloat pageWidth = MAX(1.0, width);
-    CGFloat contentWidth = MIN(kDesktopLibraryMaxContentWidth,
-                               MAX(1.0, pageWidth - kDesktopLibraryPagePadding * 2.0));
-    CGFloat contentX = floor((pageWidth - contentWidth) * 0.5);
+    CGFloat contentInset = MIN(kDesktopLibraryMaxContentInset,
+                               MAX(kDesktopLibraryMinContentInset, pageWidth * kDesktopLibraryContentInsetRatio));
+    CGFloat contentWidth = MAX(1.0, pageWidth - contentInset * 2.0);
+    CGFloat contentX = floor(contentInset);
     NSInteger columns = MAX(1, (NSInteger)floor((contentWidth + kDesktopLibraryColumnSpacing) /
                                                 (kDesktopLibraryMinCardWidth + kDesktopLibraryColumnSpacing)));
     CGFloat totalSpacing = MAX(0, columns - 1) * kDesktopLibraryColumnSpacing;
@@ -87,7 +88,8 @@ static OPNDesktopLibraryVerticalMetrics OPNDesktopLibraryVerticalMetricsForSize(
     CGFloat sectionHeight = MIN(82.0, MAX(52.0, floor(safeHeight * 0.075)));
     CGFloat heroGap = hasHero ? MIN(kDesktopLibraryGridTopGap, MAX(18.0, floor(safeHeight * 0.040))) : 0.0;
     CGFloat bottomPadding = MIN(36.0, MAX(16.0, floor(safeHeight * 0.035)));
-    CGFloat desiredHeroHeight = hasHero ? MIN(kDesktopLibraryHeroHeight, MAX(120.0, floor(contentWidth * 0.36))) : 0.0;
+    CGFloat electronViewportHeroHeight = MIN(520.0, MAX(250.0, safeHeight * 0.32));
+    CGFloat desiredHeroHeight = hasHero ? MIN(electronViewportHeroHeight, floor(contentWidth * kControllerHeroMarqueeRatio)) : 0.0;
     CGFloat availableHeroHeight = safeHeight - bottomPadding - cardHeight - sectionHeight - heroGap - topInset - kDesktopLibraryHeroTopOffset;
     if (availableHeroHeight < 0.0) {
         CGFloat topInsetRecovery = MIN(topInset - 72.0, -availableHeroHeight);
