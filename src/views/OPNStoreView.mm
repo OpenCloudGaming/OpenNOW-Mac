@@ -18,7 +18,7 @@ static const CGFloat kStoreCardSpacing = 18.0;
 static const CGFloat kStoreTileWidth = 268.0;
 static const CGFloat kStoreTileHeight = 151.0;
 static const CGFloat kControllerStoreContentX = 52.0;
-static const CGFloat kControllerStoreHeroTop = 120.0;
+static const CGFloat kControllerStoreHeroTop = 30.0;
 static const CGFloat kControllerStoreRailHeight = 276.0;
 
 @interface OPNStoreDocumentView : NSView
@@ -1464,14 +1464,6 @@ using namespace OPN;
     ambientPanel.layer = ambientGradient;
     ambientPanel.layer.cornerRadius = 38.0;
     [self.documentView addSubview:ambientPanel];
-
-    NSTextField *eyebrow = OpnLabel(@"CONTROLLER STORE", NSMakeRect(contentX, 30.0, 220.0, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBold);
-    [self.documentView addSubview:eyebrow];
-    NSTextField *title = OpnLabel(@"Store Theater", NSMakeRect(contentX, 52.0, MIN(560.0, contentWidth - 260.0), 44.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBold);
-    title.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.documentView addSubview:title];
-    NSTextField *hints = OpnLabel(@"D-pad browse / A launch / B Home / LB RB pages", NSMakeRect(width - contentX - 500.0, 54.0, 500.0, 26.0), 13.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentRight);
-    [self.documentView addSubview:hints];
 
     const GameInfo *heroGame = [self currentHeroGame];
     NSInteger renderedRows = 0;
