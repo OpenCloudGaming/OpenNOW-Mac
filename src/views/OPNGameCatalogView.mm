@@ -2497,15 +2497,6 @@ using namespace OPN;
     OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, pageWidth, MAX(NSHeight(self.bounds), 1800.0))];
     [self.gridContentView addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
 
-    NSTextField *eyebrow = OpnLabel(@"GEFORCE NOW LIBRARY", NSMakeRect(contentX, headerY, 300.0, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBold);
-    [self.gridContentView addSubview:eyebrow];
-    NSTextField *title = OpnLabel(@"Your Cloud Games, Ready to Launch", NSMakeRect(contentX, headerY + 20.0, MIN(760.0, contentWidth - 300.0), 52.0), 39.0, OpnColor(kTextPrimary), NSFontWeightBold);
-    title.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.gridContentView addSubview:title];
-    NSTextField *subtitle = OpnLabel(@"A fast-launch desktop library for the games already tied to your cloud account.", NSMakeRect(contentX, headerY + 74.0, MIN(780.0, contentWidth - 260.0), 24.0), 14.0, OpnColor(kTextSecondary), NSFontWeightMedium);
-    subtitle.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.gridContentView addSubview:subtitle];
-
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
     CGFloat availableWidth = contentWidth;

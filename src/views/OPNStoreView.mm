@@ -1308,16 +1308,6 @@ using namespace OPN;
     OPNStoreAmbientView *ambient = [[OPNStoreAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), 1800.0))];
     [self.documentView addSubview:ambient];
 
-    NSTextField *eyebrow = OpnLabel(@"GEFORCE NOW MALL", NSMakeRect(contentX, y, 260.0, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBold);
-    eyebrow.stringValue = [eyebrow.stringValue uppercaseString];
-    [self.documentView addSubview:eyebrow];
-    NSTextField *title = OpnLabel(@"Cloud Games, Curated Like Contraband", NSMakeRect(contentX, y + 20.0, MIN(760.0, contentWidth - 300.0), 52.0), 39.0, OpnColor(kTextPrimary), NSFontWeightBold);
-    title.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.documentView addSubview:title];
-    NSTextField *subtitle = OpnLabel(@"A fast-launch storefront for your linked PC stores, filtered through the neon haze of the cloud.", NSMakeRect(contentX, y + 74.0, MIN(780.0, contentWidth - 260.0), 24.0), 14.0, OpnColor(kTextSecondary), NSFontWeightMedium);
-    subtitle.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.documentView addSubview:subtitle];
-
     CGFloat pillY = y + 16.0;
     CGFloat pillWidth = 112.0;
     CGFloat pillGap = 10.0;
