@@ -236,13 +236,17 @@ using namespace OPN;
         _contentView.wantsLayer = YES;
         _contentView.layer.cornerRadius = 20.0;
         _contentView.layer.masksToBounds = YES;
-        _contentView.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.88), 0.84).CGColor;
+        _contentView.layer.backgroundColor = OpnControllerModeEnabled()
+            ? NSColor.blackColor.CGColor
+            : OpnColor(OPNControllerAccentBlackRGB(0.88), 0.84).CGColor;
         [self addSubview:_contentView];
 
         _imageView = [[NSImageView alloc] initWithFrame:self.bounds];
         _imageView.imageScaling = NSImageScaleProportionallyUpOrDown;
         _imageView.wantsLayer = YES;
-        _imageView.layer.backgroundColor = OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
+        _imageView.layer.backgroundColor = OpnControllerModeEnabled()
+            ? NSColor.blackColor.CGColor
+            : OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
         _imageView.alphaValue = 0.0;
         [_contentView addSubview:_imageView];
 
