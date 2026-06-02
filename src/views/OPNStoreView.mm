@@ -1364,101 +1364,52 @@ using namespace OPN;
 
     OPNStoreDocumentView *stage = [[OPNStoreDocumentView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
     stage.wantsLayer = YES;
-    CAGradientLayer *stageGradient = [CAGradientLayer layer];
-    stageGradient.frame = stage.bounds;
-    stageGradient.colors = @[(id)OpnColor(0x0B1710, 0.96).CGColor,
-                             (id)OpnColor(0x10131A, 0.94).CGColor,
-                             (id)OpnColor(0x030506, 0.98).CGColor];
-    stageGradient.locations = @[@0.0, @0.56, @1.0];
-    stageGradient.startPoint = CGPointMake(0.0, 0.0);
-    stageGradient.endPoint = CGPointMake(1.0, 1.0);
-    stage.layer = stageGradient;
+    stage.layer.backgroundColor = OpnColor(0x030506, 0.98).CGColor;
     stage.layer.cornerRadius = 34.0;
-    stage.layer.borderWidth = 1.0;
-    stage.layer.borderColor = OpnColor(0xFFFFFF, 0.13).CGColor;
+    stage.layer.borderWidth = 2.0;
+    stage.layer.borderColor = OpnColor(0x203040, 0.92).CGColor;
     stage.layer.shadowColor = OpnColor(0x000000, 1.0).CGColor;
-    stage.layer.shadowOpacity = 0.34;
-    stage.layer.shadowRadius = 28.0;
-    stage.layer.shadowOffset = CGSizeMake(0.0, 18.0);
+    stage.layer.shadowOpacity = 0.48;
+    stage.layer.shadowRadius = 34.0;
+    stage.layer.shadowOffset = CGSizeMake(0.0, 22.0);
     [self.documentView addSubview:stage];
 
-    CALayer *greenSlice = [CALayer layer];
-    greenSlice.frame = NSMakeRect(0.0, 0.0, width, 3.0);
-    greenSlice.backgroundColor = OpnColor(kBrandGreen, 0.90).CGColor;
-    [stage.layer addSublayer:greenSlice];
-
-    CGFloat artWidth = MIN(width * 0.58, MAX(470.0, width - 420.0));
-    CGFloat artX = width - artWidth - 34.0;
-    CGFloat artY = 34.0;
-    CGFloat artHeight = height - 68.0;
-    OPNStoreHeroBackgroundView *artwork = [[OPNStoreHeroBackgroundView alloc] initWithFrame:NSMakeRect(artX, artY, artWidth, artHeight)];
-    artwork.cornerRadius = 28.0;
+    OPNStoreHeroBackgroundView *artwork = [[OPNStoreHeroBackgroundView alloc] initWithFrame:stage.bounds];
+    artwork.cornerRadius = 34.0;
     artwork.wantsLayer = YES;
-    artwork.layer.cornerRadius = 28.0;
+    artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
-    artwork.layer.borderWidth = 1.0;
-    artwork.layer.borderColor = OpnColor(0xFFFFFF, 0.16).CGColor;
     [stage addSubview:artwork];
     [self loadControllerFeaturedHeroImageForView:artwork candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
 
     CAGradientLayer *artScrim = [CAGradientLayer layer];
     artScrim.frame = artwork.bounds;
-    artScrim.colors = @[(id)OpnColor(0x020403, 0.70).CGColor,
-                        (id)OpnColor(0x020403, 0.08).CGColor,
-                        (id)OpnColor(0x020403, 0.66).CGColor];
-    artScrim.locations = @[@0.0, @0.48, @1.0];
+    artScrim.colors = @[(id)OpnColor(0x020403, 0.92).CGColor,
+                        (id)OpnColor(0x020403, 0.42).CGColor,
+                        (id)OpnColor(0x020403, 0.04).CGColor];
+    artScrim.locations = @[@0.0, @0.34, @1.0];
     artScrim.startPoint = CGPointMake(0.0, 0.5);
     artScrim.endPoint = CGPointMake(1.0, 0.5);
     [artwork.layer addSublayer:artScrim];
 
-    NSView *artGlow = [[NSView alloc] initWithFrame:NSInsetRect(artwork.frame, -10.0, -10.0)];
-    artGlow.wantsLayer = YES;
-    artGlow.layer.cornerRadius = 34.0;
-    artGlow.layer.borderWidth = 1.0;
-    artGlow.layer.borderColor = OpnColor(kBrandGreen, 0.18).CGColor;
-    artGlow.layer.backgroundColor = NSColor.clearColor.CGColor;
-    [stage addSubview:artGlow positioned:NSWindowBelow relativeTo:artwork];
-
-    CGFloat textWidth = MAX(320.0, artX - 64.0);
-    NSTextField *kicker = OpnLabel(@"FEATURED STREAM", NSMakeRect(34.0, 38.0, textWidth, 18.0), 12.0, OpnColor(kBrandGreen), NSFontWeightBlack);
-    [stage addSubview:kicker];
+    CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
 
     NSString *titleText = game.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:game.title.c_str()];
-    NSTextField *title = OpnLabel(titleText, NSMakeRect(34.0, 64.0, textWidth, 96.0), 42.0, OpnColor(kTextPrimary), NSFontWeightBlack);
+    NSTextField *title = OpnLabel(titleText, NSMakeRect(68.0, height * 0.30, textWidth, 76.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBlack);
     title.lineBreakMode = NSLineBreakByWordWrapping;
     title.maximumNumberOfLines = 2;
     [stage addSubview:title];
 
-    NSString *description = OPNStoreString(game.description, @"Launch instantly from the cloud with RTX-class streaming and your linked PC stores close at hand.");
-    NSTextField *body = OpnLabel(description, NSMakeRect(36.0, 170.0, textWidth - 10.0, 68.0), 14.0, OpnColor(kTextSecondary), NSFontWeightMedium);
-    body.lineBreakMode = NSLineBreakByWordWrapping;
-    body.maximumNumberOfLines = 3;
-    [stage addSubview:body];
+    NSString *metaText = [NSString stringWithFormat:@"%@ / %@", OPNStorePrimaryStoreName(game), OPNStorePrimaryGenre(game)];
+    NSTextField *meta = OpnLabel(metaText, NSMakeRect(68.0, height * 0.57, textWidth, 24.0), 16.0, OpnColor(0xFFFFFF, 0.86), NSFontWeightBold);
+    meta.lineBreakMode = NSLineBreakByTruncatingTail;
+    [stage addSubview:meta];
 
-    NSMutableArray<NSString *> *chips = [NSMutableArray array];
-    [chips addObject:OPNStorePrimaryGenre(game)];
-    [chips addObject:OPNStorePrimaryStoreName(game)];
-    NSString *tier = OPNStoreDisplayString(game.membershipTierLabel, @"");
-    if (tier.length > 0) [chips addObject:tier];
-    NSString *feature = OPNStoreFeatureSummary(game);
-    if (feature.length > 0) [chips addObject:feature];
-
-    CGFloat chipX = 34.0;
-    CGFloat chipY = 258.0;
-    for (NSUInteger index = 0; index < chips.count && index < 4; index++) {
-        NSString *chipTitle = chips[index];
-        CGFloat chipWidth = MIN(170.0, MAX(92.0, chipTitle.length * 7.4 + 28.0));
-        if (chipX + chipWidth > textWidth + 34.0) break;
-        NSView *chip = [self storeChipWithTitle:chipTitle frame:NSMakeRect(chipX, chipY, chipWidth, 29.0) highlighted:index == 0];
-        [stage addSubview:chip];
-        chipX += chipWidth + 9.0;
-    }
-
-    NSButton *launchButton = [[NSButton alloc] initWithFrame:NSMakeRect(34.0, height - 82.0, 156.0, 46.0)];
+    NSButton *launchButton = [[NSButton alloc] initWithFrame:NSMakeRect(68.0, height * 0.68, 138.0, 44.0)];
     int selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
     launchButton.title = OPNStoreGameNeedsPurchase(game, selectedVariantIndex)
         ? @"Buy"
-        : @"Launch in Cloud";
+        : @"Play";
     launchButton.bordered = NO;
     launchButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
     launchButton.contentTintColor = OpnColor(kAccentOn);
@@ -1473,9 +1424,20 @@ using namespace OPN;
     launchButton.action = @selector(controllerFeaturedHeroLaunchClicked:);
     [stage addSubview:launchButton];
 
-    NSTextField *hint = OpnLabel(@"Store variant follows your library selection when available", NSMakeRect(206.0, height - 70.0, textWidth - 206.0, 22.0), 12.0, OpnColor(kTextMuted), NSFontWeightSemibold);
-    hint.lineBreakMode = NSLineBreakByTruncatingTail;
-    [stage addSubview:hint];
+    NSString *storeName = OPNStorePrimaryStoreName(game);
+    NSButton *storeButton = [[NSButton alloc] initWithFrame:NSMakeRect(224.0, height * 0.68, 126.0, 44.0)];
+    storeButton.title = storeName.length > 0 ? storeName : @"Store";
+    storeButton.bordered = NO;
+    storeButton.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightBold];
+    storeButton.contentTintColor = OpnColor(kTextPrimary, 0.88);
+    storeButton.wantsLayer = YES;
+    storeButton.layer.cornerRadius = 22.0;
+    storeButton.layer.backgroundColor = OpnColor(0xFFFFFF, 0.075).CGColor;
+    storeButton.layer.borderWidth = 1.0;
+    storeButton.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
+    storeButton.target = self;
+    storeButton.action = @selector(controllerFeaturedHeroLaunchClicked:);
+    [stage addSubview:storeButton];
     [self.desktopFeaturedHeroViews addObject:stage];
 }
 

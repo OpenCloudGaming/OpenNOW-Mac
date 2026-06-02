@@ -5,7 +5,7 @@
 #include <QuartzCore/QuartzCore.h>
 #include "common/OPNSentry.h"
 
-static const CGFloat gCardWidth = 220.0;
+static const CGFloat gCardWidth = 288.0;
 static const CGFloat gControllerCardWidth = 164.0;
 static const CGFloat gImageHeight = gCardWidth;
 static const CGFloat gInfoHeight = 0.0;
