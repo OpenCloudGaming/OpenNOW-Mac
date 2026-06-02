@@ -371,14 +371,29 @@ static void MergeSessionAdState(OPN::SessionAdState &target, const OPN::SessionA
     }
 }
 
+static std::string PollSessionRegionName(const std::string &serverEndpoint) {
+    if (serverEndpoint.empty()) return "(pending)";
+    std::string host = serverEndpoint;
+    size_t scheme = host.find("://");
+    if (scheme != std::string::npos) host = host.substr(scheme + 3);
+    size_t path = host.find('/');
+    if (path != std::string::npos) host = host.substr(0, path);
+    size_t port = host.find(':');
+    if (port != std::string::npos) host = host.substr(0, port);
+    size_t dot = host.find('.');
+    std::string label = dot == std::string::npos ? host : host.substr(0, dot);
+    return label.empty() ? "(pending)" : label;
+}
+
 static void LogPollSessionSummary(NSInteger httpStatus, const OPN::SessionInfo &info) {
-    OPN::LogInfo(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d server=%s signaling=%s gpu=%s color=%s ads=%s",
+    std::string region = PollSessionRegionName(info.serverIp);
+    OPN::LogInfo(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d region=%s signaling=%s gpu=%s color=%s ads=%s",
           (long)httpStatus,
           info.sessionId.empty() ? "(empty)" : info.sessionId.c_str(),
           info.status,
           info.queuePosition,
           info.seatSetupStep,
-          info.serverIp.empty() ? "(pending)" : info.serverIp.c_str(),
+          region.c_str(),
           info.signalingServer.empty() ? "(pending)" : info.signalingServer.c_str(),
           info.gpuType.empty() ? "(pending)" : info.gpuType.c_str(),
           info.negotiatedStreamProfile.colorQuality.empty() ? "(pending)" : info.negotiatedStreamProfile.colorQuality.c_str(),

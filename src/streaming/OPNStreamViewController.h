@@ -20,6 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
                        resumeServer:(const std::string &)resumeServer;
 
 - (void)setInitialViewFrame:(NSRect)frame;
+- (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited;
 - (void)startStreamIfNeeded;
 - (void)setStreamInputSuppressed:(BOOL)suppressed;
 

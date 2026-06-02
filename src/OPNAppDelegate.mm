@@ -73,6 +73,9 @@
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 @property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
 @property (nonatomic, strong) NSTextField *desktopRemainingPlayTimeLabel;
+@property (nonatomic, assign) double currentRemainingPlayTimeHours;
+@property (nonatomic, assign) BOOL currentRemainingPlayTimeUnlimited;
+@property (nonatomic, assign) BOOL currentRemainingPlayTimeAvailable;
 @property (nonatomic, strong) OPNGitHubUpdater *githubUpdater;
 @property (nonatomic, strong) NSTimer *applicationUpdateCheckTimer;
 @property (nonatomic, assign) BOOL updateCheckInFlight;
@@ -1392,12 +1395,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.settingsView = nil;
 
     OPNStreamViewController *streamVC = [[OPNStreamViewController alloc] initWithGameTitle:title
-                                                                                     appId:appId
-                                                                                  apiToken:apiToken
-                                                                             accountLinked:accountLinked
-                                                                              selectedStore:selectedStore
-                                                                            resumeSessionId:resumeSessionId
-                                                                                resumeServer:resumeServer];
+                                                                                      appId:appId
+                                                                                   apiToken:apiToken
+                                                                              accountLinked:accountLinked
+                                                                               selectedStore:selectedStore
+                                                                             resumeSessionId:resumeSessionId
+                                                                                 resumeServer:resumeServer];
+    if (self.currentRemainingPlayTimeAvailable) {
+        [streamVC setRemainingPlaytimeHours:self.currentRemainingPlayTimeHours unlimited:self.currentRemainingPlayTimeUnlimited];
+    }
     self.currentStreamTitle = title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:title.c_str()];
     self.activeStreamReturnScreen = returnScreen;
     self.streamDashboardHomeVisible = NO;
@@ -1913,6 +1919,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
+            self.currentRemainingPlayTimeAvailable = NO;
             self.rootView.gameCountText = @"";
             [self refreshAccountAvatar];
             [self refreshAccountMenu];
@@ -2005,6 +2012,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             }
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
+            self.currentRemainingPlayTimeAvailable = NO;
             self.rootView.gameCountText = @"";
             [self refreshAccountAvatar];
             [self refreshAccountMenu];
@@ -2119,6 +2127,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
+            self.currentRemainingPlayTimeAvailable = NO;
             self.rootView.gameCountText = @"";
             [self refreshAccountAvatar];
             [self refreshAccountMenu];
@@ -2210,6 +2219,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         }
         strongSelf.rootView.accountStatus = OPNDisplayTier(subscription.membershipTier);
         strongSelf.rootView.remainingPlayTime = OPNFormatRemainingPlayTime(subscription);
+        strongSelf.currentRemainingPlayTimeHours = subscription.remainingHours;
+        strongSelf.currentRemainingPlayTimeUnlimited = subscription.isUnlimited;
+        strongSelf.currentRemainingPlayTimeAvailable = YES;
         [strongSelf updateDesktopAccountSwitcher];
         strongSelf.currentSession.membershipTier = subscription.membershipTier;
         if (AuthService::Shared().GetStayLoggedIn()) {

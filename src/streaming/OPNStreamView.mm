@@ -40,6 +40,15 @@ struct OPNPadSnapshot {
 static uint16_t OPNPushToTalkModifierFlags(NSEvent *event);
 static NSString *OPNClipboardString(void);
 
+static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
+    NSInteger totalSeconds = MAX(0, (NSInteger)std::ceil(seconds));
+    NSInteger hours = totalSeconds / 3600;
+    NSInteger minutes = (totalSeconds % 3600) / 60;
+    NSInteger secs = totalSeconds % 60;
+    if (hours > 0) return [NSString stringWithFormat:@"%ldh %02ldm", (long)hours, (long)minutes];
+    return [NSString stringWithFormat:@"%ldm %02lds", (long)minutes, (long)secs];
+}
+
 @interface OPNVideoSurfaceView : NSView
 @end
 
@@ -86,6 +95,10 @@ static NSString *OPNClipboardString(void);
     double _pendingMouseDx;
     double _pendingMouseDy;
     int _maxBitrateMbps;
+    NSTimeInterval _remainingPlaytimeBaseSeconds;
+    CFTimeInterval _remainingPlaytimeStartTime;
+    BOOL _remainingPlaytimeUnlimited;
+    BOOL _remainingPlaytimeAvailable;
     OPNPadSnapshot _previousPads[GAMEPAD_MAX_CONTROLLERS];
     CFTimeInterval _startButtonHoldBegan[GAMEPAD_MAX_CONTROLLERS];
     BOOL _startButtonHoldConsumed[GAMEPAD_MAX_CONTROLLERS];
@@ -96,7 +109,9 @@ static NSString *OPNClipboardString(void);
 @property (nonatomic, strong) NSView *sidebarHUD;
 @property (nonatomic, strong) NSTextField *sidebarMicStatusValue;
 @property (nonatomic, strong) NSTextField *sidebarBitrateValue;
+@property (nonatomic, strong) NSTextField *sidebarPlaytimeValue;
 @property (nonatomic, strong) NSTextField *sidebarRecordingStatusValue;
+@property (nonatomic, strong) NSTimer *playtimeTimer;
 @property (nonatomic, strong) NSSlider *bitrateSlider;
 @property (nonatomic, strong) NSSlider *gameVolumeSlider;
 @property (nonatomic, strong) NSSlider *microphoneVolumeSlider;
@@ -138,6 +153,10 @@ static NSString *OPNClipboardString(void);
         _gameVolume = profile.gameVolume;
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
+        _remainingPlaytimeBaseSeconds = 0.0;
+        _remainingPlaytimeStartTime = 0.0;
+        _remainingPlaytimeUnlimited = NO;
+        _remainingPlaytimeAvailable = NO;
         _microphoneLevel = 0.0;
         _pendingMouseDx = 0;
         _pendingMouseDy = 0;
@@ -202,7 +221,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 }
 
 - (void)createSidebarHUDWithProfile:(const OPN::StreamPreferenceProfile &)profile {
-    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 332.0, 650.0)];
+    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 332.0, 700.0)];
     panel.wantsLayer = YES;
     panel.layer.cornerRadius = 18.0;
     panel.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.03 alpha:0.88].CGColor;
@@ -227,9 +246,11 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 
     self.sidebarBitrateValue = OPNSidebarLabel(@"-- Mbps", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
     [self addSidebarRowTo:panel title:@"Bitrate" value:self.sidebarBitrateValue y:104.0];
+    self.sidebarPlaytimeValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
+    [self addSidebarRowTo:panel title:@"Playtime" value:self.sidebarPlaytimeValue y:142.0];
     [panel addSubview:OPNSidebarLabel(@"Stream Bitrate", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 142.0, 180.0, 18.0);
-    self.bitrateSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 166.0, NSWidth(panel.frame) - 40.0, 22.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 180.0, 180.0, 18.0);
+    self.bitrateSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 204.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.bitrateSlider.minValue = 15.0;
     self.bitrateSlider.maxValue = 100.0;
     self.bitrateSlider.doubleValue = profile.maxBitrateMbps;
@@ -239,18 +260,18 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     [panel addSubview:self.bitrateSlider];
 
     NSTextField *audioTitle = OPNSidebarLabel(@"Audio", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    audioTitle.frame = NSMakeRect(20.0, 218.0, 180.0, 20.0);
+    audioTitle.frame = NSMakeRect(20.0, 256.0, 180.0, 20.0);
     [panel addSubview:audioTitle];
     [panel addSubview:OPNSidebarLabel(@"Game Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 254.0, 180.0, 18.0);
-    self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:278.0 panel:panel];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 292.0, 180.0, 18.0);
+    self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:316.0 panel:panel];
     [panel addSubview:OPNSidebarLabel(@"Mic Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 316.0, 180.0, 18.0);
-    self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:340.0 panel:panel];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 354.0, 180.0, 18.0);
+    self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:378.0 panel:panel];
 
     [panel addSubview:OPNSidebarLabel(@"Mic Meter", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 394.0, 180.0, 18.0);
-    NSView *meterTrack = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 424.0, NSWidth(panel.frame) - 40.0, 14.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 432.0, 180.0, 18.0);
+    NSView *meterTrack = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 462.0, NSWidth(panel.frame) - 40.0, 14.0)];
     meterTrack.wantsLayer = YES;
     meterTrack.layer.cornerRadius = 7.0;
     meterTrack.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.12].CGColor;
@@ -264,15 +285,15 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     [panel addSubview:meterTrack];
 
     NSTextField *recordingTitle = OPNSidebarLabel(@"Recording", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    recordingTitle.frame = NSMakeRect(20.0, 466.0, 180.0, 20.0);
+    recordingTitle.frame = NSMakeRect(20.0, 504.0, 180.0, 20.0);
     [panel addSubview:recordingTitle];
 
     self.sidebarRecordingStatusValue = OPNSidebarLabel(@"Ready", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
-    self.sidebarRecordingStatusValue.frame = NSMakeRect(20.0, 496.0, NSWidth(panel.frame) - 40.0, 18.0);
+    self.sidebarRecordingStatusValue.frame = NSMakeRect(20.0, 534.0, NSWidth(panel.frame) - 40.0, 18.0);
     [panel addSubview:self.sidebarRecordingStatusValue];
 
     NSButton *recordingButton = [NSButton buttonWithTitle:@"Start Recording" target:self action:@selector(recordingButtonClicked:)];
-    recordingButton.frame = NSMakeRect(20.0, 526.0, NSWidth(panel.frame) - 40.0, 38.0);
+    recordingButton.frame = NSMakeRect(20.0, 564.0, NSWidth(panel.frame) - 40.0, 38.0);
     recordingButton.bezelStyle = NSBezelStyleRegularSquare;
     recordingButton.bordered = NO;
     recordingButton.wantsLayer = YES;
@@ -282,15 +303,16 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     self.recordingButton = recordingButton;
 
     NSTextField *recentTitle = OPNSidebarLabel(@"Recent", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
-    recentTitle.frame = NSMakeRect(20.0, 584.0, 180.0, 18.0);
+    recentTitle.frame = NSMakeRect(20.0, 622.0, 180.0, 18.0);
     [panel addSubview:recentTitle];
-    self.recentRecordingsContainer = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 610.0, NSWidth(panel.frame) - 40.0, 30.0)];
+    self.recentRecordingsContainer = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 648.0, NSWidth(panel.frame) - 40.0, 30.0)];
     [panel addSubview:self.recentRecordingsContainer];
 
     self.sidebarHUD = panel;
     [self addSubview:panel positioned:NSWindowAbove relativeTo:self.microphoneActiveOverlay];
     [self updateSidebarMicStatus];
     [self updateSidebarBitrateStatus];
+    [self updateSidebarPlaytimeStatus];
     [self updateRecordingControls];
 }
 
@@ -327,6 +349,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 }
 
 - (void)dealloc {
+    [self.playtimeTimer invalidate];
     [self stopRecordingIfNeeded];
     [self stopGamepadPolling];
     [self cancelEscapeHoldTimer];
@@ -505,7 +528,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
                                                    overlaySize);
     if (self.sidebarHUD) {
         CGFloat panelWidth = NSWidth(self.sidebarHUD.frame);
-        CGFloat panelHeight = MIN(650.0, MAX(450.0, height - 36.0));
+        CGFloat panelHeight = MIN(700.0, MAX(450.0, height - 36.0));
         self.sidebarHUD.frame = NSMakeRect(18.0, floor((height - panelHeight) / 2.0), panelWidth, panelHeight);
     }
 }
@@ -584,6 +607,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
         [self resetInputStateAfterSuppression];
         [self releaseCursorCapture];
         [self updateSidebarMicStatus];
+        [self updateSidebarPlaytimeStatus];
         [self.window makeFirstResponder:self.sidebarHUD];
     } else {
         [self takeFocus];
@@ -635,6 +659,49 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 
 - (void)updateSidebarBitrateStatus {
     self.sidebarBitrateValue.stringValue = [NSString stringWithFormat:@"%d Mbps", _maxBitrateMbps];
+}
+
+- (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited {
+    _remainingPlaytimeUnlimited = unlimited;
+    _remainingPlaytimeAvailable = unlimited || (std::isfinite(hours) && hours >= 0.0);
+    _remainingPlaytimeBaseSeconds = _remainingPlaytimeAvailable && !unlimited ? MAX(0.0, hours * 3600.0) : 0.0;
+    _remainingPlaytimeStartTime = 0.0;
+    [self updateSidebarPlaytimeStatus];
+}
+
+- (void)startRemainingPlaytimeCountdown {
+    if (!_remainingPlaytimeAvailable || _remainingPlaytimeUnlimited) {
+        [self updateSidebarPlaytimeStatus];
+        return;
+    }
+    if (_remainingPlaytimeStartTime <= 0.0) _remainingPlaytimeStartTime = CACurrentMediaTime();
+    if (!self.playtimeTimer) {
+        self.playtimeTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                              target:self
+                                                            selector:@selector(playtimeTimerFired:)
+                                                            userInfo:nil
+                                                             repeats:YES];
+    }
+    [self updateSidebarPlaytimeStatus];
+}
+
+- (void)playtimeTimerFired:(NSTimer *)timer {
+    (void)timer;
+    [self updateSidebarPlaytimeStatus];
+}
+
+- (void)updateSidebarPlaytimeStatus {
+    if (!self.sidebarPlaytimeValue) return;
+    if (!_remainingPlaytimeAvailable) {
+        self.sidebarPlaytimeValue.stringValue = @"--";
+        return;
+    }
+    if (_remainingPlaytimeUnlimited) {
+        self.sidebarPlaytimeValue.stringValue = @"Unlimited";
+        return;
+    }
+    NSTimeInterval elapsed = _remainingPlaytimeStartTime > 0.0 ? CACurrentMediaTime() - _remainingPlaytimeStartTime : 0.0;
+    self.sidebarPlaytimeValue.stringValue = OPNFormatSidebarPlaytimeSeconds(MAX(0.0, _remainingPlaytimeBaseSeconds - elapsed));
 }
 
 - (void)updateSidebarMicStatus {

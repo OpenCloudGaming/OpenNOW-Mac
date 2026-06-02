@@ -863,6 +863,9 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _qualityWarningShown;
     int _runtimeMaxBitrateMbps;
     BOOL _idleDeviceInputEnabled;
+    double _remainingPlaytimeHours;
+    BOOL _remainingPlaytimeUnlimited;
+    BOOL _remainingPlaytimeAvailable;
 }
 
 - (instancetype)initWithGameTitle:(const std::string &)title
@@ -923,8 +926,20 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _qualityWarningShown = NO;
         _runtimeMaxBitrateMbps = 0;
         _idleDeviceInputEnabled = NO;
+        _remainingPlaytimeHours = 0.0;
+        _remainingPlaytimeUnlimited = NO;
+        _remainingPlaytimeAvailable = NO;
     }
     return self;
+}
+
+- (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited {
+    _remainingPlaytimeUnlimited = unlimited;
+    _remainingPlaytimeAvailable = unlimited || (std::isfinite(hours) && hours >= 0.0);
+    _remainingPlaytimeHours = _remainingPlaytimeAvailable && !unlimited ? MAX(0.0, hours) : 0.0;
+    if (self.streamView) {
+        [self.streamView setRemainingPlaytimeHours:_remainingPlaytimeHours unlimited:_remainingPlaytimeUnlimited];
+    }
 }
 
 - (void)startStreamIfNeeded {
@@ -959,6 +974,9 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     };
     [self.streamView setStreamSession:_session];
     [self.streamView setRecordingGameTitle:OPNStringFromStdString(_gameTitle, @"Stream")];
+    if (_remainingPlaytimeAvailable) {
+        [self.streamView setRemainingPlaytimeHours:_remainingPlaytimeHours unlimited:_remainingPlaytimeUnlimited];
+    }
     OPN::LogInfo(@"[StreamVC] loadView called, view=%p", (__bridge void *)view);
 }
 
@@ -1995,6 +2013,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     [s2 setLaunchStep:6 message:@"Connected!"];
                     [s2 finishLaunchMeasurementWithSuccess:YES reason:@"connected"];
                     [s2.streamView setStreamSession:s2->_session];
+                    [s2.streamView startRemainingPlaytimeCountdown];
                     [s2.streamView takeFocus];
                     [s2 startInactivityTimer];
                     [s2 showConnectedToastWithResolution:negotiatedSettings.resolution fps:negotiatedSettings.fps bitrate:negotiatedSettings.maxBitrateMbps codec:negotiatedSettings.codec];

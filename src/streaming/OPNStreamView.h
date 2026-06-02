@@ -20,6 +20,8 @@ class IStreamSession;
 - (BOOL)toggleRecordingShortcut;
 - (void)toggleSidebarHUD;
 - (void)setRecordingGameTitle:(NSString *)gameTitle;
+- (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited;
+- (void)startRemainingPlaytimeCountdown;
 - (void)stopRecordingIfNeeded;
 - (void)setMicrophoneLevel:(double)level;
 - (void)setSuppressInputWhenWindowInactive:(BOOL)suppress;
