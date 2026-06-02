@@ -414,6 +414,7 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
 @property (nonatomic, strong) NSColor *derivedBackgroundColor;
 @property (nonatomic, assign) CGFloat cornerRadius;
 @property (nonatomic, assign) BOOL rightAlignImageToHeight;
+@property (nonatomic, assign) BOOL scalesImageToFit;
 - (void)setImage:(NSImage *)image metadataData:(NSData *)metadataData;
 @end
 
@@ -427,6 +428,7 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
         _cornerRadius = 0.0;
         _derivedBackgroundColor = OpnColor(0x080A0C, 1.0);
         _rightAlignImageToHeight = NO;
+        _scalesImageToFit = NO;
     }
     return self;
 }
@@ -459,7 +461,16 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
         CGFloat imageAspect = self.image.size.width / self.image.size.height;
         CGFloat boundsAspect = NSWidth(bounds) / MAX(1.0, NSHeight(bounds));
         NSRect sourceRect = NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height);
-        if (self.rightAlignImageToHeight) {
+        if (self.scalesImageToFit) {
+            CGFloat scale = MIN(NSWidth(bounds) / self.image.size.width, NSHeight(bounds) / self.image.size.height);
+            CGFloat drawWidth = floor(self.image.size.width * scale);
+            CGFloat drawHeight = floor(self.image.size.height * scale);
+            NSRect drawRect = NSMakeRect(NSMinX(bounds) + floor((NSWidth(bounds) - drawWidth) * 0.5),
+                                         NSMinY(bounds) + floor((NSHeight(bounds) - drawHeight) * 0.5),
+                                         drawWidth,
+                                         drawHeight);
+            [self.image drawInRect:drawRect fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+        } else if (self.rightAlignImageToHeight) {
             CGFloat drawWidth = NSHeight(bounds) * imageAspect;
             NSRect drawRect = NSMakeRect(NSMaxX(bounds) - drawWidth, NSMinY(bounds), drawWidth, NSHeight(bounds));
             [self.image drawInRect:drawRect fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
@@ -775,8 +786,8 @@ static NSArray<NSString *> *OPNControllerHeroBackgroundCandidates(const OPN::Gam
             if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
         }
     };
-    appendImageType("FEATURE_IMAGE");
     appendImageType("MARQUEE_HERO_IMAGE");
+    appendImageType("FEATURE_IMAGE");
     appendImageType("HERO_IMAGE");
     appendImageType("TV_BANNER");
     appendImageType("KEY_ART");
@@ -1950,6 +1961,7 @@ using namespace OPN;
     CGFloat height = NSHeight(frame);
     OPNControllerPreviewBackgroundView *artwork = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:stage.bounds];
     artwork.cornerRadius = 34.0;
+    artwork.scalesImageToFit = YES;
     artwork.wantsLayer = YES;
     artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
