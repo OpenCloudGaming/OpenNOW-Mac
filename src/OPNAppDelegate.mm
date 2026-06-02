@@ -73,6 +73,7 @@
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
 @property (nonatomic, strong) NSView *desktopNavigationBar;
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
+@property (nonatomic, copy) NSArray<NSView *> *desktopNavigationIndicators;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 @property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
 @property (nonatomic, strong) NSTextField *desktopRemainingPlayTimeLabel;
@@ -827,7 +828,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     button.title = title ?: @"";
     button.tag = tag;
     button.bordered = NO;
-    button.font = [NSFont systemFontOfSize:12.0 weight:NSFontWeightSemibold];
+    button.font = [NSFont systemFontOfSize:16.0 weight:NSFontWeightBold];
     button.target = self;
     button.action = @selector(desktopNavigationButtonClicked:);
     button.wantsLayer = YES;
@@ -837,6 +838,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         NSString *symbolName = tag == 1 ? @"storefront" : (tag == 0 ? @"books.vertical" : @"gearshape");
         NSImage *symbol = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:title];
         if (symbol) {
+            [symbol setTemplate:YES];
             button.image = symbol;
             button.imagePosition = NSImageLeft;
             button.imageScaling = NSImageScaleProportionallyDown;
@@ -880,6 +882,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (self.desktopNavigationBar && self.desktopNavigationBar.superview != self.rootView) {
         self.desktopNavigationBar = nil;
         self.desktopNavigationButtons = @[];
+        self.desktopNavigationIndicators = @[];
     }
     if (self.desktopNavigationBar) return;
     NSView *bar = [[NSView alloc] initWithFrame:NSZeroRect];
@@ -899,7 +902,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self desktopNavigationButtonWithTitle:@"Settings" tag:2],
     ];
     self.desktopNavigationButtons = buttons;
-    for (NSButton *button in buttons) [bar addSubview:button];
+    NSMutableArray<NSView *> *indicators = [NSMutableArray arrayWithCapacity:buttons.count];
+    for (NSButton *button in buttons) {
+        [bar addSubview:button];
+        NSView *indicator = [[NSView alloc] initWithFrame:NSZeroRect];
+        indicator.wantsLayer = YES;
+        indicator.layer.cornerRadius = 3.0;
+        indicator.layer.backgroundColor = NSColor.clearColor.CGColor;
+        [bar addSubview:indicator];
+        [indicators addObject:indicator];
+    }
+    self.desktopNavigationIndicators = indicators;
     [self.rootView addSubview:bar positioned:NSWindowAbove relativeTo:self.contentContainer];
     [self layoutDesktopNavigationBar];
     [self updateDesktopNavigationBar];
@@ -918,12 +931,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.action = @selector(desktopAccountSwitcherChanged:);
     switcher.bordered = NO;
     switcher.font = [NSFont systemFontOfSize:12.0 weight:NSFontWeightSemibold];
-    switcher.contentTintColor = OpnColor(OPN::kTextPrimary);
+    switcher.contentTintColor = OpnColor(OPN::kTextPrimary, 0.96);
     switcher.focusRingType = NSFocusRingTypeNone;
     switcher.wantsLayer = YES;
     switcher.layer.cornerRadius = 18.0;
-    switcher.layer.backgroundColor = OpnColor(0x07140D, 0.86).CGColor;
-    switcher.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.24).CGColor;
+    switcher.layer.backgroundColor = OpnColor(0x050806, 0.96).CGColor;
+    switcher.layer.borderColor = OpnColor(0xFFFFFF, 0.22).CGColor;
     switcher.layer.borderWidth = 1.0;
     switcher.layer.shadowColor = NSColor.blackColor.CGColor;
     switcher.layer.shadowOpacity = 0.34;
@@ -935,8 +948,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     NSView *playTimePill = [[NSView alloc] initWithFrame:NSZeroRect];
     playTimePill.wantsLayer = YES;
     playTimePill.layer.cornerRadius = 14.0;
-    playTimePill.layer.backgroundColor = OpnColor(0x050A08, 0.78).CGColor;
-    playTimePill.layer.borderColor = OpnColor(0xFFFFFF, 0.11).CGColor;
+    playTimePill.layer.backgroundColor = OpnColor(0x050806, 0.96).CGColor;
+    playTimePill.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.74).CGColor;
     playTimePill.layer.borderWidth = 1.0;
     playTimePill.layer.shadowColor = NSColor.blackColor.CGColor;
     playTimePill.layer.shadowOpacity = 0.20;
@@ -944,7 +957,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     playTimePill.layer.shadowOffset = CGSizeMake(0.0, 8.0);
     self.desktopRemainingPlayTimePill = playTimePill;
 
-    NSTextField *playTimeLabel = OpnLabel(@"Playtime: --", NSZeroRect, 11.0, OpnColor(OPN::kTextSecondary), NSFontWeightSemibold, NSTextAlignmentCenter);
+    NSTextField *playTimeLabel = OpnLabel(@"Playtime: --", NSZeroRect, 11.0, OpnColor(OPN::kTextPrimary, 0.92), NSFontWeightBold, NSTextAlignmentCenter);
     playTimeLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     self.desktopRemainingPlayTimeLabel = playTimeLabel;
     [playTimePill addSubview:playTimeLabel];
@@ -973,8 +986,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopNavigationBar.frame = NSMakeRect(x, 24.0, barWidth, barHeight);
     CGFloat buttonWidth = floor(barWidth / 3.0);
     CGFloat buttonX = 0.0;
-    for (NSButton *button in self.desktopNavigationButtons) {
+    for (NSUInteger index = 0; index < self.desktopNavigationButtons.count; index++) {
+        NSButton *button = self.desktopNavigationButtons[index];
         button.frame = NSMakeRect(buttonX, 0.0, buttonWidth, barHeight);
+        if (index < self.desktopNavigationIndicators.count) {
+            NSView *indicator = self.desktopNavigationIndicators[index];
+            CGFloat indicatorWidth = MIN(96.0, buttonWidth - 66.0);
+            indicator.frame = NSMakeRect(buttonX + floor((buttonWidth - indicatorWidth) * 0.5), barHeight - 26.0, indicatorWidth, 7.0);
+            indicator.layer.cornerRadius = 3.5;
+        }
         buttonX += buttonWidth;
     }
 }
@@ -1000,15 +1020,25 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopNavigationBar.hidden = !visible;
     if (!visible) return;
     [self layoutDesktopNavigationBar];
-    for (NSButton *button in self.desktopNavigationButtons) {
+    for (NSUInteger index = 0; index < self.desktopNavigationButtons.count; index++) {
+        NSButton *button = self.desktopNavigationButtons[index];
         BOOL selected = (button.tag == 0 && self.currentScreen == OPN::AuthScreen::Catalog) ||
             (button.tag == 1 && self.currentScreen == OPN::AuthScreen::Store) ||
             (button.tag == 2 && self.currentScreen == OPN::AuthScreen::Settings);
         button.font = [NSFont systemFontOfSize:16.0 weight:selected ? NSFontWeightBlack : NSFontWeightBold];
-        button.contentTintColor = selected ? OpnColor(OPN::kTextPrimary) : OpnColor(OPN::kTextSecondary, 0.88);
-        button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.12).CGColor : NSColor.clearColor.CGColor;
+        button.contentTintColor = selected ? OpnColor(OPN::kTextPrimary, 1.0) : OpnColor(0xFFFFFF, 0.72);
+        button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.16).CGColor : NSColor.clearColor.CGColor;
         button.layer.borderWidth = selected ? 0.0 : 1.0;
         button.layer.borderColor = OpnColor(0xFFFFFF, selected ? 0.0 : 0.0).CGColor;
+        if (index < self.desktopNavigationIndicators.count) {
+            NSView *indicator = self.desktopNavigationIndicators[index];
+            indicator.hidden = !selected;
+            indicator.layer.backgroundColor = OpnColor(OPN::kBrandGreen, 0.98).CGColor;
+            indicator.layer.shadowColor = OpnColor(OPN::kBrandGreen).CGColor;
+            indicator.layer.shadowOpacity = selected ? 0.58 : 0.0;
+            indicator.layer.shadowRadius = selected ? 14.0 : 0.0;
+            indicator.layer.shadowOffset = CGSizeZero;
+        }
     }
 }
 
