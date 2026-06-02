@@ -185,10 +185,12 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, strong) OpnImageLoadToken *imageLoadToken;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
 @property (nonatomic, copy) NSString *displayedImageSignature;
+@property (nonatomic, assign) BOOL mouseHovering;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)clearImageForNewSignature:(NSString *)signature;
 - (void)displayLoadedImage:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
+- (void)updatePlayButtonVisibility;
 - (void)updateCurrentStoreLogo;
 - (void)updateInstallToPlayPill;
 @end
@@ -367,7 +369,7 @@ using namespace OPN;
 - (void)applyFocusStyle {
     BOOL selected = self.controllerFocused;
     NSColor *accentColor = OpnColor(OPNControllerAccentSoftRGB());
-    self.playButton.hidden = YES;
+    [self updatePlayButtonVisibility];
     [CATransaction begin];
     [CATransaction setAnimationDuration:0.22];
     [CATransaction setAnimationTimingFunction:[OPNCoreAnimationCoordinator appleQuinticTimingFunction]];
@@ -397,6 +399,10 @@ using namespace OPN;
                                                                       focused:selected
                                                                    prominence:prominence
                                                                    accentColor:accentColor];
+}
+
+- (void)updatePlayButtonVisibility {
+    self.playButton.hidden = OpnControllerModeEnabled() ? !self.controllerFocused : !self.mouseHovering;
 }
 
 - (void)updateControllerLabels {
@@ -461,7 +467,7 @@ using namespace OPN;
     CGFloat playHeight = height * (34.0 / 180.0);
     CGFloat playY = OpnControllerModeEnabled() ? MAX(0.0, height - height * (52.0 / 180.0)) : 10.0;
     self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, playY, playWidth, playHeight);
-    self.playButton.hidden = YES;
+    [self updatePlayButtonVisibility];
     self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
     CGFloat pillHeight = MAX(20.0, floor(height * (22.0 / 180.0)));
     CGFloat pillWidth = MIN(width - 18.0, MAX(94.0, floor(width * (112.0 / 180.0))));
@@ -729,6 +735,8 @@ using namespace OPN;
 - (void)mouseEntered:(NSEvent *)event {
     [super mouseEntered:event];
     if (OpnControllerModeEnabled()) return;
+    self.mouseHovering = YES;
+    [self updatePlayButtonVisibility];
     if (!self.controllerFocused) {
         self.layer.borderColor = OpnColor(0xFFFFFF, 0.28).CGColor;
     }
@@ -737,6 +745,8 @@ using namespace OPN;
 - (void)mouseExited:(NSEvent *)event {
     [super mouseExited:event];
     if (OpnControllerModeEnabled()) return;
+    self.mouseHovering = NO;
+    [self updatePlayButtonVisibility];
     if (!self.controllerFocused) {
         self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
     }
