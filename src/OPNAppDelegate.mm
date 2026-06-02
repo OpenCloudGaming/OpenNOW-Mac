@@ -69,7 +69,7 @@
 @property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
 @property (nonatomic, strong) id controllerModeShortcutMonitor;
 @property (nonatomic, strong) NSView *desktopTopChromeView;
-@property (nonatomic, strong) NSView *desktopBrandIconView;
+@property (nonatomic, strong) NSImageView *desktopBrandIconView;
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
 @property (nonatomic, strong) NSView *desktopNavigationBar;
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
@@ -191,6 +191,25 @@ static BOOL OPNAppDelegateIsCommandIEvent(NSEvent *event) {
 
 static BOOL OPNAppDelegateScreenSupportsDesktopNavigation(OPN::AuthScreen screen) {
     return screen == OPN::AuthScreen::Catalog || screen == OPN::AuthScreen::Store || screen == OPN::AuthScreen::Settings;
+}
+
+static NSImage *OPNDesktopBrandIconImage() {
+    NSString *bundleIconPath = [[NSBundle mainBundle] pathForResource:@"OpenNOW" ofType:@"icns"];
+    NSImage *bundleIcon = bundleIconPath.length > 0 ? [[NSImage alloc] initWithContentsOfFile:bundleIconPath] : nil;
+    if (bundleIcon) return bundleIcon;
+
+    NSArray<NSString *> *relativePaths = @[
+        @"assets/OpenNOW.icns",
+        @"assets/logo-mac.png",
+        @"assets/logo.png",
+    ];
+    NSString *workingDirectory = NSFileManager.defaultManager.currentDirectoryPath;
+    for (NSString *relativePath in relativePaths) {
+        NSString *path = [workingDirectory stringByAppendingPathComponent:relativePath];
+        NSImage *image = [[NSImage alloc] initWithContentsOfFile:path];
+        if (image) return image;
+    }
+    return nil;
 }
 
 static NSSize OPNResizableWindowMaxSize() {
@@ -842,6 +861,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             button.image = symbol;
             button.imagePosition = NSImageLeft;
             button.imageScaling = NSImageScaleProportionallyDown;
+            if ([button respondsToSelector:@selector(setImageHugsTitle:)]) button.imageHugsTitle = YES;
         }
     }
     return button;
@@ -860,18 +880,24 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         chrome.layer.backgroundColor = OpnColor(0x000000, 0.98).CGColor;
         self.desktopTopChromeView = chrome;
 
-        NSView *brandIcon = [[NSView alloc] initWithFrame:NSZeroRect];
+        NSImageView *brandIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
         brandIcon.wantsLayer = YES;
         brandIcon.layer.cornerRadius = 14.0;
-        brandIcon.layer.backgroundColor = OpnColor(OPN::kBrandGreen, 0.94).CGColor;
-        brandIcon.layer.borderWidth = 1.0;
+        brandIcon.layer.masksToBounds = YES;
+        brandIcon.imageScaling = NSImageScaleProportionallyUpOrDown;
+        brandIcon.imageAlignment = NSImageAlignCenter;
+        brandIcon.image = OPNDesktopBrandIconImage();
+        brandIcon.layer.backgroundColor = brandIcon.image ? NSColor.clearColor.CGColor : OpnColor(OPN::kBrandGreen, 0.94).CGColor;
+        brandIcon.layer.borderWidth = brandIcon.image ? 0.0 : 1.0;
         brandIcon.layer.borderColor = OpnColor(0xFFFFFF, 0.22).CGColor;
         self.desktopBrandIconView = brandIcon;
         [chrome addSubview:brandIcon];
 
-        NSTextField *brandGlyph = OpnLabel(@"ON", NSZeroRect, 14.0, OpnColor(0x173019, 0.96), NSFontWeightBlack, NSTextAlignmentCenter);
-        brandGlyph.identifier = @"brandGlyph";
-        [brandIcon addSubview:brandGlyph];
+        if (!brandIcon.image) {
+            NSTextField *brandGlyph = OpnLabel(@"ON", NSZeroRect, 14.0, OpnColor(0x173019, 0.96), NSFontWeightBlack, NSTextAlignmentCenter);
+            brandGlyph.identifier = @"brandGlyph";
+            [brandIcon addSubview:brandGlyph];
+        }
 
         NSTextField *brandLabel = OpnLabel(@"OpenNOW", NSZeroRect, 18.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
         brandLabel.lineBreakMode = NSLineBreakByTruncatingTail;

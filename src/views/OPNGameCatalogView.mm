@@ -45,6 +45,16 @@ typedef struct {
     CGFloat columnSpacing;
 } OPNDesktopLibraryGridMetrics;
 
+typedef struct {
+    CGFloat topInset;
+    CGFloat heroHeight;
+    CGFloat gridTop;
+    CGFloat sectionHeight;
+    CGFloat sectionFontSize;
+    CGFloat countFontSize;
+    CGFloat cardStartY;
+} OPNDesktopLibraryVerticalMetrics;
+
 static OPNDesktopLibraryGridMetrics OPNDesktopLibraryGridMetricsForWidth(CGFloat width) {
     CGFloat pageWidth = MAX(1.0, width);
     CGFloat contentWidth = MIN(kDesktopLibraryMaxContentWidth,
@@ -62,6 +72,42 @@ static OPNDesktopLibraryGridMetrics OPNDesktopLibraryGridMetricsForWidth(CGFloat
         cardWidth,
         cardWidth,
         kDesktopLibraryColumnSpacing,
+    };
+    return metrics;
+}
+
+static OPNDesktopLibraryVerticalMetrics OPNDesktopLibraryVerticalMetricsForSize(CGFloat width,
+                                                                                CGFloat height,
+                                                                                CGFloat contentWidth,
+                                                                                CGFloat cardHeight,
+                                                                                BOOL hasHero) {
+    (void)width;
+    CGFloat safeHeight = MAX(1.0, height);
+    CGFloat topInset = MIN(kDesktopLibraryTopInset, MAX(140.0, floor(safeHeight * 0.20)));
+    CGFloat sectionHeight = MIN(82.0, MAX(52.0, floor(safeHeight * 0.075)));
+    CGFloat heroGap = hasHero ? MIN(kDesktopLibraryGridTopGap, MAX(18.0, floor(safeHeight * 0.040))) : 0.0;
+    CGFloat bottomPadding = MIN(36.0, MAX(16.0, floor(safeHeight * 0.035)));
+    CGFloat desiredHeroHeight = hasHero ? MIN(kDesktopLibraryHeroHeight, MAX(120.0, floor(contentWidth * 0.36))) : 0.0;
+    CGFloat availableHeroHeight = safeHeight - bottomPadding - cardHeight - sectionHeight - heroGap - topInset - kDesktopLibraryHeroTopOffset;
+    if (availableHeroHeight < 0.0) {
+        CGFloat topInsetRecovery = MIN(topInset - 72.0, -availableHeroHeight);
+        topInset -= MAX(0.0, topInsetRecovery);
+        availableHeroHeight = safeHeight - bottomPadding - cardHeight - sectionHeight - heroGap - topInset - kDesktopLibraryHeroTopOffset;
+    }
+    CGFloat heroHeight = hasHero ? MIN(desiredHeroHeight, MAX(0.0, availableHeroHeight)) : 0.0;
+    CGFloat gridTop = hasHero
+        ? topInset + kDesktopLibraryHeroTopOffset + heroHeight + heroGap
+        : topInset;
+    CGFloat sectionFontSize = MIN(42.0, MAX(30.0, floor(sectionHeight * 0.70)));
+    CGFloat countFontSize = MIN(22.0, MAX(14.0, floor(sectionHeight * 0.34)));
+    OPNDesktopLibraryVerticalMetrics metrics = {
+        topInset,
+        heroHeight,
+        gridTop,
+        sectionHeight,
+        sectionFontSize,
+        countFontSize,
+        gridTop + sectionHeight,
     };
     return metrics;
 }
@@ -2504,7 +2550,6 @@ using namespace OPN;
     CGFloat pageWidth = desktopMetrics.pageWidth;
     CGFloat contentX = desktopMetrics.contentX;
     CGFloat contentWidth = desktopMetrics.contentWidth;
-    CGFloat headerY = kDesktopLibraryTopInset;
     OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, pageWidth, MAX(NSHeight(self.bounds), 1800.0))];
     [self.gridContentView addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
 
@@ -2534,20 +2579,27 @@ using namespace OPN;
         self.hasDesktopFeaturedGame = NO;
         self.desktopFeaturedVariantIndex = -1;
     }
-    CGFloat heroHeight = 0.0;
-    if (heroGame) {
-        heroHeight = MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36)));
-        [self addDesktopLibraryHeroForGame:*heroGame frame:NSMakeRect(contentX, headerY + kDesktopLibraryHeroTopOffset, contentWidth, heroHeight)];
+    OPNDesktopLibraryVerticalMetrics verticalMetrics = OPNDesktopLibraryVerticalMetricsForSize(NSWidth(self.bounds),
+                                                                                                NSHeight(self.bounds),
+                                                                                                contentWidth,
+                                                                                                cardHeight,
+                                                                                                heroGame != nullptr);
+    if (heroGame && verticalMetrics.heroHeight > 1.0) {
+        [self addDesktopLibraryHeroForGame:*heroGame frame:NSMakeRect(contentX,
+                                                                      verticalMetrics.topInset + kDesktopLibraryHeroTopOffset,
+                                                                      contentWidth,
+                                                                      verticalMetrics.heroHeight)];
     }
-    CGFloat gridTop = heroGame ? headerY + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : headerY;
+    CGFloat gridTop = verticalMetrics.gridTop;
 
     NSString *sectionTitle = @"Library";
-    NSTextField *section = OpnLabel(sectionTitle, NSMakeRect(contentX, gridTop, MIN(520.0, contentWidth - 180.0), 52.0), 42.0, OpnColor(kTextPrimary), NSFontWeightBlack);
+    NSTextField *section = OpnLabel(sectionTitle, NSMakeRect(contentX, gridTop, MIN(520.0, contentWidth - 180.0), verticalMetrics.sectionHeight), verticalMetrics.sectionFontSize, OpnColor(kTextPrimary), NSFontWeightBlack);
     section.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.gridContentView addSubview:section];
-    NSTextField *count = OpnLabel([NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"], NSMakeRect(contentX + 250.0, gridTop + 20.0, 180.0, 24.0), 22.0, OpnColor(kTextMuted), NSFontWeightBold);
+    CGFloat countY = gridTop + MAX(0.0, floor((verticalMetrics.sectionHeight - 24.0) * 0.52));
+    NSTextField *count = OpnLabel([NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"], NSMakeRect(contentX + 250.0, countY, 180.0, 24.0), verticalMetrics.countFontSize, OpnColor(kTextMuted), NSFontWeightBold);
     [self.gridContentView addSubview:count];
-    CGFloat cardStartY = gridTop + 82.0;
+    CGFloat cardStartY = verticalMetrics.cardStartY;
     self.controllerDisplayGameCount = controllerMode ? (NSInteger)displayGames.size() : 0;
     NSInteger renderStartIndex = 0;
     NSInteger renderEndIndex = (NSInteger)displayGames.size();
@@ -3807,9 +3859,12 @@ using namespace OPN;
             CGFloat contentWidth = desktopMetrics.contentWidth;
             const OPN::GameInfo *heroGame = [self currentLastPlayedGame];
             if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
-            CGFloat heroHeight = heroGame ? MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36))) : 0.0;
-            CGFloat gridTop = heroGame ? kDesktopLibraryTopInset + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : kDesktopLibraryTopInset;
-            CGFloat cardStartY = gridTop + 82.0;
+            OPNDesktopLibraryVerticalMetrics verticalMetrics = OPNDesktopLibraryVerticalMetricsForSize(NSWidth(self.bounds),
+                                                                                                        NSHeight(self.bounds),
+                                                                                                        contentWidth,
+                                                                                                        cardSize.height,
+                                                                                                        heroGame != nullptr);
+            CGFloat cardStartY = verticalMetrics.cardStartY;
             CGFloat gridSpacing = desktopMetrics.columnSpacing;
             CGFloat xStart = desktopMetrics.contentX;
             NSInteger row = clamped / columns;
@@ -3868,10 +3923,13 @@ using namespace OPN;
     CGFloat contentWidth = desktopMetrics.contentWidth;
     const OPN::GameInfo *heroGame = self.hasDesktopFeaturedGame ? &_desktopFeaturedGame : [self currentLastPlayedGame];
     if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
-    CGFloat heroHeight = heroGame ? MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36))) : 0.0;
-    CGFloat gridTop = heroGame ? kDesktopLibraryTopInset + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : kDesktopLibraryTopInset;
+    OPNDesktopLibraryVerticalMetrics verticalMetrics = OPNDesktopLibraryVerticalMetricsForSize(NSWidth(self.bounds),
+                                                                                                NSHeight(self.bounds),
+                                                                                                contentWidth,
+                                                                                                desktopMetrics.cardHeight,
+                                                                                                heroGame != nullptr);
     CGFloat rowHeight = desktopMetrics.cardHeight + kDesktopLibraryRowSpacing;
-    CGFloat visibleMinY = MAX(0.0, NSMinY(clipView.bounds) - (gridTop + 82.0));
+    CGFloat visibleMinY = MAX(0.0, NSMinY(clipView.bounds) - verticalMetrics.cardStartY);
     NSInteger firstVisibleRow = rowHeight > 0.0 ? MAX(0, (NSInteger)floor(visibleMinY / rowHeight)) : 0;
     NSInteger nextStartIndex = MAX(0, firstVisibleRow - kDesktopGridRenderBufferRows) * columns;
     nextStartIndex = MIN(nextStartIndex, MAX(0, self.desktopDisplayGameCount - 1));
