@@ -12,12 +12,14 @@ static const CGFloat kStoreTopInset = 170.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
 static const CGFloat kControllerStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroTopOffset = 0.0;
-static const CGFloat kStoreHeroHeight = 424.0;
+static const CGFloat kStoreHeroAspectRatio = 2.35;
 static const CGFloat kStoreRowHeight = 258.0;
 static const CGFloat kStoreCardSpacing = 18.0;
 static const CGFloat kStoreTileWidth = 268.0;
 static const CGFloat kStoreTileHeight = 151.0;
-static const CGFloat kControllerStoreContentX = 52.0;
+static const CGFloat kStoreHeroMinContentInset = 30.0;
+static const CGFloat kStoreHeroMaxContentInset = 106.0;
+static const CGFloat kStoreHeroContentInsetRatio = 0.055;
 static const CGFloat kControllerStoreHeroTop = 30.0;
 static const CGFloat kControllerStoreRailHeight = 276.0;
 
@@ -47,6 +49,14 @@ static const CGFloat kControllerStoreRailHeight = 276.0;
 }
 
 @end
+
+static CGFloat OPNStoreHeroContentInsetForWidth(CGFloat width) {
+    return MIN(kStoreHeroMaxContentInset, MAX(kStoreHeroMinContentInset, width * kStoreHeroContentInsetRatio));
+}
+
+static CGFloat OPNStoreHeroHeightForWidth(CGFloat width) {
+    return floor(MAX(1.0, width) / kStoreHeroAspectRatio);
+}
 
 @interface OPNStoreAmbientView : NSView
 @property (nonatomic, assign) CGFloat intensity;
@@ -965,6 +975,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
+@property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
@@ -1120,6 +1131,13 @@ using namespace OPN;
     [self renderStore];
 }
 
+- (void)setFeaturedGames:(const std::vector<OPN::GameInfo> &)games {
+    _featuredGames = games;
+    self.currentHeroIndex = 0;
+    [self configureHeroRotationTimer];
+    [self renderStore];
+}
+
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
     [self mergeKnownStoreMetadataIntoPanels];
@@ -1166,29 +1184,14 @@ using namespace OPN;
 }
 
 - (NSInteger)heroCandidateCount {
-    NSInteger count = 0;
-    for (const PanelResult &panel : _panels) {
-        for (const PanelSection &section : panel.sections) {
-            count += (NSInteger)section.games.size();
-        }
-    }
-    return count;
+    return MIN((NSInteger)6, (NSInteger)_featuredGames.size());
 }
 
 - (const GameInfo *)currentHeroGame {
     NSInteger candidateCount = [self heroCandidateCount];
     if (candidateCount <= 0) return nullptr;
     NSInteger target = ((self.currentHeroIndex % candidateCount) + candidateCount) % candidateCount;
-    NSInteger index = 0;
-    for (const PanelResult &panel : _panels) {
-        for (const PanelSection &section : panel.sections) {
-            for (const GameInfo &game : section.games) {
-                if (index == target) return &game;
-                index++;
-            }
-        }
-    }
-    return nullptr;
+    return &_featuredGames[(size_t)target];
 }
 
 - (void)configureHeroRotationTimer {
@@ -1261,7 +1264,7 @@ using namespace OPN;
     }
 
     CGFloat width = MAX(980.0, NSWidth(self.bounds));
-    CGFloat contentX = MAX(42.0, MIN(86.0, floor(width * 0.065)));
+    CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
     CGFloat contentWidth = MAX(680.0, width - contentX * 2.0);
     CGFloat y = kStoreTopInset;
 
@@ -1272,7 +1275,7 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        heroHeight = MIN(kStoreHeroHeight, MAX(360.0, floor(contentWidth * 0.36)));
+        heroHeight = OPNStoreHeroHeightForWidth(contentWidth);
         [self addDesktopHeroStageForGame:*heroGame y:y + kStoreHeroTopOffset contentX:contentX width:contentWidth height:heroHeight];
     }
 
@@ -1439,11 +1442,34 @@ using namespace OPN;
     storeButton.action = @selector(controllerFeaturedHeroLaunchClicked:);
     [stage addSubview:storeButton];
     [self.desktopFeaturedHeroViews addObject:stage];
+
+    NSInteger dotCount = [self heroCandidateCount];
+    if (dotCount > 1) {
+        CGFloat activeDotWidth = 32.0;
+        CGFloat inactiveDotWidth = 16.0;
+        CGFloat dotHeight = 6.0;
+        CGFloat dotSpacing = 28.0;
+        CGFloat dotRailWidth = (dotCount - 1) * dotSpacing + activeDotWidth;
+        CGFloat dotX = contentX + floor((width - dotRailWidth) * 0.5);
+        CGFloat dotY = y + height + 20.0;
+        NSInteger activeIndex = ((self.currentHeroIndex % dotCount) + dotCount) % dotCount;
+        for (NSInteger index = 0; index < dotCount; index++) {
+            BOOL active = index == activeIndex;
+            CGFloat pillWidth = active ? activeDotWidth : inactiveDotWidth;
+            CGFloat pillX = dotX + index * dotSpacing + (active ? 0.0 : floor((activeDotWidth - inactiveDotWidth) * 0.5));
+            NSView *pill = [[NSView alloc] initWithFrame:NSMakeRect(pillX, dotY, pillWidth, dotHeight)];
+            pill.wantsLayer = YES;
+            pill.layer.cornerRadius = dotHeight * 0.5;
+            pill.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.20)).CGColor;
+            [self.documentView addSubview:pill];
+            [self.desktopFeaturedHeroViews addObject:pill];
+        }
+    }
 }
 
 - (void)renderControllerStore {
     CGFloat width = MAX(1040.0, NSWidth(self.bounds));
-    CGFloat contentX = MIN(kControllerStoreContentX, MAX(30.0, width * 0.055));
+    CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
     CGFloat contentWidth = MAX(640.0, width - contentX * 2.0);
     CGFloat laneX = contentX;
     CGFloat y = kControllerStoreHeroTop;
@@ -1469,8 +1495,8 @@ using namespace OPN;
     NSInteger renderedRows = 0;
     if (heroGame) {
         CGFloat availableHeroWidth = MAX(1.0, contentWidth);
-        CGFloat heroHeight = MIN(330.0, MAX(236.0, floor(availableHeroWidth * 0.3229)));
-        CGFloat heroWidth = MIN(availableHeroWidth, heroHeight / 0.3229);
+        CGFloat heroWidth = availableHeroWidth;
+        CGFloat heroHeight = OPNStoreHeroHeightForWidth(heroWidth);
         CGFloat heroX = contentX + floor((availableHeroWidth - heroWidth) * 0.5);
         NSInteger heroDotCount = MIN((NSInteger)6, MAX((NSInteger)1, [self heroCandidateCount]));
         NSInteger heroDotIndex = ((self.currentHeroIndex % heroDotCount) + heroDotCount) % heroDotCount;
@@ -1788,7 +1814,7 @@ using namespace OPN;
 }
 
 - (void)addSection:(const PanelSection &)section index:(NSInteger)sectionIndex y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
-    CGFloat rightInset = OpnControllerModeEnabled() ? MIN(kControllerStoreContentX, MAX(30.0, width * 0.055)) : contentX;
+    CGFloat rightInset = OpnControllerModeEnabled() ? OPNStoreHeroContentInsetForWidth(width) : contentX;
     CGFloat availableWidth = MAX(320.0, width - contentX - rightInset);
     NSString *sectionTitle = section.title.empty() ? @"Featured" : [NSString stringWithUTF8String:section.title.c_str()];
 

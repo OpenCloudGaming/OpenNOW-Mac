@@ -17,6 +17,7 @@
 - (void)setLoading:(BOOL)loading;
 - (void)setError:(NSString *)message;
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games;
+- (void)setFeaturedGames:(const std::vector<OPN::GameInfo> &)games;
 - (void)setPanels:(const std::vector<OPN::PanelResult> &)panels;
 
 @end

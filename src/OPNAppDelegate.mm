@@ -394,6 +394,7 @@ static std::string OPNFeaturedGameIdentity(const OPN::GameInfo &game) {
 }
 
 static OPN::FeaturedGamesResult OPNFeaturedGamesFromPanels(const std::vector<OPN::PanelResult> &panels) {
+    static const size_t kFeaturedGameLimit = 6;
     auto appendUnique = [](std::vector<OPN::GameInfo> &target, std::unordered_set<std::string> &seen, const OPN::GameInfo &game) {
         std::string identity = OPNFeaturedGameIdentity(game);
         if (identity.empty() || seen.find(identity) != seen.end()) return;
@@ -406,11 +407,12 @@ static OPN::FeaturedGamesResult OPNFeaturedGamesFromPanels(const std::vector<OPN
     for (const OPN::PanelResult &panel : panels) {
         bool panelFeatured = OPNFeaturedPanelTextMatches(panel.title) || OPNFeaturedPanelTextMatches(panel.id);
         for (const OPN::PanelSection &section : panel.sections) {
-            if (!panelFeatured && !OPNFeaturedPanelTextMatches(section.title)) continue;
+            if (!panelFeatured && !OPNFeaturedPanelTextMatches(section.title) && !OPNFeaturedPanelTextMatches(section.id)) continue;
             for (const OPN::GameInfo &game : section.games) appendUnique(result.games, seenExplicit, game);
         }
     }
     if (!result.games.empty()) {
+        if (result.games.size() > kFeaturedGameLimit) result.games.resize(kFeaturedGameLimit);
         result.usedExplicitFeaturedSection = true;
         return result;
     }
@@ -421,6 +423,7 @@ static OPN::FeaturedGamesResult OPNFeaturedGamesFromPanels(const std::vector<OPN
             for (const OPN::GameInfo &game : section.games) appendUnique(result.games, seenCurated, game);
         }
     }
+    if (result.games.size() > kFeaturedGameLimit) result.games.resize(kFeaturedGameLimit);
     return result;
 }
 
@@ -2039,6 +2042,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             store.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             self.storeView = store;
 
+            if (self.hasCachedFeaturedGames && self.cachedFeaturedGamesAccountIdentifier == OPNAuthSessionIdentifier(self.currentSession)) {
+                [store setFeaturedGames:self.cachedFeaturedGames];
+            }
+
             std::string storePanelsAccountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
             if (self.hasCachedStorePanels && self.cachedStorePanelsAccountIdentifier == storePanelsAccountIdentifier) {
                 [store setPanels:self.cachedStorePanels];
@@ -2092,6 +2099,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self.contentContainer addSubview:store];
             OpnDisableFocusHighlights(store);
             self.window.title = @"OpenNOW - Store";
+            [self refreshFeaturedGamesForCatalogWithRetry:YES];
             [self loadStorePanelsWithRetry:YES];
             break;
         }
@@ -2640,11 +2648,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
 - (void)refreshFeaturedGamesForCatalogWithRetry:(BOOL)canRetry {
     using namespace OPN;
-    if (!self.catalogView || self.featuredGamesRefreshInFlight) return;
+    if ((!self.catalogView && !self.storeView) || self.featuredGamesRefreshInFlight) return;
 
     std::string accountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     if (self.hasCachedFeaturedGames && self.cachedFeaturedGamesAccountIdentifier == accountIdentifier) {
-        [self.catalogView setFeaturedGames:self.cachedFeaturedGames];
+        if (self.catalogView) [self.catalogView setFeaturedGames:self.cachedFeaturedGames];
+        if (self.storeView) [self.storeView setFeaturedGames:self.cachedFeaturedGames];
         return;
     }
 
@@ -2679,60 +2688,23 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 return;
             }
 
-            if (success) {
-                FeaturedGamesResult featured = OPNFeaturedGamesFromPanels(panels);
-                if (!featured.games.empty()) {
-                    OPN::LogInfo(@"[AppDelegate] featured games resolved from marquee count=%lu", (unsigned long)featured.games.size());
-                    strongSelf.featuredGamesRefreshInFlight = NO;
-                    strongSelf.cachedFeaturedGames = featured.games;
-                    strongSelf.cachedFeaturedGamesAccountIdentifier = accountIdentifier;
-                    strongSelf.hasCachedFeaturedGames = YES;
-                    if (strongSelf.catalogView && strongSelf.currentScreen == AuthScreen::Catalog) {
-                        [strongSelf.catalogView setFeaturedGames:featured.games];
-                    }
-                    return;
-                }
-                OPN::LogInfo(@"[AppDelegate] Marquee panel contained no featured games; falling back to main panel");
-            } else {
+            strongSelf.featuredGamesRefreshInFlight = NO;
+            if (!success) {
                 OPN::LogError(@"[AppDelegate] Marquee featured games fetch failed: %s", error.c_str());
+                return;
             }
 
-            GameService::Shared().FetchMainPanels(
-                [weakSelf, accountIdentifier, canRetry](bool mainSuccess, const std::vector<PanelResult> &mainPanels, const std::string &mainError) {
-                    __typeof__(self) fallbackSelf = weakSelf;
-                    if (!fallbackSelf) return;
-                    fallbackSelf.featuredGamesRefreshInFlight = NO;
-                    if (accountIdentifier != OPNAuthSessionIdentifier(fallbackSelf.currentSession)) return;
-
-                    if (!mainSuccess && canRetry && mainError.find("401") != std::string::npos) {
-                        AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &) {
-                            __typeof__(self) retrySelf = weakSelf;
-                            if (!retrySelf) return;
-                            if (refreshSuccess) {
-                                retrySelf.currentSession = fresh;
-                                if (retrySelf.pendingCredentials.stayLoggedIn) AuthService::Shared().SaveSession(fresh);
-                                [retrySelf refreshAccountMenu];
-                                [retrySelf refreshFeaturedGamesForCatalogWithRetry:NO];
-                            }
-                        }, true);
-                        return;
-                    }
-
-                    if (!mainSuccess) {
-                        OPN::LogError(@"[AppDelegate] Main-panel featured games fetch failed: %s", mainError.c_str());
-                        return;
-                    }
-
-                    FeaturedGamesResult featured = OPNFeaturedGamesFromPanels(mainPanels);
-                    OPN::LogInfo(@"[AppDelegate] featured games resolved from main count=%lu explicit=%d", (unsigned long)featured.games.size(), featured.usedExplicitFeaturedSection);
-                    fallbackSelf.cachedFeaturedGames = featured.games;
-                    fallbackSelf.cachedFeaturedGamesAccountIdentifier = accountIdentifier;
-                    fallbackSelf.hasCachedFeaturedGames = !featured.games.empty();
-                    if (fallbackSelf.catalogView && fallbackSelf.currentScreen == AuthScreen::Catalog) {
-                        [fallbackSelf.catalogView setFeaturedGames:featured.games];
-                    }
-                });
-                return;
+            FeaturedGamesResult featured = OPNFeaturedGamesFromPanels(panels);
+            OPN::LogInfo(@"[AppDelegate] featured games resolved from marquee count=%lu explicit=%d", (unsigned long)featured.games.size(), featured.usedExplicitFeaturedSection);
+            strongSelf.cachedFeaturedGames = featured.games;
+            strongSelf.cachedFeaturedGamesAccountIdentifier = accountIdentifier;
+            strongSelf.hasCachedFeaturedGames = YES;
+            if (strongSelf.catalogView && strongSelf.currentScreen == AuthScreen::Catalog) {
+                [strongSelf.catalogView setFeaturedGames:featured.games];
+            }
+            if (strongSelf.storeView && strongSelf.currentScreen == AuthScreen::Store) {
+                [strongSelf.storeView setFeaturedGames:featured.games];
+            }
         });
 }
 
