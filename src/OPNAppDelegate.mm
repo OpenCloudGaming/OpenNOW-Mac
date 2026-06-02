@@ -913,7 +913,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [indicators addObject:indicator];
     }
     self.desktopNavigationIndicators = indicators;
-    [self.rootView addSubview:bar positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self.rootView addSubview:bar positioned:NSWindowAbove relativeTo:self.desktopTopChromeView];
     [self layoutDesktopNavigationBar];
     [self updateDesktopNavigationBar];
 }
@@ -943,7 +943,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.layer.shadowRadius = 20.0;
     switcher.layer.shadowOffset = CGSizeMake(0.0, 10.0);
     self.desktopAccountSwitcher = switcher;
-    [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.desktopTopChromeView];
 
     NSView *playTimePill = [[NSView alloc] initWithFrame:NSZeroRect];
     playTimePill.wantsLayer = YES;
@@ -961,7 +961,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     playTimeLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     self.desktopRemainingPlayTimeLabel = playTimeLabel;
     [playTimePill addSubview:playTimeLabel];
-    [self.rootView addSubview:playTimePill positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self.rootView addSubview:playTimePill positioned:NSWindowAbove relativeTo:self.desktopTopChromeView];
 
     [self rebuildDesktopAccountSwitcher];
     [self layoutDesktopAccountSwitcher];

@@ -367,7 +367,7 @@ using namespace OPN;
 - (void)applyFocusStyle {
     BOOL selected = self.controllerFocused;
     NSColor *accentColor = OpnColor(OPNControllerAccentSoftRGB());
-    self.playButton.hidden = OpnControllerModeEnabled() || !selected;
+    self.playButton.hidden = YES;
     [CATransaction begin];
     [CATransaction setAnimationDuration:0.22];
     [CATransaction setAnimationTimingFunction:[OPNCoreAnimationCoordinator appleQuinticTimingFunction]];
@@ -461,6 +461,7 @@ using namespace OPN;
     CGFloat playHeight = height * (34.0 / 180.0);
     CGFloat playY = OpnControllerModeEnabled() ? MAX(0.0, height - height * (52.0 / 180.0)) : 10.0;
     self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, playY, playWidth, playHeight);
+    self.playButton.hidden = YES;
     self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
     CGFloat pillHeight = MAX(20.0, floor(height * (22.0 / 180.0)));
     CGFloat pillWidth = MIN(width - 18.0, MAX(94.0, floor(width * (112.0 / 180.0))));
@@ -729,7 +730,6 @@ using namespace OPN;
     [super mouseEntered:event];
     if (OpnControllerModeEnabled()) return;
     if (!self.controllerFocused) {
-        self.playButton.hidden = NO;
         self.layer.borderColor = OpnColor(0xFFFFFF, 0.28).CGColor;
     }
 }
@@ -738,7 +738,6 @@ using namespace OPN;
     [super mouseExited:event];
     if (OpnControllerModeEnabled()) return;
     if (!self.controllerFocused) {
-        self.playButton.hidden = YES;
         self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
     }
 }
