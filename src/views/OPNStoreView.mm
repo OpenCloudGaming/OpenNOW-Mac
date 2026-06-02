@@ -8,10 +8,10 @@
 #include <cctype>
 #include <cmath>
 
-static const CGFloat kStoreTopInset = 146.0;
+static const CGFloat kStoreTopInset = 42.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
 static const CGFloat kControllerStoreNavigationClearance = 0.0;
-static const CGFloat kStoreHeroTopOffset = 120.0;
+static const CGFloat kStoreHeroTopOffset = 0.0;
 static const CGFloat kStoreHeroHeight = 424.0;
 static const CGFloat kStoreRowHeight = 258.0;
 static const CGFloat kStoreCardSpacing = 18.0;
@@ -428,45 +428,6 @@ static NSString *OPNStoreFeatureSummary(const OPN::GameInfo &game) {
         if (control.length > 0) [parts addObject:control];
     }
     return parts.count > 0 ? [parts componentsJoinedByString:@" · "] : @"Ready to stream";
-}
-
-static NSInteger OPNStoreSectionCount(const std::vector<OPN::PanelResult> &panels) {
-    NSInteger count = 0;
-    for (const OPN::PanelResult &panel : panels) {
-        for (const OPN::PanelSection &section : panel.sections) {
-            if (!section.games.empty()) count++;
-        }
-    }
-    return count;
-}
-
-static NSInteger OPNStoreGameCount(const std::vector<OPN::PanelResult> &panels) {
-    NSInteger count = 0;
-    for (const OPN::PanelResult &panel : panels) {
-        for (const OPN::PanelSection &section : panel.sections) count += (NSInteger)section.games.size();
-    }
-    return count;
-}
-
-static NSInteger OPNStoreDistinctStoreCount(const std::vector<OPN::PanelResult> &panels) {
-    std::vector<std::string> stores;
-    for (const OPN::PanelResult &panel : panels) {
-        for (const OPN::PanelSection &section : panel.sections) {
-            for (const OPN::GameInfo &game : section.games) {
-                for (const std::string &store : game.availableStores) {
-                    bool exists = false;
-                    for (const std::string &seen : stores) {
-                        if (OPNStoreStringEqualsCaseInsensitive(store, seen)) {
-                            exists = true;
-                            break;
-                        }
-                    }
-                    if (!exists && !store.empty()) stores.push_back(store);
-                }
-            }
-        }
-    }
-    return (NSInteger)stores.size();
 }
 
 static bool OPNStoreGameMatchesLibraryGame(const OPN::GameInfo &storeGame, const OPN::GameInfo &libraryGame) {
@@ -1034,7 +995,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)controllerFeaturedHeroLaunchClicked:(id)sender;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)updateDesktopFeaturedHeroOnly;
-- (void)addStoreMetricPillWithTitle:(NSString *)title value:(NSString *)value frame:(NSRect)frame;
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
 - (NSView *)storeIconStripForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
@@ -1308,14 +1268,6 @@ using namespace OPN;
     OPNStoreAmbientView *ambient = [[OPNStoreAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), 1800.0))];
     [self.documentView addSubview:ambient];
 
-    CGFloat pillY = y + 16.0;
-    CGFloat pillWidth = 112.0;
-    CGFloat pillGap = 10.0;
-    CGFloat pillX = contentX + contentWidth - pillWidth * 3.0 - pillGap * 2.0;
-    [self addStoreMetricPillWithTitle:@"Drops" value:[NSString stringWithFormat:@"%ld", (long)OPNStoreSectionCount(_panels)] frame:NSMakeRect(pillX, pillY, pillWidth, 58.0)];
-    [self addStoreMetricPillWithTitle:@"Games" value:[NSString stringWithFormat:@"%ld", (long)OPNStoreGameCount(_panels)] frame:NSMakeRect(pillX + pillWidth + pillGap, pillY, pillWidth, 58.0)];
-    [self addStoreMetricPillWithTitle:@"Stores" value:[NSString stringWithFormat:@"%ld", (long)MAX((NSInteger)1, OPNStoreDistinctStoreCount(_panels))] frame:NSMakeRect(pillX + (pillWidth + pillGap) * 2.0, pillY, pillWidth, 58.0)];
-
     const GameInfo *heroGame = [self currentHeroGame];
 
     CGFloat heroHeight = 0.0;
@@ -1324,7 +1276,7 @@ using namespace OPN;
         [self addDesktopHeroStageForGame:*heroGame y:y + kStoreHeroTopOffset contentX:contentX width:contentWidth height:heroHeight];
     }
 
-    CGFloat rowY = heroGame ? y + kStoreHeroTopOffset + heroHeight + 62.0 : y + 146.0;
+    CGFloat rowY = heroGame ? y + kStoreHeroTopOffset + heroHeight + 62.0 : y;
     NSInteger renderedRows = 0;
     for (const PanelResult &panel : _panels) {
         for (const PanelSection &section : panel.sections) {
@@ -1348,21 +1300,6 @@ using namespace OPN;
     CGFloat documentHeight = MAX(NSHeight(self.bounds), rowY + 88.0);
     ambient.frame = NSMakeRect(0.0, 0.0, width, documentHeight);
     self.documentView.frame = NSMakeRect(0, 0, width, documentHeight);
-}
-
-- (void)addStoreMetricPillWithTitle:(NSString *)title value:(NSString *)value frame:(NSRect)frame {
-    NSView *pill = [[NSView alloc] initWithFrame:frame];
-    pill.wantsLayer = YES;
-    pill.layer.cornerRadius = 18.0;
-    pill.layer.backgroundColor = OpnColor(0xFFFFFF, 0.055).CGColor;
-    pill.layer.borderWidth = 1.0;
-    pill.layer.borderColor = OpnColor(0xFFFFFF, 0.105).CGColor;
-    [self.documentView addSubview:pill];
-
-    NSTextField *valueLabel = OpnLabel(value ?: @"0", NSMakeRect(14.0, 8.0, NSWidth(frame) - 28.0, 26.0), 22.0, OpnColor(kTextPrimary), NSFontWeightBold, NSTextAlignmentCenter);
-    [pill addSubview:valueLabel];
-    NSTextField *titleLabel = OpnLabel((title ?: @"").uppercaseString, NSMakeRect(10.0, 35.0, NSWidth(frame) - 20.0, 14.0), 10.0, OpnColor(kTextMuted), NSFontWeightBlack, NSTextAlignmentCenter);
-    [pill addSubview:titleLabel];
 }
 
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted {
