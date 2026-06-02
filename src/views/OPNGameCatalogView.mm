@@ -14,7 +14,10 @@
 #include "common/OPNSentry.h"
 
 static const CGFloat kGridPadding = 28.0;
-static const CGFloat kCardSpacing = 18.0;
+static const CGFloat kDesktopLibraryPagePadding = 20.0;
+static const CGFloat kDesktopLibraryMaxContentWidth = 1600.0;
+static const CGFloat kDesktopLibraryMinCardWidth = 200.0;
+static const CGFloat kDesktopLibraryColumnSpacing = 12.0;
 static const CGFloat kNavHeight = 62.0;
 static const CGFloat kToolbarHeight = 82.0;
 static const CGFloat kDesktopLibraryTopInset = 170.0;
@@ -31,6 +34,37 @@ static const NSInteger kDesktopGridRenderBufferRows = 3;
 static NSString *const OPNFavoriteGameIdsDefaultsKey = @"OpenNOW.Library.FavoriteGameIds";
 
 typedef void (^OPNCatalogImageCompletion)(NSImage *image, NSString *urlString, NSData *data);
+
+typedef struct {
+    CGFloat pageWidth;
+    CGFloat contentX;
+    CGFloat contentWidth;
+    NSInteger columns;
+    CGFloat cardWidth;
+    CGFloat cardHeight;
+    CGFloat columnSpacing;
+} OPNDesktopLibraryGridMetrics;
+
+static OPNDesktopLibraryGridMetrics OPNDesktopLibraryGridMetricsForWidth(CGFloat width) {
+    CGFloat pageWidth = MAX(1.0, width);
+    CGFloat contentWidth = MIN(kDesktopLibraryMaxContentWidth,
+                               MAX(1.0, pageWidth - kDesktopLibraryPagePadding * 2.0));
+    CGFloat contentX = floor((pageWidth - contentWidth) * 0.5);
+    NSInteger columns = MAX(1, (NSInteger)floor((contentWidth + kDesktopLibraryColumnSpacing) /
+                                                (kDesktopLibraryMinCardWidth + kDesktopLibraryColumnSpacing)));
+    CGFloat totalSpacing = MAX(0, columns - 1) * kDesktopLibraryColumnSpacing;
+    CGFloat cardWidth = floor(MAX(1.0, (contentWidth - totalSpacing) / MAX(1, columns)));
+    OPNDesktopLibraryGridMetrics metrics = {
+        pageWidth,
+        contentX,
+        contentWidth,
+        columns,
+        cardWidth,
+        cardWidth,
+        kDesktopLibraryColumnSpacing,
+    };
+    return metrics;
+}
 
 typedef NS_ENUM(NSInteger, OPNControllerHeroPrimaryAction) {
     OPNControllerHeroPrimaryActionResume = 0,
@@ -2466,21 +2500,20 @@ using namespace OPN;
     }
     [_cardViews removeAllObjects];
 
-    CGFloat pageWidth = MAX(980.0, NSWidth(self.bounds));
-    CGFloat contentX = MAX(42.0, MIN(86.0, floor(pageWidth * 0.065)));
-    CGFloat contentWidth = MAX(680.0, pageWidth - contentX * 2.0);
+    OPNDesktopLibraryGridMetrics desktopMetrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
+    CGFloat pageWidth = desktopMetrics.pageWidth;
+    CGFloat contentX = desktopMetrics.contentX;
+    CGFloat contentWidth = desktopMetrics.contentWidth;
     CGFloat headerY = kDesktopLibraryTopInset;
     OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, pageWidth, MAX(NSHeight(self.bounds), 1800.0))];
     [self.gridContentView addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
 
-    CGFloat cardWidth = [OPNGameCardView cardSize].width;
-    CGFloat cardHeight = [OPNGameCardView cardSize].height;
-    CGFloat availableWidth = contentWidth;
-    NSInteger cols = controllerMode ? 1 : MAX(1, (NSInteger)((availableWidth + kCardSpacing) / (cardWidth + kCardSpacing)));
+    CGFloat cardWidth = desktopMetrics.cardWidth;
+    CGFloat cardHeight = desktopMetrics.cardHeight;
+    NSInteger cols = desktopMetrics.columns;
     self.gridColumnCount = cols;
-    CGFloat gridSpacing = controllerMode ? 26.0 : (cols > 1 ? floor((availableWidth - cols * cardWidth) / (cols - 1)) : kCardSpacing);
-    gridSpacing = MAX(kCardSpacing, gridSpacing);
-    CGFloat xStart = controllerMode ? 64.0 : contentX + (cols > 1 ? 0.0 : floor(MAX(0.0, (contentWidth - cardWidth) / 2.0)));
+    CGFloat gridSpacing = desktopMetrics.columnSpacing;
+    CGFloat xStart = contentX;
 
     std::vector<OPN::GameInfo> displayGames;
     displayGames.reserve(_allGames.size());
@@ -3769,19 +3802,16 @@ using namespace OPN;
     if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) {
         if (!controllerMode) {
             NSInteger columns = MAX(1, self.gridColumnCount);
-            NSSize cardSize = [OPNGameCardView cardSize];
-            CGFloat pageWidth = MAX(980.0, NSWidth(self.bounds));
-            CGFloat contentX = MAX(42.0, MIN(86.0, floor(pageWidth * 0.065)));
-            CGFloat contentWidth = MAX(680.0, pageWidth - contentX * 2.0);
+            OPNDesktopLibraryGridMetrics desktopMetrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
+            NSSize cardSize = NSMakeSize(desktopMetrics.cardWidth, desktopMetrics.cardHeight);
+            CGFloat contentWidth = desktopMetrics.contentWidth;
             const OPN::GameInfo *heroGame = [self currentLastPlayedGame];
             if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
             CGFloat heroHeight = heroGame ? MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36))) : 0.0;
             CGFloat gridTop = heroGame ? kDesktopLibraryTopInset + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : kDesktopLibraryTopInset;
             CGFloat cardStartY = gridTop + 82.0;
-            CGFloat availableWidth = contentWidth;
-            CGFloat gridSpacing = columns > 1 ? floor((availableWidth - columns * cardSize.width) / (columns - 1)) : kCardSpacing;
-            gridSpacing = MAX(kCardSpacing, gridSpacing);
-            CGFloat xStart = contentX + (columns > 1 ? 0.0 : floor(MAX(0.0, (contentWidth - cardSize.width) / 2.0)));
+            CGFloat gridSpacing = desktopMetrics.columnSpacing;
+            CGFloat xStart = desktopMetrics.contentX;
             NSInteger row = clamped / columns;
             NSInteger column = clamped % columns;
             NSRect targetRect = NSInsetRect(NSMakeRect(xStart + column * (cardSize.width + gridSpacing),
@@ -3822,7 +3852,7 @@ using namespace OPN;
 }
 
 - (NSInteger)desktopInitialRenderedGameCountForColumns:(NSInteger)columns {
-    CGFloat cardHeight = [OPNGameCardView cardSize].height;
+    CGFloat cardHeight = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds)).cardHeight;
     CGFloat availableHeight = NSHeight(self.scrollView.frame) > 1.0 ? NSHeight(self.scrollView.frame) : NSHeight(self.bounds);
     NSInteger visibleRows = (NSInteger)ceil((availableHeight + kDesktopLibraryRowSpacing) / MAX(1.0, cardHeight + kDesktopLibraryRowSpacing));
     return MAX(columns, columns * MAX(1, visibleRows + kDesktopGridRenderBufferRows));
@@ -3834,14 +3864,13 @@ using namespace OPN;
 
     NSClipView *clipView = self.scrollView.contentView;
     NSInteger columns = MAX(1, self.gridColumnCount);
-    CGFloat pageWidth = MAX(980.0, NSWidth(self.bounds));
-    CGFloat contentX = MAX(42.0, MIN(86.0, floor(pageWidth * 0.065)));
-    CGFloat contentWidth = MAX(680.0, pageWidth - contentX * 2.0);
+    OPNDesktopLibraryGridMetrics desktopMetrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
+    CGFloat contentWidth = desktopMetrics.contentWidth;
     const OPN::GameInfo *heroGame = self.hasDesktopFeaturedGame ? &_desktopFeaturedGame : [self currentLastPlayedGame];
     if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
     CGFloat heroHeight = heroGame ? MIN(kDesktopLibraryHeroHeight, MAX(360.0, floor(contentWidth * 0.36))) : 0.0;
     CGFloat gridTop = heroGame ? kDesktopLibraryTopInset + kDesktopLibraryHeroTopOffset + heroHeight + kDesktopLibraryGridTopGap : kDesktopLibraryTopInset;
-    CGFloat rowHeight = [OPNGameCardView cardSize].height + kDesktopLibraryRowSpacing;
+    CGFloat rowHeight = desktopMetrics.cardHeight + kDesktopLibraryRowSpacing;
     CGFloat visibleMinY = MAX(0.0, NSMinY(clipView.bounds) - (gridTop + 82.0));
     NSInteger firstVisibleRow = rowHeight > 0.0 ? MAX(0, (NSInteger)floor(visibleMinY / rowHeight)) : 0;
     NSInteger nextStartIndex = MAX(0, firstVisibleRow - kDesktopGridRenderBufferRows) * columns;
