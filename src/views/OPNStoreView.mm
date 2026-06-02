@@ -12,7 +12,7 @@ static const CGFloat kStoreTopInset = 170.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
 static const CGFloat kControllerStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroTopOffset = 0.0;
-static const CGFloat kStoreHeroAspectRatio = 2.35;
+static const CGFloat kStoreHeroHeightRatio = 0.3229;
 static const CGFloat kStoreRowHeight = 258.0;
 static const CGFloat kStoreCardSpacing = 18.0;
 static const CGFloat kStoreTileWidth = 268.0;
@@ -54,8 +54,9 @@ static CGFloat OPNStoreHeroContentInsetForWidth(CGFloat width) {
     return MIN(kStoreHeroMaxContentInset, MAX(kStoreHeroMinContentInset, width * kStoreHeroContentInsetRatio));
 }
 
-static CGFloat OPNStoreHeroHeightForWidth(CGFloat width) {
-    return floor(MAX(1.0, width) / kStoreHeroAspectRatio);
+static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
+    CGFloat viewportHeroHeight = MIN(520.0, MAX(250.0, MAX(1.0, height) * 0.32));
+    return floor(MIN(viewportHeroHeight, MAX(1.0, width) * kStoreHeroHeightRatio));
 }
 
 @interface OPNStoreAmbientView : NSView
@@ -1275,7 +1276,7 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        heroHeight = OPNStoreHeroHeightForWidth(contentWidth);
+        heroHeight = OPNStoreHeroHeightForSize(contentWidth, NSHeight(self.bounds));
         [self addDesktopHeroStageForGame:*heroGame y:y + kStoreHeroTopOffset contentX:contentX width:contentWidth height:heroHeight];
     }
 
@@ -1496,7 +1497,7 @@ using namespace OPN;
     if (heroGame) {
         CGFloat availableHeroWidth = MAX(1.0, contentWidth);
         CGFloat heroWidth = availableHeroWidth;
-        CGFloat heroHeight = OPNStoreHeroHeightForWidth(heroWidth);
+        CGFloat heroHeight = OPNStoreHeroHeightForSize(heroWidth, NSHeight(self.bounds));
         CGFloat heroX = contentX + floor((availableHeroWidth - heroWidth) * 0.5);
         NSInteger heroDotCount = MIN((NSInteger)6, MAX((NSInteger)1, [self heroCandidateCount]));
         NSInteger heroDotIndex = ((self.currentHeroIndex % heroDotCount) + heroDotCount) % heroDotCount;

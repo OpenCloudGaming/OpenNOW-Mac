@@ -14,9 +14,9 @@
 #include "common/OPNSentry.h"
 
 static const CGFloat kGridPadding = 28.0;
-static const CGFloat kDesktopLibraryMinContentInset = 32.0;
-static const CGFloat kDesktopLibraryMaxContentInset = 190.0;
-static const CGFloat kDesktopLibraryContentInsetRatio = 0.049;
+static const CGFloat kDesktopLibraryMinContentInset = 30.0;
+static const CGFloat kDesktopLibraryMaxContentInset = 106.0;
+static const CGFloat kDesktopLibraryContentInsetRatio = 0.055;
 static const CGFloat kDesktopLibraryMinCardWidth = 200.0;
 static const CGFloat kDesktopLibraryColumnSpacing = 12.0;
 static const CGFloat kNavHeight = 62.0;
@@ -654,7 +654,7 @@ typedef NS_ENUM(NSInteger, OPNControllerPromptMode) {
 - (NSInteger)gameCountForCategory:(NSString *)categoryId;
 - (const OPN::GameInfo *)currentLastPlayedGame;
 - (int)preferredVariantIndexForGame:(const OPN::GameInfo &)game;
-- (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
+- (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
 - (void)selectDesktopFeaturedGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex;
 - (void)desktopHeroPlayClicked:(id)sender;
 - (void)renderControllerHomeSurface;
@@ -789,11 +789,12 @@ static NSArray<NSString *> *OPNControllerHeroBackgroundCandidates(const OPN::Gam
         }
     };
     appendImageType("MARQUEE_HERO_IMAGE");
-    appendImageType("FEATURE_IMAGE");
     appendImageType("HERO_IMAGE");
     appendImageType("TV_BANNER");
+    appendImageType("FEATURE_IMAGE");
     appendImageType("KEY_ART");
     appendImageType("KEY_IMAGE");
+    appendImageType("GAME_BOX_ART");
     for (NSString *candidate in OPNControllerCategoryArtworkCandidates(game)) {
         if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
     }
@@ -1946,7 +1947,7 @@ using namespace OPN;
     return 0;
 }
 
-- (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame {
+- (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
     NSView *stage = [[NSView alloc] initWithFrame:frame];
     stage.wantsLayer = YES;
     stage.layer.backgroundColor = OpnColor(0x030506, 0.98).CGColor;
@@ -1963,7 +1964,6 @@ using namespace OPN;
     CGFloat height = NSHeight(frame);
     OPNControllerPreviewBackgroundView *artwork = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:stage.bounds];
     artwork.cornerRadius = 34.0;
-    artwork.scalesImageToFit = YES;
     artwork.wantsLayer = YES;
     artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
@@ -1972,10 +1972,10 @@ using namespace OPN;
 
     CAGradientLayer *scrim = [CAGradientLayer layer];
     scrim.frame = stage.bounds;
-    scrim.colors = @[(id)OpnColor(0x020403, 0.94).CGColor,
-                     (id)OpnColor(0x020403, 0.46).CGColor,
-                     (id)OpnColor(0x020403, 0.02).CGColor];
-    scrim.locations = @[@0.0, @0.36, @1.0];
+    scrim.colors = @[(id)OpnColor(0x020403, 0.92).CGColor,
+                     (id)OpnColor(0x020403, 0.42).CGColor,
+                     (id)OpnColor(0x020403, 0.04).CGColor];
+    scrim.locations = @[@0.0, @0.34, @1.0];
     scrim.startPoint = CGPointMake(0.0, 0.5);
     scrim.endPoint = CGPointMake(1.0, 0.5);
     [artwork.layer addSublayer:scrim];
@@ -1988,18 +1988,28 @@ using namespace OPN;
     [stage addSubview:title];
 
     NSString *store = game.availableStores.empty() ? @"Cloud Ready" : OPNStoreCategoryTitle(OPNCatalogString(game.availableStores.front(), @""));
-    NSString *metaText = OPNCatalogJoinedStrings(game.genres, store);
+    NSString *genre = game.genres.empty() ? @"Cloud Gaming" : OPNCatalogDisplayString(game.genres.front(), @"Cloud Gaming");
+    NSString *metaText = [NSString stringWithFormat:@"%@ / %@", store, genre];
     NSTextField *meta = OpnLabel(metaText, NSMakeRect(68.0, height * 0.57, textWidth, 24.0), 16.0, OpnColor(0xFFFFFF, 0.86), NSFontWeightBold);
     meta.lineBreakMode = NSLineBreakByTruncatingTail;
     [stage addSubview:meta];
 
     BOOL resumeAvailable = OPNGameHasActiveSession(game, _activeSessionAppIds);
     NSString *primaryTitle = resumeAvailable ? @"Resume" : @"Play";
-    NSButton *primary = OpnButton(primaryTitle, NSMakeRect(68.0, height * 0.68, 138.0, 44.0), OpnColor(OPNControllerAccentSoftRGB(), 0.96), OpnColor(OPNControllerAccentBlackRGB(0.88)));
-    primary.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightBold];
+    NSButton *primary = [[NSButton alloc] initWithFrame:NSMakeRect(68.0, height * 0.68, 138.0, 44.0)];
+    primary.title = primaryTitle;
+    primary.bordered = NO;
+    primary.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
+    primary.contentTintColor = OpnColor(kAccentOn);
+    primary.wantsLayer = YES;
+    primary.layer.cornerRadius = 23.0;
+    primary.layer.backgroundColor = OpnColor(kBrandGreen, 0.98).CGColor;
+    primary.layer.shadowColor = OpnColor(kBrandGreen).CGColor;
+    primary.layer.shadowOpacity = 0.32;
+    primary.layer.shadowRadius = 22.0;
+    primary.layer.shadowOffset = CGSizeZero;
     primary.target = self;
     primary.action = @selector(desktopHeroPlayClicked:);
-    primary.layer.cornerRadius = 22.0;
     [stage addSubview:primary];
 
     NSButton *storeButton = [[NSButton alloc] initWithFrame:NSMakeRect(224.0, height * 0.68, 126.0, 44.0)];
@@ -2015,6 +2025,27 @@ using namespace OPN;
     storeButton.target = self;
     storeButton.action = @selector(desktopHeroPlayClicked:);
     [stage addSubview:storeButton];
+
+    if (totalCount > 1) {
+        CGFloat activeDotWidth = 32.0;
+        CGFloat inactiveDotWidth = 16.0;
+        CGFloat dotHeight = 6.0;
+        CGFloat dotSpacing = 28.0;
+        CGFloat dotRailWidth = (totalCount - 1) * dotSpacing + activeDotWidth;
+        CGFloat dotX = NSMinX(frame) + floor((NSWidth(frame) - dotRailWidth) * 0.5);
+        CGFloat dotY = NSMaxY(frame) + 20.0;
+        NSInteger activeDotIndex = ((activeIndex % totalCount) + totalCount) % totalCount;
+        for (NSInteger index = 0; index < totalCount; index++) {
+            BOOL active = index == activeDotIndex;
+            CGFloat pillWidth = active ? activeDotWidth : inactiveDotWidth;
+            CGFloat pillX = dotX + index * dotSpacing + (active ? 0.0 : floor((activeDotWidth - inactiveDotWidth) * 0.5));
+            NSView *pill = [[NSView alloc] initWithFrame:NSMakeRect(pillX, dotY, pillWidth, dotHeight)];
+            pill.wantsLayer = YES;
+            pill.layer.cornerRadius = dotHeight * 0.5;
+            pill.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.20)).CGColor;
+            [self.gridContentView addSubview:pill];
+        }
+    }
 }
 
 - (void)selectDesktopFeaturedGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
@@ -2584,6 +2615,7 @@ using namespace OPN;
     NSInteger totalVisibleCount = (NSInteger)displayGames.size();
     std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:displayGames];
     const OPN::GameInfo *heroGame = featuredGames.empty() ? nullptr : &featuredGames[(size_t)MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1))];
+    NSInteger heroIndex = featuredGames.empty() ? 0 : MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1));
     if (heroGame) {
         self.desktopFeaturedGame = *heroGame;
         self.desktopFeaturedVariantIndex = [self preferredVariantIndexForGame:self.desktopFeaturedGame];
@@ -2602,7 +2634,9 @@ using namespace OPN;
         [self addDesktopLibraryHeroForGame:*heroGame frame:NSMakeRect(contentX,
                                                                       verticalMetrics.topInset + kDesktopLibraryHeroTopOffset,
                                                                       contentWidth,
-                                                                      verticalMetrics.heroHeight)];
+                                                                      verticalMetrics.heroHeight)
+                                  activeIndex:heroIndex
+                                   totalCount:(NSInteger)featuredGames.size()];
     }
     CGFloat gridTop = verticalMetrics.gridTop;
 
@@ -3237,6 +3271,7 @@ using namespace OPN;
     games.reserve(_featuredGames.empty() ? fallbackGames.size() : _featuredGames.size());
 
     auto appendFeatured = [&](const OPN::GameInfo &sourceGame) {
+        if (games.size() >= static_cast<size_t>(6)) return;
         if (!OPNLibraryGameHasAccessibleVariants(sourceGame)) return;
         OPN::GameInfo libraryGame = OPNGameWithLibraryAccessibleVariants(sourceGame);
         for (const OPN::GameInfo &existing : games) {
