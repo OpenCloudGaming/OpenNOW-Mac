@@ -8,7 +8,7 @@
 #include <cctype>
 #include <cmath>
 
-static const CGFloat kStoreTopInset = 42.0;
+static const CGFloat kStoreTopInset = 170.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
 static const CGFloat kControllerStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroTopOffset = 0.0;

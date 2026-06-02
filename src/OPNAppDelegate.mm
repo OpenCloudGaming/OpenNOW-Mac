@@ -68,6 +68,9 @@
 @property (nonatomic, strong) OPNCloudmatchServerPickerView *cloudmatchServerPickerView;
 @property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
 @property (nonatomic, strong) id controllerModeShortcutMonitor;
+@property (nonatomic, strong) NSView *desktopTopChromeView;
+@property (nonatomic, strong) NSView *desktopBrandIconView;
+@property (nonatomic, strong) NSTextField *desktopBrandLabel;
 @property (nonatomic, strong) NSView *desktopNavigationBar;
 @property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
@@ -830,11 +833,50 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     button.wantsLayer = YES;
     button.layer.cornerRadius = 14.0;
     button.focusRingType = NSFocusRingTypeNone;
+    if (@available(macOS 11.0, *)) {
+        NSString *symbolName = tag == 1 ? @"storefront" : (tag == 0 ? @"books.vertical" : @"gearshape");
+        NSImage *symbol = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:title];
+        if (symbol) {
+            button.image = symbol;
+            button.imagePosition = NSImageLeft;
+            button.imageScaling = NSImageScaleProportionallyDown;
+        }
+    }
     return button;
 }
 
 - (void)installDesktopNavigationBarIfNeeded {
     if (!self.rootView) return;
+    if (self.desktopTopChromeView && self.desktopTopChromeView.superview != self.rootView) {
+        self.desktopTopChromeView = nil;
+        self.desktopBrandIconView = nil;
+        self.desktopBrandLabel = nil;
+    }
+    if (!self.desktopTopChromeView) {
+        NSView *chrome = [[NSView alloc] initWithFrame:NSZeroRect];
+        chrome.wantsLayer = YES;
+        chrome.layer.backgroundColor = OpnColor(0x000000, 0.98).CGColor;
+        self.desktopTopChromeView = chrome;
+
+        NSView *brandIcon = [[NSView alloc] initWithFrame:NSZeroRect];
+        brandIcon.wantsLayer = YES;
+        brandIcon.layer.cornerRadius = 14.0;
+        brandIcon.layer.backgroundColor = OpnColor(OPN::kBrandGreen, 0.94).CGColor;
+        brandIcon.layer.borderWidth = 1.0;
+        brandIcon.layer.borderColor = OpnColor(0xFFFFFF, 0.22).CGColor;
+        self.desktopBrandIconView = brandIcon;
+        [chrome addSubview:brandIcon];
+
+        NSTextField *brandGlyph = OpnLabel(@"ON", NSZeroRect, 14.0, OpnColor(0x173019, 0.96), NSFontWeightBlack, NSTextAlignmentCenter);
+        brandGlyph.identifier = @"brandGlyph";
+        [brandIcon addSubview:brandGlyph];
+
+        NSTextField *brandLabel = OpnLabel(@"OpenNOW", NSZeroRect, 18.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
+        brandLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        self.desktopBrandLabel = brandLabel;
+        [chrome addSubview:brandLabel];
+        [self.rootView addSubview:chrome positioned:NSWindowAbove relativeTo:self.contentContainer];
+    }
     if (self.desktopNavigationBar && self.desktopNavigationBar.superview != self.rootView) {
         self.desktopNavigationBar = nil;
         self.desktopNavigationButtons = @[];
@@ -842,19 +884,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (self.desktopNavigationBar) return;
     NSView *bar = [[NSView alloc] initWithFrame:NSZeroRect];
     bar.wantsLayer = YES;
-    bar.layer.cornerRadius = 18.0;
-    bar.layer.backgroundColor = OpnColor(0x050A08, 0.78).CGColor;
-    bar.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
-    bar.layer.borderWidth = 1.0;
+    bar.layer.cornerRadius = 0.0;
+    bar.layer.backgroundColor = NSColor.clearColor.CGColor;
+    bar.layer.borderWidth = 0.0;
     bar.layer.shadowColor = NSColor.blackColor.CGColor;
-    bar.layer.shadowOpacity = 0.24;
-    bar.layer.shadowRadius = 18.0;
-    bar.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    bar.layer.shadowOpacity = 0.0;
+    bar.layer.shadowRadius = 0.0;
+    bar.layer.shadowOffset = CGSizeZero;
     self.desktopNavigationBar = bar;
 
     NSArray<NSButton *> *buttons = @[
-        [self desktopNavigationButtonWithTitle:@"Library" tag:0],
         [self desktopNavigationButtonWithTitle:@"Store" tag:1],
+        [self desktopNavigationButtonWithTitle:@"Library" tag:0],
         [self desktopNavigationButtonWithTitle:@"Settings" tag:2],
     ];
     self.desktopNavigationButtons = buttons;
@@ -917,27 +958,37 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)layoutDesktopNavigationBar {
     if (!self.desktopNavigationBar || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
-    CGFloat barWidth = 296.0;
-    CGFloat barHeight = 36.0;
-    CGFloat x = MAX(88.0, floor(width * 0.055));
-    self.desktopNavigationBar.frame = NSMakeRect(x, 58.0, barWidth, barHeight);
-    CGFloat buttonWidth = floor((barWidth - 12.0) / 3.0);
-    CGFloat buttonX = 4.0;
+    CGFloat chromeHeight = 140.0;
+    self.desktopTopChromeView.frame = NSMakeRect(0.0, 0.0, width, chromeHeight);
+    CGFloat brandX = MAX(48.0, floor(width * 0.024));
+    self.desktopBrandIconView.frame = NSMakeRect(brandX, 43.0, 54.0, 54.0);
+    for (NSView *subview in self.desktopBrandIconView.subviews) {
+        if ([subview.identifier isEqualToString:@"brandGlyph"]) subview.frame = self.desktopBrandIconView.bounds;
+    }
+    self.desktopBrandLabel.frame = NSMakeRect(NSMaxX(self.desktopBrandIconView.frame) + 20.0, 58.0, 180.0, 28.0);
+
+    CGFloat barWidth = 500.0;
+    CGFloat barHeight = 116.0;
+    CGFloat x = floor((width - barWidth) * 0.5);
+    self.desktopNavigationBar.frame = NSMakeRect(x, 24.0, barWidth, barHeight);
+    CGFloat buttonWidth = floor(barWidth / 3.0);
+    CGFloat buttonX = 0.0;
     for (NSButton *button in self.desktopNavigationButtons) {
-        button.frame = NSMakeRect(buttonX, 4.0, buttonWidth, barHeight - 8.0);
-        buttonX += buttonWidth + 2.0;
+        button.frame = NSMakeRect(buttonX, 0.0, buttonWidth, barHeight);
+        buttonX += buttonWidth;
     }
 }
 
 - (void)layoutDesktopAccountSwitcher {
     if (!self.desktopAccountSwitcher || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
-    CGFloat switcherWidth = MIN(248.0, MAX(208.0, width * 0.18));
-    CGFloat x = MAX(24.0, width - switcherWidth - 70.0);
-    self.desktopAccountSwitcher.frame = NSMakeRect(x, 58.0, switcherWidth, 36.0);
-    self.desktopRemainingPlayTimePill.frame = NSMakeRect(x, 100.0, switcherWidth, 28.0);
-    self.desktopRemainingPlayTimePill.layer.cornerRadius = 14.0;
-    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 10.0, 6.0);
+    CGFloat switcherWidth = MIN(180.0, MAX(150.0, width * 0.10));
+    CGFloat accountX = MAX(24.0, width - switcherWidth - 58.0);
+    self.desktopAccountSwitcher.frame = NSMakeRect(accountX, 52.0, switcherWidth, 44.0);
+    CGFloat pillWidth = 128.0;
+    self.desktopRemainingPlayTimePill.frame = NSMakeRect(accountX - pillWidth - 14.0, 52.0, pillWidth, 44.0);
+    self.desktopRemainingPlayTimePill.layer.cornerRadius = 22.0;
+    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 8.0, 13.0);
 }
 
 - (void)updateDesktopNavigationBar {
@@ -945,6 +996,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self updateDesktopAccountSwitcher];
     if (!self.desktopNavigationBar) return;
     BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
+    self.desktopTopChromeView.hidden = !visible;
     self.desktopNavigationBar.hidden = !visible;
     if (!visible) return;
     [self layoutDesktopNavigationBar];
@@ -952,10 +1004,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         BOOL selected = (button.tag == 0 && self.currentScreen == OPN::AuthScreen::Catalog) ||
             (button.tag == 1 && self.currentScreen == OPN::AuthScreen::Store) ||
             (button.tag == 2 && self.currentScreen == OPN::AuthScreen::Settings);
-        button.contentTintColor = selected ? OpnColor(0x071008) : OpnColor(OPN::kTextSecondary);
-        button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.92).CGColor : NSColor.clearColor.CGColor;
+        button.font = [NSFont systemFontOfSize:16.0 weight:selected ? NSFontWeightBlack : NSFontWeightBold];
+        button.contentTintColor = selected ? OpnColor(OPN::kTextPrimary) : OpnColor(OPN::kTextSecondary, 0.88);
+        button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.12).CGColor : NSColor.clearColor.CGColor;
         button.layer.borderWidth = selected ? 0.0 : 1.0;
-        button.layer.borderColor = OpnColor(0xFFFFFF, selected ? 0.0 : 0.08).CGColor;
+        button.layer.borderColor = OpnColor(0xFFFFFF, selected ? 0.0 : 0.0).CGColor;
     }
 }
 
