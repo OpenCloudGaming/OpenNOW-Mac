@@ -99,6 +99,64 @@ static int IntValue(id value, int fallback = 0) {
     return fallback;
 }
 
+static NSNumber *NumberValue(id value) {
+    if ([value isKindOfClass:[NSNumber class]]) return (NSNumber *)value;
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *text = [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (text.length == 0) return nil;
+        static NSNumberFormatter *formatter = nil;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            formatter = [[NSNumberFormatter alloc] init];
+            formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+            formatter.numberStyle = NSNumberFormatterDecimalStyle;
+        });
+        return [formatter numberFromString:text];
+    }
+    return nil;
+}
+
+static NSNumber *NestedNumberValue(NSDictionary *dictionary, NSArray<NSString *> *keys) {
+    for (NSString *key in keys) {
+        NSNumber *number = NumberValue(dictionary[key]);
+        if (number) return number;
+    }
+    return nil;
+}
+
+static void ParseRemainingPlaytime(NSDictionary *session, OPN::SessionInfo &info) {
+    if (!session) return;
+    NSArray<NSDictionary *> *containers = @[
+        session,
+        DictionaryValue(session[@"sessionProgress"]) ?: @{},
+        DictionaryValue(session[@"progressInfo"]) ?: @{},
+        DictionaryValue(session[@"sessionControlInfo"]) ?: @{},
+    ];
+
+    NSNumber *minutes = nil;
+    NSNumber *seconds = nil;
+    NSNumber *milliseconds = nil;
+    for (NSDictionary *container in containers) {
+        minutes = NestedNumberValue(container, @[@"remainingTimeInMinutes", @"remainingSessionTimeInMinutes", @"sessionTimeRemainingInMinutes", @"timeRemainingInMinutes"]);
+        if (minutes) break;
+        seconds = NestedNumberValue(container, @[@"remainingTimeInSeconds", @"remainingSessionTimeInSeconds", @"sessionTimeRemainingInSeconds", @"timeRemainingInSeconds", @"remainingTime", @"timeRemaining"]);
+        if (seconds) break;
+        milliseconds = NestedNumberValue(container, @[@"remainingTimeInMs", @"remainingTimeInMilliseconds", @"remainingSessionTimeInMs", @"sessionTimeRemainingInMs"]);
+        if (milliseconds) break;
+    }
+
+    if (minutes) {
+        info.remainingPlaytimeHours = MAX(0.0, minutes.doubleValue / 60.0);
+        info.remainingPlaytimeAvailable = true;
+    } else if (seconds) {
+        info.remainingPlaytimeHours = MAX(0.0, seconds.doubleValue / 3600.0);
+        info.remainingPlaytimeAvailable = true;
+    } else if (milliseconds) {
+        info.remainingPlaytimeHours = MAX(0.0, milliseconds.doubleValue / 3600000.0);
+        info.remainingPlaytimeAvailable = true;
+    }
+}
+
 static OPN::SessionProgressState ProgressStateForSeatSetupStep(int seatSetupStep, int queuePosition) {
     switch (seatSetupStep) {
         case 0:
@@ -858,6 +916,7 @@ void SessionManager::CreateSession(const std::string &appId,
 
         ParseStreamProfile(session, info.negotiatedStreamProfile);
         ParseSessionAds(session, info.adState);
+        ParseRemainingPlaytime(session, info);
         MergeAndStoreAdState(info);
 
 
@@ -1033,6 +1092,7 @@ void SessionManager::PollSession(const std::string &sessionId,
 
         ParseStreamProfile(session, info.negotiatedStreamProfile);
         ParseSessionAds(session, info.adState);
+        ParseRemainingPlaytime(session, info);
         MergeAndStoreAdState(info);
 
         LogPollSessionSummary(http.statusCode, info);
@@ -1330,6 +1390,7 @@ void SessionManager::pollClaimSession(std::string sessionId,
             info.deviceId = deviceId;
             info.negotiatedStreamProfile = initialStreamProfile;
             ParseStreamProfile(session, info.negotiatedStreamProfile);
+            ParseRemainingPlaytime(session, info);
 
             completion(true, info, "");
         } else if (status == 1 || status == 6) {

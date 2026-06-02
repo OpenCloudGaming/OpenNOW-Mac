@@ -302,7 +302,6 @@ static unsigned OPNControllerAccentRGB(void) {
 - (void)drawRect:(NSRect)dirtyRect {
     [super drawRect:dirtyRect];
     (void)dirtyRect;
-    [self drawThreeDimensionalBackgroundInRect:self.bounds];
 }
 
 - (void)dismissControllerAccountMenu {

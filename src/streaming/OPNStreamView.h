@@ -35,8 +35,10 @@ class IStreamSession;
 - (void)setVideoAspectRatio:(CGFloat)aspectRatio;
 - (void)takeFocus;
 - (void)releasePointerLock;
+- (BOOL)isSidebarHUDVisible;
 
 @property (nonatomic, copy) void (^onUserActivity)(void);
 @property (nonatomic, copy) void (^onDashboardToggleRequested)(void);
+@property (nonatomic, copy) void (^onSidebarHUDVisibilityChanged)(BOOL visible);
 
 @end

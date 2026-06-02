@@ -32,6 +32,7 @@ static constexpr NSTimeInterval OPNStreamIdleDeviceInputInterval = 4.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityTimeoutInterval = 10.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 static constexpr NSTimeInterval OPNStreamQualityGuardrailCooldownInterval = 30.0;
+static constexpr NSTimeInterval OPNStreamPlaytimeRefreshInterval = 10.0;
 static constexpr NSInteger OPNStreamQualityDegradedSampleThreshold = 3;
 static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 
@@ -62,6 +63,7 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 @property (nonatomic, strong) OPNStatsOverlayView *statsOverlay;
 @property (nonatomic, strong) OPNShortcutLegendView *shortcutLegendOverlay;
 @property (nonatomic, strong) NSTimer *statsRefreshTimer;
+@property (nonatomic, strong) NSTimer *playtimeRefreshTimer;
 @property (nonatomic, strong) NSTimer *inactivityTimer;
 @property (nonatomic, assign) std::string gameTitle;
 @property (nonatomic, assign) std::string appId;
@@ -83,6 +85,10 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 - (void)recordStreamUserActivity;
 - (void)startInactivityTimer;
 - (void)stopInactivityTimer;
+- (void)startPlaytimeRefreshTimer;
+- (void)stopPlaytimeRefreshTimer;
+- (void)refreshDisplayedPlaytimeFromSessionPoll;
+- (void)refreshPlaytimeTimerFired:(NSTimer *)timer;
 - (void)checkInactivityTimer:(NSTimer *)timer;
 - (void)toggleIdleDeviceInputMode;
 - (void)showAntiAFKNoticeEnabled:(BOOL)enabled;
@@ -874,6 +880,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     double _remainingPlaytimeHours;
     BOOL _remainingPlaytimeUnlimited;
     BOOL _remainingPlaytimeAvailable;
+    BOOL _playtimeRefreshInFlight;
 }
 
 - (instancetype)initWithGameTitle:(const std::string &)title
@@ -937,6 +944,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _remainingPlaytimeHours = 0.0;
         _remainingPlaytimeUnlimited = NO;
         _remainingPlaytimeAvailable = NO;
+        _playtimeRefreshInFlight = NO;
     }
     return self;
 }
@@ -979,6 +987,16 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf->_streamEnded) return;
         if (strongSelf.onDashboardToggleRequested) strongSelf.onDashboardToggleRequested();
+    };
+    view.onSidebarHUDVisibilityChanged = ^(BOOL visible) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->_streamEnded || !strongSelf->_connectedOnce) return;
+        if (visible) {
+            [strongSelf refreshDisplayedPlaytimeFromSessionPoll];
+            [strongSelf startPlaytimeRefreshTimer];
+        } else {
+            [strongSelf stopPlaytimeRefreshTimer];
+        }
     };
     [self.streamView setStreamSession:_session];
     [self.streamView setRecordingGameTitle:OPNStringFromStdString(_gameTitle, @"Stream")];
@@ -1531,6 +1549,51 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     self.statsRefreshTimer = nil;
 }
 
+- (void)startPlaytimeRefreshTimer {
+    if (self.playtimeRefreshTimer) return;
+    self.playtimeRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:OPNStreamPlaytimeRefreshInterval
+                                                                 target:self
+                                                               selector:@selector(refreshPlaytimeTimerFired:)
+                                                               userInfo:nil
+                                                                repeats:YES];
+}
+
+- (void)stopPlaytimeRefreshTimer {
+    [self.playtimeRefreshTimer invalidate];
+    self.playtimeRefreshTimer = nil;
+}
+
+- (void)refreshPlaytimeTimerFired:(NSTimer *)timer {
+    (void)timer;
+    [self refreshDisplayedPlaytimeFromSessionPoll];
+}
+
+- (void)refreshDisplayedPlaytimeFromSessionPoll {
+    if (_streamEnded || !_connectedOnce || _playtimeRefreshInFlight || !_hasActiveSessionInfo || _activeSessionInfo.sessionId.empty()) return;
+    _playtimeRefreshInFlight = YES;
+
+    OPN::SessionInfo currentSession = _activeSessionInfo;
+    __weak __typeof__(self) weakSelf = self;
+    OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf](bool success, const OPN::SessionInfo &info, const std::string &error) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf->_playtimeRefreshInFlight = NO;
+        if (strongSelf->_streamEnded) return;
+        if (!success) {
+            OPN::LogError(@"[StreamVC] Playtime refresh failed: %s", error.c_str());
+            return;
+        }
+        if (!info.sessionId.empty()) {
+            strongSelf->_activeSessionInfo = info;
+            strongSelf->_hasActiveSessionInfo = YES;
+        }
+        if (!info.remainingPlaytimeAvailable) return;
+        [strongSelf setRemainingPlaytimeHours:info.remainingPlaytimeHours unlimited:info.remainingPlaytimeUnlimited];
+        [strongSelf.streamView startRemainingPlaytimeCountdown];
+        OPN::LogInfo(@"[StreamVC] Refreshed live session playtime remaining=%.2fh unlimited=%d", info.remainingPlaytimeHours, info.remainingPlaytimeUnlimited);
+    });
+}
+
 - (void)refreshStatsOverlayTimerFired:(NSTimer *)timer {
     (void)timer;
     [self updateStatsOverlay];
@@ -2022,6 +2085,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     [s2 finishLaunchMeasurementWithSuccess:YES reason:@"connected"];
                     [s2.streamView setStreamSession:s2->_session];
                     [s2.streamView startRemainingPlaytimeCountdown];
+                    if ([s2.streamView isSidebarHUDVisible]) {
+                        [s2 refreshDisplayedPlaytimeFromSessionPoll];
+                        [s2 startPlaytimeRefreshTimer];
+                    }
                     [s2.streamView takeFocus];
                     [s2 startInactivityTimer];
                     [s2 showConnectedToastWithResolution:negotiatedSettings.resolution fps:negotiatedSettings.fps bitrate:negotiatedSettings.maxBitrateMbps codec:negotiatedSettings.codec];
@@ -2576,6 +2643,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self endLatencyActivity];
     [self cancelRemoteIceGraceTimer];
     [self stopInactivityTimer];
+    [self stopPlaytimeRefreshTimer];
     [self removeQuitShortcutMonitor];
     [self dismissQuitGameOverlayAndRefocus:NO];
     [self stopStatsRefreshTimer];

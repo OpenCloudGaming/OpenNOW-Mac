@@ -116,6 +116,9 @@ struct SessionInfo {
     MediaConnectionInfo mediaConnectionInfo;
     NegotiatedStreamProfile negotiatedStreamProfile;
     SessionAdState adState;
+    double remainingPlaytimeHours = 0;
+    bool remainingPlaytimeAvailable = false;
+    bool remainingPlaytimeUnlimited = false;
     std::string clientId;
     std::string deviceId;
 };

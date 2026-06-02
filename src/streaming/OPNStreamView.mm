@@ -614,6 +614,11 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
         [self takeFocus];
     }
     [self setNeedsLayout:YES];
+    if (self.onSidebarHUDVisibilityChanged) self.onSidebarHUDVisibilityChanged(_sidebarOpen);
+}
+
+- (BOOL)isSidebarHUDVisible {
+    return _sidebarOpen && self.sidebarHUD && !self.sidebarHUD.hidden;
 }
 
 - (void)closeSidebarHUDClicked:(id)sender {
