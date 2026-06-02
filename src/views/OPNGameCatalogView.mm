@@ -674,7 +674,7 @@ typedef NS_ENUM(NSInteger, OPNControllerPromptMode) {
 - (void)controllerHeroRotationTimerFired:(NSTimer *)timer;
 - (void)controllerHeroResumeClicked:(id)sender;
 - (void)controllerHeroMoreInfoClicked:(id)sender;
-- (void)loadControllerHeroLogoForView:(NSImageView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (void)loadControllerHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)loadControllerHomeImageForTile:(OPNControllerHomeTileView *)tile candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index expectedIdentifier:(NSString *)expectedIdentifier;
 - (std::vector<OPN::GameInfo>)controllerHomeQueueGamesWithLimit:(NSInteger)limit;
 - (const OPN::GameInfo *)controllerHomeGameForIdentifier:(NSString *)identifier;
@@ -806,12 +806,17 @@ static NSArray<NSString *> *OPNControllerHeroBackgroundCandidates(const OPN::Gam
 
 static NSArray<NSString *> *OPNControllerHeroLogoCandidates(const OPN::GameInfo &game) {
     NSMutableArray<NSString *> *urls = [NSMutableArray array];
-    auto imageValues = game.imageUrlsByType.find("GAME_LOGO");
-    if (imageValues == game.imageUrlsByType.end()) return urls;
-    for (const std::string &value : imageValues->second) {
-        NSString *candidate = OPNCatalogString(value, @"");
-        if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
-    }
+    auto appendImageType = [&](const char *type) {
+        auto imageValues = game.imageUrlsByType.find(type);
+        if (imageValues == game.imageUrlsByType.end()) return;
+        for (const std::string &value : imageValues->second) {
+            NSString *candidate = OPNCatalogString(value, @"");
+            if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
+        }
+    };
+    appendImageType("GAME_LOGO");
+    appendImageType("LOGO");
+    appendImageType("TITLE_LOGO");
     return urls;
 }
 
@@ -1985,7 +1990,24 @@ using namespace OPN;
     NSTextField *title = OpnLabel(titleText, NSMakeRect(68.0, height * 0.30, textWidth, 76.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBlack);
     title.lineBreakMode = NSLineBreakByWordWrapping;
     title.maximumNumberOfLines = 2;
+    title.wantsLayer = YES;
+    title.layer.shadowColor = NSColor.blackColor.CGColor;
+    title.layer.shadowOpacity = 0.62;
+    title.layer.shadowRadius = 10.0;
+    title.layer.shadowOffset = CGSizeMake(0.0, 3.0);
     [stage addSubview:title];
+
+    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(68.0, height * 0.25, textWidth, MIN(120.0, MAX(78.0, height * 0.26)))];
+    logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
+    logoView.imageAlignment = NSImageAlignLeft;
+    logoView.wantsLayer = YES;
+    logoView.layer.opacity = 0.0;
+    logoView.layer.shadowColor = NSColor.blackColor.CGColor;
+    logoView.layer.shadowOpacity = 0.58;
+    logoView.layer.shadowRadius = 10.0;
+    logoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
+    [stage addSubview:logoView];
+    [self loadControllerHeroLogoForView:logoView titleFallback:title candidates:OPNControllerHeroLogoCandidates(game) index:0];
 
     NSString *store = game.availableStores.empty() ? @"Cloud Ready" : OPNStoreCategoryTitle(OPNCatalogString(game.availableStores.front(), @""));
     NSString *genre = game.genres.empty() ? @"Cloud Gaming" : OPNCatalogDisplayString(game.genres.front(), @"Cloud Gaming");
@@ -3369,7 +3391,7 @@ using namespace OPN;
     logoView.layer.shadowOffset = CGSizeMake(0.0, heroHeight * (4.0 / 270.0));
     [self.gridContentView addSubview:logoView];
     [self.controllerHeroViews addObject:logoView];
-    [self loadControllerHeroLogoForView:logoView candidates:OPNControllerHeroLogoCandidates(game) index:0];
+    [self loadControllerHeroLogoForView:logoView titleFallback:nil candidates:OPNControllerHeroLogoCandidates(game) index:0];
 
     OPNControllerHeroPrimaryAction primaryAction = [self primaryActionForHeroGame:game];
     NSString *primaryTitle = primaryAction == OPNControllerHeroPrimaryActionResume ? @"▶  Resume" : (primaryAction == OPNControllerHeroPrimaryActionPlay ? @"▶  Play" : @"Buy");
@@ -3437,9 +3459,10 @@ using namespace OPN;
     [self trackCatalogImageLoadToken:token];
 }
 
-- (void)loadControllerHeroLogoForView:(NSImageView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+- (void)loadControllerHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view || index >= candidates.count) return;
     __weak NSImageView *weakView = view;
+    __weak NSTextField *weakTitleFallback = titleFallback;
     OpnImageLoadToken *token = OPNCatalogLoadImageFromCandidates(candidates, index, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
         (void)resolvedURL;
         (void)data;
@@ -3450,6 +3473,7 @@ using namespace OPN;
         [CATransaction setDisableActions:YES];
         strongView.image = image;
         strongView.layer.opacity = 1.0;
+        weakTitleFallback.layer.opacity = 0.0;
         [CATransaction commit];
     });
     [self trackCatalogImageLoadToken:token];

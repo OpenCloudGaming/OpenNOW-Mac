@@ -1402,7 +1402,24 @@ using namespace OPN;
     NSTextField *title = OpnLabel(titleText, NSMakeRect(68.0, height * 0.30, textWidth, 76.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBlack);
     title.lineBreakMode = NSLineBreakByWordWrapping;
     title.maximumNumberOfLines = 2;
+    title.wantsLayer = YES;
+    title.layer.shadowColor = NSColor.blackColor.CGColor;
+    title.layer.shadowOpacity = 0.62;
+    title.layer.shadowRadius = 10.0;
+    title.layer.shadowOffset = CGSizeMake(0.0, 3.0);
     [stage addSubview:title];
+
+    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(68.0, height * 0.25, textWidth, MIN(120.0, MAX(78.0, height * 0.26)))];
+    logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
+    logoView.imageAlignment = NSImageAlignLeft;
+    logoView.wantsLayer = YES;
+    logoView.layer.opacity = 0.0;
+    logoView.layer.shadowColor = NSColor.blackColor.CGColor;
+    logoView.layer.shadowOpacity = 0.58;
+    logoView.layer.shadowRadius = 10.0;
+    logoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
+    [stage addSubview:logoView];
+    [self loadControllerFeaturedHeroLogoForView:logoView titleFallback:title candidates:OPNStoreLogoCandidatesForGame(game) index:0];
 
     NSString *metaText = [NSString stringWithFormat:@"%@ / %@", OPNStorePrimaryStoreName(game), OPNStorePrimaryGenre(game)];
     NSTextField *meta = OpnLabel(metaText, NSMakeRect(68.0, height * 0.57, textWidth, 24.0), 16.0, OpnColor(0xFFFFFF, 0.86), NSFontWeightBold);
