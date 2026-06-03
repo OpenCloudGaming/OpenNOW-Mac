@@ -234,7 +234,8 @@ using namespace OPN;
         NSUInteger requestedSection = selectedSectionName.length > 0 ? [_sectionNames indexOfObject:selectedSectionName] : NSNotFound;
         if (requestedSection != NSNotFound) _selectedSection = (NSInteger)requestedSection;
 
-        _titleLabel = OpnLabel(@"Settings", NSZeroRect, 28.0, OpnColor(kTextPrimary), NSFontWeightSemibold);
+        _titleLabel = OpnLabel(@"", NSZeroRect, 28.0, OpnColor(kTextPrimary), NSFontWeightSemibold);
+        _titleLabel.hidden = YES;
         [self addSubview:_titleLabel];
 
         _shellView = [[OPNSettingsFlippedView alloc] initWithFrame:NSZeroRect];
@@ -432,7 +433,7 @@ using namespace OPN;
         [view removeFromSuperview];
     }
     NSString *section = self.sectionNames[self.selectedSection];
-    self.titleLabel.stringValue = @"Settings";
+    self.titleLabel.stringValue = @"";
     if ([section isEqualToString:@"Stream"]) {
         [self buildStreamContent];
     } else if ([section isEqualToString:@"Video"]) {
