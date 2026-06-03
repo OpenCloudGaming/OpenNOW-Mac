@@ -4016,6 +4016,8 @@ using namespace OPN;
 - (void)updateDesktopCardWindowWithFirst:(NSInteger)first last:(NSInteger)last cardWidth:(CGFloat)cardWidth step:(CGFloat)step {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    [NSAnimationContext beginGrouping];
+    [[NSAnimationContext currentContext] setDuration:0.0];
 
     OPNDesktopLibraryGridMetrics metrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
     CGFloat contentX = metrics.contentX;
@@ -4076,6 +4078,7 @@ using namespace OPN;
     self.desktopRenderStartIndex = first;
     self.desktopRenderedGameCount = (NSInteger)newCards.count;
 
+    [NSAnimationContext endGrouping];
     [CATransaction commit];
 }
 
