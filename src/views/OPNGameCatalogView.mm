@@ -295,6 +295,37 @@ static NSRect OPNStoreHeroLogoFallbackFrame(NSRect bounds) {
     return NSMakeRect(x, y, width, height);
 }
 
+static BOOL OPNStoreHeroImageHasVisibleContent(NSImage *image) {
+    if (!image || image.size.width <= 0.0 || image.size.height <= 0.0) return NO;
+    NSRect proposedRect = NSMakeRect(0.0, 0.0, image.size.width, image.size.height);
+    CGImageRef source = [image CGImageForProposedRect:&proposedRect context:nil hints:nil];
+    if (!source) return YES;
+
+    static const size_t sampleWidth = 24;
+    static const size_t sampleHeight = 24;
+    static const size_t bytesPerPixel = 4;
+    static const size_t bytesPerRow = sampleWidth * bytesPerPixel;
+    std::vector<unsigned char> pixels(sampleHeight * bytesPerRow, 0);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGContextRef context = CGBitmapContextCreate(pixels.data(), sampleWidth, sampleHeight, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) return YES;
+    CGContextDrawImage(context, CGRectMake(0.0, 0.0, sampleWidth, sampleHeight), source);
+    CGContextRelease(context);
+
+    NSUInteger visiblePixels = 0;
+    for (size_t offset = 0; offset + 3 < pixels.size(); offset += bytesPerPixel) {
+        CGFloat red = pixels[offset];
+        CGFloat green = pixels[offset + 1];
+        CGFloat blue = pixels[offset + 2];
+        CGFloat alpha = pixels[offset + 3];
+        CGFloat luma = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+        if (alpha > 24.0 && luma > 18.0) visiblePixels++;
+    }
+    return visiblePixels >= 18;
+}
+
 static NSString *OPNStorePrimaryGenre(const OPN::GameInfo &game) {
     if (!game.genres.empty()) return OPNStoreDisplayString(game.genres.front(), @"Cloud Game");
     if (!game.playType.empty()) return OPNStoreDisplayString(game.playType, @"Cloud Game");
@@ -1278,7 +1309,7 @@ using namespace OPN;
     NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(game);
     NSString *gameIdentity = OpnGameIdentityForHero(game);
     NSImage *cachedImage = OpnCachedImageFromCandidates(candidates, 1600.0, nil);
-    if (cachedImage) {
+    if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
         artwork.image = cachedImage;
         if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
             self.heroAspectByIdentity[gameIdentity] = @(cachedImage.size.width / cachedImage.size.height);
@@ -1357,7 +1388,7 @@ using namespace OPN;
 
     NSArray<NSString *> *remainingCandidates = [candidates subarrayWithRange:NSMakeRange(index, candidates.count - index)];
     NSImage *cachedImage = OpnCachedImageFromCandidates(remainingCandidates, 1600.0, nil);
-    if (cachedImage) {
+    if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
         if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
             self.heroAspectByIdentity[gameIdentity] = @(cachedImage.size.width / cachedImage.size.height);
         }
@@ -1377,7 +1408,7 @@ using namespace OPN;
             __typeof__(self) strongSelf = weakSelf;
             OPNHeroArtworkView *strongView = weakView;
             if (!strongSelf || !strongView.superview || completed) return;
-            if (!image) {
+            if (!OPNStoreHeroImageHasVisibleContent(image)) {
                 remainingLoads--;
                 if (remainingLoads <= 0) {
                     completed = YES;
