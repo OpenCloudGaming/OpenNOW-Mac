@@ -171,14 +171,62 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
 - (NSArray<NSDictionary<NSString *, id> *> *)controllerNavbarItemsForWidth:(CGFloat)width {
     CGFloat itemWidth = width < 1180.0 ? 72.0 : 118.0;
     CGFloat gap = OPNControllerNavbarGap(width);
-    CGFloat totalWidth = itemWidth * 4.0 + gap * 3.0;
+    CGFloat totalWidth = itemWidth * 3.0 + gap * 2.0;
     CGFloat x = floor((width - totalWidth) * 0.5);
     return @[
-        @{ @"title": @"Home", @"mode": @(OPNBackdropModeHome), @"rect": [NSValue valueWithRect:NSMakeRect(x, 20.0, itemWidth, 76.0)] },
-        @{ @"title": @"Store", @"mode": @(OPNBackdropModeStore), @"rect": [NSValue valueWithRect:NSMakeRect(x + itemWidth + gap, 20.0, itemWidth, 76.0)] },
-        @{ @"title": @"Library", @"mode": @(OPNBackdropModeLibrary), @"rect": [NSValue valueWithRect:NSMakeRect(x + (itemWidth + gap) * 2.0, 20.0, itemWidth, 76.0)] },
-        @{ @"title": @"Settings", @"mode": @(OPNBackdropModeSettings), @"rect": [NSValue valueWithRect:NSMakeRect(x + (itemWidth + gap) * 3.0, 20.0, itemWidth, 76.0)] },
+        @{ @"title": @"Store", @"mode": @(OPNBackdropModeHome), @"symbol": @"storefront", @"rect": [NSValue valueWithRect:NSMakeRect(x, 20.0, itemWidth, 76.0)] },
+        @{ @"title": @"Library", @"mode": @(OPNBackdropModeLibrary), @"symbol": @"books.vertical", @"rect": [NSValue valueWithRect:NSMakeRect(x + itemWidth + gap, 20.0, itemWidth, 76.0)] },
+        @{ @"title": @"Settings", @"mode": @(OPNBackdropModeSettings), @"symbol": @"gearshape", @"rect": [NSValue valueWithRect:NSMakeRect(x + (itemWidth + gap) * 2.0, 20.0, itemWidth, 76.0)] },
     ];
+}
+
+- (void)drawControllerNavbarIcon:(NSString *)symbolName inRect:(NSRect)rect color:(NSColor *)color {
+    [color setStroke];
+    [color setFill];
+    if ([symbolName isEqualToString:@"storefront"]) {
+        NSBezierPath *awning = [NSBezierPath bezierPath];
+        [awning moveToPoint:NSMakePoint(NSMinX(rect) + 4.0, NSMinY(rect) + 10.0)];
+        [awning lineToPoint:NSMakePoint(NSMinX(rect) + 9.0, NSMinY(rect) + 4.0)];
+        [awning lineToPoint:NSMakePoint(NSMaxX(rect) - 9.0, NSMinY(rect) + 4.0)];
+        [awning lineToPoint:NSMakePoint(NSMaxX(rect) - 4.0, NSMinY(rect) + 10.0)];
+        awning.lineWidth = 2.2;
+        [awning stroke];
+        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(NSMinX(rect) + 6.0, NSMinY(rect) + 12.0, NSWidth(rect) - 12.0, NSHeight(rect) - 14.0) xRadius:2.5 yRadius:2.5];
+        body.lineWidth = 2.2;
+        [body stroke];
+        NSBezierPath *door = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(NSMidX(rect) - 4.0, NSMinY(rect) + 19.0, 8.0, 9.0) xRadius:1.5 yRadius:1.5];
+        door.lineWidth = 1.8;
+        [door stroke];
+        return;
+    }
+    if ([symbolName isEqualToString:@"books.vertical"]) {
+        CGFloat bookWidth = 6.0;
+        for (NSInteger index = 0; index < 3; index++) {
+            NSRect bookRect = NSMakeRect(NSMinX(rect) + 5.0 + index * 8.0, NSMinY(rect) + 4.0 + index, bookWidth, NSHeight(rect) - 8.0 - index);
+            NSBezierPath *book = [NSBezierPath bezierPathWithRoundedRect:bookRect xRadius:2.0 yRadius:2.0];
+            book.lineWidth = 2.0;
+            [book stroke];
+        }
+        return;
+    }
+    if ([symbolName isEqualToString:@"gearshape"]) {
+        NSPoint center = NSMakePoint(NSMidX(rect), NSMidY(rect));
+        for (NSInteger index = 0; index < 8; index++) {
+            CGFloat angle = ((CGFloat)index / 8.0) * (CGFloat)M_PI * 2.0;
+            NSBezierPath *spoke = [NSBezierPath bezierPath];
+            [spoke moveToPoint:NSMakePoint(center.x + cos(angle) * 8.0, center.y + sin(angle) * 8.0)];
+            [spoke lineToPoint:NSMakePoint(center.x + cos(angle) * 13.0, center.y + sin(angle) * 13.0)];
+            spoke.lineWidth = 2.2;
+            spoke.lineCapStyle = NSLineCapStyleRound;
+            [spoke stroke];
+        }
+        NSBezierPath *outer = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(rect, 7.0, 7.0)];
+        outer.lineWidth = 2.2;
+        [outer stroke];
+        NSBezierPath *inner = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(rect, 13.0, 13.0)];
+        inner.lineWidth = 2.0;
+        [inner stroke];
+    }
 }
 
 - (void)drawControllerNavbarInRect:(NSRect)bounds {
@@ -217,6 +265,7 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
     };
     for (NSDictionary<NSString *, id> *item in [self controllerNavbarItemsForWidth:width]) {
         NSString *title = item[@"title"] ?: @"";
+        NSString *symbolName = item[@"symbol"] ?: @"circle";
         NSRect itemRect = [item[@"rect"] rectValue];
         BOOL selected = (OPNBackdropMode)[item[@"mode"] integerValue] == self.mode;
         if (selected) {
@@ -232,7 +281,9 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
             [indicator fill];
         }
         NSDictionary<NSAttributedStringKey, id> *attributes = selected ? selectedItemAttributes : itemAttributes;
-        [title drawInRect:OPNCenteredTextRect(title, attributes, NSInsetRect(itemRect, 4.0, 0.0)) withAttributes:attributes];
+        NSColor *itemColor = selected ? OpnColor(0xFFFFFF, 1.0) : OpnColor(0xFFFFFF, 0.72);
+        [self drawControllerNavbarIcon:symbolName inRect:NSMakeRect(NSMidX(itemRect) - 15.0, NSMinY(itemRect) + 14.0, 30.0, 30.0) color:itemColor];
+        [title drawInRect:OPNCenteredTextRect(title, attributes, NSMakeRect(NSMinX(itemRect), NSMinY(itemRect) + 48.0, NSWidth(itemRect), 20.0)) withAttributes:attributes];
     }
 
     NSString *playtime = [self.remainingPlayTime ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
@@ -471,7 +522,6 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
         if (!NSPointInRect(point, [item[@"rect"] rectValue])) continue;
         OPNBackdropMode targetMode = (OPNBackdropMode)[item[@"mode"] integerValue];
         if (targetMode == OPNBackdropModeHome && self.onHomeSelected) self.onHomeSelected();
-        if (targetMode == OPNBackdropModeStore && self.onStoreSelected) self.onStoreSelected();
         if (targetMode == OPNBackdropModeLibrary && self.onLibrarySelected) self.onLibrarySelected();
         if (targetMode == OPNBackdropModeSettings && self.onSettingsSelected) self.onSettingsSelected();
         return;

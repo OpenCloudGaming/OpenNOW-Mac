@@ -164,6 +164,36 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
     return signature;
 }
 
+static std::string OPNGameCardLogoSignature(const OPN::GameInfo &game) {
+    std::string signature;
+    for (const char *type : {"GAME_LOGO", "LOGO", "TITLE_LOGO"}) {
+        auto it = game.imageUrlsByType.find(type);
+        if (it == game.imageUrlsByType.end()) continue;
+        for (const std::string &value : it->second) {
+            signature += "\n";
+            signature += value;
+        }
+    }
+    return signature;
+}
+
+static NSArray<NSString *> *OPNGameCardLogoCandidates(const OPN::GameInfo &game) {
+    NSMutableArray<NSString *> *urls = [NSMutableArray array];
+    auto appendRawImagesForType = [&](const char *type) {
+        auto it = game.imageUrlsByType.find(type);
+        if (it == game.imageUrlsByType.end()) return;
+        for (const std::string &value : it->second) {
+            if (value.empty()) continue;
+            NSString *candidate = [NSString stringWithUTF8String:value.c_str()];
+            if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
+        }
+    };
+    appendRawImagesForType("GAME_LOGO");
+    appendRawImagesForType("LOGO");
+    appendRawImagesForType("TITLE_LOGO");
+    return urls;
+}
+
 @interface OPNGameCardView () <CALayerDelegate>
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
@@ -173,6 +203,7 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSButton *desktopVariantButton;
 @property (nonatomic, strong) NSTextField *controllerStoreLabel;
 @property (nonatomic, strong) NSTextField *controllerTitleLabel;
+@property (nonatomic, strong) NSImageView *controllerTitleLogoView;
 @property (nonatomic, strong) NSView *storeChipsContainer;
 @property (nonatomic, strong) NSView *currentStoreLogoContainer;
 @property (nonatomic, strong) NSImageView *currentStoreLogoView;
@@ -183,12 +214,19 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, strong) CALayer *reflectionLayer;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
 @property (nonatomic, strong) OpnImageLoadToken *imageLoadToken;
+@property (nonatomic, strong) OpnImageLoadToken *controllerLogoLoadToken;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
+@property (nonatomic, assign) NSUInteger controllerLogoLoadGeneration;
 @property (nonatomic, copy) NSString *displayedImageSignature;
+@property (nonatomic, copy) NSString *displayedLogoSignature;
 @property (nonatomic, assign) BOOL mouseHovering;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)clearImageForNewSignature:(NSString *)signature;
 - (void)displayLoadedImage:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
+- (void)loadControllerTitleLogo;
+- (void)loadControllerTitleLogoFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
+- (void)clearControllerTitleLogoForNewSignature:(NSString *)signature;
+- (void)displayControllerTitleLogo:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
 - (void)applyFocusStyle;
 - (void)updatePlayButtonVisibility;
 - (void)updateCurrentStoreLogo;
@@ -207,6 +245,7 @@ using namespace OPN;
 
 - (void)dealloc {
     [_imageLoadToken cancel];
+    [_controllerLogoLoadToken cancel];
 }
 
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game {
@@ -304,7 +343,24 @@ using namespace OPN;
         _controllerTitleLabel.hidden = !OpnControllerModeEnabled();
         _controllerTitleLabel.lineBreakMode = NSLineBreakByWordWrapping;
         _controllerTitleLabel.maximumNumberOfLines = 2;
+        _controllerTitleLabel.alignment = NSTextAlignmentCenter;
+        _controllerTitleLabel.wantsLayer = YES;
+        _controllerTitleLabel.layer.shadowColor = NSColor.blackColor.CGColor;
+        _controllerTitleLabel.layer.shadowOpacity = 0.88;
+        _controllerTitleLabel.layer.shadowRadius = 10.0;
+        _controllerTitleLabel.layer.shadowOffset = CGSizeMake(0.0, 3.0);
         [_contentView addSubview:_controllerTitleLabel];
+
+        _controllerTitleLogoView = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        _controllerTitleLogoView.imageScaling = NSImageScaleProportionallyUpOrDown;
+        _controllerTitleLogoView.imageAlignment = NSImageAlignCenter;
+        _controllerTitleLogoView.wantsLayer = YES;
+        _controllerTitleLogoView.layer.opacity = 0.0;
+        _controllerTitleLogoView.layer.shadowColor = NSColor.blackColor.CGColor;
+        _controllerTitleLogoView.layer.shadowOpacity = 0.88;
+        _controllerTitleLogoView.layer.shadowRadius = 12.0;
+        _controllerTitleLogoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
+        [_contentView addSubview:_controllerTitleLogoView];
 
         _playButton = [[NSButton alloc] initWithFrame:
             NSMakeRect((NSWidth(self.bounds) - 76) / 2, NSHeight(self.bounds) - 52, 76, 34)];
@@ -327,6 +383,7 @@ using namespace OPN;
         _storeChipButtons = [NSMutableArray array];
         _imageRevealDelay = 0.0;
         _displayedImageSignature = @"";
+        _displayedLogoSignature = @"";
 
         _selectedVariantIndex = -1;
         int idx = 0;
@@ -351,6 +408,7 @@ using namespace OPN;
         [self updateInstallToPlayPill];
 
         [self loadImage];
+        [self loadControllerTitleLogo];
 
         _trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
             options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInActiveApp
@@ -451,9 +509,16 @@ using namespace OPN;
         self.desktopMetaLabel.frame = NSZeroRect;
         self.desktopVariantButton.frame = NSZeroRect;
         self.controllerStoreLabel.hidden = YES;
-        self.controllerTitleLabel.hidden = YES;
+        BOOL hasControllerLogo = self.controllerTitleLogoView.image != nil && self.controllerTitleLogoView.layer.opacity > 0.0;
+        self.controllerTitleLabel.hidden = hasControllerLogo;
         self.controllerStoreLabel.frame = NSZeroRect;
-        self.controllerTitleLabel.frame = NSZeroRect;
+        CGFloat logoWidth = MIN(width * 0.80, 280.0);
+        CGFloat logoHeight = MIN(MAX(56.0, width * 0.32), 118.0);
+        CGFloat logoX = floor((width - logoWidth) * 0.5);
+        CGFloat logoY = floor((height - logoHeight) * 0.5);
+        self.controllerTitleLogoView.hidden = !hasControllerLogo;
+        self.controllerTitleLogoView.frame = NSMakeRect(logoX, logoY, logoWidth, logoHeight);
+        self.controllerTitleLabel.frame = NSMakeRect(width * 0.08, logoY + floor((logoHeight - 44.0) * 0.5), width * 0.84, 48.0);
     } else {
         self.imageView.frame = self.bounds;
         self.desktopTitleLabel.hidden = YES;
@@ -465,6 +530,7 @@ using namespace OPN;
         self.desktopVariantButton.frame = NSMakeRect(width - 10.0 - variantWidth, 10.0, variantWidth, 23.0);
         self.controllerStoreLabel.hidden = YES;
         self.controllerTitleLabel.hidden = YES;
+        self.controllerTitleLogoView.hidden = YES;
     }
     CGFloat playWidth = width * (76.0 / 180.0);
     CGFloat playHeight = height * (34.0 / 180.0);
@@ -529,6 +595,8 @@ using namespace OPN;
     int selectedVariant = _selectedVariantIndex;
     const std::string previousImageSignature = OPNGameCardImageSignature(_gameData);
     const std::string nextImageSignature = OPNGameCardImageSignature(game);
+    const std::string previousLogoSignature = OPNGameCardLogoSignature(_gameData);
+    const std::string nextLogoSignature = OPNGameCardLogoSignature(game);
     _gameData = game;
     if (selectedVariant >= 0 && selectedVariant < (int)_gameData.variants.size()) {
         _selectedVariantIndex = selectedVariant;
@@ -544,6 +612,10 @@ using namespace OPN;
         [self clearImageForNewSignature:[NSString stringWithUTF8String:nextImageSignature.c_str()]];
         [self loadImage];
     }
+    if (previousLogoSignature != nextLogoSignature) {
+        [self clearControllerTitleLogoForNewSignature:[NSString stringWithUTF8String:nextLogoSignature.c_str()]];
+        [self loadControllerTitleLogo];
+    }
 }
 
 - (void)clearImageForNewSignature:(NSString *)signature {
@@ -554,6 +626,18 @@ using namespace OPN;
     [CATransaction setDisableActions:YES];
     self.imageView.image = nil;
     self.imageView.alphaValue = 0.0;
+    [CATransaction commit];
+}
+
+- (void)clearControllerTitleLogoForNewSignature:(NSString *)signature {
+    [self.controllerLogoLoadToken cancel];
+    self.displayedLogoSignature = signature ?: @"";
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.controllerTitleLogoView.image = nil;
+    self.controllerTitleLogoView.layer.opacity = 0.0;
+    self.controllerTitleLogoView.hidden = YES;
+    self.controllerTitleLabel.hidden = !OpnControllerModeEnabled();
     [CATransaction commit];
 }
 
@@ -735,6 +819,56 @@ using namespace OPN;
             self.imageView.animator.alphaValue = 1.0;
         } completionHandler:nil];
     });
+}
+
+- (void)loadControllerTitleLogo {
+    if (!OpnControllerModeEnabled()) return;
+    NSArray<NSString *> *urlStrings = OPNGameCardLogoCandidates(self.gameData);
+    NSString *signature = [NSString stringWithUTF8String:OPNGameCardLogoSignature(self.gameData).c_str()];
+    if (urlStrings.count == 0) {
+        [self clearControllerTitleLogoForNewSignature:signature];
+        return;
+    }
+
+    [self.controllerLogoLoadToken cancel];
+    NSUInteger generation = ++self.controllerLogoLoadGeneration;
+    [self loadControllerTitleLogoFromCandidates:urlStrings index:0 generation:generation];
+}
+
+- (void)loadControllerTitleLogoFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation {
+    if (generation != self.controllerLogoLoadGeneration) return;
+    if (index >= urlStrings.count) return;
+
+    NSString *urlStr = urlStrings[index];
+    __weak __typeof__(self) weakSelf = self;
+    self.controllerLogoLoadToken = OpnLoadImageForURLCancellable(urlStr, 512.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+        (void)resolvedURL;
+        (void)data;
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.controllerLogoLoadGeneration != generation) return;
+        if (!image) {
+            [strongSelf loadControllerTitleLogoFromCandidates:urlStrings index:index + 1 generation:generation];
+            return;
+        }
+        NSString *signature = [NSString stringWithUTF8String:OPNGameCardLogoSignature(strongSelf.gameData).c_str()];
+        [strongSelf displayControllerTitleLogo:image signature:signature generation:generation];
+    });
+}
+
+- (void)displayControllerTitleLogo:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation {
+    if (!image || generation != self.controllerLogoLoadGeneration) return;
+    NSString *expectedSignature = [NSString stringWithUTF8String:OPNGameCardLogoSignature(self.gameData).c_str()];
+    if (![signature isEqualToString:expectedSignature]) return;
+
+    self.displayedLogoSignature = expectedSignature;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.controllerTitleLogoView.image = image;
+    self.controllerTitleLogoView.layer.opacity = 1.0;
+    self.controllerTitleLogoView.hidden = !OpnControllerModeEnabled();
+    self.controllerTitleLabel.hidden = OpnControllerModeEnabled();
+    [CATransaction commit];
+    [self setNeedsLayout:YES];
 }
 
 - (void)mouseEntered:(NSEvent *)event {
