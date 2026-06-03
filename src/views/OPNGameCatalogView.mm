@@ -191,6 +191,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSView *sectionHeaderView;
 @property (nonatomic, strong) OPNCatalogAmbientView *ambientView;
 @property (nonatomic, strong) NSMutableArray<OPNGameCardView *> *cardViews;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, OPNGameCardView *> *cardViewsByIndex;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *imageLoadTokens;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> allGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
@@ -206,6 +207,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 - (void)addHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)cancelImageLoads;
+- (void)renderVisibleCardsWithMetrics:(OPNCatalogGridMetrics)metrics totalCards:(NSInteger)totalCards;
 @end
 
 @implementation OPNGameCatalogView
@@ -216,6 +218,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.clearColor.CGColor;
         _cardViews = [NSMutableArray array];
+        _cardViewsByIndex = [NSMutableDictionary dictionary];
         _imageLoadTokens = [NSMutableArray array];
         _renderStartIndex = 0;
 
@@ -402,6 +405,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     for (NSView *view in [self.documentView.subviews copy]) [view removeFromSuperview];
     for (OPNGameCardView *card in self.cardViews) [card removeFromSuperview];
     [self.cardViews removeAllObjects];
+    [self.cardViewsByIndex removeAllObjects];
     [self.heroContainerView removeFromSuperview];
     self.heroContainerView = nil;
     [self.sectionHeaderView removeFromSuperview];
@@ -453,6 +457,17 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     self.scrollView.frame = NSMakeRect(0.0, cardStartY, width, MAX(0.0, height - cardStartY));
 
     NSInteger totalCards = (NSInteger)self.displayGames.size();
+    [self renderVisibleCardsWithMetrics:metrics totalCards:totalCards];
+
+    CGFloat totalWidth = MAX(width, metrics.contentX * 2.0 + (CGFloat)totalCards * (metrics.cardWidth + metrics.spacing));
+    CGFloat totalHeight = MAX(NSHeight(self.scrollView.frame), metrics.cardHeight + kCatalogGridPadding * 2.0);
+    self.documentView.frame = NSMakeRect(0.0, 0.0, totalWidth, totalHeight);
+    self.statusLabel.stringValue = totalCards == 0 ? @"No games found." : @"";
+    if (self.onGameCountChanged) self.onGameCountChanged(totalCards);
+    [self setNeedsLayout:YES];
+}
+
+- (void)renderVisibleCardsWithMetrics:(OPNCatalogGridMetrics)metrics totalCards:(NSInteger)totalCards {
     NSInteger visibleCards = MAX(1, (NSInteger)floor(NSWidth(self.scrollView.frame) / (metrics.cardWidth + metrics.spacing)));
     NSRect visibleBounds = self.scrollView.contentView.bounds;
     CGFloat visibleMidX = NSMidX(visibleBounds);
@@ -461,10 +476,20 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     NSInteger renderEnd = MIN(totalCards, centerIndex + visibleCards / 2 + kCatalogRenderBufferCards + 1);
     self.renderStartIndex = renderStart;
 
+    NSMutableSet<NSNumber *> *visibleIndexes = [NSMutableSet set];
     for (NSInteger index = renderStart; index < renderEnd; index++) {
+        NSNumber *key = @(index);
+        [visibleIndexes addObject:key];
         const OPN::GameInfo &game = _displayGames[(size_t)index];
-        CGFloat x = metrics.contentX + (CGFloat)index * (metrics.cardWidth + metrics.spacing);
-        OPNGameCardView *card = [[OPNGameCardView alloc] initWithFrame:NSMakeRect(x, kCatalogGridPadding, metrics.cardWidth, metrics.cardHeight) game:game];
+        NSRect frame = NSMakeRect(metrics.contentX + (CGFloat)index * (metrics.cardWidth + metrics.spacing), kCatalogGridPadding, metrics.cardWidth, metrics.cardHeight);
+        OPNGameCardView *card = self.cardViewsByIndex[key];
+        if (card) {
+            card.frame = frame;
+            [card updateGame:game];
+            continue;
+        }
+
+        card = [[OPNGameCardView alloc] initWithFrame:frame game:game];
         card.imageRevealDelay = 0.012 * (NSTimeInterval)MIN((NSInteger)18, index - renderStart);
         OPN::GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
@@ -478,20 +503,22 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         };
         [self.documentView addSubview:card];
         [self.cardViews addObject:card];
+        self.cardViewsByIndex[key] = card;
     }
 
-    CGFloat totalWidth = MAX(width, metrics.contentX * 2.0 + (CGFloat)totalCards * (metrics.cardWidth + metrics.spacing));
-    CGFloat totalHeight = MAX(NSHeight(self.scrollView.frame), metrics.cardHeight + kCatalogGridPadding * 2.0);
-    self.documentView.frame = NSMakeRect(0.0, 0.0, totalWidth, totalHeight);
-    self.statusLabel.stringValue = totalCards == 0 ? @"No games found." : @"";
-    if (self.onGameCountChanged) self.onGameCountChanged(totalCards);
-    [self setNeedsLayout:YES];
+    for (NSNumber *key in [self.cardViewsByIndex.allKeys copy]) {
+        if ([visibleIndexes containsObject:key]) continue;
+        OPNGameCardView *card = self.cardViewsByIndex[key];
+        [card removeFromSuperview];
+        [self.cardViews removeObject:card];
+        [self.cardViewsByIndex removeObjectForKey:key];
+    }
 }
 
 - (void)scrollViewBoundsDidChange:(NSNotification *)notification {
     if (notification.object != self.scrollView.contentView) return;
     for (OPNGameCardView *card in self.cardViews) [card resetMouseTrackingIfOutside];
-    [self scheduleRenderCatalog];
+    [self renderVisibleCardsWithMetrics:OPNCatalogGridMetricsForWidth(MAX(1.0, NSWidth(self.bounds))) totalCards:self.displayGameCount];
 }
 
 @end
