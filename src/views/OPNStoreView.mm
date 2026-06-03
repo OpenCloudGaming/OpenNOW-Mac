@@ -135,6 +135,7 @@ static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
 @interface OPNStoreHeroBackgroundView : NSView
 @property (nonatomic, strong) NSImage *image;
 @property (nonatomic, assign) CGFloat cornerRadius;
+@property (nonatomic, assign) BOOL drawsScrim;
 @end
 
 @implementation OPNStoreHeroBackgroundView
@@ -145,6 +146,7 @@ static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
     self = [super initWithFrame:frame];
     if (self) {
         _cornerRadius = 20.0;
+        _drawsScrim = YES;
     }
     return self;
 }
@@ -186,19 +188,21 @@ static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
         [self.image drawInRect:bounds fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
     }
 
-    NSGradient *leftScrim = [[NSGradient alloc] initWithColorsAndLocations:
-        OpnColor(0x000000, 0.86), 0.0,
-        OpnColor(0x000000, 0.58), 0.34,
-        OpnColor(0x000000, 0.12), 0.70,
-        OpnColor(0x000000, 0.0), 1.0,
-        nil];
-    [leftScrim drawInRect:bounds angle:0.0];
+    if (self.drawsScrim) {
+        NSGradient *leftScrim = [[NSGradient alloc] initWithColorsAndLocations:
+            OpnColor(0x000000, 0.86), 0.0,
+            OpnColor(0x000000, 0.58), 0.34,
+            OpnColor(0x000000, 0.12), 0.70,
+            OpnColor(0x000000, 0.0), 1.0,
+            nil];
+        [leftScrim drawInRect:bounds angle:0.0];
 
-    NSGradient *bottomScrim = [[NSGradient alloc] initWithColors:@[
-        OpnColor(0x000000, 0.0),
-        OpnColor(0x000000, 0.40)
-    ]];
-    [bottomScrim drawInRect:bounds angle:-90.0];
+        NSGradient *bottomScrim = [[NSGradient alloc] initWithColors:@[
+            OpnColor(0x000000, 0.0),
+            OpnColor(0x000000, 0.40)
+        ]];
+        [bottomScrim drawInRect:bounds angle:-90.0];
+    }
 
     [NSGraphicsContext restoreGraphicsState];
 }
@@ -844,13 +848,18 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
             iconView.frame = NSMakeRect(index * (iconSize + iconGap), 0.0, iconSize, iconSize);
             iconView.layer.cornerRadius = iconSize * 0.5;
         }
-        self.availabilityLabel.frame = NSMakeRect(width - 92.0, 18.0, 76.0, 15.0);
-        self.metaLabel.frame = NSMakeRect(14.0, height - 59.0, width - 28.0, 17.0);
-        self.titleLabel.frame = NSMakeRect(14.0, height - 37.0, width - 28.0, 20.0);
-        self.featureLabel.frame = NSMakeRect(14.0, height - 78.0, width - 28.0, 16.0);
+        self.availabilityLabel.frame = NSZeroRect;
+        self.metaLabel.frame = NSZeroRect;
+        self.titleLabel.frame = NSZeroRect;
+        self.featureLabel.frame = NSZeroRect;
         self.playButton.frame = NSMakeRect(width - 64.0, height - 48.0, 50.0, 28.0);
         self.playButton.layer.cornerRadius = 14.0;
     }
+    BOOL showProminentText = self.prominent;
+    self.titleLabel.hidden = !showProminentText;
+    self.metaLabel.hidden = !showProminentText;
+    self.featureLabel.hidden = !showProminentText;
+    self.availabilityLabel.hidden = !showProminentText;
 }
 
 - (void)setStoreFocused:(BOOL)focused {
@@ -874,7 +883,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.layer.transform = transform;
     [CATransaction commit];
     self.playButton.hidden = !(self.prominent || focused);
-    self.featureLabel.hidden = !self.prominent && !focused;
 }
 
 - (void)selectPressed {
@@ -894,14 +902,12 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)mouseEntered:(NSEvent *)event {
     (void)event;
     if (!self.prominent) self.playButton.hidden = NO;
-    if (!self.prominent) self.featureLabel.hidden = NO;
     if (!self.storeFocused) self.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.42).CGColor;
 }
 
 - (void)mouseExited:(NSEvent *)event {
     (void)event;
     if (!self.prominent && !self.storeFocused) self.playButton.hidden = YES;
-    if (!self.prominent && !self.storeFocused) self.featureLabel.hidden = YES;
     if (!self.storeFocused) self.layer.borderColor = OpnColor(0xFFFFFF, self.prominent ? 0.18 : 0.12).CGColor;
 }
 
@@ -1380,21 +1386,12 @@ using namespace OPN;
 
     OPNStoreHeroBackgroundView *artwork = [[OPNStoreHeroBackgroundView alloc] initWithFrame:stage.bounds];
     artwork.cornerRadius = 34.0;
+    artwork.drawsScrim = NO;
     artwork.wantsLayer = YES;
     artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
     [stage addSubview:artwork];
     [self loadControllerFeaturedHeroImageForView:artwork candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
-
-    CAGradientLayer *artScrim = [CAGradientLayer layer];
-    artScrim.frame = artwork.bounds;
-    artScrim.colors = @[(id)OpnColor(0x020403, 0.92).CGColor,
-                        (id)OpnColor(0x020403, 0.42).CGColor,
-                        (id)OpnColor(0x020403, 0.04).CGColor];
-    artScrim.locations = @[@0.0, @0.34, @1.0];
-    artScrim.startPoint = CGPointMake(0.0, 0.5);
-    artScrim.endPoint = CGPointMake(1.0, 0.5);
-    [artwork.layer addSublayer:artScrim];
 
     CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
 

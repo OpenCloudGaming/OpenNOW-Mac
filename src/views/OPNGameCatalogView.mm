@@ -417,6 +417,7 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
 @property (nonatomic, assign) CGFloat cornerRadius;
 @property (nonatomic, assign) BOOL rightAlignImageToHeight;
 @property (nonatomic, assign) BOOL scalesImageToFit;
+@property (nonatomic, assign) BOOL drawsScrim;
 - (void)setImage:(NSImage *)image metadataData:(NSData *)metadataData;
 @end
 
@@ -431,6 +432,7 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
         _derivedBackgroundColor = OpnColor(0x080A0C, 1.0);
         _rightAlignImageToHeight = NO;
         _scalesImageToFit = NO;
+        _drawsScrim = YES;
     }
     return self;
 }
@@ -489,8 +491,10 @@ static NSAttributedString *OPNOutlinedControllerDescriptionText(NSString *text) 
         }
     }
 
-    NSGradient *leftScrim = [[NSGradient alloc] initWithColors:@[OpnColor(0x000000, 0.58), OpnColor(0x000000, 0.28), OpnColor(0x000000, 0.0)]];
-    [leftScrim drawInRect:bounds angle:0.0];
+    if (self.drawsScrim) {
+        NSGradient *leftScrim = [[NSGradient alloc] initWithColors:@[OpnColor(0x000000, 0.58), OpnColor(0x000000, 0.28), OpnColor(0x000000, 0.0)]];
+        [leftScrim drawInRect:bounds angle:0.0];
+    }
 
 }
 
@@ -1969,21 +1973,12 @@ using namespace OPN;
     CGFloat height = NSHeight(frame);
     OPNControllerPreviewBackgroundView *artwork = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:stage.bounds];
     artwork.cornerRadius = 34.0;
+    artwork.drawsScrim = NO;
     artwork.wantsLayer = YES;
     artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
     [stage addSubview:artwork];
     [self loadControllerHeroImageForView:artwork candidates:OPNControllerHeroBackgroundCandidates(game) index:0];
-
-    CAGradientLayer *scrim = [CAGradientLayer layer];
-    scrim.frame = stage.bounds;
-    scrim.colors = @[(id)OpnColor(0x020403, 0.92).CGColor,
-                     (id)OpnColor(0x020403, 0.42).CGColor,
-                     (id)OpnColor(0x020403, 0.04).CGColor];
-    scrim.locations = @[@0.0, @0.34, @1.0];
-    scrim.startPoint = CGPointMake(0.0, 0.5);
-    scrim.endPoint = CGPointMake(1.0, 0.5);
-    [artwork.layer addSublayer:scrim];
 
     CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
     NSString *titleText = OPNCatalogString(game.title, @"Untitled");
