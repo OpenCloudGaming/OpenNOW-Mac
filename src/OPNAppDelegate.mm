@@ -10,7 +10,6 @@
 #import "views/OPNErrorView.h"
 #import "views/OPNGameCatalogView.h"
 #import "views/OPNSettingsView.h"
-#import "views/OPNStoreView.h"
 #import "views/OPNCloudmatchServerPickerView.h"
 #import "common/OPNColorTokens.h"
 #import "common/OPNUIHelpers.h"
@@ -35,7 +34,7 @@
 @property (nonatomic, strong) OPNBackdropView *rootView;
 @property (nonatomic, strong) OPNGameCatalogView *catalogView;
 @property (nonatomic, strong) OPNSettingsView *settingsView;
-@property (nonatomic, strong) OPNStoreView *storeView;
+@property (nonatomic, strong) OPNGameCatalogView *storeView;
 @property (nonatomic, strong) OPNStreamViewController *streamingController;
 @property (nonatomic, copy) NSString *currentStreamTitle;
 @property (nonatomic, assign) OPN::AuthScreen activeStreamReturnScreen;
@@ -2136,7 +2135,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self refreshAccountSummary];
             [self refreshStreamRegions];
 
-            OPNStoreView *store = [[OPNStoreView alloc] initWithFrame:bounds];
+            OPNGameCatalogView *store = [[OPNGameCatalogView alloc] initWithFrame:bounds];
             store.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             self.storeView = store;
 
