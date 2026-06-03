@@ -29,5 +29,6 @@
 - (void)moveGamepadFocusBy:(NSInteger)delta;
 - (void)moveGamepadFocusByRows:(NSInteger)rowDelta columns:(NSInteger)columnDelta;
 - (void)activateGamepadFocus;
+- (void)cycleFocusedGamepadVariant;
 
 @end

@@ -195,6 +195,7 @@ typedef NS_OPTIONS(uint16_t, OPNDesktopGamepadButton) {
     OPNDesktopGamepadButtonRight = 1u << 3,
     OPNDesktopGamepadButtonA = 1u << 4,
     OPNDesktopGamepadButtonB = 1u << 5,
+    OPNDesktopGamepadButtonY = 1u << 6,
 };
 
 static const uint16_t OPNDesktopGamepadDirectionMask = OPNDesktopGamepadButtonUp |
@@ -480,6 +481,7 @@ static uint16_t OPNDesktopGamepadButtons(void) {
     if (pad.dpad.right.value > 0.5 || x > 0.55) buttons |= OPNDesktopGamepadButtonRight;
     if (pad.buttonA.value > 0.5) buttons |= OPNDesktopGamepadButtonA;
     if (pad.buttonB.value > 0.5) buttons |= OPNDesktopGamepadButtonB;
+    if (pad.buttonY.value > 0.5) buttons |= OPNDesktopGamepadButtonY;
     return buttons;
 }
 
@@ -1140,7 +1142,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self routeDesktopGamepadButtons:directions];
     }
 
-    uint16_t actions = pressed & (OPNDesktopGamepadButtonA | OPNDesktopGamepadButtonB);
+    uint16_t actions = pressed & (OPNDesktopGamepadButtonA | OPNDesktopGamepadButtonB | OPNDesktopGamepadButtonY);
     if (actions != 0) [self routeDesktopGamepadButtons:actions];
     self.desktopControllerPreviousButtons = buttons;
 }
@@ -1156,6 +1158,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (self.currentScreen == OPN::AuthScreen::Catalog) {
         if (buttons & OPNDesktopGamepadButtonLeft) [self.catalogView moveGamepadFocusBy:-1];
         if (buttons & OPNDesktopGamepadButtonRight) [self.catalogView moveGamepadFocusBy:1];
+        if (buttons & OPNDesktopGamepadButtonY) [self.catalogView cycleFocusedGamepadVariant];
         if (buttons & OPNDesktopGamepadButtonA) [self.catalogView activateGamepadFocus];
         return;
     }
@@ -1168,6 +1171,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (buttons & OPNDesktopGamepadButtonLeft) columnDelta -= 1;
         if (buttons & OPNDesktopGamepadButtonRight) columnDelta += 1;
         if (rowDelta != 0 || columnDelta != 0) [self.storeView moveGamepadFocusByRows:rowDelta columns:columnDelta];
+        if (buttons & OPNDesktopGamepadButtonY) [self.storeView cycleFocusedGamepadVariant];
         if (buttons & OPNDesktopGamepadButtonA) [self.storeView activateGamepadFocus];
         return;
     }

@@ -613,6 +613,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game prominent:(BOOL)prominent;
 - (void)setStoreFocused:(BOOL)focused;
 - (void)activate;
+- (void)cycleSelectedVariant;
 @end
 
 @interface OPNStoreGameTile ()
@@ -625,6 +626,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSView *storeBadgeView;
 @property (nonatomic, strong) NSImageView *storeIconView;
 @property (nonatomic, strong) NSMutableArray<NSImageView *> *storeIconViews;
+@property (nonatomic, strong) NSMutableArray<NSNumber *> *storeIconVariantIndexes;
 @property (nonatomic, strong) NSTextField *titleLabel;
 @property (nonatomic, strong) NSTextField *metaLabel;
 @property (nonatomic, strong) NSTextField *featureLabel;
@@ -634,11 +636,15 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) BOOL prominent;
 @property (nonatomic, assign) BOOL storeFocused;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
+- (void)updateStoreIconSelection;
 @end
 
 @implementation OPNStoreGameTile
 
 - (void)setSelectedVariantIndex:(int)selectedVariantIndex {
+    if (!_gameData.variants.empty()) {
+        selectedVariantIndex = MAX(0, MIN((int)_gameData.variants.size() - 1, selectedVariantIndex));
+    }
     _selectedVariantIndex = selectedVariantIndex;
     NSInteger storeCount = MAX((NSInteger)_gameData.availableStores.size(), (NSInteger)_gameData.variants.size());
     BOOL needsPurchase = OPNStoreGameNeedsPurchase(_gameData, _selectedVariantIndex);
@@ -646,6 +652,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         ? @"Not owned"
         : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
     self.playButton.title = OPNStorePrimaryActionTitle(_gameData, _selectedVariantIndex, self.prominent);
+    [self updateStoreIconSelection];
 }
 
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game prominent:(BOOL)prominent {
@@ -695,29 +702,37 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         [self addSubview:_storeBadgeView];
 
         _storeIconViews = [NSMutableArray array];
+        _storeIconVariantIndexes = [NSMutableArray array];
         NSArray<NSString *> *variantStores = OPNStoreVariantStoreNames(game);
         _storeIconView = [[NSImageView alloc] initWithFrame:NSZeroRect];
         _storeIconView.imageScaling = NSImageScaleProportionallyDown;
-        _storeIconView.image = OPNStoreIconImage(variantStores.firstObject ?: OPNStorePrimaryStoreName(game));
-        _storeIconView.toolTip = variantStores.firstObject ?: OPNStorePrimaryStoreName(game);
+        NSString *firstStore = !game.variants.empty() ? OPNStoreString(game.variants.front().appStore, @"") : (variantStores.firstObject ?: OPNStorePrimaryStoreName(game));
+        if (firstStore.length == 0) firstStore = variantStores.firstObject ?: OPNStorePrimaryStoreName(game);
+        _storeIconView.image = OPNStoreIconImage(firstStore);
+        _storeIconView.toolTip = OPNStoreDisplayLabel(firstStore);
         _storeIconView.wantsLayer = YES;
         _storeIconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
         _storeIconView.layer.borderWidth = 1.0;
         _storeIconView.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
         [_storeBadgeView addSubview:_storeIconView];
         [_storeIconViews addObject:_storeIconView];
+        [_storeIconVariantIndexes addObject:@0];
 
-        for (NSUInteger index = 1; index < MIN((NSUInteger)4, variantStores.count); index++) {
+        NSUInteger variantIconCount = game.variants.empty() ? variantStores.count : game.variants.size();
+        for (NSUInteger index = 1; index < MIN((NSUInteger)4, variantIconCount); index++) {
+            NSString *store = !game.variants.empty() ? OPNStoreString(game.variants[index].appStore, @"") : variantStores[index];
+            if (store.length == 0) store = variantStores.count > index ? variantStores[index] : OPNStorePrimaryStoreName(game);
             NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSZeroRect];
             iconView.imageScaling = NSImageScaleProportionallyDown;
-            iconView.image = OPNStoreIconImage(variantStores[index]);
-            iconView.toolTip = variantStores[index];
+            iconView.image = OPNStoreIconImage(store);
+            iconView.toolTip = OPNStoreDisplayLabel(store);
             iconView.wantsLayer = YES;
             iconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
             iconView.layer.borderWidth = 1.0;
             iconView.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
             [_storeBadgeView addSubview:iconView];
             [_storeIconViews addObject:iconView];
+            [_storeIconVariantIndexes addObject:@((int)index)];
         }
 
         NSString *title = game.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:game.title.c_str()];
@@ -834,9 +849,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     [CATransaction setAnimationDuration:0.18];
     self.layer.borderWidth = focused ? 2.5 : 1.0;
     self.layer.borderColor = (focused ? OpnColor(OPN::kBrandGreen, 0.98) : OpnColor(0xFFFFFF, self.prominent ? 0.18 : 0.12)).CGColor;
-    for (NSImageView *iconView in self.storeIconViews) {
-        iconView.layer.borderColor = (focused ? OpnColor(OPN::kBrandGreen, 0.88) : OpnColor(0xFFFFFF, 0.18)).CGColor;
-    }
+    [self updateStoreIconSelection];
     self.shineLayer.opacity = focused ? 1.0 : (self.prominent ? 0.88 : 0.52);
     self.layer.shadowColor = OpnColor(OPN::kBrandGreen, 1.0).CGColor;
     self.layer.shadowOpacity = focused ? 0.38 : 0.0;
@@ -848,6 +861,33 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.layer.transform = transform;
     [CATransaction commit];
     self.playButton.hidden = !(self.prominent || focused);
+}
+
+- (void)updateStoreIconSelection {
+    for (NSUInteger index = 0; index < self.storeIconViews.count; index++) {
+        NSImageView *iconView = self.storeIconViews[index];
+        int variantIndex = index < self.storeIconVariantIndexes.count ? self.storeIconVariantIndexes[index].intValue : -1;
+        BOOL selected = variantIndex == self.selectedVariantIndex && !_gameData.variants.empty();
+        iconView.layer.borderWidth = selected ? 2.0 : 1.0;
+        iconView.layer.borderColor = (selected
+            ? OpnColor(OPN::kBrandGreen, 0.96)
+            : (self.storeFocused ? OpnColor(OPN::kBrandGreen, 0.42) : OpnColor(0xFFFFFF, 0.18))).CGColor;
+        iconView.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.24).CGColor : OpnColor(0x030506, 0.72).CGColor;
+    }
+}
+
+- (void)cycleSelectedVariant {
+    if (_gameData.variants.size() <= 1) return;
+    if (self.storeIconVariantIndexes.count == 0) return;
+    NSUInteger currentIconIndex = NSNotFound;
+    for (NSUInteger index = 0; index < self.storeIconVariantIndexes.count; index++) {
+        if (self.storeIconVariantIndexes[index].intValue == self.selectedVariantIndex) {
+            currentIconIndex = index;
+            break;
+        }
+    }
+    NSUInteger nextIconIndex = currentIconIndex == NSNotFound ? 0 : (currentIconIndex + 1) % self.storeIconVariantIndexes.count;
+    self.selectedVariantIndex = self.storeIconVariantIndexes[nextIconIndex].intValue;
 }
 
 - (void)selectPressed {
@@ -864,7 +904,17 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    (void)event;
+    NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    NSPoint badgePoint = [self.storeBadgeView convertPoint:localPoint fromView:self];
+    for (NSUInteger index = 0; index < self.storeIconViews.count; index++) {
+        NSImageView *iconView = self.storeIconViews[index];
+        if (!NSPointInRect([iconView convertPoint:badgePoint fromView:self.storeBadgeView], iconView.bounds)) continue;
+        if (index < self.storeIconVariantIndexes.count) {
+            int variantIndex = self.storeIconVariantIndexes[index].intValue;
+            if (variantIndex >= 0 && variantIndex < (int)_gameData.variants.size()) self.selectedVariantIndex = variantIndex;
+        }
+        return;
+    }
     [self selectPressed];
 }
 
@@ -1732,6 +1782,13 @@ using namespace OPN;
     NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
     if (self.focusedColumnIndex < 0 || self.focusedColumnIndex >= (NSInteger)row.count) return;
     [row[(NSUInteger)self.focusedColumnIndex] activate];
+}
+
+- (void)cycleFocusedGamepadVariant {
+    if (self.focusedRowIndex < 0 || self.focusedRowIndex >= (NSInteger)self.rowCards.count) return;
+    NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
+    if (self.focusedColumnIndex < 0 || self.focusedColumnIndex >= (NSInteger)row.count) return;
+    [row[(NSUInteger)self.focusedColumnIndex] cycleSelectedVariant];
 }
 
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
