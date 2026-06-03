@@ -5,9 +5,26 @@
 #include <cmath>
 
 static unsigned OPNControllerAccentRGB(void);
+static const CGFloat OPNControllerNavbarHeight = 118.0;
 
 static unsigned OPNControllerAccentRGB(void) {
     return OPN::kBrandGreen;
+}
+
+static CGFloat OPNControllerNavbarPadding(CGFloat width) {
+    return MIN(92.0, MAX(26.0, width * 0.024));
+}
+
+static CGFloat OPNControllerNavbarGap(CGFloat width) {
+    return MIN(42.0, MAX(10.0, width * 0.0145));
+}
+
+static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStringKey, id> *attributes, NSRect bounds) {
+    NSSize size = [text sizeWithAttributes:attributes];
+    return NSMakeRect(NSMidX(bounds) - ceil(size.width) * 0.5,
+                      NSMidY(bounds) - ceil(size.height) * 0.5,
+                      ceil(size.width),
+                      ceil(size.height));
 }
 
 @implementation OPNBackdropView
@@ -137,6 +154,136 @@ static unsigned OPNControllerAccentRGB(void) {
     NSGradient *vignette = [[NSGradient alloc] initWithStartingColor:OpnColor([self resolvedControllerAccentBlackRGB:vignetteBlack], 0.0)
                                                         endingColor:OpnColor([self resolvedControllerAccentBlackRGB:vignetteBlack], vignetteAlpha)];
     [vignette drawInRect:bounds angle:-90.0];
+}
+
+- (void)drawControllerReferenceBackgroundInRect:(NSRect)bounds {
+    NSGradient *base = [[NSGradient alloc] initWithStartingColor:OpnColor(0x020303)
+                                                     endingColor:OpnColor(0x030303)];
+    [base drawInRect:bounds angle:90.0];
+
+    CGFloat width = NSWidth(bounds);
+    CGFloat height = NSHeight(bounds);
+    NSGradient *accent = [[NSGradient alloc] initWithStartingColor:OpnColor([self resolvedControllerAccentRGB], 0.12)
+                                                       endingColor:OpnColor([self resolvedControllerAccentRGB], 0.0)];
+    [accent drawInBezierPath:[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(width * -0.20, height * 0.40, 1200.0, 520.0)] angle:0.0];
+}
+
+- (NSArray<NSDictionary<NSString *, id> *> *)controllerNavbarItemsForWidth:(CGFloat)width {
+    CGFloat itemWidth = width < 1180.0 ? 72.0 : 118.0;
+    CGFloat gap = OPNControllerNavbarGap(width);
+    CGFloat totalWidth = itemWidth * 4.0 + gap * 3.0;
+    CGFloat x = floor((width - totalWidth) * 0.5);
+    return @[
+        @{ @"title": @"Home", @"mode": @(OPNBackdropModeHome), @"rect": [NSValue valueWithRect:NSMakeRect(x, 20.0, itemWidth, 76.0)] },
+        @{ @"title": @"Store", @"mode": @(OPNBackdropModeStore), @"rect": [NSValue valueWithRect:NSMakeRect(x + itemWidth + gap, 20.0, itemWidth, 76.0)] },
+        @{ @"title": @"Library", @"mode": @(OPNBackdropModeLibrary), @"rect": [NSValue valueWithRect:NSMakeRect(x + (itemWidth + gap) * 2.0, 20.0, itemWidth, 76.0)] },
+        @{ @"title": @"Settings", @"mode": @(OPNBackdropModeSettings), @"rect": [NSValue valueWithRect:NSMakeRect(x + (itemWidth + gap) * 3.0, 20.0, itemWidth, 76.0)] },
+    ];
+}
+
+- (void)drawControllerNavbarInRect:(NSRect)bounds {
+    CGFloat width = NSWidth(bounds);
+    CGFloat padding = OPNControllerNavbarPadding(width);
+    NSRect navbarRect = NSMakeRect(0.0, 0.0, width, OPNControllerNavbarHeight);
+    NSGradient *navbarGradient = [[NSGradient alloc] initWithStartingColor:OpnColor(0x000000, 0.98)
+                                                               endingColor:OpnColor(0x000000, 0.92)];
+    [navbarGradient drawInRect:navbarRect angle:-90.0];
+
+    NSRect logoRect = NSMakeRect(padding, 35.0, 46.0, 46.0);
+    NSBezierPath *logoPath = [NSBezierPath bezierPathWithRoundedRect:logoRect xRadius:13.0 yRadius:13.0];
+    [OpnColor(0x98E7B0) setFill];
+    [logoPath fill];
+    NSDictionary<NSAttributedStringKey, id> *logoAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:15.0 weight:NSFontWeightBlack],
+        NSForegroundColorAttributeName: OpnColor(0x061008, 0.96),
+    };
+    [@"ON" drawInRect:OPNCenteredTextRect(@"ON", logoAttributes, logoRect) withAttributes:logoAttributes];
+
+    if (width >= 1500.0) {
+        NSDictionary<NSAttributedStringKey, id> *brandAttributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:20.0 weight:NSFontWeightBlack],
+            NSForegroundColorAttributeName: OpnColor(0xF8F8F8),
+        };
+        [@"OpenNOW" drawInRect:NSMakeRect(NSMaxX(logoRect) + 16.0, 46.0, 160.0, 26.0) withAttributes:brandAttributes];
+    }
+
+    NSDictionary<NSAttributedStringKey, id> *itemAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:width < 1180.0 ? 13.0 : 16.0 weight:NSFontWeightBold],
+        NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.72),
+    };
+    NSDictionary<NSAttributedStringKey, id> *selectedItemAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:width < 1180.0 ? 13.0 : 16.0 weight:NSFontWeightHeavy],
+        NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 1.0),
+    };
+    for (NSDictionary<NSString *, id> *item in [self controllerNavbarItemsForWidth:width]) {
+        NSString *title = item[@"title"] ?: @"";
+        NSRect itemRect = [item[@"rect"] rectValue];
+        BOOL selected = (OPNBackdropMode)[item[@"mode"] integerValue] == self.mode;
+        if (selected) {
+            NSGradient *activeGradient = [[NSGradient alloc] initWithColors:@[
+                OpnColor([self resolvedControllerAccentRGB], 0.0),
+                OpnColor([self resolvedControllerAccentRGB], 0.15),
+                OpnColor([self resolvedControllerAccentRGB], 0.0),
+            ]];
+            [activeGradient drawInRect:itemRect angle:0.0];
+            NSRect indicatorRect = NSMakeRect(NSMinX(itemRect) + 16.0, NSMaxY(itemRect) - 6.0, NSWidth(itemRect) - 32.0, 6.0);
+            NSBezierPath *indicator = [NSBezierPath bezierPathWithRoundedRect:indicatorRect xRadius:3.0 yRadius:3.0];
+            [OpnColor(0x9BEFB7) setFill];
+            [indicator fill];
+        }
+        NSDictionary<NSAttributedStringKey, id> *attributes = selected ? selectedItemAttributes : itemAttributes;
+        [title drawInRect:OPNCenteredTextRect(title, attributes, NSInsetRect(itemRect, 4.0, 0.0)) withAttributes:attributes];
+    }
+
+    NSString *playtime = [self.remainingPlayTime ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    CGFloat rightX = width - padding;
+    if (playtime.length > 0 && ![playtime isEqualToString:@"--"]) {
+        NSString *playtimeText = [@"Playtime: " stringByAppendingString:playtime];
+        NSDictionary<NSAttributedStringKey, id> *playtimeAttributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:12.0 weight:NSFontWeightHeavy],
+            NSForegroundColorAttributeName: OpnColor(0xEAFFF1),
+        };
+        CGFloat chipWidth = MIN(168.0, MAX(122.0, ceil([playtimeText sizeWithAttributes:playtimeAttributes].width) + 24.0));
+        NSRect chipRect = NSMakeRect(rightX - chipWidth, 39.0, chipWidth, 34.0);
+        NSBezierPath *chipPath = [NSBezierPath bezierPathWithRoundedRect:chipRect xRadius:17.0 yRadius:17.0];
+        [OpnColor(0x081C11, 0.60) setFill];
+        [chipPath fill];
+        [OpnColor(0x26D067) setStroke];
+        chipPath.lineWidth = 1.5;
+        [chipPath stroke];
+        [playtimeText drawInRect:OPNCenteredTextRect(playtimeText, playtimeAttributes, chipRect) withAttributes:playtimeAttributes];
+        rightX = NSMinX(chipRect) - 10.0;
+    }
+
+    NSRect avatarRect = NSMakeRect(rightX - 34.0, 39.0, 34.0, 34.0);
+    NSBezierPath *avatarPath = [NSBezierPath bezierPathWithRoundedRect:avatarRect xRadius:9.0 yRadius:9.0];
+    [NSGraphicsContext saveGraphicsState];
+    [avatarPath addClip];
+    if (self.accountAvatarImage) {
+        [self.accountAvatarImage drawInRect:avatarRect fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+    } else {
+        [OpnColor([self resolvedControllerAccentRGB], 0.72) setFill];
+        [avatarPath fill];
+    }
+    [NSGraphicsContext restoreGraphicsState];
+    [OpnColor(0xFFFFFF, 0.72) setStroke];
+    avatarPath.lineWidth = 1.5;
+    [avatarPath stroke];
+
+    if (width >= 1500.0) {
+        NSString *name = self.accountName.length > 0 ? self.accountName : @"Account";
+        NSString *tier = self.accountStatus.length > 0 ? self.accountStatus : @"";
+        NSDictionary<NSAttributedStringKey, id> *nameAttributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:12.0 weight:NSFontWeightHeavy],
+            NSForegroundColorAttributeName: OpnColor(0xF5F5F5),
+        };
+        NSDictionary<NSAttributedStringKey, id> *tierAttributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:10.0 weight:NSFontWeightSemibold],
+            NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.66),
+        };
+        [name drawInRect:NSMakeRect(NSMinX(avatarRect) - 122.0, 39.0, 112.0, 16.0) withAttributes:nameAttributes];
+        [tier drawInRect:NSMakeRect(NSMinX(avatarRect) - 122.0, 56.0, 112.0, 14.0) withAttributes:tierAttributes];
+    }
 }
 
 - (void)drawIsometricBlockAtCenter:(NSPoint)center size:(CGFloat)size height:(CGFloat)height color:(NSColor *)color alpha:(CGFloat)alpha {
@@ -302,6 +449,35 @@ static unsigned OPNControllerAccentRGB(void) {
 - (void)drawRect:(NSRect)dirtyRect {
     [super drawRect:dirtyRect];
     (void)dirtyRect;
+    if (OpnControllerModeEnabled()) {
+        [self drawControllerReferenceBackgroundInRect:self.bounds];
+        [self drawControllerNavbarInRect:self.bounds];
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    if (!OpnControllerModeEnabled()) {
+        [super mouseDown:event];
+        return;
+    }
+
+    NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+    if (point.y > OPNControllerNavbarHeight) {
+        [super mouseDown:event];
+        return;
+    }
+
+    for (NSDictionary<NSString *, id> *item in [self controllerNavbarItemsForWidth:NSWidth(self.bounds)]) {
+        if (!NSPointInRect(point, [item[@"rect"] rectValue])) continue;
+        OPNBackdropMode targetMode = (OPNBackdropMode)[item[@"mode"] integerValue];
+        if (targetMode == OPNBackdropModeHome && self.onHomeSelected) self.onHomeSelected();
+        if (targetMode == OPNBackdropModeStore && self.onStoreSelected) self.onStoreSelected();
+        if (targetMode == OPNBackdropModeLibrary && self.onLibrarySelected) self.onLibrarySelected();
+        if (targetMode == OPNBackdropModeSettings && self.onSettingsSelected) self.onSettingsSelected();
+        return;
+    }
+
+    [super mouseDown:event];
 }
 
 - (void)dismissControllerAccountMenu {

@@ -214,15 +214,15 @@ using namespace OPN;
     if (self) {
         _gameData = game;
         self.wantsLayer = YES;
-        self.layer.cornerRadius = 20.0;
+        self.layer.cornerRadius = OpnControllerModeEnabled() ? 22.0 : 20.0;
         self.layer.masksToBounds = NO;
         self.layer.backgroundColor = NSColor.clearColor.CGColor;
-        self.layer.borderWidth = 1.0;
-        self.layer.borderColor = OpnColor(0xFFFFFF, 0.13).CGColor;
+        self.layer.borderWidth = OpnControllerModeEnabled() ? 2.0 : 1.0;
+        self.layer.borderColor = OpnControllerModeEnabled() ? OpnColor(0xFFFFFF, 0.08).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor;
         self.layer.shadowColor = NSColor.blackColor.CGColor;
-        self.layer.shadowOpacity = OpnControllerModeEnabled() ? 0.0 : 0.38;
-        self.layer.shadowRadius = OpnControllerModeEnabled() ? 0.0 : 20.0;
-        self.layer.shadowOffset = OpnControllerModeEnabled() ? CGSizeZero : CGSizeMake(0.0, 16.0);
+        self.layer.shadowOpacity = OpnControllerModeEnabled() ? 0.32 : 0.38;
+        self.layer.shadowRadius = OpnControllerModeEnabled() ? 38.0 : 20.0;
+        self.layer.shadowOffset = OpnControllerModeEnabled() ? CGSizeMake(0.0, 18.0) : CGSizeMake(0.0, 16.0);
 
         _reflectionLayer = [CALayer layer];
         _reflectionLayer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.28).CGColor;
@@ -236,7 +236,7 @@ using namespace OPN;
 
         _contentView = [[NSView alloc] initWithFrame:self.bounds];
         _contentView.wantsLayer = YES;
-        _contentView.layer.cornerRadius = 20.0;
+        _contentView.layer.cornerRadius = OpnControllerModeEnabled() ? 22.0 : 20.0;
         _contentView.layer.masksToBounds = YES;
         _contentView.layer.backgroundColor = OpnControllerModeEnabled()
             ? NSColor.blackColor.CGColor
@@ -374,8 +374,8 @@ using namespace OPN;
     [CATransaction setAnimationDuration:0.22];
     [CATransaction setAnimationTimingFunction:[OPNCoreAnimationCoordinator appleQuinticTimingFunction]];
     self.layer.zPosition = selected ? 20.0 : 0.0;
-    self.layer.borderColor = selected ? OpnColor(OPN::kBrandGreen, 0.98).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor;
-    self.layer.borderWidth = selected ? 3.0 : 1.0;
+    self.layer.borderColor = selected ? OpnColor(0x2EE375, 0.98).CGColor : (OpnControllerModeEnabled() ? OpnColor(0xFFFFFF, 0.08).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor);
+    self.layer.borderWidth = OpnControllerModeEnabled() ? 2.0 : (selected ? 3.0 : 1.0);
     self.playButton.layer.shadowOpacity = selected ? 0.58 : 0.18;
     self.playButton.layer.shadowRadius = selected ? 22.0 : 14.0;
     [CATransaction commit];
@@ -384,9 +384,9 @@ using namespace OPN;
         [self.layer removeAnimationForKey:@"opn.focus.transform"];
         [self.reflectionLayer removeAnimationForKey:@"opn.focus.glow"];
         self.layer.transform = CATransform3DIdentity;
-        self.layer.shadowOpacity = 0.0;
-        self.layer.shadowRadius = 0.0;
-        self.layer.shadowOffset = CGSizeZero;
+        self.layer.shadowOpacity = selected ? 0.0 : 0.32;
+        self.layer.shadowRadius = selected ? 0.0 : 38.0;
+        self.layer.shadowOffset = selected ? CGSizeZero : CGSizeMake(0.0, 18.0);
         self.reflectionLayer.opacity = 0.0;
         self.reflectionLayer.shadowOpacity = 0.0;
         self.reflectionLayer.shadowRadius = 0.0;
@@ -436,7 +436,10 @@ using namespace OPN;
     CGFloat width = NSWidth(self.bounds);
     CGFloat height = NSHeight(self.bounds);
     CGFloat shortestSide = MAX(1.0, MIN(width, height));
-    CGFloat cornerRadius = shortestSide * (20.0 / 180.0);
+    CGFloat cornerRadius = OpnControllerModeEnabled()
+        ? MIN(34.0, MAX(20.0, shortestSide * (20.0 / 200.0)))
+        : shortestSide * (20.0 / 180.0);
+    self.layer.cornerRadius = cornerRadius;
     self.contentView.frame = self.bounds;
     self.contentView.layer.cornerRadius = cornerRadius;
     if (OpnControllerModeEnabled()) {
@@ -486,7 +489,9 @@ using namespace OPN;
     self.currentStoreLogoView.frame = NSInsetRect(self.currentStoreLogoContainer.bounds, logoInset, logoInset);
     self.reflectionLayer.frame = NSMakeRect(width * (16.0 / 180.0), height - height * (10.0 / 180.0), MAX(1.0, width - width * (32.0 / 180.0)), height * (18.0 / 180.0));
     if (OpnControllerModeEnabled()) {
-        self.layer.shadowPath = nil;
+        CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
+        self.layer.shadowPath = shadowPath;
+        CGPathRelease(shadowPath);
     } else {
         CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
         self.layer.shadowPath = shadowPath;

@@ -226,21 +226,25 @@ static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat wi
     CGFloat safeWidth = MAX(1.0, width);
     CGFloat safeHeight = MAX(1.0, height);
     CGFloat scale = MIN(safeWidth / 1280.0, safeHeight / 720.0);
-    CGFloat topInset = safeHeight * (28.0 / 720.0);
-    CGFloat bottomInset = safeHeight * (72.0 / 720.0);
-    CGFloat contentInset = safeWidth * (52.0 / 1280.0);
+    CGFloat topInset = 118.0 + MIN(48.0, MAX(24.0, safeHeight * (24.0 / 720.0)));
+    CGFloat bottomInset = MIN(96.0, MAX(64.0, safeHeight * (72.0 / 720.0)));
+    CGFloat contentInset = MIN(190.0, MAX(32.0, safeWidth * 0.049));
     CGFloat availableHeroWidth = MAX(1.0, safeWidth - contentInset * 2.0);
-    CGFloat heroY = safeHeight * (2.0 / 720.0);
-    CGFloat heroHeight = MIN(availableHeroWidth * kControllerHeroMarqueeRatio, safeHeight * (330.0 / 720.0));
-    CGFloat rowGap = safeHeight * (18.0 / 720.0);
-    CGFloat rowTitleHeight = safeHeight * (34.0 / 720.0);
+    CGFloat heroY = 0.0;
+    CGFloat heroViewportHeight = MIN(MAX(250.0, safeHeight * 0.32), 520.0);
+    CGFloat heroHeight = MIN(heroViewportHeight, availableHeroWidth * kControllerHeroMarqueeRatio);
+    CGFloat dotsHeight = MIN(56.0, MAX(26.0, safeHeight * (26.0 / 720.0)));
+    CGFloat stripGap = MIN(64.0, MAX(28.0, safeHeight * 0.034));
+    CGFloat rowGap = dotsHeight + stripGap;
+    CGFloat rowTitleHeight = MIN(72.0, MAX(42.0, safeHeight * (42.0 / 720.0)));
     CGFloat rowTitleY = heroY + heroHeight + rowGap;
-    CGFloat cardY = rowTitleY + rowTitleHeight + safeHeight * (12.0 / 720.0);
-    CGFloat cardSpacing = safeWidth * (18.0 / 1280.0);
+    CGFloat cardY = rowTitleY + rowTitleHeight + MIN(28.0, MAX(14.0, safeHeight * (14.0 / 720.0)));
+    CGFloat cardSpacing = MIN(56.0, MAX(22.0, safeWidth * 0.017));
     CGFloat availableRailWidth = MAX(1.0, safeWidth - contentInset * 2.0);
     CGFloat visibleRailHeight = MAX(1.0, safeHeight - topInset - bottomInset);
+    CGFloat cssCardSize = MIN(440.0, MAX(200.0, MIN(safeWidth * 0.145, safeHeight * 0.26)));
     CGFloat verticalCardSize = floor(MAX(1.0, visibleRailHeight - cardY - safeHeight * (20.0 / 720.0)));
-    CGFloat cardSize = floor(MAX(1.0, verticalCardSize));
+    CGFloat cardSize = floor(MAX(160.0, MIN(cssCardSize, verticalCardSize > 160.0 ? verticalCardSize : cssCardSize)));
     NSInteger visibleCardCount = MAX(1, (NSInteger)floor((availableRailWidth + cardSpacing) / MAX(1.0, cardSize + cardSpacing)));
     OPNControllerLibraryMetrics metrics = {
         scale,
@@ -250,19 +254,19 @@ static OPNControllerLibraryMetrics OPNControllerLibraryMetricsForSize(CGFloat wi
         heroY,
         heroHeight,
         rowTitleY,
-        safeWidth * (170.0 / 1280.0),
+        MIN(520.0, MAX(220.0, safeWidth * 0.28)),
         rowTitleHeight,
-        safeHeight * (26.0 / 720.0),
-        contentInset + safeWidth * (158.0 / 1280.0),
-        rowTitleY + safeHeight * (8.0 / 720.0),
-        safeWidth * (110.0 / 1280.0),
-        safeHeight * (18.0 / 720.0),
-        safeHeight * (14.0 / 720.0),
+        MIN(88.0, MAX(42.0, safeWidth * 0.024)),
+        contentInset + MIN(520.0, MAX(220.0, safeWidth * 0.28)) + MIN(160.0, MAX(34.0, safeWidth * 0.048)),
+        rowTitleY + floor((rowTitleHeight - MIN(42.0, MAX(22.0, safeHeight * (22.0 / 720.0)))) * 0.58),
+        MIN(260.0, MAX(120.0, safeWidth * 0.115)),
+        MIN(42.0, MAX(22.0, safeHeight * (22.0 / 720.0))),
+        MIN(34.0, MAX(18.0, safeWidth * 0.0115)),
         cardY,
         cardSize,
         cardSpacing,
         visibleCardCount,
-        cardY + cardSize + safeHeight * (24.0 / 720.0)
+        cardY + cardSize + MIN(46.0, MAX(22.0, safeHeight * (22.0 / 720.0)))
     };
     return metrics;
 }
@@ -3336,19 +3340,21 @@ using namespace OPN;
 
 - (void)addControllerHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
     OPNControllerPreviewBackgroundView *hero = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:frame];
+    CGFloat heroWidth = MAX(1.0, NSWidth(frame));
     CGFloat heroHeight = MAX(1.0, NSHeight(frame));
-    CGFloat heroScale = MIN(heroHeight / 270.0, 2.0);
-    CGFloat cornerRadius = heroHeight * (18.0 / 270.0);
-    CGFloat leftInset = 68.0 * heroScale;
-    CGFloat logoWidth = 340.0 * heroScale;
-    CGFloat logoHeight = 84.0 * heroScale;
-    CGFloat actionScale = heroScale * 0.68;
-    CGFloat resumeButtonWidth = 136.0 * actionScale;
-    CGFloat secondaryButtonWidth = 136.0 * actionScale;
-    CGFloat moreButtonWidth = 50.0 * actionScale;
+    CGFloat heroScale = MIN(MAX(heroHeight / 270.0, 0.90), 2.0);
+    CGFloat cornerRadius = MIN(56.0, MAX(28.0, heroWidth * 0.019));
+    CGFloat leftInset = MIN(300.0, MAX(42.0, heroWidth * 0.070));
+    CGFloat logoWidth = MIN(360.0, MAX(260.0, heroWidth * 0.32));
+    CGFloat logoHeight = MIN(120.0, MAX(76.0, heroHeight * 0.34));
+    CGFloat actionScale = heroScale;
+    CGFloat resumeButtonWidth = MIN(170.0, MAX(112.0, 136.0 * actionScale));
+    CGFloat secondaryButtonWidth = MIN(156.0, MAX(104.0, 136.0 * actionScale));
+    CGFloat moreButtonWidth = MIN(58.0, MAX(44.0, 50.0 * actionScale));
     CGFloat buttonHeight = 42.0 * actionScale;
-    CGFloat buttonGap = 14.0 * actionScale;
-    CGFloat actionFontSize = 14.5 * actionScale;
+    buttonHeight = MIN(56.0, MAX(38.0, buttonHeight));
+    CGFloat buttonGap = MIN(20.0, MAX(10.0, 14.0 * actionScale));
+    CGFloat actionFontSize = MIN(18.0, MAX(13.0, 14.5 * actionScale));
 
     NSView *heroShadow = [[NSView alloc] initWithFrame:frame];
     heroShadow.wantsLayer = YES;
@@ -3370,13 +3376,26 @@ using namespace OPN;
     hero.wantsLayer = YES;
     hero.layer.cornerRadius = cornerRadius;
     hero.layer.masksToBounds = YES;
-    hero.layer.borderWidth = heroHeight * (1.0 / 270.0);
-    hero.layer.borderColor = OpnColor(0xFFFFFF, 0.14).CGColor;
+    hero.layer.borderWidth = 3.0;
+    hero.layer.borderColor = OpnColor(0x8EA8B6, 0.22).CGColor;
     [self.gridContentView addSubview:hero];
     [self.controllerHeroViews addObject:hero];
     [self loadControllerHeroImageForView:hero candidates:OPNControllerHeroBackgroundCandidates(game) index:0];
 
-    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (74.0 / 270.0), logoWidth, logoHeight)];
+    CGFloat logoY = NSMinY(frame) + MAX(36.0, heroHeight - MIN(140.0, MAX(46.0, heroHeight * 0.22)) - logoHeight - buttonHeight - MIN(48.0, MAX(24.0, heroHeight * 0.11)));
+    NSString *titleText = OPNCatalogString(game.title, @"Untitled");
+    NSTextField *title = OpnLabel(titleText, NSMakeRect(NSMinX(frame) + leftInset, logoY, logoWidth, logoHeight), MIN(74.0, MAX(34.0, heroHeight * 0.18)), OpnColor(0xFFFFFF), NSFontWeightBlack);
+    title.lineBreakMode = NSLineBreakByWordWrapping;
+    title.maximumNumberOfLines = 2;
+    title.wantsLayer = YES;
+    title.layer.shadowColor = NSColor.blackColor.CGColor;
+    title.layer.shadowOpacity = 0.62;
+    title.layer.shadowRadius = 22.0;
+    title.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    [self.gridContentView addSubview:title];
+    [self.controllerHeroViews addObject:title];
+
+    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(NSMinX(frame) + leftInset, logoY, logoWidth, logoHeight)];
     logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
     logoView.imageAlignment = NSImageAlignLeft;
     logoView.wantsLayer = YES;
@@ -3387,31 +3406,33 @@ using namespace OPN;
     logoView.layer.shadowOffset = CGSizeMake(0.0, heroHeight * (4.0 / 270.0));
     [self.gridContentView addSubview:logoView];
     [self.controllerHeroViews addObject:logoView];
-    [self loadControllerHeroLogoForView:logoView titleFallback:nil candidates:OPNControllerHeroLogoCandidates(game) index:0];
+    [self loadControllerHeroLogoForView:logoView titleFallback:title candidates:OPNControllerHeroLogoCandidates(game) index:0];
 
     OPNControllerHeroPrimaryAction primaryAction = [self primaryActionForHeroGame:game];
-    NSString *primaryTitle = primaryAction == OPNControllerHeroPrimaryActionResume ? @"▶  Resume" : (primaryAction == OPNControllerHeroPrimaryActionPlay ? @"▶  Play" : @"Buy");
-    NSButton *primary = OpnButton(primaryTitle, NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (198.0 / 270.0), resumeButtonWidth, buttonHeight), OpnColor(0x45F27C, 0.98), OpnColor(0x051008));
+    NSString *primaryTitle = primaryAction == OPNControllerHeroPrimaryActionResume ? @"Resume" : (primaryAction == OPNControllerHeroPrimaryActionPlay ? @"Play" : @"Buy");
+    CGFloat actionY = NSMinY(frame) + heroHeight - MIN(140.0, MAX(46.0, heroHeight * 0.22)) - buttonHeight;
+    NSButton *primary = OpnButton(primaryTitle, NSMakeRect(NSMinX(frame) + leftInset, actionY, resumeButtonWidth, buttonHeight), OpnColor(0x4EE887, 0.98), OpnColor(0x020804));
     primary.font = [NSFont systemFontOfSize:actionFontSize weight:NSFontWeightBold];
-    primary.layer.cornerRadius = buttonHeight * 0.24;
-    primary.layer.shadowColor = OpnColor(0x45F27C).CGColor;
-    primary.layer.shadowOpacity = 0.42;
-    primary.layer.shadowRadius = buttonHeight * 0.38;
+    primary.layer.cornerRadius = MIN(16.0, MAX(10.0, buttonHeight * 0.28));
+    primary.layer.shadowColor = OpnColor(0x4EE887).CGColor;
+    primary.layer.shadowOpacity = 0.28;
+    primary.layer.shadowRadius = buttonHeight * 0.28;
     primary.layer.shadowOffset = CGSizeZero;
     primary.target = self;
     primary.action = @selector(controllerHeroResumeClicked:);
     [self.gridContentView addSubview:primary];
     [self.controllerHeroViews addObject:primary];
 
-    NSButton *more = OpnButton(@"ⓘ  More Info", NSMakeRect(NSMaxX(primary.frame) + buttonGap, NSMinY(primary.frame), secondaryButtonWidth, buttonHeight), OpnColor(0x14181C, 0.92), OpnColor(0xFFFFFF, 0.92), true, OpnColor(0xFFFFFF, 0.08));
-    more.font = [NSFont systemFontOfSize:actionFontSize weight:NSFontWeightMedium];
+    NSString *store = game.availableStores.empty() ? @"Cloud" : OPNStoreCategoryTitle(OPNCatalogString(game.availableStores.front(), @"Cloud"));
+    NSButton *more = OpnButton(store, NSMakeRect(NSMaxX(primary.frame) + buttonGap, NSMinY(primary.frame), secondaryButtonWidth, buttonHeight), OpnColor(0x1D2327, 0.92), OpnColor(0xFFFFFF, 0.82), true, OpnColor(0xFFFFFF, 0.08));
+    more.font = [NSFont systemFontOfSize:actionFontSize weight:NSFontWeightBold];
     more.layer.cornerRadius = primary.layer.cornerRadius;
     more.target = self;
     more.action = @selector(controllerHeroMoreInfoClicked:);
     [self.gridContentView addSubview:more];
     [self.controllerHeroViews addObject:more];
 
-    NSButton *ellipsis = OpnButton(@"•••", NSMakeRect(NSMaxX(more.frame) + buttonGap, NSMinY(primary.frame), moreButtonWidth, buttonHeight), OpnColor(0x14181C, 0.92), OpnColor(0xFFFFFF, 0.92), true, OpnColor(0xFFFFFF, 0.08));
+    NSButton *ellipsis = OpnButton(@"•••", NSMakeRect(NSMaxX(more.frame) + buttonGap, NSMinY(primary.frame), moreButtonWidth, buttonHeight), OpnColor(0x1D2327, 0.92), OpnColor(0xFFFFFF, 0.92), true, OpnColor(0xFFFFFF, 0.08));
     ellipsis.font = [NSFont systemFontOfSize:actionFontSize weight:NSFontWeightBold];
     ellipsis.layer.cornerRadius = primary.layer.cornerRadius;
     ellipsis.target = self;
@@ -3419,10 +3440,10 @@ using namespace OPN;
     [self.gridContentView addSubview:ellipsis];
     [self.controllerHeroViews addObject:ellipsis];
 
-    CGFloat dotSpacing = 24.0 * heroScale;
-    CGFloat activeDotWidth = 22.0 * heroScale;
-    CGFloat inactiveDotWidth = 14.0 * heroScale;
-    CGFloat dotHeight = 5.0 * heroScale;
+    CGFloat dotSpacing = MIN(42.0, MAX(16.0, heroWidth * 0.014));
+    CGFloat activeDotWidth = MIN(120.0, MAX(68.0, heroWidth * 0.0248));
+    CGFloat inactiveDotWidth = MIN(70.0, MAX(42.0, heroWidth * 0.0158));
+    CGFloat dotHeight = MIN(18.0, MAX(10.0, heroWidth * 0.0046));
     CGFloat dotWidth = totalCount > 0 ? (totalCount - 1) * dotSpacing + activeDotWidth : 0.0;
     CGFloat dotX = NSMidX(frame) - dotWidth * 0.5;
     CGFloat dotY = NSMaxY(frame) + heroHeight * (14.0 / 270.0);
@@ -3710,7 +3731,10 @@ using namespace OPN;
     self.controllerBottomPromptBarView.includeStore = !homeSurface;
     self.controllerBottomPromptBarView.includeBack = !homeSurface;
     self.controllerBottomPromptBarView.includeCategorySwitch = !homeSurface && self.categoryItems.count > 1;
-    self.controllerBottomPromptBarView.frame = NSMakeRect(controllerMetrics.contentInset, height - controllerMetrics.bottomInset + height * (20.0 / 720.0), MAX(0.0, width - controllerMetrics.contentInset * 2.0), height * (32.0 / 720.0));
+    CGFloat promptInset = MIN(96.0, MAX(24.0, width * 0.032));
+    CGFloat promptHeight = MIN(38.0, MAX(26.0, height * (32.0 / 720.0)));
+    CGFloat promptBottom = MIN(30.0, MAX(12.0, height * 0.016));
+    self.controllerBottomPromptBarView.frame = NSMakeRect(promptInset, height - promptBottom - promptHeight, MAX(0.0, width - promptInset * 2.0), promptHeight);
     if (controllerMode) {
         self.searchField.hidden = YES;
         self.searchField.enabled = NO;
