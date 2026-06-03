@@ -329,6 +329,15 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     }
 
     [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+
+    CGFloat fadeHeight = floor(NSHeight(self.bounds) * 0.25);
+    if (fadeHeight <= 0.0) return;
+    NSRect fadeRect = NSMakeRect(NSMinX(self.bounds), NSMaxY(self.bounds) - fadeHeight, NSWidth(self.bounds), fadeHeight);
+    NSGradient *bottomFade = [[NSGradient alloc] initWithColors:@[
+        OpnColor(0x000000, 0.0),
+        OpnColor(0x000000, 1.0)
+    ]];
+    [bottomFade drawInRect:fadeRect angle:-90.0];
 }
 
 @end

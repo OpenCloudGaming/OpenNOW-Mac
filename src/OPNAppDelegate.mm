@@ -836,6 +836,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
         NSTextField *brandLabel = OpnLabel(@"OpenNOW", NSZeroRect, 18.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
         brandLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        brandLabel.wantsLayer = YES;
+        brandLabel.layer.shadowColor = NSColor.blackColor.CGColor;
+        brandLabel.layer.shadowOpacity = 0.95;
+        brandLabel.layer.shadowRadius = 3.0;
+        brandLabel.layer.shadowOffset = CGSizeZero;
         self.desktopBrandLabel = brandLabel;
         [chrome addSubview:brandLabel];
         [self.rootView addSubview:chrome positioned:NSWindowAbove relativeTo:self.contentContainer];
@@ -860,26 +865,26 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.focusRingType = NSFocusRingTypeNone;
     switcher.wantsLayer = YES;
     switcher.layer.cornerRadius = 18.0;
-    switcher.layer.backgroundColor = OpnColor(0x050806, 0.96).CGColor;
-    switcher.layer.borderColor = OpnColor(0xFFFFFF, 0.22).CGColor;
-    switcher.layer.borderWidth = 1.0;
+    switcher.layer.backgroundColor = NSColor.clearColor.CGColor;
+    switcher.layer.borderColor = NSColor.clearColor.CGColor;
+    switcher.layer.borderWidth = 0.0;
     switcher.layer.shadowColor = NSColor.blackColor.CGColor;
-    switcher.layer.shadowOpacity = 0.34;
-    switcher.layer.shadowRadius = 20.0;
-    switcher.layer.shadowOffset = CGSizeMake(0.0, 10.0);
+    switcher.layer.shadowOpacity = 0.0;
+    switcher.layer.shadowRadius = 0.0;
+    switcher.layer.shadowOffset = CGSizeZero;
     self.desktopAccountSwitcher = switcher;
     [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.desktopTopChromeView];
 
     NSView *playTimePill = [[NSView alloc] initWithFrame:NSZeroRect];
     playTimePill.wantsLayer = YES;
     playTimePill.layer.cornerRadius = 14.0;
-    playTimePill.layer.backgroundColor = OpnColor(0x050806, 0.96).CGColor;
-    playTimePill.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.74).CGColor;
-    playTimePill.layer.borderWidth = 1.0;
+    playTimePill.layer.backgroundColor = NSColor.clearColor.CGColor;
+    playTimePill.layer.borderColor = NSColor.clearColor.CGColor;
+    playTimePill.layer.borderWidth = 0.0;
     playTimePill.layer.shadowColor = NSColor.blackColor.CGColor;
-    playTimePill.layer.shadowOpacity = 0.20;
-    playTimePill.layer.shadowRadius = 14.0;
-    playTimePill.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    playTimePill.layer.shadowOpacity = 0.0;
+    playTimePill.layer.shadowRadius = 0.0;
+    playTimePill.layer.shadowOffset = CGSizeZero;
     self.desktopRemainingPlayTimePill = playTimePill;
 
     NSTextField *playTimeLabel = OpnLabel(@"Playtime: --", NSZeroRect, 11.0, OpnColor(OPN::kTextPrimary, 0.92), NSFontWeightBold, NSTextAlignmentCenter);
@@ -908,7 +913,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     for (NSView *subview in self.desktopBrandIconView.subviews) {
         if ([subview.identifier isEqualToString:@"brandGlyph"]) subview.frame = self.desktopBrandIconView.bounds;
     }
-    self.desktopBrandLabel.font = [NSFont systemFontOfSize:18.0 * scale weight:NSFontWeightBlack];
+    NSFont *brandFont = [NSFont systemFontOfSize:18.0 * scale weight:NSFontWeightBlack];
+    self.desktopBrandLabel.font = brandFont;
+    self.desktopBrandLabel.attributedStringValue = [[NSAttributedString alloc] initWithString:@"OpenNOW" attributes:@{
+        NSFontAttributeName: brandFont,
+        NSForegroundColorAttributeName: OpnColor(OPN::kTextPrimary),
+        NSStrokeColorAttributeName: NSColor.blackColor,
+        NSStrokeWidthAttributeName: @(-3.0),
+    }];
     self.desktopBrandLabel.frame = NSMakeRect(NSMaxX(self.desktopBrandIconView.frame) + 20.0 * scale,
                                               brandY + floor((brandSize - 28.0 * scale) * 0.5),
                                               180.0 * scale,

@@ -884,7 +884,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
 @property (nonatomic, assign) std::string panelsFingerprint;
-- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index completion:(void (^)(BOOL loaded))completion;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)cancelHeroImageLoads;
 - (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token;
@@ -1230,19 +1230,20 @@ using namespace OPN;
     OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
     artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [self.documentView addSubview:artwork];
-    [self loadFeaturedHeroImageForView:artwork gameIdentity:OpnGameIdentityForHero(game) candidates:OpnHeroImageCandidatesForGame(game) index:0];
+    [self loadFeaturedHeroImageForView:artwork gameIdentity:OpnGameIdentityForHero(game) candidates:OpnHeroImageCandidatesForGame(game) index:0 completion:nil];
     [self.desktopFeaturedHeroViews addObject:artwork];
 }
 
-- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index completion:(void (^)(BOOL loaded))completion {
     if (!view) return;
     if (index >= candidates.count) {
         view.image = OpnFallbackHeroArtworkImage();
+        if (completion) completion(view.image != nil);
         return;
     }
     NSString *urlString = candidates[index];
     if (urlString.length == 0) {
-        [self loadFeaturedHeroImageForView:view gameIdentity:gameIdentity candidates:candidates index:index + 1];
+        [self loadFeaturedHeroImageForView:view gameIdentity:gameIdentity candidates:candidates index:index + 1 completion:completion];
         return;
     }
 
@@ -1255,7 +1256,7 @@ using namespace OPN;
         OPNHeroArtworkView *strongView = weakView;
         if (!strongView.superview) return;
         if (!image) {
-            [strongSelf loadFeaturedHeroImageForView:strongView gameIdentity:gameIdentity candidates:candidates index:index + 1];
+            [strongSelf loadFeaturedHeroImageForView:strongView gameIdentity:gameIdentity candidates:candidates index:index + 1 completion:completion];
             return;
         }
         if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
@@ -1270,6 +1271,7 @@ using namespace OPN;
             }
         }
         strongView.image = image;
+        if (completion) completion(YES);
     });
     [self trackHeroImageLoadToken:token];
 }
@@ -1288,15 +1290,26 @@ using namespace OPN;
     NSArray<NSView *> *oldViews = [self.desktopFeaturedHeroViews copy];
     [self.desktopFeaturedHeroViews removeAllObjects];
     NSRect frame = self.desktopFeaturedHeroFrame;
-    [self addDesktopHeroStageForGame:*heroGame y:NSMinY(frame) contentX:NSMinX(frame) width:NSWidth(frame) height:NSHeight(frame)];
-    for (NSView *newView in self.desktopFeaturedHeroViews) newView.alphaValue = 0.0;
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.18;
-        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-        for (NSView *oldView in oldViews) oldView.animator.alphaValue = 0.0;
-        for (NSView *newView in self.desktopFeaturedHeroViews) newView.animator.alphaValue = 1.0;
-    } completionHandler:^{
-        for (NSView *oldView in oldViews) [oldView removeFromSuperview];
+    OPNHeroArtworkView *newArtwork = [[OPNHeroArtworkView alloc] initWithFrame:frame];
+    newArtwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    newArtwork.alphaValue = 0.0;
+    [self.documentView addSubview:newArtwork positioned:NSWindowAbove relativeTo:oldViews.lastObject];
+    [self.desktopFeaturedHeroViews addObject:newArtwork];
+    [self loadFeaturedHeroImageForView:newArtwork gameIdentity:OpnGameIdentityForHero(*heroGame) candidates:OpnHeroImageCandidatesForGame(*heroGame) index:0 completion:^(BOOL loaded) {
+        if (!loaded || !newArtwork.superview) {
+            [newArtwork removeFromSuperview];
+            [self.desktopFeaturedHeroViews removeAllObjects];
+            [self.desktopFeaturedHeroViews addObjectsFromArray:oldViews];
+            return;
+        }
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.22;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            for (NSView *oldView in oldViews) oldView.animator.alphaValue = 0.0;
+            newArtwork.animator.alphaValue = 1.0;
+        } completionHandler:^{
+            for (NSView *oldView in oldViews) [oldView removeFromSuperview];
+        }];
     }];
 }
 
