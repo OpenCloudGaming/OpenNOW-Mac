@@ -151,6 +151,7 @@
                      retryAttempt:(NSInteger)retryAttempt;
 - (void)applyApplicationIconTheme;
 - (void)applyInterfacePreferencesToCurrentScreen;
+- (void)windowGeometryChanged:(NSNotification *)notification;
 - (void)installDesktopTopChromeIfNeeded;
 - (void)installDesktopAccountSwitcherIfNeeded;
 - (void)installDesktopSettingsPillIfNeeded;
@@ -598,6 +599,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                                  name:NSWindowDidExitFullScreenNotification
                                                object:self.window];
     [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(windowGeometryChanged:)
+                                                 name:NSWindowDidResizeNotification
+                                               object:self.window];
+    [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(interfacePreferencesChanged:)
                                                  name:OPNInterfacePreferencesDidChangeNotification
                                                object:nil];
@@ -799,6 +804,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)windowFullScreenStateChanged:(NSNotification *)notification {
     if (notification.object != self.window) return;
     [self saveWindowPresentation];
+    [self layoutDesktopTopChrome];
+    [self layoutDesktopAccountSwitcher];
+    [self layoutDesktopSettingsPill];
+}
+
+- (void)windowGeometryChanged:(NSNotification *)notification {
+    if (notification.object != self.window) return;
     [self layoutDesktopTopChrome];
     [self layoutDesktopAccountSwitcher];
     [self layoutDesktopSettingsPill];
