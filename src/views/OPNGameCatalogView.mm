@@ -1286,6 +1286,7 @@ using namespace OPN;
             const GameInfo *currentHero = [strongSelf currentHeroGame];
             BOOL currentHeroMatches = currentHero && [OpnGameIdentityForHero(*currentHero) isEqualToString:gameIdentity];
             if (currentHeroMatches && (!previousAspect || std::fabs(previousAspect.doubleValue - aspect) > 0.01)) {
+                strongView.image = image;
                 [strongSelf scheduleRenderStore];
                 return;
             }
