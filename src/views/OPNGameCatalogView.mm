@@ -19,6 +19,7 @@ static const CGFloat kCatalogHeroGap = 62.0;
 static const CGFloat kCatalogGridPadding = 28.0;
 static const CGFloat kCatalogHeroRatio = 0.3229;
 static const NSInteger kCatalogRenderBufferCards = 3;
+static const CGFloat kCatalogFallbackHeroAspect = 1.0 / kCatalogHeroRatio;
 
 static CGFloat OPNCatalogHeightScale(CGFloat height) {
     return MIN(1.0, MAX(0.80, MAX(1.0, height) / 900.0));
@@ -174,18 +175,15 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     if (!self.image || self.image.size.width <= 0.0 || self.image.size.height <= 0.0) return;
     CGFloat imageAspect = self.image.size.width / self.image.size.height;
     CGFloat viewAspect = MAX(1.0, NSWidth(self.bounds)) / MAX(1.0, NSHeight(self.bounds));
-    NSRect source = NSZeroRect;
-    source.size = self.image.size;
+    NSRect target = self.bounds;
     if (imageAspect > viewAspect) {
-        CGFloat sourceWidth = self.image.size.height * viewAspect;
-        source.origin.x = floor((self.image.size.width - sourceWidth) * 0.5);
-        source.size.width = sourceWidth;
-    } else {
-        CGFloat sourceHeight = self.image.size.width / viewAspect;
-        source.origin.y = floor((self.image.size.height - sourceHeight) * 0.5);
-        source.size.height = sourceHeight;
+        target.size.height = floor(NSWidth(self.bounds) / imageAspect);
+        target.origin.y = floor((NSHeight(self.bounds) - NSHeight(target)) * 0.5);
+    } else if (imageAspect < viewAspect) {
+        target.size.width = floor(NSHeight(self.bounds) * imageAspect);
+        target.origin.x = floor((NSWidth(self.bounds) - NSWidth(target)) * 0.5);
     }
-    [self.image drawInRect:self.bounds fromRect:source operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+    [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
 }
 @end
 
@@ -200,6 +198,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSMutableArray<OPNGameCardView *> *cardViews;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, OPNGameCardView *> *cardViewsByIndex;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *imageLoadTokens;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *heroAspectByIdentity;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> allGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
@@ -217,11 +216,12 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 - (void)scheduleRenderCatalog;
 - (std::vector<OPN::GameInfo>)featuredLibraryGamesWithFallback:(const std::vector<OPN::GameInfo> &)fallbackGames;
 - (void)addHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
-- (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)cancelImageLoads;
 - (void)renderVisibleCardsWithMetrics:(OPNCatalogGridMetrics)metrics totalCards:(NSInteger)totalCards;
 - (void)scrollFocusedGameIntoViewWithMetrics:(OPNCatalogGridMetrics)metrics;
 - (void)configureHeroRotationTimer;
+- (CGFloat)heroAspectForGame:(const OPN::GameInfo &)game;
 - (const OPN::GameInfo *)currentHeroGame;
 - (void)heroRotationTimerFired:(NSTimer *)timer;
 - (void)updateHeroOnly;
@@ -237,6 +237,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         _cardViews = [NSMutableArray array];
         _cardViewsByIndex = [NSMutableDictionary dictionary];
         _imageLoadTokens = [NSMutableArray array];
+        _heroAspectByIdentity = [NSMutableDictionary dictionary];
         _renderStartIndex = 0;
         _focusedGameIndex = 0;
         _currentHeroIndex = 0;
@@ -404,7 +405,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:stage.bounds];
     artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [stage addSubview:artwork];
-    [self loadHeroArtworkForView:artwork candidates:OPNHeroImageCandidates(game) index:0];
+    [self loadHeroArtworkForView:artwork gameIdentity:OPNGameIdentity(game) candidates:OPNHeroImageCandidates(game) index:0];
 }
 
 - (void)configureHeroRotationTimer {
@@ -424,6 +425,11 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     if (candidateCount <= 0) return nullptr;
     NSInteger target = ((self.currentHeroIndex % candidateCount) + candidateCount) % candidateCount;
     return &_heroGames[(size_t)target];
+}
+
+- (CGFloat)heroAspectForGame:(const OPN::GameInfo &)game {
+    NSNumber *aspect = self.heroAspectByIdentity[OPNGameIdentity(game)];
+    return aspect.doubleValue > 0.0 ? aspect.doubleValue : kCatalogFallbackHeroAspect;
 }
 
 - (void)heroRotationTimerFired:(NSTimer *)timer {
@@ -455,7 +461,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     }];
 }
 
-- (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+- (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view || index >= candidates.count) return;
     __weak OPNHeroArtworkView *weakView = view;
     __weak __typeof__(self) weakSelf = self;
@@ -465,8 +471,19 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         OPNHeroArtworkView *strongView = weakView;
         if (!strongView.superview) return;
         if (!image) {
-            [weakSelf loadHeroArtworkForView:strongView candidates:candidates index:index + 1];
+            [weakSelf loadHeroArtworkForView:strongView gameIdentity:gameIdentity candidates:candidates index:index + 1];
             return;
+        }
+        if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
+            CGFloat aspect = image.size.width / image.size.height;
+            NSNumber *previousAspect = weakSelf.heroAspectByIdentity[gameIdentity];
+            weakSelf.heroAspectByIdentity[gameIdentity] = @(aspect);
+            const OPN::GameInfo *currentHero = [weakSelf currentHeroGame];
+            BOOL currentHeroMatches = currentHero && [OPNGameIdentity(*currentHero) isEqualToString:gameIdentity];
+            if (currentHeroMatches && (!previousAspect || std::fabs(previousAspect.doubleValue - aspect) > 0.01)) {
+                [weakSelf scheduleRenderCatalog];
+                return;
+            }
         }
         strongView.image = image;
     });
@@ -509,18 +526,22 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     CGFloat topInset = MIN(kCatalogTopInset * scale, MAX(104.0, floor(height * 0.17)));
     CGFloat heroGap = MAX(38.0, floor(kCatalogHeroGap * scale));
     CGFloat gridPadding = MAX(18.0, floor(kCatalogGridPadding * scale));
-    CGFloat minimumHeroHeight = 180.0 * scale;
-    CGFloat desiredHeroHeight = hasHero ? MIN(MIN(520.0, MAX(minimumHeroHeight, height * 0.28)), floor(metrics.contentWidth * kCatalogHeroRatio)) : 0.0;
+    const OPN::GameInfo *heroGame = hasHero ? [self currentHeroGame] : nullptr;
+    CGFloat heroAspect = heroGame ? [self heroAspectForGame:*heroGame] : kCatalogFallbackHeroAspect;
+    CGFloat maximumHeroHeight = hasHero ? 520.0 : 0.0;
+    CGFloat idealHeroHeight = hasHero ? floor(metrics.contentWidth / MAX(0.1, heroAspect)) : 0.0;
     CGFloat availableHeroHeight = height - bottomPadding - metrics.cardHeight - sectionHeight - heroGap - topInset;
     if (availableHeroHeight < 0.0) {
         CGFloat recovery = MIN(topInset - 72.0 * scale, -availableHeroHeight);
         topInset -= MAX(0.0, recovery);
         availableHeroHeight = height - bottomPadding - metrics.cardHeight - sectionHeight - heroGap - topInset;
     }
-    CGFloat heroHeight = hasHero ? MIN(desiredHeroHeight, MAX(0.0, availableHeroHeight)) : 0.0;
-    if (hasHero && heroHeight > 1.0) {
-        self.heroFrame = NSMakeRect(metrics.contentX, topInset, metrics.contentWidth, heroHeight);
-        [self addHeroForGame:*[self currentHeroGame] frame:self.heroFrame];
+    CGFloat heroHeight = hasHero ? floor(MIN(MIN(idealHeroHeight, maximumHeroHeight), MAX(0.0, availableHeroHeight))) : 0.0;
+    CGFloat heroWidth = hasHero ? floor(MIN(metrics.contentWidth, heroHeight * heroAspect)) : 0.0;
+    if (hasHero && heroHeight > 1.0 && heroWidth > 1.0 && heroGame) {
+        CGFloat heroX = metrics.contentX + floor((metrics.contentWidth - heroWidth) * 0.5);
+        self.heroFrame = NSMakeRect(heroX, topInset, heroWidth, heroHeight);
+        [self addHeroForGame:*heroGame frame:self.heroFrame];
     }
     [self configureHeroRotationTimer];
 
