@@ -1367,32 +1367,42 @@ using namespace OPN;
 
     __weak OPNHeroArtworkView *weakView = view;
     __weak __typeof__(self) weakSelf = self;
-    OpnImageLoadToken *token = OpnLoadImageForURLCancellable(urlString, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
-        (void)resolvedURL;
-        (void)data;
-        __typeof__(self) strongSelf = weakSelf;
-        OPNHeroArtworkView *strongView = weakView;
-        if (!strongView.superview) return;
-        if (!image) {
-            [strongSelf loadFeaturedHeroImageForView:strongView gameIdentity:gameIdentity candidates:candidates index:index + 1 completion:completion];
-            return;
-        }
-        if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
-            CGFloat aspect = image.size.width / image.size.height;
-            NSNumber *previousAspect = strongSelf.heroAspectByIdentity[gameIdentity];
-            strongSelf.heroAspectByIdentity[gameIdentity] = @(aspect);
-            const GameInfo *currentHero = [strongSelf currentHeroGame];
-            BOOL currentHeroMatches = currentHero && [OpnGameIdentityForHero(*currentHero) isEqualToString:gameIdentity];
-            if (currentHeroMatches && (!previousAspect || std::fabs(previousAspect.doubleValue - aspect) > 0.01)) {
-                strongView.image = image;
-                [strongSelf scheduleRenderStore];
+    __block BOOL completed = NO;
+    __block NSInteger remainingLoads = (NSInteger)remainingCandidates.count;
+    for (NSString *candidateURL in remainingCandidates) {
+        OpnImageLoadToken *token = OpnLoadImageForURLCancellable(candidateURL, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+            (void)resolvedURL;
+            (void)data;
+            __typeof__(self) strongSelf = weakSelf;
+            OPNHeroArtworkView *strongView = weakView;
+            if (!strongSelf || !strongView.superview || completed) return;
+            if (!image) {
+                remainingLoads--;
+                if (remainingLoads <= 0) {
+                    completed = YES;
+                    strongView.image = OpnFallbackHeroArtworkImage();
+                    if (completion) completion(strongView.image != nil);
+                }
                 return;
             }
-        }
-        strongView.image = image;
-        if (completion) completion(YES);
-    });
-    [self trackHeroImageLoadToken:token];
+            completed = YES;
+            if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
+                CGFloat aspect = image.size.width / image.size.height;
+                NSNumber *previousAspect = strongSelf.heroAspectByIdentity[gameIdentity];
+                strongSelf.heroAspectByIdentity[gameIdentity] = @(aspect);
+                const GameInfo *currentHero = [strongSelf currentHeroGame];
+                BOOL currentHeroMatches = currentHero && [OpnGameIdentityForHero(*currentHero) isEqualToString:gameIdentity];
+                if (currentHeroMatches && (!previousAspect || std::fabs(previousAspect.doubleValue - aspect) > 0.01)) {
+                    strongView.image = image;
+                    [strongSelf scheduleRenderStore];
+                    return;
+                }
+            }
+            strongView.image = image;
+            if (completion) completion(YES);
+        });
+        [self trackHeroImageLoadToken:token];
+    }
 }
 
 - (void)updateHeroTileOnly {
