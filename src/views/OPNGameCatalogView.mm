@@ -1966,7 +1966,13 @@ using namespace OPN;
 }
 
 - (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
-    NSView *stage = [[NSView alloc] initWithFrame:frame];
+    CGFloat wrapperHeight = NSHeight(frame) + (totalCount > 1 ? 46.0 : 0.0);
+    NSView *wrapper = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame), NSMinY(frame), NSWidth(frame), wrapperHeight)];
+    wrapper.wantsLayer = YES;
+    self.desktopHeroContainerView = wrapper;
+    [self addSubview:wrapper];
+
+    NSView *stage = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(frame), NSHeight(frame))];
     stage.wantsLayer = YES;
     stage.layer.backgroundColor = OpnColor(0x030506, 0.98).CGColor;
     stage.layer.cornerRadius = 34.0;
@@ -1976,7 +1982,7 @@ using namespace OPN;
     stage.layer.shadowOpacity = 0.48;
     stage.layer.shadowRadius = 34.0;
     stage.layer.shadowOffset = CGSizeMake(0.0, 22.0);
-    [self addSubview:stage];
+    [wrapper addSubview:stage];
 
     CGFloat width = NSWidth(frame);
     CGFloat height = NSHeight(frame);
@@ -2059,7 +2065,7 @@ using namespace OPN;
         CGFloat dotSpacing = 28.0;
         CGFloat dotRailWidth = (totalCount - 1) * dotSpacing + activeDotWidth;
         CGFloat dotX = NSMinX(frame) + floor((NSWidth(frame) - dotRailWidth) * 0.5);
-        CGFloat dotY = NSMaxY(frame) + 20.0;
+        CGFloat dotY = height + 20.0;
         NSInteger activeDotIndex = ((activeIndex % totalCount) + totalCount) % totalCount;
         for (NSInteger index = 0; index < totalCount; index++) {
             BOOL active = index == activeDotIndex;
@@ -2069,10 +2075,9 @@ using namespace OPN;
             pill.wantsLayer = YES;
             pill.layer.cornerRadius = dotHeight * 0.5;
             pill.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.20)).CGColor;
-            [self addSubview:pill];
+            [wrapper addSubview:pill];
         }
     }
-    self.desktopHeroContainerView = stage;
 }
 
 - (void)selectDesktopFeaturedGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
