@@ -1059,10 +1059,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (identifier.empty()) continue;
         NSString *identifierString = [NSString stringWithUTF8String:identifier.c_str()];
         NSString *label = OPNAuthSessionDisplayName(session);
-        NSString *title = [identifierString isEqualToString:currentIdentifierString]
-            ? [NSString stringWithFormat:@"%@  (Current)", label]
-            : label;
-        [self.desktopAccountSwitcher addItemWithTitle:title];
+        [self.desktopAccountSwitcher addItemWithTitle:label];
         NSMenuItem *item = self.desktopAccountSwitcher.lastItem;
         item.representedObject = identifierString;
         item.image = OPNAccountSwitcherImageForSession(session, [identifierString isEqualToString:currentIdentifierString] ? self.rootView.accountAvatarImage : nil);
