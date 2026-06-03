@@ -935,7 +935,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     CGFloat chromeHeight = floor(140.0 * scale);
     self.desktopTopChromeView.frame = NSMakeRect(0.0, 0.0, width, chromeHeight);
     CGFloat brandX = MAX(48.0, floor(width * 0.024));
-    CGFloat brandSize = floor(54.0 * scale);
+    CGFloat brandSize = floor(48.0 * scale);
     CGFloat brandY = floor((chromeHeight - brandSize) * 0.5);
     self.desktopBrandIconView.frame = NSMakeRect(brandX, brandY, brandSize, brandSize);
     self.desktopBrandIconView.layer.cornerRadius = 14.0 * scale;
