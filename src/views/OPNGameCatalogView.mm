@@ -3944,8 +3944,9 @@ using namespace OPN;
     if (!scrollIntoView) return;
     NSInteger localIndex = controllerMode ? clamped - self.controllerLibraryWindowStartIndex : clamped - self.desktopRenderStartIndex;
     if (!controllerMode) {
-        CGFloat cardWidth = [OPNGameCardView cardSize].width;
-        CGFloat spacing = kDesktopLibraryColumnSpacing;
+        OPNDesktopLibraryGridMetrics desktopMetrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
+        CGFloat cardWidth = desktopMetrics.cardWidth;
+        CGFloat spacing = desktopMetrics.columnSpacing;
         CGFloat step = cardWidth + spacing;
         CGFloat viewWidth = NSWidth(self.scrollView.frame);
         CGFloat targetX = (CGFloat)clamped * step + step * 0.5 - viewWidth * 0.5;
@@ -3996,8 +3997,9 @@ using namespace OPN;
     if (self.desktopDisplayGameCount <= 0) return;
     if (self.cachedDesktopDisplayGames.empty()) return;
 
-    CGFloat cardWidth = [OPNGameCardView cardSize].width;
-    CGFloat spacing = kDesktopLibraryColumnSpacing;
+    OPNDesktopLibraryGridMetrics metrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
+    CGFloat cardWidth = metrics.cardWidth;
+    CGFloat spacing = metrics.columnSpacing;
     CGFloat step = cardWidth + spacing;
     NSRect visibleBounds = self.scrollView.contentView.bounds;
 
@@ -4021,7 +4023,7 @@ using namespace OPN;
 
     OPNDesktopLibraryGridMetrics metrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
     CGFloat contentX = metrics.contentX;
-    CGFloat cardHeight = [OPNGameCardView cardSize].height;
+    CGFloat cardHeight = cardWidth;
 
     NSMutableDictionary<NSNumber *, OPNGameCardView *> *existingByIndex = [NSMutableDictionary dictionary];
     for (NSUInteger i = 0; i < self.cardViews.count; i++) {
