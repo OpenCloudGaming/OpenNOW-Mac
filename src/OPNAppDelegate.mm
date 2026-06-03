@@ -1034,10 +1034,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     CGFloat switcherWidth = MIN(180.0, MAX(150.0, width * 0.10));
     CGFloat accountX = MAX(24.0, width - switcherWidth - 58.0);
     self.desktopAccountSwitcher.frame = NSMakeRect(accountX, 52.0, switcherWidth, 44.0);
-    CGFloat pillWidth = 128.0;
+    CGFloat pillWidth = 172.0;
     self.desktopRemainingPlayTimePill.frame = NSMakeRect(accountX - pillWidth - 14.0, 52.0, pillWidth, 44.0);
     self.desktopRemainingPlayTimePill.layer.cornerRadius = 22.0;
-    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 8.0, 13.0);
+    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 12.0, 13.0);
 }
 
 - (void)updateDesktopNavigationBar {
