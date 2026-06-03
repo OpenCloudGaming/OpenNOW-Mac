@@ -973,13 +973,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)layoutDesktopSettingsPill {
     if (!self.desktopSettingsPillButton || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
-    CGFloat height = NSHeight(self.rootView.bounds);
-    CGFloat scale = OPNDesktopChromeScale(height);
-    CGFloat controlHeight = floor(42.0 * scale);
+    CGFloat scale = OPNDesktopChromeScale(NSHeight(self.rootView.bounds));
+    CGFloat switcherWidth = MIN(180.0, MAX(150.0, width * 0.10));
+    CGFloat controlHeight = floor(44.0 * scale);
     CGFloat buttonWidth = floor(124.0 * scale);
-    CGFloat margin = floor(34.0 * scale);
-    self.desktopSettingsPillButton.frame = NSMakeRect(width - buttonWidth - margin,
-                                                       height - controlHeight - margin,
+    CGFloat gap = 14.0 * scale;
+    CGFloat accountX = MAX(24.0, width - switcherWidth - 58.0 * scale);
+    CGFloat accountY = floor((140.0 * scale - controlHeight) * 0.5);
+    CGFloat leftNeighborX = self.desktopRemainingPlayTimePill.hidden ? accountX : NSMinX(self.desktopRemainingPlayTimePill.frame);
+    self.desktopSettingsPillButton.frame = NSMakeRect(MAX(24.0, leftNeighborX - buttonWidth - gap),
+                                                       accountY,
                                                        buttonWidth,
                                                        controlHeight);
     self.desktopSettingsPillButton.layer.cornerRadius = controlHeight * 0.5;
