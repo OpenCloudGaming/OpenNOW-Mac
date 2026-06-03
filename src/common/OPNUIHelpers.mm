@@ -272,6 +272,67 @@ static int OPNClampedColorByte(NSInteger value) {
     return (int)MAX(0, MIN(value, 255));
 }
 
+static NSString *OpnStringFromStdString(const std::string &value, NSString *fallback) {
+    if (value.empty()) return fallback ?: @"";
+    NSString *string = [NSString stringWithUTF8String:value.c_str()];
+    return string.length > 0 ? string : (fallback ?: @"");
+}
+
+static NSString *OpnHeroLocalAssetPath(NSString *relativePath) {
+    NSString *safeRelativePath = relativePath ?: @"";
+    NSString *bundlePath = [[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:safeRelativePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:bundlePath]) return bundlePath;
+    NSString *workingPath = [[[NSFileManager defaultManager] currentDirectoryPath] stringByAppendingPathComponent:safeRelativePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:workingPath]) return workingPath;
+    NSString *sourcePath = [@"/Volumes/Projects/OpenNOW-Mac" stringByAppendingPathComponent:safeRelativePath];
+    return [[NSFileManager defaultManager] fileExistsAtPath:sourcePath] ? sourcePath : nil;
+}
+
+static void OpnAppendUniqueHeroURL(NSMutableArray<NSString *> *urls, NSString *urlString) {
+    NSString *trimmed = [urlString ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length == 0 || [urls containsObject:trimmed]) return;
+    [urls addObject:trimmed];
+}
+
+static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::GameInfo &game, const char *type) {
+    auto it = game.imageUrlsByType.find(type);
+    if (it == game.imageUrlsByType.end()) return;
+    for (const std::string &url : it->second) {
+        OpnAppendUniqueHeroURL(urls, OpnStringFromStdString(url, @""));
+    }
+}
+
+@implementation OPNHeroArtworkView
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)setImage:(NSImage *)image {
+    _image = image;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    [OpnColor(0x030506, 1.0) setFill];
+    NSRectFill(self.bounds);
+    if (!self.image || self.image.size.width <= 0.0 || self.image.size.height <= 0.0) return;
+
+    CGFloat imageAspect = self.image.size.width / self.image.size.height;
+    CGFloat viewAspect = MAX(1.0, NSWidth(self.bounds)) / MAX(1.0, NSHeight(self.bounds));
+    NSRect target = self.bounds;
+    if (imageAspect > viewAspect) {
+        target.size.height = floor(NSWidth(self.bounds) / imageAspect);
+        target.origin.y = floor((NSHeight(self.bounds) - NSHeight(target)) * 0.5);
+    } else if (imageAspect < viewAspect) {
+        target.size.width = floor(NSHeight(self.bounds) * imageAspect);
+        target.origin.x = floor((NSWidth(self.bounds) - NSWidth(target)) * 0.5);
+    }
+
+    [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+}
+
+@end
+
 unsigned OpnBlendRGB(unsigned rgb, unsigned target, CGFloat amount) {
     amount = MAX(0.0, MIN(amount, 1.0));
     int r = (int)std::round(((rgb >> 16) & 0xFF) * (1.0 - amount) + ((target >> 16) & 0xFF) * amount);
@@ -498,9 +559,56 @@ void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
 }
 
 OpnImageLoadToken *OpnLoadImageFromCandidatesCancellable(NSArray<NSString *> *candidates,
-                                                        CGFloat maxPixelDimension,
-                                                        OpnImageLoadCompletion completion) {
+                                                         CGFloat maxPixelDimension,
+                                                         OpnImageLoadCompletion completion) {
     OpnImageLoadToken *token = [[OpnImageLoadToken alloc] init];
     OpnLoadImageCandidateAtIndex(candidates, 0, maxPixelDimension, completion, token);
     return token;
+}
+
+NSString *OpnGameIdentityForHero(const OPN::GameInfo &game) {
+    if (!game.id.empty()) return OpnStringFromStdString(game.id, @"");
+    if (!game.uuid.empty()) return OpnStringFromStdString(game.uuid, @"");
+    if (!game.launchAppId.empty()) return OpnStringFromStdString(game.launchAppId, @"");
+    return OpnStringFromStdString(game.title, @"");
+}
+
+NSArray<NSString *> *OpnHeroImageCandidatesForGame(const OPN::GameInfo &game) {
+    NSMutableArray<NSString *> *urls = [NSMutableArray array];
+    NSArray<NSString *> *preferredTypes = @[
+        @"MARQUEE_HERO_IMAGE",
+        @"HERO_IMAGE",
+        @"TV_BANNER",
+        @"FEATURE_IMAGE",
+        @"KEY_ART",
+        @"KEY_IMAGE",
+        @"GAME_BOX_ART",
+    ];
+    for (NSString *type in preferredTypes) {
+        OpnAppendHeroImageType(urls, game, type.UTF8String);
+    }
+    OpnAppendUniqueHeroURL(urls, OpnStringFromStdString(game.heroImageUrl, @""));
+    OpnAppendUniqueHeroURL(urls, OpnStringFromStdString(game.imageUrl, @""));
+    for (const std::string &screenshot : game.screenshotUrls) {
+        OpnAppendUniqueHeroURL(urls, OpnStringFromStdString(screenshot, @""));
+    }
+    return urls;
+}
+
+NSImage *OpnFallbackHeroArtworkImage(void) {
+    static NSImage *fallbackImage;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSArray<NSString *> *paths = @[
+            @"vendor/gfn_vendor_x86_64/files/mall/assets/img/Marquee_Hero_Image_Fallback.webp",
+            @"vendor/gfn_vendor_x86_64/files/mall/shared/assets/img/DefaultGameArt-TVBanner.svg",
+            @"vendor/gfn_vendor_x86_64/files/mall/assets/img/DefaultGameArt.svg",
+        ];
+        for (NSString *relativePath in paths) {
+            NSString *path = OpnHeroLocalAssetPath(relativePath);
+            fallbackImage = path.length > 0 ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
+            if (fallbackImage) break;
+        }
+    });
+    return fallbackImage;
 }

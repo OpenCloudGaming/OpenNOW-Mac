@@ -2,6 +2,7 @@
 
 #import <Cocoa/Cocoa.h>
 #include <stdint.h>
+#include "OPNGameTypes.h"
 
 NSColor *OpnColor(unsigned rgb, CGFloat alpha = 1.0);
 unsigned OpnBlendRGB(unsigned rgb, unsigned target, CGFloat amount);
@@ -32,6 +33,10 @@ CGPathRef OpnCreateEllipsePath(NSRect rect) CF_RETURNS_RETAINED;
 
 typedef void (^OpnImageLoadCompletion)(NSImage *image, NSString *resolvedURL, NSData *data);
 
+@interface OPNHeroArtworkView : NSView
+@property (nonatomic, strong) NSImage *image;
+@end
+
 @interface OpnImageLoadToken : NSObject
 @property (nonatomic, assign, readonly, getter=isCancelled) BOOL cancelled;
 - (void)cancel;
@@ -39,11 +44,15 @@ typedef void (^OpnImageLoadCompletion)(NSImage *image, NSString *resolvedURL, NS
 
 void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion);
 void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
-                                CGFloat maxPixelDimension,
-                                OpnImageLoadCompletion completion);
+                                 CGFloat maxPixelDimension,
+                                 OpnImageLoadCompletion completion);
 OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString,
                                                  CGFloat maxPixelDimension,
                                                  OpnImageLoadCompletion completion);
 OpnImageLoadToken *OpnLoadImageFromCandidatesCancellable(NSArray<NSString *> *candidates,
-                                                         CGFloat maxPixelDimension,
-                                                         OpnImageLoadCompletion completion);
+                                                          CGFloat maxPixelDimension,
+                                                          OpnImageLoadCompletion completion);
+
+NSString *OpnGameIdentityForHero(const OPN::GameInfo &game);
+NSArray<NSString *> *OpnHeroImageCandidatesForGame(const OPN::GameInfo &game);
+NSImage *OpnFallbackHeroArtworkImage(void);

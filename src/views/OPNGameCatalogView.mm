@@ -49,12 +49,6 @@ static OPNCatalogGridMetrics OPNCatalogGridMetricsForSize(CGFloat width, CGFloat
     return metrics;
 }
 
-static NSString *OPNCatalogString(const std::string &value, NSString *fallback) {
-    if (value.empty()) return fallback ?: @"";
-    NSString *string = [NSString stringWithUTF8String:value.c_str()];
-    return string.length > 0 ? string : (fallback ?: @"");
-}
-
 static BOOL OPNGameVariantIsAccessible(const OPN::GameVariant &variant) {
     return variant.librarySelected || variant.inLibrary ||
         variant.serviceStatus == "MANUAL" ||
@@ -78,34 +72,6 @@ static OPN::GameInfo OPNLibraryGameWithAccessibleVariants(const OPN::GameInfo &g
     }
     if (!variants.empty()) libraryGame.variants = variants;
     return libraryGame;
-}
-
-static NSString *OPNGameIdentity(const OPN::GameInfo &game) {
-    if (!game.id.empty()) return [NSString stringWithUTF8String:game.id.c_str()];
-    if (!game.uuid.empty()) return [NSString stringWithUTF8String:game.uuid.c_str()];
-    if (!game.launchAppId.empty()) return [NSString stringWithUTF8String:game.launchAppId.c_str()];
-    return OPNCatalogString(game.title, @"");
-}
-
-static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
-    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
-    auto append = ^(NSString *value) {
-        if (value.length > 0 && ![candidates containsObject:value]) [candidates addObject:value];
-    };
-    auto appendType = [&](const char *type) {
-        auto it = game.imageUrlsByType.find(type);
-        if (it == game.imageUrlsByType.end()) return;
-        for (const std::string &url : it->second) append(OPNCatalogString(url, @""));
-    };
-    appendType("MARQUEE_HERO_IMAGE");
-    appendType("HERO_IMAGE");
-    appendType("TV_BANNER");
-    appendType("FEATURE_IMAGE");
-    appendType("KEY_ART");
-    appendType("KEY_IMAGE");
-    append(OPNCatalogString(game.heroImageUrl, @""));
-    append(OPNCatalogString(game.imageUrl, @""));
-    return candidates;
 }
 
 @interface OPNCatalogScrollView : NSScrollView
@@ -155,35 +121,6 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
                       toCenter:NSMakePoint(NSMinX(bounds) + NSWidth(bounds) * 0.24, NSMinY(bounds) + 230.0)
                         radius:620.0
                        options:0];
-}
-@end
-
-@interface OPNHeroArtworkView : NSView
-@property (nonatomic, strong) NSImage *image;
-@end
-
-@implementation OPNHeroArtworkView
-- (BOOL)isFlipped { return YES; }
-- (void)setImage:(NSImage *)image {
-    _image = image;
-    [self setNeedsDisplay:YES];
-}
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    [OpnColor(0x030506, 1.0) setFill];
-    NSRectFill(self.bounds);
-    if (!self.image || self.image.size.width <= 0.0 || self.image.size.height <= 0.0) return;
-    CGFloat imageAspect = self.image.size.width / self.image.size.height;
-    CGFloat viewAspect = MAX(1.0, NSWidth(self.bounds)) / MAX(1.0, NSHeight(self.bounds));
-    NSRect target = self.bounds;
-    if (imageAspect > viewAspect) {
-        target.size.height = floor(NSWidth(self.bounds) / imageAspect);
-        target.origin.y = floor((NSHeight(self.bounds) - NSHeight(target)) * 0.5);
-    } else if (imageAspect < viewAspect) {
-        target.size.width = floor(NSHeight(self.bounds) * imageAspect);
-        target.origin.x = floor((NSWidth(self.bounds) - NSWidth(target)) * 0.5);
-    }
-    [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
 }
 @end
 
@@ -359,7 +296,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     for (const OPN::GameInfo &game : _allGames) {
         if (!OPNLibraryGameHasAccessibleVariants(game)) continue;
         OPN::GameInfo libraryGame = OPNLibraryGameWithAccessibleVariants(game);
-        NSString *identity = OPNGameIdentity(libraryGame);
+        NSString *identity = OpnGameIdentityForHero(libraryGame);
         if (identity.length > 0 && [seen containsObject:identity]) continue;
         if (identity.length > 0) [seen addObject:identity];
         games.push_back(libraryGame);
@@ -375,7 +312,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         if (games.size() >= 6) return;
         if (!OPNLibraryGameHasAccessibleVariants(game)) return;
         OPN::GameInfo libraryGame = OPNLibraryGameWithAccessibleVariants(game);
-        NSString *identity = OPNGameIdentity(libraryGame);
+        NSString *identity = OpnGameIdentityForHero(libraryGame);
         if (identity.length > 0 && [seen containsObject:identity]) return;
         if (identity.length > 0) [seen addObject:identity];
         games.push_back(libraryGame);
@@ -405,7 +342,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:stage.bounds];
     artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [stage addSubview:artwork];
-    [self loadHeroArtworkForView:artwork gameIdentity:OPNGameIdentity(game) candidates:OPNHeroImageCandidates(game) index:0];
+    [self loadHeroArtworkForView:artwork gameIdentity:OpnGameIdentityForHero(game) candidates:OpnHeroImageCandidatesForGame(game) index:0];
 }
 
 - (void)configureHeroRotationTimer {
@@ -428,7 +365,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 }
 
 - (CGFloat)heroAspectForGame:(const OPN::GameInfo &)game {
-    NSNumber *aspect = self.heroAspectByIdentity[OPNGameIdentity(game)];
+    NSNumber *aspect = self.heroAspectByIdentity[OpnGameIdentityForHero(game)];
     return aspect.doubleValue > 0.0 ? aspect.doubleValue : kCatalogFallbackHeroAspect;
 }
 
@@ -462,7 +399,11 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 }
 
 - (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
-    if (!view || index >= candidates.count) return;
+    if (!view) return;
+    if (index >= candidates.count) {
+        view.image = OpnFallbackHeroArtworkImage();
+        return;
+    }
     __weak OPNHeroArtworkView *weakView = view;
     __weak __typeof__(self) weakSelf = self;
     OpnImageLoadToken *token = OpnLoadImageForURLCancellable(candidates[index], 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
@@ -479,7 +420,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
             NSNumber *previousAspect = weakSelf.heroAspectByIdentity[gameIdentity];
             weakSelf.heroAspectByIdentity[gameIdentity] = @(aspect);
             const OPN::GameInfo *currentHero = [weakSelf currentHeroGame];
-            BOOL currentHeroMatches = currentHero && [OPNGameIdentity(*currentHero) isEqualToString:gameIdentity];
+            BOOL currentHeroMatches = currentHero && [OpnGameIdentityForHero(*currentHero) isEqualToString:gameIdentity];
             if (currentHeroMatches && (!previousAspect || std::fabs(previousAspect.doubleValue - aspect) > 0.01)) {
                 [weakSelf scheduleRenderCatalog];
                 return;

@@ -18,6 +18,7 @@ static const CGFloat kStoreTileHeight = 151.0;
 static const CGFloat kStoreHeroMinContentInset = 30.0;
 static const CGFloat kStoreHeroMaxContentInset = 106.0;
 static const CGFloat kStoreHeroContentInsetRatio = 0.055;
+static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
 
 @interface OPNStoreDocumentView : NSView
 @end
@@ -54,83 +55,6 @@ static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
     CGFloat viewportHeroHeight = MIN(520.0, MAX(250.0, MAX(1.0, height) * 0.32));
     return floor(MIN(viewportHeroHeight, MAX(1.0, width) * kStoreHeroHeightRatio));
 }
-
-@interface OPNStoreHeroBackgroundView : NSView
-@property (nonatomic, strong) NSImage *image;
-@property (nonatomic, assign) CGFloat cornerRadius;
-@property (nonatomic, assign) BOOL drawsScrim;
-@end
-
-@implementation OPNStoreHeroBackgroundView
-
-- (BOOL)isFlipped { return YES; }
-
-- (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        _cornerRadius = 20.0;
-        _drawsScrim = YES;
-    }
-    return self;
-}
-
-- (void)setImage:(NSImage *)image {
-    _image = image;
-    self.needsDisplay = YES;
-}
-
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    NSRect bounds = self.bounds;
-    if (NSIsEmptyRect(bounds)) return;
-
-    NSBezierPath *clipPath = [NSBezierPath bezierPathWithRoundedRect:bounds xRadius:self.cornerRadius yRadius:self.cornerRadius];
-    [NSGraphicsContext saveGraphicsState];
-    [clipPath addClip];
-
-    NSGradient *fallback = [[NSGradient alloc] initWithColorsAndLocations:
-        OpnColor(0x0A1115), 0.0,
-        OpnColor(0x152020), 0.48,
-        OpnColor(0x07090C), 1.0,
-        nil];
-    [fallback drawInRect:bounds angle:0.0];
-
-    if (self.image && self.image.size.width > 0.0 && self.image.size.height > 0.0) {
-        CGFloat imageAspect = self.image.size.width / self.image.size.height;
-        CGFloat boundsAspect = NSWidth(bounds) / MAX(1.0, NSHeight(bounds));
-        NSRect sourceRect = NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height);
-        if (imageAspect > boundsAspect) {
-            CGFloat sourceWidth = self.image.size.height * boundsAspect;
-            sourceRect.origin.x = floor((self.image.size.width - sourceWidth) * 0.5);
-            sourceRect.size.width = sourceWidth;
-        } else {
-            CGFloat sourceHeight = self.image.size.width / boundsAspect;
-            sourceRect.origin.y = floor((self.image.size.height - sourceHeight) * 0.5);
-            sourceRect.size.height = sourceHeight;
-        }
-        [self.image drawInRect:bounds fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
-    }
-
-    if (self.drawsScrim) {
-        NSGradient *leftScrim = [[NSGradient alloc] initWithColorsAndLocations:
-            OpnColor(0x000000, 0.86), 0.0,
-            OpnColor(0x000000, 0.58), 0.34,
-            OpnColor(0x000000, 0.12), 0.70,
-            OpnColor(0x000000, 0.0), 1.0,
-            nil];
-        [leftScrim drawInRect:bounds angle:0.0];
-
-        NSGradient *bottomScrim = [[NSGradient alloc] initWithColors:@[
-            OpnColor(0x000000, 0.0),
-            OpnColor(0x000000, 0.40)
-        ]];
-        [bottomScrim drawInRect:bounds angle:-90.0];
-    }
-
-    [NSGraphicsContext restoreGraphicsState];
-}
-
-@end
 
 static NSString *OPNStoreString(const std::string &value, NSString *fallback) {
     return value.empty() ? (fallback ?: @"") : [NSString stringWithUTF8String:value.c_str()];
@@ -902,8 +826,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
+@property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *heroImageLoadTokens;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *heroAspectByIdentity;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
-@property (nonatomic, strong) OPNStoreGameTile *heroTile;
 @property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
 @property (nonatomic, assign) NSRect desktopFeaturedHeroFrame;
 @property (nonatomic, assign) NSInteger currentHeroIndex;
@@ -914,11 +839,13 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::string panelsFingerprint;
 @property (nonatomic, assign) OPN::GameInfo featuredHeroGame;
 @property (nonatomic, assign) int featuredHeroVariantIndex;
-- (OPNStoreGameTile *)configuredHeroGameTile:(const OPN::GameInfo &)game frame:(NSRect)frame;
-- (void)loadFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)loadFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)featuredHeroLaunchClicked:(id)sender;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
+- (void)cancelHeroImageLoads;
+- (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token;
+- (CGFloat)heroAspectForGame:(const OPN::GameInfo &)game;
 - (void)updateDesktopFeaturedHeroOnly;
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
 - (NSView *)storeIconStripForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
@@ -940,6 +867,8 @@ using namespace OPN;
         self.wantsLayer = YES;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
         _rowCards = [NSMutableArray array];
+        _heroImageLoadTokens = [NSMutableArray array];
+        _heroAspectByIdentity = [NSMutableDictionary dictionary];
         _desktopFeaturedHeroViews = [NSMutableArray array];
         _desktopFeaturedHeroFrame = NSZeroRect;
         _focusedRowIndex = 0;
@@ -979,11 +908,12 @@ using namespace OPN;
 
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
-- (BOOL)hasContent { return self.heroTile != nil || self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0; }
+- (BOOL)hasContent { return self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0; }
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.heroRotationTimer invalidate];
+    [self cancelHeroImageLoads];
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
@@ -1035,7 +965,7 @@ using namespace OPN;
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
     [self mergeKnownStoreMetadataIntoPanels];
-    if (self.rowCards.count > 0 || self.heroTile) {
+    if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) {
         [self refreshLibrarySelections];
     } else if (!_panels.empty()) {
         [self renderStore];
@@ -1129,10 +1059,23 @@ using namespace OPN;
     });
 }
 
+- (void)cancelHeroImageLoads {
+    for (OpnImageLoadToken *token in self.heroImageLoadTokens) [token cancel];
+    [self.heroImageLoadTokens removeAllObjects];
+}
+
+- (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token {
+    if (!token) return;
+    [self.heroImageLoadTokens addObject:token];
+    if (self.heroImageLoadTokens.count > 12) [self.heroImageLoadTokens removeObjectsInRange:NSMakeRange(0, self.heroImageLoadTokens.count - 8)];
+}
+
+- (CGFloat)heroAspectForGame:(const GameInfo &)game {
+    NSNumber *aspect = self.heroAspectByIdentity[OpnGameIdentityForHero(game)];
+    return aspect.doubleValue > 0.0 ? aspect.doubleValue : kStoreFallbackHeroAspect;
+}
+
 - (void)refreshLibrarySelections {
-    if (self.heroTile) {
-        self.heroTile.selectedVariantIndex = [self selectedVariantIndexForStoreGame:self.heroTile.game];
-    }
     for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
         for (OPNStoreGameTile *card in row) {
             card.selectedVariantIndex = [self selectedVariantIndexForStoreGame:card.game];
@@ -1142,7 +1085,7 @@ using namespace OPN;
 }
 
 - (void)renderStore {
-    self.heroTile = nil;
+    [self cancelHeroImageLoads];
     for (NSView *view in [self.documentView.subviews copy]) {
         [view removeFromSuperview];
     }
@@ -1159,8 +1102,13 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        heroHeight = OPNStoreHeroHeightForSize(contentWidth, NSHeight(self.bounds));
-        [self addDesktopHeroStageForGame:*heroGame y:y + kStoreHeroTopOffset contentX:contentX width:contentWidth height:heroHeight];
+        CGFloat heroAspect = [self heroAspectForGame:*heroGame];
+        CGFloat maximumHeroHeight = OPNStoreHeroHeightForSize(contentWidth, NSHeight(self.bounds));
+        CGFloat idealHeroHeight = floor(contentWidth / MAX(0.1, heroAspect));
+        heroHeight = floor(MIN(maximumHeroHeight, idealHeroHeight));
+        CGFloat heroWidth = floor(MIN(contentWidth, heroHeight * heroAspect));
+        CGFloat heroX = contentX + floor((contentWidth - heroWidth) * 0.5);
+        [self addDesktopHeroStageForGame:*heroGame y:y + kStoreHeroTopOffset contentX:heroX width:heroWidth height:heroHeight];
     }
 
     CGFloat rowY = heroGame ? y + kStoreHeroTopOffset + heroHeight + 62.0 : y;
@@ -1261,14 +1209,13 @@ using namespace OPN;
     stage.layer.shadowOffset = CGSizeMake(0.0, 22.0);
     [self.documentView addSubview:stage];
 
-    OPNStoreHeroBackgroundView *artwork = [[OPNStoreHeroBackgroundView alloc] initWithFrame:stage.bounds];
-    artwork.cornerRadius = 34.0;
-    artwork.drawsScrim = NO;
+    OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:stage.bounds];
+    artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     artwork.wantsLayer = YES;
     artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
     [stage addSubview:artwork];
-    [self loadFeaturedHeroImageForView:artwork candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
+    [self loadFeaturedHeroImageForView:artwork gameIdentity:OpnGameIdentityForHero(game) candidates:OpnHeroImageCandidatesForGame(game) index:0];
 
     CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
 
@@ -1359,30 +1306,44 @@ using namespace OPN;
     }
 }
 
-- (void)loadFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view) return;
     if (index >= candidates.count) {
-        view.image = OPNStoreFallbackArtworkImage();
+        view.image = OpnFallbackHeroArtworkImage();
         return;
     }
     NSString *urlString = candidates[index];
     if (urlString.length == 0) {
-        [self loadFeaturedHeroImageForView:view candidates:candidates index:index + 1];
+        [self loadFeaturedHeroImageForView:view gameIdentity:gameIdentity candidates:candidates index:index + 1];
         return;
     }
 
-    __weak OPNStoreHeroBackgroundView *weakView = view;
-    OpnLoadImageForURL(urlString, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+    __weak OPNHeroArtworkView *weakView = view;
+    __weak __typeof__(self) weakSelf = self;
+    OpnImageLoadToken *token = OpnLoadImageForURLCancellable(urlString, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
         (void)resolvedURL;
         (void)data;
-        OPNStoreHeroBackgroundView *strongView = weakView;
+        __typeof__(self) strongSelf = weakSelf;
+        OPNHeroArtworkView *strongView = weakView;
         if (!strongView.superview) return;
         if (!image) {
-            [self loadFeaturedHeroImageForView:strongView candidates:candidates index:index + 1];
+            [strongSelf loadFeaturedHeroImageForView:strongView gameIdentity:gameIdentity candidates:candidates index:index + 1];
             return;
+        }
+        if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
+            CGFloat aspect = image.size.width / image.size.height;
+            NSNumber *previousAspect = strongSelf.heroAspectByIdentity[gameIdentity];
+            strongSelf.heroAspectByIdentity[gameIdentity] = @(aspect);
+            const GameInfo *currentHero = [strongSelf currentHeroGame];
+            BOOL currentHeroMatches = currentHero && [OpnGameIdentityForHero(*currentHero) isEqualToString:gameIdentity];
+            if (currentHeroMatches && (!previousAspect || std::fabs(previousAspect.doubleValue - aspect) > 0.01)) {
+                [strongSelf scheduleRenderStore];
+                return;
+            }
         }
         strongView.image = image;
     });
+    [self trackHeroImageLoadToken:token];
 }
 
 - (void)loadFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
@@ -1426,35 +1387,6 @@ using namespace OPN;
     self.onSelectGame(featuredGame, variantIndex);
 }
 
-- (void)addHeroGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
-    NSRect heroRect = NSMakeRect(contentX, y, width, height);
-    OPNStoreGameTile *hero = [self configuredHeroGameTile:game frame:heroRect];
-    [self.documentView addSubview:hero];
-    self.heroTile = hero;
-}
-
-- (OPNStoreGameTile *)configuredHeroGameTile:(const GameInfo &)game frame:(NSRect)frame {
-    OPNStoreGameTile *hero = [[OPNStoreGameTile alloc] initWithFrame:frame game:game prominent:YES];
-    hero.imageRevealDelay = 0.04;
-    hero.selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
-    __weak __typeof__(self) weakSelf = self;
-    __weak OPNStoreGameTile *weakHero = hero;
-    hero.onSelect = ^{
-        __typeof__(self) strongSelf = weakSelf;
-        OPNStoreGameTile *strongHero = weakHero;
-        if (!strongSelf || !strongHero || !strongSelf.onSelectGame) return;
-        strongSelf.onSelectGame(strongHero.game, strongHero.selectedVariantIndex);
-    };
-    hero.onBuy = ^(NSString *purchaseURL) {
-        __typeof__(self) strongSelf = weakSelf;
-        OPNStoreGameTile *strongHero = weakHero;
-        if (!strongSelf || !strongHero || !strongSelf.onBuyGame) return;
-        int variantIndex = strongHero.selectedVariantIndex >= 0 ? strongHero.selectedVariantIndex : 0;
-        strongSelf.onBuyGame(strongHero.game, variantIndex, purchaseURL ?: @"");
-    };
-    return hero;
-}
-
 - (void)updateHeroTileOnly {
     [self updateDesktopFeaturedHeroOnly];
 }
@@ -1479,22 +1411,6 @@ using namespace OPN;
     } completionHandler:^{
         for (NSView *oldView in oldViews) [oldView removeFromSuperview];
     }];
-}
-
-- (void)updateLegacyHeroTileOnly {
-
-    const GameInfo *heroGame = [self currentHeroGame];
-    if (!heroGame || !self.heroTile || self.heroTile.superview != self.documentView) {
-        [self renderStore];
-        return;
-    }
-
-    NSRect heroFrame = self.heroTile.frame;
-    OPNStoreGameTile *oldHero = self.heroTile;
-    OPNStoreGameTile *newHero = [self configuredHeroGameTile:*heroGame frame:heroFrame];
-    [self.documentView replaceSubview:oldHero with:newHero];
-    self.heroTile = newHero;
-
 }
 
 - (void)addSection:(const PanelSection &)section index:(NSInteger)sectionIndex y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
@@ -1618,7 +1534,6 @@ using namespace OPN;
 
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
     if (notification.object != self.scrollView.contentView) return;
-    [self.heroTile resetMouseTrackingIfOutside];
     for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
         for (OPNStoreGameTile *tile in row) {
             [tile resetMouseTrackingIfOutside];
