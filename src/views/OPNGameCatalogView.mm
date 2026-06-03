@@ -52,6 +52,12 @@ static CGFloat OPNStoreHeroContentInsetForWidth(CGFloat width) {
     return MIN(kStoreHeroMaxContentInset, MAX(kStoreHeroMinContentInset, width * kStoreHeroContentInsetRatio));
 }
 
+static CGFloat OPNStoreTileWidthForRailWidth(CGFloat width) {
+    CGFloat idealColumns = MAX(1.0, (width + kStoreCardSpacing) / (kStoreTileWidth + kStoreCardSpacing));
+    CGFloat columns = MAX(1.0, std::round(idealColumns));
+    return floor((width - kStoreCardSpacing * (columns - 1.0)) / columns);
+}
+
 static NSString *OPNStoreString(const std::string &value, NSString *fallback) {
     return value.empty() ? (fallback ?: @"") : [NSString stringWithUTF8String:value.c_str()];
 }
@@ -1638,13 +1644,15 @@ using namespace OPN;
     rowScroll.documentView = rowDocument;
 
     NSMutableArray<OPNStoreGameTile *> *cards = [NSMutableArray array];
+    CGFloat fittedTileWidth = OPNStoreTileWidthForRailWidth(availableWidth);
+    CGFloat fittedTileHeight = floor(fittedTileWidth * kStoreTileHeight / kStoreTileWidth);
     CGFloat x = 0.0;
     NSInteger column = 0;
     NSInteger maxCards = 24;
     for (const GameInfo &game : section.games) {
         BOOL focused = NO;
-        CGFloat cardWidth = focused ? kStoreTileWidth + 28.0 : kStoreTileWidth;
-        CGFloat cardHeight = focused ? kStoreTileHeight + 16.0 : kStoreTileHeight;
+        CGFloat cardWidth = focused ? fittedTileWidth + 28.0 : fittedTileWidth;
+        CGFloat cardHeight = focused ? fittedTileHeight + 16.0 : fittedTileHeight;
         CGFloat cardY = focused ? 0.0 : 10.0;
         OPNStoreGameTile *card = [[OPNStoreGameTile alloc] initWithFrame:NSMakeRect(x, cardY, cardWidth, cardHeight) game:game prominent:NO];
         card.imageRevealDelay = MIN(0.42, 0.035 * column + 0.025 * sectionIndex);
