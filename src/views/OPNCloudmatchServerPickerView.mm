@@ -480,7 +480,7 @@ static uint16_t OPNCloudmatchGamepadButtons(void) {
 
 - (void)startControllerPolling {
     if (self.controllerTimer) return;
-    self.previousControllerButtons = 0;
+    self.previousControllerButtons = OPNCloudmatchGamepadButtons();
     self.heldControllerDirections = 0;
     self.lastControllerRepeatTime = 0.0;
     self.controllerTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0
