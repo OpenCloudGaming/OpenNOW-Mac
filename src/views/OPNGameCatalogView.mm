@@ -1273,6 +1273,7 @@ using namespace OPN;
 
     OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:container.bounds];
     artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    artwork.image = OpnFallbackHeroArtworkImage();
     [container addSubview:artwork];
     NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(game);
     NSString *gameIdentity = OpnGameIdentityForHero(game);

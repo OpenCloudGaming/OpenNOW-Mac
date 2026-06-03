@@ -651,6 +651,30 @@ NSImage *OpnFallbackHeroArtworkImage(void) {
             fallbackImage = path.length > 0 ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
             if (fallbackImage) break;
         }
+        if (!fallbackImage) {
+            NSSize size = NSMakeSize(1600.0, 900.0);
+            fallbackImage = [[NSImage alloc] initWithSize:size];
+            [fallbackImage lockFocus];
+            NSRect bounds = NSMakeRect(0.0, 0.0, size.width, size.height);
+            NSGradient *background = [[NSGradient alloc] initWithColors:@[
+                OpnColor(0x182018, 1.0),
+                OpnColor(OPN::kBackground, 1.0)
+            ]];
+            [background drawInRect:bounds angle:0.0];
+            [OpnColor(OPN::kBrandGreen, 0.20) setFill];
+            NSBezierPath *glow = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-180.0, 90.0, 820.0, 820.0)];
+            [glow fill];
+            [OpnColor(0xFFFFFF, 0.08) setStroke];
+            for (NSInteger line = 0; line < 12; line++) {
+                CGFloat y = 120.0 + line * 56.0;
+                NSBezierPath *path = [NSBezierPath bezierPath];
+                [path moveToPoint:NSMakePoint(0.0, y)];
+                [path lineToPoint:NSMakePoint(size.width, y - 220.0)];
+                path.lineWidth = 1.0;
+                [path stroke];
+            }
+            [fallbackImage unlockFocus];
+        }
     });
     return fallbackImage;
 }
