@@ -72,6 +72,7 @@
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 @property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
 @property (nonatomic, strong) NSTextField *desktopRemainingPlayTimeLabel;
+@property (nonatomic, strong) NSButton *desktopSettingsPillButton;
 @property (nonatomic, assign) double currentRemainingPlayTimeHours;
 @property (nonatomic, assign) BOOL currentRemainingPlayTimeUnlimited;
 @property (nonatomic, assign) BOOL currentRemainingPlayTimeAvailable;
@@ -153,12 +154,16 @@
 - (void)applyInterfacePreferencesToCurrentScreen;
 - (void)installDesktopTopChromeIfNeeded;
 - (void)installDesktopAccountSwitcherIfNeeded;
+- (void)installDesktopSettingsPillIfNeeded;
 - (void)layoutDesktopTopChrome;
 - (void)layoutDesktopAccountSwitcher;
+- (void)layoutDesktopSettingsPill;
 - (void)updateDesktopTopChrome;
 - (void)updateDesktopAccountSwitcher;
+- (void)updateDesktopSettingsPill;
 - (void)rebuildDesktopAccountSwitcher;
 - (void)desktopAccountSwitcherChanged:(NSPopUpButton *)sender;
+- (void)desktopSettingsPillClicked:(NSButton *)sender;
 - (void)startApplicationUpdateChecks;
 - (void)stopApplicationUpdateChecks;
 - (void)applicationUpdateCheckTimerFired:(NSTimer *)timer;
@@ -797,6 +802,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self saveWindowPresentation];
     [self layoutDesktopTopChrome];
     [self layoutDesktopAccountSwitcher];
+    [self layoutDesktopSettingsPill];
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
@@ -925,6 +931,33 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self updateDesktopAccountSwitcher];
 }
 
+- (void)installDesktopSettingsPillIfNeeded {
+    if (!self.rootView) return;
+    if (self.desktopSettingsPillButton && self.desktopSettingsPillButton.superview != self.rootView) {
+        self.desktopSettingsPillButton = nil;
+    }
+    if (self.desktopSettingsPillButton) return;
+
+    NSButton *button = [[NSButton alloc] initWithFrame:NSZeroRect];
+    button.bordered = NO;
+    button.bezelStyle = NSBezelStyleRegularSquare;
+    button.buttonType = NSButtonTypeToggle;
+    button.focusRingType = NSFocusRingTypeNone;
+    button.target = self;
+    button.action = @selector(desktopSettingsPillClicked:);
+    button.wantsLayer = YES;
+    button.layer.backgroundColor = OpnColor(OPN::kBlack, 0.50).CGColor;
+    button.layer.borderColor = NSColor.clearColor.CGColor;
+    button.layer.borderWidth = 0.0;
+    button.layer.shadowColor = NSColor.blackColor.CGColor;
+    button.layer.shadowOpacity = 0.0;
+    button.layer.shadowRadius = 0.0;
+    button.layer.shadowOffset = CGSizeZero;
+    self.desktopSettingsPillButton = button;
+    [self.rootView addSubview:button positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self updateDesktopSettingsPill];
+}
+
 - (void)layoutDesktopTopChrome {
     if (!self.desktopTopChromeView || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
@@ -970,9 +1003,25 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 12.0 * scale, 13.0 * scale);
 }
 
+- (void)layoutDesktopSettingsPill {
+    if (!self.desktopSettingsPillButton || !self.rootView) return;
+    CGFloat width = NSWidth(self.rootView.bounds);
+    CGFloat height = NSHeight(self.rootView.bounds);
+    CGFloat scale = OPNDesktopChromeScale(height);
+    CGFloat controlHeight = floor(42.0 * scale);
+    CGFloat buttonWidth = floor(124.0 * scale);
+    CGFloat margin = floor(34.0 * scale);
+    self.desktopSettingsPillButton.frame = NSMakeRect(width - buttonWidth - margin,
+                                                       height - controlHeight - margin,
+                                                       buttonWidth,
+                                                       controlHeight);
+    self.desktopSettingsPillButton.layer.cornerRadius = controlHeight * 0.5;
+}
+
 - (void)updateDesktopTopChrome {
     [self installDesktopTopChromeIfNeeded];
     [self updateDesktopAccountSwitcher];
+    [self updateDesktopSettingsPill];
     if (!self.desktopTopChromeView) return;
     BOOL visible = OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopTopChromeView.hidden = !visible;
@@ -991,6 +1040,26 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopRemainingPlayTimeLabel.stringValue = remainingPlayTime.length > 0 ? [@"Playtime: " stringByAppendingString:remainingPlayTime] : @"Playtime: --";
     if (!visible) return;
     [self layoutDesktopAccountSwitcher];
+}
+
+- (void)updateDesktopSettingsPill {
+    [self installDesktopSettingsPillIfNeeded];
+    if (!self.desktopSettingsPillButton) return;
+    BOOL visible = OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
+    self.desktopSettingsPillButton.hidden = !visible;
+    if (!visible) return;
+
+    BOOL selected = self.currentScreen == OPN::AuthScreen::Settings;
+    self.desktopSettingsPillButton.state = selected ? NSControlStateValueOn : NSControlStateValueOff;
+    NSColor *textColor = selected ? OpnColor(OPN::kBlack, 0.96) : OpnColor(OPN::kTextPrimary, 0.96);
+    NSColor *backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.94) : OpnColor(OPN::kBlack, 0.50);
+    NSFont *font = [NSFont systemFontOfSize:12.0 * OPNDesktopChromeScale(NSHeight(self.rootView.bounds)) weight:NSFontWeightBold];
+    self.desktopSettingsPillButton.layer.backgroundColor = backgroundColor.CGColor;
+    self.desktopSettingsPillButton.attributedTitle = [[NSAttributedString alloc] initWithString:@"Settings" attributes:@{
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: textColor,
+    }];
+    [self layoutDesktopSettingsPill];
 }
 
 - (void)rebuildDesktopAccountSwitcher {
@@ -1914,6 +1983,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     [self installDesktopTopChromeIfNeeded];
     [self installDesktopAccountSwitcherIfNeeded];
+    [self installDesktopSettingsPillIfNeeded];
 }
 
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen {
@@ -1931,6 +2001,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.contentContainer.frame = self.rootView.bounds;
     self.contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [self updateDesktopTopChrome];
+    [self updateDesktopSettingsPill];
 }
 
 - (void)transitionToScreen:(OPN::AuthScreen)screen {
@@ -1945,6 +2016,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     self.currentScreen = screen;
     [self updateDesktopTopChrome];
+    [self updateDesktopSettingsPill];
     NSRect bounds = self.contentContainer.bounds;
 
     switch (screen) {
@@ -2351,6 +2423,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         : [NSString stringWithUTF8String:currentIdentifier.c_str()];
     [self rebuildDesktopAccountSwitcher];
     [self updateDesktopAccountSwitcher];
+}
+
+- (void)desktopSettingsPillClicked:(NSButton *)sender {
+    (void)sender;
+    if (self.currentScreen == OPN::AuthScreen::Settings) {
+        [self transitionToScreen:OPN::AuthScreen::Store];
+        return;
+    }
+    if (OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen)) {
+        [self transitionToScreen:OPN::AuthScreen::Settings];
+    }
 }
 
 - (void)transitionToStoreAfterProviderSelectionForSession:(const OPN::AuthSession &)session {
