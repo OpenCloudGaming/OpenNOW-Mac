@@ -2,7 +2,6 @@
 #import "OPNLoadingView.h"
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNUIHelpers.h"
-#import <GameController/GameController.h>
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
 #include <cctype>
@@ -10,7 +9,6 @@
 
 static const CGFloat kStoreTopInset = 170.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
-static const CGFloat kControllerStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroTopOffset = 0.0;
 static const CGFloat kStoreHeroHeightRatio = 0.3229;
 static const CGFloat kStoreRowHeight = 258.0;
@@ -20,8 +18,6 @@ static const CGFloat kStoreTileHeight = 151.0;
 static const CGFloat kStoreHeroMinContentInset = 30.0;
 static const CGFloat kStoreHeroMaxContentInset = 106.0;
 static const CGFloat kStoreHeroContentInsetRatio = 0.055;
-static const CGFloat kControllerStoreHeroTop = 30.0;
-static const CGFloat kControllerStoreRailHeight = 276.0;
 
 @interface OPNStoreDocumentView : NSView
 @end
@@ -521,23 +517,6 @@ static bool OPNStoreMergeGameStoreMetadata(OPN::GameInfo &target, const OPN::Gam
     return changed;
 }
 
-static uint16_t OPNStoreGamepadButtons(void) {
-    NSArray<GCController *> *controllers = [GCController controllers];
-    if (controllers.count == 0) return 0;
-    GCExtendedGamepad *pad = controllers.firstObject.extendedGamepad;
-    if (!pad) return 0;
-    uint16_t buttons = 0;
-    if (pad.buttonA.value > 0.5) buttons |= 1u << 0;
-    if (pad.buttonB.value > 0.5) buttons |= 1u << 1;
-    if (pad.dpad.up.value > 0.5 || pad.leftThumbstick.yAxis.value > 0.65) buttons |= 1u << 2;
-    if (pad.dpad.down.value > 0.5 || pad.leftThumbstick.yAxis.value < -0.65) buttons |= 1u << 3;
-    if (pad.dpad.left.value > 0.5 || pad.leftThumbstick.xAxis.value < -0.65) buttons |= 1u << 4;
-    if (pad.dpad.right.value > 0.5 || pad.leftThumbstick.xAxis.value > 0.65) buttons |= 1u << 5;
-    if (pad.leftShoulder.value > 0.5) buttons |= 1u << 6;
-    if (pad.rightShoulder.value > 0.5) buttons |= 1u << 7;
-    return buttons;
-}
-
 static void OPNStoreAppendFingerprintField(std::string &fingerprint, const std::string &value) {
     fingerprint.append(std::to_string(value.size()));
     fingerprint.push_back(':');
@@ -574,12 +553,6 @@ static std::string OPNStorePanelsFingerprint(const std::vector<OPN::PanelResult>
         }
     }
     return fingerprint;
-}
-
-static BOOL OPNStoreGamepadNavigationActive(NSView *view) {
-    NSWindow *window = view.window;
-    if (!window || window.contentViewController != nil) return NO;
-    return window.contentView == view || [view isDescendantOf:window.contentView];
 }
 
 static bool OPNStoreVariantIsLibrarySelected(const OPN::GameVariant &variant) {
@@ -998,32 +971,21 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
-@property (nonatomic, strong) NSTimer *gamepadNavigationTimer;
 @property (nonatomic, strong) OPNStoreGameTile *heroTile;
-@property (nonatomic, strong) NSMutableArray<NSView *> *controllerFeaturedHeroViews;
 @property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
-@property (nonatomic, assign) NSRect controllerFeaturedHeroFrame;
 @property (nonatomic, assign) NSRect desktopFeaturedHeroFrame;
 @property (nonatomic, assign) NSInteger currentHeroIndex;
 @property (nonatomic, assign) NSInteger focusedRowIndex;
 @property (nonatomic, assign) NSInteger focusedColumnIndex;
-@property (nonatomic, assign) uint16_t previousGamepadButtons;
-@property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
 @property (nonatomic, assign) std::string panelsFingerprint;
-@property (nonatomic, assign) OPN::GameInfo controllerFeaturedHeroGame;
-@property (nonatomic, assign) int controllerFeaturedHeroVariantIndex;
-- (void)startGamepadNavigationIfNeeded;
-- (void)stopGamepadNavigation;
-- (void)controllerDidConnect:(NSNotification *)notification;
-- (void)controllerDidDisconnect:(NSNotification *)notification;
+@property (nonatomic, assign) OPN::GameInfo featuredHeroGame;
+@property (nonatomic, assign) int featuredHeroVariantIndex;
 - (OPNStoreGameTile *)configuredHeroGameTile:(const OPN::GameInfo &)game frame:(NSRect)frame;
-- (void)addControllerFeaturedHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount;
-- (void)updateControllerFeaturedHeroOnly;
-- (void)loadControllerFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
-- (void)loadControllerFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
-- (void)controllerFeaturedHeroLaunchClicked:(id)sender;
+- (void)loadFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (void)loadFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
+- (void)featuredHeroLaunchClicked:(id)sender;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)updateDesktopFeaturedHeroOnly;
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
@@ -1034,8 +996,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)refreshLibrarySelections;
 - (void)updateFocusedTiles;
 - (void)updateHeroTileOnly;
-- (void)installGamepadValueHandlers;
-- (void)requestControllerBackToHome;
 @end
 
 @implementation OPNStoreView
@@ -1048,9 +1008,7 @@ using namespace OPN;
         self.wantsLayer = YES;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
         _rowCards = [NSMutableArray array];
-        _controllerFeaturedHeroViews = [NSMutableArray array];
         _desktopFeaturedHeroViews = [NSMutableArray array];
-        _controllerFeaturedHeroFrame = NSZeroRect;
         _desktopFeaturedHeroFrame = NSZeroRect;
         _focusedRowIndex = 0;
         _focusedColumnIndex = 0;
@@ -1080,45 +1038,25 @@ using namespace OPN;
                                                      name:OPNInterfacePreferencesDidChangeNotification
                                                    object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(controllerDidConnect:)
-                                                     name:GCControllerDidConnectNotification
-                                                   object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(controllerDidDisconnect:)
-                                                     name:GCControllerDidDisconnectNotification
-                                                   object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(storeScrollViewBoundsDidChange:)
                                                      name:NSViewBoundsDidChangeNotification
                                                    object:_scrollView.contentView];
-        [self startGamepadNavigationIfNeeded];
     }
     return self;
 }
 
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
-- (BOOL)hasContent { return self.heroTile != nil || self.rowCards.count > 0 || self.controllerFeaturedHeroViews.count > 0; }
+- (BOOL)hasContent { return self.heroTile != nil || self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0; }
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.heroRotationTimer invalidate];
-    [self stopGamepadNavigation];
-}
-
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    if (self.window) {
-        [self startGamepadNavigationIfNeeded];
-    } else {
-        [self stopGamepadNavigation];
-    }
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
     [self renderStore];
-    [self startGamepadNavigationIfNeeded];
 }
 
 - (void)setLoading:(BOOL)loading {
@@ -1240,7 +1178,7 @@ using namespace OPN;
 
 - (void)layout {
     [super layout];
-    CGFloat navClearance = OpnControllerModeEnabled() ? kControllerStoreNavigationClearance : kStoreNavigationClearance;
+    CGFloat navClearance = kStoreNavigationClearance;
     self.scrollView.frame = NSMakeRect(0.0, navClearance, NSWidth(self.bounds), MAX(0.0, NSHeight(self.bounds) - navClearance));
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
@@ -1277,15 +1215,8 @@ using namespace OPN;
         [view removeFromSuperview];
     }
     [self.rowCards removeAllObjects];
-    [self.controllerFeaturedHeroViews removeAllObjects];
     [self.desktopFeaturedHeroViews removeAllObjects];
-    self.controllerFeaturedHeroFrame = NSZeroRect;
     self.desktopFeaturedHeroFrame = NSZeroRect;
-
-    if (OpnControllerModeEnabled()) {
-        [self renderControllerStore];
-        return;
-    }
 
     CGFloat width = MAX(980.0, NSWidth(self.bounds));
     CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
@@ -1385,8 +1316,8 @@ using namespace OPN;
 }
 
 - (void)addDesktopHeroStageForGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
-    self.controllerFeaturedHeroGame = game;
-    self.controllerFeaturedHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
+    self.featuredHeroGame = game;
+    self.featuredHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
     self.desktopFeaturedHeroFrame = NSMakeRect(contentX, y, width, height);
 
     OPNStoreDocumentView *stage = [[OPNStoreDocumentView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
@@ -1408,7 +1339,7 @@ using namespace OPN;
     artwork.layer.cornerRadius = 34.0;
     artwork.layer.masksToBounds = YES;
     [stage addSubview:artwork];
-    [self loadControllerFeaturedHeroImageForView:artwork candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
+    [self loadFeaturedHeroImageForView:artwork candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
 
     CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
 
@@ -1433,7 +1364,7 @@ using namespace OPN;
     logoView.layer.shadowRadius = 10.0;
     logoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
     [stage addSubview:logoView];
-    [self loadControllerFeaturedHeroLogoForView:logoView titleFallback:title candidates:OPNStoreLogoCandidatesForGame(game) index:0];
+    [self loadFeaturedHeroLogoForView:logoView titleFallback:title candidates:OPNStoreLogoCandidatesForGame(game) index:0];
 
     NSString *metaText = [NSString stringWithFormat:@"%@ / %@", OPNStorePrimaryStoreName(game), OPNStorePrimaryGenre(game)];
     NSTextField *meta = OpnLabel(metaText, NSMakeRect(68.0, height * 0.57, textWidth, 24.0), 16.0, OpnColor(0xFFFFFF, 0.86), NSFontWeightBold);
@@ -1456,7 +1387,7 @@ using namespace OPN;
     launchButton.layer.shadowRadius = 22.0;
     launchButton.layer.shadowOffset = CGSizeZero;
     launchButton.target = self;
-    launchButton.action = @selector(controllerFeaturedHeroLaunchClicked:);
+    launchButton.action = @selector(featuredHeroLaunchClicked:);
     [stage addSubview:launchButton];
 
     NSString *storeName = OPNStorePrimaryStoreName(game);
@@ -1471,7 +1402,7 @@ using namespace OPN;
     storeButton.layer.borderWidth = 1.0;
     storeButton.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
     storeButton.target = self;
-    storeButton.action = @selector(controllerFeaturedHeroLaunchClicked:);
+    storeButton.action = @selector(featuredHeroLaunchClicked:);
     [stage addSubview:storeButton];
     [self.desktopFeaturedHeroViews addObject:stage];
 
@@ -1499,186 +1430,7 @@ using namespace OPN;
     }
 }
 
-- (void)renderControllerStore {
-    CGFloat width = MAX(1040.0, NSWidth(self.bounds));
-    CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
-    CGFloat contentWidth = MAX(640.0, width - contentX * 2.0);
-    CGFloat laneX = contentX;
-    CGFloat y = kControllerStoreHeroTop;
-
-    OPNStoreAmbientView *ambient = [[OPNStoreAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), 1600.0))];
-    ambient.intensity = 0.78;
-    [self.documentView addSubview:ambient];
-
-    NSView *ambientPanel = [[NSView alloc] initWithFrame:NSMakeRect(contentX - 28.0, 28.0, contentWidth + 56.0, 618.0)];
-    ambientPanel.wantsLayer = YES;
-    CAGradientLayer *ambientGradient = [CAGradientLayer layer];
-    ambientGradient.colors = @[(id)OpnColor(0x071116, 0.92).CGColor,
-                               (id)OpnColor(0x111018, 0.62).CGColor,
-                               (id)OpnColor(0x030507, 0.0).CGColor];
-    ambientGradient.startPoint = CGPointMake(0.0, 0.0);
-    ambientGradient.endPoint = CGPointMake(1.0, 1.0);
-    ambientGradient.frame = ambientPanel.bounds;
-    ambientPanel.layer = ambientGradient;
-    ambientPanel.layer.cornerRadius = 38.0;
-    [self.documentView addSubview:ambientPanel];
-
-    const GameInfo *heroGame = [self currentHeroGame];
-    NSInteger renderedRows = 0;
-    if (heroGame) {
-        CGFloat availableHeroWidth = MAX(1.0, contentWidth);
-        CGFloat heroWidth = availableHeroWidth;
-        CGFloat heroHeight = OPNStoreHeroHeightForSize(heroWidth, NSHeight(self.bounds));
-        CGFloat heroX = contentX + floor((availableHeroWidth - heroWidth) * 0.5);
-        NSInteger heroDotCount = MIN((NSInteger)6, MAX((NSInteger)1, [self heroCandidateCount]));
-        NSInteger heroDotIndex = ((self.currentHeroIndex % heroDotCount) + heroDotCount) % heroDotCount;
-        [self addControllerFeaturedHeroForGame:*heroGame
-                                         frame:NSMakeRect(heroX, y - 12.0, heroWidth, heroHeight)
-                                   activeIndex:heroDotIndex
-                                    totalCount:heroDotCount];
-        y += heroHeight + 74.0;
-    }
-
-    for (const PanelResult &panel : _panels) {
-        for (const PanelSection &section : panel.sections) {
-            if (section.games.empty()) continue;
-            [self addSection:section index:renderedRows y:y contentX:laneX width:width];
-            y += kControllerStoreRailHeight;
-            renderedRows++;
-        }
-    }
-
-    if (renderedRows == 0 && !self.loadingView.hidden) {
-        self.statusLabel.stringValue = @"";
-    } else if (renderedRows == 0) {
-        self.statusLabel.stringValue = @"No Store collections found.";
-    } else {
-        self.statusLabel.stringValue = @"";
-    }
-
-    CGFloat documentHeight = MAX(NSHeight(self.bounds), y + 80.0);
-    ambient.frame = NSMakeRect(0.0, 0.0, width, documentHeight);
-    ambientPanel.frame = NSMakeRect(contentX - 28.0, 28.0, contentWidth + 56.0, MAX(618.0, documentHeight - 72.0));
-    ambientGradient.frame = ambientPanel.bounds;
-    self.documentView.frame = NSMakeRect(0, 0, width, documentHeight);
-    [self updateFocusedTiles];
-}
-
-- (void)addControllerFeaturedHeroForGame:(const GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
-    self.controllerFeaturedHeroGame = game;
-    self.controllerFeaturedHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
-    self.controllerFeaturedHeroFrame = frame;
-
-    CGFloat heroHeight = MAX(1.0, NSHeight(frame));
-    CGFloat heroScale = MIN(heroHeight / 270.0, 2.0);
-    CGFloat cornerRadius = heroHeight * (18.0 / 270.0);
-    CGFloat leftInset = 68.0 * heroScale;
-    CGFloat logoWidth = 340.0 * heroScale;
-    CGFloat logoHeight = 84.0 * heroScale;
-    CGFloat buttonHeight = 42.0 * heroScale * 0.68;
-    CGFloat buttonWidth = 152.0 * heroScale * 0.68;
-    CGFloat buttonY = NSMinY(frame) + heroHeight * (198.0 / 270.0);
-
-    NSView *heroShadow = [[NSView alloc] initWithFrame:frame];
-    heroShadow.wantsLayer = YES;
-    heroShadow.layer.cornerRadius = cornerRadius;
-    heroShadow.layer.masksToBounds = NO;
-    heroShadow.layer.backgroundColor = NSColor.clearColor.CGColor;
-    heroShadow.layer.shadowColor = NSColor.blackColor.CGColor;
-    heroShadow.layer.shadowOpacity = 0.58;
-    heroShadow.layer.shadowRadius = heroHeight * (30.0 / 270.0);
-    heroShadow.layer.shadowOffset = CGSizeMake(0.0, heroHeight * (16.0 / 270.0));
-    CGPathRef heroShadowPath = OpnCreateRoundedRectPath(heroShadow.bounds, cornerRadius, cornerRadius);
-    heroShadow.layer.shadowPath = heroShadowPath;
-    CGPathRelease(heroShadowPath);
-    [self.documentView addSubview:heroShadow];
-    [self.controllerFeaturedHeroViews addObject:heroShadow];
-
-    OPNStoreHeroBackgroundView *hero = [[OPNStoreHeroBackgroundView alloc] initWithFrame:frame];
-    hero.cornerRadius = cornerRadius;
-    hero.wantsLayer = YES;
-    hero.layer.cornerRadius = cornerRadius;
-    hero.layer.masksToBounds = YES;
-    hero.layer.borderWidth = heroHeight * (1.0 / 270.0);
-    hero.layer.borderColor = OpnColor(0xFFFFFF, 0.14).CGColor;
-    [self.documentView addSubview:hero];
-    [self.controllerFeaturedHeroViews addObject:hero];
-    [self loadControllerFeaturedHeroImageForView:hero candidates:OPNStoreImageCandidatesForGame(game, YES) index:0];
-
-    NSString *titleText = OPNStoreString(game.title, @"Untitled");
-    NSTextField *title = OpnLabel(titleText, NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (88.0 / 270.0), logoWidth, 42.0 * heroScale), 30.0 * heroScale, OpnColor(kTextPrimary), NSFontWeightBlack);
-    title.lineBreakMode = NSLineBreakByTruncatingTail;
-    title.wantsLayer = YES;
-    title.layer.shadowColor = NSColor.blackColor.CGColor;
-    title.layer.shadowOpacity = 0.62;
-    title.layer.shadowRadius = 10.0;
-    title.layer.shadowOffset = CGSizeMake(0.0, 3.0);
-    [self.documentView addSubview:title];
-    [self.controllerFeaturedHeroViews addObject:title];
-
-    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (70.0 / 270.0), logoWidth, logoHeight)];
-    logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
-    logoView.imageAlignment = NSImageAlignLeft;
-    logoView.wantsLayer = YES;
-    logoView.layer.opacity = 0.0;
-    logoView.layer.shadowColor = NSColor.blackColor.CGColor;
-    logoView.layer.shadowOpacity = 0.58;
-    logoView.layer.shadowRadius = heroHeight * (10.0 / 270.0);
-    logoView.layer.shadowOffset = CGSizeMake(0.0, heroHeight * (4.0 / 270.0));
-    [self.documentView addSubview:logoView];
-    [self.controllerFeaturedHeroViews addObject:logoView];
-    [self loadControllerFeaturedHeroLogoForView:logoView titleFallback:title candidates:OPNStoreLogoCandidatesForGame(game) index:0];
-
-    NSString *store = OPNStorePrimaryStoreName(game);
-    NSString *metaText = [NSString stringWithFormat:@"%@  /  %@", store, OPNStorePrimaryGenre(game)];
-    NSTextField *meta = OpnLabel(metaText, NSMakeRect(NSMinX(frame) + leftInset, NSMinY(frame) + heroHeight * (152.0 / 270.0), logoWidth, 20.0 * heroScale), 14.0 * heroScale, OpnColor(0xFFFFFF, 0.82), NSFontWeightSemibold);
-    meta.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.documentView addSubview:meta];
-    [self.controllerFeaturedHeroViews addObject:meta];
-
-    NSString *primaryTitle = OPNStoreGameNeedsPurchase(game, self.controllerFeaturedHeroVariantIndex)
-        ? @"Buy"
-        : @"▶  Play Now";
-    NSButton *primary = OpnButton(primaryTitle, NSMakeRect(NSMinX(frame) + leftInset, buttonY, buttonWidth, buttonHeight), OpnColor(0x45F27C, 0.98), OpnColor(0x051008));
-    primary.font = [NSFont systemFontOfSize:14.5 * heroScale * 0.68 weight:NSFontWeightBold];
-    primary.layer.cornerRadius = buttonHeight * 0.24;
-    primary.layer.shadowColor = OpnColor(0x45F27C).CGColor;
-    primary.layer.shadowOpacity = 0.42;
-    primary.layer.shadowRadius = buttonHeight * 0.38;
-    primary.layer.shadowOffset = CGSizeZero;
-    primary.target = self;
-    primary.action = @selector(controllerFeaturedHeroLaunchClicked:);
-    [self.documentView addSubview:primary];
-    [self.controllerFeaturedHeroViews addObject:primary];
-
-    NSUInteger storeIconCount = MIN((NSUInteger)4, OPNStoreVariantStoreNames(game).count);
-    CGFloat storeIconSize = MIN(buttonHeight, 36.0);
-    CGFloat storeIconGap = MAX(6.0, storeIconSize * 0.22);
-    CGFloat storeIconWidth = storeIconCount * storeIconSize + MAX((NSUInteger)0, storeIconCount - 1) * storeIconGap;
-    NSView *storeIcons = [self storeIconStripForGame:game frame:NSMakeRect(NSMaxX(primary.frame) + 14.0 * heroScale * 0.68, NSMinY(primary.frame), storeIconWidth, buttonHeight)];
-    [self.documentView addSubview:storeIcons];
-    [self.controllerFeaturedHeroViews addObject:storeIcons];
-
-    CGFloat dotSpacing = 24.0 * heroScale;
-    CGFloat activeDotWidth = 22.0 * heroScale;
-    CGFloat inactiveDotWidth = 14.0 * heroScale;
-    CGFloat dotHeight = 5.0 * heroScale;
-    CGFloat dotWidth = totalCount > 0 ? (totalCount - 1) * dotSpacing + activeDotWidth : 0.0;
-    CGFloat dotX = NSMidX(frame) - dotWidth * 0.5;
-    CGFloat dotY = NSMaxY(frame) + heroHeight * (14.0 / 270.0);
-    for (NSInteger index = 0; index < totalCount; index++) {
-        BOOL active = index == activeIndex;
-        NSRect dotRect = active ? NSMakeRect(dotX + index * dotSpacing, dotY, activeDotWidth, dotHeight) : NSMakeRect(dotX + index * dotSpacing + (activeDotWidth - inactiveDotWidth) * 0.5, dotY, inactiveDotWidth, dotHeight);
-        NSView *dot = [[NSView alloc] initWithFrame:dotRect];
-        dot.wantsLayer = YES;
-        dot.layer.cornerRadius = dotHeight * 0.5;
-        dot.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.18)).CGColor;
-        [self.documentView addSubview:dot];
-        [self.controllerFeaturedHeroViews addObject:dot];
-    }
-}
-
-- (void)loadControllerFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+- (void)loadFeaturedHeroImageForView:(OPNStoreHeroBackgroundView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view) return;
     if (index >= candidates.count) {
         view.image = OPNStoreFallbackArtworkImage();
@@ -1686,7 +1438,7 @@ using namespace OPN;
     }
     NSString *urlString = candidates[index];
     if (urlString.length == 0) {
-        [self loadControllerFeaturedHeroImageForView:view candidates:candidates index:index + 1];
+        [self loadFeaturedHeroImageForView:view candidates:candidates index:index + 1];
         return;
     }
 
@@ -1697,18 +1449,18 @@ using namespace OPN;
         OPNStoreHeroBackgroundView *strongView = weakView;
         if (!strongView.superview) return;
         if (!image) {
-            [self loadControllerFeaturedHeroImageForView:strongView candidates:candidates index:index + 1];
+            [self loadFeaturedHeroImageForView:strongView candidates:candidates index:index + 1];
             return;
         }
         strongView.image = image;
     });
 }
 
-- (void)loadControllerFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
+- (void)loadFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view || index >= candidates.count) return;
     NSString *urlString = candidates[index];
     if (urlString.length == 0) {
-        [self loadControllerFeaturedHeroLogoForView:view titleFallback:titleFallback candidates:candidates index:index + 1];
+        [self loadFeaturedHeroLogoForView:view titleFallback:titleFallback candidates:candidates index:index + 1];
         return;
     }
 
@@ -1720,7 +1472,7 @@ using namespace OPN;
         NSImageView *strongView = weakView;
         if (!strongView.superview) return;
         if (!image) {
-            [self loadControllerFeaturedHeroLogoForView:strongView titleFallback:weakTitleFallback candidates:candidates index:index + 1];
+            [self loadFeaturedHeroLogoForView:strongView titleFallback:weakTitleFallback candidates:candidates index:index + 1];
             return;
         }
         [CATransaction begin];
@@ -1732,11 +1484,10 @@ using namespace OPN;
     });
 }
 
-- (void)controllerFeaturedHeroLaunchClicked:(id)sender {
+- (void)featuredHeroLaunchClicked:(id)sender {
     (void)sender;
-    if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
-    OPN::GameInfo featuredGame = self.controllerFeaturedHeroGame;
-    int variantIndex = self.controllerFeaturedHeroVariantIndex >= 0 ? self.controllerFeaturedHeroVariantIndex : 0;
+    OPN::GameInfo featuredGame = self.featuredHeroGame;
+    int variantIndex = self.featuredHeroVariantIndex >= 0 ? self.featuredHeroVariantIndex : 0;
     if (OPNStoreGameNeedsPurchase(featuredGame, variantIndex)) {
         NSString *purchaseURL = OPNStorePurchaseURLForGame(featuredGame, variantIndex);
         if (self.onBuyGame) self.onBuyGame(featuredGame, variantIndex, purchaseURL ?: @"");
@@ -1746,31 +1497,11 @@ using namespace OPN;
     self.onSelectGame(featuredGame, variantIndex);
 }
 
-- (void)updateControllerFeaturedHeroOnly {
-    const GameInfo *heroGame = [self currentHeroGame];
-    if (!heroGame || NSEqualRects(self.controllerFeaturedHeroFrame, NSZeroRect)) {
-        [self renderStore];
-        return;
-    }
-
-    NSRect frame = self.controllerFeaturedHeroFrame;
-    for (NSView *view in [self.controllerFeaturedHeroViews copy]) {
-        [view removeFromSuperview];
-    }
-    [self.controllerFeaturedHeroViews removeAllObjects];
-
-    NSInteger heroDotCount = MIN((NSInteger)6, MAX((NSInteger)1, [self heroCandidateCount]));
-    NSInteger heroDotIndex = ((self.currentHeroIndex % heroDotCount) + heroDotCount) % heroDotCount;
-    [self addControllerFeaturedHeroForGame:*heroGame frame:frame activeIndex:heroDotIndex totalCount:heroDotCount];
-    [self updateFocusedTiles];
-}
-
 - (void)addHeroGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
     NSRect heroRect = NSMakeRect(contentX, y, width, height);
     OPNStoreGameTile *hero = [self configuredHeroGameTile:game frame:heroRect];
     [self.documentView addSubview:hero];
     self.heroTile = hero;
-    if (OpnControllerModeEnabled()) [self.rowCards addObject:[NSMutableArray arrayWithObject:hero]];
 }
 
 - (OPNStoreGameTile *)configuredHeroGameTile:(const GameInfo &)game frame:(NSRect)frame {
@@ -1796,11 +1527,6 @@ using namespace OPN;
 }
 
 - (void)updateHeroTileOnly {
-    if (OpnControllerModeEnabled()) {
-        [self updateControllerFeaturedHeroOnly];
-        return;
-    }
-
     [self updateDesktopFeaturedHeroOnly];
 }
 
@@ -1840,28 +1566,24 @@ using namespace OPN;
     [self.documentView replaceSubview:oldHero with:newHero];
     self.heroTile = newHero;
 
-    if (OpnControllerModeEnabled() && self.rowCards.count > 0) {
-        self.rowCards[0] = [NSMutableArray arrayWithObject:newHero];
-        [self updateFocusedTiles];
-    }
 }
 
 - (void)addSection:(const PanelSection &)section index:(NSInteger)sectionIndex y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
-    CGFloat rightInset = OpnControllerModeEnabled() ? OPNStoreHeroContentInsetForWidth(width) : contentX;
+    CGFloat rightInset = contentX;
     CGFloat availableWidth = MAX(320.0, width - contentX - rightInset);
     NSString *sectionTitle = section.title.empty() ? @"Featured" : [NSString stringWithUTF8String:section.title.c_str()];
 
     NSView *rowGlow = [[NSView alloc] initWithFrame:NSMakeRect(contentX - 18.0, y + 36.0, availableWidth + 36.0, kStoreTileHeight + 44.0)];
     rowGlow.wantsLayer = YES;
     rowGlow.layer.cornerRadius = 24.0;
-    rowGlow.layer.backgroundColor = OpnColor(0xFFFFFF, OpnControllerModeEnabled() ? 0.026 : 0.032).CGColor;
+    rowGlow.layer.backgroundColor = OpnColor(0xFFFFFF, 0.032).CGColor;
     rowGlow.layer.borderWidth = 1.0;
     rowGlow.layer.borderColor = OpnColor(0xFFFFFF, 0.055).CGColor;
     [self.documentView addSubview:rowGlow];
 
     NSTextField *indexLabel = OpnLabel([NSString stringWithFormat:@"%02ld", (long)sectionIndex + 1], NSMakeRect(contentX, y + 5.0, 42.0, 18.0), 11.0, OpnColor(kBrandGreen), NSFontWeightBlack);
     [self.documentView addSubview:indexLabel];
-    NSTextField *label = OpnLabel(sectionTitle, NSMakeRect(contentX + 42.0, y, availableWidth - 142.0, 30.0), OpnControllerModeEnabled() ? 20.0 : 23.0, OpnColor(kTextPrimary), NSFontWeightBold);
+    NSTextField *label = OpnLabel(sectionTitle, NSMakeRect(contentX + 42.0, y, availableWidth - 142.0, 30.0), 23.0, OpnColor(kTextPrimary), NSFontWeightBold);
     label.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.documentView addSubview:label];
     NSString *hintText = [NSString stringWithFormat:@"%ld games", (long)section.games.size()];
@@ -1883,7 +1605,7 @@ using namespace OPN;
     NSMutableArray<OPNStoreGameTile *> *cards = [NSMutableArray array];
     CGFloat x = 0.0;
     NSInteger column = 0;
-    NSInteger maxCards = OpnControllerModeEnabled() ? 18 : 24;
+    NSInteger maxCards = 24;
     for (const GameInfo &game : section.games) {
         BOOL focused = NO;
         CGFloat cardWidth = focused ? kStoreTileWidth + 28.0 : kStoreTileWidth;
@@ -1919,176 +1641,10 @@ using namespace OPN;
     [self.rowCards addObject:cards];
 }
 
-- (void)normalizeFocusedPosition {
-    if (self.rowCards.count == 0) {
-        self.focusedRowIndex = 0;
-        self.focusedColumnIndex = 0;
-        return;
-    }
-    self.focusedRowIndex = MAX(0, MIN(self.focusedRowIndex, (NSInteger)self.rowCards.count - 1));
-    NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
-    if (row.count == 0) {
-        self.focusedColumnIndex = 0;
-        return;
-    }
-    self.focusedColumnIndex = MAX(0, MIN(self.focusedColumnIndex, (NSInteger)row.count - 1));
-}
-
-- (OPNStoreGameTile *)focusedTile {
-    [self normalizeFocusedPosition];
-    if (self.rowCards.count == 0) return nil;
-    NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
-    if (row.count == 0 || self.focusedColumnIndex >= (NSInteger)row.count) return nil;
-    return row[(NSUInteger)self.focusedColumnIndex];
-}
-
 - (void)updateFocusedTiles {
-    [self normalizeFocusedPosition];
-    BOOL controllerMode = OpnControllerModeEnabled();
-    for (NSUInteger rowIndex = 0; rowIndex < self.rowCards.count; rowIndex++) {
-        NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[rowIndex];
-        for (NSUInteger columnIndex = 0; columnIndex < row.count; columnIndex++) {
-            BOOL focused = controllerMode && (NSInteger)rowIndex == self.focusedRowIndex && (NSInteger)columnIndex == self.focusedColumnIndex;
-            [row[columnIndex] setStoreFocused:focused];
-        }
+    for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
+        for (OPNStoreGameTile *tile in row) [tile setStoreFocused:NO];
     }
-}
-
-- (void)scrollFocusedTileIntoView {
-    OPNStoreGameTile *tile = [self focusedTile];
-    if (!tile) return;
-    NSScrollView *railScroll = tile.enclosingScrollView;
-    if ([railScroll isKindOfClass:OPNStoreRailScrollView.class]) {
-        NSClipView *clipView = railScroll.contentView;
-        CGFloat targetX = NSMidX(tile.frame) - NSWidth(clipView.bounds) * 0.5;
-        targetX = MAX(0.0, MIN(targetX, MAX(0.0, NSWidth(railScroll.documentView.frame) - NSWidth(clipView.bounds))));
-        [clipView scrollToPoint:NSMakePoint(targetX, 0.0)];
-        [railScroll reflectScrolledClipView:clipView];
-        [self.documentView scrollRectToVisible:NSInsetRect(railScroll.frame, -20.0, -24.0)];
-        [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
-        return;
-    }
-    [self.documentView scrollRectToVisible:NSInsetRect(tile.frame, -28.0, -28.0)];
-    [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
-}
-
-- (void)focusRow:(NSInteger)row column:(NSInteger)column scrollIntoView:(BOOL)scrollIntoView {
-    if (self.rowCards.count == 0) return;
-    NSInteger previousRow = self.focusedRowIndex;
-    NSInteger previousColumn = self.focusedColumnIndex;
-    self.focusedRowIndex = row;
-    self.focusedColumnIndex = column;
-    [self normalizeFocusedPosition];
-    [self updateFocusedTiles];
-    if (scrollIntoView) [self scrollFocusedTileIntoView];
-    if (OpnControllerModeEnabled() && (previousRow != self.focusedRowIndex || previousColumn != self.focusedColumnIndex)) {
-        OpnPlayConsoleTone(OPNConsoleToneMove);
-    }
-}
-
-- (void)moveFocusByRows:(NSInteger)rows columns:(NSInteger)columns {
-    if (!OpnControllerModeEnabled()) return;
-    [self focusRow:self.focusedRowIndex + rows column:self.focusedColumnIndex + columns scrollIntoView:YES];
-}
-
-- (void)launchFocusedGame {
-    OPNStoreGameTile *tile = [self focusedTile];
-    if (!tile) return;
-    if (OpnControllerModeEnabled()) OpnPlayConsoleTone(OPNConsoleToneSelect);
-    int variantIndex = tile.selectedVariantIndex >= 0 ? tile.selectedVariantIndex : 0;
-    if (OPNStoreGameNeedsPurchase(tile.game, variantIndex)) {
-        NSString *purchaseURL = OPNStorePurchaseURLForGame(tile.game, variantIndex);
-        if (self.onBuyGame) self.onBuyGame(tile.game, variantIndex, purchaseURL ?: @"");
-        return;
-    }
-    if (self.onSelectGame) self.onSelectGame(tile.game, variantIndex);
-}
-
-- (void)requestControllerBackToHome {
-    if (!self.onBackRequested) return;
-    OpnPlayConsoleTone(OPNConsoleToneBack);
-    self.onBackRequested();
-}
-
-- (void)keyDown:(NSEvent *)event {
-    if (!OpnControllerModeEnabled()) {
-        [super keyDown:event];
-        return;
-    }
-    NSString *chars = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    switch (event.keyCode) {
-        case 123: [self moveFocusByRows:0 columns:-1]; return;
-        case 124: [self moveFocusByRows:0 columns:1]; return;
-        case 125: [self moveFocusByRows:1 columns:0]; return;
-        case 126: [self moveFocusByRows:-1 columns:0]; return;
-        case 36:
-        case 49:
-            [self launchFocusedGame];
-            return;
-        case 53:
-            [self requestControllerBackToHome];
-            return;
-        default:
-            break;
-    }
-    if ([chars isEqualToString:@"b"] || [chars isEqualToString:@"h"]) {
-        [self requestControllerBackToHome];
-        return;
-    }
-    if ([chars isEqualToString:@"["]) {
-        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
-        return;
-    }
-    if ([chars isEqualToString:@"]"]) {
-        if (self.onNextPageRequested) self.onNextPageRequested();
-        return;
-    }
-    [super keyDown:event];
-}
-
-- (void)startGamepadNavigationIfNeeded {
-    if (self.controllerInputSuspended || !OpnControllerModeEnabled() || self.gamepadNavigationTimer || [GCController controllers].count == 0 || !OPNStoreGamepadNavigationActive(self)) return;
-    [self installGamepadValueHandlers];
-    self.gamepadNavigationTimer = [NSTimer scheduledTimerWithTimeInterval:0.12
-                                                                   target:self
-                                                                 selector:@selector(pollGamepadNavigation)
-                                                                 userInfo:nil
-                                                                  repeats:YES];
-}
-
-- (void)installGamepadValueHandlers {
-    __weak __typeof__(self) weakSelf = self;
-    for (GCController *controller in [GCController controllers]) {
-        GCExtendedGamepad *gamepad = controller.extendedGamepad;
-        if (!gamepad) continue;
-        gamepad.valueChangedHandler = ^(GCExtendedGamepad *, GCControllerElement *) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf || !OPNStoreGamepadNavigationActive(strongSelf)) return;
-                [strongSelf pollGamepadNavigation];
-            });
-        };
-    }
-}
-
-- (void)stopGamepadNavigation {
-    [self.gamepadNavigationTimer invalidate];
-    self.gamepadNavigationTimer = nil;
-    self.previousGamepadButtons = 0;
-}
-
-- (void)controllerDidConnect:(NSNotification *)notification {
-    (void)notification;
-    [self startGamepadNavigationIfNeeded];
-}
-
-- (void)controllerDidDisconnect:(NSNotification *)notification {
-    (void)notification;
-    if ([GCController controllers].count == 0) {
-        [self stopGamepadNavigation];
-        return;
-    }
-    self.previousGamepadButtons = 0;
 }
 
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
@@ -2099,48 +1655,6 @@ using namespace OPN;
             [tile resetMouseTrackingIfOutside];
         }
     }
-}
-
-- (void)pollGamepadNavigation {
-    if (self.controllerInputSuspended) {
-        self.previousGamepadButtons = OPNStoreGamepadButtons();
-        return;
-    }
-    if (!OpnControllerModeEnabled() || [GCController controllers].count == 0 || !OPNStoreGamepadNavigationActive(self)) {
-        [self stopGamepadNavigation];
-        return;
-    }
-    [self.window makeFirstResponder:self];
-    uint16_t buttons = OPNStoreGamepadButtons();
-    uint16_t pressed = buttons & (uint16_t)~self.previousGamepadButtons;
-    CFTimeInterval now = CACurrentMediaTime();
-    BOOL repeatMove = (now - self.lastGamepadMoveTime) > 0.22;
-    uint16_t moves = buttons & ((1u << 2) | (1u << 3) | (1u << 4) | (1u << 5));
-    if (moves && repeatMove) {
-        pressed |= moves;
-        self.lastGamepadMoveTime = now;
-    }
-    if (pressed & (1u << 0)) [self launchFocusedGame];
-    if (pressed & (1u << 1)) {
-        [self requestControllerBackToHome];
-        self.previousGamepadButtons = buttons;
-        return;
-    }
-    if (pressed & (1u << 6)) {
-        if (self.onPreviousPageRequested) self.onPreviousPageRequested();
-        self.previousGamepadButtons = buttons;
-        return;
-    }
-    if (pressed & (1u << 7)) {
-        if (self.onNextPageRequested) self.onNextPageRequested();
-        self.previousGamepadButtons = buttons;
-        return;
-    }
-    if (pressed & (1u << 2)) [self moveFocusByRows:-1 columns:0];
-    if (pressed & (1u << 3)) [self moveFocusByRows:1 columns:0];
-    if (pressed & (1u << 4)) [self moveFocusByRows:0 columns:-1];
-    if (pressed & (1u << 5)) [self moveFocusByRows:0 columns:1];
-    self.previousGamepadButtons = buttons;
 }
 
 @end

@@ -6,7 +6,6 @@
 @property (nonatomic, readonly) OPN::GameInfo game;
 @property (nonatomic, assign) int selectedVariantIndex;
 @property (nonatomic, assign) NSTimeInterval imageRevealDelay;
-@property (nonatomic, assign, getter=isControllerFocused) BOOL controllerFocused;
 @property (nonatomic, copy) void (^onPlay)();
 
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game;

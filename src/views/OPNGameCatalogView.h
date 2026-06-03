@@ -10,12 +10,8 @@
 @property (nonatomic, copy) void (^onCatalogBrowseRequested)(NSString *searchQuery, NSString *sortId, const std::vector<std::string> &filterIds);
 @property (nonatomic, copy) void (^onInterfaceSettingsRequested)(void);
 @property (nonatomic, copy) void (^onStoreRequested)(void);
-@property (nonatomic, copy) void (^onControllerSurfaceChanged)(BOOL homeSurface);
 @property (nonatomic, copy) void (^onRestartRequested)(void);
 @property (nonatomic, copy) void (^onExitRequested)(void);
-@property (nonatomic, copy) void (^onPreviousPageRequested)(void);
-@property (nonatomic, copy) void (^onNextPageRequested)(void);
-@property (nonatomic, assign) BOOL controllerInputSuspended;
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games;
@@ -25,7 +21,5 @@
 - (void)setLoading:(BOOL)loading;
 - (void)setError:(NSString *)message;
 - (void)setUserName:(NSString *)name;
-- (void)showControllerHome;
-- (void)showControllerLibrary;
 
 @end

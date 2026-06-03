@@ -1,7 +1,6 @@
 #import "OPNCloudmatchServerPickerView.h"
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNUIHelpers.h"
-#import <GameController/GameController.h>
 
 @implementation OPNCloudmatchServerOption
 
@@ -156,24 +155,7 @@
 @property (nonatomic, strong) NSButton *refreshButton;
 @property (nonatomic, strong) NSButton *cancelButton;
 @property (nonatomic, strong) NSButton *confirmButton;
-@property (nonatomic, strong) NSTimer *controllerTimer;
-@property (nonatomic, assign) uint16_t previousControllerButtons;
 @end
-
-static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
-    NSArray<GCController *> *controllers = [GCController controllers];
-    if (controllers.count == 0) return 0;
-    GCExtendedGamepad *pad = controllers.firstObject.extendedGamepad;
-    if (!pad) return 0;
-
-    uint16_t buttons = 0;
-    if (pad.buttonA.value > 0.5) buttons |= 1u << 0;
-    if (pad.buttonB.value > 0.5) buttons |= 1u << 1;
-    if (pad.buttonX.value > 0.5) buttons |= 1u << 2;
-    if (pad.dpad.up.value > 0.5 || pad.leftThumbstick.yAxis.value > 0.65) buttons |= 1u << 3;
-    if (pad.dpad.down.value > 0.5 || pad.leftThumbstick.yAxis.value < -0.65) buttons |= 1u << 4;
-    return buttons;
-}
 
 @implementation OPNCloudmatchServerPickerView
 
@@ -234,17 +216,17 @@ static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
         _spinner = OpnSpinner(NSZeroRect);
         [_panel addSubview:_spinner];
 
-        _refreshButton = OpnButton(@"X  Refresh Ping", NSZeroRect, OpnColor(0x12171C, 0.98), OpnColor(OPN::kTextPrimary), true, OpnColor(0xFFFFFF, 0.16));
+        _refreshButton = OpnButton(@"Refresh Ping", NSZeroRect, OpnColor(0x12171C, 0.98), OpnColor(OPN::kTextPrimary), true, OpnColor(0xFFFFFF, 0.16));
         _refreshButton.target = self;
         _refreshButton.action = @selector(refreshClicked:);
         [_panel addSubview:_refreshButton];
 
-        _cancelButton = OpnButton(@"B  Cancel", NSZeroRect, OpnColor(0x161113, 0.98), OpnColor(OPN::kErrorRed), true, OpnColor(OPN::kErrorRed, 0.42));
+        _cancelButton = OpnButton(@"Cancel", NSZeroRect, OpnColor(0x161113, 0.98), OpnColor(OPN::kErrorRed), true, OpnColor(OPN::kErrorRed, 0.42));
         _cancelButton.target = self;
         _cancelButton.action = @selector(cancelClicked:);
         [_panel addSubview:_cancelButton];
 
-        _confirmButton = OpnButton(@"A  Launch Here", NSZeroRect, OpnColor(0x102116, 0.98), OpnColor(OPN::kBrandGreen), true, OpnColor(OPN::kBrandGreen, 0.58));
+        _confirmButton = OpnButton(@"Launch Here", NSZeroRect, OpnColor(0x102116, 0.98), OpnColor(OPN::kBrandGreen), true, OpnColor(OPN::kBrandGreen, 0.58));
         _confirmButton.target = self;
         _confirmButton.action = @selector(confirmClicked:);
         [_panel addSubview:_confirmButton];
@@ -257,18 +239,9 @@ static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)canBecomeKeyView { return YES; }
 
-- (void)dealloc {
-    [self stopControllerPolling];
-}
-
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
-    if (self.window) {
-        [self.window makeFirstResponder:self];
-        [self startControllerPolling];
-    } else {
-        [self stopControllerPolling];
-    }
+    if (self.window) [self.window makeFirstResponder:self];
 }
 
 - (void)layout {
@@ -413,14 +386,13 @@ static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
     self.confirmButton.alphaValue = hasSelection ? 1.0 : 0.48;
     self.refreshButton.enabled = !self.refreshing;
     self.refreshButton.alphaValue = self.refreshing ? 0.55 : 1.0;
-    self.refreshButton.title = self.refreshing ? @"Pinging..." : @"X  Refresh Ping";
+    self.refreshButton.title = self.refreshing ? @"Pinging..." : @"Refresh Ping";
 }
 
 - (void)rowClicked:(OPNCloudmatchServerRowView *)sender {
     self.selectionWasChangedByUser = YES;
     self.selectedIndex = sender.optionIndex;
     [self updateRowSelection];
-    OpnPlayConsoleTone(OPNConsoleToneMove);
 }
 
 - (void)updateRowSelection {
@@ -438,7 +410,6 @@ static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
     self.selectedIndex = nextIndex;
     [self updateRowSelection];
     [self scrollSelectedRowIntoView];
-    OpnPlayConsoleTone(OPNConsoleToneMove);
 }
 
 - (void)scrollSelectedRowIntoView {
@@ -450,20 +421,17 @@ static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
 - (void)confirmClicked:(id)sender {
     (void)sender;
     if (self.selectedIndex < 0 || self.selectedIndex >= (NSInteger)self.options.count) return;
-    OpnPlayConsoleTone(OPNConsoleToneSelect);
     if (self.onConfirm) self.onConfirm(self.options[(NSUInteger)self.selectedIndex]);
 }
 
 - (void)cancelClicked:(id)sender {
     (void)sender;
-    OpnPlayConsoleTone(OPNConsoleToneBack);
     if (self.onCancel) self.onCancel();
 }
 
 - (void)refreshClicked:(id)sender {
     (void)sender;
     if (self.refreshing) return;
-    OpnPlayConsoleTone(OPNConsoleToneChange);
     if (self.onRefresh) self.onRefresh();
 }
 
@@ -492,47 +460,6 @@ static uint16_t OPNCloudmatchPickerGamepadButtons(void) {
         return;
     }
     [super keyDown:event];
-}
-
-- (void)startControllerPolling {
-    if (self.controllerTimer || !OpnControllerModeEnabled()) return;
-    self.previousControllerButtons = OPNCloudmatchPickerGamepadButtons();
-    self.controllerTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0)
-                                                            target:self
-                                                          selector:@selector(pollController)
-                                                          userInfo:nil
-                                                           repeats:YES];
-}
-
-- (void)stopControllerPolling {
-    [self.controllerTimer invalidate];
-    self.controllerTimer = nil;
-    self.previousControllerButtons = 0;
-}
-
-- (void)pollController {
-    if (!self.window) {
-        [self stopControllerPolling];
-        return;
-    }
-
-    uint16_t buttons = OPNCloudmatchPickerGamepadButtons();
-    uint16_t pressed = buttons & (uint16_t)~self.previousControllerButtons;
-    self.previousControllerButtons = buttons;
-    if (pressed & (1u << 0)) {
-        [self confirmClicked:nil];
-        return;
-    }
-    if (pressed & (1u << 1)) {
-        [self cancelClicked:nil];
-        return;
-    }
-    if (pressed & (1u << 2)) {
-        [self refreshClicked:nil];
-        return;
-    }
-    if (pressed & (1u << 3)) [self moveSelectionBy:-1];
-    if (pressed & (1u << 4)) [self moveSelectionBy:1];
 }
 
 @end

@@ -67,7 +67,6 @@
 @property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
 @property (nonatomic, strong) OPNCloudmatchServerPickerView *cloudmatchServerPickerView;
 @property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
-@property (nonatomic, strong) id controllerModeShortcutMonitor;
 @property (nonatomic, strong) NSView *desktopTopChromeView;
 @property (nonatomic, strong) NSImageView *desktopBrandIconView;
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
@@ -150,10 +149,6 @@
                        filterIds:(const std::vector<std::string> &)filterIds
                          canRetry:(BOOL)canRetry
                      retryAttempt:(NSInteger)retryAttempt;
-- (void)showControllerHomePage;
-- (void)switchControllerPageBy:(NSInteger)delta;
-- (void)installControllerModeShortcutMonitor;
-- (void)toggleControllerModeFromShortcut;
 - (void)applyInterfacePreferencesToCurrentScreen;
 - (void)installDesktopNavigationBarIfNeeded;
 - (void)installDesktopAccountSwitcherIfNeeded;
@@ -178,15 +173,6 @@ static NSString *const OPNMainWindowWasFullScreenKey = @"OpenNOW.MainWindowWasFu
 
 static BOOL OPNWindowIsFullScreen(NSWindow *window) {
     return window && ((window.styleMask & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen);
-}
-
-static BOOL OPNAppDelegateIsCommandIEvent(NSEvent *event) {
-    if (event.type != NSEventTypeKeyDown) return NO;
-    NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
-    if ((flags & NSEventModifierFlagCommand) == 0) return NO;
-    if ((flags & (NSEventModifierFlagControl | NSEventModifierFlagOption)) != 0) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return [key isEqualToString:@"i"];
 }
 
 static BOOL OPNAppDelegateScreenSupportsDesktopNavigation(OPN::AuthScreen screen) {
@@ -524,49 +510,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     return fingerprint;
 }
 
-- (void)switchControllerPageBy:(NSInteger)delta {
-    if (!OpnControllerModeEnabled() || delta == 0) return;
-    NSArray<NSString *> *pages = @[@"home", @"library", @"store", @"settings"];
-    NSInteger currentIndex = 0;
-    for (NSUInteger index = 0; index < pages.count; index++) {
-        NSString *page = pages[index];
-        BOOL selected = ([page isEqualToString:@"home"] && self.currentScreen == OPN::AuthScreen::Catalog && self.rootView.mode == OPNBackdropModeHome) ||
-                        ([page isEqualToString:@"library"] && self.currentScreen == OPN::AuthScreen::Catalog && self.rootView.mode == OPNBackdropModeLibrary) ||
-                        ([page isEqualToString:@"store"] && self.currentScreen == OPN::AuthScreen::Store) ||
-                        ([page isEqualToString:@"settings"] && self.currentScreen == OPN::AuthScreen::Settings);
-        if (selected) {
-            currentIndex = (NSInteger)index;
-            break;
-        }
-    }
-    NSInteger nextIndex = (currentIndex + delta) % (NSInteger)pages.count;
-    if (nextIndex < 0) nextIndex += (NSInteger)pages.count;
-    OpnPlayConsoleTone(OPNConsoleToneChange);
-    NSString *nextPage = pages[(NSUInteger)nextIndex];
-    if ([nextPage isEqualToString:@"home"]) {
-        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
-        [self.catalogView showControllerHome];
-        self.rootView.mode = OPNBackdropModeHome;
-    } else if ([nextPage isEqualToString:@"library"]) {
-        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
-        [self.catalogView showControllerLibrary];
-        self.rootView.mode = OPNBackdropModeLibrary;
-    } else if ([nextPage isEqualToString:@"store"]) {
-        if (self.currentScreen != OPN::AuthScreen::Store) [self transitionToScreen:OPN::AuthScreen::Store];
-    } else if ([nextPage isEqualToString:@"settings"]) {
-        if (self.currentScreen != OPN::AuthScreen::Settings) [self transitionToScreen:OPN::AuthScreen::Settings];
-    }
-}
-
-- (void)showControllerHomePage {
-    if (!OpnControllerModeEnabled()) return;
-    if (self.currentScreen != OPN::AuthScreen::Catalog) {
-        [self transitionToScreen:OPN::AuthScreen::Catalog];
-    }
-    [self.catalogView showControllerHome];
-    self.rootView.mode = OPNBackdropModeHome;
-}
-
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
     using namespace OPN;
@@ -600,7 +543,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                              selector:@selector(interfacePreferencesChanged:)
                                                  name:OPNInterfacePreferencesDidChangeNotification
                                                object:nil];
-    [self installControllerModeShortcutMonitor];
     self.githubUpdater = [[OPNGitHubUpdater alloc] initWithOwner:@"OpenCloudGaming" repository:@"OpenNOW-Mac"];
     {
         OPN::AuthCredentials creds = self.pendingCredentials;
@@ -656,10 +598,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self stopGameLibraryRefreshTimer];
     [self stopActiveSessionPromptControllerPolling];
     [self stopStreamDashboardControllerPolling];
-    if (self.controllerModeShortcutMonitor) {
-        [NSEvent removeMonitor:self.controllerModeShortcutMonitor];
-        self.controllerModeShortcutMonitor = nil;
-    }
     self.desktopNavigationButtons = @[];
     self.desktopNavigationBar = nil;
     self.desktopAccountSwitcher = nil;
@@ -812,32 +750,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self applyInterfacePreferencesToCurrentScreen];
 }
 
-- (void)installControllerModeShortcutMonitor {
-    if (self.controllerModeShortcutMonitor) return;
-    __weak __typeof__(self) weakSelf = self;
-    self.controllerModeShortcutMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
-                                                                               handler:^NSEvent *(NSEvent *event) {
-        __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf || !strongSelf.window || event.window != strongSelf.window) return event;
-        if (!OPNAppDelegateIsCommandIEvent(event)) return event;
-        [strongSelf toggleControllerModeFromShortcut];
-        return (NSEvent *)nil;
-    }];
-}
-
-- (void)toggleControllerModeFromShortcut {
-    BOOL enabled = !OpnControllerModeEnabled();
-    OpnSetControllerModeEnabled(enabled);
-    OpnPlayConsoleTone(OPNConsoleToneChange);
-    OPN::LogInfo(@"[AppDelegate] Controller mode toggled via Command-I: %d", enabled);
-}
-
 - (void)applyInterfacePreferencesToCurrentScreen {
     if (!self.rootView) return;
     if (self.currentScreen == OPN::AuthScreen::Store) {
         self.rootView.mode = OPNBackdropModeStore;
     } else if (self.currentScreen == OPN::AuthScreen::Catalog) {
-        self.rootView.mode = OpnControllerModeEnabled() ? OPNBackdropModeHome : OPNBackdropModeLibrary;
+        self.rootView.mode = OPNBackdropModeLibrary;
     } else if (self.currentScreen == OPN::AuthScreen::Settings) {
         self.rootView.mode = OPNBackdropModeSettings;
     }
@@ -1044,7 +962,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self installDesktopNavigationBarIfNeeded];
     [self updateDesktopAccountSwitcher];
     if (!self.desktopNavigationBar) return;
-    BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
+    BOOL visible = OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopTopChromeView.hidden = !visible;
     self.desktopNavigationBar.hidden = !visible;
     if (!visible) return;
@@ -1074,7 +992,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)updateDesktopAccountSwitcher {
     [self installDesktopAccountSwitcherIfNeeded];
     if (!self.desktopAccountSwitcher) return;
-    BOOL visible = !OpnControllerModeEnabled() && OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
+    BOOL visible = OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopAccountSwitcher.hidden = !visible;
     NSString *remainingPlayTime = [self.rootView.remainingPlayTime ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     BOOL playTimeVisible = visible && remainingPlayTime.length > 0;
@@ -1178,8 +1096,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self.streamingController setStreamInputSuppressed:YES];
     self.window.contentViewController = nil;
     [self transitionToScreen:OPN::AuthScreen::Catalog];
-    [self.catalogView showControllerHome];
-    self.rootView.mode = OPNBackdropModeHome;
+    self.rootView.mode = OPNBackdropModeLibrary;
     [self startStreamDashboardControllerPolling];
     OPN::LogInfo(@"[AppDelegate] Stream dashboard Home shown");
 }
@@ -1392,9 +1309,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         return;
     }
 
-    self.catalogView.controllerInputSuspended = YES;
-    self.storeView.controllerInputSuspended = YES;
-
     NSInteger generation = ++self.cloudmatchServerPickerGeneration;
     OPNCloudmatchServerPickerView *picker = [[OPNCloudmatchServerPickerView alloc] initWithFrame:host.bounds gameTitle:gameTitle ?: @""];
     picker.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -1491,8 +1405,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.cloudmatchServerPickerGeneration++;
     [self.cloudmatchServerPickerView removeFromSuperview];
     self.cloudmatchServerPickerView = nil;
-    self.catalogView.controllerInputSuspended = NO;
-    self.storeView.controllerInputSuspended = NO;
 }
 
 - (void)startStreamWithTitle:(const std::string &)title
@@ -1809,7 +1721,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)checkForActiveSessionResumeIfNeededForScreen:(OPN::AuthScreen)screen {
     using namespace OPN;
     if (screen != AuthScreen::Catalog && screen != AuthScreen::Store) return;
-    if (!OpnControllerModeEnabled()) return;
     if (self.streamingController || self.activeSessionResumeInFlight) return;
     if (!self.currentSession.isAuthenticated || self.currentSession.accessToken.empty()) return;
 
@@ -1882,8 +1793,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf) return;
             if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
-            [strongSelf.catalogView showControllerHome];
-            strongSelf.rootView.mode = OPNBackdropModeHome;
+            strongSelf.rootView.mode = OPNBackdropModeLibrary;
         };
         self.rootView.onStoreSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
@@ -1894,14 +1804,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf) return;
             if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
-            [strongSelf.catalogView showControllerLibrary];
             strongSelf.rootView.mode = OPNBackdropModeLibrary;
         };
         self.rootView.onSearchSelected = ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf) return;
             if (strongSelf.currentScreen != OPN::AuthScreen::Catalog) [strongSelf transitionToScreen:OPN::AuthScreen::Catalog];
-            [strongSelf.catalogView showControllerLibrary];
             strongSelf.rootView.mode = OPNBackdropModeLibrary;
         };
         self.rootView.onSettingsSelected = ^{
@@ -1950,7 +1858,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (screen == OPN::AuthScreen::Store) {
             self.rootView.mode = OPNBackdropModeStore;
         } else if (screen == OPN::AuthScreen::Catalog) {
-            self.rootView.mode = OpnControllerModeEnabled() ? OPNBackdropModeHome : OPNBackdropModeLibrary;
+            self.rootView.mode = OPNBackdropModeLibrary;
         } else if (screen == OPN::AuthScreen::Settings) {
             self.rootView.mode = OPNBackdropModeSettings;
         } else {
@@ -2092,20 +2000,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 if (!strongSelf) return;
                 [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
             };
-            store.onPreviousPageRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf switchControllerPageBy:-1];
-            };
-            store.onNextPageRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf switchControllerPageBy:1];
-            };
             store.onBackRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                [strongSelf showControllerHomePage];
+                [strongSelf transitionToScreen:AuthScreen::Catalog];
             };
 
             [self.contentContainer addSubview:store];
@@ -2173,26 +2071,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 [strongSelf transitionToScreen:AuthScreen::Store];
             };
 
-            catalog.onControllerSurfaceChanged = ^(BOOL homeSurface) {
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf || !strongSelf.rootView || strongSelf.currentScreen != AuthScreen::Catalog) return;
-                strongSelf.rootView.mode = homeSurface ? OPNBackdropModeHome : OPNBackdropModeLibrary;
-            };
-
             catalog.onExitRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [NSApp terminate:strongSelf];
-            };
-            catalog.onPreviousPageRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf switchControllerPageBy:-1];
-            };
-            catalog.onNextPageRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf switchControllerPageBy:1];
             };
 
             catalog.onRestartRequested = ^{
@@ -2262,28 +2144,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self refreshAccountMenu];
             [self refreshAccountSummary];
             [self refreshStreamRegions];
-            NSString *initialSectionName = OpnControllerModeEnabled() ? @"Interface" : nil;
-            OPNSettingsView *settings = [[OPNSettingsView alloc] initWithFrame:bounds selectedSectionName:initialSectionName];
+            OPNSettingsView *settings = [[OPNSettingsView alloc] initWithFrame:bounds selectedSectionName:nil];
             settings.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             __weak __typeof__(self) weakSelf = self;
             settings.onBackRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                if (OpnControllerModeEnabled()) {
-                    [strongSelf showControllerHomePage];
-                } else {
-                    [strongSelf transitionToScreen:AuthScreen::Catalog];
-                }
-            };
-            settings.onPreviousPageRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf switchControllerPageBy:-1];
-            };
-            settings.onNextPageRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf switchControllerPageBy:1];
+                [strongSelf transitionToScreen:AuthScreen::Catalog];
             };
             settings.onCheckForUpdatesRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;

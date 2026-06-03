@@ -6,24 +6,21 @@
 #include "common/OPNSentry.h"
 
 static const CGFloat gCardWidth = 288.0;
-static const CGFloat gControllerCardWidth = 164.0;
 static const CGFloat gImageHeight = gCardWidth;
 static const CGFloat gInfoHeight = 0.0;
 static const NSTimeInterval OPNGameCardImageFadeDuration = 0.20;
-static unsigned OPNControllerAccentSoftRGB(void) {
+static unsigned OPNGameCardAccentSoftRGB(void) {
     return OpnBlendRGB(OPN::kBrandGreen, 0xFFFFFF, 0.42);
 }
 
-static unsigned OPNControllerAccentBlackRGB(CGFloat blackMix) {
+static unsigned OPNGameCardAccentBlackRGB(CGFloat blackMix) {
     return OpnBlendRGB(OPN::kBrandGreen, 0x000000, blackMix);
 }
 static CGFloat OPNScaledCardWidth(void) {
-    if (OpnControllerModeEnabled()) return gControllerCardWidth;
     return gCardWidth;
 }
 
 static CGFloat OPNScaledCardHeight(void) {
-    if (OpnControllerModeEnabled()) return gControllerCardWidth;
     return gImageHeight + gInfoHeight;
 }
 
@@ -164,36 +161,6 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
     return signature;
 }
 
-static std::string OPNGameCardLogoSignature(const OPN::GameInfo &game) {
-    std::string signature;
-    for (const char *type : {"GAME_LOGO", "LOGO", "TITLE_LOGO"}) {
-        auto it = game.imageUrlsByType.find(type);
-        if (it == game.imageUrlsByType.end()) continue;
-        for (const std::string &value : it->second) {
-            signature += "\n";
-            signature += value;
-        }
-    }
-    return signature;
-}
-
-static NSArray<NSString *> *OPNGameCardLogoCandidates(const OPN::GameInfo &game) {
-    NSMutableArray<NSString *> *urls = [NSMutableArray array];
-    auto appendRawImagesForType = [&](const char *type) {
-        auto it = game.imageUrlsByType.find(type);
-        if (it == game.imageUrlsByType.end()) return;
-        for (const std::string &value : it->second) {
-            if (value.empty()) continue;
-            NSString *candidate = [NSString stringWithUTF8String:value.c_str()];
-            if (candidate.length > 0 && ![urls containsObject:candidate]) [urls addObject:candidate];
-        }
-    };
-    appendRawImagesForType("GAME_LOGO");
-    appendRawImagesForType("LOGO");
-    appendRawImagesForType("TITLE_LOGO");
-    return urls;
-}
-
 @interface OPNGameCardView () <CALayerDelegate>
 @property (nonatomic, assign) OPN::GameInfo gameData;
 @property (nonatomic, strong) NSView *contentView;
@@ -201,9 +168,6 @@ static NSArray<NSString *> *OPNGameCardLogoCandidates(const OPN::GameInfo &game)
 @property (nonatomic, strong) NSTextField *desktopTitleLabel;
 @property (nonatomic, strong) NSTextField *desktopMetaLabel;
 @property (nonatomic, strong) NSButton *desktopVariantButton;
-@property (nonatomic, strong) NSTextField *controllerStoreLabel;
-@property (nonatomic, strong) NSTextField *controllerTitleLabel;
-@property (nonatomic, strong) NSImageView *controllerTitleLogoView;
 @property (nonatomic, strong) NSView *storeChipsContainer;
 @property (nonatomic, strong) NSView *currentStoreLogoContainer;
 @property (nonatomic, strong) NSImageView *currentStoreLogoView;
@@ -214,20 +178,12 @@ static NSArray<NSString *> *OPNGameCardLogoCandidates(const OPN::GameInfo &game)
 @property (nonatomic, strong) CALayer *reflectionLayer;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *storeChipButtons;
 @property (nonatomic, strong) OpnImageLoadToken *imageLoadToken;
-@property (nonatomic, strong) OpnImageLoadToken *controllerLogoLoadToken;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
-@property (nonatomic, assign) NSUInteger controllerLogoLoadGeneration;
 @property (nonatomic, copy) NSString *displayedImageSignature;
-@property (nonatomic, copy) NSString *displayedLogoSignature;
 @property (nonatomic, assign) BOOL mouseHovering;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)clearImageForNewSignature:(NSString *)signature;
 - (void)displayLoadedImage:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
-- (void)loadControllerTitleLogo;
-- (void)loadControllerTitleLogoFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
-- (void)clearControllerTitleLogoForNewSignature:(NSString *)signature;
-- (void)displayControllerTitleLogo:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
-- (void)applyFocusStyle;
 - (void)updatePlayButtonVisibility;
 - (void)updateCurrentStoreLogo;
 - (void)updateInstallToPlayPill;
@@ -245,7 +201,6 @@ using namespace OPN;
 
 - (void)dealloc {
     [_imageLoadToken cancel];
-    [_controllerLogoLoadToken cancel];
 }
 
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game {
@@ -253,41 +208,37 @@ using namespace OPN;
     if (self) {
         _gameData = game;
         self.wantsLayer = YES;
-        self.layer.cornerRadius = OpnControllerModeEnabled() ? 22.0 : 20.0;
+        self.layer.cornerRadius = 20.0;
         self.layer.masksToBounds = NO;
         self.layer.backgroundColor = NSColor.clearColor.CGColor;
-        self.layer.borderWidth = OpnControllerModeEnabled() ? 2.0 : 1.0;
-        self.layer.borderColor = OpnControllerModeEnabled() ? OpnColor(0xFFFFFF, 0.08).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor;
+        self.layer.borderWidth = 1.0;
+        self.layer.borderColor = OpnColor(0xFFFFFF, 0.13).CGColor;
         self.layer.shadowColor = NSColor.blackColor.CGColor;
-        self.layer.shadowOpacity = OpnControllerModeEnabled() ? 0.32 : 0.38;
-        self.layer.shadowRadius = OpnControllerModeEnabled() ? 38.0 : 20.0;
-        self.layer.shadowOffset = OpnControllerModeEnabled() ? CGSizeMake(0.0, 18.0) : CGSizeMake(0.0, 16.0);
+        self.layer.shadowOpacity = 0.38;
+        self.layer.shadowRadius = 20.0;
+        self.layer.shadowOffset = CGSizeMake(0.0, 16.0);
 
         _reflectionLayer = [CALayer layer];
-        _reflectionLayer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.28).CGColor;
+        _reflectionLayer.backgroundColor = OpnColor(OPNGameCardAccentSoftRGB(), 0.28).CGColor;
         _reflectionLayer.cornerRadius = 18.0;
         _reflectionLayer.opacity = 0.0;
-        _reflectionLayer.shadowColor = OpnColor(OPNControllerAccentSoftRGB()).CGColor;
-        _reflectionLayer.shadowOpacity = OpnControllerModeEnabled() ? 0.0 : 0.68;
-        _reflectionLayer.shadowRadius = OpnControllerModeEnabled() ? 0.0 : 24.0;
+        _reflectionLayer.shadowColor = OpnColor(OPNGameCardAccentSoftRGB()).CGColor;
+        _reflectionLayer.shadowOpacity = 0.68;
+        _reflectionLayer.shadowRadius = 24.0;
         _reflectionLayer.shadowOffset = CGSizeZero;
         [self.layer addSublayer:_reflectionLayer];
 
         _contentView = [[NSView alloc] initWithFrame:self.bounds];
         _contentView.wantsLayer = YES;
-        _contentView.layer.cornerRadius = OpnControllerModeEnabled() ? 22.0 : 20.0;
+        _contentView.layer.cornerRadius = 20.0;
         _contentView.layer.masksToBounds = YES;
-        _contentView.layer.backgroundColor = OpnControllerModeEnabled()
-            ? NSColor.blackColor.CGColor
-            : OpnColor(OPNControllerAccentBlackRGB(0.88), 0.84).CGColor;
+        _contentView.layer.backgroundColor = OpnColor(OPNGameCardAccentBlackRGB(0.88), 0.84).CGColor;
         [self addSubview:_contentView];
 
         _imageView = [[NSImageView alloc] initWithFrame:self.bounds];
         _imageView.imageScaling = NSImageScaleProportionallyUpOrDown;
         _imageView.wantsLayer = YES;
-        _imageView.layer.backgroundColor = OpnControllerModeEnabled()
-            ? NSColor.blackColor.CGColor
-            : OpnColor(OPNControllerAccentBlackRGB(0.90)).CGColor;
+        _imageView.layer.backgroundColor = OpnColor(OPNGameCardAccentBlackRGB(0.90)).CGColor;
         _imageView.alphaValue = 0.0;
         [_contentView addSubview:_imageView];
 
@@ -302,10 +253,10 @@ using namespace OPN;
         _desktopVariantButton = [[NSButton alloc] initWithFrame:NSZeroRect];
         _desktopVariantButton.bordered = NO;
         _desktopVariantButton.font = [NSFont systemFontOfSize:11.0 weight:NSFontWeightBold];
-        _desktopVariantButton.contentTintColor = OpnColor(OPNControllerAccentBlackRGB(0.88));
+        _desktopVariantButton.contentTintColor = OpnColor(OPNGameCardAccentBlackRGB(0.88));
         _desktopVariantButton.wantsLayer = YES;
         _desktopVariantButton.layer.cornerRadius = 11.0;
-        _desktopVariantButton.layer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.88).CGColor;
+        _desktopVariantButton.layer.backgroundColor = OpnColor(OPNGameCardAccentSoftRGB(), 0.88).CGColor;
         _desktopVariantButton.target = self;
         _desktopVariantButton.action = @selector(desktopVariantClicked:);
         [_contentView addSubview:_desktopVariantButton];
@@ -335,43 +286,16 @@ using namespace OPN;
         _installToPlayPillLabel.lineBreakMode = NSLineBreakByTruncatingTail;
         [_installToPlayPillView addSubview:_installToPlayPillLabel];
 
-        _controllerStoreLabel = OpnLabel(@"", NSZeroRect, 13.0, OpnColor(0xFFFFFF, 0.88), NSFontWeightMedium);
-        _controllerStoreLabel.hidden = !OpnControllerModeEnabled();
-        [_contentView addSubview:_controllerStoreLabel];
-
-        _controllerTitleLabel = OpnLabel(@"", NSZeroRect, 15.0, OpnColor(0xFFFFFF), NSFontWeightBold);
-        _controllerTitleLabel.hidden = !OpnControllerModeEnabled();
-        _controllerTitleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-        _controllerTitleLabel.maximumNumberOfLines = 2;
-        _controllerTitleLabel.alignment = NSTextAlignmentCenter;
-        _controllerTitleLabel.wantsLayer = YES;
-        _controllerTitleLabel.layer.shadowColor = NSColor.blackColor.CGColor;
-        _controllerTitleLabel.layer.shadowOpacity = 0.88;
-        _controllerTitleLabel.layer.shadowRadius = 10.0;
-        _controllerTitleLabel.layer.shadowOffset = CGSizeMake(0.0, 3.0);
-        [_contentView addSubview:_controllerTitleLabel];
-
-        _controllerTitleLogoView = [[NSImageView alloc] initWithFrame:NSZeroRect];
-        _controllerTitleLogoView.imageScaling = NSImageScaleProportionallyUpOrDown;
-        _controllerTitleLogoView.imageAlignment = NSImageAlignCenter;
-        _controllerTitleLogoView.wantsLayer = YES;
-        _controllerTitleLogoView.layer.opacity = 0.0;
-        _controllerTitleLogoView.layer.shadowColor = NSColor.blackColor.CGColor;
-        _controllerTitleLogoView.layer.shadowOpacity = 0.88;
-        _controllerTitleLogoView.layer.shadowRadius = 12.0;
-        _controllerTitleLogoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
-        [_contentView addSubview:_controllerTitleLogoView];
-
         _playButton = [[NSButton alloc] initWithFrame:
             NSMakeRect((NSWidth(self.bounds) - 76) / 2, NSHeight(self.bounds) - 52, 76, 34)];
         _playButton.title = @"PLAY";
         _playButton.bordered = NO;
         _playButton.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
-        _playButton.contentTintColor = OpnColor(OPNControllerAccentBlackRGB(0.88));
+        _playButton.contentTintColor = OpnColor(OPNGameCardAccentBlackRGB(0.88));
         _playButton.wantsLayer = YES;
         _playButton.layer.cornerRadius = 17;
-        _playButton.layer.backgroundColor = OpnColor(OPNControllerAccentSoftRGB(), 0.94).CGColor;
-        _playButton.layer.shadowColor = OpnColor(OPNControllerAccentSoftRGB()).CGColor;
+        _playButton.layer.backgroundColor = OpnColor(OPNGameCardAccentSoftRGB(), 0.94).CGColor;
+        _playButton.layer.shadowColor = OpnColor(OPNGameCardAccentSoftRGB()).CGColor;
         _playButton.layer.shadowOpacity = 0.18;
         _playButton.layer.shadowRadius = 14;
         _playButton.layer.shadowOffset = CGSizeZero;
@@ -383,7 +307,6 @@ using namespace OPN;
         _storeChipButtons = [NSMutableArray array];
         _imageRevealDelay = 0.0;
         _displayedImageSignature = @"";
-        _displayedLogoSignature = @"";
 
         _selectedVariantIndex = -1;
         int idx = 0;
@@ -403,12 +326,10 @@ using namespace OPN;
         [_contentView addSubview:_storeChipsContainer];
         [self buildStoreChips];
         [self updateDesktopLabels];
-        [self updateControllerLabels];
         [self updateCurrentStoreLogo];
         [self updateInstallToPlayPill];
 
         [self loadImage];
-        [self loadControllerTitleLogo];
 
         _trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
             options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInActiveApp
@@ -418,60 +339,8 @@ using namespace OPN;
     return self;
 }
 
-- (void)setControllerFocused:(BOOL)controllerFocused {
-    if (_controllerFocused == controllerFocused) return;
-    _controllerFocused = controllerFocused;
-    [self applyFocusStyle];
-}
-
-- (void)applyFocusStyle {
-    BOOL selected = self.controllerFocused;
-    NSColor *accentColor = OpnColor(OPNControllerAccentSoftRGB());
-    [self updatePlayButtonVisibility];
-    [CATransaction begin];
-    [CATransaction setAnimationDuration:0.22];
-    [CATransaction setAnimationTimingFunction:[OPNCoreAnimationCoordinator appleQuinticTimingFunction]];
-    self.layer.zPosition = selected ? 20.0 : 0.0;
-    self.layer.borderColor = selected ? OpnColor(0x2EE375, 0.98).CGColor : (OpnControllerModeEnabled() ? OpnColor(0xFFFFFF, 0.08).CGColor : OpnColor(0xFFFFFF, 0.13).CGColor);
-    self.layer.borderWidth = OpnControllerModeEnabled() ? 2.0 : (selected ? 3.0 : 1.0);
-    self.playButton.layer.shadowOpacity = selected ? 0.58 : 0.18;
-    self.playButton.layer.shadowRadius = selected ? 22.0 : 14.0;
-    [CATransaction commit];
-
-    if (OpnControllerModeEnabled()) {
-        [self.layer removeAnimationForKey:@"opn.focus.transform"];
-        [self.reflectionLayer removeAnimationForKey:@"opn.focus.glow"];
-        self.layer.transform = CATransform3DIdentity;
-        self.layer.shadowOpacity = selected ? 0.0 : 0.32;
-        self.layer.shadowRadius = selected ? 0.0 : 38.0;
-        self.layer.shadowOffset = selected ? CGSizeZero : CGSizeMake(0.0, 18.0);
-        self.reflectionLayer.opacity = 0.0;
-        self.reflectionLayer.shadowOpacity = 0.0;
-        self.reflectionLayer.shadowRadius = 0.0;
-        return;
-    }
-
-    CGFloat prominence = selected ? 1.0 : 0.0;
-    [[OPNCoreAnimationCoordinator sharedCoordinator] animateFocusForCardLayer:self.layer
-                                                                    glowLayer:self.reflectionLayer
-                                                                      focused:selected
-                                                                   prominence:prominence
-                                                                   accentColor:accentColor];
-}
-
 - (void)updatePlayButtonVisibility {
-    self.playButton.hidden = OpnControllerModeEnabled() ? !self.controllerFocused : !self.mouseHovering;
-}
-
-- (void)updateControllerLabels {
-    NSString *store = @"";
-    if (_selectedVariantIndex >= 0 && _selectedVariantIndex < (int)_gameData.variants.size()) {
-        store = OPNStorePrettyName([NSString stringWithUTF8String:_gameData.variants[(size_t)_selectedVariantIndex].appStore.c_str()]);
-    } else if (!_gameData.availableStores.empty()) {
-        store = OPNStorePrettyName([NSString stringWithUTF8String:_gameData.availableStores.front().c_str()]);
-    }
-    self.controllerStoreLabel.stringValue = store;
-    self.controllerTitleLabel.stringValue = _gameData.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:_gameData.title.c_str()];
+    self.playButton.hidden = !self.mouseHovering;
 }
 
 - (void)updateDesktopLabels {
@@ -494,47 +363,21 @@ using namespace OPN;
     CGFloat width = NSWidth(self.bounds);
     CGFloat height = NSHeight(self.bounds);
     CGFloat shortestSide = MAX(1.0, MIN(width, height));
-    CGFloat cornerRadius = OpnControllerModeEnabled()
-        ? MIN(34.0, MAX(20.0, shortestSide * (20.0 / 200.0)))
-        : shortestSide * (20.0 / 180.0);
+    CGFloat cornerRadius = shortestSide * (20.0 / 180.0);
     self.layer.cornerRadius = cornerRadius;
     self.contentView.frame = self.bounds;
     self.contentView.layer.cornerRadius = cornerRadius;
-    if (OpnControllerModeEnabled()) {
-        self.imageView.frame = self.bounds;
-        self.desktopTitleLabel.hidden = YES;
-        self.desktopMetaLabel.hidden = YES;
-        self.desktopVariantButton.hidden = YES;
-        self.desktopTitleLabel.frame = NSZeroRect;
-        self.desktopMetaLabel.frame = NSZeroRect;
-        self.desktopVariantButton.frame = NSZeroRect;
-        self.controllerStoreLabel.hidden = YES;
-        BOOL hasControllerLogo = self.controllerTitleLogoView.image != nil && self.controllerTitleLogoView.layer.opacity > 0.0;
-        self.controllerTitleLabel.hidden = hasControllerLogo;
-        self.controllerStoreLabel.frame = NSZeroRect;
-        CGFloat logoWidth = MIN(width * 0.80, 280.0);
-        CGFloat logoHeight = MIN(MAX(56.0, width * 0.32), 118.0);
-        CGFloat logoX = floor((width - logoWidth) * 0.5);
-        CGFloat logoY = floor((height - logoHeight) * 0.5);
-        self.controllerTitleLogoView.hidden = !hasControllerLogo;
-        self.controllerTitleLogoView.frame = NSMakeRect(logoX, logoY, logoWidth, logoHeight);
-        self.controllerTitleLabel.frame = NSMakeRect(width * 0.08, logoY + floor((logoHeight - 44.0) * 0.5), width * 0.84, 48.0);
-    } else {
-        self.imageView.frame = self.bounds;
-        self.desktopTitleLabel.hidden = YES;
-        self.desktopMetaLabel.hidden = YES;
-        self.desktopTitleLabel.frame = NSZeroRect;
-        self.desktopMetaLabel.frame = NSZeroRect;
-        CGFloat variantWidth = MIN(82.0, MAX(58.0, width * 0.30));
-        self.desktopVariantButton.hidden = _gameData.variants.size() <= 1;
-        self.desktopVariantButton.frame = NSMakeRect(width - 10.0 - variantWidth, 10.0, variantWidth, 23.0);
-        self.controllerStoreLabel.hidden = YES;
-        self.controllerTitleLabel.hidden = YES;
-        self.controllerTitleLogoView.hidden = YES;
-    }
+    self.imageView.frame = self.bounds;
+    self.desktopTitleLabel.hidden = YES;
+    self.desktopMetaLabel.hidden = YES;
+    self.desktopTitleLabel.frame = NSZeroRect;
+    self.desktopMetaLabel.frame = NSZeroRect;
+    CGFloat variantWidth = MIN(82.0, MAX(58.0, width * 0.30));
+    self.desktopVariantButton.hidden = _gameData.variants.size() <= 1;
+    self.desktopVariantButton.frame = NSMakeRect(width - 10.0 - variantWidth, 10.0, variantWidth, 23.0);
     CGFloat playWidth = width * (76.0 / 180.0);
     CGFloat playHeight = height * (34.0 / 180.0);
-    CGFloat playY = OpnControllerModeEnabled() ? MAX(0.0, height - height * (52.0 / 180.0)) : 10.0;
+    CGFloat playY = 10.0;
     self.playButton.frame = NSMakeRect((width - playWidth) / 2.0, playY, playWidth, playHeight);
     [self updatePlayButtonVisibility];
     self.storeChipsContainer.frame = NSMakeRect(width * (16.0 / 180.0), MAX(0.0, height - height * (37.0 / 180.0)), MAX(1.0, width - width * (32.0 / 180.0)), height * (24.0 / 180.0));
@@ -554,15 +397,9 @@ using namespace OPN;
     CGFloat logoInset = logoContainerSize * 0.20;
     self.currentStoreLogoView.frame = NSInsetRect(self.currentStoreLogoContainer.bounds, logoInset, logoInset);
     self.reflectionLayer.frame = NSMakeRect(width * (16.0 / 180.0), height - height * (10.0 / 180.0), MAX(1.0, width - width * (32.0 / 180.0)), height * (18.0 / 180.0));
-    if (OpnControllerModeEnabled()) {
-        CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
-        self.layer.shadowPath = shadowPath;
-        CGPathRelease(shadowPath);
-    } else {
-        CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
-        self.layer.shadowPath = shadowPath;
-        CGPathRelease(shadowPath);
-    }
+    CGPathRef shadowPath = OpnCreateRoundedRectPath(self.bounds, cornerRadius, cornerRadius);
+    self.layer.shadowPath = shadowPath;
+    CGPathRelease(shadowPath);
 }
 
 - (void)updateCurrentStoreLogo {
@@ -595,8 +432,6 @@ using namespace OPN;
     int selectedVariant = _selectedVariantIndex;
     const std::string previousImageSignature = OPNGameCardImageSignature(_gameData);
     const std::string nextImageSignature = OPNGameCardImageSignature(game);
-    const std::string previousLogoSignature = OPNGameCardLogoSignature(_gameData);
-    const std::string nextLogoSignature = OPNGameCardLogoSignature(game);
     _gameData = game;
     if (selectedVariant >= 0 && selectedVariant < (int)_gameData.variants.size()) {
         _selectedVariantIndex = selectedVariant;
@@ -605,16 +440,11 @@ using namespace OPN;
     }
     [self buildStoreChips];
     [self updateDesktopLabels];
-    [self updateControllerLabels];
     [self updateCurrentStoreLogo];
     [self updateInstallToPlayPill];
     if (previousImageSignature != nextImageSignature) {
         [self clearImageForNewSignature:[NSString stringWithUTF8String:nextImageSignature.c_str()]];
         [self loadImage];
-    }
-    if (previousLogoSignature != nextLogoSignature) {
-        [self clearControllerTitleLogoForNewSignature:[NSString stringWithUTF8String:nextLogoSignature.c_str()]];
-        [self loadControllerTitleLogo];
     }
 }
 
@@ -626,18 +456,6 @@ using namespace OPN;
     [CATransaction setDisableActions:YES];
     self.imageView.image = nil;
     self.imageView.alphaValue = 0.0;
-    [CATransaction commit];
-}
-
-- (void)clearControllerTitleLogoForNewSignature:(NSString *)signature {
-    [self.controllerLogoLoadToken cancel];
-    self.displayedLogoSignature = signature ?: @"";
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.controllerTitleLogoView.image = nil;
-    self.controllerTitleLogoView.layer.opacity = 0.0;
-    self.controllerTitleLogoView.hidden = YES;
-    self.controllerTitleLabel.hidden = !OpnControllerModeEnabled();
     [CATransaction commit];
 }
 
@@ -732,7 +550,6 @@ using namespace OPN;
     _selectedVariantIndex = index;
     [self buildStoreChips];
     [self updateDesktopLabels];
-    [self updateControllerLabels];
     [self updateCurrentStoreLogo];
 }
 
@@ -748,13 +565,8 @@ using namespace OPN;
             if (candidate.length > 0 && ![urlStrings containsObject:candidate]) [urlStrings addObject:candidate];
         }
     };
-    if (OpnControllerModeEnabled()) {
-        appendRawImagesForType("KEY_ART");
-        appendRawImagesForType("KEY_IMAGE");
-    } else {
-        appendRawImagesForType("KEY_ART");
-        appendRawImagesForType("KEY_IMAGE");
-    }
+    appendRawImagesForType("KEY_ART");
+    appendRawImagesForType("KEY_IMAGE");
     NSString *primaryUrl = self.gameData.imageUrl.empty() ? nil : [NSString stringWithUTF8String:self.gameData.imageUrl.c_str()];
     NSString *heroUrl = self.gameData.heroImageUrl.empty() ? nil : [NSString stringWithUTF8String:self.gameData.heroImageUrl.c_str()];
     NSString *steamUrl = OPNSteamArtworkURLForGame(self.gameData);
@@ -821,74 +633,18 @@ using namespace OPN;
     });
 }
 
-- (void)loadControllerTitleLogo {
-    if (!OpnControllerModeEnabled()) return;
-    NSArray<NSString *> *urlStrings = OPNGameCardLogoCandidates(self.gameData);
-    NSString *signature = [NSString stringWithUTF8String:OPNGameCardLogoSignature(self.gameData).c_str()];
-    if (urlStrings.count == 0) {
-        [self clearControllerTitleLogoForNewSignature:signature];
-        return;
-    }
-
-    [self.controllerLogoLoadToken cancel];
-    NSUInteger generation = ++self.controllerLogoLoadGeneration;
-    [self loadControllerTitleLogoFromCandidates:urlStrings index:0 generation:generation];
-}
-
-- (void)loadControllerTitleLogoFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation {
-    if (generation != self.controllerLogoLoadGeneration) return;
-    if (index >= urlStrings.count) return;
-
-    NSString *urlStr = urlStrings[index];
-    __weak __typeof__(self) weakSelf = self;
-    self.controllerLogoLoadToken = OpnLoadImageForURLCancellable(urlStr, 512.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
-        (void)resolvedURL;
-        (void)data;
-        __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf.controllerLogoLoadGeneration != generation) return;
-        if (!image) {
-            [strongSelf loadControllerTitleLogoFromCandidates:urlStrings index:index + 1 generation:generation];
-            return;
-        }
-        NSString *signature = [NSString stringWithUTF8String:OPNGameCardLogoSignature(strongSelf.gameData).c_str()];
-        [strongSelf displayControllerTitleLogo:image signature:signature generation:generation];
-    });
-}
-
-- (void)displayControllerTitleLogo:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation {
-    if (!image || generation != self.controllerLogoLoadGeneration) return;
-    NSString *expectedSignature = [NSString stringWithUTF8String:OPNGameCardLogoSignature(self.gameData).c_str()];
-    if (![signature isEqualToString:expectedSignature]) return;
-
-    self.displayedLogoSignature = expectedSignature;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.controllerTitleLogoView.image = image;
-    self.controllerTitleLogoView.layer.opacity = 1.0;
-    self.controllerTitleLogoView.hidden = !OpnControllerModeEnabled();
-    self.controllerTitleLabel.hidden = OpnControllerModeEnabled();
-    [CATransaction commit];
-    [self setNeedsLayout:YES];
-}
-
 - (void)mouseEntered:(NSEvent *)event {
     [super mouseEntered:event];
-    if (OpnControllerModeEnabled()) return;
     self.mouseHovering = YES;
     [self updatePlayButtonVisibility];
-    if (!self.controllerFocused) {
-        self.layer.borderColor = OpnColor(0xFFFFFF, 0.28).CGColor;
-    }
+    self.layer.borderColor = OpnColor(0xFFFFFF, 0.28).CGColor;
 }
 
 - (void)mouseExited:(NSEvent *)event {
     [super mouseExited:event];
-    if (OpnControllerModeEnabled()) return;
     self.mouseHovering = NO;
     [self updatePlayButtonVisibility];
-    if (!self.controllerFocused) {
-        self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
-    }
+    self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
 }
 
 - (void)resetMouseTrackingIfOutside {
@@ -901,9 +657,7 @@ using namespace OPN;
     if (!NSPointInRect(localPoint, self.bounds)) {
         self.mouseHovering = NO;
         [self updatePlayButtonVisibility];
-        if (!self.controllerFocused) {
-            self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
-        }
+        self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
     }
 }
 
