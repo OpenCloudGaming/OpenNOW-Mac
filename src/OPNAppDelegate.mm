@@ -67,7 +67,6 @@
 @property (nonatomic, strong) OPNCloudmatchServerPickerView *cloudmatchServerPickerView;
 @property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
 @property (nonatomic, strong) NSView *desktopTopChromeView;
-@property (nonatomic, strong) NSImageView *desktopBrandIconView;
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 @property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
@@ -814,11 +813,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)applyApplicationIconTheme {
     NSImage *icon = OPNDesktopBrandIconImage();
     if (icon) NSApp.applicationIconImage = icon;
-    if (self.desktopBrandIconView) {
-        self.desktopBrandIconView.image = icon;
-        self.desktopBrandIconView.layer.backgroundColor = icon ? NSColor.clearColor.CGColor : OpnColor(OPN::kBrandGreen, 0.94).CGColor;
-        self.desktopBrandIconView.layer.borderWidth = icon ? 0.0 : 1.0;
-    }
 }
 
 - (void)applyInterfacePreferencesToCurrentScreen {
@@ -838,7 +832,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.rootView) return;
     if (self.desktopTopChromeView && self.desktopTopChromeView.superview != self.rootView) {
         self.desktopTopChromeView = nil;
-        self.desktopBrandIconView = nil;
         self.desktopBrandLabel = nil;
     }
     if (!self.desktopTopChromeView) {
@@ -846,25 +839,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         chrome.wantsLayer = YES;
         chrome.layer.backgroundColor = NSColor.clearColor.CGColor;
         self.desktopTopChromeView = chrome;
-
-        NSImageView *brandIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
-        brandIcon.wantsLayer = YES;
-        brandIcon.layer.cornerRadius = 14.0;
-        brandIcon.layer.masksToBounds = YES;
-        brandIcon.imageScaling = NSImageScaleProportionallyUpOrDown;
-        brandIcon.imageAlignment = NSImageAlignCenter;
-        brandIcon.image = OPNDesktopBrandIconImage();
-        brandIcon.layer.backgroundColor = brandIcon.image ? NSColor.clearColor.CGColor : OpnColor(OPN::kBrandGreen, 0.94).CGColor;
-        brandIcon.layer.borderWidth = brandIcon.image ? 0.0 : 1.0;
-        brandIcon.layer.borderColor = OpnColor(0xFFFFFF, 0.22).CGColor;
-        self.desktopBrandIconView = brandIcon;
-        [chrome addSubview:brandIcon];
-
-        if (!brandIcon.image) {
-            NSTextField *brandGlyph = OpnLabel(@"ON", NSZeroRect, 14.0, OpnColor(0x173019, 0.96), NSFontWeightBlack, NSTextAlignmentCenter);
-            brandGlyph.identifier = @"brandGlyph";
-            [brandIcon addSubview:brandGlyph];
-        }
 
         NSTextField *brandLabel = OpnLabel(@"OpenNOW", NSZeroRect, 18.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
         brandLabel.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -966,13 +940,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     CGFloat chromeHeight = floor(140.0 * scale);
     self.desktopTopChromeView.frame = NSMakeRect(0.0, 0.0, width, chromeHeight);
     CGFloat brandX = MAX(48.0, floor(width * 0.024));
-    CGFloat brandSize = floor(48.0 * scale);
-    CGFloat brandY = floor((chromeHeight - brandSize) * 0.5);
-    self.desktopBrandIconView.frame = NSMakeRect(brandX, brandY, brandSize, brandSize);
-    self.desktopBrandIconView.layer.cornerRadius = 14.0 * scale;
-    for (NSView *subview in self.desktopBrandIconView.subviews) {
-        if ([subview.identifier isEqualToString:@"brandGlyph"]) subview.frame = self.desktopBrandIconView.bounds;
-    }
     NSFont *brandFont = [NSFont systemFontOfSize:18.0 * scale weight:NSFontWeightBlack];
     self.desktopBrandLabel.font = brandFont;
     self.desktopBrandLabel.attributedStringValue = [[NSAttributedString alloc] initWithString:@"OpenNOW" attributes:@{
@@ -981,8 +948,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         NSStrokeColorAttributeName: NSColor.blackColor,
         NSStrokeWidthAttributeName: @(-3.0),
     }];
-    self.desktopBrandLabel.frame = NSMakeRect(NSMaxX(self.desktopBrandIconView.frame) + 20.0 * scale,
-                                              brandY + floor((brandSize - 28.0 * scale) * 0.5),
+    self.desktopBrandLabel.frame = NSMakeRect(brandX,
+                                              floor((chromeHeight - 28.0 * scale) * 0.5),
                                               180.0 * scale,
                                               28.0 * scale);
 }
