@@ -337,7 +337,7 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
         OpnColor(0x000000, 0.0),
         OpnColor(0x000000, 1.0)
     ]];
-    [bottomFade drawInRect:fadeRect angle:-90.0];
+    [bottomFade drawInRect:fadeRect angle:90.0];
 }
 
 @end
