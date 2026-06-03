@@ -2679,28 +2679,26 @@ using namespace OPN;
         OPN::LogInfo(@"[CatalogView] controller render window category=%@ display=%lu initial=%ld renderLimit=%ld scrollWidth=%.1f", self.selectedCategoryId, (unsigned long)displayGames.size(), (long)[self controllerInitialRenderedGameCount], (long)renderEndIndex, NSWidth(self.scrollView.frame));
     } else {
         self.desktopDisplayGameCount = (NSInteger)displayGames.size();
-        NSInteger totalRows = displayGames.empty() ? 0 : (NSInteger)ceil((double)displayGames.size() / MAX(1.0, (double)cols));
-        CGFloat rowHeight = cardHeight + kDesktopLibraryRowSpacing;
+        self.desktopRenderStartIndex = 0;
+        self.desktopRenderedGameCount = (NSInteger)displayGames.size();
+        NSInteger totalCards = (NSInteger)displayGames.size();
+        NSInteger visibleCards = MAX(1, (NSInteger)floor(NSWidth(self.scrollView.frame) / (cardWidth + gridSpacing)));
         NSRect visibleBounds = self.scrollView.contentView.bounds;
-        CGFloat visibleMinY = MAX(0.0, NSMinY(visibleBounds) - cardStartY);
-        CGFloat visibleMaxY = MAX(visibleMinY, NSMaxY(visibleBounds) - cardStartY);
-        NSInteger firstVisibleRow = rowHeight > 0.0 ? MAX(0, (NSInteger)floor(visibleMinY / rowHeight)) : 0;
-        NSInteger lastVisibleRow = rowHeight > 0.0 ? MAX(firstVisibleRow, (NSInteger)ceil(visibleMaxY / rowHeight)) : firstVisibleRow;
-        NSInteger renderStartRow = MAX(0, firstVisibleRow - kDesktopGridRenderBufferRows);
-        NSInteger renderEndRow = MIN(totalRows, lastVisibleRow + kDesktopGridRenderBufferRows + 1);
-        renderStartIndex = MIN((NSInteger)displayGames.size(), renderStartRow * cols);
-        renderEndIndex = MIN((NSInteger)displayGames.size(), renderEndRow * cols);
-        self.desktopRenderStartIndex = renderStartIndex;
-        self.desktopRenderedGameCount = MAX(0, renderEndIndex - renderStartIndex);
+        CGFloat visibleMidX = NSMidX(visibleBounds);
+        NSInteger centerIndex = (cardWidth + gridSpacing) > 0.0
+            ? MAX(0, MIN(totalCards - 1, (NSInteger)floor((visibleMidX - xStart + gridSpacing * 0.5) / (cardWidth + gridSpacing))))
+            : 0;
+        NSInteger firstCard = MAX(0, centerIndex - visibleCards / 2 - kDesktopGridRenderBufferRows);
+        NSInteger lastCard = MIN(totalCards, centerIndex + visibleCards / 2 + kDesktopGridRenderBufferRows + 1);
+        renderStartIndex = firstCard;
+        renderEndIndex = lastCard;
     }
 
     NSInteger visibleCount = 0;
     for (NSInteger gameIndex = renderStartIndex; gameIndex < renderEndIndex; gameIndex++) {
         auto &game = displayGames[(size_t)gameIndex];
-        NSInteger col = controllerMode ? visibleCount : gameIndex % cols;
-        NSInteger row = controllerMode ? 0 : gameIndex / cols;
-        CGFloat x = controllerMode ? xStart + visibleCount * (cardWidth + gridSpacing) : xStart + col * (cardWidth + gridSpacing);
-        CGFloat y = controllerMode ? 34.0 + kControllerRailSelectorOverlap : cardStartY + row * (cardHeight + kDesktopLibraryRowSpacing);
+        CGFloat x = xStart + (CGFloat)gameIndex * (cardWidth + gridSpacing);
+        CGFloat y = cardStartY;
         NSRect cardFrame = NSMakeRect(x, y, cardWidth, cardHeight);
         NSString *gameIdentifier = [self favoriteIdentifierForGame:game];
         NSMutableArray<OPNGameCardView *> *matchingCards = gameIdentifier.length > 0 ? reusableCardsByIdentifier[gameIdentifier] : nil;
@@ -2749,13 +2747,9 @@ using namespace OPN;
     }
 
     CGFloat totalHeight = controllerMode ? cardHeight + 104.0 : cardStartY + cardHeight + kGridPadding;
-    if (!controllerMode) {
-        NSInteger totalRows = displayGames.empty() ? 0 : (NSInteger)ceil((double)displayGames.size() / MAX(1.0, (double)cols));
-        totalHeight = totalRows > 0 ? cardStartY + totalRows * cardHeight + MAX(0, totalRows - 1) * kDesktopLibraryRowSpacing + 88.0 : gridTop + 220.0;
-    }
     CGFloat totalWidth = controllerMode
         ? xStart * 2.0 + visibleCount * cardWidth + MAX(0, visibleCount - 1) * gridSpacing
-        : pageWidth;
+        : MAX(pageWidth, xStart * 2.0 + (CGFloat)displayGames.size() * (cardWidth + gridSpacing));
     ambient.frame = NSMakeRect(0.0, 0.0, pageWidth, MAX(totalHeight, NSHeight(self.bounds)));
     _gridContentView.frame = NSMakeRect(0, 0,
         MAX(totalWidth, _scrollView.frame.size.width),
@@ -3735,6 +3729,16 @@ using namespace OPN;
     CGFloat promptHeight = MIN(38.0, MAX(26.0, height * (32.0 / 720.0)));
     CGFloat promptBottom = MIN(30.0, MAX(12.0, height * 0.016));
     self.controllerBottomPromptBarView.frame = NSMakeRect(promptInset, height - promptBottom - promptHeight, MAX(0.0, width - promptInset * 2.0), promptHeight);
+    if (!controllerMode) {
+        self.scrollView.hasVerticalScroller = NO;
+        self.scrollView.hasHorizontalScroller = YES;
+        self.scrollView.horizontalScrollElasticity = NSScrollElasticityAutomatic;
+        self.scrollView.verticalScrollElasticity = NSScrollElasticityNone;
+        self.scrollView.autohidesScrollers = YES;
+        [self applyControllerAccentColors];
+        [self layoutControllerStoreFilterOverlay];
+        return;
+    }
     if (controllerMode) {
         self.searchField.hidden = YES;
         self.searchField.enabled = NO;
@@ -3917,46 +3921,32 @@ using namespace OPN;
     [self updateControllerDetailContent];
     if (!scrollIntoView) return;
     NSInteger localIndex = controllerMode ? clamped - self.controllerLibraryWindowStartIndex : clamped - self.desktopRenderStartIndex;
-    if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) {
-        if (!controllerMode) {
-            NSInteger columns = MAX(1, self.gridColumnCount);
-            OPNDesktopLibraryGridMetrics desktopMetrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
-            NSSize cardSize = NSMakeSize(desktopMetrics.cardWidth, desktopMetrics.cardHeight);
-            CGFloat contentWidth = desktopMetrics.contentWidth;
-            const OPN::GameInfo *heroGame = [self currentLastPlayedGame];
-            if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
-            OPNDesktopLibraryVerticalMetrics verticalMetrics = OPNDesktopLibraryVerticalMetricsForSize(NSWidth(self.bounds),
-                                                                                                        NSHeight(self.bounds),
-                                                                                                        contentWidth,
-                                                                                                        cardSize.height,
-                                                                                                        heroGame != nullptr);
-            CGFloat cardStartY = verticalMetrics.cardStartY;
-            CGFloat gridSpacing = desktopMetrics.columnSpacing;
-            CGFloat xStart = desktopMetrics.contentX;
-            NSInteger row = clamped / columns;
-            NSInteger column = clamped % columns;
-            NSRect targetRect = NSInsetRect(NSMakeRect(xStart + column * (cardSize.width + gridSpacing),
-                                                       cardStartY + row * (cardSize.height + kDesktopLibraryRowSpacing),
-                                                       cardSize.width,
-                                                       cardSize.height), -24.0, -24.0);
-            [self.gridContentView scrollRectToVisible:targetRect];
+    if (!controllerMode) {
+        CGFloat cardWidth = [OPNGameCardView cardSize].width;
+        CGFloat spacing = kDesktopLibraryColumnSpacing;
+        CGFloat step = cardWidth + spacing;
+        CGFloat viewWidth = NSWidth(self.scrollView.frame);
+        CGFloat targetX = (CGFloat)clamped * step + step * 0.5 - viewWidth * 0.5;
+        CGFloat maxX = MAX(0.0, (CGFloat)self.desktopDisplayGameCount * step + step * 0.5 - viewWidth);
+        targetX = MAX(0.0, MIN(targetX, maxX));
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.35;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            NSPoint targetPoint = NSMakePoint(targetX, 0.0);
+            [[self.scrollView.contentView animator] setBoundsOrigin:targetPoint];
+        } completionHandler:^{
             [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
-            [self renderGrid];
-        }
+        }];
         return;
     }
-    OPNGameCardView *card = self.cardViews[(NSUInteger)localIndex];
-    NSRect visibleRect = self.scrollView.contentView.bounds;
-    NSRect targetRect = NSInsetRect(card.frame, -24.0, -24.0);
+    if (localIndex < 0 || localIndex >= (NSInteger)self.cardViews.count) {
+        return;
+    }
     if (controllerMode) {
         [self.scrollView.contentView scrollToPoint:NSMakePoint(0.0, 0.0)];
         [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
         [self scrollControllerLibraryRailToCardAtIndex:clamped animated:YES];
         return;
-    }
-    if (!NSContainsRect(visibleRect, targetRect)) {
-        [self.gridContentView scrollRectToVisible:targetRect];
-        [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
     }
 }
 
@@ -3984,22 +3974,15 @@ using namespace OPN;
     if (self.desktopDisplayGameCount <= 0) return;
 
     NSClipView *clipView = self.scrollView.contentView;
-    NSInteger columns = MAX(1, self.gridColumnCount);
-    OPNDesktopLibraryGridMetrics desktopMetrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
-    CGFloat contentWidth = desktopMetrics.contentWidth;
-    const OPN::GameInfo *heroGame = self.hasDesktopFeaturedGame ? &_desktopFeaturedGame : [self currentLastPlayedGame];
-    if (!heroGame && !_allGames.empty()) heroGame = &_allGames.front();
-    OPNDesktopLibraryVerticalMetrics verticalMetrics = OPNDesktopLibraryVerticalMetricsForSize(NSWidth(self.bounds),
-                                                                                                NSHeight(self.bounds),
-                                                                                                contentWidth,
-                                                                                                desktopMetrics.cardHeight,
-                                                                                                heroGame != nullptr);
-    CGFloat rowHeight = desktopMetrics.cardHeight + kDesktopLibraryRowSpacing;
-    CGFloat visibleMinY = MAX(0.0, NSMinY(clipView.bounds) - verticalMetrics.cardStartY);
-    NSInteger firstVisibleRow = rowHeight > 0.0 ? MAX(0, (NSInteger)floor(visibleMinY / rowHeight)) : 0;
-    NSInteger nextStartIndex = MAX(0, firstVisibleRow - kDesktopGridRenderBufferRows) * columns;
-    nextStartIndex = MIN(nextStartIndex, MAX(0, self.desktopDisplayGameCount - 1));
-    if (nextStartIndex == self.desktopRenderStartIndex) return;
+    CGFloat cardWidth = [OPNGameCardView cardSize].width;
+    CGFloat spacing = kDesktopLibraryColumnSpacing;
+    CGFloat step = cardWidth + spacing;
+    CGFloat scrollX = MAX(0.0, NSMinX(clipView.bounds));
+    NSInteger centerIndex = step > 0.0 ? (NSInteger)floor(scrollX / step + 0.5) : 0;
+    centerIndex = MAX(0, MIN(centerIndex, self.desktopDisplayGameCount - 1));
+    NSInteger newStartIndex = MAX(0, centerIndex - 8);
+    newStartIndex = MIN(newStartIndex, MAX(0, self.desktopDisplayGameCount - 1));
+    if (newStartIndex == self.desktopRenderStartIndex) return;
     [self renderGrid];
 }
 
