@@ -652,6 +652,7 @@ typedef NS_ENUM(NSInteger, OPNControllerPromptMode) {
 @property (nonatomic, assign) CGFloat cachedDesktopCardStartY;
 @property (nonatomic, strong) NSView *desktopHeroContainerView;
 @property (nonatomic, strong) NSView *desktopSectionHeaderView;
+@property (nonatomic, strong) NSView *desktopAmbientView;
 @property (nonatomic, assign) uint16_t previousGamepadButtons;
 @property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 - (void)stopGamepadNavigation;
@@ -2622,8 +2623,6 @@ using namespace OPN;
     CGFloat pageWidth = desktopMetrics.pageWidth;
     CGFloat contentX = desktopMetrics.contentX;
     CGFloat contentWidth = desktopMetrics.contentWidth;
-    OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, pageWidth, MAX(NSHeight(self.bounds), 1800.0))];
-    [self.gridContentView addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
 
     CGFloat cardWidth = desktopMetrics.cardWidth;
     CGFloat cardHeight = desktopMetrics.cardHeight;
@@ -2662,6 +2661,12 @@ using namespace OPN;
     self.desktopHeroContainerView = nil;
     [self.desktopSectionHeaderView removeFromSuperview];
     self.desktopSectionHeaderView = nil;
+    [self.desktopAmbientView removeFromSuperview];
+    self.desktopAmbientView = nil;
+
+    OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:self.bounds];
+    [self addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
+    self.desktopAmbientView = ambient;
 
     if (heroGame && verticalMetrics.heroHeight > 1.0) {
         [self addDesktopLibraryHeroForGame:*heroGame frame:NSMakeRect(contentX,
@@ -2767,8 +2772,8 @@ using namespace OPN;
     CGFloat totalWidth = controllerMode
         ? xStart * 2.0 + visibleCount * cardWidth + MAX(0, visibleCount - 1) * gridSpacing
         : MAX(pageWidth, xStart * 2.0 + (CGFloat)displayGames.size() * (cardWidth + gridSpacing));
-    ambient.frame = NSMakeRect(0.0, 0.0, pageWidth, MAX(totalHeight, NSHeight(self.scrollView.frame)));
     _gridContentView.frame = NSMakeRect(0, 0, MAX(totalWidth, _scrollView.frame.size.width), MAX(totalHeight, _scrollView.frame.size.height));
+    self.desktopAmbientView.frame = self.bounds;
 
     _gameCountLabel.stringValue = [NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"];
     if (self.onGameCountChanged) self.onGameCountChanged(totalVisibleCount);
