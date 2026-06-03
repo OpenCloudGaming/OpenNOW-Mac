@@ -198,6 +198,10 @@ static NSImage *OPNDesktopBrandIconImage() {
     return nil;
 }
 
+static CGFloat OPNDesktopChromeScale(CGFloat height) {
+    return MIN(1.0, MAX(0.80, MAX(1.0, height) / 900.0));
+}
+
 static NSSize OPNResizableWindowMaxSize() {
     return NSMakeSize(16000.0, 16000.0);
 }
@@ -918,29 +922,40 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)layoutDesktopNavigationBar {
     if (!self.desktopNavigationBar || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
-    CGFloat chromeHeight = 140.0;
+    CGFloat height = NSHeight(self.rootView.bounds);
+    CGFloat scale = OPNDesktopChromeScale(height);
+    CGFloat chromeHeight = floor(140.0 * scale);
     self.desktopTopChromeView.frame = NSMakeRect(0.0, 0.0, width, chromeHeight);
     CGFloat brandX = MAX(48.0, floor(width * 0.024));
-    self.desktopBrandIconView.frame = NSMakeRect(brandX, 43.0, 54.0, 54.0);
+    CGFloat brandSize = floor(54.0 * scale);
+    CGFloat brandY = floor((chromeHeight - brandSize) * 0.5);
+    self.desktopBrandIconView.frame = NSMakeRect(brandX, brandY, brandSize, brandSize);
+    self.desktopBrandIconView.layer.cornerRadius = 14.0 * scale;
     for (NSView *subview in self.desktopBrandIconView.subviews) {
         if ([subview.identifier isEqualToString:@"brandGlyph"]) subview.frame = self.desktopBrandIconView.bounds;
     }
-    self.desktopBrandLabel.frame = NSMakeRect(NSMaxX(self.desktopBrandIconView.frame) + 20.0, 58.0, 180.0, 28.0);
+    self.desktopBrandLabel.font = [NSFont systemFontOfSize:18.0 * scale weight:NSFontWeightBlack];
+    self.desktopBrandLabel.frame = NSMakeRect(NSMaxX(self.desktopBrandIconView.frame) + 20.0 * scale,
+                                             brandY + floor((brandSize - 28.0 * scale) * 0.5),
+                                             180.0 * scale,
+                                             28.0 * scale);
 
-    CGFloat barWidth = 500.0;
-    CGFloat barHeight = 116.0;
+    CGFloat barWidth = floor(500.0 * scale);
+    CGFloat barHeight = floor(116.0 * scale);
     CGFloat x = floor((width - barWidth) * 0.5);
-    self.desktopNavigationBar.frame = NSMakeRect(x, 24.0, barWidth, barHeight);
+    self.desktopNavigationBar.frame = NSMakeRect(x, floor((chromeHeight - barHeight) * 0.5), barWidth, barHeight);
     CGFloat buttonWidth = floor(barWidth / 3.0);
     CGFloat buttonX = 0.0;
     for (NSUInteger index = 0; index < self.desktopNavigationButtons.count; index++) {
         NSButton *button = self.desktopNavigationButtons[index];
         button.frame = NSMakeRect(buttonX, 0.0, buttonWidth, barHeight);
+        button.layer.cornerRadius = 14.0 * scale;
         if (index < self.desktopNavigationIndicators.count) {
             NSView *indicator = self.desktopNavigationIndicators[index];
-            CGFloat indicatorWidth = MIN(96.0, buttonWidth - 66.0);
-            indicator.frame = NSMakeRect(buttonX + floor((buttonWidth - indicatorWidth) * 0.5), barHeight - 26.0, indicatorWidth, 7.0);
-            indicator.layer.cornerRadius = 3.5;
+            CGFloat indicatorHeight = MAX(5.0, floor(7.0 * scale));
+            CGFloat indicatorWidth = MIN(96.0 * scale, buttonWidth - 52.0 * scale);
+            indicator.frame = NSMakeRect(buttonX + floor((buttonWidth - indicatorWidth) * 0.5), barHeight - 26.0 * scale, indicatorWidth, indicatorHeight);
+            indicator.layer.cornerRadius = indicatorHeight * 0.5;
         }
         buttonX += buttonWidth;
     }
@@ -949,13 +964,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)layoutDesktopAccountSwitcher {
     if (!self.desktopAccountSwitcher || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
+    CGFloat scale = OPNDesktopChromeScale(NSHeight(self.rootView.bounds));
     CGFloat switcherWidth = MIN(180.0, MAX(150.0, width * 0.10));
-    CGFloat accountX = MAX(24.0, width - switcherWidth - 58.0);
-    self.desktopAccountSwitcher.frame = NSMakeRect(accountX, 52.0, switcherWidth, 44.0);
-    CGFloat pillWidth = 172.0;
-    self.desktopRemainingPlayTimePill.frame = NSMakeRect(accountX - pillWidth - 14.0, 52.0, pillWidth, 44.0);
-    self.desktopRemainingPlayTimePill.layer.cornerRadius = 22.0;
-    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 12.0, 13.0);
+    CGFloat controlHeight = floor(44.0 * scale);
+    CGFloat accountX = MAX(24.0, width - switcherWidth - 58.0 * scale);
+    CGFloat accountY = floor((140.0 * scale - controlHeight) * 0.5);
+    self.desktopAccountSwitcher.frame = NSMakeRect(accountX, accountY, switcherWidth, controlHeight);
+    CGFloat pillWidth = 172.0 * scale;
+    self.desktopRemainingPlayTimePill.frame = NSMakeRect(accountX - pillWidth - 14.0 * scale, accountY, pillWidth, controlHeight);
+    self.desktopRemainingPlayTimePill.layer.cornerRadius = controlHeight * 0.5;
+    self.desktopRemainingPlayTimeLabel.font = [NSFont systemFontOfSize:11.0 * scale weight:NSFontWeightBold];
+    self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 12.0 * scale, 13.0 * scale);
 }
 
 - (void)updateDesktopNavigationBar {
@@ -972,7 +991,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         BOOL selected = (button.tag == 0 && self.currentScreen == OPN::AuthScreen::Catalog) ||
             (button.tag == 1 && self.currentScreen == OPN::AuthScreen::Store) ||
             (button.tag == 2 && self.currentScreen == OPN::AuthScreen::Settings);
-        button.font = [NSFont systemFontOfSize:16.0 weight:selected ? NSFontWeightBlack : NSFontWeightBold];
+        CGFloat scale = OPNDesktopChromeScale(NSHeight(self.rootView.bounds));
+        button.font = [NSFont systemFontOfSize:16.0 * scale weight:selected ? NSFontWeightBlack : NSFontWeightBold];
         button.contentTintColor = selected ? OpnColor(OPN::kTextPrimary, 1.0) : OpnColor(0xFFFFFF, 0.72);
         button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.16).CGColor : NSColor.clearColor.CGColor;
         button.layer.borderWidth = selected ? 0.0 : 1.0;

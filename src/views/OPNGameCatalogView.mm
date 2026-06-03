@@ -20,6 +20,10 @@ static const CGFloat kCatalogGridPadding = 28.0;
 static const CGFloat kCatalogHeroRatio = 0.3229;
 static const NSInteger kCatalogRenderBufferCards = 3;
 
+static CGFloat OPNCatalogHeightScale(CGFloat height) {
+    return MIN(1.0, MAX(0.80, MAX(1.0, height) / 900.0));
+}
+
 typedef struct {
     CGFloat pageWidth;
     CGFloat contentX;
@@ -30,14 +34,17 @@ typedef struct {
     CGFloat spacing;
 } OPNCatalogGridMetrics;
 
-static OPNCatalogGridMetrics OPNCatalogGridMetricsForWidth(CGFloat width) {
+static OPNCatalogGridMetrics OPNCatalogGridMetricsForSize(CGFloat width, CGFloat height) {
     CGFloat pageWidth = MAX(1.0, width);
+    CGFloat scale = OPNCatalogHeightScale(height);
+    CGFloat minimumCardWidth = floor(kCatalogMinCardWidth * scale);
+    CGFloat spacing = floor(MAX(9.0, kCatalogColumnSpacing * scale));
     CGFloat contentInset = MIN(kCatalogMaxContentInset, MAX(kCatalogMinContentInset, pageWidth * kCatalogContentInsetRatio));
     CGFloat contentWidth = MAX(1.0, pageWidth - contentInset * 2.0);
-    NSInteger columns = MAX(1, (NSInteger)floor((contentWidth + kCatalogColumnSpacing) / (kCatalogMinCardWidth + kCatalogColumnSpacing)));
-    CGFloat totalSpacing = MAX(0, columns - 1) * kCatalogColumnSpacing;
+    NSInteger columns = MAX(1, (NSInteger)floor((contentWidth + spacing) / (minimumCardWidth + spacing)));
+    CGFloat totalSpacing = MAX(0, columns - 1) * spacing;
     CGFloat cardWidth = floor(MAX(1.0, (contentWidth - totalSpacing) / MAX(1, columns)));
-    OPNCatalogGridMetrics metrics = { pageWidth, floor(contentInset), contentWidth, columns, cardWidth, cardWidth, kCatalogColumnSpacing };
+    OPNCatalogGridMetrics metrics = { pageWidth, floor(contentInset), contentWidth, columns, cardWidth, cardWidth, spacing };
     return metrics;
 }
 
@@ -364,15 +371,16 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 
 - (void)addHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame {
     NSView *stage = [[NSView alloc] initWithFrame:frame];
+    CGFloat scale = OPNCatalogHeightScale(NSHeight(self.bounds));
     stage.wantsLayer = YES;
-    stage.layer.cornerRadius = 34.0;
+    stage.layer.cornerRadius = 34.0 * scale;
     stage.layer.masksToBounds = YES;
-    stage.layer.borderWidth = 2.0;
+    stage.layer.borderWidth = MAX(1.0, 2.0 * scale);
     stage.layer.borderColor = OpnColor(0x203040, 0.92).CGColor;
     stage.layer.shadowColor = OpnColor(0x000000, 1.0).CGColor;
     stage.layer.shadowOpacity = 0.48;
-    stage.layer.shadowRadius = 34.0;
-    stage.layer.shadowOffset = CGSizeMake(0.0, 22.0);
+    stage.layer.shadowRadius = 34.0 * scale;
+    stage.layer.shadowOffset = CGSizeMake(0.0, 22.0 * scale);
     self.heroContainerView = stage;
     [self addSubview:stage positioned:NSWindowAbove relativeTo:self.ambientView];
 
@@ -415,7 +423,8 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 
     CGFloat width = MAX(1.0, NSWidth(self.bounds));
     CGFloat height = MAX(1.0, NSHeight(self.bounds));
-    OPNCatalogGridMetrics metrics = OPNCatalogGridMetricsForWidth(width);
+    CGFloat scale = OPNCatalogHeightScale(height);
+    OPNCatalogGridMetrics metrics = OPNCatalogGridMetricsForSize(width, height);
     self.displayGames = [self displayLibraryGames];
     self.displayGameCount = (NSInteger)self.displayGames.size();
 
@@ -426,15 +435,18 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 
     std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:self.displayGames];
     BOOL hasHero = !featuredGames.empty();
-    CGFloat sectionHeight = MIN(82.0, MAX(52.0, floor(height * 0.075)));
-    CGFloat bottomPadding = MIN(36.0, MAX(16.0, floor(height * 0.035)));
-    CGFloat topInset = MIN(kCatalogTopInset, MAX(140.0, floor(height * 0.20)));
-    CGFloat desiredHeroHeight = hasHero ? MIN(MIN(520.0, MAX(250.0, height * 0.32)), floor(metrics.contentWidth * kCatalogHeroRatio)) : 0.0;
-    CGFloat availableHeroHeight = height - bottomPadding - metrics.cardHeight - sectionHeight - kCatalogHeroGap - topInset;
+    CGFloat sectionHeight = MIN(82.0, MAX(42.0, floor(height * 0.064)));
+    CGFloat bottomPadding = MIN(36.0, MAX(14.0, floor(height * 0.030)));
+    CGFloat topInset = MIN(kCatalogTopInset * scale, MAX(104.0, floor(height * 0.17)));
+    CGFloat heroGap = MAX(38.0, floor(kCatalogHeroGap * scale));
+    CGFloat gridPadding = MAX(18.0, floor(kCatalogGridPadding * scale));
+    CGFloat minimumHeroHeight = 180.0 * scale;
+    CGFloat desiredHeroHeight = hasHero ? MIN(MIN(520.0, MAX(minimumHeroHeight, height * 0.28)), floor(metrics.contentWidth * kCatalogHeroRatio)) : 0.0;
+    CGFloat availableHeroHeight = height - bottomPadding - metrics.cardHeight - sectionHeight - heroGap - topInset;
     if (availableHeroHeight < 0.0) {
-        CGFloat recovery = MIN(topInset - 72.0, -availableHeroHeight);
+        CGFloat recovery = MIN(topInset - 72.0 * scale, -availableHeroHeight);
         topInset -= MAX(0.0, recovery);
-        availableHeroHeight = height - bottomPadding - metrics.cardHeight - sectionHeight - kCatalogHeroGap - topInset;
+        availableHeroHeight = height - bottomPadding - metrics.cardHeight - sectionHeight - heroGap - topInset;
     }
     CGFloat heroHeight = hasHero ? MIN(desiredHeroHeight, MAX(0.0, availableHeroHeight)) : 0.0;
     if (hasHero && heroHeight > 1.0) {
@@ -442,12 +454,13 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         [self addHeroForGame:featuredGames[(size_t)heroIndex] frame:NSMakeRect(metrics.contentX, topInset, metrics.contentWidth, heroHeight)];
     }
 
-    CGFloat gridTop = hasHero && heroHeight > 1.0 ? topInset + heroHeight + kCatalogHeroGap : topInset;
+    CGFloat gridTop = hasHero && heroHeight > 1.0 ? topInset + heroHeight + heroGap : topInset;
     NSView *sectionContainer = [[NSView alloc] initWithFrame:NSMakeRect(0.0, gridTop, metrics.pageWidth, sectionHeight + 14.0)];
     NSString *countText = [NSString stringWithFormat:@"%ld %@", (long)self.displayGameCount, self.displayGameCount == 1 ? @"game" : @"games"];
-    NSTextField *section = OpnLabel(@"Library", NSMakeRect(metrics.contentX, 0.0, MIN(520.0, metrics.contentWidth - 180.0), sectionHeight), MIN(42.0, MAX(30.0, floor(sectionHeight * 0.70))), OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
+    NSTextField *section = OpnLabel(@"Library", NSMakeRect(metrics.contentX, 0.0, MIN(520.0, metrics.contentWidth - 180.0), sectionHeight), MIN(42.0, MAX(26.0, floor(sectionHeight * 0.70))), OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
     [sectionContainer addSubview:section];
-    NSTextField *count = OpnLabel(countText, NSMakeRect(metrics.contentX + 250.0, MAX(0.0, floor((sectionHeight - 24.0) * 0.52)), 180.0, 24.0), MIN(22.0, MAX(14.0, floor(sectionHeight * 0.34))), OpnColor(OPN::kTextMuted), NSFontWeightBold);
+    CGFloat countX = metrics.contentX + MIN(250.0, MAX(172.0, metrics.contentWidth * 0.22));
+    NSTextField *count = OpnLabel(countText, NSMakeRect(countX, MAX(0.0, floor((sectionHeight - 24.0) * 0.52)), 180.0, 24.0), MIN(22.0, MAX(13.0, floor(sectionHeight * 0.34))), OpnColor(OPN::kTextMuted), NSFontWeightBold);
     [sectionContainer addSubview:count];
     [self addSubview:sectionContainer positioned:NSWindowAbove relativeTo:self.ambientView];
     self.sectionHeaderView = sectionContainer;
@@ -460,7 +473,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     [self renderVisibleCardsWithMetrics:metrics totalCards:totalCards];
 
     CGFloat totalWidth = MAX(width, metrics.contentX * 2.0 + (CGFloat)totalCards * (metrics.cardWidth + metrics.spacing));
-    CGFloat totalHeight = MAX(NSHeight(self.scrollView.frame), metrics.cardHeight + kCatalogGridPadding * 2.0);
+    CGFloat totalHeight = MAX(NSHeight(self.scrollView.frame), metrics.cardHeight + gridPadding * 2.0);
     self.documentView.frame = NSMakeRect(0.0, 0.0, totalWidth, totalHeight);
     self.statusLabel.stringValue = totalCards == 0 ? @"No games found." : @"";
     if (self.onGameCountChanged) self.onGameCountChanged(totalCards);
@@ -481,7 +494,8 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         NSNumber *key = @(index);
         [visibleIndexes addObject:key];
         const OPN::GameInfo &game = _displayGames[(size_t)index];
-        NSRect frame = NSMakeRect(metrics.contentX + (CGFloat)index * (metrics.cardWidth + metrics.spacing), kCatalogGridPadding, metrics.cardWidth, metrics.cardHeight);
+        CGFloat gridPadding = MAX(18.0, floor(kCatalogGridPadding * OPNCatalogHeightScale(NSHeight(self.bounds))));
+        NSRect frame = NSMakeRect(metrics.contentX + (CGFloat)index * (metrics.cardWidth + metrics.spacing), gridPadding, metrics.cardWidth, metrics.cardHeight);
         OPNGameCardView *card = self.cardViewsByIndex[key];
         if (card) {
             card.frame = frame;
@@ -518,7 +532,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 - (void)scrollViewBoundsDidChange:(NSNotification *)notification {
     if (notification.object != self.scrollView.contentView) return;
     for (OPNGameCardView *card in self.cardViews) [card resetMouseTrackingIfOutside];
-    [self renderVisibleCardsWithMetrics:OPNCatalogGridMetricsForWidth(MAX(1.0, NSWidth(self.bounds))) totalCards:self.displayGameCount];
+    [self renderVisibleCardsWithMetrics:OPNCatalogGridMetricsForSize(MAX(1.0, NSWidth(self.bounds)), MAX(1.0, NSHeight(self.bounds))) totalCards:self.displayGameCount];
 }
 
 @end
