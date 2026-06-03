@@ -46,6 +46,8 @@ void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImage
 void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
                                  CGFloat maxPixelDimension,
                                  OpnImageLoadCompletion completion);
+NSImage *OpnCachedImageForURL(NSString *urlString, CGFloat maxPixelDimension);
+NSImage *OpnCachedImageFromCandidates(NSArray<NSString *> *candidates, CGFloat maxPixelDimension, NSString **resolvedURL);
 OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString,
                                                  CGFloat maxPixelDimension,
                                                  OpnImageLoadCompletion completion);

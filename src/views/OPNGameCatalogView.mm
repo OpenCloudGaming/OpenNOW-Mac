@@ -1230,7 +1230,16 @@ using namespace OPN;
     OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
     artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [self.documentView addSubview:artwork];
-    [self loadFeaturedHeroImageForView:artwork gameIdentity:OpnGameIdentityForHero(game) candidates:OpnHeroImageCandidatesForGame(game) index:0 completion:nil];
+    NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(game);
+    NSString *gameIdentity = OpnGameIdentityForHero(game);
+    NSImage *cachedImage = OpnCachedImageFromCandidates(candidates, 1600.0, nil);
+    if (cachedImage) {
+        artwork.image = cachedImage;
+        if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
+            self.heroAspectByIdentity[gameIdentity] = @(cachedImage.size.width / cachedImage.size.height);
+        }
+    }
+    [self loadFeaturedHeroImageForView:artwork gameIdentity:gameIdentity candidates:candidates index:0 completion:nil];
     [self.desktopFeaturedHeroViews addObject:artwork];
 }
 
@@ -1244,6 +1253,17 @@ using namespace OPN;
     NSString *urlString = candidates[index];
     if (urlString.length == 0) {
         [self loadFeaturedHeroImageForView:view gameIdentity:gameIdentity candidates:candidates index:index + 1 completion:completion];
+        return;
+    }
+
+    NSArray<NSString *> *remainingCandidates = [candidates subarrayWithRange:NSMakeRange(index, candidates.count - index)];
+    NSImage *cachedImage = OpnCachedImageFromCandidates(remainingCandidates, 1600.0, nil);
+    if (cachedImage) {
+        if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
+            self.heroAspectByIdentity[gameIdentity] = @(cachedImage.size.width / cachedImage.size.height);
+        }
+        view.image = cachedImage;
+        if (completion) completion(YES);
         return;
     }
 

@@ -313,7 +313,7 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
 
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
-    [OpnColor(0x030506, 1.0) setFill];
+    [OpnColor(OPN::kBackground, 1.0) setFill];
     NSRectFill(self.bounds);
     if (!self.image || self.image.size.width <= 0.0 || self.image.size.height <= 0.0) return;
 
@@ -334,8 +334,8 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     if (fadeHeight <= 0.0) return;
     NSRect fadeRect = NSMakeRect(NSMinX(self.bounds), NSMaxY(self.bounds) - fadeHeight, NSWidth(self.bounds), fadeHeight);
     NSGradient *bottomFade = [[NSGradient alloc] initWithColors:@[
-        OpnColor(0x000000, 0.0),
-        OpnColor(0x000000, 1.0)
+        OpnColor(OPN::kBackground, 0.0),
+        OpnColor(OPN::kBackground, 1.0)
     ]];
     [bottomFade drawInRect:fadeRect angle:90.0];
 }
@@ -536,6 +536,39 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat ma
 
 void OpnLoadImageForURL(NSString *urlString, CGFloat maxPixelDimension, OpnImageLoadCompletion completion) {
     (void)OpnLoadImageForURLCancellable(urlString, maxPixelDimension, completion);
+}
+
+NSImage *OpnCachedImageForURL(NSString *urlString, CGFloat maxPixelDimension) {
+    NSString *normalizedURL = [[urlString ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
+    if (normalizedURL.length == 0) return nil;
+
+    NSString *cacheKey = OpnImageCacheKey(normalizedURL, maxPixelDimension);
+    NSImage *cachedImage = [OpnDecodedImageCache() objectForKey:cacheKey];
+    if (cachedImage) return cachedImage;
+
+    NSData *cachedData = [OpnImageDataMemoryCache() objectForKey:cacheKey];
+    if (cachedData.length == 0) cachedData = [NSData dataWithContentsOfFile:OpnImageDataPath(normalizedURL)];
+    if (cachedData.length == 0) return nil;
+
+    NSImage *image = OpnDecodedImageFromData(cachedData, maxPixelDimension);
+    if (!image) return nil;
+    NSUInteger cost = MAX((NSUInteger)1, (NSUInteger)(image.size.width * image.size.height * 4.0));
+    [OpnDecodedImageCache() setObject:image forKey:cacheKey cost:cost];
+    [OpnImageDataMemoryCache() setObject:cachedData forKey:cacheKey cost:cachedData.length];
+    return image;
+}
+
+NSImage *OpnCachedImageFromCandidates(NSArray<NSString *> *candidates, CGFloat maxPixelDimension, NSString **resolvedURL) {
+    for (NSString *candidate in candidates) {
+        NSString *normalizedURL = [[candidate ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
+        if (normalizedURL.length == 0) continue;
+        NSImage *image = OpnCachedImageForURL(normalizedURL, maxPixelDimension);
+        if (!image) continue;
+        if (resolvedURL) *resolvedURL = normalizedURL;
+        return image;
+    }
+    if (resolvedURL) *resolvedURL = nil;
+    return nil;
 }
 
 static void OpnLoadImageCandidateAtIndex(NSArray<NSString *> *candidates,
