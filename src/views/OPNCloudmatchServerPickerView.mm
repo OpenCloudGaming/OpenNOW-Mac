@@ -1,6 +1,32 @@
 #import "OPNCloudmatchServerPickerView.h"
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNUIHelpers.h"
+#import <GameController/GameController.h>
+#import <QuartzCore/QuartzCore.h>
+
+typedef NS_OPTIONS(uint16_t, OPNCloudmatchGamepadButton) {
+    OPNCloudmatchGamepadButtonUp = 1u << 0,
+    OPNCloudmatchGamepadButtonDown = 1u << 1,
+    OPNCloudmatchGamepadButtonA = 1u << 2,
+    OPNCloudmatchGamepadButtonB = 1u << 3,
+    OPNCloudmatchGamepadButtonY = 1u << 4,
+};
+
+static uint16_t OPNCloudmatchGamepadButtons(void) {
+    NSArray<GCController *> *controllers = [GCController controllers];
+    if (controllers.count == 0) return 0;
+    GCExtendedGamepad *pad = controllers.firstObject.extendedGamepad;
+    if (!pad) return 0;
+
+    uint16_t buttons = 0;
+    CGFloat y = pad.leftThumbstick.yAxis.value;
+    if (pad.dpad.up.value > 0.5 || y > 0.55) buttons |= OPNCloudmatchGamepadButtonUp;
+    if (pad.dpad.down.value > 0.5 || y < -0.55) buttons |= OPNCloudmatchGamepadButtonDown;
+    if (pad.buttonA.value > 0.5) buttons |= OPNCloudmatchGamepadButtonA;
+    if (pad.buttonB.value > 0.5) buttons |= OPNCloudmatchGamepadButtonB;
+    if (pad.buttonY.value > 0.5) buttons |= OPNCloudmatchGamepadButtonY;
+    return buttons;
+}
 
 @implementation OPNCloudmatchServerOption
 
@@ -81,7 +107,7 @@
         _latencyLabel.layer.cornerRadius = 11.0;
         [self addSubview:_latencyLabel];
 
-        _selectedLabel = OpnLabel(@"", NSZeroRect, 10.5, OpnColor(OPN::kBrandGreen), NSFontWeightBlack, NSTextAlignmentRight);
+        _selectedLabel = OpnLabel(@"", NSZeroRect, 18.0, OpnColor(OPN::kBrandGreen), NSFontWeightBlack, NSTextAlignmentRight);
         [self addSubview:_selectedLabel];
 
         [self updateAppearance];
@@ -105,26 +131,26 @@
 }
 
 - (void)updateAppearance {
-    self.layer.backgroundColor = (self.selected ? OpnColor(0x102116, 0.98) : OpnColor(0x0D1013, 0.96)).CGColor;
+    self.layer.backgroundColor = (self.selected ? OpnColor(0x102116, 0.98) : OpnColor(0x0D1013, 0.92)).CGColor;
     self.layer.borderColor = (self.selected ? OpnColor(OPN::kBrandGreen, 0.72) : OpnColor(0xFFFFFF, 0.10)).CGColor;
     self.nameLabel.textColor = self.selected ? OpnColor(0xF4FFF6) : OpnColor(OPN::kTextPrimary);
     self.detailLabel.textColor = self.selected ? OpnColor(0xBDE7C8) : OpnColor(OPN::kTextSecondary);
     self.latencyLabel.textColor = [OPNCloudmatchServerRowView latencyColorForMilliseconds:self.option.latencyMs];
     self.latencyLabel.layer.backgroundColor = (self.selected ? OpnColor(0x06140A, 0.92) : OpnColor(0x171B20, 0.94)).CGColor;
-    self.selectedLabel.stringValue = self.selected ? @"SELECTED" : @"";
+    self.selectedLabel.stringValue = self.selected ? @"✓" : @"";
 }
 
 - (void)layout {
     [super layout];
     CGFloat width = NSWidth(self.bounds);
-    CGFloat contentX = 18.0;
+    CGFloat contentX = 16.0;
     CGFloat latencyWidth = 110.0;
-    CGFloat selectedWidth = 86.0;
+    CGFloat selectedWidth = 30.0;
     CGFloat labelWidth = MAX(80.0, width - contentX - latencyWidth - selectedWidth - 34.0);
-    self.nameLabel.frame = NSMakeRect(contentX, 10.0, labelWidth, 20.0);
-    self.detailLabel.frame = NSMakeRect(contentX, 33.0, labelWidth, 18.0);
-    self.latencyLabel.frame = NSMakeRect(width - latencyWidth - selectedWidth - 22.0, 17.0, latencyWidth, 24.0);
-    self.selectedLabel.frame = NSMakeRect(width - selectedWidth - 18.0, 20.0, selectedWidth, 18.0);
+    self.nameLabel.frame = NSMakeRect(contentX, 8.0, labelWidth, 20.0);
+    self.detailLabel.frame = NSMakeRect(contentX, 29.0, labelWidth, 16.0);
+    self.latencyLabel.frame = NSMakeRect(width - latencyWidth - selectedWidth - 22.0, 13.0, latencyWidth, 24.0);
+    self.selectedLabel.frame = NSMakeRect(width - selectedWidth - 16.0, 12.0, selectedWidth, 24.0);
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -155,6 +181,13 @@
 @property (nonatomic, strong) NSButton *refreshButton;
 @property (nonatomic, strong) NSButton *cancelButton;
 @property (nonatomic, strong) NSButton *confirmButton;
+@property (nonatomic, strong) NSTimer *controllerTimer;
+@property (nonatomic, assign) uint16_t previousControllerButtons;
+@property (nonatomic, assign) uint16_t heldControllerDirections;
+@property (nonatomic, assign) CFTimeInterval lastControllerRepeatTime;
+- (void)startControllerPolling;
+- (void)stopControllerPolling;
+- (void)pollController:(NSTimer *)timer;
 @end
 
 @implementation OPNCloudmatchServerPickerView
@@ -190,10 +223,10 @@
         _eyebrowLabel = OpnLabel(@"CLOUDMATCH ROUTE", NSZeroRect, 12.0, OpnColor(OPN::kBrandGreen), NSFontWeightBlack);
         [_panel addSubview:_eyebrowLabel];
 
-        _titleLabel = OpnLabel(@"Choose Your Server", NSZeroRect, 33.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
+        _titleLabel = OpnLabel(@"Cloudmatch", NSZeroRect, 33.0, OpnColor(OPN::kTextPrimary), NSFontWeightBlack);
         [_panel addSubview:_titleLabel];
 
-        NSString *subtitle = [NSString stringWithFormat:@"Pick a cloudmatch server for %@ before the stream session is allocated.", _gameTitle];
+        NSString *subtitle = [NSString stringWithFormat:@"Choose a route for %@.", _gameTitle];
         _subtitleLabel = OpnLabel(subtitle, NSZeroRect, 14.0, OpnColor(OPN::kTextSecondary), NSFontWeightMedium);
         _subtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
         [_panel addSubview:_subtitleLabel];
@@ -216,17 +249,17 @@
         _spinner = OpnSpinner(NSZeroRect);
         [_panel addSubview:_spinner];
 
-        _refreshButton = OpnButton(@"Refresh Ping", NSZeroRect, OpnColor(0x12171C, 0.98), OpnColor(OPN::kTextPrimary), true, OpnColor(0xFFFFFF, 0.16));
+        _refreshButton = OpnButton(@"Y  Refresh", NSZeroRect, OpnColor(0x12171C, 0.98), OpnColor(OPN::kTextPrimary), true, OpnColor(0xFFFFFF, 0.16));
         _refreshButton.target = self;
         _refreshButton.action = @selector(refreshClicked:);
         [_panel addSubview:_refreshButton];
 
-        _cancelButton = OpnButton(@"Cancel", NSZeroRect, OpnColor(0x161113, 0.98), OpnColor(OPN::kErrorRed), true, OpnColor(OPN::kErrorRed, 0.42));
+        _cancelButton = OpnButton(@"B  Cancel", NSZeroRect, OpnColor(0x161113, 0.98), OpnColor(OPN::kErrorRed), true, OpnColor(OPN::kErrorRed, 0.42));
         _cancelButton.target = self;
         _cancelButton.action = @selector(cancelClicked:);
         [_panel addSubview:_cancelButton];
 
-        _confirmButton = OpnButton(@"Launch Here", NSZeroRect, OpnColor(0x102116, 0.98), OpnColor(OPN::kBrandGreen), true, OpnColor(OPN::kBrandGreen, 0.58));
+        _confirmButton = OpnButton(@"A  Launch", NSZeroRect, OpnColor(0x102116, 0.98), OpnColor(OPN::kBrandGreen), true, OpnColor(OPN::kBrandGreen, 0.58));
         _confirmButton.target = self;
         _confirmButton.action = @selector(confirmClicked:);
         [_panel addSubview:_confirmButton];
@@ -241,29 +274,39 @@
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
-    if (self.window) [self.window makeFirstResponder:self];
+    if (self.window) {
+        [self.window makeFirstResponder:self];
+        [self startControllerPolling];
+    } else {
+        [self stopControllerPolling];
+    }
+}
+
+- (void)dealloc {
+    [self stopControllerPolling];
 }
 
 - (void)layout {
     [super layout];
     CGFloat hostWidth = NSWidth(self.bounds);
     CGFloat hostHeight = NSHeight(self.bounds);
-    CGFloat panelWidth = MIN(780.0, MAX(520.0, hostWidth - 96.0));
-    CGFloat panelHeight = MIN(620.0, MAX(520.0, hostHeight - 72.0));
+    CGFloat panelWidth = MIN(620.0, MAX(480.0, hostWidth - 96.0));
+    CGFloat panelHeight = MIN(500.0, MAX(420.0, hostHeight - 72.0));
     if (hostWidth < 560.0) panelWidth = MAX(320.0, hostWidth - 32.0);
-    if (hostHeight < 560.0) panelHeight = MAX(440.0, hostHeight - 32.0);
+    if (hostHeight < 500.0) panelHeight = MAX(360.0, hostHeight - 32.0);
 
     self.panel.frame = NSMakeRect(floor((hostWidth - panelWidth) / 2.0),
                                   floor((hostHeight - panelHeight) / 2.0),
                                   panelWidth,
                                   panelHeight);
-    CGFloat contentX = 36.0;
-    CGFloat contentWidth = panelWidth - 72.0;
-    self.accentBar.frame = NSMakeRect(contentX, panelHeight - 42.0, 92.0, 4.0);
-    self.eyebrowLabel.frame = NSMakeRect(contentX, panelHeight - 78.0, contentWidth, 18.0);
-    self.titleLabel.frame = NSMakeRect(contentX - 1.0, panelHeight - 128.0, contentWidth, 42.0);
-    self.subtitleLabel.frame = NSMakeRect(contentX, panelHeight - 164.0, contentWidth, 21.0);
-    self.summaryLabel.frame = NSMakeRect(contentX, panelHeight - 196.0, contentWidth, 20.0);
+    CGFloat contentX = 28.0;
+    CGFloat contentWidth = panelWidth - 56.0;
+    self.accentBar.frame = NSMakeRect(contentX, panelHeight - 32.0, 70.0, 4.0);
+    self.eyebrowLabel.hidden = YES;
+    self.eyebrowLabel.frame = NSZeroRect;
+    self.titleLabel.frame = NSMakeRect(contentX - 1.0, panelHeight - 80.0, contentWidth, 38.0);
+    self.subtitleLabel.frame = NSMakeRect(contentX, panelHeight - 112.0, contentWidth, 20.0);
+    self.summaryLabel.frame = NSMakeRect(contentX, panelHeight - 140.0, contentWidth, 18.0);
 
     CGFloat buttonY = 34.0;
     CGFloat buttonHeight = 48.0;
@@ -273,10 +316,10 @@
     self.cancelButton.frame = NSMakeRect(NSMaxX(self.refreshButton.frame) + buttonGap, buttonY, buttonWidth, buttonHeight);
     self.confirmButton.frame = NSMakeRect(NSMaxX(self.cancelButton.frame) + buttonGap, buttonY, buttonWidth, buttonHeight);
 
-    self.spinner.frame = NSMakeRect(contentX, 96.0, 18.0, 18.0);
-    self.statusLabel.frame = NSMakeRect(contentX + 26.0, 94.0, contentWidth - 26.0, 22.0);
-    CGFloat scrollY = 128.0;
-    CGFloat scrollHeight = MAX(180.0, panelHeight - 346.0);
+    self.spinner.frame = NSMakeRect(contentX, 92.0, 18.0, 18.0);
+    self.statusLabel.frame = NSMakeRect(contentX + 26.0, 90.0, contentWidth - 26.0, 22.0);
+    CGFloat scrollY = 122.0;
+    CGFloat scrollHeight = MAX(150.0, panelHeight - 270.0);
     self.scrollView.frame = NSMakeRect(contentX, scrollY, contentWidth, scrollHeight);
     [self layoutRows];
 }
@@ -340,8 +383,8 @@
 }
 
 - (void)layoutRows {
-    CGFloat rowHeight = 58.0;
-    CGFloat rowGap = 10.0;
+    CGFloat rowHeight = 50.0;
+    CGFloat rowGap = 8.0;
     CGFloat visibleWidth = MAX(100.0, NSWidth(self.scrollView.contentView.bounds) - 2.0);
     CGFloat visibleHeight = MAX(1.0, NSHeight(self.scrollView.contentView.bounds));
     CGFloat totalHeight = self.rowViews.count == 0 ? visibleHeight : self.rowViews.count * rowHeight + (self.rowViews.count - 1) * rowGap;
@@ -367,16 +410,16 @@
     }
 
     if (regionCount == 0) {
-        self.summaryLabel.stringValue = self.refreshing ? @"Finding available cloudmatch regions..." : @"Automatic will use the default cloudmatch route.";
+        self.summaryLabel.stringValue = self.refreshing ? @"Finding routes..." : @"Automatic uses the default route.";
         return;
     }
     if (measuredCount == 0) {
-        self.summaryLabel.stringValue = [NSString stringWithFormat:@"%ld cloudmatch %@ found. Measuring ping...", (long)regionCount, regionCount == 1 ? @"server" : @"servers"];
+        self.summaryLabel.stringValue = [NSString stringWithFormat:@"%ld %@ found. Measuring ping...", (long)regionCount, regionCount == 1 ? @"route" : @"routes"];
         return;
     }
-    self.summaryLabel.stringValue = [NSString stringWithFormat:@"%ld cloudmatch %@ measured. Fastest route: %ld ms.",
+    self.summaryLabel.stringValue = [NSString stringWithFormat:@"%ld %@ measured. Fastest: %ld ms.",
                                      (long)measuredCount,
-                                     measuredCount == 1 ? @"server" : @"servers",
+                                     measuredCount == 1 ? @"route" : @"routes",
                                      (long)bestLatency];
 }
 
@@ -386,7 +429,7 @@
     self.confirmButton.alphaValue = hasSelection ? 1.0 : 0.48;
     self.refreshButton.enabled = !self.refreshing;
     self.refreshButton.alphaValue = self.refreshing ? 0.55 : 1.0;
-    self.refreshButton.title = self.refreshing ? @"Pinging..." : @"Refresh Ping";
+    self.refreshButton.title = self.refreshing ? @"Pinging..." : @"Y  Refresh";
 }
 
 - (void)rowClicked:(OPNCloudmatchServerRowView *)sender {
@@ -433,6 +476,48 @@
     (void)sender;
     if (self.refreshing) return;
     if (self.onRefresh) self.onRefresh();
+}
+
+- (void)startControllerPolling {
+    if (self.controllerTimer) return;
+    self.previousControllerButtons = 0;
+    self.heldControllerDirections = 0;
+    self.lastControllerRepeatTime = 0.0;
+    self.controllerTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0
+                                                            target:self
+                                                          selector:@selector(pollController:)
+                                                          userInfo:nil
+                                                           repeats:YES];
+}
+
+- (void)stopControllerPolling {
+    [self.controllerTimer invalidate];
+    self.controllerTimer = nil;
+    self.previousControllerButtons = 0;
+    self.heldControllerDirections = 0;
+    self.lastControllerRepeatTime = 0.0;
+}
+
+- (void)pollController:(NSTimer *)timer {
+    (void)timer;
+    uint16_t buttons = OPNCloudmatchGamepadButtons();
+    uint16_t pressed = buttons & ~self.previousControllerButtons;
+    uint16_t directions = buttons & (OPNCloudmatchGamepadButtonUp | OPNCloudmatchGamepadButtonDown);
+    CFTimeInterval now = CACurrentMediaTime();
+    if (directions == 0) {
+        self.heldControllerDirections = 0;
+        self.lastControllerRepeatTime = 0.0;
+    } else if (directions != self.heldControllerDirections || now - self.lastControllerRepeatTime >= 0.18) {
+        self.heldControllerDirections = directions;
+        self.lastControllerRepeatTime = now;
+        if (directions & OPNCloudmatchGamepadButtonUp) [self moveSelectionBy:-1];
+        if (directions & OPNCloudmatchGamepadButtonDown) [self moveSelectionBy:1];
+    }
+
+    if (pressed & OPNCloudmatchGamepadButtonA) [self confirmClicked:nil];
+    if (pressed & OPNCloudmatchGamepadButtonB) [self cancelClicked:nil];
+    if (pressed & OPNCloudmatchGamepadButtonY) [self refreshClicked:nil];
+    self.previousControllerButtons = buttons;
 }
 
 - (void)keyDown:(NSEvent *)event {

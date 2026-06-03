@@ -1436,9 +1436,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
      selectedRegionUrl:selectedRegionUrl
             refreshing:YES];
     [picker setStatusMessage:cachedRegions.empty()
-        ? @"Discovering cloudmatch servers and measuring ping..."
-        : @"Refreshing cloudmatch ping before launch..."
-                     isError:NO];
+        ? @"Finding routes..."
+        : @"Refreshing ping..."
+                      isError:NO];
 
     __weak __typeof__(self) weakSelf = self;
     __weak OPNCloudmatchServerPickerView *weakPicker = picker;
@@ -1489,7 +1489,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!picker || generation != self.cloudmatchServerPickerGeneration) return;
 
     [picker setRefreshing:YES];
-    [picker setStatusMessage:@"Pinging cloudmatch servers..." isError:NO];
+    [picker setStatusMessage:@"Pinging routes..." isError:NO];
 
     __weak __typeof__(self) weakSelf = self;
     __weak OPNCloudmatchServerPickerView *weakPicker = picker;
@@ -1509,9 +1509,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                    selectedRegionUrl:selectedRegionUrl
                           refreshing:NO];
             if (regions.empty()) {
-                [strongPicker setStatusMessage:@"Server discovery failed. Automatic can still launch using the default route." isError:YES];
+                [strongPicker setStatusMessage:@"Discovery failed. Automatic can still launch." isError:YES];
             } else {
-                [strongPicker setStatusMessage:@"Latency updated. Lower ping usually means a more responsive stream." isError:NO];
+                [strongPicker setStatusMessage:@"Ping updated." isError:NO];
             }
         });
     });
