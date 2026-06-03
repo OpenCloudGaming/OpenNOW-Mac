@@ -3418,9 +3418,13 @@ using namespace OPN;
 }
 
 - (void)startControllerHeroRotationIfNeeded {
-    std::vector<OPN::GameInfo> featuredGames = OpnControllerModeEnabled()
-        ? [self controllerFeaturedGamesFromDisplayGames:_featuredGames]
-        : [self featuredLibraryGamesWithFallback:std::vector<OPN::GameInfo>()];
+    if (OpnControllerModeEnabled()) {
+        [self stopControllerHeroRotation];
+        for (NSView *view in [self.controllerHeroViews copy]) [view removeFromSuperview];
+        [self.controllerHeroViews removeAllObjects];
+        return;
+    }
+    std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:std::vector<OPN::GameInfo>()];
     if (!self.window || featuredGames.size() <= 1) {
         [self stopControllerHeroRotation];
         return;
@@ -3441,9 +3445,13 @@ using namespace OPN;
 
 - (void)controllerHeroRotationTimerFired:(NSTimer *)timer {
     (void)timer;
-    std::vector<OPN::GameInfo> featuredGames = OpnControllerModeEnabled()
-        ? [self controllerFeaturedGamesFromDisplayGames:_featuredGames]
-        : [self featuredLibraryGamesWithFallback:std::vector<OPN::GameInfo>()];
+    if (OpnControllerModeEnabled()) {
+        [self stopControllerHeroRotation];
+        for (NSView *view in [self.controllerHeroViews copy]) [view removeFromSuperview];
+        [self.controllerHeroViews removeAllObjects];
+        return;
+    }
+    std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:std::vector<OPN::GameInfo>()];
     if (!self.window || featuredGames.size() <= 1) {
         [self stopControllerHeroRotation];
         return;
@@ -3451,12 +3459,8 @@ using namespace OPN;
     NSInteger featuredCount = (NSInteger)featuredGames.size();
     if (featuredCount <= 1) return;
     self.controllerHeroIndex = (self.controllerHeroIndex + 1) % featuredCount;
-    if (OpnControllerModeEnabled()) {
-        [self renderControllerHeroAnimated:YES];
-    } else {
-        self.hasDesktopFeaturedGame = NO;
-        [self renderGrid];
-    }
+    self.hasDesktopFeaturedGame = NO;
+    [self renderGrid];
 }
 
 - (void)controllerHeroResumeClicked:(id)sender {
