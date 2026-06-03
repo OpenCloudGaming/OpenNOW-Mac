@@ -208,8 +208,6 @@ static NSArray<NSString *> *OPNDesktopBrandIconRelativePaths(void) {
         ];
     }
     return @[
-        @"assets/OpenNOW-GFNGreen.icns",
-        @"assets/logo-mac-GFNGreen.png",
         @"assets/OpenNOW.icns",
         @"assets/logo-mac.png",
         @"assets/logo.png",
@@ -217,7 +215,7 @@ static NSArray<NSString *> *OPNDesktopBrandIconRelativePaths(void) {
 }
 
 static NSImage *OPNDesktopBrandIconImage() {
-    NSString *bundleResource = OpnAppIconThemePreference() == OPNAppIconThemeBlue ? @"OpenNOW-SkyBlue" : @"OpenNOW-GFNGreen";
+    NSString *bundleResource = OpnAppIconThemePreference() == OPNAppIconThemeBlue ? @"OpenNOW-SkyBlue" : @"OpenNOW";
     NSString *bundleIconPath = [[NSBundle mainBundle] pathForResource:bundleResource ofType:@"icns"];
     NSImage *bundleIcon = bundleIconPath.length > 0 ? [[NSImage alloc] initWithContentsOfFile:bundleIconPath] : nil;
     if (bundleIcon) return bundleIcon;

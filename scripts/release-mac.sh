@@ -157,7 +157,7 @@ sips -z 512 512 "${ICON_PATH}" --out "${ICONSET_DIR}/icon_256x256@2x.png" >/dev/
 sips -z 512 512 "${ICON_PATH}" --out "${ICONSET_DIR}/icon_512x512.png" >/dev/null
 sips -z 1024 1024 "${ICON_PATH}" --out "${ICONSET_DIR}/icon_512x512@2x.png" >/dev/null
 iconutil -c icns "${ICONSET_DIR}" -o "${RESOURCES_DIR}/AppIcon.icns"
-cp "${ROOT_DIR}/assets/OpenNOW-GFNGreen.icns" "${RESOURCES_DIR}/OpenNOW-GFNGreen.icns"
+cp "${ROOT_DIR}/assets/OpenNOW.icns" "${RESOURCES_DIR}/OpenNOW.icns"
 cp "${ROOT_DIR}/assets/OpenNOW-SkyBlue.icns" "${RESOURCES_DIR}/OpenNOW-SkyBlue.icns"
 
 printf 'Rewriting Mach-O install names...\n'

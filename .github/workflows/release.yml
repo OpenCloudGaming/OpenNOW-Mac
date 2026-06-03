@@ -100,7 +100,7 @@ jobs:
           cp build/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
           cp assets/logo.png "${app_path}/Contents/Resources/logo.png"
           cp assets/logo-mac.png "${app_path}/Contents/Resources/logo-mac.png"
-          cp assets/OpenNOW-GFNGreen.icns "${app_path}/Contents/Resources/OpenNOW-GFNGreen.icns"
+          cp assets/OpenNOW.icns "${app_path}/Contents/Resources/OpenNOW.icns"
           cp assets/OpenNOW-SkyBlue.icns "${app_path}/Contents/Resources/OpenNOW-SkyBlue.icns"
           iconset_path="dist/logo-mac.iconset"
           mkdir -p "${iconset_path}"
