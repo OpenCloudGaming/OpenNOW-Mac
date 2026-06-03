@@ -7,9 +7,8 @@
 #include <cctype>
 #include <cmath>
 
-static const CGFloat kStoreTopInset = 170.0;
+static const CGFloat kStoreTopInset = 0.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
-static const CGFloat kStoreHeroTopOffset = 0.0;
 static const CGFloat kStoreHeroHeightRatio = 0.3229;
 static const CGFloat kStoreRowHeight = 258.0;
 static const CGFloat kStoreCardSpacing = 18.0;
@@ -49,11 +48,6 @@ static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
 
 static CGFloat OPNStoreHeroContentInsetForWidth(CGFloat width) {
     return MIN(kStoreHeroMaxContentInset, MAX(kStoreHeroMinContentInset, width * kStoreHeroContentInsetRatio));
-}
-
-static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
-    CGFloat viewportHeroHeight = MIN(520.0, MAX(250.0, MAX(1.0, height) * 0.32));
-    return floor(MIN(viewportHeroHeight, MAX(1.0, width) * kStoreHeroHeightRatio));
 }
 
 static NSString *OPNStoreString(const std::string &value, NSString *fallback) {
@@ -259,14 +253,6 @@ static NSArray<NSString *> *OPNStoreImageCandidatesForGame(const OPN::GameInfo &
         if (!prominent) break;
     }
     OPNStoreAppendUniqueURL(urls, OPNStoreSteamArtworkURLForGame(game));
-    return urls;
-}
-
-static NSArray<NSString *> *OPNStoreLogoCandidatesForGame(const OPN::GameInfo &game) {
-    NSMutableArray<NSString *> *urls = [NSMutableArray array];
-    OPNStoreAppendImageType(urls, game, "GAME_LOGO");
-    OPNStoreAppendImageType(urls, game, "LOGO");
-    OPNStoreAppendImageType(urls, game, "TITLE_LOGO");
     return urls;
 }
 
@@ -898,18 +884,12 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
 @property (nonatomic, assign) std::string panelsFingerprint;
-@property (nonatomic, assign) OPN::GameInfo featuredHeroGame;
-@property (nonatomic, assign) int featuredHeroVariantIndex;
 - (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
-- (void)loadFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
-- (void)featuredHeroLaunchClicked:(id)sender;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)cancelHeroImageLoads;
 - (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token;
 - (CGFloat)heroAspectForGame:(const OPN::GameInfo &)game;
 - (void)updateDesktopFeaturedHeroOnly;
-- (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted;
-- (NSView *)storeIconStripForGame:(const OPN::GameInfo &)game frame:(NSRect)frame;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (void)scheduleRenderStore;
 - (BOOL)mergeKnownStoreMetadataIntoPanels;
@@ -1183,7 +1163,8 @@ using namespace OPN;
     [self.desktopFeaturedHeroViews removeAllObjects];
     self.desktopFeaturedHeroFrame = NSZeroRect;
 
-    CGFloat width = MAX(980.0, NSWidth(self.bounds));
+    CGFloat viewportWidth = MAX(1.0, NSWidth(self.bounds));
+    CGFloat width = MAX(980.0, viewportWidth);
     CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
     CGFloat contentWidth = MAX(680.0, width - contentX * 2.0);
     CGFloat y = kStoreTopInset;
@@ -1193,15 +1174,11 @@ using namespace OPN;
     CGFloat heroHeight = 0.0;
     if (heroGame) {
         CGFloat heroAspect = [self heroAspectForGame:*heroGame];
-        CGFloat maximumHeroHeight = OPNStoreHeroHeightForSize(contentWidth, NSHeight(self.bounds));
-        CGFloat idealHeroHeight = floor(contentWidth / MAX(0.1, heroAspect));
-        heroHeight = floor(MIN(maximumHeroHeight, idealHeroHeight));
-        CGFloat heroWidth = floor(MIN(contentWidth, heroHeight * heroAspect));
-        CGFloat heroX = contentX + floor((contentWidth - heroWidth) * 0.5);
-        [self addDesktopHeroStageForGame:*heroGame y:y + kStoreHeroTopOffset contentX:heroX width:heroWidth height:heroHeight];
+        heroHeight = floor(viewportWidth / MAX(0.1, heroAspect));
+        [self addDesktopHeroStageForGame:*heroGame y:y contentX:0.0 width:viewportWidth height:heroHeight];
     }
 
-    CGFloat rowY = heroGame ? y + kStoreHeroTopOffset + heroHeight + 62.0 : y;
+    CGFloat rowY = heroGame ? y + heroHeight + 48.0 : y;
     NSInteger renderedRows = 0;
     for (const PanelResult &panel : _panels) {
         for (const PanelSection &section : panel.sections) {
@@ -1227,44 +1204,6 @@ using namespace OPN;
     [self updateFocusedTiles];
 }
 
-- (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted {
-    NSView *chip = [[NSView alloc] initWithFrame:frame];
-    chip.wantsLayer = YES;
-    chip.layer.cornerRadius = NSHeight(frame) * 0.5;
-    chip.layer.backgroundColor = (highlighted ? OpnColor(kBrandGreen, 0.18) : OpnColor(0xFFFFFF, 0.075)).CGColor;
-    chip.layer.borderWidth = 1.0;
-    chip.layer.borderColor = (highlighted ? OpnColor(kBrandGreen, 0.54) : OpnColor(0xFFFFFF, 0.11)).CGColor;
-
-    NSTextField *label = OpnLabel(title ?: @"", NSMakeRect(12.0, 5.0, NSWidth(frame) - 24.0, NSHeight(frame) - 8.0), 11.0, highlighted ? OpnColor(kBrandGreen, 0.98) : OpnColor(kTextSecondary), NSFontWeightBold, NSTextAlignmentCenter);
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    [chip addSubview:label];
-    return chip;
-}
-
-- (NSView *)storeIconStripForGame:(const GameInfo &)game frame:(NSRect)frame {
-    NSView *strip = [[NSView alloc] initWithFrame:frame];
-    NSArray<NSString *> *stores = OPNStoreVariantStoreNames(game);
-    NSUInteger iconCount = MIN((NSUInteger)4, stores.count);
-    if (iconCount == 0) return strip;
-
-    CGFloat iconSize = MIN(NSHeight(frame), 36.0);
-    CGFloat iconGap = MAX(6.0, iconSize * 0.22);
-    for (NSUInteger index = 0; index < iconCount; index++) {
-        NSString *store = stores[index];
-        NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(index * (iconSize + iconGap), 0.0, iconSize, iconSize)];
-        iconView.imageScaling = NSImageScaleProportionallyDown;
-        iconView.image = OPNStoreIconImage(store);
-        iconView.toolTip = store;
-        iconView.wantsLayer = YES;
-        iconView.layer.cornerRadius = iconSize * 0.5;
-        iconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
-        iconView.layer.borderWidth = 1.0;
-        iconView.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
-        [strip addSubview:iconView];
-    }
-    return strip;
-}
-
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
     NSView *emptyPanel = [[NSView alloc] initWithFrame:NSMakeRect(contentX, y, width, 220.0)];
     emptyPanel.wantsLayer = YES;
@@ -1283,117 +1222,13 @@ using namespace OPN;
 }
 
 - (void)addDesktopHeroStageForGame:(const GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height {
-    self.featuredHeroGame = game;
-    self.featuredHeroVariantIndex = [self selectedVariantIndexForStoreGame:game];
     self.desktopFeaturedHeroFrame = NSMakeRect(contentX, y, width, height);
 
-    OPNStoreDocumentView *stage = [[OPNStoreDocumentView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
-    stage.wantsLayer = YES;
-    stage.layer.backgroundColor = OpnColor(0x030506, 0.98).CGColor;
-    stage.layer.cornerRadius = 34.0;
-    stage.layer.borderWidth = 2.0;
-    stage.layer.borderColor = OpnColor(0x203040, 0.92).CGColor;
-    stage.layer.shadowColor = OpnColor(0x000000, 1.0).CGColor;
-    stage.layer.shadowOpacity = 0.48;
-    stage.layer.shadowRadius = 34.0;
-    stage.layer.shadowOffset = CGSizeMake(0.0, 22.0);
-    [self.documentView addSubview:stage];
-
-    OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:stage.bounds];
+    OPNHeroArtworkView *artwork = [[OPNHeroArtworkView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
     artwork.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    artwork.wantsLayer = YES;
-    artwork.layer.cornerRadius = 34.0;
-    artwork.layer.masksToBounds = YES;
-    [stage addSubview:artwork];
+    [self.documentView addSubview:artwork];
     [self loadFeaturedHeroImageForView:artwork gameIdentity:OpnGameIdentityForHero(game) candidates:OpnHeroImageCandidatesForGame(game) index:0];
-
-    CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
-
-    NSString *titleText = game.title.empty() ? @"Untitled" : [NSString stringWithUTF8String:game.title.c_str()];
-    NSTextField *title = OpnLabel(titleText, NSMakeRect(68.0, height * 0.30, textWidth, 76.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBlack);
-    title.lineBreakMode = NSLineBreakByWordWrapping;
-    title.maximumNumberOfLines = 2;
-    title.wantsLayer = YES;
-    title.layer.shadowColor = NSColor.blackColor.CGColor;
-    title.layer.shadowOpacity = 0.62;
-    title.layer.shadowRadius = 10.0;
-    title.layer.shadowOffset = CGSizeMake(0.0, 3.0);
-    [stage addSubview:title];
-
-    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(68.0, height * 0.25, textWidth, MIN(120.0, MAX(78.0, height * 0.26)))];
-    logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
-    logoView.imageAlignment = NSImageAlignLeft;
-    logoView.wantsLayer = YES;
-    logoView.layer.opacity = 0.0;
-    logoView.layer.shadowColor = NSColor.blackColor.CGColor;
-    logoView.layer.shadowOpacity = 0.58;
-    logoView.layer.shadowRadius = 10.0;
-    logoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
-    [stage addSubview:logoView];
-    [self loadFeaturedHeroLogoForView:logoView titleFallback:title candidates:OPNStoreLogoCandidatesForGame(game) index:0];
-
-    NSString *metaText = [NSString stringWithFormat:@"%@ / %@", OPNStorePrimaryStoreName(game), OPNStorePrimaryGenre(game)];
-    NSTextField *meta = OpnLabel(metaText, NSMakeRect(68.0, height * 0.57, textWidth, 24.0), 16.0, OpnColor(0xFFFFFF, 0.86), NSFontWeightBold);
-    meta.lineBreakMode = NSLineBreakByTruncatingTail;
-    [stage addSubview:meta];
-
-    NSButton *launchButton = [[NSButton alloc] initWithFrame:NSMakeRect(68.0, height * 0.68, 138.0, 44.0)];
-    int selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
-    launchButton.title = OPNStoreGameNeedsPurchase(game, selectedVariantIndex)
-        ? @"Buy"
-        : @"Play";
-    launchButton.bordered = NO;
-    launchButton.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
-    launchButton.contentTintColor = OpnColor(kAccentOn);
-    launchButton.wantsLayer = YES;
-    launchButton.layer.cornerRadius = 23.0;
-    launchButton.layer.backgroundColor = OpnColor(kBrandGreen, 0.98).CGColor;
-    launchButton.layer.shadowColor = OpnColor(kBrandGreen).CGColor;
-    launchButton.layer.shadowOpacity = 0.32;
-    launchButton.layer.shadowRadius = 22.0;
-    launchButton.layer.shadowOffset = CGSizeZero;
-    launchButton.target = self;
-    launchButton.action = @selector(featuredHeroLaunchClicked:);
-    [stage addSubview:launchButton];
-
-    NSString *storeName = OPNStorePrimaryStoreName(game);
-    NSButton *storeButton = [[NSButton alloc] initWithFrame:NSMakeRect(224.0, height * 0.68, 126.0, 44.0)];
-    storeButton.title = storeName.length > 0 ? storeName : @"Store";
-    storeButton.bordered = NO;
-    storeButton.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightBold];
-    storeButton.contentTintColor = OpnColor(kTextPrimary, 0.88);
-    storeButton.wantsLayer = YES;
-    storeButton.layer.cornerRadius = 22.0;
-    storeButton.layer.backgroundColor = OpnColor(0xFFFFFF, 0.075).CGColor;
-    storeButton.layer.borderWidth = 1.0;
-    storeButton.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
-    storeButton.target = self;
-    storeButton.action = @selector(featuredHeroLaunchClicked:);
-    [stage addSubview:storeButton];
-    [self.desktopFeaturedHeroViews addObject:stage];
-
-    NSInteger dotCount = [self heroCandidateCount];
-    if (dotCount > 1) {
-        CGFloat activeDotWidth = 32.0;
-        CGFloat inactiveDotWidth = 16.0;
-        CGFloat dotHeight = 6.0;
-        CGFloat dotSpacing = 28.0;
-        CGFloat dotRailWidth = (dotCount - 1) * dotSpacing + activeDotWidth;
-        CGFloat dotX = contentX + floor((width - dotRailWidth) * 0.5);
-        CGFloat dotY = y + height + 20.0;
-        NSInteger activeIndex = ((self.currentHeroIndex % dotCount) + dotCount) % dotCount;
-        for (NSInteger index = 0; index < dotCount; index++) {
-            BOOL active = index == activeIndex;
-            CGFloat pillWidth = active ? activeDotWidth : inactiveDotWidth;
-            CGFloat pillX = dotX + index * dotSpacing + (active ? 0.0 : floor((activeDotWidth - inactiveDotWidth) * 0.5));
-            NSView *pill = [[NSView alloc] initWithFrame:NSMakeRect(pillX, dotY, pillWidth, dotHeight)];
-            pill.wantsLayer = YES;
-            pill.layer.cornerRadius = dotHeight * 0.5;
-            pill.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.20)).CGColor;
-            [self.documentView addSubview:pill];
-            [self.desktopFeaturedHeroViews addObject:pill];
-        }
-    }
+    [self.desktopFeaturedHeroViews addObject:artwork];
 }
 
 - (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
@@ -1434,47 +1269,6 @@ using namespace OPN;
         strongView.image = image;
     });
     [self trackHeroImageLoadToken:token];
-}
-
-- (void)loadFeaturedHeroLogoForView:(NSImageView *)view titleFallback:(NSTextField *)titleFallback candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
-    if (!view || index >= candidates.count) return;
-    NSString *urlString = candidates[index];
-    if (urlString.length == 0) {
-        [self loadFeaturedHeroLogoForView:view titleFallback:titleFallback candidates:candidates index:index + 1];
-        return;
-    }
-
-    __weak NSImageView *weakView = view;
-    __weak NSTextField *weakTitleFallback = titleFallback;
-    OpnLoadImageForURL(urlString, 900.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
-        (void)resolvedURL;
-        (void)data;
-        NSImageView *strongView = weakView;
-        if (!strongView.superview) return;
-        if (!image) {
-            [self loadFeaturedHeroLogoForView:strongView titleFallback:weakTitleFallback candidates:candidates index:index + 1];
-            return;
-        }
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        strongView.image = image;
-        strongView.layer.opacity = 1.0;
-        weakTitleFallback.layer.opacity = 0.0;
-        [CATransaction commit];
-    });
-}
-
-- (void)featuredHeroLaunchClicked:(id)sender {
-    (void)sender;
-    OPN::GameInfo featuredGame = self.featuredHeroGame;
-    int variantIndex = self.featuredHeroVariantIndex >= 0 ? self.featuredHeroVariantIndex : 0;
-    if (OPNStoreGameNeedsPurchase(featuredGame, variantIndex)) {
-        NSString *purchaseURL = OPNStorePurchaseURLForGame(featuredGame, variantIndex);
-        if (self.onBuyGame) self.onBuyGame(featuredGame, variantIndex, purchaseURL ?: @"");
-        return;
-    }
-    if (!self.onSelectGame) return;
-    self.onSelectGame(featuredGame, variantIndex);
 }
 
 - (void)updateHeroTileOnly {

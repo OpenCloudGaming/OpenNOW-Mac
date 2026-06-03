@@ -69,9 +69,6 @@
 @property (nonatomic, strong) NSView *desktopTopChromeView;
 @property (nonatomic, strong) NSImageView *desktopBrandIconView;
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
-@property (nonatomic, strong) NSView *desktopNavigationBar;
-@property (nonatomic, copy) NSArray<NSButton *> *desktopNavigationButtons;
-@property (nonatomic, copy) NSArray<NSView *> *desktopNavigationIndicators;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
 @property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
 @property (nonatomic, strong) NSTextField *desktopRemainingPlayTimeLabel;
@@ -91,7 +88,7 @@
 - (void)refreshAccountAvatar;
 - (void)refreshStreamRegions;
 - (void)refreshAccountMenu;
-- (void)transitionToCatalogAfterProviderSelectionForSession:(const OPN::AuthSession &)session;
+- (void)transitionToStoreAfterProviderSelectionForSession:(const OPN::AuthSession &)session;
 - (void)addAccount;
 - (void)switchToAccountIdentifier:(NSString *)identifier;
 - (void)restoreSavedWindowPresentation;
@@ -153,14 +150,13 @@
                          canRetry:(BOOL)canRetry
                      retryAttempt:(NSInteger)retryAttempt;
 - (void)applyInterfacePreferencesToCurrentScreen;
-- (void)installDesktopNavigationBarIfNeeded;
+- (void)installDesktopTopChromeIfNeeded;
 - (void)installDesktopAccountSwitcherIfNeeded;
-- (void)layoutDesktopNavigationBar;
+- (void)layoutDesktopTopChrome;
 - (void)layoutDesktopAccountSwitcher;
-- (void)updateDesktopNavigationBar;
+- (void)updateDesktopTopChrome;
 - (void)updateDesktopAccountSwitcher;
 - (void)rebuildDesktopAccountSwitcher;
-- (void)desktopNavigationButtonClicked:(NSButton *)sender;
 - (void)desktopAccountSwitcherChanged:(NSPopUpButton *)sender;
 - (void)startApplicationUpdateChecks;
 - (void)stopApplicationUpdateChecks;
@@ -171,7 +167,6 @@
 - (void)stopDesktopControllerPolling;
 - (void)pollDesktopController:(NSTimer *)timer;
 - (void)routeDesktopGamepadButtons:(uint16_t)buttons;
-- (void)switchDesktopTabBy:(NSInteger)delta;
 @end
 
 @implementation AppDelegate
@@ -194,8 +189,6 @@ typedef NS_OPTIONS(uint16_t, OPNDesktopGamepadButton) {
     OPNDesktopGamepadButtonRight = 1u << 3,
     OPNDesktopGamepadButtonA = 1u << 4,
     OPNDesktopGamepadButtonB = 1u << 5,
-    OPNDesktopGamepadButtonLeftShoulder = 1u << 6,
-    OPNDesktopGamepadButtonRightShoulder = 1u << 7,
 };
 
 static const uint16_t OPNDesktopGamepadDirectionMask = OPNDesktopGamepadButtonUp |
@@ -468,8 +461,6 @@ static uint16_t OPNDesktopGamepadButtons(void) {
     if (pad.dpad.right.value > 0.5 || x > 0.55) buttons |= OPNDesktopGamepadButtonRight;
     if (pad.buttonA.value > 0.5) buttons |= OPNDesktopGamepadButtonA;
     if (pad.buttonB.value > 0.5) buttons |= OPNDesktopGamepadButtonB;
-    if (pad.leftShoulder.value > 0.5) buttons |= OPNDesktopGamepadButtonLeftShoulder;
-    if (pad.rightShoulder.value > 0.5) buttons |= OPNDesktopGamepadButtonRightShoulder;
     return buttons;
 }
 
@@ -604,7 +595,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     BOOL canRefreshSavedSession = saved.IsAccessTokenValid() || !saved.refreshToken.empty() || !saved.clientToken.empty();
     if (shouldAutoSignIn && canUseSavedSessionAsIs) {
         self.currentSession = saved;
-        [self transitionToScreen:AuthScreen::Catalog];
+        [self transitionToScreen:AuthScreen::Store];
     } else if (shouldAutoSignIn && canRefreshSavedSession) {
         [self showAuthenticatingWithMessage:@"Refreshing session..."];
         __weak __typeof__(self) weakSelf = self;
@@ -616,12 +607,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 s.currentSession = fresh;
                 AuthService::Shared().SaveSession(fresh);
                 [s refreshAccountMenu];
-                [s transitionToScreen:AuthScreen::Catalog];
+                [s transitionToScreen:AuthScreen::Store];
             } else {
                 OPN::AuthSession fallback = AuthService::Shared().LoadSavedSession();
                 if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
                     s.currentSession = fallback;
-                    [s transitionToScreen:AuthScreen::Catalog];
+                    [s transitionToScreen:AuthScreen::Store];
                 } else {
                     [s transitionToScreen:AuthScreen::EmailEntry];
                 }
@@ -648,8 +639,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self stopGameLibraryRefreshTimer];
     [self stopActiveSessionPromptControllerPolling];
     [self stopStreamDashboardControllerPolling];
-    self.desktopNavigationButtons = @[];
-    self.desktopNavigationBar = nil;
     self.desktopAccountSwitcher = nil;
     self.desktopRemainingPlayTimePill = nil;
     self.desktopRemainingPlayTimeLabel = nil;
@@ -791,7 +780,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 - (void)windowFullScreenStateChanged:(NSNotification *)notification {
     if (notification.object != self.window) return;
     [self saveWindowPresentation];
-    [self layoutDesktopNavigationBar];
+    [self layoutDesktopTopChrome];
     [self layoutDesktopAccountSwitcher];
 }
 
@@ -809,36 +798,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     } else if (self.currentScreen == OPN::AuthScreen::Settings) {
         self.rootView.mode = OPNBackdropModeSettings;
     }
-    [self updateDesktopNavigationBar];
+    [self updateDesktopTopChrome];
     [self updateDesktopAccountSwitcher];
 }
 
-- (NSButton *)desktopNavigationButtonWithTitle:(NSString *)title tag:(NSInteger)tag {
-    NSButton *button = [[NSButton alloc] initWithFrame:NSZeroRect];
-    button.title = title ?: @"";
-    button.tag = tag;
-    button.bordered = NO;
-    button.font = [NSFont systemFontOfSize:16.0 weight:NSFontWeightBold];
-    button.target = self;
-    button.action = @selector(desktopNavigationButtonClicked:);
-    button.wantsLayer = YES;
-    button.layer.cornerRadius = 14.0;
-    button.focusRingType = NSFocusRingTypeNone;
-    if (@available(macOS 11.0, *)) {
-        NSString *symbolName = tag == 1 ? @"storefront" : (tag == 0 ? @"books.vertical" : @"gearshape");
-        NSImage *symbol = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:title];
-        if (symbol) {
-            [symbol setTemplate:YES];
-            button.image = symbol;
-            button.imagePosition = NSImageLeft;
-            button.imageScaling = NSImageScaleProportionallyDown;
-            if ([button respondsToSelector:@selector(setImageHugsTitle:)]) button.imageHugsTitle = YES;
-        }
-    }
-    return button;
-}
-
-- (void)installDesktopNavigationBarIfNeeded {
+- (void)installDesktopTopChromeIfNeeded {
     if (!self.rootView) return;
     if (self.desktopTopChromeView && self.desktopTopChromeView.superview != self.rootView) {
         self.desktopTopChromeView = nil;
@@ -876,43 +840,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [chrome addSubview:brandLabel];
         [self.rootView addSubview:chrome positioned:NSWindowAbove relativeTo:self.contentContainer];
     }
-    if (self.desktopNavigationBar && self.desktopNavigationBar.superview != self.rootView) {
-        self.desktopNavigationBar = nil;
-        self.desktopNavigationButtons = @[];
-        self.desktopNavigationIndicators = @[];
-    }
-    if (self.desktopNavigationBar) return;
-    NSView *bar = [[NSView alloc] initWithFrame:NSZeroRect];
-    bar.wantsLayer = YES;
-    bar.layer.cornerRadius = 0.0;
-    bar.layer.backgroundColor = NSColor.clearColor.CGColor;
-    bar.layer.borderWidth = 0.0;
-    bar.layer.shadowColor = NSColor.blackColor.CGColor;
-    bar.layer.shadowOpacity = 0.0;
-    bar.layer.shadowRadius = 0.0;
-    bar.layer.shadowOffset = CGSizeZero;
-    self.desktopNavigationBar = bar;
-
-    NSArray<NSButton *> *buttons = @[
-        [self desktopNavigationButtonWithTitle:@"Store" tag:1],
-        [self desktopNavigationButtonWithTitle:@"Library" tag:0],
-        [self desktopNavigationButtonWithTitle:@"Settings" tag:2],
-    ];
-    self.desktopNavigationButtons = buttons;
-    NSMutableArray<NSView *> *indicators = [NSMutableArray arrayWithCapacity:buttons.count];
-    for (NSButton *button in buttons) {
-        [bar addSubview:button];
-        NSView *indicator = [[NSView alloc] initWithFrame:NSZeroRect];
-        indicator.wantsLayer = YES;
-        indicator.layer.cornerRadius = 3.0;
-        indicator.layer.backgroundColor = NSColor.clearColor.CGColor;
-        [bar addSubview:indicator];
-        [indicators addObject:indicator];
-    }
-    self.desktopNavigationIndicators = indicators;
-    [self.rootView addSubview:bar positioned:NSWindowAbove relativeTo:self.desktopTopChromeView];
-    [self layoutDesktopNavigationBar];
-    [self updateDesktopNavigationBar];
+    [self layoutDesktopTopChrome];
 }
 
 - (void)installDesktopAccountSwitcherIfNeeded {
@@ -965,8 +893,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self updateDesktopAccountSwitcher];
 }
 
-- (void)layoutDesktopNavigationBar {
-    if (!self.desktopNavigationBar || !self.rootView) return;
+- (void)layoutDesktopTopChrome {
+    if (!self.desktopTopChromeView || !self.rootView) return;
     CGFloat width = NSWidth(self.rootView.bounds);
     CGFloat height = NSHeight(self.rootView.bounds);
     CGFloat scale = OPNDesktopChromeScale(height);
@@ -982,29 +910,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     self.desktopBrandLabel.font = [NSFont systemFontOfSize:18.0 * scale weight:NSFontWeightBlack];
     self.desktopBrandLabel.frame = NSMakeRect(NSMaxX(self.desktopBrandIconView.frame) + 20.0 * scale,
-                                             brandY + floor((brandSize - 28.0 * scale) * 0.5),
-                                             180.0 * scale,
-                                             28.0 * scale);
-
-    CGFloat barWidth = floor(500.0 * scale);
-    CGFloat barHeight = floor(116.0 * scale);
-    CGFloat x = floor((width - barWidth) * 0.5);
-    self.desktopNavigationBar.frame = NSMakeRect(x, floor((chromeHeight - barHeight) * 0.5), barWidth, barHeight);
-    CGFloat buttonWidth = floor(barWidth / 3.0);
-    CGFloat buttonX = 0.0;
-    for (NSUInteger index = 0; index < self.desktopNavigationButtons.count; index++) {
-        NSButton *button = self.desktopNavigationButtons[index];
-        button.frame = NSMakeRect(buttonX, 0.0, buttonWidth, barHeight);
-        button.layer.cornerRadius = 14.0 * scale;
-        if (index < self.desktopNavigationIndicators.count) {
-            NSView *indicator = self.desktopNavigationIndicators[index];
-            CGFloat indicatorHeight = MAX(5.0, floor(7.0 * scale));
-            CGFloat indicatorWidth = MIN(96.0 * scale, buttonWidth - 52.0 * scale);
-            indicator.frame = NSMakeRect(buttonX + floor((buttonWidth - indicatorWidth) * 0.5), barHeight - 26.0 * scale, indicatorWidth, indicatorHeight);
-            indicator.layer.cornerRadius = indicatorHeight * 0.5;
-        }
-        buttonX += buttonWidth;
-    }
+                                              brandY + floor((brandSize - 28.0 * scale) * 0.5),
+                                              180.0 * scale,
+                                              28.0 * scale);
 }
 
 - (void)layoutDesktopAccountSwitcher {
@@ -1023,36 +931,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopRemainingPlayTimeLabel.frame = NSInsetRect(self.desktopRemainingPlayTimePill.bounds, 12.0 * scale, 13.0 * scale);
 }
 
-- (void)updateDesktopNavigationBar {
-    [self installDesktopNavigationBarIfNeeded];
+- (void)updateDesktopTopChrome {
+    [self installDesktopTopChromeIfNeeded];
     [self updateDesktopAccountSwitcher];
-    if (!self.desktopNavigationBar) return;
+    if (!self.desktopTopChromeView) return;
     BOOL visible = OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopTopChromeView.hidden = !visible;
-    self.desktopNavigationBar.hidden = !visible;
     if (!visible) return;
-    [self layoutDesktopNavigationBar];
-    for (NSUInteger index = 0; index < self.desktopNavigationButtons.count; index++) {
-        NSButton *button = self.desktopNavigationButtons[index];
-        BOOL selected = (button.tag == 0 && self.currentScreen == OPN::AuthScreen::Catalog) ||
-            (button.tag == 1 && self.currentScreen == OPN::AuthScreen::Store) ||
-            (button.tag == 2 && self.currentScreen == OPN::AuthScreen::Settings);
-        CGFloat scale = OPNDesktopChromeScale(NSHeight(self.rootView.bounds));
-        button.font = [NSFont systemFontOfSize:16.0 * scale weight:selected ? NSFontWeightBlack : NSFontWeightBold];
-        button.contentTintColor = selected ? OpnColor(OPN::kTextPrimary, 1.0) : OpnColor(0xFFFFFF, 0.72);
-        button.layer.backgroundColor = selected ? OpnColor(OPN::kBrandGreen, 0.16).CGColor : NSColor.clearColor.CGColor;
-        button.layer.borderWidth = selected ? 0.0 : 1.0;
-        button.layer.borderColor = OpnColor(0xFFFFFF, selected ? 0.0 : 0.0).CGColor;
-        if (index < self.desktopNavigationIndicators.count) {
-            NSView *indicator = self.desktopNavigationIndicators[index];
-            indicator.hidden = !selected;
-            indicator.layer.backgroundColor = OpnColor(OPN::kBrandGreen, 0.98).CGColor;
-            indicator.layer.shadowColor = OpnColor(OPN::kBrandGreen).CGColor;
-            indicator.layer.shadowOpacity = selected ? 0.58 : 0.0;
-            indicator.layer.shadowRadius = selected ? 14.0 : 0.0;
-            indicator.layer.shadowOffset = CGSizeZero;
-        }
-    }
+    [self layoutDesktopTopChrome];
 }
 
 - (void)updateDesktopAccountSwitcher {
@@ -1107,20 +993,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     if (selectedIndex >= 0 && selectedIndex < self.desktopAccountSwitcher.numberOfItems) {
         [self.desktopAccountSwitcher selectItemAtIndex:selectedIndex];
-    }
-}
-
-- (void)desktopNavigationButtonClicked:(NSButton *)sender {
-    if (sender.tag == 0) {
-        if (self.currentScreen != OPN::AuthScreen::Catalog) [self transitionToScreen:OPN::AuthScreen::Catalog];
-        return;
-    }
-    if (sender.tag == 1) {
-        if (self.currentScreen != OPN::AuthScreen::Store) [self transitionToScreen:OPN::AuthScreen::Store];
-        return;
-    }
-    if (sender.tag == 2 && self.currentScreen != OPN::AuthScreen::Settings) {
-        [self transitionToScreen:OPN::AuthScreen::Settings];
     }
 }
 
@@ -1180,27 +1052,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self routeDesktopGamepadButtons:directions];
     }
 
-    uint16_t actions = pressed & (OPNDesktopGamepadButtonA |
-        OPNDesktopGamepadButtonB |
-        OPNDesktopGamepadButtonLeftShoulder |
-        OPNDesktopGamepadButtonRightShoulder);
+    uint16_t actions = pressed & (OPNDesktopGamepadButtonA | OPNDesktopGamepadButtonB);
     if (actions != 0) [self routeDesktopGamepadButtons:actions];
     self.desktopControllerPreviousButtons = buttons;
 }
 
 - (void)routeDesktopGamepadButtons:(uint16_t)buttons {
-    if (buttons & OPNDesktopGamepadButtonLeftShoulder) {
-        [self switchDesktopTabBy:-1];
-        return;
-    }
-    if (buttons & OPNDesktopGamepadButtonRightShoulder) {
-        [self switchDesktopTabBy:1];
-        return;
-    }
-
     if (buttons & OPNDesktopGamepadButtonB) {
-        if (self.currentScreen == OPN::AuthScreen::Store || self.currentScreen == OPN::AuthScreen::Settings) {
-            [self transitionToScreen:OPN::AuthScreen::Catalog];
+        if (self.currentScreen == OPN::AuthScreen::Settings) {
+            [self transitionToScreen:OPN::AuthScreen::Store];
         }
         return;
     }
@@ -1233,19 +1093,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 }
 
-- (void)switchDesktopTabBy:(NSInteger)delta {
-    NSArray<NSNumber *> *screens = @[
-        @(static_cast<NSInteger>(OPN::AuthScreen::Store)),
-        @(static_cast<NSInteger>(OPN::AuthScreen::Catalog)),
-        @(static_cast<NSInteger>(OPN::AuthScreen::Settings)),
-    ];
-    NSUInteger currentIndex = [screens indexOfObject:@(static_cast<NSInteger>(self.currentScreen))];
-    if (currentIndex == NSNotFound) return;
-    NSInteger nextIndex = ((NSInteger)currentIndex + delta + (NSInteger)screens.count) % (NSInteger)screens.count;
-    OPN::AuthScreen nextScreen = (OPN::AuthScreen)screens[(NSUInteger)nextIndex].integerValue;
-    if (nextScreen != self.currentScreen) [self transitionToScreen:nextScreen];
-}
-
 - (BOOL)hasVisibleStreamingController {
     if (!self.streamingController) return NO;
     if (self.streamDashboardHomeVisible) return YES;
@@ -1272,8 +1119,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.streamDashboardStartHoldConsumed = YES;
     [self.streamingController setStreamInputSuppressed:YES];
     self.window.contentViewController = nil;
-    [self transitionToScreen:OPN::AuthScreen::Catalog];
-    self.rootView.mode = OPNBackdropModeLibrary;
+    [self transitionToScreen:OPN::AuthScreen::Store];
+    self.rootView.mode = OPNBackdropModeStore;
     [self startStreamDashboardControllerPolling];
     OPN::LogInfo(@"[AppDelegate] Stream dashboard Home shown");
 }
@@ -2026,7 +1873,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         self.contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [self.rootView addSubview:self.contentContainer];
     }
-    [self installDesktopNavigationBarIfNeeded];
+    [self installDesktopTopChromeIfNeeded];
     [self installDesktopAccountSwitcherIfNeeded];
 }
 
@@ -2044,7 +1891,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     self.contentContainer.frame = self.rootView.bounds;
     self.contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [self updateDesktopNavigationBar];
+    [self updateDesktopTopChrome];
 }
 
 - (void)transitionToScreen:(OPN::AuthScreen)screen {
@@ -2058,7 +1905,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 
     self.currentScreen = screen;
-    [self updateDesktopNavigationBar];
+    [self updateDesktopTopChrome];
     NSRect bounds = self.contentContainer.bounds;
 
     switch (screen) {
@@ -2112,7 +1959,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                         if (strongSelf.pendingCredentials.stayLoggedIn)
                             OPN::AuthService::Shared().SaveSession(session);
                         [strongSelf refreshAccountMenu];
-                        [strongSelf transitionToCatalogAfterProviderSelectionForSession:session];
+                        [strongSelf transitionToStoreAfterProviderSelectionForSession:session];
                     } else {
                         [strongSelf showError:error canRetry:YES];
                     }
@@ -2180,7 +2027,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             store.onBackRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                [strongSelf transitionToScreen:AuthScreen::Catalog];
+                [strongSelf transitionToScreen:AuthScreen::Store];
             };
 
             [self.contentContainer addSubview:store];
@@ -2327,7 +2174,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             settings.onBackRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                [strongSelf transitionToScreen:AuthScreen::Catalog];
+                [strongSelf transitionToScreen:AuthScreen::Store];
             };
             settings.onCheckForUpdatesRequested = ^{
                 __typeof__(self) strongSelf = weakSelf;
@@ -2467,7 +2314,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self updateDesktopAccountSwitcher];
 }
 
-- (void)transitionToCatalogAfterProviderSelectionForSession:(const OPN::AuthSession &)session {
+- (void)transitionToStoreAfterProviderSelectionForSession:(const OPN::AuthSession &)session {
     using namespace OPN;
     std::string token = session.idToken.empty() ? session.accessToken : session.idToken;
     GameService::Shared().SetAccessToken(token);
@@ -2478,7 +2325,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                                                                       const std::string &) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
-        [strongSelf transitionToScreen:AuthScreen::Catalog];
+        [strongSelf transitionToScreen:AuthScreen::Store];
     });
 }
 
@@ -2506,7 +2353,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.currentSession = selected;
     GameService::Shared().SetUserId(OPNAuthSessionIdentifier(selected));
     if (selected.IsAccessTokenValid()) {
-        [self transitionToCatalogAfterProviderSelectionForSession:selected];
+        [self transitionToStoreAfterProviderSelectionForSession:selected];
         return;
     }
 
@@ -2519,14 +2366,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             strongSelf.currentSession = fresh;
             AuthService::Shared().SaveSession(fresh);
             [strongSelf refreshAccountMenu];
-            [strongSelf transitionToCatalogAfterProviderSelectionForSession:fresh];
+            [strongSelf transitionToStoreAfterProviderSelectionForSession:fresh];
             return;
         }
 
         AuthSession fallback = AuthService::Shared().LoadSavedSession();
         if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
             strongSelf.currentSession = fallback;
-            [strongSelf transitionToCatalogAfterProviderSelectionForSession:fallback];
+            [strongSelf transitionToStoreAfterProviderSelectionForSession:fallback];
         } else {
             strongSelf.currentSession.Clear();
             [strongSelf transitionToScreen:AuthScreen::EmailEntry];
@@ -2895,7 +2742,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     AuthSession fallback = AuthService::Shared().LoadSavedSession();
                     if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
                         retrySelf.currentSession = fallback;
-                        [retrySelf transitionToScreen:AuthScreen::Catalog];
+                        [retrySelf transitionToScreen:AuthScreen::Store];
                     } else {
                         [retrySelf transitionToScreen:AuthScreen::EmailEntry];
                     }
@@ -2926,7 +2773,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             AuthSession next = AuthService::Shared().LoadSavedSession();
             if (next.isAuthenticated && next.IsAccessTokenValid()) {
                 strongSelf.currentSession = next;
-                [strongSelf transitionToScreen:AuthScreen::Catalog];
+                [strongSelf transitionToScreen:AuthScreen::Store];
                 return;
             }
 
