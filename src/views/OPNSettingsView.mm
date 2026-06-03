@@ -877,13 +877,23 @@ using namespace OPN;
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     self.directMouseInput = profile.directMouseInput;
 
-    NSView *panel = [self panelWithTitle:@"Interface" height:284.0];
+    NSView *panel = [self panelWithTitle:@"Interface" height:396.0];
     CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
 
-    [panel addSubview:[self rowLabel:@"Direct Mouse Input" y:104.0]];
-    NSButton *directMouseToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 96.0, controlWidth, 28.0)];
+    [panel addSubview:[self rowLabel:@"App Icon" y:104.0]];
+    [self addOptionGroupTo:panel group:11 titles:@[@"GFN Green", @"Sky Blue"] selected:OpnAppIconThemePreference() == OPNAppIconThemeBlue ? 1 : 0 y:96.0 widths:@[@112.0, @94.0]];
+    NSTextField *iconHint = OpnLabel(@"Changes the Dock icon and OpenNOW logo immediately. Green is the default app icon.",
+                                     NSMakeRect(controlX, 146.0, controlWidth, 36.0),
+                                     12.0,
+                                     OpnColor(kTextMuted),
+                                     NSFontWeightRegular);
+    iconHint.maximumNumberOfLines = 2;
+    [panel addSubview:iconHint];
+
+    [panel addSubview:[self rowLabel:@"Direct Mouse Input" y:216.0]];
+    NSButton *directMouseToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 208.0, controlWidth, 28.0)];
     directMouseToggle.buttonType = NSButtonTypeSwitch;
     directMouseToggle.title = @"Use raw relative mouse movement while streaming";
     directMouseToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -894,15 +904,15 @@ using namespace OPN;
     [panel addSubview:directMouseToggle];
 
     NSTextField *directMouseHint = OpnLabel(@"Bypasses desktop cursor position and acceleration by locking the pointer and sending hardware-relative deltas to the stream.",
-                                            NSMakeRect(controlX, 132.0, controlWidth, 50.0),
+                                            NSMakeRect(controlX, 244.0, controlWidth, 50.0),
                                             12.0,
                                             OpnColor(kTextMuted),
                                             NSFontWeightRegular);
     directMouseHint.maximumNumberOfLines = 3;
     [panel addSubview:directMouseHint];
 
-    [panel addSubview:[self rowLabel:@"Auto Full Screen" y:222.0]];
-    NSButton *autoFullScreenToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 214.0, controlWidth, 28.0)];
+    [panel addSubview:[self rowLabel:@"Auto Full Screen" y:334.0]];
+    NSButton *autoFullScreenToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 326.0, controlWidth, 28.0)];
     autoFullScreenToggle.buttonType = NSButtonTypeSwitch;
     autoFullScreenToggle.title = @"Enter full screen automatically when a stream starts";
     autoFullScreenToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -1144,6 +1154,7 @@ using namespace OPN;
         case 8: OPN::SaveStreamBitrateIndex((int)index); break;
         case 9: [self applyPerformanceProfile:index]; break;
         case 10: OPN::SaveStreamPrefilterModeIndex((int)index); break;
+        case 11: OpnSetAppIconThemePreference(index == 1 ? OPNAppIconThemeBlue : OPNAppIconThemeGreen); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();

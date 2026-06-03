@@ -7,6 +7,7 @@
 NSString *const OPNInterfacePreferencesDidChangeNotification = @"OpenNOW.InterfacePreferencesDidChange";
 
 static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFullScreen";
+static NSString *const OPNAppIconThemeDefaultsKey = @"OpenNOW.Interface.AppIconTheme";
 static const CGFloat OPNBackgroundTintStrength = 0.85;
 
 static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
@@ -357,6 +358,21 @@ BOOL OpnAutoFullScreenEnabled(void) {
 void OpnSetAutoFullScreenEnabled(BOOL enabled) {
     if (enabled == OpnAutoFullScreenEnabled()) return;
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:OPNAutoFullScreenDefaultsKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
+    [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
+}
+
+OPNAppIconTheme OpnAppIconThemePreference(void) {
+    NSString *value = [NSUserDefaults.standardUserDefaults stringForKey:OPNAppIconThemeDefaultsKey];
+    if ([value isEqualToString:@"blue"]) return OPNAppIconThemeBlue;
+    return OPNAppIconThemeGreen;
+}
+
+void OpnSetAppIconThemePreference(OPNAppIconTheme theme) {
+    OPNAppIconTheme normalizedTheme = theme == OPNAppIconThemeBlue ? OPNAppIconThemeBlue : OPNAppIconThemeGreen;
+    if (normalizedTheme == OpnAppIconThemePreference()) return;
+    NSString *value = normalizedTheme == OPNAppIconThemeBlue ? @"blue" : @"green";
+    [NSUserDefaults.standardUserDefaults setObject:value forKey:OPNAppIconThemeDefaultsKey];
     [NSUserDefaults.standardUserDefaults synchronize];
     [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];
 }

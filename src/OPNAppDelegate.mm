@@ -149,6 +149,7 @@
                        filterIds:(const std::vector<std::string> &)filterIds
                          canRetry:(BOOL)canRetry
                      retryAttempt:(NSInteger)retryAttempt;
+- (void)applyApplicationIconTheme;
 - (void)applyInterfacePreferencesToCurrentScreen;
 - (void)installDesktopTopChromeIfNeeded;
 - (void)installDesktopAccountSwitcherIfNeeded;
@@ -196,18 +197,33 @@ static const uint16_t OPNDesktopGamepadDirectionMask = OPNDesktopGamepadButtonUp
     OPNDesktopGamepadButtonLeft |
     OPNDesktopGamepadButtonRight;
 
-static NSImage *OPNDesktopBrandIconImage() {
-    NSString *bundleIconPath = [[NSBundle mainBundle] pathForResource:@"OpenNOW" ofType:@"icns"];
-    NSImage *bundleIcon = bundleIconPath.length > 0 ? [[NSImage alloc] initWithContentsOfFile:bundleIconPath] : nil;
-    if (bundleIcon) return bundleIcon;
-
-    NSArray<NSString *> *relativePaths = @[
+static NSArray<NSString *> *OPNDesktopBrandIconRelativePaths(void) {
+    if (OpnAppIconThemePreference() == OPNAppIconThemeBlue) {
+        return @[
+            @"assets/OpenNOW-SkyBlue.icns",
+            @"assets/logo-mac-SkyBlue.png",
+            @"assets/OpenNOW.icns",
+            @"assets/logo-mac.png",
+            @"assets/logo.png",
+        ];
+    }
+    return @[
+        @"assets/OpenNOW-GFNGreen.icns",
+        @"assets/logo-mac-GFNGreen.png",
         @"assets/OpenNOW.icns",
         @"assets/logo-mac.png",
         @"assets/logo.png",
     ];
+}
+
+static NSImage *OPNDesktopBrandIconImage() {
+    NSString *bundleResource = OpnAppIconThemePreference() == OPNAppIconThemeBlue ? @"OpenNOW-SkyBlue" : @"OpenNOW-GFNGreen";
+    NSString *bundleIconPath = [[NSBundle mainBundle] pathForResource:bundleResource ofType:@"icns"];
+    NSImage *bundleIcon = bundleIconPath.length > 0 ? [[NSImage alloc] initWithContentsOfFile:bundleIconPath] : nil;
+    if (bundleIcon) return bundleIcon;
+
     NSString *workingDirectory = NSFileManager.defaultManager.currentDirectoryPath;
-    for (NSString *relativePath in relativePaths) {
+    for (NSString *relativePath in OPNDesktopBrandIconRelativePaths()) {
         NSString *path = [workingDirectory stringByAppendingPathComponent:relativePath];
         NSImage *image = [[NSImage alloc] initWithContentsOfFile:path];
         if (image) return image;
@@ -554,6 +570,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
 
     NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    [self applyApplicationIconTheme];
 
     NSRect frame = NSMakeRect(0, 0, kWindowWidth, kWindowHeight);
     self.window = [[NSWindow alloc] initWithContentRect:frame
@@ -786,7 +803,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
+    [self applyApplicationIconTheme];
     [self applyInterfacePreferencesToCurrentScreen];
+}
+
+- (void)applyApplicationIconTheme {
+    NSImage *icon = OPNDesktopBrandIconImage();
+    if (icon) NSApp.applicationIconImage = icon;
+    if (self.desktopBrandIconView) {
+        self.desktopBrandIconView.image = icon;
+        self.desktopBrandIconView.layer.backgroundColor = icon ? NSColor.clearColor.CGColor : OpnColor(OPN::kBrandGreen, 0.94).CGColor;
+        self.desktopBrandIconView.layer.borderWidth = icon ? 0.0 : 1.0;
+    }
 }
 
 - (void)applyInterfacePreferencesToCurrentScreen {
@@ -845,6 +873,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [chrome addSubview:brandLabel];
         [self.rootView addSubview:chrome positioned:NSWindowAbove relativeTo:self.contentContainer];
     }
+    [self applyApplicationIconTheme];
     [self layoutDesktopTopChrome];
 }
 
