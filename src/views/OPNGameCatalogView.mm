@@ -648,6 +648,8 @@ typedef NS_ENUM(NSInteger, OPNControllerPromptMode) {
 @property (nonatomic, assign) NSInteger controllerDetailBackgroundIndex;
 @property (nonatomic, assign) NSInteger controllerHeroIndex;
 @property (nonatomic, assign) CGFloat controllerHeroImageAspectRatio;
+@property (nonatomic, assign) std::vector<OPN::GameInfo> cachedDesktopDisplayGames;
+@property (nonatomic, assign) CGFloat cachedDesktopCardStartY;
 @property (nonatomic, assign) uint16_t previousGamepadButtons;
 @property (nonatomic, assign) CFTimeInterval lastGamepadMoveTime;
 - (void)stopGamepadNavigation;
@@ -2635,6 +2637,7 @@ using namespace OPN;
         if ([self game:libraryGame matchesCategory:self.selectedCategoryId]) displayGames.push_back(libraryGame);
     }
     NSInteger totalVisibleCount = (NSInteger)displayGames.size();
+    self.cachedDesktopDisplayGames = displayGames;
     std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:displayGames];
     const OPN::GameInfo *heroGame = featuredGames.empty() ? nullptr : &featuredGames[(size_t)MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1))];
     NSInteger heroIndex = featuredGames.empty() ? 0 : MAX(0, MIN(self.controllerHeroIndex, (NSInteger)featuredGames.size() - 1));
@@ -2670,6 +2673,7 @@ using namespace OPN;
     NSTextField *count = OpnLabel([NSString stringWithFormat:@"%ld %@", (long)totalVisibleCount, totalVisibleCount == 1 ? @"game" : @"games"], NSMakeRect(contentX + 250.0, countY, 180.0, 24.0), verticalMetrics.countFontSize, OpnColor(kTextMuted), NSFontWeightBold);
     [self.gridContentView addSubview:count];
     CGFloat cardStartY = verticalMetrics.cardStartY;
+    self.cachedDesktopCardStartY = cardStartY;
     self.controllerDisplayGameCount = controllerMode ? (NSInteger)displayGames.size() : 0;
     NSInteger renderStartIndex = 0;
     NSInteger renderEndIndex = (NSInteger)displayGames.size();
@@ -2679,8 +2683,6 @@ using namespace OPN;
         OPN::LogInfo(@"[CatalogView] controller render window category=%@ display=%lu initial=%ld renderLimit=%ld scrollWidth=%.1f", self.selectedCategoryId, (unsigned long)displayGames.size(), (long)[self controllerInitialRenderedGameCount], (long)renderEndIndex, NSWidth(self.scrollView.frame));
     } else {
         self.desktopDisplayGameCount = (NSInteger)displayGames.size();
-        self.desktopRenderStartIndex = 0;
-        self.desktopRenderedGameCount = (NSInteger)displayGames.size();
         NSInteger totalCards = (NSInteger)displayGames.size();
         NSInteger visibleCards = MAX(1, (NSInteger)floor(NSWidth(self.scrollView.frame) / (cardWidth + gridSpacing)));
         NSRect visibleBounds = self.scrollView.contentView.bounds;
@@ -2692,6 +2694,8 @@ using namespace OPN;
         NSInteger lastCard = MIN(totalCards, centerIndex + visibleCards / 2 + kDesktopGridRenderBufferRows + 1);
         renderStartIndex = firstCard;
         renderEndIndex = lastCard;
+        self.desktopRenderStartIndex = firstCard;
+        self.desktopRenderedGameCount = MAX(0, lastCard - firstCard);
     }
 
     NSInteger visibleCount = 0;
@@ -3972,18 +3976,85 @@ using namespace OPN;
 - (void)libraryScrollViewBoundsDidChange:(NSNotification *)notification {
     if (notification.object != self.scrollView.contentView || OpnControllerModeEnabled()) return;
     if (self.desktopDisplayGameCount <= 0) return;
+    if (self.cachedDesktopDisplayGames.empty()) return;
 
-    NSClipView *clipView = self.scrollView.contentView;
     CGFloat cardWidth = [OPNGameCardView cardSize].width;
     CGFloat spacing = kDesktopLibraryColumnSpacing;
     CGFloat step = cardWidth + spacing;
-    CGFloat scrollX = MAX(0.0, NSMinX(clipView.bounds));
-    NSInteger centerIndex = step > 0.0 ? (NSInteger)floor(scrollX / step + 0.5) : 0;
-    centerIndex = MAX(0, MIN(centerIndex, self.desktopDisplayGameCount - 1));
-    NSInteger newStartIndex = MAX(0, centerIndex - 8);
-    newStartIndex = MIN(newStartIndex, MAX(0, self.desktopDisplayGameCount - 1));
-    if (newStartIndex == self.desktopRenderStartIndex) return;
-    [self renderGrid];
+    NSRect visibleBounds = self.scrollView.contentView.bounds;
+
+    NSInteger firstVisible = MAX(0, (NSInteger)floor(NSMinX(visibleBounds) / MAX(1.0, step)));
+    NSInteger lastVisible = MIN(self.desktopDisplayGameCount - 1,
+                               (NSInteger)ceil(NSMaxX(visibleBounds) / MAX(1.0, step)));
+    NSInteger newFirst = MAX(0, firstVisible - 3);
+    NSInteger newLast = MIN(self.desktopDisplayGameCount - 1, lastVisible + 3);
+    NSInteger currentFirst = self.desktopRenderStartIndex;
+    NSInteger currentLast = self.desktopRenderStartIndex + (NSInteger)self.cardViews.count - 1;
+
+    if (newFirst == currentFirst && newLast == currentLast) return;
+    [self updateDesktopCardWindowWithFirst:newFirst last:newLast cardWidth:cardWidth step:step];
+}
+
+- (void)updateDesktopCardWindowWithFirst:(NSInteger)first last:(NSInteger)last cardWidth:(CGFloat)cardWidth step:(CGFloat)step {
+    OPNDesktopLibraryGridMetrics metrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
+    CGFloat contentX = metrics.contentX;
+    CGFloat cardHeight = [OPNGameCardView cardSize].height;
+    CGFloat cardY = self.cachedDesktopCardStartY;
+
+    NSMutableDictionary<NSNumber *, OPNGameCardView *> *existingByIndex = [NSMutableDictionary dictionary];
+    for (NSUInteger i = 0; i < self.cardViews.count; i++) {
+        NSInteger globalIndex = self.desktopRenderStartIndex + (NSInteger)i;
+        existingByIndex[@(globalIndex)] = self.cardViews[i];
+    }
+
+    NSInteger newCount = MAX(0, last - first + 1);
+    NSMutableArray<OPNGameCardView *> *newCards = [NSMutableArray arrayWithCapacity:(NSUInteger)newCount];
+
+    for (NSInteger gi = first; gi <= last; gi++) {
+        OPNGameCardView *card = existingByIndex[@(gi)];
+        OPN::GameInfo gameCopy = self.cachedDesktopDisplayGames[(size_t)gi];
+        NSRect cardFrame = NSMakeRect(contentX + (CGFloat)gi * step, cardY, cardWidth, cardHeight);
+
+        if (card) {
+            card.frame = cardFrame;
+            card.imageRevealDelay = 0.0;
+            [newCards addObject:card];
+        } else {
+            card = [[OPNGameCardView alloc] initWithFrame:cardFrame game:gameCopy];
+            card.imageRevealDelay = 0.08;
+            GameInfo capturedGame = gameCopy;
+            __weak __typeof__(self) weakSelf = self;
+            __weak OPNGameCardView *weakCard = card;
+            card.onPlay = ^{
+                __typeof__(self) s = weakSelf;
+                OPNGameCardView *c = weakCard;
+                if (!s || !c) return;
+                NSUInteger cardIndex = [s.cardViews indexOfObject:c];
+                if (cardIndex != NSNotFound) {
+                    NSInteger fi = s.desktopRenderStartIndex + (NSInteger)cardIndex;
+                    [s focusCardAtIndex:fi scrollIntoView:NO];
+                }
+                if (s.onSelectGame) {
+                    int variantIdx = c.selectedVariantIndex >= 0 ? c.selectedVariantIndex : [s preferredVariantIndexForGame:capturedGame];
+                    s.onSelectGame(capturedGame, variantIdx);
+                }
+            };
+            [self.gridContentView addSubview:card];
+            [newCards addObject:card];
+        }
+    }
+
+    for (NSUInteger i = 0; i < self.cardViews.count; i++) {
+        NSInteger globalIndex = self.desktopRenderStartIndex + (NSInteger)i;
+        if (globalIndex < first || globalIndex > last) {
+            [self.cardViews[i] removeFromSuperview];
+        }
+    }
+
+    [self.cardViews removeAllObjects];
+    [self.cardViews addObjectsFromArray:newCards];
+    self.desktopRenderStartIndex = first;
+    self.desktopRenderedGameCount = (NSInteger)newCards.count;
 }
 
 - (NSInteger)controllerInitialRenderedGameCount {
