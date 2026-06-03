@@ -947,14 +947,21 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *heroAspectByIdentity;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
+@property (nonatomic, strong) NSImage *initialHeroImage;
+@property (nonatomic, copy) NSString *initialHeroIdentity;
 @property (nonatomic, assign) NSRect desktopFeaturedHeroFrame;
 @property (nonatomic, assign) NSInteger currentHeroIndex;
 @property (nonatomic, assign) NSInteger focusedRowIndex;
 @property (nonatomic, assign) NSInteger focusedColumnIndex;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
+@property (nonatomic, assign) BOOL initialHeroPreloadInFlight;
+@property (nonatomic, assign) BOOL initialHeroReady;
+@property (nonatomic, assign) NSInteger initialHeroPreloadGeneration;
 @property (nonatomic, assign) std::string panelsFingerprint;
 - (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index completion:(void (^)(BOOL loaded))completion;
+- (void)renderStoreWhenInitialHeroReady;
+- (void)preloadInitialHeroThenRender;
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)addDesktopHeroLogoForGame:(const OPN::GameInfo &)game toContainer:(NSView *)container;
 - (void)cancelHeroImageLoads;
@@ -1095,15 +1102,25 @@ using namespace OPN;
     self.panelsFingerprint = fingerprint;
     [self mergeKnownStoreMetadataIntoPanels];
     self.currentHeroIndex = 0;
+    self.initialHeroReady = NO;
+    self.initialHeroPreloadInFlight = NO;
+    self.initialHeroPreloadGeneration++;
+    self.initialHeroImage = nil;
+    self.initialHeroIdentity = nil;
     [self configureHeroRotationTimer];
-    [self renderStore];
+    [self renderStoreWhenInitialHeroReady];
 }
 
 - (void)setFeaturedGames:(const std::vector<OPN::GameInfo> &)games {
     _featuredGames = games;
     self.currentHeroIndex = 0;
+    self.initialHeroReady = NO;
+    self.initialHeroPreloadInFlight = NO;
+    self.initialHeroPreloadGeneration++;
+    self.initialHeroImage = nil;
+    self.initialHeroIdentity = nil;
     [self configureHeroRotationTimer];
-    [self renderStore];
+    [self renderStoreWhenInitialHeroReady];
 }
 
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
@@ -1112,7 +1129,7 @@ using namespace OPN;
     if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) {
         [self refreshLibrarySelections];
     } else if (!_panels.empty()) {
-        [self renderStore];
+        [self renderStoreWhenInitialHeroReady];
     }
 }
 
@@ -1199,7 +1216,86 @@ using namespace OPN;
     self.renderStoreScheduled = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         self.renderStoreScheduled = NO;
+        [self renderStoreWhenInitialHeroReady];
+    });
+}
+
+- (void)renderStoreWhenInitialHeroReady {
+    const GameInfo *heroGame = [self currentHeroGame];
+    if (!heroGame || self.initialHeroReady) {
         [self renderStore];
+        return;
+    }
+    [self preloadInitialHeroThenRender];
+}
+
+- (void)preloadInitialHeroThenRender {
+    if (self.initialHeroPreloadInFlight) return;
+    const GameInfo *heroGame = [self currentHeroGame];
+    if (!heroGame) {
+        self.initialHeroReady = YES;
+        [self renderStore];
+        return;
+    }
+
+    NSString *gameIdentity = OpnGameIdentityForHero(*heroGame);
+    NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(*heroGame);
+    NSImage *cachedImage = OpnCachedImageFromCandidates(candidates, 1600.0, nil);
+    if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
+        self.initialHeroImage = cachedImage;
+        self.initialHeroIdentity = gameIdentity;
+        self.initialHeroReady = YES;
+        [self renderStore];
+        return;
+    }
+
+    if (candidates.count == 0) {
+        self.initialHeroImage = OpnFallbackHeroArtworkImage();
+        self.initialHeroIdentity = gameIdentity;
+        self.initialHeroReady = YES;
+        [self renderStore];
+        return;
+    }
+
+    self.initialHeroPreloadInFlight = YES;
+    NSInteger preloadGeneration = self.initialHeroPreloadGeneration;
+    __weak __typeof__(self) weakSelf = self;
+    __block BOOL completed = NO;
+    __block NSInteger remainingLoads = (NSInteger)candidates.count;
+    for (NSString *candidateURL in candidates) {
+        OpnImageLoadToken *token = OpnLoadImageForURLCancellable(candidateURL, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+            (void)resolvedURL;
+            (void)data;
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || completed || preloadGeneration != strongSelf.initialHeroPreloadGeneration) return;
+            if (!OPNStoreHeroImageHasVisibleContent(image)) {
+                remainingLoads--;
+                if (remainingLoads > 0) return;
+                completed = YES;
+                strongSelf.initialHeroImage = OpnFallbackHeroArtworkImage();
+            } else {
+                completed = YES;
+                strongSelf.initialHeroImage = image;
+                if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
+                    strongSelf.heroAspectByIdentity[gameIdentity] = @(image.size.width / image.size.height);
+                }
+            }
+            strongSelf.initialHeroIdentity = gameIdentity;
+            strongSelf.initialHeroReady = YES;
+            strongSelf.initialHeroPreloadInFlight = NO;
+            [strongSelf renderStore];
+        });
+        [self trackHeroImageLoadToken:token];
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || completed || preloadGeneration != strongSelf.initialHeroPreloadGeneration) return;
+        completed = YES;
+        strongSelf.initialHeroImage = OpnFallbackHeroArtworkImage();
+        strongSelf.initialHeroIdentity = gameIdentity;
+        strongSelf.initialHeroReady = YES;
+        strongSelf.initialHeroPreloadInFlight = NO;
+        [strongSelf renderStore];
     });
 }
 
@@ -1308,7 +1404,9 @@ using namespace OPN;
     [container addSubview:artwork];
     NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(game);
     NSString *gameIdentity = OpnGameIdentityForHero(game);
-    NSImage *cachedImage = OpnCachedImageFromCandidates(candidates, 1600.0, nil);
+    NSImage *cachedImage = ([self.initialHeroIdentity isEqualToString:gameIdentity] && OPNStoreHeroImageHasVisibleContent(self.initialHeroImage))
+        ? self.initialHeroImage
+        : OpnCachedImageFromCandidates(candidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
         artwork.image = cachedImage;
         if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
