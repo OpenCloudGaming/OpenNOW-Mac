@@ -880,7 +880,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.desktopTopChromeView) {
         NSView *chrome = [[NSView alloc] initWithFrame:NSZeroRect];
         chrome.wantsLayer = YES;
-        chrome.layer.backgroundColor = NSColor.clearColor.CGColor;
+        chrome.layer.backgroundColor = OpnColor(0x000000, 0.96).CGColor;
         self.desktopTopChromeView = chrome;
 
         NSImageView *brandIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
