@@ -1129,7 +1129,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 items {
                     id
                     title
-                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE SCREENSHOTS }
+                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS }
                     variants {
                         id
                         appStore
@@ -1169,7 +1169,7 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                 items {
                     id
                     title
-                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE SCREENSHOTS }
+                    images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS }
                     variants {
                         id
                         appStore
