@@ -27,6 +27,21 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
                       ceil(size.height));
 }
 
+static BOOL OPNBackdropModeShowsControllerChrome(OPNBackdropMode mode) {
+    return mode == OPNBackdropModeHome ||
+        mode == OPNBackdropModeStore ||
+        mode == OPNBackdropModeLibrary ||
+        mode == OPNBackdropModeSettings;
+}
+
+static NSColor *OPNControllerHintFill(NSString *button) {
+    if ([button isEqualToString:@"A"]) return OpnColor(0x31E87D);
+    if ([button isEqualToString:@"B"]) return OpnColor(0xFF5353);
+    if ([button isEqualToString:@"Y"]) return OpnColor(0xF7D944);
+    if ([button isEqualToString:@"X"]) return OpnColor(0x5E98FF);
+    return OpnColor(0xE7E7E7);
+}
+
 @implementation OPNBackdropView
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -337,6 +352,74 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
     }
 }
 
+- (void)drawControllerBottomHintsInRect:(NSRect)bounds {
+    CGFloat width = NSWidth(bounds);
+    CGFloat height = NSHeight(bounds);
+    CGFloat inset = MIN(96.0, MAX(24.0, width * 0.032));
+    CGFloat bottom = MIN(30.0, MAX(12.0, height * 0.016));
+    CGFloat buttonSize = MIN(38.0, MAX(26.0, width * 0.0118));
+    CGFloat labelFontSize = MIN(17.0, MAX(12.0, width * 0.0068));
+    CGFloat buttonFontSize = MIN(14.0, MAX(11.0, width * 0.0048));
+    CGFloat gap = MIN(74.0, MAX(18.0, width * 0.024));
+    CGFloat labelGap = 10.0;
+    CGFloat rowY = height - bottom - buttonSize;
+
+    NSDictionary<NSAttributedStringKey, id> *labelAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:labelFontSize weight:NSFontWeightHeavy],
+        NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.74),
+    };
+    NSMutableParagraphStyle *center = [[NSMutableParagraphStyle alloc] init];
+    center.alignment = NSTextAlignmentCenter;
+    NSDictionary<NSAttributedStringKey, id> *buttonAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:buttonFontSize weight:NSFontWeightBlack],
+        NSForegroundColorAttributeName: OpnColor(0x07100B),
+        NSParagraphStyleAttributeName: center,
+    };
+
+    NSArray<NSDictionary<NSString *, NSString *> *> *items = @[
+        @{@"button": @"A", @"title": @"Select"},
+        @{@"button": @"B", @"title": @"Back"},
+        @{@"button": @"Y", @"title": @"Filter"},
+        @{@"button": @"X", @"title": @"Search"},
+    ];
+
+    CGFloat x = inset;
+    for (NSDictionary<NSString *, NSString *> *item in items) {
+        NSString *button = item[@"button"] ?: @"";
+        NSString *title = item[@"title"] ?: @"";
+        NSRect buttonRect = NSMakeRect(x, rowY, buttonSize, buttonSize);
+        NSBezierPath *buttonPath = [NSBezierPath bezierPathWithOvalInRect:buttonRect];
+        [OPNControllerHintFill(button) setFill];
+        [buttonPath fill];
+        [button drawInRect:OPNCenteredTextRect(button, buttonAttributes, buttonRect) withAttributes:buttonAttributes];
+
+        CGFloat titleWidth = ceil([title sizeWithAttributes:labelAttributes].width);
+        [title drawInRect:NSMakeRect(NSMaxX(buttonRect) + labelGap, rowY + floor((buttonSize - labelFontSize - 2.0) * 0.5), titleWidth + 4.0, labelFontSize + 4.0)
+            withAttributes:labelAttributes];
+        x += buttonSize + labelGap + titleWidth + gap;
+    }
+
+    NSString *moreTitle = @"More Options";
+    CGFloat moreWidth = ceil([moreTitle sizeWithAttributes:labelAttributes].width);
+    CGFloat moreX = width - inset - buttonSize - labelGap - moreWidth;
+    NSRect menuRect = NSMakeRect(moreX, rowY, buttonSize, buttonSize);
+    NSBezierPath *menuCircle = [NSBezierPath bezierPathWithOvalInRect:menuRect];
+    [OpnColor(0xE7E7E7) setFill];
+    [menuCircle fill];
+    [OpnColor(0x07100B) setStroke];
+    for (NSInteger row = 0; row < 3; row++) {
+        CGFloat lineY = NSMinY(menuRect) + buttonSize * (0.33 + (CGFloat)row * 0.17);
+        NSBezierPath *line = [NSBezierPath bezierPath];
+        [line moveToPoint:NSMakePoint(NSMinX(menuRect) + buttonSize * 0.29, lineY)];
+        [line lineToPoint:NSMakePoint(NSMaxX(menuRect) - buttonSize * 0.29, lineY)];
+        line.lineWidth = MAX(1.4, buttonSize * 0.06);
+        line.lineCapStyle = NSLineCapStyleRound;
+        [line stroke];
+    }
+    [moreTitle drawInRect:NSMakeRect(NSMaxX(menuRect) + labelGap, rowY + floor((buttonSize - labelFontSize - 2.0) * 0.5), moreWidth + 4.0, labelFontSize + 4.0)
+           withAttributes:labelAttributes];
+}
+
 - (void)drawIsometricBlockAtCenter:(NSPoint)center size:(CGFloat)size height:(CGFloat)height color:(NSColor *)color alpha:(CGFloat)alpha {
     CGFloat halfWidth = size;
     CGFloat halfDepth = size * 0.48;
@@ -500,9 +583,11 @@ static NSRect OPNCenteredTextRect(NSString *text, NSDictionary<NSAttributedStrin
 - (void)drawRect:(NSRect)dirtyRect {
     [super drawRect:dirtyRect];
     (void)dirtyRect;
-    if (OpnControllerModeEnabled()) {
+    if (OpnControllerModeEnabled() && OPNBackdropModeShowsControllerChrome(self.mode)) {
         [self drawControllerReferenceBackgroundInRect:self.bounds];
         [self drawControllerNavbarInRect:self.bounds];
+    } else if (self.mode == OPNBackdropModeLibrary) {
+        [self drawControllerBottomHintsInRect:self.bounds];
     }
 }
 
