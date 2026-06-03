@@ -1966,26 +1966,21 @@ using namespace OPN;
 }
 
 - (void)addDesktopLibraryHeroForGame:(const OPN::GameInfo &)game frame:(NSRect)frame activeIndex:(NSInteger)activeIndex totalCount:(NSInteger)totalCount {
-    CGFloat wrapperHeight = NSHeight(frame) + (totalCount > 1 ? 46.0 : 0.0);
-    NSView *wrapper = [[NSView alloc] initWithFrame:NSMakeRect(NSMinX(frame), NSMinY(frame), NSWidth(frame), wrapperHeight)];
-    wrapper.wantsLayer = YES;
-    self.desktopHeroContainerView = wrapper;
-    [self addSubview:wrapper];
-
-    NSView *stage = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(frame), NSHeight(frame))];
+    (void)activeIndex;
+    (void)totalCount;
+    NSView *stage = [[NSView alloc] initWithFrame:frame];
     stage.wantsLayer = YES;
-    stage.layer.backgroundColor = OpnColor(0x030506, 0.98).CGColor;
     stage.layer.cornerRadius = 34.0;
+    stage.layer.masksToBounds = YES;
     stage.layer.borderWidth = 2.0;
     stage.layer.borderColor = OpnColor(0x203040, 0.92).CGColor;
     stage.layer.shadowColor = OpnColor(0x000000, 1.0).CGColor;
     stage.layer.shadowOpacity = 0.48;
     stage.layer.shadowRadius = 34.0;
     stage.layer.shadowOffset = CGSizeMake(0.0, 22.0);
-    [wrapper addSubview:stage];
+    self.desktopHeroContainerView = stage;
+    [self addSubview:stage];
 
-    CGFloat width = NSWidth(frame);
-    CGFloat height = NSHeight(frame);
     OPNControllerPreviewBackgroundView *artwork = [[OPNControllerPreviewBackgroundView alloc] initWithFrame:stage.bounds];
     artwork.cornerRadius = 34.0;
     artwork.drawsScrim = NO;
@@ -1994,90 +1989,6 @@ using namespace OPN;
     artwork.layer.masksToBounds = YES;
     [stage addSubview:artwork];
     [self loadControllerHeroImageForView:artwork candidates:OPNControllerHeroBackgroundCandidates(game) index:0];
-
-    CGFloat textWidth = MIN(520.0, MAX(320.0, width * 0.35));
-    NSString *titleText = OPNCatalogString(game.title, @"Untitled");
-    NSTextField *title = OpnLabel(titleText, NSMakeRect(68.0, height * 0.30, textWidth, 76.0), 36.0, OpnColor(kTextPrimary), NSFontWeightBlack);
-    title.lineBreakMode = NSLineBreakByWordWrapping;
-    title.maximumNumberOfLines = 2;
-    title.wantsLayer = YES;
-    title.layer.shadowColor = NSColor.blackColor.CGColor;
-    title.layer.shadowOpacity = 0.62;
-    title.layer.shadowRadius = 10.0;
-    title.layer.shadowOffset = CGSizeMake(0.0, 3.0);
-    [stage addSubview:title];
-
-    NSImageView *logoView = [[NSImageView alloc] initWithFrame:NSMakeRect(68.0, height * 0.25, textWidth, MIN(120.0, MAX(78.0, height * 0.26)))];
-    logoView.imageScaling = NSImageScaleProportionallyUpOrDown;
-    logoView.imageAlignment = NSImageAlignLeft;
-    logoView.wantsLayer = YES;
-    logoView.layer.opacity = 0.0;
-    logoView.layer.shadowColor = NSColor.blackColor.CGColor;
-    logoView.layer.shadowOpacity = 0.58;
-    logoView.layer.shadowRadius = 10.0;
-    logoView.layer.shadowOffset = CGSizeMake(0.0, 4.0);
-    [stage addSubview:logoView];
-    [self loadControllerHeroLogoForView:logoView titleFallback:title candidates:OPNControllerHeroLogoCandidates(game) index:0];
-
-    NSString *store = game.availableStores.empty() ? @"Cloud Ready" : OPNStoreCategoryTitle(OPNCatalogString(game.availableStores.front(), @""));
-    NSString *genre = game.genres.empty() ? @"Cloud Gaming" : OPNCatalogDisplayString(game.genres.front(), @"Cloud Gaming");
-    NSString *metaText = [NSString stringWithFormat:@"%@ / %@", store, genre];
-    NSTextField *meta = OpnLabel(metaText, NSMakeRect(68.0, height * 0.57, textWidth, 24.0), 16.0, OpnColor(0xFFFFFF, 0.86), NSFontWeightBold);
-    meta.lineBreakMode = NSLineBreakByTruncatingTail;
-    [stage addSubview:meta];
-
-    BOOL resumeAvailable = OPNGameHasActiveSession(game, _activeSessionAppIds);
-    NSString *primaryTitle = resumeAvailable ? @"Resume" : @"Play";
-    NSButton *primary = [[NSButton alloc] initWithFrame:NSMakeRect(68.0, height * 0.68, 138.0, 44.0)];
-    primary.title = primaryTitle;
-    primary.bordered = NO;
-    primary.font = [NSFont systemFontOfSize:14.0 weight:NSFontWeightBlack];
-    primary.contentTintColor = OpnColor(kAccentOn);
-    primary.wantsLayer = YES;
-    primary.layer.cornerRadius = 23.0;
-    primary.layer.backgroundColor = OpnColor(kBrandGreen, 0.98).CGColor;
-    primary.layer.shadowColor = OpnColor(kBrandGreen).CGColor;
-    primary.layer.shadowOpacity = 0.32;
-    primary.layer.shadowRadius = 22.0;
-    primary.layer.shadowOffset = CGSizeZero;
-    primary.target = self;
-    primary.action = @selector(desktopHeroPlayClicked:);
-    [stage addSubview:primary];
-
-    NSButton *storeButton = [[NSButton alloc] initWithFrame:NSMakeRect(224.0, height * 0.68, 126.0, 44.0)];
-    storeButton.title = store.length > 0 ? store : @"Cloud";
-    storeButton.bordered = NO;
-    storeButton.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightBold];
-    storeButton.contentTintColor = OpnColor(kTextPrimary, 0.88);
-    storeButton.wantsLayer = YES;
-    storeButton.layer.cornerRadius = 22.0;
-    storeButton.layer.backgroundColor = OpnColor(0xFFFFFF, 0.075).CGColor;
-    storeButton.layer.borderWidth = 1.0;
-    storeButton.layer.borderColor = OpnColor(0xFFFFFF, 0.18).CGColor;
-    storeButton.target = self;
-    storeButton.action = @selector(desktopHeroPlayClicked:);
-    [stage addSubview:storeButton];
-
-    if (totalCount > 1) {
-        CGFloat activeDotWidth = 32.0;
-        CGFloat inactiveDotWidth = 16.0;
-        CGFloat dotHeight = 6.0;
-        CGFloat dotSpacing = 28.0;
-        CGFloat dotRailWidth = (totalCount - 1) * dotSpacing + activeDotWidth;
-        CGFloat dotX = NSMinX(frame) + floor((NSWidth(frame) - dotRailWidth) * 0.5);
-        CGFloat dotY = height + 20.0;
-        NSInteger activeDotIndex = ((activeIndex % totalCount) + totalCount) % totalCount;
-        for (NSInteger index = 0; index < totalCount; index++) {
-            BOOL active = index == activeDotIndex;
-            CGFloat pillWidth = active ? activeDotWidth : inactiveDotWidth;
-            CGFloat pillX = dotX + index * dotSpacing + (active ? 0.0 : floor((activeDotWidth - inactiveDotWidth) * 0.5));
-            NSView *pill = [[NSView alloc] initWithFrame:NSMakeRect(pillX, dotY, pillWidth, dotHeight)];
-            pill.wantsLayer = YES;
-            pill.layer.cornerRadius = dotHeight * 0.5;
-            pill.layer.backgroundColor = (active ? OpnColor(OPN::kBrandGreen, 0.95) : OpnColor(0xFFFFFF, 0.20)).CGColor;
-            [wrapper addSubview:pill];
-        }
-    }
 }
 
 - (void)selectDesktopFeaturedGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {
@@ -2143,7 +2054,6 @@ using namespace OPN;
     _featuredGames = games;
     self.controllerHeroIndex = 0;
     if (OpnControllerModeEnabled() && self.controllerSurface == OPNControllerCatalogSurfaceLibrary) {
-        [self renderControllerHero];
         [self startControllerHeroRotationIfNeeded];
     } else if (OpnControllerModeEnabled()) {
         [self renderGrid];
@@ -2155,13 +2065,7 @@ using namespace OPN;
 
 - (void)setActiveSessionAppIds:(const std::vector<int> &)appIds {
     _activeSessionAppIds = appIds;
-    if (OpnControllerModeEnabled()) {
-        if (self.controllerSurface == OPNControllerCatalogSurfaceLibrary) {
-            [self renderControllerHero];
-        } else {
-            [self renderGrid];
-        }
-    } else {
+    if (!OpnControllerModeEnabled()) {
         [self renderGrid];
     }
 }
@@ -3153,8 +3057,6 @@ using namespace OPN;
     self.controllerDisplayGameCount = (NSInteger)displayGames.size();
     if (self.focusedCardIndex < 0 && !displayGames.empty()) self.focusedCardIndex = 0;
     if (self.focusedCardIndex >= (NSInteger)displayGames.size()) self.focusedCardIndex = (NSInteger)displayGames.size() - 1;
-
-    [self renderControllerHero];
 
     NSString *sectionTitle = [self activeCategoryTitle];
     CGFloat maximumTitleWidth = MAX(metrics.rowTitleWidth, width - contentInset * 2.0 - metrics.countWidth - metrics.cardSpacing);
