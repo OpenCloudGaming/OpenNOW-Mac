@@ -60,8 +60,6 @@ static NSColor *OPNControllerHintFill(NSString *button) {
     CGFloat labelGap = 10.0;
     CGFloat rowY = height - bottom - buttonSize;
     CGFloat midY = rowY + buttonSize * 0.5;
-    [OpnColor(0x000000, 0.96) setFill];
-    NSRectFill(NSMakeRect(0.0, rowY, width, height - rowY));
 
     NSDictionary<NSAttributedStringKey, id> *labelAttributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:labelFontSize weight:850],
