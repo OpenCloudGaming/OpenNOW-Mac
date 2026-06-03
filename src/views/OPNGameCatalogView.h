@@ -21,5 +21,7 @@
 - (void)setLoading:(BOOL)loading;
 - (void)setError:(NSString *)message;
 - (void)setUserName:(NSString *)name;
+- (void)moveGamepadFocusBy:(NSInteger)delta;
+- (void)activateGamepadFocus;
 
 @end

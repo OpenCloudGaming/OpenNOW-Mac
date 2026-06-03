@@ -621,6 +621,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, copy) void (^onBuy)(NSString *purchaseURL);
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game prominent:(BOOL)prominent;
 - (void)setStoreFocused:(BOOL)focused;
+- (void)activate;
 @end
 
 @interface OPNStoreGameTile ()
@@ -865,6 +866,10 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         return;
     }
     if (self.onSelect) self.onSelect();
+}
+
+- (void)activate {
+    [self selectPressed];
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -1258,6 +1263,7 @@ using namespace OPN;
     CGFloat documentHeight = MAX(NSHeight(self.bounds), rowY + 88.0);
     ambient.frame = NSMakeRect(0.0, 0.0, width, documentHeight);
     self.documentView.frame = NSMakeRect(0, 0, width, documentHeight);
+    [self updateFocusedTiles];
 }
 
 - (NSView *)storeChipWithTitle:(NSString *)title frame:(NSRect)frame highlighted:(BOOL)highlighted {
@@ -1642,9 +1648,49 @@ using namespace OPN;
 }
 
 - (void)updateFocusedTiles {
-    for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
-        for (OPNStoreGameTile *tile in row) [tile setStoreFocused:NO];
+    if (self.rowCards.count == 0) return;
+    self.focusedRowIndex = MAX(0, MIN((NSInteger)self.rowCards.count - 1, self.focusedRowIndex));
+    NSMutableArray<OPNStoreGameTile *> *focusedRow = self.rowCards[(NSUInteger)self.focusedRowIndex];
+    if (focusedRow.count == 0) return;
+    self.focusedColumnIndex = MAX(0, MIN((NSInteger)focusedRow.count - 1, self.focusedColumnIndex));
+    for (NSUInteger rowIndex = 0; rowIndex < self.rowCards.count; rowIndex++) {
+        NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[rowIndex];
+        for (NSUInteger columnIndex = 0; columnIndex < row.count; columnIndex++) {
+            [row[columnIndex] setStoreFocused:(NSInteger)rowIndex == self.focusedRowIndex && (NSInteger)columnIndex == self.focusedColumnIndex];
+        }
     }
+}
+
+- (void)scrollFocusedTileIntoView {
+    if (self.focusedRowIndex < 0 || self.focusedRowIndex >= (NSInteger)self.rowCards.count) return;
+    NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
+    if (self.focusedColumnIndex < 0 || self.focusedColumnIndex >= (NSInteger)row.count) return;
+    OPNStoreGameTile *tile = row[(NSUInteger)self.focusedColumnIndex];
+    NSRect tileInDocument = [tile convertRect:tile.bounds toView:self.documentView];
+    [self.documentView scrollRectToVisible:NSInsetRect(tileInDocument, -28.0, -46.0)];
+    [tile scrollRectToVisible:NSInsetRect(tile.bounds, -24.0, -12.0)];
+}
+
+- (void)moveGamepadFocusByRows:(NSInteger)rowDelta columns:(NSInteger)columnDelta {
+    if (self.rowCards.count == 0) return;
+    NSInteger nextRow = MAX(0, MIN((NSInteger)self.rowCards.count - 1, self.focusedRowIndex + rowDelta));
+    NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)nextRow];
+    if (row.count == 0) return;
+    NSInteger nextColumn = self.focusedColumnIndex + columnDelta;
+    if (nextRow != self.focusedRowIndex && columnDelta == 0) nextColumn = MIN(nextColumn, (NSInteger)row.count - 1);
+    nextColumn = MAX(0, MIN((NSInteger)row.count - 1, nextColumn));
+    if (nextRow == self.focusedRowIndex && nextColumn == self.focusedColumnIndex) return;
+    self.focusedRowIndex = nextRow;
+    self.focusedColumnIndex = nextColumn;
+    [self updateFocusedTiles];
+    [self scrollFocusedTileIntoView];
+}
+
+- (void)activateGamepadFocus {
+    if (self.focusedRowIndex < 0 || self.focusedRowIndex >= (NSInteger)self.rowCards.count) return;
+    NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
+    if (self.focusedColumnIndex < 0 || self.focusedColumnIndex >= (NSInteger)row.count) return;
+    [row[(NSUInteger)self.focusedColumnIndex] activate];
 }
 
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {

@@ -7,5 +7,7 @@
 
 - (instancetype)initWithFrame:(NSRect)frame;
 - (instancetype)initWithFrame:(NSRect)frame selectedSectionName:(NSString *)selectedSectionName;
+- (void)moveGamepadSelectionBy:(NSInteger)delta;
+- (void)activateGamepadSelection;
 
 @end

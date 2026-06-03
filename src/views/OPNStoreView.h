@@ -16,5 +16,7 @@
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games;
 - (void)setFeaturedGames:(const std::vector<OPN::GameInfo> &)games;
 - (void)setPanels:(const std::vector<OPN::PanelResult> &)panels;
+- (void)moveGamepadFocusByRows:(NSInteger)rowDelta columns:(NSInteger)columnDelta;
+- (void)activateGamepadFocus;
 
 @end

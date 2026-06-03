@@ -205,6 +205,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 @property (nonatomic, assign) std::vector<OPN::GameInfo> displayGames;
 @property (nonatomic, assign) NSInteger renderStartIndex;
 @property (nonatomic, assign) NSInteger displayGameCount;
+@property (nonatomic, assign) NSInteger focusedGameIndex;
 @property (nonatomic, assign) CGFloat cachedCardStartY;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderScheduled;
@@ -215,6 +216,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 - (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index;
 - (void)cancelImageLoads;
 - (void)renderVisibleCardsWithMetrics:(OPNCatalogGridMetrics)metrics totalCards:(NSInteger)totalCards;
+- (void)scrollFocusedGameIntoViewWithMetrics:(OPNCatalogGridMetrics)metrics;
 @end
 
 @implementation OPNGameCatalogView
@@ -228,6 +230,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         _cardViewsByIndex = [NSMutableDictionary dictionary];
         _imageLoadTokens = [NSMutableArray array];
         _renderStartIndex = 0;
+        _focusedGameIndex = 0;
 
         _scrollView = [[OPNCatalogScrollView alloc] initWithFrame:self.bounds];
         _scrollView.drawsBackground = NO;
@@ -427,6 +430,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     OPNCatalogGridMetrics metrics = OPNCatalogGridMetricsForSize(width, height);
     self.displayGames = [self displayLibraryGames];
     self.displayGameCount = (NSInteger)self.displayGames.size();
+    self.focusedGameIndex = self.displayGameCount > 0 ? MAX(0, MIN(self.focusedGameIndex, self.displayGameCount - 1)) : 0;
 
     OPNCatalogAmbientView *ambient = [[OPNCatalogAmbientView alloc] initWithFrame:self.bounds];
     ambient.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -500,11 +504,13 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         if (card) {
             card.frame = frame;
             [card updateGame:game];
+            [card setGamepadFocused:index == self.focusedGameIndex];
             continue;
         }
 
         card = [[OPNGameCardView alloc] initWithFrame:frame game:game];
         card.imageRevealDelay = 0.012 * (NSTimeInterval)MIN((NSInteger)18, index - renderStart);
+        [card setGamepadFocused:index == self.focusedGameIndex];
         OPN::GameInfo gameCopy = game;
         __weak __typeof__(self) weakSelf = self;
         __weak OPNGameCardView *weakCard = card;
@@ -523,10 +529,47 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     for (NSNumber *key in [self.cardViewsByIndex.allKeys copy]) {
         if ([visibleIndexes containsObject:key]) continue;
         OPNGameCardView *card = self.cardViewsByIndex[key];
+        [card setGamepadFocused:NO];
         [card removeFromSuperview];
         [self.cardViews removeObject:card];
         [self.cardViewsByIndex removeObjectForKey:key];
     }
+}
+
+- (void)scrollFocusedGameIntoViewWithMetrics:(OPNCatalogGridMetrics)metrics {
+    if (self.displayGameCount <= 0) return;
+    CGFloat targetX = metrics.contentX + (CGFloat)self.focusedGameIndex * (metrics.cardWidth + metrics.spacing);
+    NSRect visible = self.scrollView.contentView.bounds;
+    CGFloat minVisibleX = NSMinX(visible) + metrics.contentX * 0.30;
+    CGFloat maxVisibleX = NSMaxX(visible) - metrics.cardWidth - metrics.contentX * 0.30;
+    CGFloat scrollX = NSMinX(visible);
+    if (targetX < minVisibleX) {
+        scrollX = MAX(0.0, targetX - metrics.contentX * 0.30);
+    } else if (targetX > maxVisibleX) {
+        scrollX = MAX(0.0, targetX - NSWidth(visible) + metrics.cardWidth + metrics.contentX * 0.30);
+    }
+    if (std::fabs(scrollX - NSMinX(visible)) <= 1.0) return;
+    [self.scrollView.contentView scrollToPoint:NSMakePoint(scrollX, 0.0)];
+    [self.scrollView reflectScrolledClipView:self.scrollView.contentView];
+}
+
+- (void)moveGamepadFocusBy:(NSInteger)delta {
+    if (self.displayGameCount <= 0 || delta == 0) return;
+    NSInteger nextIndex = MAX(0, MIN(self.displayGameCount - 1, self.focusedGameIndex + delta));
+    if (nextIndex == self.focusedGameIndex) return;
+    self.focusedGameIndex = nextIndex;
+    OPNCatalogGridMetrics metrics = OPNCatalogGridMetricsForSize(MAX(1.0, NSWidth(self.bounds)), MAX(1.0, NSHeight(self.bounds)));
+    [self scrollFocusedGameIntoViewWithMetrics:metrics];
+    [self renderVisibleCardsWithMetrics:metrics totalCards:self.displayGameCount];
+}
+
+- (void)activateGamepadFocus {
+    if (self.displayGameCount <= 0 || !self.onSelectGame) return;
+    NSInteger index = MAX(0, MIN(self.displayGameCount - 1, self.focusedGameIndex));
+    const OPN::GameInfo &game = _displayGames[(size_t)index];
+    OPNGameCardView *card = self.cardViewsByIndex[@(index)];
+    int variantIndex = card && card.selectedVariantIndex >= 0 ? card.selectedVariantIndex : 0;
+    self.onSelectGame(game, variantIndex);
 }
 
 - (void)scrollViewBoundsDidChange:(NSNotification *)notification {

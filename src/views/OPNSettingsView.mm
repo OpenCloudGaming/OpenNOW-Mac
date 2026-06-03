@@ -367,6 +367,19 @@ using namespace OPN;
     [self rebuildContent];
 }
 
+- (void)moveGamepadSelectionBy:(NSInteger)delta {
+    if (self.sectionNames.count == 0 || delta == 0) return;
+    NSInteger nextSection = MAX(0, MIN((NSInteger)self.sectionNames.count - 1, self.selectedSection + delta));
+    if (nextSection == self.selectedSection) return;
+    self.selectedSection = nextSection;
+    [self restyleSidebarButtons];
+    [self rebuildContent];
+}
+
+- (void)activateGamepadSelection {
+    [self restyleSidebarButtons];
+}
+
 - (void)layout {
     [super layout];
     CGFloat width = NSWidth(self.bounds);

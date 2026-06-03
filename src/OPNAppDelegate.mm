@@ -82,6 +82,10 @@
 @property (nonatomic, strong) OPNGitHubUpdater *githubUpdater;
 @property (nonatomic, strong) NSTimer *applicationUpdateCheckTimer;
 @property (nonatomic, assign) BOOL updateCheckInFlight;
+@property (nonatomic, strong) NSTimer *desktopControllerTimer;
+@property (nonatomic, assign) uint16_t desktopControllerPreviousButtons;
+@property (nonatomic, assign) uint16_t desktopControllerHeldDirections;
+@property (nonatomic, assign) CFTimeInterval desktopControllerLastRepeatTime;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
 - (void)refreshAccountSummary;
 - (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
@@ -164,6 +168,11 @@
 - (void)applicationUpdateCheckTimerFired:(NSTimer *)timer;
 - (void)checkForApplicationUpdates;
 - (void)checkForApplicationUpdatesShowingCurrentStatus:(BOOL)showCurrentStatus;
+- (void)startDesktopControllerPolling;
+- (void)stopDesktopControllerPolling;
+- (void)pollDesktopController:(NSTimer *)timer;
+- (void)routeDesktopGamepadButtons:(uint16_t)buttons;
+- (void)switchDesktopTabBy:(NSInteger)delta;
 @end
 
 @implementation AppDelegate
@@ -178,6 +187,22 @@ static BOOL OPNWindowIsFullScreen(NSWindow *window) {
 static BOOL OPNAppDelegateScreenSupportsDesktopNavigation(OPN::AuthScreen screen) {
     return screen == OPN::AuthScreen::Catalog || screen == OPN::AuthScreen::Store || screen == OPN::AuthScreen::Settings;
 }
+
+typedef NS_OPTIONS(uint16_t, OPNDesktopGamepadButton) {
+    OPNDesktopGamepadButtonUp = 1u << 0,
+    OPNDesktopGamepadButtonDown = 1u << 1,
+    OPNDesktopGamepadButtonLeft = 1u << 2,
+    OPNDesktopGamepadButtonRight = 1u << 3,
+    OPNDesktopGamepadButtonA = 1u << 4,
+    OPNDesktopGamepadButtonB = 1u << 5,
+    OPNDesktopGamepadButtonLeftShoulder = 1u << 6,
+    OPNDesktopGamepadButtonRightShoulder = 1u << 7,
+};
+
+static const uint16_t OPNDesktopGamepadDirectionMask = OPNDesktopGamepadButtonUp |
+    OPNDesktopGamepadButtonDown |
+    OPNDesktopGamepadButtonLeft |
+    OPNDesktopGamepadButtonRight;
 
 static NSImage *OPNDesktopBrandIconImage() {
     NSString *bundleIconPath = [[NSBundle mainBundle] pathForResource:@"OpenNOW" ofType:@"icns"];
@@ -429,6 +454,26 @@ static uint16_t OPNActiveSessionPromptGamepadButtons(void) {
     return buttons;
 }
 
+static uint16_t OPNDesktopGamepadButtons(void) {
+    NSArray<GCController *> *controllers = [GCController controllers];
+    if (controllers.count == 0) return 0;
+    GCExtendedGamepad *pad = controllers.firstObject.extendedGamepad;
+    if (!pad) return 0;
+
+    uint16_t buttons = 0;
+    CGFloat x = pad.leftThumbstick.xAxis.value;
+    CGFloat y = pad.leftThumbstick.yAxis.value;
+    if (pad.dpad.up.value > 0.5 || y > 0.55) buttons |= OPNDesktopGamepadButtonUp;
+    if (pad.dpad.down.value > 0.5 || y < -0.55) buttons |= OPNDesktopGamepadButtonDown;
+    if (pad.dpad.left.value > 0.5 || x < -0.55) buttons |= OPNDesktopGamepadButtonLeft;
+    if (pad.dpad.right.value > 0.5 || x > 0.55) buttons |= OPNDesktopGamepadButtonRight;
+    if (pad.buttonA.value > 0.5) buttons |= OPNDesktopGamepadButtonA;
+    if (pad.buttonB.value > 0.5) buttons |= OPNDesktopGamepadButtonB;
+    if (pad.leftShoulder.value > 0.5) buttons |= OPNDesktopGamepadButtonLeftShoulder;
+    if (pad.rightShoulder.value > 0.5) buttons |= OPNDesktopGamepadButtonRightShoulder;
+    return buttons;
+}
+
 static NSString *OPNAppStringFromStdString(const std::string &value, NSString *fallback) {
     if (value.empty()) return fallback ?: @"";
     NSString *string = [NSString stringWithUTF8String:value.c_str()];
@@ -591,6 +636,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [NSApp activateIgnoringOtherApps:YES];
     [self restoreSavedWindowPresentation];
     [self startApplicationUpdateChecks];
+    [self startDesktopControllerPolling];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -599,6 +645,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self.window saveFrameUsingName:OPNMainWindowFrameAutosaveName];
     [self saveWindowPresentation];
     [self stopApplicationUpdateChecks];
+    [self stopDesktopControllerPolling];
     [self stopGameLibraryRefreshTimer];
     [self stopActiveSessionPromptControllerPolling];
     [self stopStreamDashboardControllerPolling];
@@ -1087,6 +1134,117 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     [self switchToAccountIdentifier:identifier];
     [self rebuildDesktopAccountSwitcher];
+}
+
+- (void)startDesktopControllerPolling {
+    if (self.desktopControllerTimer) return;
+    self.desktopControllerPreviousButtons = 0;
+    self.desktopControllerHeldDirections = 0;
+    self.desktopControllerLastRepeatTime = 0.0;
+    self.desktopControllerTimer = [NSTimer scheduledTimerWithTimeInterval:0.05
+                                                                   target:self
+                                                                 selector:@selector(pollDesktopController:)
+                                                                 userInfo:nil
+                                                                  repeats:YES];
+}
+
+- (void)stopDesktopControllerPolling {
+    [self.desktopControllerTimer invalidate];
+    self.desktopControllerTimer = nil;
+    self.desktopControllerPreviousButtons = 0;
+    self.desktopControllerHeldDirections = 0;
+    self.desktopControllerLastRepeatTime = 0.0;
+}
+
+- (void)pollDesktopController:(NSTimer *)timer {
+    (void)timer;
+    if (!OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen) ||
+        self.activeSessionPromptView ||
+        self.cloudmatchServerPickerView ||
+        self.streamDashboardHomeVisible ||
+        (self.streamingController && self.window.contentViewController == self.streamingController)) {
+        self.desktopControllerPreviousButtons = 0;
+        self.desktopControllerHeldDirections = 0;
+        return;
+    }
+
+    uint16_t buttons = OPNDesktopGamepadButtons();
+    uint16_t pressed = buttons & ~self.desktopControllerPreviousButtons;
+    uint16_t directions = buttons & OPNDesktopGamepadDirectionMask;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (directions == 0) {
+        self.desktopControllerHeldDirections = 0;
+        self.desktopControllerLastRepeatTime = 0.0;
+    } else if (directions != self.desktopControllerHeldDirections || now - self.desktopControllerLastRepeatTime >= 0.18) {
+        self.desktopControllerHeldDirections = directions;
+        self.desktopControllerLastRepeatTime = now;
+        [self routeDesktopGamepadButtons:directions];
+    }
+
+    uint16_t actions = pressed & (OPNDesktopGamepadButtonA |
+        OPNDesktopGamepadButtonB |
+        OPNDesktopGamepadButtonLeftShoulder |
+        OPNDesktopGamepadButtonRightShoulder);
+    if (actions != 0) [self routeDesktopGamepadButtons:actions];
+    self.desktopControllerPreviousButtons = buttons;
+}
+
+- (void)routeDesktopGamepadButtons:(uint16_t)buttons {
+    if (buttons & OPNDesktopGamepadButtonLeftShoulder) {
+        [self switchDesktopTabBy:-1];
+        return;
+    }
+    if (buttons & OPNDesktopGamepadButtonRightShoulder) {
+        [self switchDesktopTabBy:1];
+        return;
+    }
+
+    if (buttons & OPNDesktopGamepadButtonB) {
+        if (self.currentScreen == OPN::AuthScreen::Store || self.currentScreen == OPN::AuthScreen::Settings) {
+            [self transitionToScreen:OPN::AuthScreen::Catalog];
+        }
+        return;
+    }
+
+    if (self.currentScreen == OPN::AuthScreen::Catalog) {
+        if (buttons & OPNDesktopGamepadButtonLeft) [self.catalogView moveGamepadFocusBy:-1];
+        if (buttons & OPNDesktopGamepadButtonRight) [self.catalogView moveGamepadFocusBy:1];
+        if (buttons & OPNDesktopGamepadButtonA) [self.catalogView activateGamepadFocus];
+        return;
+    }
+
+    if (self.currentScreen == OPN::AuthScreen::Store) {
+        NSInteger rowDelta = 0;
+        NSInteger columnDelta = 0;
+        if (buttons & OPNDesktopGamepadButtonUp) rowDelta -= 1;
+        if (buttons & OPNDesktopGamepadButtonDown) rowDelta += 1;
+        if (buttons & OPNDesktopGamepadButtonLeft) columnDelta -= 1;
+        if (buttons & OPNDesktopGamepadButtonRight) columnDelta += 1;
+        if (rowDelta != 0 || columnDelta != 0) [self.storeView moveGamepadFocusByRows:rowDelta columns:columnDelta];
+        if (buttons & OPNDesktopGamepadButtonA) [self.storeView activateGamepadFocus];
+        return;
+    }
+
+    if (self.currentScreen == OPN::AuthScreen::Settings) {
+        NSInteger delta = 0;
+        if (buttons & OPNDesktopGamepadButtonUp) delta -= 1;
+        if (buttons & OPNDesktopGamepadButtonDown) delta += 1;
+        if (delta != 0) [self.settingsView moveGamepadSelectionBy:delta];
+        if (buttons & OPNDesktopGamepadButtonA) [self.settingsView activateGamepadSelection];
+    }
+}
+
+- (void)switchDesktopTabBy:(NSInteger)delta {
+    NSArray<NSNumber *> *screens = @[
+        @(static_cast<NSInteger>(OPN::AuthScreen::Store)),
+        @(static_cast<NSInteger>(OPN::AuthScreen::Catalog)),
+        @(static_cast<NSInteger>(OPN::AuthScreen::Settings)),
+    ];
+    NSUInteger currentIndex = [screens indexOfObject:@(static_cast<NSInteger>(self.currentScreen))];
+    if (currentIndex == NSNotFound) return;
+    NSInteger nextIndex = ((NSInteger)currentIndex + delta + (NSInteger)screens.count) % (NSInteger)screens.count;
+    OPN::AuthScreen nextScreen = (OPN::AuthScreen)screens[(NSUInteger)nextIndex].integerValue;
+    if (nextScreen != self.currentScreen) [self transitionToScreen:nextScreen];
 }
 
 - (BOOL)hasVisibleStreamingController {

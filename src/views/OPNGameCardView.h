@@ -11,6 +11,7 @@
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game;
 - (void)updateGame:(const OPN::GameInfo &)game;
 - (void)selectVariantAtIndex:(int)index;
+- (void)setGamepadFocused:(BOOL)focused;
 - (void)resetMouseTrackingIfOutside;
 
 + (NSSize)cardSize;

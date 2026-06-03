@@ -181,10 +181,12 @@ static std::string OPNGameCardImageSignature(const OPN::GameInfo &game) {
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
 @property (nonatomic, copy) NSString *displayedImageSignature;
 @property (nonatomic, assign) BOOL mouseHovering;
+@property (nonatomic, assign) BOOL gamepadFocused;
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index generation:(NSUInteger)generation;
 - (void)clearImageForNewSignature:(NSString *)signature;
 - (void)displayLoadedImage:(NSImage *)image signature:(NSString *)signature generation:(NSUInteger)generation;
 - (void)updatePlayButtonVisibility;
+- (void)updateInteractionChrome;
 - (void)updateCurrentStoreLogo;
 - (void)updateInstallToPlayPill;
 @end
@@ -340,7 +342,27 @@ using namespace OPN;
 }
 
 - (void)updatePlayButtonVisibility {
-    self.playButton.hidden = !self.mouseHovering;
+    self.playButton.hidden = !(self.mouseHovering || self.gamepadFocused);
+}
+
+- (void)updateInteractionChrome {
+    BOOL focused = self.mouseHovering || self.gamepadFocused;
+    [CATransaction begin];
+    [CATransaction setAnimationDuration:0.14];
+    self.layer.borderWidth = focused ? 2.0 : 1.0;
+    self.layer.borderColor = focused ? OpnColor(OPN::kBrandGreen, 0.88).CGColor : OpnColor(0xFFFFFF, 0.10).CGColor;
+    self.layer.shadowOpacity = focused ? 0.52 : 0.38;
+    self.layer.shadowRadius = focused ? 26.0 : 20.0;
+    self.reflectionLayer.opacity = focused ? 0.65 : 0.0;
+    self.layer.zPosition = self.gamepadFocused ? 6.0 : 0.0;
+    [CATransaction commit];
+    [self updatePlayButtonVisibility];
+}
+
+- (void)setGamepadFocused:(BOOL)focused {
+    if (_gamepadFocused == focused) return;
+    _gamepadFocused = focused;
+    [self updateInteractionChrome];
 }
 
 - (void)updateDesktopLabels {
@@ -636,15 +658,13 @@ using namespace OPN;
 - (void)mouseEntered:(NSEvent *)event {
     [super mouseEntered:event];
     self.mouseHovering = YES;
-    [self updatePlayButtonVisibility];
-    self.layer.borderColor = OpnColor(0xFFFFFF, 0.28).CGColor;
+    [self updateInteractionChrome];
 }
 
 - (void)mouseExited:(NSEvent *)event {
     [super mouseExited:event];
     self.mouseHovering = NO;
-    [self updatePlayButtonVisibility];
-    self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+    [self updateInteractionChrome];
 }
 
 - (void)resetMouseTrackingIfOutside {
@@ -656,8 +676,7 @@ using namespace OPN;
     NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
     if (!NSPointInRect(localPoint, self.bounds)) {
         self.mouseHovering = NO;
-        [self updatePlayButtonVisibility];
-        self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+        [self updateInteractionChrome];
     }
 }
 
