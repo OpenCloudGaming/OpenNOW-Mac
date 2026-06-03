@@ -865,7 +865,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.focusRingType = NSFocusRingTypeNone;
     switcher.wantsLayer = YES;
     switcher.layer.cornerRadius = 18.0;
-    switcher.layer.backgroundColor = NSColor.clearColor.CGColor;
+    switcher.layer.backgroundColor = OpnColor(OPN::kBlack, 0.50).CGColor;
     switcher.layer.borderColor = NSColor.clearColor.CGColor;
     switcher.layer.borderWidth = 0.0;
     switcher.layer.shadowColor = NSColor.blackColor.CGColor;
@@ -878,7 +878,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     NSView *playTimePill = [[NSView alloc] initWithFrame:NSZeroRect];
     playTimePill.wantsLayer = YES;
     playTimePill.layer.cornerRadius = 14.0;
-    playTimePill.layer.backgroundColor = NSColor.clearColor.CGColor;
+    playTimePill.layer.backgroundColor = OpnColor(OPN::kBlack, 0.50).CGColor;
     playTimePill.layer.borderColor = NSColor.clearColor.CGColor;
     playTimePill.layer.borderWidth = 0.0;
     playTimePill.layer.shadowColor = NSColor.blackColor.CGColor;
