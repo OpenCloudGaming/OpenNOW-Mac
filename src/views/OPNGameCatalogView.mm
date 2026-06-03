@@ -200,12 +200,16 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 @property (nonatomic, strong) NSMutableArray<OPNGameCardView *> *cardViews;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, OPNGameCardView *> *cardViewsByIndex;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *imageLoadTokens;
+@property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> allGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> displayGames;
+@property (nonatomic, assign) std::vector<OPN::GameInfo> heroGames;
 @property (nonatomic, assign) NSInteger renderStartIndex;
 @property (nonatomic, assign) NSInteger displayGameCount;
 @property (nonatomic, assign) NSInteger focusedGameIndex;
+@property (nonatomic, assign) NSInteger currentHeroIndex;
+@property (nonatomic, assign) NSRect heroFrame;
 @property (nonatomic, assign) CGFloat cachedCardStartY;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) BOOL renderScheduled;
@@ -217,6 +221,10 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 - (void)cancelImageLoads;
 - (void)renderVisibleCardsWithMetrics:(OPNCatalogGridMetrics)metrics totalCards:(NSInteger)totalCards;
 - (void)scrollFocusedGameIntoViewWithMetrics:(OPNCatalogGridMetrics)metrics;
+- (void)configureHeroRotationTimer;
+- (const OPN::GameInfo *)currentHeroGame;
+- (void)heroRotationTimerFired:(NSTimer *)timer;
+- (void)updateHeroOnly;
 @end
 
 @implementation OPNGameCatalogView
@@ -231,6 +239,8 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
         _imageLoadTokens = [NSMutableArray array];
         _renderStartIndex = 0;
         _focusedGameIndex = 0;
+        _currentHeroIndex = 0;
+        _heroFrame = NSZeroRect;
 
         _scrollView = [[OPNCatalogScrollView alloc] initWithFrame:self.bounds];
         _scrollView.drawsBackground = NO;
@@ -265,6 +275,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.heroRotationTimer invalidate];
     [self cancelImageLoads];
 }
 
@@ -285,17 +296,20 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
 
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games {
     _allGames = games;
+    self.currentHeroIndex = 0;
     [self renderCatalog];
 }
 
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result {
     _allGames = result.games;
+    self.currentHeroIndex = 0;
     if (self.onGameCountChanged) self.onGameCountChanged(result.totalCount > 0 ? result.totalCount : (NSInteger)result.games.size());
     [self renderCatalog];
 }
 
 - (void)setFeaturedGames:(const std::vector<OPN::GameInfo> &)games {
     _featuredGames = games;
+    self.currentHeroIndex = 0;
     [self renderCatalog];
 }
 
@@ -393,6 +407,54 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     [self loadHeroArtworkForView:artwork candidates:OPNHeroImageCandidates(game) index:0];
 }
 
+- (void)configureHeroRotationTimer {
+    [self.heroRotationTimer invalidate];
+    self.heroRotationTimer = nil;
+    if (_heroGames.size() < 2 || NSIsEmptyRect(self.heroFrame)) return;
+
+    self.heroRotationTimer = [NSTimer scheduledTimerWithTimeInterval:7.0
+                                                              target:self
+                                                            selector:@selector(heroRotationTimerFired:)
+                                                            userInfo:nil
+                                                             repeats:YES];
+}
+
+- (const OPN::GameInfo *)currentHeroGame {
+    NSInteger candidateCount = MIN((NSInteger)6, (NSInteger)_heroGames.size());
+    if (candidateCount <= 0) return nullptr;
+    NSInteger target = ((self.currentHeroIndex % candidateCount) + candidateCount) % candidateCount;
+    return &_heroGames[(size_t)target];
+}
+
+- (void)heroRotationTimerFired:(NSTimer *)timer {
+    (void)timer;
+    NSInteger candidateCount = MIN((NSInteger)6, (NSInteger)_heroGames.size());
+    if (candidateCount < 2) return;
+    self.currentHeroIndex = (self.currentHeroIndex + 1) % candidateCount;
+    [self updateHeroOnly];
+}
+
+- (void)updateHeroOnly {
+    const OPN::GameInfo *heroGame = [self currentHeroGame];
+    if (!heroGame || NSIsEmptyRect(self.heroFrame) || !self.ambientView) {
+        [self renderCatalog];
+        return;
+    }
+
+    NSView *oldHero = self.heroContainerView;
+    [self addHeroForGame:*heroGame frame:self.heroFrame];
+    NSView *newHero = self.heroContainerView;
+    newHero.alphaValue = 0.0;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.18;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        oldHero.animator.alphaValue = 0.0;
+        newHero.animator.alphaValue = 1.0;
+    } completionHandler:^{
+        [oldHero removeFromSuperview];
+    }];
+}
+
 - (void)loadHeroArtworkForView:(OPNHeroArtworkView *)view candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index {
     if (!view || index >= candidates.count) return;
     __weak OPNHeroArtworkView *weakView = view;
@@ -419,6 +481,7 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     [self.cardViewsByIndex removeAllObjects];
     [self.heroContainerView removeFromSuperview];
     self.heroContainerView = nil;
+    self.heroFrame = NSZeroRect;
     [self.sectionHeaderView removeFromSuperview];
     self.sectionHeaderView = nil;
     [self.ambientView removeFromSuperview];
@@ -437,8 +500,10 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     [self addSubview:ambient positioned:NSWindowBelow relativeTo:nil];
     self.ambientView = ambient;
 
-    std::vector<OPN::GameInfo> featuredGames = [self featuredLibraryGamesWithFallback:self.displayGames];
-    BOOL hasHero = !featuredGames.empty();
+    self.heroGames = [self featuredLibraryGamesWithFallback:self.displayGames];
+    if (_heroGames.size() > 6) _heroGames.resize(6);
+    BOOL hasHero = !_heroGames.empty();
+    self.currentHeroIndex = hasHero ? MAX(0, MIN(self.currentHeroIndex, (NSInteger)_heroGames.size() - 1)) : 0;
     CGFloat sectionHeight = MIN(82.0, MAX(42.0, floor(height * 0.064)));
     CGFloat bottomPadding = MIN(36.0, MAX(14.0, floor(height * 0.030)));
     CGFloat topInset = MIN(kCatalogTopInset * scale, MAX(104.0, floor(height * 0.17)));
@@ -454,9 +519,10 @@ static NSArray<NSString *> *OPNHeroImageCandidates(const OPN::GameInfo &game) {
     }
     CGFloat heroHeight = hasHero ? MIN(desiredHeroHeight, MAX(0.0, availableHeroHeight)) : 0.0;
     if (hasHero && heroHeight > 1.0) {
-        NSInteger heroIndex = 0;
-        [self addHeroForGame:featuredGames[(size_t)heroIndex] frame:NSMakeRect(metrics.contentX, topInset, metrics.contentWidth, heroHeight)];
+        self.heroFrame = NSMakeRect(metrics.contentX, topInset, metrics.contentWidth, heroHeight);
+        [self addHeroForGame:*[self currentHeroGame] frame:self.heroFrame];
     }
+    [self configureHeroRotationTimer];
 
     CGFloat gridTop = hasHero && heroHeight > 1.0 ? topInset + heroHeight + heroGap : topInset;
     NSView *sectionContainer = [[NSView alloc] initWithFrame:NSMakeRect(0.0, gridTop, metrics.pageWidth, sectionHeight + 14.0)];
