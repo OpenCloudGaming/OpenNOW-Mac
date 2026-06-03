@@ -12,6 +12,7 @@
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game;
 - (void)updateGame:(const OPN::GameInfo &)game;
 - (void)selectVariantAtIndex:(int)index;
+- (void)resetMouseTrackingIfOutside;
 
 + (NSSize)cardSize;
 + (CGFloat)imageHeight;

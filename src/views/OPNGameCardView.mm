@@ -891,6 +891,22 @@ using namespace OPN;
     }
 }
 
+- (void)resetMouseTrackingIfOutside {
+    if (!self.mouseHovering) return;
+    NSWindow *window = self.window;
+    if (!window) return;
+    NSPoint screenPoint = [NSEvent mouseLocation];
+    NSPoint windowPoint = [window convertPointFromScreen:screenPoint];
+    NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
+    if (!NSPointInRect(localPoint, self.bounds)) {
+        self.mouseHovering = NO;
+        [self updatePlayButtonVisibility];
+        if (!self.controllerFocused) {
+            self.layer.borderColor = OpnColor(0xFFFFFF, 0.10).CGColor;
+        }
+    }
+}
+
 - (void)updateTrackingAreas {
     if (self.trackingArea && [self.trackingAreas containsObject:self.trackingArea]) {
         [self removeTrackingArea:self.trackingArea];

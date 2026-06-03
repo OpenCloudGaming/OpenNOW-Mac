@@ -4080,6 +4080,10 @@ using namespace OPN;
     self.desktopRenderStartIndex = first;
     self.desktopRenderedGameCount = (NSInteger)newCards.count;
 
+    for (OPNGameCardView *card in self.cardViews) {
+        [card resetMouseTrackingIfOutside];
+    }
+
     [NSAnimationContext endGrouping];
     [CATransaction commit];
 }
