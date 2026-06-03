@@ -941,6 +941,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
+@property (nonatomic, assign) std::vector<OPN::GameInfo> ownedLibraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *heroImageLoadTokens;
@@ -1063,6 +1064,7 @@ using namespace OPN;
 
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
+    _ownedLibraryGames = games;
     std::vector<PanelResult> catalogPanels = OPNCatalogPanelsForGames(games);
     NSInteger gameCount = 0;
     for (const PanelResult &panel : catalogPanels) {
@@ -1075,7 +1077,7 @@ using namespace OPN;
 }
 
 - (void)setCatalogBrowseResult:(const OPN::CatalogBrowseResult &)result {
-    [self setGames:result.games];
+    [self setPanels:OPNCatalogPanelsForGames(result.games)];
     if (self.onGameCountChanged) {
         NSInteger count = result.totalCount > 0 ? result.totalCount : (NSInteger)result.games.size();
         self.onGameCountChanged(count);
@@ -1125,9 +1127,11 @@ using namespace OPN;
 
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
+    _ownedLibraryGames = games;
     [self mergeKnownStoreMetadataIntoPanels];
     if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) {
         [self refreshLibrarySelections];
+        [self scheduleRenderStore];
     } else if (!_panels.empty()) {
         [self renderStoreWhenInitialHeroReady];
     }
@@ -1350,6 +1354,15 @@ using namespace OPN;
 
     CGFloat rowY = heroGame ? y + heroHeight + 48.0 : y;
     NSInteger renderedRows = 0;
+    std::vector<PanelResult> libraryPanels = OPNCatalogPanelsForGames(_ownedLibraryGames);
+    for (const PanelResult &panel : libraryPanels) {
+        for (const PanelSection &section : panel.sections) {
+            if (section.games.empty()) continue;
+            [self addSection:section index:renderedRows y:rowY contentX:contentX width:width];
+            rowY += kStoreRowHeight;
+            renderedRows++;
+        }
+    }
     for (const PanelResult &panel : _panels) {
         for (const PanelSection &section : panel.sections) {
             if (section.games.empty()) continue;
