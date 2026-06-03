@@ -4014,6 +4014,9 @@ using namespace OPN;
 }
 
 - (void)updateDesktopCardWindowWithFirst:(NSInteger)first last:(NSInteger)last cardWidth:(CGFloat)cardWidth step:(CGFloat)step {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+
     OPNDesktopLibraryGridMetrics metrics = OPNDesktopLibraryGridMetricsForWidth(NSWidth(self.bounds));
     CGFloat contentX = metrics.contentX;
     CGFloat cardHeight = [OPNGameCardView cardSize].height;
@@ -4072,6 +4075,8 @@ using namespace OPN;
     [self.cardViews addObjectsFromArray:newCards];
     self.desktopRenderStartIndex = first;
     self.desktopRenderedGameCount = (NSInteger)newCards.count;
+
+    [CATransaction commit];
 }
 
 - (NSInteger)controllerInitialRenderedGameCount {
