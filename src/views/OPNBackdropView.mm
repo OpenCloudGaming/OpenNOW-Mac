@@ -54,22 +54,23 @@ static NSColor *OPNControllerHintFill(NSString *button) {
     CGFloat inset = MIN(96.0, MAX(24.0, width * 0.032));
     CGFloat bottom = MIN(30.0, MAX(12.0, height * 0.016));
     CGFloat buttonSize = MIN(38.0, MAX(26.0, width * 0.0118));
-    CGFloat labelFontSize = MIN(17.0, MAX(12.0, width * 0.0068));
-    CGFloat buttonFontSize = MIN(14.0, MAX(11.0, width * 0.0048));
+    CGFloat labelFontSize = MIN(16.8, MAX(12.16, width * 0.0068));
+    CGFloat buttonFontSize = MIN(14.4, MAX(10.88, width * 0.0048));
     CGFloat gap = MIN(74.0, MAX(18.0, width * 0.024));
     CGFloat labelGap = 10.0;
     CGFloat rowY = height - bottom - buttonSize;
+    CGFloat midY = rowY + buttonSize * 0.5;
     [OpnColor(0x000000, 0.96) setFill];
     NSRectFill(NSMakeRect(0.0, rowY, width, height - rowY));
 
     NSDictionary<NSAttributedStringKey, id> *labelAttributes = @{
-        NSFontAttributeName: [NSFont systemFontOfSize:labelFontSize weight:NSFontWeightHeavy],
+        NSFontAttributeName: [NSFont systemFontOfSize:labelFontSize weight:850],
         NSForegroundColorAttributeName: OpnColor(0xFFFFFF, 0.74),
     };
     NSMutableParagraphStyle *center = [[NSMutableParagraphStyle alloc] init];
     center.alignment = NSTextAlignmentCenter;
     NSDictionary<NSAttributedStringKey, id> *buttonAttributes = @{
-        NSFontAttributeName: [NSFont systemFontOfSize:buttonFontSize weight:NSFontWeightBlack],
+        NSFontAttributeName: [NSFont systemFontOfSize:buttonFontSize weight:950],
         NSForegroundColorAttributeName: OpnColor(0x07100B),
         NSParagraphStyleAttributeName: center,
     };
@@ -92,7 +93,8 @@ static NSColor *OPNControllerHintFill(NSString *button) {
         [button drawInRect:OPNCenteredTextRect(button, buttonAttributes, buttonRect) withAttributes:buttonAttributes];
 
         CGFloat titleWidth = ceil([title sizeWithAttributes:labelAttributes].width);
-        [title drawInRect:NSMakeRect(NSMaxX(buttonRect) + labelGap, rowY + floor((buttonSize - labelFontSize - 2.0) * 0.5), titleWidth + 4.0, labelFontSize + 4.0)
+        CGFloat titleY = midY - ceil(labelFontSize * 0.5) - 1.0;
+        [title drawInRect:NSMakeRect(NSMaxX(buttonRect) + labelGap, titleY, titleWidth + 4.0, labelFontSize + 2.0)
             withAttributes:labelAttributes];
         x += buttonSize + labelGap + titleWidth + gap;
     }
@@ -104,17 +106,25 @@ static NSColor *OPNControllerHintFill(NSString *button) {
     NSBezierPath *menuCircle = [NSBezierPath bezierPathWithOvalInRect:menuRect];
     [OpnColor(0xE7E7E7) setFill];
     [menuCircle fill];
-    [OpnColor(0x07100B) setStroke];
-    for (NSInteger row = 0; row < 3; row++) {
-        CGFloat lineY = NSMinY(menuRect) + buttonSize * (0.33 + (CGFloat)row * 0.17);
+
+    CGFloat svgInset = buttonSize * 0.21;
+    CGFloat svgWidth = buttonSize - svgInset * 2.0;
+    CGFloat lineWidthC = MAX(1.8, buttonSize * 0.072);
+    CGFloat lineSpacing = floor((buttonSize - svgInset * 2.0 - lineWidthC * 3.0) / 2.0);
+    CGFloat lineStartX = NSMinX(menuRect) + svgInset;
+    for (NSInteger i = 0; i < 3; i++) {
+        CGFloat lineY2 = NSMinY(menuRect) + svgInset + (CGFloat)i * (lineWidthC + lineSpacing);
         NSBezierPath *line = [NSBezierPath bezierPath];
-        [line moveToPoint:NSMakePoint(NSMinX(menuRect) + buttonSize * 0.29, lineY)];
-        [line lineToPoint:NSMakePoint(NSMaxX(menuRect) - buttonSize * 0.29, lineY)];
-        line.lineWidth = MAX(1.4, buttonSize * 0.06);
+        [line moveToPoint:NSMakePoint(lineStartX, lineY2)];
+        [line lineToPoint:NSMakePoint(lineStartX + svgWidth, lineY2)];
+        line.lineWidth = lineWidthC;
         line.lineCapStyle = NSLineCapStyleRound;
+        [OpnColor(0x07100B) setStroke];
         [line stroke];
     }
-    [moreTitle drawInRect:NSMakeRect(NSMaxX(menuRect) + labelGap, rowY + floor((buttonSize - labelFontSize - 2.0) * 0.5), moreWidth + 4.0, labelFontSize + 4.0)
+
+    CGFloat titleY = midY - ceil(labelFontSize * 0.5) - 1.0;
+    [moreTitle drawInRect:NSMakeRect(NSMaxX(menuRect) + labelGap, titleY, moreWidth + 4.0, labelFontSize + 2.0)
            withAttributes:labelAttributes];
 }
 @end
