@@ -928,7 +928,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     button.layer.shadowRadius = 0.0;
     button.layer.shadowOffset = CGSizeZero;
     self.desktopSettingsPillButton = button;
-    [self.rootView addSubview:button positioned:NSWindowAbove relativeTo:self.contentContainer];
+    [self.rootView addSubview:button positioned:NSWindowAbove relativeTo:self.desktopRemainingPlayTimePill ?: self.desktopTopChromeView];
     [self updateDesktopSettingsPill];
 }
 
@@ -1010,6 +1010,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.desktopRemainingPlayTimeLabel.stringValue = remainingPlayTime.length > 0 ? [@"Playtime: " stringByAppendingString:remainingPlayTime] : @"Playtime: --";
     if (!visible) return;
     [self layoutDesktopAccountSwitcher];
+    [self layoutDesktopSettingsPill];
 }
 
 - (void)updateDesktopSettingsPill {
