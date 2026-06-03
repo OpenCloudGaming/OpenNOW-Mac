@@ -502,6 +502,23 @@ static std::vector<OPN::PanelResult> OPNCatalogPanelsForGames(const std::vector<
     return panels;
 }
 
+static OPN::PanelSection OPNCatalogSingleLibrarySectionForGames(const std::vector<OPN::GameInfo> &sourceGames) {
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    OPN::PanelSection section;
+    section.id = "owned-library";
+    section.title = "Library";
+    section.__typename = "CatalogSection";
+    for (const OPN::GameInfo &game : sourceGames) {
+        if (!OPNCatalogGameHasAccessibleVariants(game)) continue;
+        OPN::GameInfo catalogGame = OPNCatalogGameWithAccessibleVariants(game);
+        NSString *identity = OpnGameIdentityForHero(catalogGame);
+        if (identity.length > 0 && [seen containsObject:identity]) continue;
+        if (identity.length > 0) [seen addObject:identity];
+        section.games.push_back(catalogGame);
+    }
+    return section;
+}
+
 static bool OPNStoreVariantIsLibrarySelected(const OPN::GameVariant &variant) {
     return variant.librarySelected || variant.inLibrary ||
            variant.serviceStatus == "MANUAL" ||
@@ -1354,14 +1371,11 @@ using namespace OPN;
 
     CGFloat rowY = heroGame ? y + heroHeight + 48.0 : y;
     NSInteger renderedRows = 0;
-    std::vector<PanelResult> libraryPanels = OPNCatalogPanelsForGames(_ownedLibraryGames);
-    for (const PanelResult &panel : libraryPanels) {
-        for (const PanelSection &section : panel.sections) {
-            if (section.games.empty()) continue;
-            [self addSection:section index:renderedRows y:rowY contentX:contentX width:width];
-            rowY += kStoreRowHeight;
-            renderedRows++;
-        }
+    PanelSection librarySection = OPNCatalogSingleLibrarySectionForGames(_ownedLibraryGames);
+    if (!librarySection.games.empty()) {
+        [self addSection:librarySection index:renderedRows y:rowY contentX:contentX width:width];
+        rowY += kStoreRowHeight;
+        renderedRows++;
     }
     for (const PanelResult &panel : _panels) {
         for (const PanelSection &section : panel.sections) {
