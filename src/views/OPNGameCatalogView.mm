@@ -920,6 +920,9 @@ using namespace OPN;
         _scrollView.hasVerticalScroller = YES;
         _scrollView.hasHorizontalScroller = NO;
         _scrollView.autohidesScrollers = YES;
+        _scrollView.contentInsets = NSEdgeInsetsZero;
+        _scrollView.scrollerInsets = NSEdgeInsetsZero;
+        _scrollView.automaticallyAdjustsContentInsets = NO;
         _scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [self addSubview:_scrollView];
 
