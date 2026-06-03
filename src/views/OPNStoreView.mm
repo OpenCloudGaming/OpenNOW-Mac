@@ -911,6 +911,19 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     if (!self.storeFocused) self.layer.borderColor = OpnColor(0xFFFFFF, self.prominent ? 0.18 : 0.12).CGColor;
 }
 
+- (void)resetMouseTrackingIfOutside {
+    if (self.prominent || self.storeFocused) return;
+    NSWindow *window = self.window;
+    if (!window) return;
+    NSPoint screenPoint = [NSEvent mouseLocation];
+    NSPoint windowPoint = [window convertPointFromScreen:screenPoint];
+    NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
+    if (!NSPointInRect(localPoint, self.bounds)) {
+        self.playButton.hidden = YES;
+        self.layer.borderColor = OpnColor(0xFFFFFF, 0.12).CGColor;
+    }
+}
+
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
     if (self.trackingArea && [self.trackingAreas containsObject:self.trackingArea]) {
@@ -1074,6 +1087,10 @@ using namespace OPN;
                                                  selector:@selector(controllerDidDisconnect:)
                                                      name:GCControllerDidDisconnectNotification
                                                    object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(storeScrollViewBoundsDidChange:)
+                                                     name:NSViewBoundsDidChangeNotification
+                                                   object:_scrollView.contentView];
         [self startGamepadNavigationIfNeeded];
     }
     return self;
@@ -2072,6 +2089,16 @@ using namespace OPN;
         return;
     }
     self.previousGamepadButtons = 0;
+}
+
+- (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
+    if (notification.object != self.scrollView.contentView) return;
+    [self.heroTile resetMouseTrackingIfOutside];
+    for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
+        for (OPNStoreGameTile *tile in row) {
+            [tile resetMouseTrackingIfOutside];
+        }
+    }
 }
 
 - (void)pollGamepadNavigation {
