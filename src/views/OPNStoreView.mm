@@ -55,79 +55,6 @@ static CGFloat OPNStoreHeroHeightForSize(CGFloat width, CGFloat height) {
     return floor(MIN(viewportHeroHeight, MAX(1.0, width) * kStoreHeroHeightRatio));
 }
 
-@interface OPNStoreAmbientView : NSView
-@property (nonatomic, assign) CGFloat intensity;
-@end
-
-@implementation OPNStoreAmbientView
-
-- (BOOL)isFlipped { return YES; }
-
-- (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        _intensity = 1.0;
-    }
-    return self;
-}
-
-- (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
-    NSRect bounds = self.bounds;
-    if (NSIsEmptyRect(bounds)) return;
-
-    NSGradient *base = [[NSGradient alloc] initWithColorsAndLocations:
-        OpnColor(0x020405, 1.0), 0.0,
-        OpnColor(0x07120D, 1.0), 0.34,
-        OpnColor(0x11141A, 1.0), 0.62,
-        OpnColor(0x030405, 1.0), 1.0,
-        nil];
-    [base drawInRect:bounds angle:-38.0];
-
-    NSGradient *greenBloom = [[NSGradient alloc] initWithColors:@[
-        OpnColor(OPN::kBrandGreen, 0.24 * self.intensity),
-        OpnColor(OPN::kBrandGreen, 0.06 * self.intensity),
-        OpnColor(OPN::kBrandGreen, 0.0)
-    ]];
-    [greenBloom drawFromCenter:NSMakePoint(NSMinX(bounds) + NSWidth(bounds) * 0.20, NSMinY(bounds) + 188.0)
-                        radius:12.0
-                      toCenter:NSMakePoint(NSMinX(bounds) + NSWidth(bounds) * 0.24, NSMinY(bounds) + 230.0)
-                        radius:620.0
-                       options:0];
-
-    NSGradient *violetBloom = [[NSGradient alloc] initWithColors:@[
-        OpnColor(0x4D7CFF, 0.14 * self.intensity),
-        OpnColor(0x4D7CFF, 0.035 * self.intensity),
-        OpnColor(0x4D7CFF, 0.0)
-    ]];
-    [violetBloom drawFromCenter:NSMakePoint(NSMaxX(bounds) - NSWidth(bounds) * 0.17, NSMinY(bounds) + 160.0)
-                         radius:10.0
-                       toCenter:NSMakePoint(NSMaxX(bounds) - NSWidth(bounds) * 0.24, NSMinY(bounds) + 240.0)
-                         radius:560.0
-                        options:0];
-
-    [NSGraphicsContext saveGraphicsState];
-    NSBezierPath *clip = [NSBezierPath bezierPathWithRect:bounds];
-    [clip addClip];
-    [OpnColor(0xFFFFFF, 0.028 * self.intensity) setStroke];
-    for (CGFloat x = -NSHeight(bounds); x < NSWidth(bounds) + NSHeight(bounds); x += 58.0) {
-        NSBezierPath *line = [NSBezierPath bezierPath];
-        [line moveToPoint:NSMakePoint(x, 0.0)];
-        [line lineToPoint:NSMakePoint(x + NSHeight(bounds) * 0.78, NSHeight(bounds))];
-        line.lineWidth = 1.0;
-        [line stroke];
-    }
-    [NSGraphicsContext restoreGraphicsState];
-
-    NSGradient *vignette = [[NSGradient alloc] initWithColorsAndLocations:
-        OpnColor(0x000000, 0.0), 0.0,
-        OpnColor(0x000000, 0.72), 1.0,
-        nil];
-    [vignette drawInRect:bounds angle:-90.0];
-}
-
-@end
-
 @interface OPNStoreHeroBackgroundView : NSView
 @property (nonatomic, strong) NSImage *image;
 @property (nonatomic, assign) CGFloat cornerRadius;
@@ -1228,9 +1155,6 @@ using namespace OPN;
     CGFloat contentWidth = MAX(680.0, width - contentX * 2.0);
     CGFloat y = kStoreTopInset;
 
-    OPNStoreAmbientView *ambient = [[OPNStoreAmbientView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), 1800.0))];
-    [self.documentView addSubview:ambient];
-
     const GameInfo *heroGame = [self currentHeroGame];
 
     CGFloat heroHeight = 0.0;
@@ -1261,7 +1185,6 @@ using namespace OPN;
     }
 
     CGFloat documentHeight = MAX(NSHeight(self.bounds), rowY + 88.0);
-    ambient.frame = NSMakeRect(0.0, 0.0, width, documentHeight);
     self.documentView.frame = NSMakeRect(0, 0, width, documentHeight);
     [self updateFocusedTiles];
 }
