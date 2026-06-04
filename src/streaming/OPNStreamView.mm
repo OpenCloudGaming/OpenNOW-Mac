@@ -212,6 +212,23 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     return [NSColor colorWithCalibratedWhite:white alpha:alpha];
 }
 
+static NSView *OPNSidebarSection(NSRect frame, CGFloat alpha) {
+    NSView *section = [[NSView alloc] initWithFrame:frame];
+    section.wantsLayer = YES;
+    section.layer.cornerRadius = 14.0;
+    section.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:alpha].CGColor;
+    section.layer.borderWidth = 1.0;
+    section.layer.borderColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.08].CGColor;
+    return section;
+}
+
+static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
+    NSView *separator = [[NSView alloc] initWithFrame:NSMakeRect(x, y, width, 1.0)];
+    separator.wantsLayer = YES;
+    separator.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.10].CGColor;
+    return separator;
+}
+
 - (void)addSidebarRowTo:(NSView *)panel title:(NSString *)title value:(NSTextField *)value y:(CGFloat)y {
     NSTextField *label = OPNSidebarLabel(title, 11.0, NSFontWeightMedium, OPNSidebarColor(0.72, 1.0), NSTextAlignmentLeft);
     label.frame = NSMakeRect(20.0, y, 120.0, 18.0);
@@ -253,11 +270,22 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     close.contentTintColor = NSColor.whiteColor;
     [panel addSubview:close];
 
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 56.0, NSWidth(panel.frame) - 24.0, 116.0), 0.045)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 176.0, NSWidth(panel.frame) - 24.0, 56.0), 0.060)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 240.0, NSWidth(panel.frame) - 24.0, 130.0), 0.060)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 382.0, NSWidth(panel.frame) - 24.0, 152.0), 0.045)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 538.0, NSWidth(panel.frame) - 24.0, 76.0), 0.045)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 608.0, NSWidth(panel.frame) - 24.0, 116.0), 0.060)];
+
     self.sidebarPlaytimeValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
     [self addSidebarRowTo:panel title:@"Playtime" value:self.sidebarPlaytimeValue y:66.0];
 
+    [panel addSubview:OPNSidebarSeparator(20.0, 94.0, NSWidth(panel.frame) - 40.0)];
+
     self.sidebarMicStatusValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
     [self addSidebarRowTo:panel title:@"Mic" value:self.sidebarMicStatusValue y:104.0];
+
+    [panel addSubview:OPNSidebarSeparator(20.0, 132.0, NSWidth(panel.frame) - 40.0)];
 
     self.sidebarBitrateValue = OPNSidebarLabel(@"-- Mbps", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
     [self addSidebarRowTo:panel title:@"Bitrate" value:self.sidebarBitrateValue y:142.0];
@@ -283,6 +311,8 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     self.upscalingModePopup.action = @selector(upscalingModePopupChanged:);
     [panel addSubview:self.upscalingModePopup];
 
+    [panel addSubview:OPNSidebarSeparator(20.0, 310.0, NSWidth(panel.frame) - 40.0)];
+
     [panel addSubview:OPNSidebarLabel(@"Detail Enhancement", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
     panel.subviews.lastObject.frame = NSMakeRect(20.0, 318.0, 190.0, 18.0);
     self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 342.0, NSWidth(panel.frame) - 40.0, 22.0)];
@@ -302,6 +332,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     [panel addSubview:OPNSidebarLabel(@"Game Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
     panel.subviews.lastObject.frame = NSMakeRect(20.0, 416.0, 180.0, 18.0);
     self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:440.0 panel:panel];
+    [panel addSubview:OPNSidebarSeparator(20.0, 472.0, NSWidth(panel.frame) - 40.0)];
     [panel addSubview:OPNSidebarLabel(@"Mic Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
     panel.subviews.lastObject.frame = NSMakeRect(20.0, 482.0, 180.0, 18.0);
     self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:506.0 panel:panel];
