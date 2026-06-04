@@ -22,6 +22,7 @@
 #import "common/OPNGameTypes.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <GameController/GameController.h>
+#import <QuartzCore/QuartzCore.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -83,6 +84,10 @@
 @property (nonatomic, assign) uint16_t desktopControllerHeldDirections;
 @property (nonatomic, assign) CFTimeInterval desktopControllerLastRepeatTime;
 - (void)configureContentContainerForScreen:(OPN::AuthScreen)screen;
+- (void)completeContentTransitionFromSubviews:(NSArray<NSView *> *)previousSubviews
+                                       toView:(NSView *)view
+                                     animated:(BOOL)animated
+                                      forward:(BOOL)forward;
 - (void)refreshAccountSummary;
 - (void)refreshAccountSummaryWithRetry:(BOOL)canRetry;
 - (void)refreshAccountAvatar;
@@ -2017,14 +2022,71 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self updateDesktopSettingsPill];
 }
 
+- (void)completeContentTransitionFromSubviews:(NSArray<NSView *> *)previousSubviews
+                                       toView:(NSView *)view
+                                     animated:(BOOL)animated
+                                      forward:(BOOL)forward {
+    if (!view) return;
+    view.frame = self.contentContainer.bounds;
+    view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    if (!animated || previousSubviews.count == 0) {
+        view.alphaValue = 1.0;
+        for (NSView *subview in previousSubviews) {
+            if (subview != view) [subview removeFromSuperview];
+        }
+        return;
+    }
+
+    CGFloat offset = forward ? 22.0 : -22.0;
+    NSRect finalFrame = self.contentContainer.bounds;
+    NSRect startingFrame = NSOffsetRect(finalFrame, offset, 0.0);
+    NSRect outgoingFrame = NSOffsetRect(finalFrame, -offset * 0.55, 0.0);
+    view.wantsLayer = YES;
+    view.alphaValue = 0.0;
+    view.frame = startingFrame;
+    for (NSView *subview in previousSubviews) {
+        if (subview == view) continue;
+        subview.wantsLayer = YES;
+        subview.alphaValue = 1.0;
+    }
+
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.20;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        view.animator.alphaValue = 1.0;
+        view.animator.frame = finalFrame;
+        for (NSView *subview in previousSubviews) {
+            if (subview == view) continue;
+            subview.animator.alphaValue = 0.0;
+            subview.animator.frame = outgoingFrame;
+        }
+    } completionHandler:^{
+        view.alphaValue = 1.0;
+        view.frame = finalFrame;
+        for (NSView *subview in previousSubviews) {
+            if (subview == view) continue;
+            subview.alphaValue = 1.0;
+            [subview removeFromSuperview];
+        }
+    }];
+}
+
 - (void)transitionToScreen:(OPN::AuthScreen)screen {
     using namespace OPN;
 
     [self installLibraryRootIfNeeded];
+    AuthScreen previousScreen = self.currentScreen;
+    NSArray<NSView *> *previousSubviews = [self.contentContainer.subviews copy];
+    BOOL animatedMainTransition = (previousScreen == AuthScreen::Settings && screen == AuthScreen::Store) ||
+        (OPNAppDelegateScreenSupportsDesktopNavigation(previousScreen) && screen == AuthScreen::Settings);
+    BOOL forwardTransition = screen == AuthScreen::Settings;
     [self configureContentContainerForScreen:screen];
 
-    for (NSView *subview in [self.contentContainer.subviews copy]) {
-        [subview removeFromSuperview];
+    if (!animatedMainTransition) {
+        for (NSView *subview in previousSubviews) {
+            [subview removeFromSuperview];
+        }
+        previousSubviews = @[];
     }
 
     self.currentScreen = screen;
@@ -2094,7 +2156,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         case AuthScreen::Store: {
             OPNConfigureLibraryWindow(self.window);
             self.catalogView = nil;
-            self.settingsView = nil;
+            BOOL restoringCachedStore = self.storeView != nil;
 
             self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
@@ -2106,23 +2168,24 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self refreshAccountSummary];
             [self refreshStreamRegions];
 
-            OPNGameCatalogView *store = [[OPNGameCatalogView alloc] initWithFrame:bounds];
+            OPNGameCatalogView *store = self.storeView ?: [[OPNGameCatalogView alloc] initWithFrame:bounds];
+            store.frame = bounds;
             store.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             self.storeView = store;
 
-            if (self.hasCachedFeaturedGames && self.cachedFeaturedGamesAccountIdentifier == OPNAuthSessionIdentifier(self.currentSession)) {
+            if (!restoringCachedStore && self.hasCachedFeaturedGames && self.cachedFeaturedGamesAccountIdentifier == OPNAuthSessionIdentifier(self.currentSession)) {
                 [store setFeaturedGames:self.cachedFeaturedGames];
             }
 
             std::string storePanelsAccountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
-            if (self.hasCachedStorePanels && self.cachedStorePanelsAccountIdentifier == storePanelsAccountIdentifier) {
+            if (!restoringCachedStore && self.hasCachedStorePanels && self.cachedStorePanelsAccountIdentifier == storePanelsAccountIdentifier) {
                 [store setPanels:self.cachedStorePanels];
             }
 
             std::string storeAccountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
-            if (self.hasCachedGameLibrary && self.cachedGameLibraryAccountIdentifier == storeAccountIdentifier) {
+            if (!restoringCachedStore && self.hasCachedGameLibrary && self.cachedGameLibraryAccountIdentifier == storeAccountIdentifier) {
                 [store setLibraryGames:self.cachedGameLibrary];
-            } else {
+            } else if (!restoringCachedStore) {
                 __weak __typeof__(self) weakSelfForLibrary = self;
                 [self fetchGameLibraryWithRetry:YES completion:^(BOOL success, const std::vector<GameInfo> &games) {
                     __typeof__(self) strongSelf = weakSelfForLibrary;
@@ -2137,28 +2200,41 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 }];
             }
 
-            __weak __typeof__(self) weakSelf = self;
-            store.onSelectGame = ^(const GameInfo &game, int variantIndex) {
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf launchGame:game variantIndex:variantIndex returnScreen:AuthScreen::Store];
-            };
-            store.onBuyGame = ^(const GameInfo &game, int variantIndex, NSString *purchaseURL) {
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
-            };
-            store.onBackRequested = ^{
-                __typeof__(self) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                [strongSelf transitionToScreen:AuthScreen::Store];
-            };
+            if (!restoringCachedStore) {
+                __weak __typeof__(self) weakSelf = self;
+                store.onSelectGame = ^(const GameInfo &game, int variantIndex) {
+                    __typeof__(self) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf launchGame:game variantIndex:variantIndex returnScreen:AuthScreen::Store];
+                };
+                store.onBuyGame = ^(const GameInfo &game, int variantIndex, NSString *purchaseURL) {
+                    __typeof__(self) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
+                };
+                store.onBackRequested = ^{
+                    __typeof__(self) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf transitionToScreen:AuthScreen::Store];
+                };
+            }
 
             [self.contentContainer addSubview:store];
+            [self completeContentTransitionFromSubviews:previousSubviews toView:store animated:animatedMainTransition forward:forwardTransition];
             OpnDisableFocusHighlights(store);
             self.window.title = @"OpenNOW - Store";
-            [self refreshFeaturedGamesForCatalogWithRetry:YES];
-            [self loadStorePanelsWithRetry:YES];
+            if (!restoringCachedStore) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (self.currentScreen != AuthScreen::Store || self.storeView != store) return;
+                    [self refreshFeaturedGamesForCatalogWithRetry:YES];
+                    [self loadStorePanelsWithRetry:YES];
+                });
+            } else {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (self.currentScreen != AuthScreen::Store || self.storeView != store) return;
+                    [self refreshGameLibraryInBackground];
+                });
+            }
             break;
         }
 
@@ -2280,8 +2356,6 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
         case AuthScreen::Settings: {
             OPNConfigureLibraryWindow(self.window);
-            self.storeView = nil;
-            self.catalogView = nil;
             self.rootView.accountName = OPNAuthSessionDisplayName(self.currentSession);
             self.rootView.accountStatus = OPNDisplayTier(self.currentSession.membershipTier);
             self.rootView.remainingPlayTime = @"--";
@@ -2306,6 +2380,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             };
             self.settingsView = settings;
             [self.contentContainer addSubview:settings];
+            [self completeContentTransitionFromSubviews:previousSubviews toView:settings animated:animatedMainTransition forward:forwardTransition];
             OpnDisableFocusHighlights(settings);
             self.window.title = @"OpenNOW - Settings";
             break;
