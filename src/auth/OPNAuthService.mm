@@ -320,6 +320,24 @@ static void CompleteRefreshWithSession(AuthSession session, AuthCallback complet
     });
 }
 
+static int FindAvailablePort() {
+    static const int candidatePorts[] = {2259, 6460, 7119, 8870, 9096};
+    for (int port : candidatePorts) {
+        int sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) continue;
+        struct sockaddr_in addr = {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(port);
+        if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            close(sock);
+            return port;
+        }
+        close(sock);
+    }
+    return 0;
+}
+
 void AuthService::RefreshSession(AuthCallback completion, bool forceRefresh) {
     AuthSession session = LoadSavedSession();
     if (!session.isAuthenticated) {
@@ -448,24 +466,6 @@ void AuthService::ServerLogout(const std::string &idToken,
 
 
 
-static int FindAvailablePort() {
-    static const int candidatePorts[] = {2259, 6460, 7119, 8870, 9096};
-    for (int port : candidatePorts) {
-        int sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) continue;
-        struct sockaddr_in addr = {};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = htons(port);
-        if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-            close(sock);
-            return port;
-        }
-        close(sock);
-    }
-    return 0;
-}
-
 static std::string GenerateOpenNOWDeviceId() {
     char hostname[256] = {0};
     gethostname(hostname, sizeof(hostname));
@@ -494,7 +494,7 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
     OAuthState pkce = GeneratePKCEState();
     std::string deviceId = GenerateOpenNOWDeviceId();
     std::string nonceHex = GenerateRandomString(32);
-    std::string redirectUri = "http://127.0.0.1:" + std::to_string(port);
+    std::string redirectUri = "http://localhost:" + std::to_string(port);
     std::string selectedProviderIdpId = providerIdpId.empty() ? kDefaultIdpId : providerIdpId;
 
     NSString *authorizeURLStr = [NSString stringWithFormat:
@@ -538,9 +538,10 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
         return;
     }
 
-    __block bool completed = NO;
+    __block bool completed = false;
     __block int blockSock = serverSock;
     __block OAuthState blockPkce = pkce;
+    __block std::string blockRedirectUri = redirectUri;
     __block std::string blockProviderIdpId = selectedProviderIdpId;
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -548,7 +549,7 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
         close(blockSock);
         if (clientSock < 0) {
             if (!completed) {
-                completed = YES;
+                completed = true;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(false, AuthSession{}, "Failed to accept OAuth callback");
                 });
@@ -558,10 +559,21 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
 
         char buf[4096] = {0};
         ssize_t n = recv(clientSock, buf, sizeof(buf) - 1, 0);
+        const char *response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head>"
+            "<body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\">"
+            "<main><h1>Sign in complete</h1><p>You can close this window and return to OpenNOW.</p></main>"
+            "<script>setTimeout(function(){window.close()},1200)</script></body></html>";
+        send(clientSock, response, strlen(response), 0);
+        close(clientSock);
+
         if (n <= 0) {
-            close(clientSock);
             if (!completed) {
-                completed = YES;
+                completed = true;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(false, AuthSession{}, "Empty OAuth callback request");
                 });
@@ -569,236 +581,11 @@ void AuthService::StartOAuthLogin(const std::string &providerIdpId, AuthCallback
             return;
         }
 
-        const char *response =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html; charset=utf-8\r\n"
-            "Connection: close\r\n"
-            "\r\n"
-            R"HTML(<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenNOW Sign In Complete</title>
-<style>
-:root {
-  color-scheme: dark;
-  --bg: #050807;
-  --panel: rgba(11, 20, 16, 0.78);
-  --panel-line: rgba(173, 255, 202, 0.24);
-  --text: #f1fff7;
-  --muted: #a8c3b4;
-  --green: #79f2a7;
-  --green-deep: #1dd46e;
-  --cyan: #79e9ff;
-}
-
-* { box-sizing: border-box; }
-
-html,
-body {
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
-}
-
-body {
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  padding: 32px;
-  color: var(--text);
-  background:
-    radial-gradient(circle at 22% 18%, rgba(121, 242, 167, 0.22), transparent 28%),
-    radial-gradient(circle at 78% 80%, rgba(121, 233, 255, 0.16), transparent 30%),
-    linear-gradient(135deg, #030504 0%, #07110d 48%, #020403 100%);
-  font-family: "Avenir Next", ui-rounded, "SF Pro Rounded", "Segoe UI", sans-serif;
-}
-
-body::before {
-  position: fixed;
-  inset: -20%;
-  content: "";
-  background-image:
-    linear-gradient(rgba(121, 242, 167, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(121, 242, 167, 0.055) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: radial-gradient(circle at center, black 0%, transparent 68%);
-  transform: perspective(700px) rotateX(58deg) translateY(12%);
-}
-
-.card {
-  position: relative;
-  width: min(520px, 100%);
-  padding: 38px;
-  overflow: hidden;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 30px;
-  box-shadow:
-    0 36px 110px rgba(0, 0, 0, 0.56),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(24px) saturate(1.28);
-}
-
-.card::before {
-  position: absolute;
-  inset: 0;
-  content: "";
-  background: linear-gradient(115deg, rgba(255, 255, 255, 0.16), transparent 28%, transparent 62%, rgba(121, 242, 167, 0.12));
-  pointer-events: none;
-}
-
-.mark {
-  position: relative;
-  display: grid;
-  width: 76px;
-  height: 76px;
-  place-items: center;
-  margin-bottom: 28px;
-  border-radius: 24px;
-  background: linear-gradient(145deg, var(--green), var(--green-deep));
-  box-shadow: 0 0 0 10px rgba(121, 242, 167, 0.08), 0 22px 48px rgba(29, 212, 110, 0.32);
-}
-
-.mark svg {
-  width: 42px;
-  height: 42px;
-  fill: none;
-  stroke: #031008;
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.eyebrow {
-  position: relative;
-  margin: 0 0 12px;
-  color: var(--green);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-}
-
-h1 {
-  position: relative;
-  max-width: 10ch;
-  margin: 0;
-  font-size: clamp(42px, 8vw, 68px);
-  line-height: 0.92;
-  letter-spacing: -0.065em;
-}
-
-.copy {
-  position: relative;
-  max-width: 34rem;
-  margin: 22px 0 0;
-  color: var(--muted);
-  font-size: 17px;
-  line-height: 1.58;
-}
-
-.status {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 30px;
-  padding: 14px 16px;
-  color: #d9ffe8;
-  background: rgba(121, 242, 167, 0.10);
-  border: 1px solid rgba(121, 242, 167, 0.18);
-  border-radius: 16px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.pulse {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--green);
-  box-shadow: 0 0 0 0 rgba(121, 242, 167, 0.6);
-  animation: pulse 1.45s ease-out infinite;
-}
-
-.actions {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-button {
-  min-height: 44px;
-  padding: 0 18px;
-  color: #031008;
-  background: var(--green);
-  border: 0;
-  border-radius: 999px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.hint {
-  align-self: center;
-  color: rgba(168, 195, 180, 0.78);
-  font-size: 13px;
-}
-
-@keyframes pulse {
-  70% { box-shadow: 0 0 0 14px rgba(121, 242, 167, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(121, 242, 167, 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pulse { animation: none; }
-}
-
-@media (max-width: 520px) {
-  body { padding: 18px; }
-  .card { padding: 28px; border-radius: 24px; }
-  .mark { width: 64px; height: 64px; border-radius: 20px; }
-}
-</style>
-</head>
-<body>
-<main class="card" aria-labelledby="title">
-  <div class="mark" aria-hidden="true">
-    <svg viewBox="0 0 48 48"><path d="M12 25.5 20.5 34 37 15"/></svg>
-  </div>
-  <p class="eyebrow">OpenNOW</p>
-  <h1 id="title">Sign in complete</h1>
-  <p class="copy">Your NVIDIA account is connected. OpenNOW is receiving the secure token now, so you can return to the app and continue to your cloud gaming library.</p>
-  <div class="status" role="status" aria-live="polite"><span class="pulse" aria-hidden="true"></span><span id="statusText">Returning you to OpenNOW...</span></div>
-  <div class="actions">
-    <button type="button" onclick="window.close()">Close this window</button>
-    <span class="hint">If it stays open, switch back to OpenNOW.</span>
-  </div>
-  <noscript><p class="copy">JavaScript is disabled. You can safely close this window and return to OpenNOW.</p></noscript>
-</main>
-<script>
-setTimeout(function () {
-  var statusText = document.getElementById('statusText');
-  if (statusText) statusText.textContent = 'You can safely close this window.';
-  window.close();
-}, 1200);
-</script>
-</body>
-</html>)HTML";
-        send(clientSock, response, strlen(response), 0);
-        close(clientSock);
-
         std::string request(buf, n);
         size_t pathStart = request.find("GET ");
         if (pathStart == std::string::npos) {
             if (!completed) {
-                completed = YES;
+                completed = true;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(false, AuthSession{}, "Invalid OAuth callback request");
                 });
@@ -809,25 +596,25 @@ setTimeout(function () {
         size_t pathEnd = request.find(" ", pathStart);
         if (pathEnd == std::string::npos) {
             if (!completed) {
-                completed = YES;
+                completed = true;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(false, AuthSession{}, "Malformed OAuth callback request");
                 });
             }
             return;
         }
+
         std::string path = request.substr(pathStart, pathEnd - pathStart);
         NSString *query = nil;
-        if (path.find("?") != std::string::npos)
-            query = [NSString stringWithUTF8String:path.substr(path.find("?") + 1).c_str()];
-
+        size_t queryStart = path.find("?");
+        if (queryStart != std::string::npos) query = [NSString stringWithUTF8String:path.substr(queryStart + 1).c_str()];
         NSDictionary *params = AuthService::parseQueryString(query);
         NSString *code = params[@"code"];
         NSString *state = params[@"state"];
 
         if (!code) {
             if (!completed) {
-                completed = YES;
+                completed = true;
                 NSString *errorMsg = params[@"error_description"]
                     ? params[@"error_description"]
                     : (params[@"error"] ? params[@"error"] : @"Unknown error");
@@ -841,18 +628,18 @@ setTimeout(function () {
         NSString *expectedState = [NSString stringWithUTF8String:blockPkce.state.c_str()];
         if (![state isEqualToString:expectedState]) {
             if (!completed) {
-                completed = YES;
+                completed = true;
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(false, AuthSession{}, "State mismatch — possible CSRF");
+                    completion(false, AuthSession{}, "State mismatch - possible CSRF");
                 });
             }
             return;
         }
 
         if (!completed) {
-            completed = YES;
+            completed = true;
             NSString *codeVerifier = [NSString stringWithUTF8String:blockPkce.codeVerifier.c_str()];
-            NSString *redirectStr = [NSString stringWithUTF8String:redirectUri.c_str()];
+            NSString *redirectStr = [NSString stringWithUTF8String:blockRedirectUri.c_str()];
             doOAuthTokenExchange(code, codeVerifier, redirectStr, blockProviderIdpId, completion);
         }
     });
@@ -1334,7 +1121,7 @@ AuthSession AuthService::ParseOAuthSession(NSDictionary *json) {
                     s.userId = v ? std::string([v UTF8String]) : std::string();
                 }
                 {
-                    NSString *v = claims[@"name"];
+                    NSString *v = [claims[@"nickname"] isKindOfClass:NSString.class] ? claims[@"nickname"] : claims[@"name"];
                     s.displayName = v ? std::string([v UTF8String]) : std::string();
                 }
                 {

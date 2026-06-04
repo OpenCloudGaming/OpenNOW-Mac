@@ -1096,12 +1096,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         std::string identifier = OPNAuthSessionIdentifier(session);
         if (identifier.empty()) continue;
         NSString *identifierString = [NSString stringWithUTF8String:identifier.c_str()];
-        NSString *label = OPNAuthSessionDisplayName(session);
+        BOOL isCurrentSession = [identifierString isEqualToString:currentIdentifierString];
+        NSString *label = isCurrentSession ? OPNAuthSessionDisplayName(self.currentSession) : OPNAuthSessionDisplayName(session);
         [self.desktopAccountSwitcher addItemWithTitle:label];
         NSMenuItem *item = self.desktopAccountSwitcher.lastItem;
         item.representedObject = identifierString;
-        item.image = OPNAccountSwitcherImageForSession(session, [identifierString isEqualToString:currentIdentifierString] ? self.rootView.accountAvatarImage : nil);
-        if ([identifierString isEqualToString:currentIdentifierString]) selectedIndex = self.desktopAccountSwitcher.numberOfItems - 1;
+        item.image = OPNAccountSwitcherImageForSession(isCurrentSession ? self.currentSession : session, isCurrentSession ? self.rootView.accountAvatarImage : nil);
+        if (isCurrentSession) selectedIndex = self.desktopAccountSwitcher.numberOfItems - 1;
         addedAnyAccount = YES;
     }
 
@@ -2428,15 +2429,16 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
     if (!self.rootView) return;
     NSMutableArray<NSDictionary<NSString *, NSString *> *> *items = [NSMutableArray array];
+    std::string currentIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     for (const AuthSession &session : AuthService::Shared().LoadSavedSessions()) {
         std::string identifier = OPNAuthSessionIdentifier(session);
         if (identifier.empty()) continue;
         NSString *identifierString = [NSString stringWithUTF8String:identifier.c_str()];
-        NSString *label = OPNAuthSessionDisplayName(session);
+        BOOL isCurrentSession = identifier == currentIdentifier;
+        NSString *label = isCurrentSession ? OPNAuthSessionDisplayName(self.currentSession) : OPNAuthSessionDisplayName(session);
         [items addObject:@{@"identifier": identifierString, @"label": label}];
     }
     self.rootView.accountMenuItems = items;
-    std::string currentIdentifier = OPNAuthSessionIdentifier(self.currentSession);
     self.rootView.currentAccountIdentifier = currentIdentifier.empty()
         ? @""
         : [NSString stringWithUTF8String:currentIdentifier.c_str()];
