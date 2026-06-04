@@ -92,6 +92,23 @@ static CGFloat OPNStoreTileWidthForRailWidth(CGFloat width) {
     return floor((width - kStoreCardSpacing * (columns - 1.0)) / columns);
 }
 
+static NSSize OPNStoreTileMetricsForRailWidth(CGFloat width) {
+    static NSMutableDictionary<NSNumber *, NSValue *> *metricsByWidth;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        metricsByWidth = [NSMutableDictionary dictionary];
+    });
+    CGFloat bucketedWidth = floor(MAX(320.0, width));
+    NSNumber *key = @(bucketedWidth);
+    NSValue *cached = metricsByWidth[key];
+    if (cached) return cached.sizeValue;
+    CGFloat tileWidth = OPNStoreTileWidthForRailWidth(bucketedWidth);
+    CGFloat tileHeight = floor(tileWidth * kStoreTileHeight / kStoreTileWidth);
+    NSSize metrics = NSMakeSize(tileWidth, tileHeight);
+    metricsByWidth[key] = [NSValue valueWithSize:metrics];
+    return metrics;
+}
+
 static NSString *OPNStoreString(const std::string &value, NSString *fallback) {
     return value.empty() ? (fallback ?: @"") : [NSString stringWithUTF8String:value.c_str()];
 }
@@ -1226,6 +1243,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) OPNStoreDocumentView *documentView;
 @property (nonatomic, strong) NSMutableArray<OPNStoreGameTile *> *cards;
 @property (nonatomic, assign) CGFloat y;
+@property (nonatomic, assign) BOOL mounted;
 @end
 
 @implementation OPNStoreRowLayout
@@ -1277,6 +1295,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)updateDesktopHeroElementsForGame:(const OPN::GameInfo &)game animated:(BOOL)animated;
 - (void)updateDesktopHeroFrameForCurrentBounds;
 - (void)updateRowFramesForCurrentBounds;
+- (void)updateRowVirtualizationForVisibleBounds;
 - (void)updateDesktopHeroLogoFrame;
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
 - (void)cancelHeroImageLoads;
@@ -1563,6 +1582,7 @@ using namespace OPN;
     self.documentView.frame = NSMakeRect(0.0, 0.0, MAX(980.0, NSWidth(self.bounds)), MAX(NSHeight(self.documentView.frame), NSHeight(self.bounds)));
     [self updateDesktopHeroFrameForCurrentBounds];
     [self updateRowFramesForCurrentBounds];
+    [self updateRowVirtualizationForVisibleBounds];
     if (std::fabs(self.lastLayoutWidth - NSWidth(self.bounds)) > 1.0 || std::fabs(self.lastLayoutHeight - NSHeight(self.bounds)) > 1.0) {
         self.lastLayoutWidth = NSWidth(self.bounds);
         self.lastLayoutHeight = NSHeight(self.bounds);
@@ -1584,12 +1604,9 @@ using namespace OPN;
         [self scheduleRenderStore];
         return;
     }
-    [self.resizeRenderTimer invalidate];
-    self.resizeRenderTimer = [NSTimer scheduledTimerWithTimeInterval:0.18
-                                                              target:self
-                                                            selector:@selector(resizeRenderTimerFired:)
-                                                            userInfo:nil
-                                                             repeats:NO];
+    [self updateDesktopHeroFrameForCurrentBounds];
+    [self updateRowFramesForCurrentBounds];
+    [self updateRowVirtualizationForVisibleBounds];
 }
 
 - (void)resizeRenderTimerFired:(NSTimer *)timer {
@@ -1761,6 +1778,7 @@ using namespace OPN;
     CGFloat documentHeight = MAX(NSHeight(self.bounds), rowY + 88.0);
     self.documentView.frame = NSMakeRect(0, 0, width, documentHeight);
     [self updateFocusedTiles];
+    [self updateRowVirtualizationForVisibleBounds];
 }
 
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width {
@@ -1902,8 +1920,9 @@ using namespace OPN;
         rowLayout.hintLabel.frame = NSMakeRect(contentX + availableWidth - 110.0, y + 6.0, 110.0, 18.0);
         rowLayout.scrollView.frame = NSMakeRect(contentX, y + 48.0, availableWidth, kStoreTileHeight + 30.0);
 
-        CGFloat fittedTileWidth = OPNStoreTileWidthForRailWidth(availableWidth);
-        CGFloat fittedTileHeight = floor(fittedTileWidth * kStoreTileHeight / kStoreTileWidth);
+        NSSize tileMetrics = OPNStoreTileMetricsForRailWidth(availableWidth);
+        CGFloat fittedTileWidth = tileMetrics.width;
+        CGFloat fittedTileHeight = tileMetrics.height;
         CGFloat x = 0.0;
         for (OPNStoreGameTile *card in rowLayout.cards) {
             BOOL focused = card.storeFocused;
@@ -1918,6 +1937,26 @@ using namespace OPN;
     }
     if (self.rowLayouts.count > 0) {
         self.documentView.frame = NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), rowY + 88.0));
+    }
+}
+
+- (void)updateRowVirtualizationForVisibleBounds {
+    if (self.rowLayouts.count == 0) return;
+    NSRect visibleBounds = self.scrollView.contentView.bounds;
+    CGFloat buffer = NSHeight(visibleBounds) + kStoreRowHeight;
+    CGFloat visibleMinY = NSMinY(visibleBounds) - buffer;
+    CGFloat visibleMaxY = NSMaxY(visibleBounds) + buffer;
+    for (OPNStoreRowLayout *rowLayout in self.rowLayouts) {
+        CGFloat rowMinY = rowLayout.y;
+        CGFloat rowMaxY = rowMinY + kStoreRowHeight;
+        BOOL shouldMount = rowMaxY >= visibleMinY && rowMinY <= visibleMaxY;
+        if (rowLayout.mounted == shouldMount) continue;
+        rowLayout.mounted = shouldMount;
+        rowLayout.glowView.hidden = !shouldMount;
+        rowLayout.indexLabel.hidden = !shouldMount;
+        rowLayout.titleLabel.hidden = !shouldMount;
+        rowLayout.hintLabel.hidden = !shouldMount;
+        rowLayout.scrollView.hidden = !shouldMount;
     }
 }
 
@@ -2100,8 +2139,9 @@ using namespace OPN;
     rowScroll.documentView = rowDocument;
 
     NSMutableArray<OPNStoreGameTile *> *cards = [NSMutableArray array];
-    CGFloat fittedTileWidth = OPNStoreTileWidthForRailWidth(availableWidth);
-    CGFloat fittedTileHeight = floor(fittedTileWidth * kStoreTileHeight / kStoreTileWidth);
+    NSSize tileMetrics = OPNStoreTileMetricsForRailWidth(availableWidth);
+    CGFloat fittedTileWidth = tileMetrics.width;
+    CGFloat fittedTileHeight = tileMetrics.height;
     CGFloat x = 0.0;
     NSInteger column = 0;
     NSInteger maxCards = 24;
@@ -2148,7 +2188,9 @@ using namespace OPN;
     rowLayout.documentView = rowDocument;
     rowLayout.cards = cards;
     rowLayout.y = y;
+    rowLayout.mounted = YES;
     [self.rowLayouts addObject:rowLayout];
+    [self updateRowVirtualizationForVisibleBounds];
 }
 
 - (void)updateFocusedTiles {
@@ -2252,6 +2294,7 @@ using namespace OPN;
 
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
     if (notification.object != self.scrollView.contentView) return;
+    [self updateRowVirtualizationForVisibleBounds];
     for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
         for (OPNStoreGameTile *tile in row) {
             [tile resetMouseTrackingIfOutside];
