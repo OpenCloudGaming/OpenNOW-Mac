@@ -83,7 +83,10 @@ struct StreamCloudVariables {
     bool allowHDR = true;
     bool allowL4S = true;
     bool allowReflex = true;
+    bool allowPrefilter = true;
     int maxBitrateMbps = 0;
+    int maxSupportedPrefilterMode = 2;
+    std::vector<int> supportedPrefilterModes;
     int refreshIntervalSeconds = 3600;
     std::string gpuName;
 };

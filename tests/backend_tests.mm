@@ -29,6 +29,7 @@
 namespace {
 
 constexpr int kOAuthCallbackPorts[] = {2259, 6460, 7119, 8870, 9096};
+static NSString *const kOpenNOWDefaultsDomain = @"io.github.opencloudgaming.opennow";
 
 class AuthTestEnvironment final {
 public:
@@ -353,8 +354,12 @@ class ScopedStreamIntegerPreference final {
 public:
     explicit ScopedStreamIntegerPreference(NSString *preferenceKey)
         : key(preferenceKey),
-          originalValue([NSUserDefaults.standardUserDefaults objectForKey:key]) {
+          originalValue([NSUserDefaults.standardUserDefaults objectForKey:key]),
+          originalBundleValue([[NSUserDefaults.standardUserDefaults persistentDomainForName:kOpenNOWDefaultsDomain] objectForKey:key]),
+          originalGlobalValue([[NSUserDefaults.standardUserDefaults persistentDomainForName:NSGlobalDomain] objectForKey:key]) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+        RemoveDomainValue(kOpenNOWDefaultsDomain);
+        RemoveDomainValue(NSGlobalDomain);
         [NSUserDefaults.standardUserDefaults synchronize];
     }
 
@@ -364,12 +369,36 @@ public:
         } else {
             [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
         }
+        RestoreDomainValue(kOpenNOWDefaultsDomain, originalBundleValue);
+        RestoreDomainValue(NSGlobalDomain, originalGlobalValue);
         [NSUserDefaults.standardUserDefaults synchronize];
     }
 
 private:
+    void RemoveDomainValue(NSString *domainName) const {
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        NSMutableDictionary *domain = [[defaults persistentDomainForName:domainName] mutableCopy];
+        if (!domain) return;
+        [domain removeObjectForKey:key];
+        [defaults setPersistentDomain:domain forName:domainName];
+    }
+
+    void RestoreDomainValue(NSString *domainName, id value) const {
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        NSMutableDictionary *domain = [[defaults persistentDomainForName:domainName] mutableCopy];
+        if (!domain) domain = [NSMutableDictionary dictionary];
+        if (value) {
+            [domain setObject:value forKey:key];
+        } else {
+            [domain removeObjectForKey:key];
+        }
+        [defaults setPersistentDomain:domain forName:domainName];
+    }
+
     NSString *key;
     id originalValue;
+    id originalBundleValue;
+    id originalGlobalValue;
 };
 
 class ScopedStreamObjectPreference final {
@@ -471,6 +500,29 @@ TEST_CASE("PrefilterPreferencesDefaultOffAndClampCustomLevels") {
     CHECK_EQ(custom.prefilterDenoise, 0);
 }
 
+TEST_CASE("PrefilterPreferencesReadBundleAndGlobalDefaults") {
+    ScopedStreamIntegerPreference mode(@"OpenNOW.Stream.PrefilterModeIndex");
+    ScopedStreamIntegerPreference sharpness(@"OpenNOW.Stream.PrefilterSharpness");
+    ScopedStreamIntegerPreference denoise(@"OpenNOW.Stream.PrefilterDenoise");
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+
+    NSMutableDictionary *bundleDomain = [[defaults persistentDomainForName:kOpenNOWDefaultsDomain] mutableCopy];
+    if (!bundleDomain) bundleDomain = [NSMutableDictionary dictionary];
+    [bundleDomain setObject:@2 forKey:@"OpenNOW.Stream.PrefilterModeIndex"];
+    [bundleDomain setObject:@10 forKey:@"OpenNOW.Stream.PrefilterSharpness"];
+    [defaults setPersistentDomain:bundleDomain forName:kOpenNOWDefaultsDomain];
+
+    NSMutableDictionary *globalDomain = [[defaults persistentDomainForName:NSGlobalDomain] mutableCopy];
+    if (!globalDomain) globalDomain = [NSMutableDictionary dictionary];
+    [globalDomain setObject:@7 forKey:@"OpenNOW.Stream.PrefilterDenoise"];
+    [defaults setPersistentDomain:globalDomain forName:NSGlobalDomain];
+
+    OPN::StreamPreferenceProfile fallback = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(fallback.prefilterMode, 2);
+    CHECK_EQ(fallback.prefilterSharpness, 10);
+    CHECK_EQ(fallback.prefilterDenoise, 7);
+}
+
 TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {
     ScopedStreamObjectPreference preference(@"OpenNOW.Stream.HDREnabled");
 
@@ -547,6 +599,62 @@ TEST_CASE("CloudVariablesParseAndClampNativeSettings") {
     CHECK(!applied.enableHdr);
     CHECK(!applied.enableL4S);
     CHECK(!applied.enableReflex);
+}
+
+TEST_CASE("CloudVariablesPreservePrefilterModesUnlessExplicitlyDisabled") {
+    std::string json = R"({
+        "subscription": {
+            "features": [
+                {"key": "SUPPORTED_DL_PREFILTERING", "setValue": ["0", "1"]}
+            ]
+        },
+        "maxSupportedModesForPrefilter": 2
+    })";
+
+    OPN::StreamCloudVariables variables = OPN::StreamCloudVariablesFromJSONString(json);
+    OPN::StreamSettings settings;
+    settings.prefilterMode = 2;
+    settings.prefilterSharpness = 8;
+    settings.prefilterDenoise = 6;
+    settings.prefilterModel = 1;
+
+    OPN::StreamSettings applied = OPN::StreamSettingsByApplyingCloudVariables(settings, variables, OPN::StreamDeviceCapabilities{});
+
+    CHECK(variables.fetched);
+    CHECK_EQ(variables.supportedPrefilterModes.size(), (size_t)2);
+    CHECK_EQ(applied.prefilterMode, 2);
+    CHECK_EQ(applied.prefilterSharpness, 8);
+    CHECK_EQ(applied.prefilterDenoise, 6);
+    CHECK_EQ(applied.prefilterModel, 1);
+
+    std::string disabledJson = R"({"variables":[{"key":"enablePrefilter","value":false}]})";
+    OPN::StreamCloudVariables disabledVariables = OPN::StreamCloudVariablesFromJSONString(disabledJson);
+    OPN::StreamSettings disabled = OPN::StreamSettingsByApplyingCloudVariables(settings, disabledVariables, OPN::StreamDeviceCapabilities{});
+
+    CHECK(disabledVariables.fetched);
+    CHECK_EQ(disabled.prefilterMode, 0);
+    CHECK_EQ(disabled.prefilterSharpness, 0);
+    CHECK_EQ(disabled.prefilterDenoise, 0);
+    CHECK_EQ(disabled.prefilterModel, 0);
+}
+
+TEST_CASE("CloudVariablesDoNotDisablePrefilterWhenUnfetched") {
+    OPN::StreamCloudVariables variables;
+    variables.fetched = false;
+    variables.allowPrefilter = false;
+
+    OPN::StreamSettings settings;
+    settings.prefilterMode = 2;
+    settings.prefilterSharpness = 10;
+    settings.prefilterDenoise = 9;
+    settings.prefilterModel = 1;
+
+    OPN::StreamSettings applied = OPN::StreamSettingsByApplyingCloudVariables(settings, variables, OPN::StreamDeviceCapabilities{});
+
+    CHECK_EQ(applied.prefilterMode, 2);
+    CHECK_EQ(applied.prefilterSharpness, 10);
+    CHECK_EQ(applied.prefilterDenoise, 9);
+    CHECK_EQ(applied.prefilterModel, 1);
 }
 
 }

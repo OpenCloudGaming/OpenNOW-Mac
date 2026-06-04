@@ -40,6 +40,7 @@ static NSString *const kCachedRegionsKey = @"OpenNOW.Stream.CachedRegions";
 static NSString *const kCachedCloudVariablesJSONKey = @"OpenNOW.Stream.CloudVariablesJSON";
 static NSString *const kCachedCloudVariablesTimestampKey = @"OpenNOW.Stream.CloudVariablesTimestamp";
 static NSString *const kHDREnabledKey = @"OpenNOW.Stream.HDREnabled";
+static NSString *const kOpenNOWDefaultsDomain = @"io.github.opencloudgaming.opennow";
 static NSString *const kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *const kNvClientVersion = @"2.0.80.173";
 static constexpr const char *kDefaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/";
@@ -489,17 +490,44 @@ std::string ResolveStreamCodecForCapabilities(const StreamPreferenceProfile &pro
     return "H264";
 }
 
-static int ClampedStoredInteger(NSString *key, int defaultValue, int upperBoundExclusive) {
+static id StoredPreferenceValue(NSString *key) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    BOOL prefilterKey = [key isEqualToString:kPrefilterModeIndexKey] ||
+                        [key isEqualToString:kPrefilterSharpnessKey] ||
+                        [key isEqualToString:kPrefilterDenoiseKey];
+    if (prefilterKey) {
+        id canonicalValue = [[defaults persistentDomainForName:kOpenNOWDefaultsDomain] objectForKey:key];
+        if (canonicalValue) return canonicalValue;
+    }
+
     id value = [defaults objectForKey:key];
+    if (value) return value;
+
+    value = [[defaults persistentDomainForName:kOpenNOWDefaultsDomain] objectForKey:key];
+    if (value) return value;
+
+    return [[defaults persistentDomainForName:NSGlobalDomain] objectForKey:key];
+}
+
+static void SaveCanonicalIntegerPreference(NSString *key, int value) {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setInteger:value forKey:key];
+
+    NSMutableDictionary *domain = [[defaults persistentDomainForName:kOpenNOWDefaultsDomain] mutableCopy];
+    if (!domain) domain = [NSMutableDictionary dictionary];
+    [domain setObject:@(value) forKey:key];
+    [defaults setPersistentDomain:domain forName:kOpenNOWDefaultsDomain];
+}
+
+static int ClampedStoredInteger(NSString *key, int defaultValue, int upperBoundExclusive) {
+    id value = StoredPreferenceValue(key);
     int stored = [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value intValue] : defaultValue;
     if (upperBoundExclusive <= 0) return 0;
     return std::max(0, std::min(stored, upperBoundExclusive - 1));
 }
 
 static double ClampedStoredDouble(NSString *key, double defaultValue, double minValue, double maxValue) {
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    id value = [defaults objectForKey:key];
+    id value = StoredPreferenceValue(key);
     double stored = [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value doubleValue] : defaultValue;
     if (!std::isfinite(stored)) stored = defaultValue;
     return std::max(minValue, std::min(stored, maxValue));
@@ -822,7 +850,7 @@ static id CloudVariableValue(id json, NSArray<NSString *> *names) {
         NSDictionary *dict = (NSDictionary *)json;
         NSString *variableName = StringFromJSONValue(dict[@"key"] ?: dict[@"name"] ?: dict[@"variableName"] ?: dict[@"id"]);
         if (NSStringEqualsAnyCaseInsensitive(variableName, names)) {
-            id value = dict[@"value"] ?: dict[@"defaultValue"] ?: dict[@"currentValue"];
+            id value = dict[@"value"] ?: dict[@"defaultValue"] ?: dict[@"currentValue"] ?: dict[@"setValue"] ?: dict[@"textValue"];
             if (value && value != NSNull.null) return value;
         }
         for (NSString *name in names) {
@@ -853,6 +881,64 @@ static NSNumber *CloudVariableNumber(id json, NSArray<NSString *> *names) {
 static NSString *CloudVariableString(id json, NSArray<NSString *> *names) {
     NSString *value = StringFromJSONValue(CloudVariableValue(json, names));
     return value.length > 0 ? value : nil;
+}
+
+static int PrefilterModeFromJSONValue(id value) {
+    NSNumber *number = NumberFromJSONValue(value);
+    if (number) {
+        int mode = number.intValue;
+        return mode >= 0 && mode <= 2 ? mode : -1;
+    }
+    NSString *string = StringFromJSONValue(value);
+    if (string.length == 0) return -1;
+    NSString *lower = [string lowercaseString];
+    if ([lower isEqualToString:@"off"] || [lower isEqualToString:@"disabled"]) return 0;
+    if ([lower isEqualToString:@"auto"] || [lower isEqualToString:@"automatic"]) return 1;
+    if ([lower isEqualToString:@"custom"]) return 2;
+    return -1;
+}
+
+static void AppendUniquePrefilterMode(std::vector<int> &modes, int mode) {
+    if (mode < 0 || mode > 2) return;
+    if (std::find(modes.begin(), modes.end(), mode) == modes.end()) modes.push_back(mode);
+}
+
+static void AppendPrefilterModesFromJSONValue(std::vector<int> &modes, id value) {
+    if (!value || value == NSNull.null) return;
+    if ([value isKindOfClass:NSArray.class]) {
+        for (id entry in (NSArray *)value) AppendPrefilterModesFromJSONValue(modes, entry);
+        return;
+    }
+    if ([value isKindOfClass:NSDictionary.class]) {
+        NSDictionary *dict = (NSDictionary *)value;
+        id modeValue = dict[@"value"] ?: dict[@"mode"] ?: dict[@"id"] ?: dict[@"name"] ?: dict[@"entitlementValue"];
+        NSNumber *entitled = NumberFromJSONValue(dict[@"isEntitled"] ?: dict[@"enabled"] ?: dict[@"supported"]);
+        if (entitled && !entitled.boolValue) return;
+        AppendUniquePrefilterMode(modes, PrefilterModeFromJSONValue(modeValue));
+        return;
+    }
+    NSString *string = StringFromJSONValue(value);
+    if (string.length > 0 && ([string hasPrefix:@"["] || [string hasPrefix:@"{"])) {
+        id nested = JSONValueFromString([string UTF8String]);
+        if (nested) {
+            AppendPrefilterModesFromJSONValue(modes, nested);
+            return;
+        }
+    }
+    if (string.length > 0 && [string containsString:@","]) {
+        for (NSString *part in [string componentsSeparatedByString:@","]) {
+            AppendUniquePrefilterMode(modes, PrefilterModeFromJSONValue([part stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]));
+        }
+        return;
+    }
+    AppendUniquePrefilterMode(modes, PrefilterModeFromJSONValue(value));
+}
+
+static std::vector<int> CloudVariablePrefilterModes(id json, NSArray<NSString *> *names) {
+    std::vector<int> modes;
+    AppendPrefilterModesFromJSONValue(modes, CloudVariableValue(json, names));
+    std::sort(modes.begin(), modes.end());
+    return modes;
 }
 
 static int BitrateMbpsFromJSON(id json, NSArray<NSString *> *mbpsKeys, NSArray<NSString *> *kbpsKeys) {
@@ -931,7 +1017,8 @@ StreamCloudVariables StreamCloudVariablesFromJSONString(const std::string &jsonT
     variables.allowHDR = CloudVariableBool(json, @[@"allowHDR", @"enableHDR", @"hdrEnabled", @"trueHdrEnabled", @"enableTrueHdr"], variables.allowHDR);
     variables.allowL4S = CloudVariableBool(json, @[@"allowL4S", @"enableL4S", @"l4sEnabled"], variables.allowL4S);
     variables.allowReflex = CloudVariableBool(json, @[@"allowReflex", @"enableReflex", @"reflexEnabled"], variables.allowReflex);
-
+    variables.allowPrefilter = CloudVariableBool(json, @[@"allowPrefilter", @"enablePrefilter", @"prefilterEnabled", @"allowDLPrefiltering", @"enableDLPrefiltering"], variables.allowPrefilter);
+    variables.supportedPrefilterModes = CloudVariablePrefilterModes(json, @[@"SUPPORTED_DL_PREFILTERING", @"supportedDLPrefiltering", @"supportedPrefilterModes", @"prefilterModes"]);
     NSNumber *maxBitrateMbps = CloudVariableNumber(json, @[@"maxBitrateMbps", @"maximumBitrateMbps", @"streamMaxBitrateMbps"]);
     NSNumber *maxBitrateKbps = CloudVariableNumber(json, @[@"maxBitrateKbps", @"maximumBitrateKbps", @"streamMaxBitrateKbps"]);
     if (maxBitrateMbps && maxBitrateMbps.doubleValue > 0.0) variables.maxBitrateMbps = std::max(1, (int)std::floor(maxBitrateMbps.doubleValue));
@@ -952,6 +1039,12 @@ StreamSettings StreamSettingsByApplyingCloudVariables(StreamSettings settings,
     if (!variables.allowHDR || !capabilities.hdrDisplaySupported) settings.enableHdr = false;
     if (!variables.allowL4S) settings.enableL4S = false;
     if (!variables.allowReflex) settings.enableReflex = false;
+    if (variables.fetched && !variables.allowPrefilter) settings.prefilterMode = 0;
+    if (settings.prefilterMode == 0) {
+        settings.prefilterSharpness = 0;
+        settings.prefilterDenoise = 0;
+        settings.prefilterModel = 0;
+    }
     if (variables.maxBitrateMbps > 0) settings.maxBitrateMbps = std::min(settings.maxBitrateMbps, variables.maxBitrateMbps);
     return settings;
 }
@@ -1256,17 +1349,17 @@ void SaveStreamColorQualityIndex(int colorQualityIndex) {
 
 void SaveStreamPrefilterModeIndex(int prefilterModeIndex) {
     int clamped = std::max(0, std::min(prefilterModeIndex, (int)StreamPrefilterModeOptions().size() - 1));
-    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterModeIndexKey];
+    SaveCanonicalIntegerPreference(kPrefilterModeIndexKey, clamped);
 }
 
 void SaveStreamPrefilterSharpness(int sharpness) {
     int clamped = std::max(0, std::min(sharpness, 10));
-    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterSharpnessKey];
+    SaveCanonicalIntegerPreference(kPrefilterSharpnessKey, clamped);
 }
 
 void SaveStreamPrefilterDenoise(int denoise) {
     int clamped = std::max(0, std::min(denoise, 10));
-    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kPrefilterDenoiseKey];
+    SaveCanonicalIntegerPreference(kPrefilterDenoiseKey, clamped);
 }
 
 void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps) {

@@ -2509,12 +2509,20 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             [strongSelf resetQualityGuardrailsForBitrate:preflightSettings.maxBitrateMbps];
             [strongSelf.streamView setMaxBitrateMbps:preflightSettings.maxBitrateMbps];
             if (variables.fetched) {
-                OPN::LogInfo(@"[StreamVC] Cloud variables applied codec=%s hdr=%d l4s=%d reflex=%d bitrate=%dMbps gpu=%s",
+                OPN::LogInfo(@"[StreamVC] Cloud variables applied codec=%s hdr=%d l4s=%d reflex=%d bitrate=%dMbps prefilter=%d/%d sharp=%d/%d denoise=%d/%d supportedPrefilterModes=%lu allowPrefilter=%d gpu=%s",
                       preflightSettings.codec.c_str(),
                       preflightSettings.enableHdr,
                       preflightSettings.enableL4S,
                       preflightSettings.enableReflex,
                       preflightSettings.maxBitrateMbps,
+                      requestedSettings.prefilterMode,
+                      preflightSettings.prefilterMode,
+                      requestedSettings.prefilterSharpness,
+                      preflightSettings.prefilterSharpness,
+                      requestedSettings.prefilterDenoise,
+                      preflightSettings.prefilterDenoise,
+                      (unsigned long)variables.supportedPrefilterModes.size(),
+                      variables.allowPrefilter,
                       variables.gpuName.c_str());
             }
 
@@ -2522,7 +2530,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             OPN::RunStreamNetworkPreflight(strongSelf->_apiToken,
                                            OPN::GameService::Shared().ProviderStreamingBaseUrl(),
                                            preflightSettings.maxBitrateMbps,
-                [weakSelf, preflightSettings, preflightProfile, launchGeneration, recoveringLaunch](const OPN::StreamNetworkPreflightResult &preflight) {
+                [weakSelf, requestedSettings, preflightSettings, preflightProfile, variables, launchGeneration, recoveringLaunch](const OPN::StreamNetworkPreflightResult &preflight) {
                     OPN::StreamNetworkPreflightResult preflightCopy = preflight;
                     dispatch_async(dispatch_get_main_queue(), ^{
                         __typeof__(self) strongSelf = weakSelf;
@@ -2535,6 +2543,18 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         if (preflightCopy.recommendedMaxBitrateMbps > 0) {
                             finalSettings.maxBitrateMbps = std::min(finalSettings.maxBitrateMbps, preflightCopy.recommendedMaxBitrateMbps);
                         }
+                        OPN::LogInfo(@"[StreamVC] Final launch prefilter requested=%d/%d/%d preflight=%d/%d/%d final=%d/%d/%d cloudFetched=%d allowPrefilter=%d",
+                              requestedSettings.prefilterMode,
+                              requestedSettings.prefilterSharpness,
+                              requestedSettings.prefilterDenoise,
+                              preflightSettings.prefilterMode,
+                              preflightSettings.prefilterSharpness,
+                              preflightSettings.prefilterDenoise,
+                              finalSettings.prefilterMode,
+                              finalSettings.prefilterSharpness,
+                              finalSettings.prefilterDenoise,
+                              variables.fetched,
+                              variables.allowPrefilter);
                         [strongSelf resetQualityGuardrailsForBitrate:finalSettings.maxBitrateMbps];
                         [strongSelf.streamView setMaxBitrateMbps:finalSettings.maxBitrateMbps];
 
