@@ -686,13 +686,20 @@ using namespace OPN;
     [video addSubview:[self rowLabel:@"Resolution Upscaling" y:878.0]];
     [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:868.0 widths:@[@72.0, @112.0, @124.0]];
 
-    [video addSubview:OpnLabel(@"Edge Crispness", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    [video addSubview:OpnLabel(@"Local Sharpness", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 938.0, MIN(120.0, controlWidth), 38.0)
                                                                   value:profile.upscalingSharpness
                                                                  action:@selector(upscalingSharpnessPopupChanged:)];
     [video addSubview:upscalingSharpnessPopup];
 
-    NSTextField *upscalingHint = OpnLabel(@"Off avoids enlarging the stream when possible. Enhanced uses native scaling; AI Enhanced favors crisper edges without blur-prone post filters.",
+    CGFloat upscalingDenoiseX = controlX + MIN(160.0, controlWidth * 0.5);
+    [video addSubview:OpnLabel(@"Local Denoise", NSMakeRect(upscalingDenoiseX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *upscalingDenoisePopup = [self integerPopupWithFrame:NSMakeRect(upscalingDenoiseX, 938.0, MIN(120.0, controlWidth), 38.0)
+                                                               value:profile.upscalingDenoise
+                                                              action:@selector(upscalingDenoisePopupChanged:)];
+    [video addSubview:upscalingDenoisePopup];
+
+    NSTextField *upscalingHint = OpnLabel(@"Off avoids enlarging the stream when possible. Enhanced and AI Enhanced use a Metal-backed local processor for Lanczos scaling, denoise, and sharpening.",
                                           NSMakeRect(controlX, 986.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),
@@ -1314,6 +1321,11 @@ using namespace OPN;
 
 - (void)upscalingSharpnessPopupChanged:(NSPopUpButton *)sender {
     OPN::SaveStreamUpscalingSharpness((int)sender.indexOfSelectedItem);
+    [self rebuildContent];
+}
+
+- (void)upscalingDenoisePopupChanged:(NSPopUpButton *)sender {
+    OPN::SaveStreamUpscalingDenoise((int)sender.indexOfSelectedItem);
     [self rebuildContent];
 }
 

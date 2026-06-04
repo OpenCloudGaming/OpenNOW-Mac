@@ -523,20 +523,24 @@ TEST_CASE("PrefilterPreferencesReadBundleAndGlobalDefaults") {
     CHECK_EQ(fallback.prefilterDenoise, 7);
 }
 
-TEST_CASE("UpscalingPreferencesDefaultEnhancedAndClampSharpness") {
+TEST_CASE("UpscalingPreferencesDefaultEnhancedAndClampSharpnessDenoise") {
     ScopedStreamIntegerPreference mode(@"OpenNOW.Stream.UpscalingModeIndex");
     ScopedStreamIntegerPreference sharpness(@"OpenNOW.Stream.UpscalingSharpness");
+    ScopedStreamIntegerPreference denoise(@"OpenNOW.Stream.UpscalingDenoise");
 
     OPN::StreamPreferenceProfile defaults = OPN::LoadStreamPreferenceProfile();
     CHECK_EQ(defaults.upscalingMode, 1);
     CHECK_EQ(defaults.upscalingSharpness, 4);
+    CHECK_EQ(defaults.upscalingDenoise, 0);
 
     OPN::SaveStreamUpscalingModeIndex(99);
     OPN::SaveStreamUpscalingSharpness(-3);
+    OPN::SaveStreamUpscalingDenoise(42);
 
     OPN::StreamPreferenceProfile clamped = OPN::LoadStreamPreferenceProfile();
     CHECK_EQ(clamped.upscalingMode, 2);
     CHECK_EQ(clamped.upscalingSharpness, 0);
+    CHECK_EQ(clamped.upscalingDenoise, 10);
 }
 
 TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {

@@ -3,8 +3,10 @@
 #include "common/OPNSentry.h"
 
 #import <CoreAudio/CoreAudio.h>
+#import <CoreImage/CoreImage.h>
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
 #import <AudioUnit/AudioUnit.h>
 
@@ -1187,6 +1189,9 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 @property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererNV12;
 @property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererRGB;
 @property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererI420;
+@property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
+@property(nonatomic, strong) CIContext *ciContext;
+@property(nonatomic, assign) CGColorSpaceRef outputColorSpace;
 @property(nonatomic, assign) int targetFps;
 @property(nonatomic, assign) uint64_t frameSerial;
 @property(nonatomic, assign) uint64_t lastDrawnFrameSerial;
@@ -1201,7 +1206,10 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
                                  renderMode:(NSString **)renderMode
                                 frameSource:(NSString **)frameSource
                                  renderPath:(NSString **)renderPath
-                                   fallback:(NSString **)fallback;
+                                    fallback:(NSString **)fallback;
+- (BOOL)drawProcessedFrame:(RTCVideoFrame *)frame renderPath:(NSString **)renderPath fallback:(NSString **)fallback;
+- (CIImage *)imageForFrame:(RTCVideoFrame *)frame temporaryPixelBuffer:(CVPixelBufferRef *)temporaryPixelBuffer;
+- (CVPixelBufferRef)newBGRAFallbackPixelBufferForI420Frame:(RTCVideoFrame *)frame;
 @end
 
 @implementation OPNMetalVideoView
@@ -1220,7 +1228,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 
         _metalView = [[MTKView alloc] initWithFrame:self.bounds device:MTLCreateSystemDefaultDevice()];
         _metalView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        _metalView.framebufferOnly = YES;
+        _metalView.framebufferOnly = NO;
         _metalView.autoResizeDrawable = NO;
         _metalView.paused = YES;
         _metalView.enableSetNeedsDisplay = NO;
@@ -1236,8 +1244,20 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
             }
         }
         [self addSubview:_metalView];
+        if (_metalView.device) {
+            _commandQueue = [_metalView.device newCommandQueue];
+            _ciContext = [CIContext contextWithMTLDevice:_metalView.device options:@{kCIContextWorkingColorSpace: [NSNull null]}];
+            _outputColorSpace = CGColorSpaceCreateDeviceRGB();
+        }
     }
     return self;
+}
+
+- (void)dealloc {
+    if (_outputColorSpace) {
+        CGColorSpaceRelease(_outputColorSpace);
+        _outputColorSpace = nil;
+    }
 }
 
 - (void)layout {
@@ -1297,8 +1317,34 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
     NSString *frameSource = @"unknown";
     NSString *renderPath = @"RTCMTLI420Renderer";
     NSString *fallback = @"";
+    int enhancementMode = 0;
+    int enhancementSharpness = 0;
+    int enhancementDenoise = 0;
+    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
+    if (enhancementMode > 0 && (enhancementSharpness > 0 || enhancementDenoise > 0)) {
+        if ([self drawProcessedFrame:frame renderPath:&renderPath fallback:&fallback]) {
+            pixelFormat = @"CoreImage";
+            renderMode = enhancementMode >= 2 ? @"AI Enhanced" : @"Enhanced";
+            frameSource = @"processed frame";
+            self.lastDrawnFrameSerial = drawSerial;
+        } else if (fallback.length == 0) {
+            fallback = @"processed renderer unavailable; using WebRTC renderer";
+        }
+    }
+    if (self.lastDrawnFrameSerial == drawSerial) {
+        CFTimeInterval now = CACurrentMediaTime();
+        if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
+            self.lastDiagnosticsUpdateTime = now;
+            self.owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
+                                                  OPN::OPNNSStringToString(renderMode),
+                                                  OPN::OPNNSStringToString(frameSource),
+                                                  OPN::OPNNSStringToString(renderPath),
+                                                  OPN::OPNNSStringToString(fallback));
+        }
+        return;
+    }
     id<OPNRTCMetalRenderer> renderer = [self rendererForFrame:frame
-                                                  pixelFormat:&pixelFormat
+                                                   pixelFormat:&pixelFormat
                                                    renderMode:&renderMode
                                                   frameSource:&frameSource
                                                    renderPath:&renderPath
@@ -1318,6 +1364,162 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
                                               OPN::OPNNSStringToString(renderPath),
                                               OPN::OPNNSStringToString(fallback));
     }
+}
+
+- (BOOL)drawProcessedFrame:(RTCVideoFrame *)frame renderPath:(NSString **)renderPath fallback:(NSString **)fallback {
+    if (!frame || !self.ciContext || !self.commandQueue || !self.metalView.currentDrawable) {
+        if (fallback) *fallback = @"processed renderer missing Metal drawable";
+        return NO;
+    }
+    int enhancementMode = 0;
+    int sharpness = 0;
+    int denoise = 0;
+    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, sharpness, denoise);
+    if (enhancementMode <= 0 || (sharpness <= 0 && denoise <= 0)) return NO;
+
+    CVPixelBufferRef temporaryPixelBuffer = nil;
+    CIImage *image = [self imageForFrame:frame temporaryPixelBuffer:&temporaryPixelBuffer];
+    if (!image) {
+        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
+        if (fallback) *fallback = @"processed renderer could not create CIImage";
+        return NO;
+    }
+
+    CGRect sourceExtent = image.extent;
+    if (CGRectIsEmpty(sourceExtent) || sourceExtent.size.width <= 0.0 || sourceExtent.size.height <= 0.0) {
+        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
+        if (fallback) *fallback = @"processed renderer got empty frame";
+        return NO;
+    }
+
+    if (denoise > 0) {
+        CIFilter *noiseReduction = [CIFilter filterWithName:@"CINoiseReduction"];
+        [noiseReduction setDefaults];
+        [noiseReduction setValue:image forKey:kCIInputImageKey];
+        [noiseReduction setValue:@(0.01 + ((double)denoise / 10.0) * 0.055) forKey:@"inputNoiseLevel"];
+        [noiseReduction setValue:@(0.20 + ((double)sharpness / 10.0) * 0.25) forKey:@"inputSharpness"];
+        image = noiseReduction.outputImage ?: image;
+    }
+
+    id<CAMetalDrawable> drawable = self.metalView.currentDrawable;
+    CGSize drawableSize = self.metalView.drawableSize;
+    if (!drawable || drawableSize.width <= 0.0 || drawableSize.height <= 0.0) {
+        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
+        if (fallback) *fallback = @"processed renderer got empty drawable";
+        return NO;
+    }
+
+    const CGFloat scale = MIN(drawableSize.width / sourceExtent.size.width, drawableSize.height / sourceExtent.size.height);
+    if (scale > 0.0 && std::isfinite((double)scale)) {
+        CIFilter *lanczos = [CIFilter filterWithName:@"CILanczosScaleTransform"];
+        [lanczos setDefaults];
+        [lanczos setValue:image forKey:kCIInputImageKey];
+        [lanczos setValue:@(scale) forKey:kCIInputScaleKey];
+        [lanczos setValue:@1.0 forKey:kCIInputAspectRatioKey];
+        image = lanczos.outputImage ?: [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+    }
+
+    if (sharpness > 0) {
+        CIFilter *unsharp = [CIFilter filterWithName:@"CIUnsharpMask"];
+        [unsharp setDefaults];
+        [unsharp setValue:image forKey:kCIInputImageKey];
+        [unsharp setValue:@(0.45 + ((double)sharpness / 10.0) * (enhancementMode >= 2 ? 0.95 : 0.55)) forKey:kCIInputIntensityKey];
+        [unsharp setValue:@(0.55 + ((double)sharpness / 10.0) * 1.15) forKey:kCIInputRadiusKey];
+        image = unsharp.outputImage ?: image;
+    }
+
+    CGRect scaledExtent = image.extent;
+    CGFloat x = floor((drawableSize.width - scaledExtent.size.width) * 0.5 - scaledExtent.origin.x);
+    CGFloat y = floor((drawableSize.height - scaledExtent.size.height) * 0.5 - scaledExtent.origin.y);
+    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(x, y)];
+
+    id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
+    if (!commandBuffer) {
+        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
+        if (fallback) *fallback = @"processed renderer could not create command buffer";
+        return NO;
+    }
+
+    MTLRenderPassDescriptor *clearPass = [MTLRenderPassDescriptor renderPassDescriptor];
+    clearPass.colorAttachments[0].texture = drawable.texture;
+    clearPass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    clearPass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    clearPass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:clearPass];
+    [encoder endEncoding];
+
+    CGRect outputBounds = CGRectMake(0.0, 0.0, drawableSize.width, drawableSize.height);
+    [self.ciContext render:image
+              toMTLTexture:drawable.texture
+             commandBuffer:commandBuffer
+                    bounds:outputBounds
+                colorSpace:self.outputColorSpace];
+    [commandBuffer presentDrawable:drawable];
+    [commandBuffer commit];
+    if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
+    if (renderPath) *renderPath = @"OPNCoreImageMetalUpscaler";
+    return YES;
+}
+
+- (CIImage *)imageForFrame:(RTCVideoFrame *)frame temporaryPixelBuffer:(CVPixelBufferRef *)temporaryPixelBuffer {
+    if (!frame) return nil;
+    id<RTCVideoFrameBuffer> buffer = frame.buffer;
+    if ([buffer isKindOfClass:RTCCVPixelBuffer.class]) {
+        RTCCVPixelBuffer *cvBuffer = (RTCCVPixelBuffer *)buffer;
+        CIImage *image = [CIImage imageWithCVPixelBuffer:cvBuffer.pixelBuffer];
+        if (cvBuffer.requiresCropping) {
+            CGRect crop = CGRectMake(cvBuffer.cropX, cvBuffer.cropY, cvBuffer.cropWidth, cvBuffer.cropHeight);
+            image = [[image imageByCroppingToRect:crop] imageByApplyingTransform:CGAffineTransformMakeTranslation(-crop.origin.x, -crop.origin.y)];
+        }
+        return image;
+    }
+
+    CVPixelBufferRef pixelBuffer = [self newBGRAFallbackPixelBufferForI420Frame:frame];
+    if (!pixelBuffer) return nil;
+    if (temporaryPixelBuffer) *temporaryPixelBuffer = pixelBuffer;
+    return [CIImage imageWithCVPixelBuffer:pixelBuffer];
+}
+
+- (CVPixelBufferRef)newBGRAFallbackPixelBufferForI420Frame:(RTCVideoFrame *)frame {
+    RTCVideoFrame *i420Frame = [frame newI420VideoFrame];
+    id<RTCI420Buffer> i420 = (id<RTCI420Buffer>)i420Frame.buffer;
+    if (!i420 || i420.width <= 0 || i420.height <= 0) return nil;
+
+    NSDictionary *attributes = @{(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
+                                 (__bridge NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
+                                 (__bridge NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES};
+    CVPixelBufferRef output = nil;
+    CVReturn result = CVPixelBufferCreate(kCFAllocatorDefault,
+                                          (size_t)i420.width,
+                                          (size_t)i420.height,
+                                          kCVPixelFormatType_32BGRA,
+                                          (__bridge CFDictionaryRef)attributes,
+                                          &output);
+    if (result != kCVReturnSuccess || !output) return nil;
+
+    CVPixelBufferLockBaseAddress(output, 0);
+    uint8_t *dst = (uint8_t *)CVPixelBufferGetBaseAddress(output);
+    const size_t dstStride = CVPixelBufferGetBytesPerRow(output);
+    for (int y = 0; y < i420.height; y++) {
+        uint8_t *row = dst + (size_t)y * dstStride;
+        const uint8_t *yRow = i420.dataY + y * i420.strideY;
+        const uint8_t *uRow = i420.dataU + (y / 2) * i420.strideU;
+        const uint8_t *vRow = i420.dataV + (y / 2) * i420.strideV;
+        for (int x = 0; x < i420.width; x++) {
+            int yy = (int)yRow[x];
+            int uu = (int)uRow[x / 2] - 128;
+            int vv = (int)vRow[x / 2] - 128;
+            int r = yy + (int)std::lround(1.402 * vv);
+            int g = yy - (int)std::lround(0.344136 * uu + 0.714136 * vv);
+            int b = yy + (int)std::lround(1.772 * uu);
+            row[x * 4 + 0] = (uint8_t)std::max(0, std::min(255, b));
+            row[x * 4 + 1] = (uint8_t)std::max(0, std::min(255, g));
+            row[x * 4 + 2] = (uint8_t)std::max(0, std::min(255, r));
+            row[x * 4 + 3] = 255;
+        }
+    }
+    CVPixelBufferUnlockBaseAddress(output, 0);
+    return output;
 }
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size {
@@ -2092,6 +2294,13 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
     ApplyRuntimeBitrateLimit(clampedMbps, "manual");
 }
 
+void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_localEnhancementMode = std::max(0, std::min(mode, 2));
+    m_localEnhancementSharpness = std::max(0, std::min(sharpness, 10));
+    m_localEnhancementDenoise = std::max(0, std::min(denoise, 10));
+}
+
 void LibWebRTCStreamSession::UpdateAdaptiveBitrate(const StreamStats &stats) {
     if (!stats.available) return;
 
@@ -2792,6 +3001,13 @@ double LibWebRTCStreamSession::GameVolume() const {
 
 int LibWebRTCStreamSession::TargetFps() const {
     return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
+}
+
+void LibWebRTCStreamSession::LocalVideoEnhancement(int &mode, int &sharpness, int &denoise) const {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    mode = m_localEnhancementMode;
+    sharpness = m_localEnhancementSharpness;
+    denoise = m_localEnhancementDenoise;
 }
 
 void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, const std::string &pipelineMode) {

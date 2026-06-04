@@ -124,6 +124,7 @@ struct StreamPreferenceProfile {
     int upscalingModeIndex = 1;
     int upscalingMode = 1;
     int upscalingSharpness = 4;
+    int upscalingDenoise = 0;
     int recordingVideoBitrateMbps = 0;
     int recordingAudioBitrateKbps = 160;
     bool enableL4S = false;
@@ -216,6 +217,7 @@ void SaveStreamPrefilterSharpness(int sharpness);
 void SaveStreamPrefilterDenoise(int denoise);
 void SaveStreamUpscalingModeIndex(int upscalingModeIndex);
 void SaveStreamUpscalingSharpness(int sharpness);
+void SaveStreamUpscalingDenoise(int denoise);
 void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps);
 void SaveStreamRecordingAudioBitrateKbps(int bitrateKbps);
 void SaveStreamL4SEnabled(bool enabled);

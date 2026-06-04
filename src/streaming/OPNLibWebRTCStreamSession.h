@@ -39,6 +39,7 @@ public:
     void SetGameVolume(double volume) override;
     void SetMicrophoneVolume(double volume) override;
     void SetMaxBitrateMbps(int mbps) override;
+    void SetLocalVideoEnhancement(int mode, int sharpness, int denoise) override;
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
     void OnGameAudioFrame(GameAudioFrameCallback cb) override;
@@ -58,6 +59,7 @@ public:
     void HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels);
     double GameVolume() const;
     int TargetFps() const;
+    void LocalVideoEnhancement(int &mode, int &sharpness, int &denoise) const;
     void SetVideoRendererState(const std::string &sink, const std::string &pipelineMode);
     void SetVideoRenderDiagnostics(const std::string &pixelFormat,
                                    const std::string &renderMode,
@@ -108,6 +110,9 @@ private:
     uint64_t m_previousFramesDecoded = 0;
     int64_t m_previousPacketsLost = 0;
     int m_configuredMaxBitrateMbps = 0;
+    int m_localEnhancementMode = 1;
+    int m_localEnhancementSharpness = 4;
+    int m_localEnhancementDenoise = 0;
     int m_adaptiveBitrateMbps = 0;
     int m_minAdaptiveBitrateMbps = 0;
     int m_adaptiveCongestionScore = 0;

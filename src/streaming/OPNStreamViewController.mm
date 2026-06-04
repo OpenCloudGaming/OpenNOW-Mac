@@ -2457,6 +2457,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self.streamView setVideoAspectRatio:(CGFloat)OPNAspectRatioForResolution(effectiveResolution, streamProfile.AspectRatio())];
     [self.streamView setVideoUpscalingMode:streamProfile.upscalingMode
                                  sharpness:streamProfile.upscalingSharpness
+                                   denoise:streamProfile.upscalingDenoise
                                streamWidth:effectiveResolution.width
                               streamHeight:effectiveResolution.height];
     [self.streamView setSuppressInputWhenWindowInactive:streamProfile.suppressInputWhenInactive ? YES : NO];

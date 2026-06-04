@@ -33,7 +33,7 @@ class IStreamSession;
 - (void)handleMouseEvent:(NSEvent *)event;
 - (NSView *)nativeVideoView;
 - (void)setVideoAspectRatio:(CGFloat)aspectRatio;
-- (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight;
+- (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness denoise:(NSInteger)denoise streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight;
 - (void)takeFocus;
 - (void)releasePointerLock;
 - (BOOL)isSidebarHUDVisible;
