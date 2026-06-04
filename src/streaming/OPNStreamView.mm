@@ -9,7 +9,6 @@
 #import <GameController/GameController.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <QuartzCore/QuartzCore.h>
-#import <CoreImage/CoreImage.h>
 
 #include <algorithm>
 #include <climits>
@@ -313,7 +312,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 
     [panel addSubview:OPNSidebarSeparator(20.0, 310.0, NSWidth(panel.frame) - 40.0)];
 
-    [panel addSubview:OPNSidebarLabel(@"Detail Enhancement", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
+    [panel addSubview:OPNSidebarLabel(@"Edge Crispness", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
     panel.subviews.lastObject.frame = NSMakeRect(20.0, 318.0, 190.0, 18.0);
     self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 342.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.upscalingSharpnessSlider.minValue = 0.0;
@@ -587,26 +586,26 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     view.wantsLayer = YES;
     CALayer *layer = view.layer;
     if (layer) {
+        layer.contentsScale = self.window.backingScaleFactor > 0.0 ? self.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
+        if (layer.contentsScale <= 0.0) layer.contentsScale = 1.0;
+        layer.filters = nil;
+
         if (_videoUpscalingMode <= 0) {
             layer.magnificationFilter = kCAFilterNearest;
             layer.minificationFilter = kCAFilterLinear;
             layer.minificationFilterBias = 0.0;
             layer.allowsEdgeAntialiasing = NO;
-            layer.filters = nil;
+        } else if (_videoUpscalingMode >= 2) {
+            layer.magnificationFilter = _videoUpscalingSharpness > 0 ? kCAFilterNearest : kCAFilterLinear;
+            layer.minificationFilter = kCAFilterLinear;
+            layer.minificationFilterBias = 0.0;
+            layer.allowsEdgeAntialiasing = _videoUpscalingSharpness <= 0;
         } else {
             layer.magnificationFilter = kCAFilterLinear;
-            layer.minificationFilter = _videoUpscalingMode >= 2 ? kCAFilterTrilinear : kCAFilterLinear;
-            layer.minificationFilterBias = _videoUpscalingMode >= 2 ? -0.25f : 0.0f;
+            layer.minificationFilter = kCAFilterLinear;
+            layer.minificationFilterBias = 0.0;
             layer.allowsEdgeAntialiasing = YES;
-            if (_videoUpscalingSharpness > 0) {
-                CIFilter *sharpen = [CIFilter filterWithName:@"CISharpenLuminance"];
-                double multiplier = _videoUpscalingMode >= 2 ? 0.08 : 0.04;
-                [sharpen setDefaults];
-                [sharpen setValue:@((double)_videoUpscalingSharpness * multiplier) forKey:kCIInputSharpnessKey];
-                layer.filters = sharpen ? @[sharpen] : nil;
-            } else {
-                layer.filters = nil;
-            }
+            layer.filters = nil;
         }
     }
     for (NSView *subview in view.subviews) {

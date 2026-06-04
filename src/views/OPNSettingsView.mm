@@ -686,13 +686,13 @@ using namespace OPN;
     [video addSubview:[self rowLabel:@"Resolution Upscaling" y:878.0]];
     [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:868.0 widths:@[@72.0, @112.0, @124.0]];
 
-    [video addSubview:OpnLabel(@"Detail Enhancement", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    [video addSubview:OpnLabel(@"Edge Crispness", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 938.0, MIN(120.0, controlWidth), 38.0)
                                                                   value:profile.upscalingSharpness
                                                                  action:@selector(upscalingSharpnessPopupChanged:)];
     [video addSubview:upscalingSharpnessPopup];
 
-    NSTextField *upscalingHint = OpnLabel(@"Off avoids enlarging the stream when possible. Enhanced and AI Enhanced use local high-quality scaling and detail enhancement while streaming.",
+    NSTextField *upscalingHint = OpnLabel(@"Off avoids enlarging the stream when possible. Enhanced uses native scaling; AI Enhanced favors crisper edges without blur-prone post filters.",
                                           NSMakeRect(controlX, 986.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),
