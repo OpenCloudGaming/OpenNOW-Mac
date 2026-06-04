@@ -298,24 +298,13 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     NSRect target = self.bounds;
     if (imageAspect > viewAspect) {
         target.size.height = floor(NSWidth(self.bounds) / imageAspect);
-        target.origin.y = floor((NSHeight(self.bounds) - NSHeight(target)) * 0.5);
+        target.origin.y = 0.0;
     } else if (imageAspect < viewAspect) {
         target.size.width = floor(NSHeight(self.bounds) * imageAspect);
-        target.origin.x = floor((NSWidth(self.bounds) - NSWidth(target)) * 0.5);
+        target.origin.x = 0.0;
     }
 
     [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
-
-    CGFloat targetWidth = MAX(1.0, NSWidth(target));
-    CGFloat sideFadeWidth = MIN(targetWidth * 0.18, 220.0);
-    NSInteger horizontalSteps = MAX((NSInteger)1, (NSInteger)ceil(sideFadeWidth / 2.0));
-    for (NSInteger step = 0; step < horizontalSteps; step++) {
-        CGFloat progress = horizontalSteps <= 1 ? 1.0 : (CGFloat)step / (CGFloat)(horizontalSteps - 1);
-        CGFloat alpha = 1.00 * pow(1.0 - progress, 0.5);
-        [OpnColor(OPN::kBackground, alpha) setFill];
-        NSRectFillUsingOperation(NSMakeRect(NSMinX(target) + (CGFloat)step * 2.0, NSMinY(target), 2.0, NSHeight(target)), NSCompositingOperationSourceOver);
-        NSRectFillUsingOperation(NSMakeRect(NSMaxX(target) - ((CGFloat)step + 1.0) * 2.0, NSMinY(target), 2.0, NSHeight(target)), NSCompositingOperationSourceOver);
-    }
 
     CGFloat targetHeight = MAX(1.0, NSHeight(target));
     NSInteger steps = MAX((NSInteger)1, (NSInteger)ceil(targetHeight / 2.0));
