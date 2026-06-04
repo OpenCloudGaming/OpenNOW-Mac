@@ -339,17 +339,9 @@ static BOOL OPNStringLooksLikeEmail(NSString *value) {
 
 static NSString *OPNDisplayNameFromUserInfo(NSDictionary *info) {
     if (![info isKindOfClass:NSDictionary.class]) return nil;
-    for (NSString *key in @[@"nickname", @"display_name", @"name", @"given_name", @"preferred_username", @"email"]) {
-        NSString *value = [info[key] isKindOfClass:NSString.class] ? info[key] : nil;
-        NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (trimmed.length == 0) continue;
-        if ([key isEqualToString:@"email"]) {
-            NSString *localPart = [trimmed componentsSeparatedByString:@"@"].firstObject;
-            return localPart.length > 0 ? localPart : trimmed;
-        }
-        return trimmed;
-    }
-    return nil;
+    NSString *value = [info[@"preferred_username"] isKindOfClass:NSString.class] ? info[@"preferred_username"] : nil;
+    NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    return trimmed.length > 0 ? trimmed : nil;
 }
 
 static NSString *OPNGravatarURLStringForEmail(const std::string &email) {

@@ -1121,7 +1121,7 @@ AuthSession AuthService::ParseOAuthSession(NSDictionary *json) {
                     s.userId = v ? std::string([v UTF8String]) : std::string();
                 }
                 {
-                    NSString *v = [claims[@"nickname"] isKindOfClass:NSString.class] ? claims[@"nickname"] : claims[@"name"];
+                    NSString *v = [claims[@"preferred_username"] isKindOfClass:NSString.class] ? claims[@"preferred_username"] : nil;
                     s.displayName = v ? std::string([v UTF8String]) : std::string();
                 }
                 {
