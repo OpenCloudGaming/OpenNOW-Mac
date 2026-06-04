@@ -301,7 +301,7 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
         target.origin.y = 0.0;
     } else if (imageAspect < viewAspect) {
         target.size.width = floor(NSHeight(self.bounds) * imageAspect);
-        target.origin.x = floor((NSWidth(self.bounds) - NSWidth(target)) * 0.5);
+        target.origin.x = 0.0;
     }
 
     [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];

@@ -22,6 +22,11 @@ static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
 static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
 
+static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
+    CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
+    return floor(MAX(1.0, width) / MAX(1.0, safeAspect));
+}
+
 @interface OPNStoreDocumentView : NSView
 @end
 
@@ -426,7 +431,7 @@ static NSRect OPNStoreHeroVisibleArtworkRectForImage(NSImage *image, NSRect boun
         target.origin.y = 0.0;
     } else if (imageAspect < viewAspect) {
         target.size.width = floor(NSHeight(bounds) * imageAspect);
-        target.origin.x = floor((NSWidth(bounds) - NSWidth(target)) * 0.5);
+        target.origin.x = 0.0;
     }
     return target;
 }
@@ -1211,6 +1216,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) NSInteger focusedRowIndex;
 @property (nonatomic, assign) NSInteger focusedColumnIndex;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
+@property (nonatomic, assign) CGFloat lastLayoutHeight;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
 @property (nonatomic, strong) NSTimer *resizeRenderTimer;
 @property (nonatomic, assign) BOOL initialHeroPreloadInFlight;
@@ -1498,8 +1504,9 @@ using namespace OPN;
     self.scrollView.frame = NSMakeRect(0.0, navClearance, NSWidth(self.bounds), MAX(0.0, NSHeight(self.bounds) - navClearance));
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
-    if (std::fabs(self.lastLayoutWidth - NSWidth(self.bounds)) > 1.0) {
+    if (std::fabs(self.lastLayoutWidth - NSWidth(self.bounds)) > 1.0 || std::fabs(self.lastLayoutHeight - NSHeight(self.bounds)) > 1.0) {
         self.lastLayoutWidth = NSWidth(self.bounds);
+        self.lastLayoutHeight = NSHeight(self.bounds);
         [self scheduleRenderStoreAfterResize];
     }
 }
@@ -1660,7 +1667,7 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        heroHeight = floor(viewportWidth * kStoreHeroHeightRatio);
+        heroHeight = OPNStoreHeroHeightForWidth(viewportWidth, [self heroAspectForGame:*heroGame]);
         [self addDesktopHeroStageForGame:*heroGame y:y contentX:0.0 width:viewportWidth height:heroHeight];
     }
 
@@ -1877,7 +1884,15 @@ using namespace OPN;
         }
         view.image = cachedImage;
         view.alphaValue = 1.0;
-        if (view == self.desktopHeroArtworkView) [self updateDesktopHeroLogoFrame];
+        if (view == self.desktopHeroArtworkView) {
+            CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), cachedImage.size.width / cachedImage.size.height);
+            if (std::fabs(expectedHeroHeight - NSHeight(self.desktopFeaturedHeroFrame)) > 1.0) {
+                [self scheduleRenderStore];
+                if (completion) completion(YES);
+                return;
+            }
+            [self updateDesktopHeroLogoFrame];
+        }
         if (completion) completion(YES);
         return;
     }
@@ -1912,7 +1927,15 @@ using namespace OPN;
             }
             strongView.image = image;
             strongView.alphaValue = 1.0;
-            if (strongView == strongSelf.desktopHeroArtworkView) [strongSelf updateDesktopHeroLogoFrame];
+            if (strongView == strongSelf.desktopHeroArtworkView) {
+                CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(strongSelf.bounds), image.size.width / image.size.height);
+                if (std::fabs(expectedHeroHeight - NSHeight(strongSelf.desktopFeaturedHeroFrame)) > 1.0) {
+                    [strongSelf scheduleRenderStore];
+                    if (completion) completion(YES);
+                    return;
+                }
+                [strongSelf updateDesktopHeroLogoFrame];
+            }
             if (completion) completion(YES);
         });
         [self trackHeroImageLoadToken:token];
@@ -1926,6 +1949,11 @@ using namespace OPN;
 - (void)updateDesktopFeaturedHeroOnly {
     const GameInfo *heroGame = [self currentHeroGame];
     if (!heroGame || !self.desktopHeroContainer || !self.desktopHeroArtworkView || NSIsEmptyRect(self.desktopFeaturedHeroFrame)) {
+        [self renderStore];
+        return;
+    }
+    CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), [self heroAspectForGame:*heroGame]);
+    if (std::fabs(expectedHeroHeight - NSHeight(self.desktopFeaturedHeroFrame)) > 1.0) {
         [self renderStore];
         return;
     }
