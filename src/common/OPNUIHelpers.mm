@@ -306,6 +306,15 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
 
     [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
 
+    CGFloat targetHeight = MAX(1.0, NSHeight(target));
+    NSInteger steps = MAX((NSInteger)1, (NSInteger)ceil(targetHeight / 2.0));
+    for (NSInteger step = 0; step < steps; step++) {
+        CGFloat progress = steps <= 1 ? 1.0 : (CGFloat)step / (CGFloat)(steps - 1);
+        CGFloat alpha = 0.99 * pow(progress, 2.0);
+        [OpnColor(OPN::kBackground, alpha) setFill];
+        NSRectFillUsingOperation(NSMakeRect(NSMinX(target), NSMinY(target) + (CGFloat)step * 2.0, NSWidth(target), 2.0), NSCompositingOperationSourceOver);
+    }
+
 }
 
 @end
