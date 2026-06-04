@@ -523,7 +523,7 @@ TEST_CASE("PrefilterPreferencesReadBundleAndGlobalDefaults") {
     CHECK_EQ(fallback.prefilterDenoise, 7);
 }
 
-TEST_CASE("UpscalingPreferencesDefaultEnhancedAndClampSharpnessDenoise") {
+TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     ScopedStreamIntegerPreference mode(@"OpenNOW.Stream.UpscalingModeIndex");
     ScopedStreamIntegerPreference sharpness(@"OpenNOW.Stream.UpscalingSharpness");
     ScopedStreamIntegerPreference denoise(@"OpenNOW.Stream.UpscalingDenoise");
@@ -538,7 +538,7 @@ TEST_CASE("UpscalingPreferencesDefaultEnhancedAndClampSharpnessDenoise") {
     OPN::SaveStreamUpscalingDenoise(42);
 
     OPN::StreamPreferenceProfile clamped = OPN::LoadStreamPreferenceProfile();
-    CHECK_EQ(clamped.upscalingMode, 2);
+    CHECK_EQ(clamped.upscalingMode, 1);
     CHECK_EQ(clamped.upscalingSharpness, 0);
     CHECK_EQ(clamped.upscalingDenoise, 10);
 }

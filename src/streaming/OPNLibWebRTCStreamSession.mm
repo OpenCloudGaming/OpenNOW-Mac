@@ -1324,7 +1324,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
     if (enhancementMode > 0 && (enhancementSharpness > 0 || enhancementDenoise > 0)) {
         if ([self drawProcessedFrame:frame renderPath:&renderPath fallback:&fallback]) {
             pixelFormat = @"CoreImage";
-            renderMode = enhancementMode >= 2 ? @"AI Enhanced" : @"Enhanced";
+            renderMode = @"Upscaler";
             frameSource = @"processed frame";
             self.lastDrawnFrameSerial = drawSerial;
         } else if (fallback.length == 0) {
@@ -1423,7 +1423,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
         CIFilter *unsharp = [CIFilter filterWithName:@"CIUnsharpMask"];
         [unsharp setDefaults];
         [unsharp setValue:image forKey:kCIInputImageKey];
-        [unsharp setValue:@(0.45 + ((double)sharpness / 10.0) * (enhancementMode >= 2 ? 0.95 : 0.55)) forKey:kCIInputIntensityKey];
+        [unsharp setValue:@(0.45 + ((double)sharpness / 10.0) * 1.0) forKey:kCIInputIntensityKey];
         [unsharp setValue:@(0.55 + ((double)sharpness / 10.0) * 1.15) forKey:kCIInputRadiusKey];
         image = unsharp.outputImage ?: image;
     }

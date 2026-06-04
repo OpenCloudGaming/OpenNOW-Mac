@@ -124,8 +124,7 @@ const std::vector<StreamPrefilterModeOption> &StreamPrefilterModeOptions() {
 const std::vector<StreamUpscalingModeOption> &StreamUpscalingModeOptions() {
     static const std::vector<StreamUpscalingModeOption> options = {
         {"Off", 0},
-        {"Enhanced", 1},
-        {"AI Enhanced", 2},
+        {"Upscaler", 1},
     };
     return options;
 }
