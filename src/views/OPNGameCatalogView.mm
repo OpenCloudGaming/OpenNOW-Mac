@@ -354,6 +354,12 @@ static NSImage *OPNCachedStoreIconImage(NSString *name) {
     return OPNStoreIconImageCache()[OPNStoreIconAssetName(name)];
 }
 
+static NSImage *OPNStoreGreyscaleIconImage(NSImage *image) {
+    NSImage *templateImage = image ? [image copy] : nil;
+    [templateImage setTemplate:YES];
+    return templateImage;
+}
+
 static void OPNLoadStoreIconImage(NSString *name, void (^completion)(NSImage *image)) {
     NSString *assetName = OPNStoreIconAssetName(name);
     NSImage *cached = OPNCachedStoreIconImage(name);
@@ -1001,8 +1007,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         _storeIconView.imageScaling = NSImageScaleProportionallyDown;
         NSString *firstStore = !game.variants.empty() ? OPNStoreString(game.variants.front().appStore, @"") : (variantStores.firstObject ?: OPNStorePrimaryStoreName(game));
         if (firstStore.length == 0) firstStore = variantStores.firstObject ?: OPNStorePrimaryStoreName(game);
-        _storeIconView.image = OPNCachedStoreIconImage(firstStore) ?: OPNStoreIconPlaceholderImage(firstStore);
+        _storeIconView.image = OPNStoreGreyscaleIconImage(OPNCachedStoreIconImage(firstStore) ?: OPNStoreIconPlaceholderImage(firstStore));
         _storeIconView.toolTip = OPNStoreDisplayLabel(firstStore);
+        _storeIconView.contentTintColor = OpnColor(0xD7D8DC, 0.50);
         _storeIconView.wantsLayer = YES;
         _storeIconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
         _storeIconView.layer.borderWidth = 1.0;
@@ -1012,7 +1019,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         [_storeIconVariantIndexes addObject:@0];
         __weak NSImageView *weakPrimaryIconView = _storeIconView;
         OPNLoadStoreIconImage(firstStore, ^(NSImage *image) {
-            if (image && weakPrimaryIconView) weakPrimaryIconView.image = image;
+            if (image && weakPrimaryIconView) weakPrimaryIconView.image = OPNStoreGreyscaleIconImage(image);
         });
 
         NSUInteger variantIconCount = game.variants.empty() ? variantStores.count : game.variants.size();
@@ -1021,8 +1028,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
             if (store.length == 0) store = variantStores.count > index ? variantStores[index] : OPNStorePrimaryStoreName(game);
             NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSZeroRect];
             iconView.imageScaling = NSImageScaleProportionallyDown;
-            iconView.image = OPNCachedStoreIconImage(store) ?: OPNStoreIconPlaceholderImage(store);
+            iconView.image = OPNStoreGreyscaleIconImage(OPNCachedStoreIconImage(store) ?: OPNStoreIconPlaceholderImage(store));
             iconView.toolTip = OPNStoreDisplayLabel(store);
+            iconView.contentTintColor = OpnColor(0xD7D8DC, 0.50);
             iconView.wantsLayer = YES;
             iconView.layer.backgroundColor = OpnColor(0x030506, 0.72).CGColor;
             iconView.layer.borderWidth = 1.0;
@@ -1032,7 +1040,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
             [_storeIconVariantIndexes addObject:@((int)index)];
             __weak NSImageView *weakIconView = iconView;
             OPNLoadStoreIconImage(store, ^(NSImage *image) {
-                if (image && weakIconView) weakIconView.image = image;
+                if (image && weakIconView) weakIconView.image = OPNStoreGreyscaleIconImage(image);
             });
         }
 

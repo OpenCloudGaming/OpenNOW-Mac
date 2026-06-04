@@ -396,7 +396,7 @@ using namespace OPN;
 
         _currentStoreLogoView = [[NSImageView alloc] initWithFrame:NSZeroRect];
         _currentStoreLogoView.imageScaling = NSImageScaleProportionallyDown;
-        _currentStoreLogoView.contentTintColor = OpnColor(0xD7D8DC, 0.88);
+        _currentStoreLogoView.contentTintColor = OpnColor(0xD7D8DC, 0.50);
         [_currentStoreLogoContainer addSubview:_currentStoreLogoView];
 
         _installToPlayPillView = [[NSView alloc] initWithFrame:NSZeroRect];
