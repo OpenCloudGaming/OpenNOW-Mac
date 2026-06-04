@@ -233,7 +233,7 @@ std::string GameDataCache::CatalogKey(const std::string &accountIdentifier,
         @"s": OPNStringFromStd(sortId),
         @"f": filters,
         @"c": @(fetchCount),
-        @"v": @3,
+        @"v": @4,
     };
     NSData *data = [NSJSONSerialization dataWithJSONObject:key options:0 error:nil];
     NSString *string = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";

@@ -446,8 +446,45 @@ static NSString *FirstSafeString(NSDictionary *dictionary, NSArray<NSString *> *
     return nil;
 }
 
+static void AppendImageStringsFromValue(NSMutableArray<NSString *> *urls, id rawValue) {
+    if (!urls || !rawValue || [rawValue isKindOfClass:NSNull.class]) return;
+    if ([rawValue isKindOfClass:NSString.class]) {
+        NSString *url = [(NSString *)rawValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (url.length > 0 && ![urls containsObject:url]) [urls addObject:url];
+        return;
+    }
+    if ([rawValue isKindOfClass:NSArray.class]) {
+        for (id item in (NSArray *)rawValue) AppendImageStringsFromValue(urls, item);
+        return;
+    }
+    if (![rawValue isKindOfClass:NSDictionary.class]) return;
+
+    NSDictionary *dictionary = (NSDictionary *)rawValue;
+    NSString *directURL = FirstSafeString(dictionary, @[@"url", @"URL", @"src", @"href", @"imageUrl", @"imageURL", @"thumbnailUrl", @"thumbnailURL", @"contentUrl", @"contentURL"]);
+    if (directURL.length > 0) {
+        AppendImageStringsFromValue(urls, directURL);
+        return;
+    }
+    for (id value in dictionary.allValues) AppendImageStringsFromValue(urls, value);
+}
+
+static NSArray<NSString *> *ImageStringsFromValue(id rawValue) {
+    NSMutableArray<NSString *> *urls = [NSMutableArray array];
+    AppendImageStringsFromValue(urls, rawValue);
+    return urls;
+}
+
+static NSString *FirstImageString(NSDictionary *images, NSArray<NSString *> *keys) {
+    if (![images isKindOfClass:NSDictionary.class]) return nil;
+    for (NSString *key in keys) {
+        NSString *url = ImageStringsFromValue(images[key]).firstObject;
+        if (url.length > 0) return url;
+    }
+    return nil;
+}
+
 static NSString *FirstLandscapeImageString(NSDictionary *images) {
-    return FirstSafeString(images, @[
+    return FirstImageString(images, @[
         @"MARQUEE_HERO_IMAGE",
         @"HERO_IMAGE",
         @"TV_BANNER",
@@ -458,7 +495,7 @@ static NSString *FirstLandscapeImageString(NSDictionary *images) {
 }
 
 static NSString *FirstPosterImageString(NSDictionary *images) {
-    return FirstSafeString(images, @[
+    return FirstImageString(images, @[
         @"GAME_BOX_ART",
         @"KEY_IMAGE",
         @"KEY_ART"
@@ -759,14 +796,8 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
             if (key.length == 0) continue;
             id rawValue = images[key];
             std::vector<std::string> urls;
-            if ([rawValue isKindOfClass:[NSString class]]) {
-                NSString *url = SafeStr(rawValue);
+            for (NSString *url in ImageStringsFromValue(rawValue)) {
                 if (url.length > 0) AppendUniqueStdString(urls, OptimizeImageURL([url UTF8String], 1200));
-            } else if ([rawValue isKindOfClass:[NSArray class]]) {
-                for (id item in (NSArray *)rawValue) {
-                    NSString *url = SafeStr(item);
-                    if (url.length > 0) AppendUniqueStdString(urls, OptimizeImageURL([url UTF8String], 1200));
-                }
             }
             if (!urls.empty()) g.imageUrlsByType[[key UTF8String]] = urls;
         }
@@ -780,18 +811,12 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
             g.imageUrl = OptimizeImageURL([primary UTF8String], 900);
         }
         id screenshots = images[@"SCREENSHOTS"];
-        if ([screenshots isKindOfClass:[NSArray class]]) {
-            for (id screenshot in (NSArray *)screenshots) {
-                NSString *url = SafeStr(screenshot);
-                if (url.length == 0) continue;
-                std::string optimizedUrl = OptimizeImageURL([url UTF8String], 720);
-                if (std::find(g.screenshotUrls.begin(), g.screenshotUrls.end(), optimizedUrl) == g.screenshotUrls.end()) {
-                    g.screenshotUrls.push_back(optimizedUrl);
-                }
+        for (NSString *url in ImageStringsFromValue(screenshots)) {
+            if (url.length == 0) continue;
+            std::string optimizedUrl = OptimizeImageURL([url UTF8String], 720);
+            if (std::find(g.screenshotUrls.begin(), g.screenshotUrls.end(), optimizedUrl) == g.screenshotUrls.end()) {
+                g.screenshotUrls.push_back(optimizedUrl);
             }
-        } else if ([screenshots isKindOfClass:[NSString class]]) {
-            NSString *url = SafeStr(screenshots);
-            if (url.length > 0) g.screenshotUrls.push_back(OptimizeImageURL([url UTF8String], 720));
         }
     }
 

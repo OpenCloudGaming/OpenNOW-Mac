@@ -1,6 +1,6 @@
 #import "OPNUIHelpers.h"
 #import "OPNColorTokens.h"
-#import <CommonCrypto/CommonCrypto.h>
+#include "games/OPNGameDataCache.h"
 #import <ImageIO/ImageIO.h>
 #include <cmath>
 
@@ -190,31 +190,6 @@ static void OpnImageFailureCacheClear(NSString *urlString) {
     }
 }
 
-static NSString *OpnSHA256String(NSString *value) {
-    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
-    NSMutableString *hash = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
-    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) [hash appendFormat:@"%02x", digest[i]];
-    return hash;
-}
-
-static NSString *OpnImageLoaderDirectory(void) {
-    static NSString *directory;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSArray<NSURL *> *urls = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask];
-        NSURL *baseURL = urls.firstObject ?: [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
-        directory = [[baseURL URLByAppendingPathComponent:@"OpenNOW/ImageLoader" isDirectory:YES].path copy];
-        [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
-    });
-    return directory;
-}
-
-static NSString *OpnImageDataPath(NSString *urlString) {
-    return [OpnImageLoaderDirectory() stringByAppendingPathComponent:[OpnSHA256String(urlString) stringByAppendingPathExtension:@"img"]];
-}
-
 static NSInteger OpnImageCachePixelBucket(CGFloat maxPixelDimension) {
     CGFloat clamped = MAX(64.0, MIN(maxPixelDimension > 0.0 ? maxPixelDimension : 1024.0, 4096.0));
     return (NSInteger)(ceil(clamped / 128.0) * 128.0);
@@ -247,7 +222,7 @@ static NSImage *OpnDecodedImageFromData(NSData *data, CGFloat maxPixelDimension)
     return image;
 }
 
-static void OpnCompleteImageRequest(NSString *cacheKey, NSString *urlString, NSImage *image, NSData *data) {
+static void OpnCompleteImageRequest(NSString *cacheKey, NSString *urlString, NSImage *image, NSData *data, BOOL cacheFailure) {
     NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *pendingCompletions = OpnPendingImageCompletions();
     NSArray<OpnPendingImageCompletion *> *completions = nil;
     @synchronized (pendingCompletions) {
@@ -255,7 +230,7 @@ static void OpnCompleteImageRequest(NSString *cacheKey, NSString *urlString, NSI
             NSUInteger cost = MAX((NSUInteger)1, (NSUInteger)(image.size.width * image.size.height * 4.0));
             [OpnDecodedImageCache() setObject:image forKey:cacheKey cost:cost];
             OpnImageFailureCacheClear(urlString);
-        } else {
+        } else if (cacheFailure) {
             OpnImageFailureCacheSetFailed(urlString);
         }
         if (data.length > 0) [OpnImageDataMemoryCache() setObject:data forKey:cacheKey cost:data.length];
@@ -277,16 +252,6 @@ static NSString *OpnStringFromStdString(const std::string &value, NSString *fall
     if (value.empty()) return fallback ?: @"";
     NSString *string = [NSString stringWithUTF8String:value.c_str()];
     return string.length > 0 ? string : (fallback ?: @"");
-}
-
-static NSString *OpnHeroLocalAssetPath(NSString *relativePath) {
-    NSString *safeRelativePath = relativePath ?: @"";
-    NSString *bundlePath = [[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:safeRelativePath];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:bundlePath]) return bundlePath;
-    NSString *workingPath = [[[NSFileManager defaultManager] currentDirectoryPath] stringByAppendingPathComponent:safeRelativePath];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:workingPath]) return workingPath;
-    NSString *sourcePath = [@"/Volumes/Projects/OpenNOW-Mac" stringByAppendingPathComponent:safeRelativePath];
-    return [[NSFileManager defaultManager] fileExistsAtPath:sourcePath] ? sourcePath : nil;
 }
 
 static void OpnAppendUniqueHeroURL(NSMutableArray<NSString *> *urls, NSString *urlString) {
@@ -323,7 +288,7 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     NSRect target = self.bounds;
     if (imageAspect > viewAspect) {
         target.size.height = floor(NSWidth(self.bounds) / imageAspect);
-        target.origin.y = floor((NSHeight(self.bounds) - NSHeight(target)) * 0.5);
+        target.origin.y = 0.0;
     } else if (imageAspect < viewAspect) {
         target.size.width = floor(NSHeight(self.bounds) * imageAspect);
         target.origin.x = floor((NSWidth(self.bounds) - NSWidth(target)) * 0.5);
@@ -331,14 +296,6 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
 
     [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
 
-    CGFloat fadeHeight = floor(NSHeight(self.bounds) * 0.25);
-    if (fadeHeight <= 0.0) return;
-    NSRect fadeRect = NSMakeRect(NSMinX(self.bounds), NSMaxY(self.bounds) - fadeHeight, NSWidth(self.bounds), fadeHeight);
-    NSGradient *bottomFade = [[NSGradient alloc] initWithColors:@[
-        OpnColor(OPN::kBackground, 0.0),
-        OpnColor(OPN::kBackground, 1.0)
-    ]];
-    [bottomFade drawInRect:fadeRect angle:90.0];
 }
 
 @end
@@ -515,38 +472,40 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat ma
         pendingCompletions[cacheKey] = [NSMutableArray arrayWithObject:pendingEntry];
     }
 
-    NSBlockOperation *operation = [NSBlockOperation blockOperationWithBlock:^{
-        NSData *cachedData = [NSData dataWithContentsOfFile:OpnImageDataPath(normalizedURL)];
-        if (cachedData.length > 0) {
-            NSImage *image = OpnDecodedImageFromData(cachedData, maxPixelDimension);
-            if (image) {
-                OpnCompleteImageRequest(cacheKey, normalizedURL, image, cachedData);
-                return;
-            }
-        }
+    NSData *diskData = OPN::GameDataCache::Shared().LoadImage(normalizedURL);
+    if (diskData.length > 0) {
+        NSBlockOperation *decodeOperation = [NSBlockOperation blockOperationWithBlock:^{
+            NSImage *image = OpnDecodedImageFromData(diskData, maxPixelDimension);
+            OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? diskData : nil, image == nil);
+        }];
+        [token opnSetOperation:decodeOperation];
+        [OpnImageLoaderOperationQueue() addOperation:decodeOperation];
+        return token;
+    }
 
-        NSURL *url = [NSURL URLWithString:normalizedURL];
-        if (!url) {
-            OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil);
+    NSURL *url = [NSURL URLWithString:normalizedURL];
+    if (!url) {
+        OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil, YES);
+        return token;
+    }
+
+    NSURLSessionDataTask *task = [OpnImageLoaderSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+        if (error || data.length == 0 || (http && http.statusCode >= 400)) {
+            BOOL cacheFailure = !error || error.code != NSURLErrorCancelled;
+            OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil, cacheFailure);
             return;
         }
-
-        NSURLSessionDataTask *task = [OpnImageLoaderSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-            if (error || data.length == 0 || (http && http.statusCode >= 400)) {
-                OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil);
-                return;
-            }
-            NSBlockOperation *decodeOperation = [NSBlockOperation blockOperationWithBlock:^{
-                NSImage *image = OpnDecodedImageFromData(data, maxPixelDimension);
-                if (image) [data writeToFile:OpnImageDataPath(normalizedURL) options:NSDataWritingAtomic error:nil];
-                OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? data : nil);
-            }];
-            [OpnImageLoaderOperationQueue() addOperation:decodeOperation];
+        NSBlockOperation *decodeOperation = [NSBlockOperation blockOperationWithBlock:^{
+            NSImage *image = OpnDecodedImageFromData(data, maxPixelDimension);
+            if (image) OPN::GameDataCache::Shared().SaveImage(normalizedURL, data);
+            OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? data : nil, image == nil);
         }];
-        [task resume];
+        [token opnSetOperation:decodeOperation];
+        [OpnImageLoaderOperationQueue() addOperation:decodeOperation];
     }];
-    [OpnImageLoaderOperationQueue() addOperation:operation];
+    [token opnSetTask:task];
+    [task resume];
     return token;
 }
 
@@ -563,7 +522,7 @@ NSImage *OpnCachedImageForURL(NSString *urlString, CGFloat maxPixelDimension) {
     if (cachedImage) return cachedImage;
 
     NSData *cachedData = [OpnImageDataMemoryCache() objectForKey:cacheKey];
-    if (cachedData.length == 0) cachedData = [NSData dataWithContentsOfFile:OpnImageDataPath(normalizedURL)];
+    if (cachedData.length == 0) cachedData = OPN::GameDataCache::Shared().LoadImage(normalizedURL);
     if (cachedData.length == 0) return nil;
 
     NSImage *image = OpnDecodedImageFromData(cachedData, maxPixelDimension);
@@ -657,40 +616,28 @@ NSImage *OpnFallbackHeroArtworkImage(void) {
     static NSImage *fallbackImage;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSArray<NSString *> *paths = @[
-            @"vendor/gfn_vendor_x86_64/files/mall/assets/img/Marquee_Hero_Image_Fallback.webp",
-            @"vendor/gfn_vendor_x86_64/files/mall/shared/assets/img/DefaultGameArt-TVBanner.svg",
-            @"vendor/gfn_vendor_x86_64/files/mall/assets/img/DefaultGameArt.svg",
-        ];
-        for (NSString *relativePath in paths) {
-            NSString *path = OpnHeroLocalAssetPath(relativePath);
-            fallbackImage = path.length > 0 ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
-            if (fallbackImage) break;
+        NSSize size = NSMakeSize(1600.0, 900.0);
+        fallbackImage = [[NSImage alloc] initWithSize:size];
+        [fallbackImage lockFocus];
+        NSRect bounds = NSMakeRect(0.0, 0.0, size.width, size.height);
+        NSGradient *background = [[NSGradient alloc] initWithColors:@[
+            OpnColor(0x182018, 1.0),
+            OpnColor(OPN::kBackground, 1.0)
+        ]];
+        [background drawInRect:bounds angle:0.0];
+        [OpnColor(OPN::kBrandGreen, 0.20) setFill];
+        NSBezierPath *glow = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-180.0, 90.0, 820.0, 820.0)];
+        [glow fill];
+        [OpnColor(0xFFFFFF, 0.08) setStroke];
+        for (NSInteger line = 0; line < 12; line++) {
+            CGFloat y = 120.0 + line * 56.0;
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            [path moveToPoint:NSMakePoint(0.0, y)];
+            [path lineToPoint:NSMakePoint(size.width, y - 220.0)];
+            path.lineWidth = 1.0;
+            [path stroke];
         }
-        if (!fallbackImage) {
-            NSSize size = NSMakeSize(1600.0, 900.0);
-            fallbackImage = [[NSImage alloc] initWithSize:size];
-            [fallbackImage lockFocus];
-            NSRect bounds = NSMakeRect(0.0, 0.0, size.width, size.height);
-            NSGradient *background = [[NSGradient alloc] initWithColors:@[
-                OpnColor(0x182018, 1.0),
-                OpnColor(OPN::kBackground, 1.0)
-            ]];
-            [background drawInRect:bounds angle:0.0];
-            [OpnColor(OPN::kBrandGreen, 0.20) setFill];
-            NSBezierPath *glow = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(-180.0, 90.0, 820.0, 820.0)];
-            [glow fill];
-            [OpnColor(0xFFFFFF, 0.08) setStroke];
-            for (NSInteger line = 0; line < 12; line++) {
-                CGFloat y = 120.0 + line * 56.0;
-                NSBezierPath *path = [NSBezierPath bezierPath];
-                [path moveToPoint:NSMakePoint(0.0, y)];
-                [path lineToPoint:NSMakePoint(size.width, y - 220.0)];
-                path.lineWidth = 1.0;
-                [path stroke];
-            }
-            [fallbackImage unlockFocus];
-        }
+        [fallbackImage unlockFocus];
     });
     return fallbackImage;
 }

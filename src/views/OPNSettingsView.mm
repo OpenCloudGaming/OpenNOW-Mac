@@ -178,6 +178,9 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 @property (nonatomic, assign) BOOL directMouseInput;
 @property (nonatomic, assign) BOOL audioDeviceListenerInstalled;
 @property (nonatomic, assign) CGFloat contentAreaWidth;
+@property (nonatomic, strong) NSTimer *layoutRebuildTimer;
+- (void)scheduleLayoutRebuildContent;
+- (void)layoutRebuildTimerFired:(NSTimer *)timer;
 - (void)applyPerformanceProfile:(NSInteger)index;
 - (void)addOptionGroupTo:(NSView *)parent
                    group:(NSInteger)group
@@ -280,6 +283,7 @@ using namespace OPN;
 - (BOOL)acceptsFirstResponder { return YES; }
 
 - (void)dealloc {
+    [self.layoutRebuildTimer invalidate];
     [self stopAudioDeviceMonitoring];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
@@ -412,10 +416,25 @@ using namespace OPN;
     self.scrollView.frame = NSMakeRect(scrollX, 22.0, scrollWidth, shellHeight - 44.0);
     if (std::fabs(self.contentAreaWidth - scrollWidth) > 1.0) {
         self.contentAreaWidth = scrollWidth;
-        [self rebuildContent];
+        [self scheduleLayoutRebuildContent];
     }
     self.documentView.frame = NSMakeRect(0, 0, NSWidth(self.scrollView.frame), MAX(NSHeight(self.scrollView.frame), NSHeight(self.documentView.frame)));
     [self layoutContentSubviews];
+}
+
+- (void)scheduleLayoutRebuildContent {
+    [self.layoutRebuildTimer invalidate];
+    self.layoutRebuildTimer = [NSTimer scheduledTimerWithTimeInterval:0.16
+                                                               target:self
+                                                             selector:@selector(layoutRebuildTimerFired:)
+                                                             userInfo:nil
+                                                              repeats:NO];
+}
+
+- (void)layoutRebuildTimerFired:(NSTimer *)timer {
+    (void)timer;
+    self.layoutRebuildTimer = nil;
+    [self rebuildContent];
 }
 
 - (void)layoutContentSubviews {

@@ -49,21 +49,68 @@ static NSString *OPNStoreIconAssetName(NSString *name) {
     return @"default";
 }
 
-static NSString *OPNStoreIconAssetPath(NSString *assetName) {
-    NSString *bundlePath = [[NSBundle mainBundle] pathForResource:assetName ofType:@"svg" inDirectory:@"store-icons"];
-    if (bundlePath.length > 0) return bundlePath;
-
-    NSString *relativePath = [NSString stringWithFormat:@"assets/store-icons/%@.svg", assetName];
-    NSString *workingPath = [[[NSFileManager defaultManager] currentDirectoryPath] stringByAppendingPathComponent:relativePath];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:workingPath]) return workingPath;
-
-    NSString *sourcePath = [@"/Volumes/Projects/OpenNOW-Mac" stringByAppendingPathComponent:relativePath];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:sourcePath]) return sourcePath;
-
-    return nil;
+static NSOperationQueue *OPNStoreIconLoaderQueue(void) {
+    static NSOperationQueue *queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = [[NSOperationQueue alloc] init];
+        queue.name = @"com.opennow.game-card-store-icon-loader";
+        queue.maxConcurrentOperationCount = 2;
+        queue.qualityOfService = NSQualityOfServiceUtility;
+    });
+    return queue;
 }
 
-static NSImage *OPNStoreIconImage(NSString *name) {
+static NSArray<NSString *> *OPNStoreIconCandidatePaths(NSString *assetName) {
+    NSString *safeAssetName = assetName.length > 0 ? assetName : @"default";
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    NSString *bundlePath = [[NSBundle mainBundle] pathForResource:safeAssetName ofType:@"svg" inDirectory:@"store-icons"];
+    if (bundlePath.length > 0) [paths addObject:bundlePath];
+    NSString *relativePath = [NSString stringWithFormat:@"assets/store-icons/%@.svg", safeAssetName];
+    [paths addObject:[NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:relativePath]];
+    [paths addObject:[@"/Volumes/Projects/OpenNOW-Mac" stringByAppendingPathComponent:relativePath]];
+    return paths;
+}
+
+static void OPNReadStoreIconDataAtPath(NSString *path, void (^completion)(NSData *data)) {
+    if (!completion) return;
+    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    dispatch_io_t channel = dispatch_io_create_with_path(DISPATCH_IO_STREAM, path.fileSystemRepresentation, O_RDONLY, 0, queue, ^(int error) { (void)error; });
+    if (!channel) {
+        completion(nil);
+        return;
+    }
+    NSMutableData *result = [NSMutableData data];
+    dispatch_io_read(channel, 0, SIZE_MAX, queue, ^(bool done, dispatch_data_t data, int error) {
+        if (data && error == 0) {
+            dispatch_data_apply(data, ^bool(dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
+                (void)region;
+                (void)offset;
+                [result appendBytes:buffer length:size];
+                return true;
+            });
+        }
+        if (!done) return;
+        dispatch_io_close(channel, 0);
+        completion(error == 0 && result.length > 0 ? [result copy] : nil);
+    });
+}
+
+static void OPNLoadStoreIconDataFromPaths(NSArray<NSString *> *paths, NSUInteger index, void (^completion)(NSData *data)) {
+    if (index >= paths.count) {
+        completion(nil);
+        return;
+    }
+    OPNReadStoreIconDataAtPath(paths[index], ^(NSData *data) {
+        if (data.length > 0) {
+            completion(data);
+            return;
+        }
+        OPNLoadStoreIconDataFromPaths(paths, index + 1, completion);
+    });
+}
+
+static NSImage *OPNStoreIconPlaceholderImage(NSString *name) {
     static NSMutableDictionary<NSString *, NSImage *> *cache;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -74,36 +121,112 @@ static NSImage *OPNStoreIconImage(NSString *name) {
     NSImage *cached = cache[assetName];
     if (cached) return cached;
 
-    NSString *path = OPNStoreIconAssetPath(assetName);
-    NSImage *image = path.length > 0 ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
-    if (!image && ![assetName isEqualToString:@"default"]) {
-        path = OPNStoreIconAssetPath(@"default");
-        image = path.length > 0 ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
-    }
-    if (!image) return nil;
+    NSDictionary<NSString *, NSString *> *labels = @{
+        @"steam": @"ST",
+        @"epic": @"EP",
+        @"ubisoft": @"UB",
+        @"battlenet": @"BN",
+        @"xbox": @"XB",
+        @"ea": @"EA",
+        @"gog": @"GOG",
+        @"default": @"CL",
+    };
+    NSDictionary<NSString *, NSColor *> *fills = @{
+        @"steam": OpnColor(0x1B2838, 1.0),
+        @"epic": OpnColor(0x202020, 1.0),
+        @"ubisoft": OpnColor(0x3D61FF, 1.0),
+        @"battlenet": OpnColor(0x149BFF, 1.0),
+        @"xbox": OpnColor(0x107C10, 1.0),
+        @"ea": OpnColor(0xFF4747, 1.0),
+        @"gog": OpnColor(0x6D3DF5, 1.0),
+        @"default": OpnColor(OPN::kBrandGreen, 1.0),
+    };
 
-    [image setTemplate:NO];
+    NSSize size = NSMakeSize(64.0, 64.0);
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    [image lockFocus];
+    NSRect bounds = NSMakeRect(0.0, 0.0, size.width, size.height);
+    [(fills[assetName] ?: fills[@"default"]) setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:bounds xRadius:14.0 yRadius:14.0] fill];
+    NSString *label = labels[assetName] ?: labels[@"default"];
+    NSDictionary<NSAttributedStringKey, id> *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:label.length > 2 ? 18.0 : 23.0 weight:NSFontWeightBlack],
+        NSForegroundColorAttributeName: NSColor.whiteColor,
+    };
+    NSSize labelSize = [label sizeWithAttributes:attributes];
+    [label drawAtPoint:NSMakePoint(floor((size.width - labelSize.width) * 0.5), floor((size.height - labelSize.height) * 0.5) - 1.0) withAttributes:attributes];
+    [image unlockFocus];
     cache[assetName] = image;
     return image;
 }
 
-static NSImage *OPNGreyscaleStoreIconImage(NSString *name) {
+static NSMutableDictionary<NSString *, NSImage *> *OPNStoreIconImageCache(void) {
     static NSMutableDictionary<NSString *, NSImage *> *cache;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        cache = [NSMutableDictionary dictionary];
-    });
+    dispatch_once(&onceToken, ^{ cache = [NSMutableDictionary dictionary]; });
+    return cache;
+}
 
+static NSImage *OPNCachedStoreIconImage(NSString *name) {
+    return OPNStoreIconImageCache()[OPNStoreIconAssetName(name)];
+}
+
+static void OPNLoadStoreIconImage(NSString *name, void (^completion)(NSImage *image)) {
+    NSString *assetName = OPNStoreIconAssetName(name);
+    NSImage *cached = OPNCachedStoreIconImage(name);
+    if (cached) {
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(cached); });
+        return;
+    }
+    NSArray<NSString *> *paths = OPNStoreIconCandidatePaths(assetName);
+    [OPNStoreIconLoaderQueue() addOperationWithBlock:^{
+        OPNLoadStoreIconDataFromPaths(paths, 0, ^(NSData *data) {
+            NSImage *image = data.length > 0 ? [[NSImage alloc] initWithData:data] : nil;
+            if (!image && ![assetName isEqualToString:@"default"]) {
+                OPNLoadStoreIconDataFromPaths(OPNStoreIconCandidatePaths(@"default"), 0, ^(NSData *defaultData) {
+                    NSImage *defaultImage = defaultData.length > 0 ? [[NSImage alloc] initWithData:defaultData] : nil;
+                    if (defaultImage) [defaultImage setTemplate:NO];
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (defaultImage) OPNStoreIconImageCache()[assetName] = defaultImage;
+                        if (completion) completion(defaultImage);
+                    });
+                });
+                return;
+            }
+            if (image) [image setTemplate:NO];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (image) OPNStoreIconImageCache()[assetName] = image;
+                if (completion) completion(image);
+            });
+        });
+    }];
+}
+
+static NSMutableDictionary<NSString *, NSImage *> *OPNGreyscaleStoreIconImageCache(void) {
+    static NSMutableDictionary<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ cache = [NSMutableDictionary dictionary]; });
+    return cache;
+}
+
+static NSImage *OPNCachedGreyscaleStoreIconImage(NSString *name) {
     NSString *assetName = OPNStoreIconAssetName(name ?: @"");
-    NSImage *cached = cache[assetName];
-    if (cached) return cached;
+    return OPNGreyscaleStoreIconImageCache()[assetName];
+}
 
-    NSImage *source = OPNStoreIconImage(name);
-    if (!source) return nil;
-    NSImage *templateImage = [source copy];
-    [templateImage setTemplate:YES];
-    cache[assetName] = templateImage;
-    return templateImage;
+static void OPNLoadGreyscaleStoreIconImage(NSString *name, void (^completion)(NSImage *image)) {
+    NSString *assetName = OPNStoreIconAssetName(name ?: @"");
+    NSImage *cached = OPNCachedGreyscaleStoreIconImage(name);
+    if (cached) {
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(cached); });
+        return;
+    }
+    OPNLoadStoreIconImage(name, ^(NSImage *image) {
+        NSImage *templateImage = image ? [image copy] : nil;
+        [templateImage setTemplate:YES];
+        if (templateImage) OPNGreyscaleStoreIconImageCache()[assetName] = templateImage;
+        if (completion) completion(templateImage);
+    });
 }
 
 static NSString *OPNStoreIconGlyph(NSString *name) {
@@ -432,10 +555,29 @@ using namespace OPN;
         store = [NSString stringWithUTF8String:_gameData.availableStores.front().c_str()];
     }
 
-    NSImage *icon = OPNGreyscaleStoreIconImage(store);
+    NSImage *icon = OPNCachedGreyscaleStoreIconImage(store);
+    if (!icon) {
+        icon = [OPNStoreIconPlaceholderImage(store) copy];
+        [icon setTemplate:YES];
+    }
     self.currentStoreLogoView.image = icon;
-    self.currentStoreLogoContainer.hidden = icon == nil || store.length == 0;
+    self.currentStoreLogoContainer.hidden = store.length == 0;
     self.currentStoreLogoContainer.toolTip = store.length > 0 ? OPNStorePrettyName(store) : @"";
+    __weak __typeof__(self) weakSelf = self;
+    NSString *requestedStore = [store copy];
+    OPNLoadGreyscaleStoreIconImage(store, ^(NSImage *image) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || !image) return;
+        NSString *currentStore = @"";
+        if (strongSelf->_selectedVariantIndex >= 0 && strongSelf->_selectedVariantIndex < (int)strongSelf->_gameData.variants.size()) {
+            currentStore = [NSString stringWithUTF8String:strongSelf->_gameData.variants[(size_t)strongSelf->_selectedVariantIndex].appStore.c_str()];
+        } else if (!strongSelf->_gameData.availableStores.empty()) {
+            currentStore = [NSString stringWithUTF8String:strongSelf->_gameData.availableStores.front().c_str()];
+        }
+        if ([OPNStoreIconAssetName(currentStore) isEqualToString:OPNStoreIconAssetName(requestedStore)]) {
+            strongSelf.currentStoreLogoView.image = image;
+        }
+    });
 }
 
 - (void)updateInstallToPlayPill {
@@ -500,7 +642,7 @@ using namespace OPN;
         if (!name || name.length == 0) { idx++; continue; }
         NSString *glyph = OPNStoreIconGlyph(name);
         BOOL selected = idx == _selectedVariantIndex;
-        NSImage *iconImage = OPNStoreIconImage(name);
+        NSImage *iconImage = OPNCachedStoreIconImage(name) ?: OPNStoreIconPlaceholderImage(name);
 
         NSButton *chip = [[NSButton alloc] initWithFrame:NSMakeRect(x, 0, 28, 24)];
         if (iconImage) {
@@ -522,6 +664,15 @@ using namespace OPN;
         chip.action = @selector(chipClicked:);
         chip.tag = idx;
         chip.toolTip = OPNStorePrettyName(name ?: @"");
+        __weak NSButton *weakChip = chip;
+        OPNLoadStoreIconImage(name, ^(NSImage *image) {
+            NSButton *strongChip = weakChip;
+            if (!strongChip || !image) return;
+            strongChip.title = @"";
+            strongChip.image = image;
+            strongChip.imagePosition = NSImageOnly;
+            strongChip.imageScaling = NSImageScaleProportionallyDown;
+        });
 
         if (selected) {
             chip.layer.backgroundColor = OpnColor(0x05070A, 0.62).CGColor;
