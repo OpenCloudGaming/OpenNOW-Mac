@@ -19,17 +19,14 @@ static const CGFloat kStoreHeroMinContentInset = 30.0;
 static const CGFloat kStoreHeroMaxContentInset = 106.0;
 static const CGFloat kStoreHeroContentInsetRatio = 0.055;
 static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
-static const CGFloat kStoreHeroMaxWindowHeightRatio = 0.25;
 static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
 static const CGFloat kStoreButtonHintPillHeight = 40.0;
 static const CGFloat kStoreButtonHintPillBottomInset = 18.0;
 
-static CGFloat OPNStoreHeroHeightForBounds(CGFloat width, CGFloat height, CGFloat aspect) {
+static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
-    CGFloat aspectHeight = MAX(1.0, width) / MAX(1.0, safeAspect);
-    CGFloat cappedHeight = MAX(1.0, height) * kStoreHeroMaxWindowHeightRatio;
-    return floor(MIN(aspectHeight, cappedHeight));
+    return floor(MAX(1.0, width) / MAX(1.0, safeAspect));
 }
 
 @interface OPNStoreDocumentView : NSView
@@ -1880,7 +1877,7 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        heroHeight = OPNStoreHeroHeightForBounds(viewportWidth, NSHeight(self.bounds), [self heroAspectForGame:*heroGame]);
+        heroHeight = OPNStoreHeroHeightForWidth(viewportWidth, [self heroAspectForGame:*heroGame]);
         [self addDesktopHeroStageForGame:*heroGame y:y contentX:0.0 width:viewportWidth height:heroHeight];
     }
 
@@ -2035,7 +2032,7 @@ using namespace OPN;
     CGFloat width = MAX(1.0, NSWidth(self.bounds));
     NSImage *image = self.desktopHeroArtworkView.image;
     CGFloat aspect = (image.size.width > 0.0 && image.size.height > 0.0) ? image.size.width / image.size.height : kStoreFallbackHeroAspect;
-    CGFloat height = OPNStoreHeroHeightForBounds(width, NSHeight(self.bounds), aspect);
+    CGFloat height = OPNStoreHeroHeightForWidth(width, aspect);
     self.desktopFeaturedHeroFrame = NSMakeRect(NSMinX(self.desktopFeaturedHeroFrame), NSMinY(self.desktopFeaturedHeroFrame), width, height);
     self.desktopHeroContainer.frame = self.desktopFeaturedHeroFrame;
     self.desktopHeroArtworkView.frame = self.desktopHeroContainer.bounds;
@@ -2165,7 +2162,7 @@ using namespace OPN;
         view.image = cachedImage;
         view.alphaValue = 1.0;
         if (view == self.desktopHeroArtworkView) {
-            CGFloat expectedHeroHeight = OPNStoreHeroHeightForBounds(NSWidth(self.bounds), NSHeight(self.bounds), cachedImage.size.width / cachedImage.size.height);
+            CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), cachedImage.size.width / cachedImage.size.height);
             if (std::fabs(expectedHeroHeight - NSHeight(self.desktopFeaturedHeroFrame)) > 1.0) {
                 [self scheduleRenderStore];
                 if (completion) completion(YES);
@@ -2208,7 +2205,7 @@ using namespace OPN;
             strongView.image = image;
             strongView.alphaValue = 1.0;
             if (strongView == strongSelf.desktopHeroArtworkView) {
-                CGFloat expectedHeroHeight = OPNStoreHeroHeightForBounds(NSWidth(strongSelf.bounds), NSHeight(strongSelf.bounds), image.size.width / image.size.height);
+                CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(strongSelf.bounds), image.size.width / image.size.height);
                 if (std::fabs(expectedHeroHeight - NSHeight(strongSelf.desktopFeaturedHeroFrame)) > 1.0) {
                     [strongSelf scheduleRenderStore];
                     if (completion) completion(YES);
@@ -2232,7 +2229,7 @@ using namespace OPN;
         [self renderStore];
         return;
     }
-    CGFloat expectedHeroHeight = OPNStoreHeroHeightForBounds(NSWidth(self.bounds), NSHeight(self.bounds), [self heroAspectForGame:*heroGame]);
+    CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), [self heroAspectForGame:*heroGame]);
     if (std::fabs(expectedHeroHeight - NSHeight(self.desktopFeaturedHeroFrame)) > 1.0) {
         [self renderStore];
         return;
