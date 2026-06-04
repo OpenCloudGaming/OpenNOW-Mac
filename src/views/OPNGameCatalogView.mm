@@ -84,6 +84,14 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
 
 @end
 
+@interface OPNStoreHintFixedView : NSView
+@property (nonatomic, assign) NSSize fixedSize;
+@end
+
+@implementation OPNStoreHintFixedView
+- (NSSize)intrinsicContentSize { return self.fixedSize; }
+@end
+
 @interface OPNStoreHintPillView : NSView
 @end
 
@@ -95,6 +103,58 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     return nil;
 }
 @end
+
+static NSTextField *OPNStoreHintLabel(NSString *text, CGFloat fontSize, NSFontWeight weight, NSColor *color) {
+    NSTextField *label = OpnLabel(text, NSZeroRect, fontSize, color, weight, NSTextAlignmentCenter);
+    [label setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [label setContentCompressionResistancePriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    return label;
+}
+
+static OPNStoreHintFixedView *OPNStoreHintKeyView(NSString *symbolName, NSString *fallback, CGFloat width) {
+    OPNStoreHintFixedView *keyView = [[OPNStoreHintFixedView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, 24.0)];
+    keyView.fixedSize = NSMakeSize(width, 24.0);
+    keyView.wantsLayer = YES;
+    keyView.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.13].CGColor;
+    keyView.layer.borderColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.18].CGColor;
+    keyView.layer.borderWidth = 1.0;
+    keyView.layer.cornerRadius = 7.0;
+    keyView.layer.masksToBounds = YES;
+
+    NSImage *symbolImage = nil;
+    if (@available(macOS 11.0, *)) {
+        symbolImage = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:fallback];
+        [symbolImage setTemplate:YES];
+    }
+
+    if (symbolImage) {
+        NSImageView *imageView = [[NSImageView alloc] initWithFrame:NSInsetRect(keyView.bounds, 5.0, 4.0)];
+        imageView.image = symbolImage;
+        imageView.imageScaling = NSImageScaleProportionallyDown;
+        if (@available(macOS 10.14, *)) imageView.contentTintColor = OpnColor(OPN::kTextPrimary, 0.92);
+        imageView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        [keyView addSubview:imageView];
+    } else {
+        NSTextField *fallbackLabel = OPNStoreHintLabel(fallback, 12.0, NSFontWeightBold, OpnColor(OPN::kTextPrimary, 0.92));
+        fallbackLabel.frame = NSInsetRect(keyView.bounds, 4.0, 5.0);
+        fallbackLabel.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        [keyView addSubview:fallbackLabel];
+    }
+
+    return keyView;
+}
+
+static NSStackView *OPNStoreHintGroup(NSArray<OPNStoreHintFixedView *> *keys, NSString *title) {
+    NSStackView *group = [[NSStackView alloc] initWithFrame:NSZeroRect];
+    group.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    group.alignment = NSLayoutAttributeCenterY;
+    group.distribution = NSStackViewDistributionGravityAreas;
+    group.spacing = 5.0;
+    for (OPNStoreHintFixedView *key in keys) [group addArrangedSubview:key];
+    NSTextField *label = OPNStoreHintLabel(title, 12.0, NSFontWeightSemibold, OpnColor(OPN::kTextSecondary));
+    [group addArrangedSubview:label];
+    return group;
+}
 
 static CGFloat OPNStoreHeroContentInsetForWidth(CGFloat width) {
     return MIN(kStoreHeroMaxContentInset, MAX(kStoreHeroMinContentInset, width * kStoreHeroContentInsetRatio));
@@ -1269,7 +1329,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) OPNLoadingView *loadingView;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, strong) OPNStoreHintPillView *buttonHintPillView;
-@property (nonatomic, strong) NSTextField *buttonHintLabel;
+@property (nonatomic, strong) NSStackView *buttonHintStackView;
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> ownedLibraryGames;
@@ -1375,8 +1435,25 @@ using namespace OPN;
         _buttonHintPillView.layer.masksToBounds = YES;
         [self addSubview:_buttonHintPillView];
 
-        _buttonHintLabel = OpnLabel(@"Move: Arrows/WASD   Select: Enter/Space   Variant: V", NSZeroRect, 12.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentCenter);
-        [_buttonHintPillView addSubview:_buttonHintLabel];
+        _buttonHintStackView = [[NSStackView alloc] initWithFrame:NSZeroRect];
+        _buttonHintStackView.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+        _buttonHintStackView.alignment = NSLayoutAttributeCenterY;
+        _buttonHintStackView.distribution = NSStackViewDistributionGravityAreas;
+        _buttonHintStackView.spacing = 18.0;
+        [_buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreHintKeyView(@"arrow.up", @"Up", 24.0),
+            OPNStoreHintKeyView(@"arrow.down", @"Dn", 24.0),
+            OPNStoreHintKeyView(@"arrow.left", @"Lt", 24.0),
+            OPNStoreHintKeyView(@"arrow.right", @"Rt", 24.0)
+        ], @"Move")];
+        [_buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreHintKeyView(@"return", @"Ent", 30.0),
+            OPNStoreHintKeyView(@"space", @"Space", 46.0)
+        ], @"Select")];
+        [_buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreHintKeyView(@"v.circle", @"V", 26.0)
+        ], @"Variant")];
+        [_buttonHintPillView addSubview:_buttonHintStackView];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(interfacePreferencesChanged:)
@@ -1620,14 +1697,14 @@ using namespace OPN;
 }
 
 - (void)updateButtonHintPillFrame {
-    if (!self.buttonHintPillView || !self.buttonHintLabel) return;
+    if (!self.buttonHintPillView || !self.buttonHintStackView) return;
     CGFloat availableWidth = MAX(0.0, NSWidth(self.bounds) - 48.0);
-    CGFloat pillWidth = MIN(640.0, MAX(320.0, availableWidth));
+    CGFloat pillWidth = MIN(680.0, MAX(360.0, availableWidth));
     CGFloat pillX = floor((NSWidth(self.bounds) - pillWidth) * 0.5);
     CGFloat pillY = MAX(0.0, floor(NSHeight(self.bounds) - kStoreButtonHintPillBottomInset - kStoreButtonHintPillHeight));
     self.buttonHintPillView.frame = NSMakeRect(pillX, pillY, pillWidth, kStoreButtonHintPillHeight);
     self.buttonHintPillView.layer.cornerRadius = kStoreButtonHintPillHeight * 0.5;
-    self.buttonHintLabel.frame = NSInsetRect(self.buttonHintPillView.bounds, 18.0, 11.0);
+    self.buttonHintStackView.frame = NSInsetRect(self.buttonHintPillView.bounds, 18.0, 8.0);
 }
 
 - (void)scheduleRenderStore {
