@@ -29,6 +29,7 @@ public:
 
     NSData *LoadImage(NSString *urlString) const;
     void SaveImage(NSString *urlString, NSData *data) const;
+    bool ClearAllCaches() const;
 
 private:
     GameDataCache();

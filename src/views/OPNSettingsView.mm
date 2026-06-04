@@ -1,6 +1,7 @@
 #import "OPNSettingsView.h"
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNUIHelpers.h"
+#include "../games/OPNGameDataCache.h"
 #include "../games/OPNGameService.h"
 #include "../streaming/OPNLibWebRTCStreamSession.h"
 #include "../streaming/OPNStreamBackend.h"
@@ -191,6 +192,7 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
                   enabled:(NSArray<NSNumber *> *)enabled;
 - (void)audioDevicesChanged;
 - (void)checkForUpdatesClicked:(NSButton *)sender;
+- (void)clearCachesClicked:(NSButton *)sender;
 - (void)recordingVideoBitrateSliderChanged:(NSSlider *)sender;
 - (void)recordingAudioBitrateSliderChanged:(NSSlider *)sender;
 @end
@@ -948,7 +950,7 @@ using namespace OPN;
 }
 
 - (void)buildAboutContent {
-    NSView *panel = [self panelWithTitle:@"About" height:332.0];
+    NSView *panel = [self panelWithTitle:@"About" height:428.0];
     CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
@@ -973,6 +975,12 @@ using namespace OPN;
     updateButton.action = @selector(checkForUpdatesClicked:);
     [panel addSubview:updateButton];
 
+    [self addInfoRowToPanel:panel title:@"Cache" value:@"Catalog data, downloaded artwork, image memory cache, and URL cache" y:326.0 valueWidth:controlWidth monospaceValue:NO];
+    NSButton *clearCachesButton = OpnButton(@"Clear All Caches", NSMakeRect(controlX, 366.0, MIN(210.0, controlWidth), 40.0), OpnColor(kErrorRed, 0.14), OpnColor(kErrorRed), true, OpnColor(kErrorRed, 0.42));
+    clearCachesButton.target = self;
+    clearCachesButton.action = @selector(clearCachesClicked:);
+    [panel addSubview:clearCachesButton];
+
     [self.documentView addSubview:panel];
 }
 
@@ -994,6 +1002,25 @@ using namespace OPN;
 - (void)checkForUpdatesClicked:(NSButton *)sender {
     (void)sender;
     if (self.onCheckForUpdatesRequested) self.onCheckForUpdatesRequested();
+}
+
+- (void)clearCachesClicked:(NSButton *)sender {
+    sender.enabled = NO;
+    OpnClearImageCaches();
+    bool clearedDiskCaches = OPN::GameDataCache::Shared().ClearAllCaches();
+    sender.enabled = YES;
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = clearedDiskCaches ? @"Caches Cleared" : @"Some Caches Could Not Be Cleared";
+    alert.informativeText = clearedDiskCaches
+        ? @"OpenNOW cleared cached catalog data, artwork, decoded images, and URL responses. Restart or refresh the catalog to re-download fresh assets."
+        : @"OpenNOW cleared memory caches, but one or more disk cache files could not be removed. Check the logs for details.";
+    [alert addButtonWithTitle:@"OK"];
+    if (self.window) {
+        [alert beginSheetModalForWindow:self.window completionHandler:nil];
+    } else {
+        [alert runModal];
+    }
 }
 
 - (NSTextField *)rowLabel:(NSString *)text y:(CGFloat)y {

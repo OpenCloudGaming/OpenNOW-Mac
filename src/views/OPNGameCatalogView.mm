@@ -1,6 +1,7 @@
 #import "OPNGameCatalogView.h"
 #import "OPNLoadingView.h"
 #import "../common/OPNColorTokens.h"
+#include "../common/OPNSentry.h"
 #import "../common/OPNUIHelpers.h"
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
@@ -33,6 +34,16 @@ static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
 
 @implementation OPNStoreHeroTintView
 - (BOOL)isFlipped { return YES; }
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    CGFloat height = MAX(1.0, NSHeight(self.bounds));
+    NSInteger steps = MAX((NSInteger)1, (NSInteger)ceil(height));
+    for (NSInteger step = 0; step < steps; step++) {
+        CGFloat progress = steps <= 1 ? 1.0 : (CGFloat)step / (CGFloat)(steps - 1);
+        [OpnColor(OPN::kBackground, 0.50 * progress) setFill];
+        NSRectFill(NSMakeRect(0.0, (CGFloat)step, NSWidth(self.bounds), 1.0));
+    }
+}
 - (NSView *)hitTest:(NSPoint)point {
     (void)point;
     return nil;
@@ -374,8 +385,65 @@ static NSArray<NSString *> *OPNStoreImageCandidatesForGame(const OPN::GameInfo &
 
 static NSArray<NSString *> *OPNStoreLogoCandidatesForGame(const OPN::GameInfo &game) {
     NSMutableArray<NSString *> *urls = [NSMutableArray array];
-    OPNStoreAppendImageType(urls, game, "GAME_LOGO");
+    NSArray<NSString *> *preferredTypes = @[@"GAME_LOGO", @"LOGO", @"TITLE_LOGO"];
+    for (NSString *type in preferredTypes) {
+        OPNStoreAppendImageType(urls, game, type.UTF8String);
+    }
     return urls;
+}
+
+static NSString *OPNStoreImageTypeSummaryForGame(const OPN::GameInfo &game) {
+    NSMutableArray<NSString *> *types = [NSMutableArray arrayWithCapacity:game.imageUrlsByType.size()];
+    for (const auto &entry : game.imageUrlsByType) {
+        NSString *type = OPNStoreString(entry.first, @"");
+        if (type.length > 0) [types addObject:[NSString stringWithFormat:@"%@:%lu", type, (unsigned long)entry.second.size()]];
+    }
+    return [types componentsJoinedByString:@", "];
+}
+
+static NSImage *OPNStoreVisibleLogoImage(NSImage *image) {
+    if (!image || image.size.width <= 0.0 || image.size.height <= 0.0) return image;
+    NSRect proposedRect = NSMakeRect(0.0, 0.0, image.size.width, image.size.height);
+    CGImageRef source = [image CGImageForProposedRect:&proposedRect context:nil hints:nil];
+    if (!source) return image;
+
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithCGImage:source];
+    NSInteger width = bitmap.pixelsWide;
+    NSInteger height = bitmap.pixelsHigh;
+    if (width <= 0 || height <= 0) return image;
+
+    NSInteger minX = width;
+    NSInteger minY = height;
+    NSInteger maxX = -1;
+    NSInteger maxY = -1;
+    for (NSInteger y = 0; y < height; y++) {
+        for (NSInteger x = 0; x < width; x++) {
+            NSColor *color = [bitmap colorAtX:x y:y];
+            if (color.alphaComponent <= 0.04) continue;
+            minX = MIN(minX, x);
+            minY = MIN(minY, y);
+            maxX = MAX(maxX, x);
+            maxY = MAX(maxY, y);
+        }
+    }
+    if (maxX < minX || maxY < minY) return image;
+
+    NSInteger padding = MAX((NSInteger)8, (NSInteger)ceil(MAX(maxX - minX + 1, maxY - minY + 1) * 0.04));
+    minX = MAX((NSInteger)0, minX - padding);
+    minY = MAX((NSInteger)0, minY - padding);
+    maxX = MIN(width - 1, maxX + padding);
+    maxY = MIN(height - 1, maxY + padding);
+
+    NSInteger cropWidth = maxX - minX + 1;
+    NSInteger cropHeight = maxY - minY + 1;
+    if (cropWidth <= 0 || cropHeight <= 0) return image;
+    if (cropWidth >= width * 0.92 && cropHeight >= height * 0.92) return image;
+
+    CGImageRef cropped = CGImageCreateWithImageInRect(source, CGRectMake((CGFloat)minX, (CGFloat)minY, (CGFloat)cropWidth, (CGFloat)cropHeight));
+    if (!cropped) return image;
+    NSImage *croppedImage = [[NSImage alloc] initWithCGImage:cropped size:NSMakeSize((CGFloat)cropWidth, (CGFloat)cropHeight)];
+    CGImageRelease(cropped);
+    return croppedImage ?: image;
 }
 
 static NSRect OPNStoreHeroVisibleArtworkRectForImage(NSImage *image, NSRect bounds) {
@@ -395,7 +463,8 @@ static NSRect OPNStoreHeroVisibleArtworkRectForImage(NSImage *image, NSRect boun
 
 static NSRect OPNStoreHeroLogoFrameForImage(NSImage *image, NSRect bounds, NSImage *artworkImage) {
     NSRect artworkRect = OPNStoreHeroVisibleArtworkRectForImage(artworkImage, bounds);
-    CGFloat maxWidth = MIN(kStoreHeroLogoMaxWidth, NSWidth(bounds) * 0.36);
+    CGFloat horizontalInset = MIN(OPNStoreHeroContentInsetForWidth(NSWidth(bounds)), MAX(24.0, NSWidth(artworkRect) * 0.08));
+    CGFloat maxWidth = MIN(kStoreHeroLogoMaxWidth, MAX(120.0, NSWidth(artworkRect) - horizontalInset * 2.0));
     CGFloat maxHeight = MIN(kStoreHeroLogoMaxHeight, NSHeight(artworkRect) * 0.44);
     CGFloat width = maxWidth;
     CGFloat height = maxHeight;
@@ -409,16 +478,17 @@ static NSRect OPNStoreHeroLogoFrameForImage(NSImage *image, NSRect bounds, NSIma
             height = floor(width / aspect);
         }
     }
-    CGFloat x = OPNStoreHeroContentInsetForWidth(NSWidth(bounds));
+    CGFloat x = NSMinX(artworkRect) + horizontalInset;
     CGFloat y = NSMinY(artworkRect) + floor((NSHeight(artworkRect) - height) * 0.5);
     return NSMakeRect(x, y, width, height);
 }
 
 static NSRect OPNStoreHeroLogoFallbackFrame(NSRect bounds, NSImage *artworkImage) {
     NSRect artworkRect = OPNStoreHeroVisibleArtworkRectForImage(artworkImage, bounds);
-    CGFloat width = MIN(kStoreHeroLogoMaxWidth, NSWidth(bounds) * 0.42);
+    CGFloat horizontalInset = MIN(OPNStoreHeroContentInsetForWidth(NSWidth(bounds)), MAX(24.0, NSWidth(artworkRect) * 0.08));
+    CGFloat width = MIN(kStoreHeroLogoMaxWidth, MAX(160.0, NSWidth(artworkRect) - horizontalInset * 2.0));
     CGFloat height = MIN(108.0, MAX(56.0, NSHeight(artworkRect) * 0.22));
-    CGFloat x = OPNStoreHeroContentInsetForWidth(NSWidth(bounds));
+    CGFloat x = NSMinX(artworkRect) + horizontalInset;
     CGFloat y = NSMinY(artworkRect) + floor((NSHeight(artworkRect) - height) * 0.5);
     return NSMakeRect(x, y, width, height);
 }
@@ -432,7 +502,8 @@ static void OPNStoreHeroBringLogoToFront(NSView *container, NSView *tintView, NS
 
 static BOOL OPNStoreHeroImageHasVisibleContent(NSImage *image) {
     if (!image || image.size.width <= 0.0 || image.size.height <= 0.0) return NO;
-    if (image.size.width / MAX(1.0, image.size.height) < 1.35) return NO;
+    if (image.size.width < 900.0 || image.size.height < 300.0) return NO;
+    if (image.size.width / MAX(1.0, image.size.height) < 1.65) return NO;
     NSRect proposedRect = NSMakeRect(0.0, 0.0, image.size.width, image.size.height);
     CGImageRef source = [image CGImageForProposedRect:&proposedRect context:nil hints:nil];
     if (!source) return YES;
@@ -1161,7 +1232,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSView *desktopHeroContainer;
 @property (nonatomic, strong) OPNHeroArtworkView *desktopHeroArtworkView;
 @property (nonatomic, strong) OPNStoreHeroTintView *desktopHeroTintView;
-@property (nonatomic, strong) CAGradientLayer *desktopHeroTintLayer;
 @property (nonatomic, strong) NSTextField *desktopHeroTitleFallback;
 @property (nonatomic, strong) NSImageView *desktopHeroLogoView;
 @property (nonatomic, copy) NSString *desktopHeroIdentity;
@@ -1188,6 +1258,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)addDesktopHeroLogoForGame:(const OPN::GameInfo &)game toContainer:(NSView *)container;
 - (void)updateDesktopHeroElementsForGame:(const OPN::GameInfo &)game animated:(BOOL)animated;
+- (void)updateDesktopHeroOverlayFrames;
 - (void)updateDesktopHeroLogoFrame;
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
 - (void)cancelHeroImageLoads;
@@ -1460,8 +1531,7 @@ using namespace OPN;
     self.scrollView.frame = NSMakeRect(0.0, navClearance, NSWidth(self.bounds), MAX(0.0, NSHeight(self.bounds) - navClearance));
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
-    self.desktopHeroTintView.frame = self.desktopHeroContainer.bounds;
-    self.desktopHeroTintLayer.frame = self.desktopHeroTintView.bounds;
+    [self updateDesktopHeroOverlayFrames];
     if (std::fabs(self.lastLayoutWidth - NSWidth(self.bounds)) > 1.0) {
         self.lastLayoutWidth = NSWidth(self.bounds);
         [self scheduleRenderStoreAfterResize];
@@ -1610,7 +1680,6 @@ using namespace OPN;
     self.desktopHeroContainer = nil;
     self.desktopHeroArtworkView = nil;
     self.desktopHeroTintView = nil;
-    self.desktopHeroTintLayer = nil;
     self.desktopHeroTitleFallback = nil;
     self.desktopHeroLogoView = nil;
     self.desktopHeroIdentity = nil;
@@ -1626,8 +1695,7 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        CGFloat heroAspect = [self heroAspectForGame:*heroGame];
-        heroHeight = floor(viewportWidth / MAX(0.1, heroAspect));
+        heroHeight = floor(viewportWidth * kStoreHeroHeightRatio);
         [self addDesktopHeroStageForGame:*heroGame y:y contentX:0.0 width:viewportWidth height:heroHeight];
     }
 
@@ -1684,9 +1752,10 @@ using namespace OPN;
     self.desktopFeaturedHeroFrame = NSMakeRect(contentX, y, width, height);
 
     NSView *container = [[NSView alloc] initWithFrame:self.desktopFeaturedHeroFrame];
-    container.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    container.autoresizingMask = NSViewWidthSizable;
     container.wantsLayer = YES;
     container.layer.backgroundColor = [NSColor clearColor].CGColor;
+    container.layer.masksToBounds = YES;
     [self.documentView addSubview:container];
     self.desktopHeroContainer = container;
 
@@ -1699,17 +1768,10 @@ using namespace OPN;
     OPNStoreHeroTintView *tintView = [[OPNStoreHeroTintView alloc] initWithFrame:container.bounds];
     tintView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     tintView.wantsLayer = YES;
-    CAGradientLayer *tintLayer = [CAGradientLayer layer];
-    tintLayer.frame = tintView.bounds;
-    tintLayer.colors = @[(id)OpnColor(OPN::kBackground, 0.50).CGColor,
-                         (id)OpnColor(OPN::kBackground, 0.0).CGColor];
-    tintLayer.locations = @[@0.0, @1.0];
-    tintLayer.startPoint = CGPointMake(0.5, 0.0);
-    tintLayer.endPoint = CGPointMake(0.5, 1.0);
-    tintView.layer = tintLayer;
+    tintView.layer.backgroundColor = NSColor.clearColor.CGColor;
+    tintView.layer.zPosition = 100.0;
     [container addSubview:tintView positioned:NSWindowAbove relativeTo:artwork];
     self.desktopHeroTintView = tintView;
-    self.desktopHeroTintLayer = tintLayer;
 
     [self addDesktopHeroLogoForGame:game toContainer:container];
     [self updateDesktopHeroElementsForGame:game animated:NO];
@@ -1729,6 +1791,8 @@ using namespace OPN;
     titleFallback.maximumNumberOfLines = 2;
     titleFallback.lineBreakMode = NSLineBreakByWordWrapping;
     titleFallback.shadow = textShadow;
+    titleFallback.wantsLayer = YES;
+    titleFallback.layer.zPosition = 1000.0;
     [container addSubview:titleFallback positioned:NSWindowAbove relativeTo:nil];
     self.desktopHeroTitleFallback = titleFallback;
 
@@ -1737,6 +1801,7 @@ using namespace OPN;
     logoView.imageAlignment = NSImageAlignLeft;
     logoView.hidden = YES;
     logoView.wantsLayer = YES;
+    logoView.layer.zPosition = 1001.0;
     logoView.layer.shadowColor = OpnColor(OPN::kBlack, 0.90).CGColor;
     logoView.layer.shadowOpacity = 1.0;
     logoView.layer.shadowRadius = 18.0;
@@ -1751,8 +1816,14 @@ using namespace OPN;
     NSInteger generation = self.desktopHeroGeneration;
     NSString *gameIdentity = OpnGameIdentityForHero(game);
     self.desktopHeroIdentity = gameIdentity;
-    self.desktopHeroTintView.frame = self.desktopHeroContainer.bounds;
-    self.desktopHeroTintLayer.frame = self.desktopHeroTintView.bounds;
+    NSArray<NSString *> *logoCandidates = OPNStoreLogoCandidatesForGame(game);
+    OPN::LogInfo(@"[HeroLogo] update title=%@ identity=%@ imageTypes={%@} logoCandidates=%lu urls=%@",
+                 OPNStoreString(game.title, @"<untitled>"),
+                 gameIdentity ?: @"",
+                 OPNStoreImageTypeSummaryForGame(game),
+                 (unsigned long)logoCandidates.count,
+                 [logoCandidates componentsJoinedByString:@" | "]);
+    [self updateDesktopHeroOverlayFrames];
     OPNStoreHeroBringLogoToFront(self.desktopHeroContainer, self.desktopHeroTintView, self.desktopHeroTitleFallback, self.desktopHeroLogoView);
 
     self.desktopHeroTitleFallback.stringValue = OPNStoreString(game.title, @"");
@@ -1789,6 +1860,12 @@ using namespace OPN;
     [self loadDesktopHeroLogoForGame:game generation:generation];
 }
 
+- (void)updateDesktopHeroOverlayFrames {
+    if (!self.desktopHeroContainer || !self.desktopHeroTintView) return;
+    self.desktopHeroTintView.frame = OPNStoreHeroVisibleArtworkRectForImage(self.desktopHeroArtworkView.image, self.desktopHeroContainer.bounds);
+    [self.desktopHeroTintView setNeedsDisplay:YES];
+}
+
 - (void)updateDesktopHeroLogoFrame {
     if (!self.desktopHeroContainer || !self.desktopHeroArtworkView || !self.desktopHeroTitleFallback || !self.desktopHeroLogoView) return;
     NSImage *artworkImage = self.desktopHeroArtworkView.image;
@@ -1798,17 +1875,36 @@ using namespace OPN;
     } else {
         self.desktopHeroLogoView.frame = OPNStoreHeroLogoFallbackFrame(self.desktopHeroContainer.bounds, artworkImage);
     }
+    OPN::LogInfo(@"[HeroLogo] frames container=%@ artwork=%@ logoHidden=%d logoImage=%d logoFrame=%@ titleHidden=%d titleFrame=%@",
+                 NSStringFromRect(self.desktopHeroContainer.frame),
+                 NSStringFromSize(artworkImage.size),
+                 self.desktopHeroLogoView.hidden,
+                 self.desktopHeroLogoView.image != nil,
+                 NSStringFromRect(self.desktopHeroLogoView.frame),
+                 self.desktopHeroTitleFallback.hidden,
+                 NSStringFromRect(self.desktopHeroTitleFallback.frame));
+    [self updateDesktopHeroOverlayFrames];
     OPNStoreHeroBringLogoToFront(self.desktopHeroContainer, self.desktopHeroTintView, self.desktopHeroTitleFallback, self.desktopHeroLogoView);
 }
 
 - (void)loadDesktopHeroLogoForGame:(const GameInfo &)game generation:(NSInteger)generation {
     NSArray<NSString *> *candidates = OPNStoreLogoCandidatesForGame(game);
+    OPN::LogInfo(@"[HeroLogo] load start title=%@ generation=%ld candidates=%lu",
+                 OPNStoreString(game.title, @"<untitled>"),
+                 (long)generation,
+                 (unsigned long)candidates.count);
     NSImage *cachedLogo = OpnCachedImageFromCandidates(candidates, 720.0, nil);
     if (cachedLogo) {
-        self.desktopHeroLogoView.frame = OPNStoreHeroLogoFrameForImage(cachedLogo, self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
-        self.desktopHeroLogoView.image = cachedLogo;
+        NSImage *visibleLogo = OPNStoreVisibleLogoImage(cachedLogo);
+        self.desktopHeroLogoView.frame = OPNStoreHeroLogoFrameForImage(visibleLogo, self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
+        self.desktopHeroLogoView.image = visibleLogo;
         self.desktopHeroLogoView.hidden = NO;
         self.desktopHeroTitleFallback.hidden = YES;
+        OPN::LogInfo(@"[HeroLogo] cache hit title=%@ originalSize=%@ visibleSize=%@ frame=%@",
+                     OPNStoreString(game.title, @"<untitled>"),
+                     NSStringFromSize(cachedLogo.size),
+                     NSStringFromSize(visibleLogo.size),
+                     NSStringFromRect(self.desktopHeroLogoView.frame));
         return;
     }
 
@@ -1817,11 +1913,33 @@ using namespace OPN;
         (void)resolvedURL;
         (void)data;
         __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf || generation != strongSelf.desktopHeroGeneration || !strongSelf.desktopHeroContainer.superview || !image) return;
-        strongSelf.desktopHeroLogoView.frame = OPNStoreHeroLogoFrameForImage(image, strongSelf.desktopHeroContainer.bounds, strongSelf.desktopHeroArtworkView.image);
-        strongSelf.desktopHeroLogoView.image = image;
+        if (!strongSelf) return;
+        if (generation != strongSelf.desktopHeroGeneration || !strongSelf.desktopHeroContainer.superview) {
+            OPN::LogInfo(@"[HeroLogo] load ignored stale generation=%ld current=%ld resolved=%@ image=%d",
+                         (long)generation,
+                         (long)strongSelf.desktopHeroGeneration,
+                         resolvedURL ?: @"",
+                         image != nil);
+            return;
+        }
+        if (!image) {
+            OPN::LogInfo(@"[HeroLogo] load failed title=%@ candidates=%lu resolved=%@",
+                         OPNStoreString(game.title, @"<untitled>"),
+                         (unsigned long)candidates.count,
+                         resolvedURL ?: @"");
+            return;
+        }
+        NSImage *visibleLogo = OPNStoreVisibleLogoImage(image);
+        strongSelf.desktopHeroLogoView.frame = OPNStoreHeroLogoFrameForImage(visibleLogo, strongSelf.desktopHeroContainer.bounds, strongSelf.desktopHeroArtworkView.image);
+        strongSelf.desktopHeroLogoView.image = visibleLogo;
         strongSelf.desktopHeroLogoView.hidden = NO;
         strongSelf.desktopHeroTitleFallback.hidden = YES;
+        OPN::LogInfo(@"[HeroLogo] load success title=%@ resolved=%@ originalSize=%@ visibleSize=%@ frame=%@",
+                     OPNStoreString(game.title, @"<untitled>"),
+                     resolvedURL ?: @"",
+                     NSStringFromSize(image.size),
+                     NSStringFromSize(visibleLogo.size),
+                     NSStringFromRect(strongSelf.desktopHeroLogoView.frame));
     });
     [self trackHeroImageLoadToken:token];
 }

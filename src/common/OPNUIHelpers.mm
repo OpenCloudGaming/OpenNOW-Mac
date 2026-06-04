@@ -162,6 +162,16 @@ static NSMutableDictionary<NSString *, NSDate *> *OpnImageFailureCache(void) {
     return cache;
 }
 
+void OpnClearImageCaches(void) {
+    [OpnDecodedImageCache() removeAllObjects];
+    [OpnImageDataMemoryCache() removeAllObjects];
+    [NSURLCache.sharedURLCache removeAllCachedResponses];
+    NSMutableDictionary<NSString *, NSDate *> *failureCache = OpnImageFailureCache();
+    @synchronized (failureCache) {
+        [failureCache removeAllObjects];
+    }
+}
+
 static BOOL OpnImageFailureCacheContainsFreshEntry(NSString *urlString) {
     if (urlString.length == 0) return NO;
     NSMutableDictionary<NSString *, NSDate *> *cache = OpnImageFailureCache();

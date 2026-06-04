@@ -334,4 +334,17 @@ void GameDataCache::SaveImage(NSString *urlString, NSData *data) const {
     OPNWriteCacheData(path, data);
 }
 
+bool GameDataCache::ClearAllCaches() const {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSError *removeError = nil;
+    BOOL removed = ![fileManager fileExistsAtPath:m_rootPath] || [fileManager removeItemAtPath:m_rootPath error:&removeError];
+    if (!removed) {
+        OPN::LogError(@"[GameDataCache] Failed to clear cache directory %@: %@", m_rootPath, removeError.localizedDescription ?: @"unknown error");
+    }
+    OPNCreateCacheDirectory(m_catalogPath);
+    OPNCreateCacheDirectory(m_catalogDefinitionsPath);
+    OPNCreateCacheDirectory(m_imagePath);
+    return removed ? true : false;
+}
+
 }
