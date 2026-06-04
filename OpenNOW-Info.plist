@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>OpenNOW</string>
 	<key>CFBundleIconFile</key>
-	<string>logo-mac</string>
+	<string>OpenNOW-Black</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.opencloudgaming.opennow</string>
 	<key>CFBundleInfoDictionaryVersion</key>

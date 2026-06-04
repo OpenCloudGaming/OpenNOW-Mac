@@ -903,8 +903,10 @@ using namespace OPN;
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
 
     [panel addSubview:[self rowLabel:@"App Icon" y:104.0]];
-    [self addOptionGroupTo:panel group:11 titles:@[@"GFN Green", @"Sky Blue"] selected:OpnAppIconThemePreference() == OPNAppIconThemeBlue ? 1 : 0 y:96.0 widths:@[@112.0, @94.0]];
-    NSTextField *iconHint = OpnLabel(@"Changes the Dock icon and OpenNOW logo immediately. Green is the default app icon.",
+    OPNAppIconTheme appIconTheme = OpnAppIconThemePreference();
+    NSInteger selectedIconIndex = appIconTheme == OPNAppIconThemeGreen ? 1 : (appIconTheme == OPNAppIconThemeBlue ? 2 : 0);
+    [self addOptionGroupTo:panel group:11 titles:@[@"Black", @"GFN Green", @"Sky Blue"] selected:selectedIconIndex y:96.0 widths:@[@82.0, @112.0, @94.0]];
+    NSTextField *iconHint = OpnLabel(@"Changes the Dock icon and OpenNOW logo immediately. Black is the default app icon.",
                                      NSMakeRect(controlX, 146.0, controlWidth, 36.0),
                                      12.0,
                                      OpnColor(kTextMuted),
@@ -1174,7 +1176,7 @@ using namespace OPN;
         case 8: OPN::SaveStreamBitrateIndex((int)index); break;
         case 9: [self applyPerformanceProfile:index]; break;
         case 10: OPN::SaveStreamPrefilterModeIndex((int)index); break;
-        case 11: OpnSetAppIconThemePreference(index == 1 ? OPNAppIconThemeBlue : OPNAppIconThemeGreen); break;
+        case 11: OpnSetAppIconThemePreference(index == 1 ? OPNAppIconThemeGreen : (index == 2 ? OPNAppIconThemeBlue : OPNAppIconThemeBlack)); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();

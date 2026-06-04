@@ -10,7 +10,7 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 CALLER_DIR="$(pwd)"
 ICON_PATH_INPUT="${1:-${ICON_PATH:-}}"
 if [[ -z "${ICON_PATH_INPUT}" ]]; then
-  ICON_PATH_INPUT="${ROOT_DIR}/assets/logo-mac.png"
+  ICON_PATH_INPUT="${ROOT_DIR}/assets/logo-mac-Black.png"
 fi
 BUILD_DIR="${ROOT_DIR}/build"
 RELEASE_DIR="${BUILD_DIR}/release"
@@ -48,7 +48,7 @@ resolve_file_path() {
 ICON_PATH="$(resolve_file_path "${ICON_PATH_INPUT}")"
 if [[ -z "${ICON_PATH}" || ! -f "${ICON_PATH}" ]]; then
   printf 'Usage: %s /path/to/icon.png\n' "$0" >&2
-  printf 'Or set ICON_PATH=/path/to/icon.png. Defaults to %s.\n' "${ROOT_DIR}/assets/logo.png" >&2
+  printf 'Or set ICON_PATH=/path/to/icon.png. Defaults to %s.\n' "${ROOT_DIR}/assets/logo-mac-Black.png" >&2
   exit 1
 fi
 
@@ -159,6 +159,7 @@ sips -z 1024 1024 "${ICON_PATH}" --out "${ICONSET_DIR}/icon_512x512@2x.png" >/de
 iconutil -c icns "${ICONSET_DIR}" -o "${RESOURCES_DIR}/AppIcon.icns"
 cp "${ROOT_DIR}/assets/OpenNOW.icns" "${RESOURCES_DIR}/OpenNOW.icns"
 cp "${ROOT_DIR}/assets/OpenNOW-SkyBlue.icns" "${RESOURCES_DIR}/OpenNOW-SkyBlue.icns"
+cp "${ROOT_DIR}/assets/OpenNOW-Black.icns" "${RESOURCES_DIR}/OpenNOW-Black.icns"
 
 printf 'Rewriting Mach-O install names...\n'
 python3 - "${CONTENTS_DIR}" <<'PY'

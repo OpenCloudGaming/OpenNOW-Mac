@@ -321,14 +321,18 @@ void OpnSetAutoFullScreenEnabled(BOOL enabled) {
 
 OPNAppIconTheme OpnAppIconThemePreference(void) {
     NSString *value = [NSUserDefaults.standardUserDefaults stringForKey:OPNAppIconThemeDefaultsKey];
+    if ([value isEqualToString:@"green"]) return OPNAppIconThemeGreen;
     if ([value isEqualToString:@"blue"]) return OPNAppIconThemeBlue;
-    return OPNAppIconThemeGreen;
+    return OPNAppIconThemeBlack;
 }
 
 void OpnSetAppIconThemePreference(OPNAppIconTheme theme) {
-    OPNAppIconTheme normalizedTheme = theme == OPNAppIconThemeBlue ? OPNAppIconThemeBlue : OPNAppIconThemeGreen;
+    OPNAppIconTheme normalizedTheme = theme;
+    if (normalizedTheme != OPNAppIconThemeGreen && normalizedTheme != OPNAppIconThemeBlue) normalizedTheme = OPNAppIconThemeBlack;
     if (normalizedTheme == OpnAppIconThemePreference()) return;
-    NSString *value = normalizedTheme == OPNAppIconThemeBlue ? @"blue" : @"green";
+    NSString *value = @"black";
+    if (normalizedTheme == OPNAppIconThemeGreen) value = @"green";
+    if (normalizedTheme == OPNAppIconThemeBlue) value = @"blue";
     [NSUserDefaults.standardUserDefaults setObject:value forKey:OPNAppIconThemeDefaultsKey];
     [NSUserDefaults.standardUserDefaults synchronize];
     [NSNotificationCenter.defaultCenter postNotificationName:OPNInterfacePreferencesDidChangeNotification object:nil];

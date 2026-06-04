@@ -204,24 +204,38 @@ static const uint16_t OPNDesktopGamepadDirectionMask = OPNDesktopGamepadButtonUp
     OPNDesktopGamepadButtonRight;
 
 static NSArray<NSString *> *OPNDesktopBrandIconRelativePaths(void) {
-    if (OpnAppIconThemePreference() == OPNAppIconThemeBlue) {
-        return @[
-            @"assets/OpenNOW-SkyBlue.icns",
-            @"assets/logo-mac-SkyBlue.png",
-            @"assets/OpenNOW.icns",
-            @"assets/logo-mac.png",
-            @"assets/logo.png",
-        ];
+    switch (OpnAppIconThemePreference()) {
+        case OPNAppIconThemeGreen:
+            return @[
+                @"assets/OpenNOW.icns",
+                @"assets/logo-mac.png",
+                @"assets/logo.png",
+            ];
+        case OPNAppIconThemeBlue:
+            return @[
+                @"assets/OpenNOW-SkyBlue.icns",
+                @"assets/logo-mac-SkyBlue.png",
+                @"assets/OpenNOW.icns",
+                @"assets/logo-mac.png",
+                @"assets/logo.png",
+            ];
+        case OPNAppIconThemeBlack:
+        default:
+            return @[
+                @"assets/OpenNOW-Black.icns",
+                @"assets/logo-mac-Black.png",
+                @"assets/OpenNOW.icns",
+                @"assets/logo-mac.png",
+                @"assets/logo.png",
+            ];
     }
-    return @[
-        @"assets/OpenNOW.icns",
-        @"assets/logo-mac.png",
-        @"assets/logo.png",
-    ];
 }
 
 static NSImage *OPNDesktopBrandIconImage() {
-    NSString *bundleResource = OpnAppIconThemePreference() == OPNAppIconThemeBlue ? @"OpenNOW-SkyBlue" : @"OpenNOW";
+    OPNAppIconTheme theme = OpnAppIconThemePreference();
+    NSString *bundleResource = @"OpenNOW-Black";
+    if (theme == OPNAppIconThemeGreen) bundleResource = @"OpenNOW";
+    if (theme == OPNAppIconThemeBlue) bundleResource = @"OpenNOW-SkyBlue";
     NSString *bundleIconPath = [[NSBundle mainBundle] pathForResource:bundleResource ofType:@"icns"];
     NSImage *bundleIcon = bundleIconPath.length > 0 ? [[NSImage alloc] initWithContentsOfFile:bundleIconPath] : nil;
     if (bundleIcon) return bundleIcon;

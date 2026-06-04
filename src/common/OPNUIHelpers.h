@@ -10,8 +10,9 @@ unsigned OpnBlendRGB(unsigned rgb, unsigned target, CGFloat amount);
 extern NSString *const OPNInterfacePreferencesDidChangeNotification;
 
 typedef NS_ENUM(NSInteger, OPNAppIconTheme) {
-    OPNAppIconThemeGreen = 0,
-    OPNAppIconThemeBlue = 1,
+    OPNAppIconThemeBlack = 0,
+    OPNAppIconThemeGreen = 1,
+    OPNAppIconThemeBlue = 2,
 };
 
 BOOL OpnAutoFullScreenEnabled(void);
