@@ -330,6 +330,28 @@ static NSString *OPNAuthSessionDisplayName(const OPN::AuthSession &session) {
     return @"Account";
 }
 
+static BOOL OPNStringLooksLikeEmail(NSString *value) {
+    NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSRange atRange = [trimmed rangeOfString:@"@"];
+    if (atRange.location == NSNotFound || atRange.location == 0 || NSMaxRange(atRange) >= trimmed.length) return NO;
+    return [[trimmed substringFromIndex:NSMaxRange(atRange)] containsString:@"."];
+}
+
+static NSString *OPNDisplayNameFromUserInfo(NSDictionary *info) {
+    if (![info isKindOfClass:NSDictionary.class]) return nil;
+    for (NSString *key in @[@"nickname", @"display_name", @"name", @"given_name", @"preferred_username", @"email"]) {
+        NSString *value = [info[key] isKindOfClass:NSString.class] ? info[key] : nil;
+        NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (trimmed.length == 0) continue;
+        if ([key isEqualToString:@"email"]) {
+            NSString *localPart = [trimmed componentsSeparatedByString:@"@"].firstObject;
+            return localPart.length > 0 ? localPart : trimmed;
+        }
+        return trimmed;
+    }
+    return nil;
+}
+
 static NSString *OPNGravatarURLStringForEmail(const std::string &email) {
     if (email.empty()) return nil;
     NSString *rawEmail = [NSString stringWithUTF8String:email.c_str()];
@@ -2231,7 +2253,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [self.contentContainer addSubview:catalog];
             OpnDisableFocusHighlights(catalog);
             self.window.title = @"OpenNOW";
-            if (displayName.length == 0 && !self.currentSession.accessToken.empty()) {
+            if ((displayName.length == 0 || OPNStringLooksLikeEmail(displayName)) && !self.currentSession.accessToken.empty()) {
                 [catalog setLoading:YES];
                 AuthService::Shared().FetchStarFleetUserInfo(
                     self.currentSession.accessToken,
@@ -2240,9 +2262,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                         if (!s) return;
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if (uiSuccess && info) {
-                                NSString *pref = info[@"preferred_username"];
                                 NSString *email = info[@"email"];
-                                NSString *name = pref ? pref : (email ? [email componentsSeparatedByString:@"@"][0] : nil);
+                                NSString *name = OPNDisplayNameFromUserInfo(info);
                                 if (name) {
                                     s.currentSession.displayName = [name UTF8String];
                                     if (email.length > 0) s.currentSession.email = [email UTF8String];

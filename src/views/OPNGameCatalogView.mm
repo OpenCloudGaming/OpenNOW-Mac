@@ -1348,6 +1348,16 @@ using namespace OPN;
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)hasContent { return self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0; }
 
+- (void)mouseDown:(NSEvent *)event {
+    [self.window makeFirstResponder:self];
+    [super mouseDown:event];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (self.window) [self.window makeFirstResponder:self];
+}
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.heroRotationTimer invalidate];
@@ -2196,6 +2206,48 @@ using namespace OPN;
     NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[(NSUInteger)self.focusedRowIndex];
     if (self.focusedColumnIndex < 0 || self.focusedColumnIndex >= (NSInteger)row.count) return;
     [row[(NSUInteger)self.focusedColumnIndex] cycleSelectedVariant];
+}
+
+- (void)keyDown:(NSEvent *)event {
+    NSString *characters = event.charactersIgnoringModifiers ?: @"";
+    unichar key = characters.length > 0 ? [characters characterAtIndex:0] : 0;
+    switch (key) {
+        case NSLeftArrowFunctionKey:
+        case 'a':
+        case 'A':
+            [self moveGamepadFocusByRows:0 columns:-1];
+            return;
+        case NSRightArrowFunctionKey:
+        case 'd':
+        case 'D':
+            [self moveGamepadFocusByRows:0 columns:1];
+            return;
+        case NSUpArrowFunctionKey:
+        case 'w':
+        case 'W':
+            [self moveGamepadFocusByRows:-1 columns:0];
+            return;
+        case NSDownArrowFunctionKey:
+        case 's':
+        case 'S':
+            [self moveGamepadFocusByRows:1 columns:0];
+            return;
+        case NSTabCharacter:
+            [self moveGamepadFocusByRows:0 columns:(event.modifierFlags & NSEventModifierFlagShift) ? -1 : 1];
+            return;
+        case NSCarriageReturnCharacter:
+        case NSEnterCharacter:
+        case ' ':
+            [self activateGamepadFocus];
+            return;
+        case 'v':
+        case 'V':
+            [self cycleFocusedGamepadVariant];
+            return;
+        default:
+            [super keyDown:event];
+            return;
+    }
 }
 
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
