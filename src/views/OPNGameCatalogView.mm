@@ -909,6 +909,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) NSTimeInterval imageRevealDelay;
 @property (nonatomic, copy) void (^onSelect)(void);
 @property (nonatomic, copy) void (^onBuy)(NSString *purchaseURL);
+@property (nonatomic, copy) void (^onHover)(void);
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game prominent:(BOOL)prominent;
 - (void)setStoreFocused:(BOOL)focused;
 - (void)activate;
@@ -964,7 +965,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         self.layer.cornerRadius = prominent ? 28.0 : 18.0;
         self.layer.masksToBounds = YES;
         self.layer.backgroundColor = OpnColor(0x070A0C, 0.92).CGColor;
-        self.layer.borderWidth = 1.0;
+        self.layer.borderWidth = 1.25;
         self.layer.borderColor = OpnColor(0xFFFFFF, prominent ? 0.18 : 0.12).CGColor;
 
         _imageView = [[NSImageView alloc] initWithFrame:self.bounds];
@@ -1156,7 +1157,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.alphaValue = 1.0;
     [CATransaction begin];
     [CATransaction setAnimationDuration:0.18];
-    self.layer.borderWidth = focused ? 2.5 : 1.0;
+    self.layer.borderWidth = focused ? 2.5 : 1.25;
     self.layer.borderColor = (focused ? OpnColor(OPN::kBrandGreen, 0.98) : OpnColor(0xFFFFFF, self.prominent ? 0.18 : 0.12)).CGColor;
     [self updateStoreIconSelection];
     self.shineLayer.opacity = focused ? 1.0 : (self.prominent ? 0.88 : 0.52);
@@ -1229,6 +1230,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 
 - (void)mouseEntered:(NSEvent *)event {
     (void)event;
+    if (self.onHover) self.onHover();
     if (!self.prominent) self.playButton.hidden = NO;
     if (!self.storeFocused) self.layer.borderColor = OpnColor(OPN::kBrandGreen, 0.42).CGColor;
 }
@@ -2300,6 +2302,16 @@ using namespace OPN;
             if (!strongSelf || !strongCard || !strongSelf.onBuyGame) return;
             int variantIndex = strongCard.selectedVariantIndex >= 0 ? strongCard.selectedVariantIndex : 0;
             strongSelf.onBuyGame(strongCard.game, variantIndex, purchaseURL ?: @"");
+        };
+        NSInteger hoverRowIndex = self.rowCards.count;
+        NSInteger hoverColumnIndex = column;
+        card.onHover = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (strongSelf.focusedRowIndex == hoverRowIndex && strongSelf.focusedColumnIndex == hoverColumnIndex) return;
+            strongSelf.focusedRowIndex = hoverRowIndex;
+            strongSelf.focusedColumnIndex = hoverColumnIndex;
+            [strongSelf updateFocusedTiles];
         };
         [rowDocument addSubview:card];
         [cards addObject:card];
