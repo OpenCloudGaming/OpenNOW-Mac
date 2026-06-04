@@ -21,6 +21,8 @@ static const CGFloat kStoreHeroContentInsetRatio = 0.055;
 static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
 static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
+static const CGFloat kStoreButtonHintPillHeight = 40.0;
+static const CGFloat kStoreButtonHintPillBottomInset = 18.0;
 
 static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
@@ -80,6 +82,18 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     [super scrollWheel:event];
 }
 
+@end
+
+@interface OPNStoreHintPillView : NSView
+@end
+
+@implementation OPNStoreHintPillView
+- (BOOL)isFlipped { return YES; }
+
+- (NSView *)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
 @end
 
 static CGFloat OPNStoreHeroContentInsetForWidth(CGFloat width) {
@@ -1254,6 +1268,8 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) OPNStoreDocumentView *documentView;
 @property (nonatomic, strong) OPNLoadingView *loadingView;
 @property (nonatomic, strong) NSTextField *statusLabel;
+@property (nonatomic, strong) OPNStoreHintPillView *buttonHintPillView;
+@property (nonatomic, strong) NSTextField *buttonHintLabel;
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> ownedLibraryGames;
@@ -1296,6 +1312,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)updateDesktopHeroFrameForCurrentBounds;
 - (void)updateRowFramesForCurrentBounds;
 - (void)updateRowVirtualizationForVisibleBounds;
+- (void)updateButtonHintPillFrame;
 - (void)updateDesktopHeroLogoFrame;
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
 - (void)cancelHeroImageLoads;
@@ -1351,6 +1368,16 @@ using namespace OPN;
         _loadingView.hidden = YES;
         [self addSubview:_loadingView];
 
+        _buttonHintPillView = [[OPNStoreHintPillView alloc] initWithFrame:NSZeroRect];
+        _buttonHintPillView.wantsLayer = YES;
+        _buttonHintPillView.layer.backgroundColor = OpnColor(kBlack, 0.50).CGColor;
+        _buttonHintPillView.layer.cornerRadius = kStoreButtonHintPillHeight * 0.5;
+        _buttonHintPillView.layer.masksToBounds = YES;
+        [self addSubview:_buttonHintPillView];
+
+        _buttonHintLabel = OpnLabel(@"Move: Arrows/WASD   Select: Enter/Space   Variant: V", NSZeroRect, 12.0, OpnColor(kTextSecondary), NSFontWeightSemibold, NSTextAlignmentCenter);
+        [_buttonHintPillView addSubview:_buttonHintLabel];
+
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(interfacePreferencesChanged:)
                                                      name:OPNInterfacePreferencesDidChangeNotification
@@ -1392,6 +1419,7 @@ using namespace OPN;
 - (void)setLoading:(BOOL)loading {
     BOOL showBlockingLoader = loading && !self.hasContent;
     self.loadingView.hidden = !showBlockingLoader;
+    self.buttonHintPillView.hidden = showBlockingLoader;
     self.statusLabel.stringValue = @"";
     if (showBlockingLoader) {
         [self.loadingView startAnimating];
@@ -1580,6 +1608,7 @@ using namespace OPN;
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
     self.documentView.frame = NSMakeRect(0.0, 0.0, MAX(980.0, NSWidth(self.bounds)), MAX(NSHeight(self.documentView.frame), NSHeight(self.bounds)));
+    [self updateButtonHintPillFrame];
     [self updateDesktopHeroFrameForCurrentBounds];
     [self updateRowFramesForCurrentBounds];
     [self updateRowVirtualizationForVisibleBounds];
@@ -1588,6 +1617,17 @@ using namespace OPN;
         self.lastLayoutHeight = NSHeight(self.bounds);
         [self scheduleRenderStoreAfterResize];
     }
+}
+
+- (void)updateButtonHintPillFrame {
+    if (!self.buttonHintPillView || !self.buttonHintLabel) return;
+    CGFloat availableWidth = MAX(0.0, NSWidth(self.bounds) - 48.0);
+    CGFloat pillWidth = MIN(640.0, MAX(320.0, availableWidth));
+    CGFloat pillX = floor((NSWidth(self.bounds) - pillWidth) * 0.5);
+    CGFloat pillY = MAX(0.0, floor(NSHeight(self.bounds) - kStoreButtonHintPillBottomInset - kStoreButtonHintPillHeight));
+    self.buttonHintPillView.frame = NSMakeRect(pillX, pillY, pillWidth, kStoreButtonHintPillHeight);
+    self.buttonHintPillView.layer.cornerRadius = kStoreButtonHintPillHeight * 0.5;
+    self.buttonHintLabel.frame = NSInsetRect(self.buttonHintPillView.bounds, 18.0, 11.0);
 }
 
 - (void)scheduleRenderStore {
