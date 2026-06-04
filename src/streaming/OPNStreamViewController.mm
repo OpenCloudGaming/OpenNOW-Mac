@@ -29,10 +29,12 @@ static constexpr NSInteger OPNMaxAutomaticRecoveryAttempts = 2;
 static constexpr NSTimeInterval OPNStableRecoveryResetInterval = 15.0;
 static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
 static constexpr NSTimeInterval OPNStreamIdleDeviceInputInterval = 4.0 * 60.0;
+static constexpr NSTimeInterval OPNStreamIdleDeviceInputReturnDelay = 0.25;
 static constexpr NSTimeInterval OPNStreamInactivityTimeoutInterval = 10.0 * 60.0;
 static constexpr NSTimeInterval OPNStreamInactivityCheckInterval = 5.0;
 static constexpr NSTimeInterval OPNStreamQualityGuardrailCooldownInterval = 30.0;
 static constexpr NSTimeInterval OPNStreamPlaytimeRefreshInterval = 10.0;
+static constexpr int16_t OPNStreamIdleDeviceInputPulsePixels = 8;
 static constexpr NSInteger OPNStreamQualityDegradedSampleThreshold = 3;
 static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 
@@ -1840,18 +1842,27 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     if (_lastIdleDeviceInputTime > 0 && now - _lastIdleDeviceInputTime < OPNStreamIdleDeviceInputInterval) return;
 
     static const int16_t deltas[][2] = {
-        {1, 0},
-        {-1, 0},
-        {0, 1},
-        {0, -1},
+        {OPNStreamIdleDeviceInputPulsePixels, 0},
+        {-OPNStreamIdleDeviceInputPulsePixels, 0},
+        {0, OPNStreamIdleDeviceInputPulsePixels},
+        {0, -OPNStreamIdleDeviceInputPulsePixels},
     };
     uint32_t index = arc4random_uniform((uint32_t)(sizeof(deltas) / sizeof(deltas[0])));
-    _session->SendMouseMove(deltas[index][0], deltas[index][1]);
-    _session->SendMouseMove((int16_t)-deltas[index][0], (int16_t)-deltas[index][1]);
+    int16_t dx = deltas[index][0];
+    int16_t dy = deltas[index][1];
+    _session->SendMouseMove(dx, dy);
     CFTimeInterval idleDuration = now - _lastStreamActivityTime;
     _lastStreamActivityTime = now;
     _lastIdleDeviceInputTime = now;
-    OPN::LogInfo(@"[StreamVC] Sent idle device input after %.1fs without user activity", idleDuration);
+    OPN::LogInfo(@"[StreamVC] Sent idle device input pulse dx=%d dy=%d after %.1fs without user activity", dx, dy, idleDuration);
+
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(OPNStreamIdleDeviceInputReturnDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->_streamEnded || !strongSelf->_session || !strongSelf->_session->InputReady()) return;
+        strongSelf->_session->SendMouseMove((int16_t)-dx, (int16_t)-dy);
+        OPN::LogInfo(@"[StreamVC] Sent idle device input return dx=%d dy=%d", (int16_t)-dx, (int16_t)-dy);
+    });
 }
 
 - (void)endStreamFromInactivityTimeout {

@@ -3,6 +3,7 @@
 #import "../common/OPNColorTokens.h"
 #include "../common/OPNSentry.h"
 #import "../common/OPNUIHelpers.h"
+#import <GameController/GameController.h>
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
 #include <cctype>
@@ -23,6 +24,8 @@ static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
 static const CGFloat kStoreButtonHintPillHeight = 40.0;
 static const CGFloat kStoreButtonHintPillBottomInset = 18.0;
+static const CGFloat kStoreRailInertiaMinimumVelocity = 8.0;
+static const CGFloat kStoreRailInertiaResistancePerSecond = 0.035;
 
 static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
@@ -37,9 +40,30 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
 @end
 
 @interface OPNStoreRailScrollView : NSScrollView
+- (void)scrollHorizontallyByDelta:(CGFloat)deltaX;
+- (void)beginDragScrollingAtTime:(NSTimeInterval)timestamp;
+- (void)dragScrollHorizontallyByDelta:(CGFloat)deltaX timestamp:(NSTimeInterval)timestamp;
+- (void)endDragScrollingWithInertia;
 @end
 
-@implementation OPNStoreRailScrollView
+@implementation OPNStoreRailScrollView {
+    BOOL _dragScrolling;
+    NSPoint _lastDragLocation;
+    CGFloat _dragScrollVelocity;
+    NSTimeInterval _lastDragScrollTimestamp;
+    NSTimer *_inertiaTimer;
+    NSTimeInterval _lastInertiaTimestamp;
+}
+
+- (void)dealloc {
+    [_inertiaTimer invalidate];
+}
+
+- (void)stopInertia {
+    [_inertiaTimer invalidate];
+    _inertiaTimer = nil;
+    _dragScrollVelocity = 0.0;
+}
 
 - (BOOL)canScrollHorizontallyByDelta:(CGFloat)deltaX {
     NSView *documentView = self.documentView;
@@ -62,17 +86,85 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     [self reflectScrolledClipView:self.contentView];
 }
 
+- (void)beginDragScrollingAtTime:(NSTimeInterval)timestamp {
+    [self stopInertia];
+    _dragScrollVelocity = 0.0;
+    _lastDragScrollTimestamp = timestamp;
+}
+
+- (void)dragScrollHorizontallyByDelta:(CGFloat)deltaX timestamp:(NSTimeInterval)timestamp {
+    NSTimeInterval elapsed = timestamp - _lastDragScrollTimestamp;
+    if (elapsed > 0.001) {
+        CGFloat sampledVelocity = deltaX / (CGFloat)elapsed;
+        _dragScrollVelocity = _dragScrollVelocity == 0.0 ? sampledVelocity : (_dragScrollVelocity * 0.55 + sampledVelocity * 0.45);
+    }
+    _lastDragScrollTimestamp = timestamp;
+    [self scrollHorizontallyByDelta:deltaX];
+}
+
+- (void)inertiaTimerFired:(NSTimer *)timer {
+    (void)timer;
+    NSTimeInterval now = CACurrentMediaTime();
+    NSTimeInterval elapsed = MAX(0.001, now - _lastInertiaTimestamp);
+    _lastInertiaTimestamp = now;
+    if (std::fabs(_dragScrollVelocity) < kStoreRailInertiaMinimumVelocity ||
+        ![self canScrollHorizontallyByDelta:_dragScrollVelocity > 0.0 ? 1.0 : -1.0]) {
+        [self stopInertia];
+        return;
+    }
+
+    [self scrollHorizontallyByDelta:_dragScrollVelocity * (CGFloat)elapsed];
+    _dragScrollVelocity *= std::pow(kStoreRailInertiaResistancePerSecond, (CGFloat)elapsed);
+}
+
+- (void)endDragScrollingWithInertia {
+    [_inertiaTimer invalidate];
+    _inertiaTimer = nil;
+    if (std::fabs(_dragScrollVelocity) < kStoreRailInertiaMinimumVelocity) {
+        _dragScrollVelocity = 0.0;
+        return;
+    }
+    _lastInertiaTimestamp = CACurrentMediaTime();
+    _inertiaTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+                                                     target:self
+                                                   selector:@selector(inertiaTimerFired:)
+                                                   userInfo:nil
+                                                    repeats:YES];
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSView *documentView = self.documentView;
+    CGFloat maxX = documentView ? MAX(0.0, NSWidth(documentView.frame) - NSWidth(self.contentView.bounds)) : 0.0;
+    if (maxX <= 0.5) {
+        [super mouseDown:event];
+        return;
+    }
+    _dragScrolling = YES;
+    _lastDragLocation = [self convertPoint:event.locationInWindow fromView:nil];
+    [self beginDragScrollingAtTime:event.timestamp];
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    if (!_dragScrolling) {
+        [super mouseDragged:event];
+        return;
+    }
+    NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
+    CGFloat deltaX = _lastDragLocation.x - location.x;
+    _lastDragLocation = location;
+    [self dragScrollHorizontallyByDelta:deltaX timestamp:event.timestamp];
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    (void)event;
+    if (_dragScrolling) [self endDragScrollingWithInertia];
+    _dragScrolling = NO;
+}
+
 - (void)scrollWheel:(NSEvent *)event {
-    CGFloat deltaX = event.scrollingDeltaX;
-    CGFloat deltaY = event.scrollingDeltaY;
-    CGFloat horizontal = std::fabs(deltaX);
-    CGFloat vertical = std::fabs(deltaY);
-    if (vertical > horizontal && vertical > 0.0) {
-        CGFloat remappedDeltaX = -deltaY;
-        if ([self canScrollHorizontallyByDelta:remappedDeltaX]) {
-            [self scrollHorizontallyByDelta:remappedDeltaX];
-            return;
-        }
+    CGFloat horizontal = std::fabs(event.scrollingDeltaX);
+    CGFloat vertical = std::fabs(event.scrollingDeltaY);
+    if (vertical > horizontal) {
         NSScrollView *pageScrollView = self.enclosingScrollView;
         if (pageScrollView && pageScrollView != self) {
             [pageScrollView scrollWheel:event];
@@ -92,6 +184,86 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
 - (NSSize)intrinsicContentSize { return self.fixedSize; }
 @end
 
+@interface OPNStoreControllerGlyphView : NSView
+@property (nonatomic, copy) NSString *glyph;
+@end
+
+@implementation OPNStoreControllerGlyphView
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    NSColor *color = OpnColor(OPN::kTextPrimary, 0.92);
+    NSString *glyph = self.glyph ?: @"";
+    NSRect bounds = NSInsetRect(self.bounds, 1.0, 1.0);
+    CGFloat minSide = MIN(NSWidth(bounds), NSHeight(bounds));
+    NSRect circleRect = NSMakeRect(NSMidX(bounds) - minSide * 0.42, NSMidY(bounds) - minSide * 0.42, minSide * 0.84, minSide * 0.84);
+
+    if ([glyph isEqualToString:@"dpad"]) {
+        [color setFill];
+        CGFloat arm = floor(minSide * 0.22);
+        CGFloat length = floor(minSide * 0.76);
+        NSRect horizontal = NSMakeRect(NSMidX(bounds) - length * 0.5, NSMidY(bounds) - arm * 0.5, length, arm);
+        NSRect vertical = NSMakeRect(NSMidX(bounds) - arm * 0.5, NSMidY(bounds) - length * 0.5, arm, length);
+        [[NSBezierPath bezierPathWithRoundedRect:horizontal xRadius:arm * 0.38 yRadius:arm * 0.38] fill];
+        [[NSBezierPath bezierPathWithRoundedRect:vertical xRadius:arm * 0.38 yRadius:arm * 0.38] fill];
+        return;
+    }
+
+    if ([glyph isEqualToString:@"stick"]) {
+        [color setStroke];
+        NSBezierPath *outer = [NSBezierPath bezierPathWithOvalInRect:circleRect];
+        outer.lineWidth = 1.8;
+        [outer stroke];
+        NSRect inner = NSInsetRect(circleRect, minSide * 0.18, minSide * 0.18);
+        [[NSBezierPath bezierPathWithOvalInRect:inner] fill];
+        return;
+    }
+
+    [color setStroke];
+    NSBezierPath *button = [NSBezierPath bezierPathWithOvalInRect:circleRect];
+    button.lineWidth = 1.8;
+    [button stroke];
+
+    if ([glyph isEqualToString:@"triangle"]) {
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        [path moveToPoint:NSMakePoint(NSMidX(circleRect), NSMinY(circleRect) + NSHeight(circleRect) * 0.25)];
+        [path lineToPoint:NSMakePoint(NSMinX(circleRect) + NSWidth(circleRect) * 0.25, NSMaxY(circleRect) - NSHeight(circleRect) * 0.25)];
+        [path lineToPoint:NSMakePoint(NSMaxX(circleRect) - NSWidth(circleRect) * 0.25, NSMaxY(circleRect) - NSHeight(circleRect) * 0.25)];
+        [path closePath];
+        path.lineWidth = 1.7;
+        [path stroke];
+        return;
+    }
+
+    if ([glyph isEqualToString:@"cross"]) {
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        CGFloat inset = minSide * 0.28;
+        [path moveToPoint:NSMakePoint(NSMinX(circleRect) + inset, NSMinY(circleRect) + inset)];
+        [path lineToPoint:NSMakePoint(NSMaxX(circleRect) - inset, NSMaxY(circleRect) - inset)];
+        [path moveToPoint:NSMakePoint(NSMaxX(circleRect) - inset, NSMinY(circleRect) + inset)];
+        [path lineToPoint:NSMakePoint(NSMinX(circleRect) + inset, NSMaxY(circleRect) - inset)];
+        path.lineWidth = 2.0;
+        [path stroke];
+        return;
+    }
+
+    NSString *label = glyph.uppercaseString;
+    NSDictionary<NSAttributedStringKey, id> *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:12.0 weight:NSFontWeightBlack],
+        NSForegroundColorAttributeName: color,
+    };
+    NSSize labelSize = [label sizeWithAttributes:attributes];
+    NSRect labelRect = NSMakeRect(floor(NSMidX(circleRect) - labelSize.width * 0.5),
+                                  floor(NSMidY(circleRect) - labelSize.height * 0.5) - 0.5,
+                                  labelSize.width,
+                                  labelSize.height);
+    [label drawInRect:labelRect withAttributes:attributes];
+}
+
+@end
+
 @interface OPNStoreHintPillView : NSView
 @end
 
@@ -103,6 +275,71 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     return nil;
 }
 @end
+
+typedef NS_ENUM(NSInteger, OPNStoreControllerFamily) {
+    OPNStoreControllerFamilyKeyboard = 0,
+    OPNStoreControllerFamilyXbox,
+    OPNStoreControllerFamilyPlayStation,
+    OPNStoreControllerFamilyNintendo,
+    OPNStoreControllerFamilyGeneric,
+};
+
+struct OPNStoreControllerHintStyle {
+    NSString *selectGlyph;
+    NSString *variantGlyph;
+};
+
+static NSString *OPNStoreControllerIdentity(GCController *controller) {
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    if (controller.vendorName.length > 0) [parts addObject:controller.vendorName];
+    if (@available(macOS 11.0, *)) {
+        if (controller.productCategory.length > 0) [parts addObject:controller.productCategory];
+    }
+    return [[parts componentsJoinedByString:@" "] uppercaseString];
+}
+
+static OPNStoreControllerFamily OPNStoreConnectedControllerFamily(void) {
+    for (GCController *controller in GCController.controllers) {
+        if (!controller.extendedGamepad) continue;
+        NSString *identity = OPNStoreControllerIdentity(controller);
+        if ([identity containsString:@"PLAYSTATION"] ||
+            [identity containsString:@"DUALSENSE"] ||
+            [identity containsString:@"DUALSHOCK"] ||
+            [identity containsString:@"SONY"] ||
+            [identity containsString:@"PS4"] ||
+            [identity containsString:@"PS5"]) {
+            return OPNStoreControllerFamilyPlayStation;
+        }
+        if ([identity containsString:@"NINTENDO"] ||
+            [identity containsString:@"SWITCH"] ||
+            [identity containsString:@"JOY-CON"] ||
+            [identity containsString:@"JOYCON"] ||
+            [identity containsString:@"PRO CONTROLLER"]) {
+            return OPNStoreControllerFamilyNintendo;
+        }
+        if ([identity containsString:@"XBOX"] ||
+            [identity containsString:@"MICROSOFT"]) {
+            return OPNStoreControllerFamilyXbox;
+        }
+        return OPNStoreControllerFamilyGeneric;
+    }
+    return OPNStoreControllerFamilyKeyboard;
+}
+
+static OPNStoreControllerHintStyle OPNStoreControllerHintStyleForFamily(OPNStoreControllerFamily family) {
+    switch (family) {
+        case OPNStoreControllerFamilyPlayStation:
+            return {@"cross", @"triangle"};
+        case OPNStoreControllerFamilyNintendo:
+            return {@"a", @"x"};
+        case OPNStoreControllerFamilyXbox:
+        case OPNStoreControllerFamilyGeneric:
+            return {@"a", @"y"};
+        case OPNStoreControllerFamilyKeyboard:
+            return {@"", @""};
+    }
+    return {@"a", @"y"};
+}
 
 static NSTextField *OPNStoreHintLabel(NSString *text, CGFloat fontSize, NSFontWeight weight, NSColor *color) {
     NSTextField *label = OpnLabel(text, NSZeroRect, fontSize, color, weight, NSTextAlignmentCenter);
@@ -141,6 +378,23 @@ static OPNStoreHintFixedView *OPNStoreHintKeyView(NSString *symbolName, NSString
         [keyView addSubview:fallbackLabel];
     }
 
+    return keyView;
+}
+
+static OPNStoreHintFixedView *OPNStoreControllerIconKeyView(NSString *glyph, CGFloat width) {
+    OPNStoreHintFixedView *keyView = [[OPNStoreHintFixedView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, 24.0)];
+    keyView.fixedSize = NSMakeSize(width, 24.0);
+    keyView.wantsLayer = YES;
+    keyView.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.13].CGColor;
+    keyView.layer.borderColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.18].CGColor;
+    keyView.layer.borderWidth = 1.0;
+    keyView.layer.cornerRadius = 7.0;
+    keyView.layer.masksToBounds = YES;
+
+    OPNStoreControllerGlyphView *glyphView = [[OPNStoreControllerGlyphView alloc] initWithFrame:NSInsetRect(keyView.bounds, 4.0, 3.0)];
+    glyphView.glyph = glyph;
+    glyphView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [keyView addSubview:glyphView];
     return keyView;
 }
 
@@ -935,6 +1189,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, strong) NSTrackingArea *trackingArea;
 @property (nonatomic, assign) BOOL prominent;
 @property (nonatomic, assign) BOOL storeFocused;
+@property (nonatomic, assign) BOOL pendingMouseSelection;
+@property (nonatomic, assign) BOOL draggingRail;
+@property (nonatomic, assign) NSPoint lastDragLocationInWindow;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
 - (void)updateStoreIconSelection;
 @end
@@ -1216,6 +1473,8 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)mouseDown:(NSEvent *)event {
     NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
     NSPoint badgePoint = [self.storeBadgeView convertPoint:localPoint fromView:self];
+    self.pendingMouseSelection = NO;
+    self.draggingRail = NO;
     for (NSUInteger index = 0; index < self.storeIconViews.count; index++) {
         NSImageView *iconView = self.storeIconViews[index];
         if (!NSPointInRect([iconView convertPoint:badgePoint fromView:self.storeBadgeView], iconView.bounds)) continue;
@@ -1225,7 +1484,47 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         }
         return;
     }
-    [self selectPressed];
+    self.pendingMouseSelection = YES;
+    self.lastDragLocationInWindow = event.locationInWindow;
+    NSScrollView *scrollView = self.enclosingScrollView;
+    if ([scrollView isKindOfClass:OPNStoreRailScrollView.class]) {
+        [(OPNStoreRailScrollView *)scrollView beginDragScrollingAtTime:event.timestamp];
+    }
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    if (!self.pendingMouseSelection && !self.draggingRail) {
+        [super mouseDragged:event];
+        return;
+    }
+    NSPoint location = event.locationInWindow;
+    CGFloat deltaX = self.lastDragLocationInWindow.x - location.x;
+    CGFloat deltaY = self.lastDragLocationInWindow.y - location.y;
+    BOOL dragThresholdReached = self.draggingRail || std::hypot(deltaX, deltaY) >= 4.0;
+    self.lastDragLocationInWindow = location;
+    if (!dragThresholdReached) return;
+
+    self.pendingMouseSelection = NO;
+    self.draggingRail = YES;
+    NSScrollView *scrollView = self.enclosingScrollView;
+    if ([scrollView isKindOfClass:OPNStoreRailScrollView.class]) {
+        [(OPNStoreRailScrollView *)scrollView dragScrollHorizontallyByDelta:deltaX timestamp:event.timestamp];
+    }
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    (void)event;
+    BOOL shouldSelect = self.pendingMouseSelection && !self.draggingRail;
+    BOOL shouldContinueScroll = self.draggingRail;
+    self.pendingMouseSelection = NO;
+    self.draggingRail = NO;
+    if (shouldContinueScroll) {
+        NSScrollView *scrollView = self.enclosingScrollView;
+        if ([scrollView isKindOfClass:OPNStoreRailScrollView.class]) {
+            [(OPNStoreRailScrollView *)scrollView endDragScrollingWithInertia];
+        }
+    }
+    if (shouldSelect) [self selectPressed];
 }
 
 - (void)mouseEntered:(NSEvent *)event {
@@ -1370,6 +1669,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) BOOL initialHeroReady;
 @property (nonatomic, assign) NSInteger initialHeroPreloadGeneration;
 @property (nonatomic, assign) std::string panelsFingerprint;
+@property (nonatomic, assign) OPNStoreControllerFamily buttonHintControllerFamily;
 - (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index completion:(void (^)(BOOL loaded))completion;
 - (void)renderStoreWhenInitialHeroReady;
 - (void)scheduleRenderStoreAfterResize;
@@ -1383,6 +1683,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)updateRowFramesForCurrentBounds;
 - (void)updateRowVirtualizationForVisibleBounds;
 - (void)updateButtonHintPillFrame;
+- (void)rebuildButtonHintPillForCurrentController;
 - (void)updateDesktopHeroLogoFrame;
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
 - (void)cancelHeroImageLoads;
@@ -1417,7 +1718,7 @@ using namespace OPN;
         _scrollView = [[NSScrollView alloc] initWithFrame:self.bounds];
         _scrollView.drawsBackground = NO;
         _scrollView.borderType = NSNoBorder;
-        _scrollView.hasVerticalScroller = YES;
+        _scrollView.hasVerticalScroller = NO;
         _scrollView.hasHorizontalScroller = NO;
         _scrollView.autohidesScrollers = YES;
         _scrollView.contentInsets = NSEdgeInsetsZero;
@@ -1450,20 +1751,9 @@ using namespace OPN;
         _buttonHintStackView.alignment = NSLayoutAttributeCenterY;
         _buttonHintStackView.distribution = NSStackViewDistributionGravityAreas;
         _buttonHintStackView.spacing = 18.0;
-        [_buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
-            OPNStoreHintKeyView(@"arrow.up", @"Up", 24.0),
-            OPNStoreHintKeyView(@"arrow.down", @"Dn", 24.0),
-            OPNStoreHintKeyView(@"arrow.left", @"Lt", 24.0),
-            OPNStoreHintKeyView(@"arrow.right", @"Rt", 24.0)
-        ], @"Move")];
-        [_buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
-            OPNStoreHintKeyView(@"return", @"Ent", 30.0),
-            OPNStoreHintKeyView(@"space", @"Space", 46.0)
-        ], @"Select")];
-        [_buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
-            OPNStoreHintKeyView(@"v.circle", @"V", 26.0)
-        ], @"Variant")];
         [_buttonHintPillView addSubview:_buttonHintStackView];
+        _buttonHintControllerFamily = (OPNStoreControllerFamily)NSIntegerMin;
+        [self rebuildButtonHintPillForCurrentController];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(interfacePreferencesChanged:)
@@ -1471,8 +1761,16 @@ using namespace OPN;
                                                    object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(storeScrollViewBoundsDidChange:)
-                                                     name:NSViewBoundsDidChangeNotification
-                                                   object:_scrollView.contentView];
+                                                      name:NSViewBoundsDidChangeNotification
+                                                    object:_scrollView.contentView];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(controllerConfigurationChanged:)
+                                                     name:GCControllerDidConnectNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(controllerConfigurationChanged:)
+                                                     name:GCControllerDidDisconnectNotification
+                                                   object:nil];
     }
     return self;
 }
@@ -1489,6 +1787,7 @@ using namespace OPN;
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     if (self.window) [self.window makeFirstResponder:self];
+    [self rebuildButtonHintPillForCurrentController];
 }
 
 - (void)dealloc {
@@ -1501,6 +1800,58 @@ using namespace OPN;
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
     (void)notification;
     [self renderStore];
+}
+
+- (void)controllerConfigurationChanged:(NSNotification *)notification {
+    (void)notification;
+    [self rebuildButtonHintPillForCurrentController];
+}
+
+- (void)removeButtonHintGroups {
+    NSArray<NSView *> *arrangedSubviews = self.buttonHintStackView.arrangedSubviews.copy;
+    for (NSView *view in arrangedSubviews) {
+        [self.buttonHintStackView removeArrangedSubview:view];
+        [view removeFromSuperview];
+    }
+}
+
+- (void)rebuildButtonHintPillForCurrentController {
+    if (!self.buttonHintStackView) return;
+    OPNStoreControllerFamily family = OPNStoreConnectedControllerFamily();
+    if (family == self.buttonHintControllerFamily && self.buttonHintStackView.arrangedSubviews.count > 0) return;
+    self.buttonHintControllerFamily = family;
+    [self removeButtonHintGroups];
+
+    if (family == OPNStoreControllerFamilyKeyboard) {
+        [self.buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreHintKeyView(@"arrow.up", @"Up", 24.0),
+            OPNStoreHintKeyView(@"arrow.down", @"Dn", 24.0),
+            OPNStoreHintKeyView(@"arrow.left", @"Lt", 24.0),
+            OPNStoreHintKeyView(@"arrow.right", @"Rt", 24.0)
+        ], @"Move")];
+        [self.buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreHintKeyView(@"return", @"Ent", 30.0),
+            OPNStoreHintKeyView(@"space", @"Space", 46.0)
+        ], @"Select")];
+        [self.buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreHintKeyView(@"v.circle", @"V", 26.0)
+        ], @"Variant")];
+    } else {
+        OPNStoreControllerHintStyle style = OPNStoreControllerHintStyleForFamily(family);
+        [self.buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreControllerIconKeyView(@"dpad", 28.0),
+            OPNStoreControllerIconKeyView(@"stick", 28.0)
+        ], @"Move")];
+        [self.buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreControllerIconKeyView(style.selectGlyph, 28.0)
+        ], @"Select")];
+        [self.buttonHintStackView addArrangedSubview:OPNStoreHintGroup(@[
+            OPNStoreControllerIconKeyView(style.variantGlyph, 28.0)
+        ], @"Variant")];
+    }
+
+    [self.buttonHintStackView setNeedsLayout:YES];
+    [self updateButtonHintPillFrame];
 }
 
 - (void)setLoading:(BOOL)loading {
@@ -2262,9 +2613,9 @@ using namespace OPN;
     OPNStoreRailScrollView *rowScroll = [[OPNStoreRailScrollView alloc] initWithFrame:NSMakeRect(contentX, y + 48.0, availableWidth, kStoreTileHeight + 30.0)];
     rowScroll.drawsBackground = NO;
     rowScroll.borderType = NSNoBorder;
-    rowScroll.hasHorizontalScroller = YES;
+    rowScroll.hasHorizontalScroller = NO;
     rowScroll.hasVerticalScroller = NO;
-    rowScroll.autohidesScrollers = NO;
+    rowScroll.autohidesScrollers = YES;
     [self.documentView addSubview:rowScroll];
 
     OPNStoreDocumentView *rowDocument = [[OPNStoreDocumentView alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(rowScroll.frame), kStoreTileHeight + 30.0)];
