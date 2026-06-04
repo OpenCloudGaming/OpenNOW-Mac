@@ -11,7 +11,7 @@
 static const CGFloat kStoreTopInset = 0.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroHeightRatio = 0.3229;
-static const CGFloat kStoreRowHeight = 258.0;
+static const CGFloat kStoreRowHeight = 348.0;
 static const CGFloat kStoreCardSpacing = 18.0;
 static const CGFloat kStoreTileWidth = 268.0;
 static const CGFloat kStoreTileHeight = 151.0;
@@ -39,10 +39,38 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
 
 @implementation OPNStoreRailScrollView
 
+- (BOOL)canScrollHorizontallyByDelta:(CGFloat)deltaX {
+    NSView *documentView = self.documentView;
+    if (!documentView) return NO;
+    CGFloat maxX = MAX(0.0, NSWidth(documentView.frame) - NSWidth(self.contentView.bounds));
+    CGFloat currentX = self.contentView.bounds.origin.x;
+    if (maxX <= 0.5) return NO;
+    if (deltaX < 0.0) return currentX > 0.5;
+    if (deltaX > 0.0) return currentX < maxX - 0.5;
+    return NO;
+}
+
+- (void)scrollHorizontallyByDelta:(CGFloat)deltaX {
+    NSView *documentView = self.documentView;
+    if (!documentView) return;
+    CGFloat maxX = MAX(0.0, NSWidth(documentView.frame) - NSWidth(self.contentView.bounds));
+    NSPoint origin = self.contentView.bounds.origin;
+    origin.x = MIN(maxX, MAX(0.0, origin.x + deltaX));
+    [self.contentView scrollToPoint:origin];
+    [self reflectScrolledClipView:self.contentView];
+}
+
 - (void)scrollWheel:(NSEvent *)event {
-    CGFloat horizontal = std::fabs(event.scrollingDeltaX);
-    CGFloat vertical = std::fabs(event.scrollingDeltaY);
-    if (vertical > horizontal) {
+    CGFloat deltaX = event.scrollingDeltaX;
+    CGFloat deltaY = event.scrollingDeltaY;
+    CGFloat horizontal = std::fabs(deltaX);
+    CGFloat vertical = std::fabs(deltaY);
+    if (vertical > horizontal && vertical > 0.0) {
+        CGFloat remappedDeltaX = -deltaY;
+        if ([self canScrollHorizontallyByDelta:remappedDeltaX]) {
+            [self scrollHorizontallyByDelta:remappedDeltaX];
+            return;
+        }
         NSScrollView *pageScrollView = self.enclosingScrollView;
         if (pageScrollView && pageScrollView != self) {
             [pageScrollView scrollWheel:event];
@@ -1189,6 +1217,20 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 
 @end
 
+@interface OPNStoreRowLayout : NSObject
+@property (nonatomic, strong) NSView *glowView;
+@property (nonatomic, strong) NSTextField *indexLabel;
+@property (nonatomic, strong) NSTextField *titleLabel;
+@property (nonatomic, strong) NSTextField *hintLabel;
+@property (nonatomic, strong) OPNStoreRailScrollView *scrollView;
+@property (nonatomic, strong) OPNStoreDocumentView *documentView;
+@property (nonatomic, strong) NSMutableArray<OPNStoreGameTile *> *cards;
+@property (nonatomic, assign) CGFloat y;
+@end
+
+@implementation OPNStoreRowLayout
+@end
+
 @interface OPNGameCatalogView ()
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) OPNStoreDocumentView *documentView;
@@ -1199,6 +1241,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::vector<OPN::GameInfo> ownedLibraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
+@property (nonatomic, strong) NSMutableArray<OPNStoreRowLayout *> *rowLayouts;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *heroImageLoadTokens;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *heroAspectByIdentity;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
@@ -1232,6 +1275,8 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)addDesktopHeroStageForGame:(const OPN::GameInfo &)game y:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width height:(CGFloat)height;
 - (void)addDesktopHeroLogoForGame:(const OPN::GameInfo &)game toContainer:(NSView *)container;
 - (void)updateDesktopHeroElementsForGame:(const OPN::GameInfo &)game animated:(BOOL)animated;
+- (void)updateDesktopHeroFrameForCurrentBounds;
+- (void)updateRowFramesForCurrentBounds;
 - (void)updateDesktopHeroLogoFrame;
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
 - (void)cancelHeroImageLoads;
@@ -1256,6 +1301,7 @@ using namespace OPN;
         self.wantsLayer = YES;
         self.layer.backgroundColor = [NSColor clearColor].CGColor;
         _rowCards = [NSMutableArray array];
+        _rowLayouts = [NSMutableArray array];
         _heroImageLoadTokens = [NSMutableArray array];
         _heroAspectByIdentity = [NSMutableDictionary dictionary];
         _desktopFeaturedHeroViews = [NSMutableArray array];
@@ -1504,6 +1550,9 @@ using namespace OPN;
     self.scrollView.frame = NSMakeRect(0.0, navClearance, NSWidth(self.bounds), MAX(0.0, NSHeight(self.bounds) - navClearance));
     self.loadingView.frame = self.bounds;
     self.statusLabel.frame = NSMakeRect(0, NSHeight(self.bounds) * 0.5, NSWidth(self.bounds), 26.0);
+    self.documentView.frame = NSMakeRect(0.0, 0.0, MAX(980.0, NSWidth(self.bounds)), MAX(NSHeight(self.documentView.frame), NSHeight(self.bounds)));
+    [self updateDesktopHeroFrameForCurrentBounds];
+    [self updateRowFramesForCurrentBounds];
     if (std::fabs(self.lastLayoutWidth - NSWidth(self.bounds)) > 1.0 || std::fabs(self.lastLayoutHeight - NSHeight(self.bounds)) > 1.0) {
         self.lastLayoutWidth = NSWidth(self.bounds);
         self.lastLayoutHeight = NSHeight(self.bounds);
@@ -1649,6 +1698,7 @@ using namespace OPN;
         [view removeFromSuperview];
     }
     [self.rowCards removeAllObjects];
+    [self.rowLayouts removeAllObjects];
     [self.desktopFeaturedHeroViews removeAllObjects];
     self.desktopHeroContainer = nil;
     self.desktopHeroArtworkView = nil;
@@ -1814,6 +1864,51 @@ using namespace OPN;
         if (!strongSelf || generation != strongSelf.desktopHeroGeneration) return;
     }];
     [self loadDesktopHeroLogoForGame:game generation:generation];
+}
+
+- (void)updateDesktopHeroFrameForCurrentBounds {
+    if (!self.desktopHeroContainer || !self.desktopHeroArtworkView || NSIsEmptyRect(self.desktopFeaturedHeroFrame)) return;
+    CGFloat width = MAX(1.0, NSWidth(self.bounds));
+    NSImage *image = self.desktopHeroArtworkView.image;
+    CGFloat aspect = (image.size.width > 0.0 && image.size.height > 0.0) ? image.size.width / image.size.height : kStoreFallbackHeroAspect;
+    CGFloat height = OPNStoreHeroHeightForWidth(width, aspect);
+    self.desktopFeaturedHeroFrame = NSMakeRect(NSMinX(self.desktopFeaturedHeroFrame), NSMinY(self.desktopFeaturedHeroFrame), width, height);
+    self.desktopHeroContainer.frame = self.desktopFeaturedHeroFrame;
+    self.desktopHeroArtworkView.frame = self.desktopHeroContainer.bounds;
+    [self updateDesktopHeroLogoFrame];
+}
+
+- (void)updateRowFramesForCurrentBounds {
+    CGFloat width = MAX(980.0, NSWidth(self.bounds));
+    CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
+    CGFloat availableWidth = MAX(320.0, width - contentX * 2.0);
+    CGFloat rowY = NSIsEmptyRect(self.desktopFeaturedHeroFrame) ? kStoreTopInset : NSMaxY(self.desktopFeaturedHeroFrame) + 48.0;
+    for (OPNStoreRowLayout *rowLayout in self.rowLayouts) {
+        rowLayout.y = rowY;
+        CGFloat y = rowY;
+        rowLayout.glowView.frame = NSMakeRect(contentX - 18.0, y + 36.0, availableWidth + 36.0, kStoreTileHeight + 44.0);
+        rowLayout.indexLabel.frame = NSMakeRect(contentX, y + 5.0, 42.0, 18.0);
+        rowLayout.titleLabel.frame = NSMakeRect(contentX + 42.0, y, availableWidth - 142.0, 30.0);
+        rowLayout.hintLabel.frame = NSMakeRect(contentX + availableWidth - 110.0, y + 6.0, 110.0, 18.0);
+        rowLayout.scrollView.frame = NSMakeRect(contentX, y + 48.0, availableWidth, kStoreTileHeight + 30.0);
+
+        CGFloat fittedTileWidth = OPNStoreTileWidthForRailWidth(availableWidth);
+        CGFloat fittedTileHeight = floor(fittedTileWidth * kStoreTileHeight / kStoreTileWidth);
+        CGFloat x = 0.0;
+        for (OPNStoreGameTile *card in rowLayout.cards) {
+            BOOL focused = card.storeFocused;
+            CGFloat cardWidth = focused ? fittedTileWidth + 28.0 : fittedTileWidth;
+            CGFloat cardHeight = focused ? fittedTileHeight + 16.0 : fittedTileHeight;
+            CGFloat cardY = focused ? 0.0 : 10.0;
+            card.frame = NSMakeRect(x, cardY, cardWidth, cardHeight);
+            x += cardWidth + kStoreCardSpacing;
+        }
+        rowLayout.documentView.frame = NSMakeRect(0.0, 0.0, MAX(x + 24.0, NSWidth(rowLayout.scrollView.frame)), kStoreTileHeight + 30.0);
+        rowY += kStoreRowHeight;
+    }
+    if (self.rowLayouts.count > 0) {
+        self.documentView.frame = NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), rowY + 88.0));
+    }
 }
 
 - (void)updateDesktopHeroLogoFrame {
@@ -1987,7 +2082,7 @@ using namespace OPN;
     rowScroll.borderType = NSNoBorder;
     rowScroll.hasHorizontalScroller = YES;
     rowScroll.hasVerticalScroller = NO;
-    rowScroll.autohidesScrollers = YES;
+    rowScroll.autohidesScrollers = NO;
     [self.documentView addSubview:rowScroll];
 
     OPNStoreDocumentView *rowDocument = [[OPNStoreDocumentView alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(rowScroll.frame), kStoreTileHeight + 30.0)];
@@ -2033,6 +2128,17 @@ using namespace OPN;
     }
     rowDocument.frame = NSMakeRect(0, 0, MAX(x + 24.0, NSWidth(rowScroll.frame)), kStoreTileHeight + 30.0);
     [self.rowCards addObject:cards];
+
+    OPNStoreRowLayout *rowLayout = [[OPNStoreRowLayout alloc] init];
+    rowLayout.glowView = rowGlow;
+    rowLayout.indexLabel = indexLabel;
+    rowLayout.titleLabel = label;
+    rowLayout.hintLabel = railHint;
+    rowLayout.scrollView = rowScroll;
+    rowLayout.documentView = rowDocument;
+    rowLayout.cards = cards;
+    rowLayout.y = y;
+    [self.rowLayouts addObject:rowLayout];
 }
 
 - (void)updateFocusedTiles {
