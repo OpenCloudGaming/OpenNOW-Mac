@@ -1704,7 +1704,13 @@ using namespace OPN;
     CGFloat pillY = MAX(0.0, floor(NSHeight(self.bounds) - kStoreButtonHintPillBottomInset - kStoreButtonHintPillHeight));
     self.buttonHintPillView.frame = NSMakeRect(pillX, pillY, pillWidth, kStoreButtonHintPillHeight);
     self.buttonHintPillView.layer.cornerRadius = kStoreButtonHintPillHeight * 0.5;
-    self.buttonHintStackView.frame = NSInsetRect(self.buttonHintPillView.bounds, 18.0, 8.0);
+    NSSize stackSize = self.buttonHintStackView.fittingSize;
+    CGFloat stackWidth = MIN(stackSize.width, MAX(0.0, pillWidth - 36.0));
+    CGFloat stackHeight = MIN(stackSize.height, MAX(0.0, kStoreButtonHintPillHeight - 12.0));
+    self.buttonHintStackView.frame = NSMakeRect(floor((pillWidth - stackWidth) * 0.5),
+                                                floor((kStoreButtonHintPillHeight - stackHeight) * 0.5),
+                                                stackWidth,
+                                                stackHeight);
 }
 
 - (void)scheduleRenderStore {
