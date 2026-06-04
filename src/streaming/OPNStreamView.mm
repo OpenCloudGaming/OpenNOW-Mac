@@ -9,6 +9,7 @@
 #import <GameController/GameController.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreImage/CoreImage.h>
 
 #include <algorithm>
 #include <climits>
@@ -95,6 +96,10 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
     double _pendingMouseDx;
     double _pendingMouseDy;
     int _maxBitrateMbps;
+    NSInteger _videoUpscalingMode;
+    NSInteger _videoUpscalingSharpness;
+    NSInteger _videoStreamWidth;
+    NSInteger _videoStreamHeight;
     NSTimeInterval _remainingPlaytimeBaseSeconds;
     CFTimeInterval _remainingPlaytimeStartTime;
     BOOL _remainingPlaytimeUnlimited;
@@ -113,6 +118,8 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
 @property (nonatomic, strong) NSTextField *sidebarRecordingStatusValue;
 @property (nonatomic, strong) NSTimer *playtimeTimer;
 @property (nonatomic, strong) NSSlider *bitrateSlider;
+@property (nonatomic, strong) NSPopUpButton *upscalingModePopup;
+@property (nonatomic, strong) NSSlider *upscalingSharpnessSlider;
 @property (nonatomic, strong) NSSlider *gameVolumeSlider;
 @property (nonatomic, strong) NSSlider *microphoneVolumeSlider;
 @property (nonatomic, strong) NSView *microphoneMeterTrack;
@@ -153,6 +160,10 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _gameVolume = profile.gameVolume;
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
+        _videoUpscalingMode = profile.upscalingMode;
+        _videoUpscalingSharpness = profile.upscalingSharpness;
+        _videoStreamWidth = profile.resolution.width;
+        _videoStreamHeight = profile.resolution.height;
         _remainingPlaytimeBaseSeconds = 0.0;
         _remainingPlaytimeStartTime = 0.0;
         _remainingPlaytimeUnlimited = NO;
@@ -174,6 +185,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _videoSurface = [[OPNVideoSurfaceView alloc] initWithFrame:self.bounds];
         _videoSurface.wantsLayer = YES;
         _videoSurface.layer.backgroundColor = [NSColor blackColor].CGColor;
+        [self applyVideoUpscalingFiltersToView:_videoSurface];
         [self addSubview:_videoSurface];
         [self createMicrophoneActiveOverlay];
         [self createSidebarHUDWithProfile:profile];
@@ -221,7 +233,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
 }
 
 - (void)createSidebarHUDWithProfile:(const OPN::StreamPreferenceProfile &)profile {
-    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 332.0, 700.0)];
+    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 332.0, 760.0)];
     panel.wantsLayer = YES;
     panel.layer.cornerRadius = 18.0;
     panel.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.03 alpha:0.88].CGColor;
@@ -260,19 +272,43 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     self.bitrateSlider.continuous = YES;
     [panel addSubview:self.bitrateSlider];
 
+    [panel addSubview:OPNSidebarLabel(@"Resolution Upscaling", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 246.0, 190.0, 18.0);
+    self.upscalingModePopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20.0, 272.0, NSWidth(panel.frame) - 40.0, 30.0) pullsDown:NO];
+    for (const OPN::StreamUpscalingModeOption &option : OPN::StreamUpscalingModeOptions()) {
+        [self.upscalingModePopup addItemWithTitle:[NSString stringWithUTF8String:option.label.c_str()]];
+    }
+    [self.upscalingModePopup selectItemAtIndex:MAX(0, MIN((NSInteger)profile.upscalingModeIndex, (NSInteger)OPN::StreamUpscalingModeOptions().size() - 1))];
+    self.upscalingModePopup.target = self;
+    self.upscalingModePopup.action = @selector(upscalingModePopupChanged:);
+    [panel addSubview:self.upscalingModePopup];
+
+    [panel addSubview:OPNSidebarLabel(@"Detail Enhancement", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 318.0, 190.0, 18.0);
+    self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 342.0, NSWidth(panel.frame) - 40.0, 22.0)];
+    self.upscalingSharpnessSlider.minValue = 0.0;
+    self.upscalingSharpnessSlider.maxValue = 10.0;
+    self.upscalingSharpnessSlider.doubleValue = profile.upscalingSharpness;
+    self.upscalingSharpnessSlider.numberOfTickMarks = 11;
+    self.upscalingSharpnessSlider.allowsTickMarkValuesOnly = YES;
+    self.upscalingSharpnessSlider.target = self;
+    self.upscalingSharpnessSlider.action = @selector(upscalingSharpnessSliderChanged:);
+    self.upscalingSharpnessSlider.continuous = YES;
+    [panel addSubview:self.upscalingSharpnessSlider];
+
     NSTextField *audioTitle = OPNSidebarLabel(@"Audio", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    audioTitle.frame = NSMakeRect(20.0, 256.0, 180.0, 20.0);
+    audioTitle.frame = NSMakeRect(20.0, 386.0, 180.0, 20.0);
     [panel addSubview:audioTitle];
     [panel addSubview:OPNSidebarLabel(@"Game Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 292.0, 180.0, 18.0);
-    self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:316.0 panel:panel];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 416.0, 180.0, 18.0);
+    self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:440.0 panel:panel];
     [panel addSubview:OPNSidebarLabel(@"Mic Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 354.0, 180.0, 18.0);
-    self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:378.0 panel:panel];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 482.0, 180.0, 18.0);
+    self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:506.0 panel:panel];
 
     [panel addSubview:OPNSidebarLabel(@"Mic Meter", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 432.0, 180.0, 18.0);
-    NSView *meterTrack = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 462.0, NSWidth(panel.frame) - 40.0, 14.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 544.0, 180.0, 18.0);
+    NSView *meterTrack = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 572.0, NSWidth(panel.frame) - 40.0, 14.0)];
     meterTrack.wantsLayer = YES;
     meterTrack.layer.cornerRadius = 7.0;
     meterTrack.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.12].CGColor;
@@ -286,15 +322,15 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     [panel addSubview:meterTrack];
 
     NSTextField *recordingTitle = OPNSidebarLabel(@"Recording", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    recordingTitle.frame = NSMakeRect(20.0, 504.0, 180.0, 20.0);
+    recordingTitle.frame = NSMakeRect(20.0, 616.0, 180.0, 20.0);
     [panel addSubview:recordingTitle];
 
     self.sidebarRecordingStatusValue = OPNSidebarLabel(@"Ready", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
-    self.sidebarRecordingStatusValue.frame = NSMakeRect(20.0, 534.0, NSWidth(panel.frame) - 40.0, 18.0);
+    self.sidebarRecordingStatusValue.frame = NSMakeRect(20.0, 642.0, NSWidth(panel.frame) - 40.0, 18.0);
     [panel addSubview:self.sidebarRecordingStatusValue];
 
     NSButton *recordingButton = [NSButton buttonWithTitle:@"Start Recording" target:self action:@selector(recordingButtonClicked:)];
-    recordingButton.frame = NSMakeRect(20.0, 564.0, NSWidth(panel.frame) - 40.0, 38.0);
+    recordingButton.frame = NSMakeRect(20.0, 674.0, NSWidth(panel.frame) - 40.0, 38.0);
     recordingButton.bezelStyle = NSBezelStyleRegularSquare;
     recordingButton.bordered = NO;
     recordingButton.wantsLayer = YES;
@@ -304,9 +340,9 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     self.recordingButton = recordingButton;
 
     NSTextField *recentTitle = OPNSidebarLabel(@"Recent", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
-    recentTitle.frame = NSMakeRect(20.0, 622.0, 180.0, 18.0);
+    recentTitle.frame = NSMakeRect(20.0, 724.0, 180.0, 18.0);
     [panel addSubview:recentTitle];
-    self.recentRecordingsContainer = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 648.0, NSWidth(panel.frame) - 40.0, 30.0)];
+    self.recentRecordingsContainer = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 748.0, NSWidth(panel.frame) - 40.0, 30.0)];
     [panel addSubview:self.recentRecordingsContainer];
 
     self.sidebarHUD = panel;
@@ -506,6 +542,47 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
     [self setNeedsLayout:YES];
 }
 
+- (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight {
+    _videoUpscalingMode = MAX(0, MIN(mode, 2));
+    _videoUpscalingSharpness = MAX(0, MIN(sharpness, 10));
+    _videoStreamWidth = MAX(0, streamWidth);
+    _videoStreamHeight = MAX(0, streamHeight);
+    [self applyVideoUpscalingFiltersToView:self.videoSurface];
+    [self setNeedsLayout:YES];
+}
+
+- (void)applyVideoUpscalingFiltersToView:(NSView *)view {
+    if (!view) return;
+    view.wantsLayer = YES;
+    CALayer *layer = view.layer;
+    if (layer) {
+        if (_videoUpscalingMode <= 0) {
+            layer.magnificationFilter = kCAFilterNearest;
+            layer.minificationFilter = kCAFilterLinear;
+            layer.minificationFilterBias = 0.0;
+            layer.allowsEdgeAntialiasing = NO;
+            layer.filters = nil;
+        } else {
+            layer.magnificationFilter = kCAFilterLinear;
+            layer.minificationFilter = _videoUpscalingMode >= 2 ? kCAFilterTrilinear : kCAFilterLinear;
+            layer.minificationFilterBias = _videoUpscalingMode >= 2 ? -0.25f : 0.0f;
+            layer.allowsEdgeAntialiasing = YES;
+            if (_videoUpscalingSharpness > 0) {
+                CIFilter *sharpen = [CIFilter filterWithName:@"CISharpenLuminance"];
+                double multiplier = _videoUpscalingMode >= 2 ? 0.08 : 0.04;
+                [sharpen setDefaults];
+                [sharpen setValue:@((double)_videoUpscalingSharpness * multiplier) forKey:kCIInputSharpnessKey];
+                layer.filters = sharpen ? @[sharpen] : nil;
+            } else {
+                layer.filters = nil;
+            }
+        }
+    }
+    for (NSView *subview in view.subviews) {
+        [self applyVideoUpscalingFiltersToView:subview];
+    }
+}
+
 - (void)layout {
     [super layout];
     CGFloat width = NSWidth(self.bounds);
@@ -519,9 +596,21 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
         fittedHeight = height;
         fittedWidth = floor(height * targetAspect);
     }
+    if (_videoUpscalingMode <= 0 && _videoStreamWidth > 0 && _videoStreamHeight > 0) {
+        CGFloat scale = self.window.backingScaleFactor > 0.0 ? self.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
+        if (scale <= 0.0) scale = 1.0;
+        CGFloat maxWidth = floor((CGFloat)_videoStreamWidth / scale);
+        CGFloat maxHeight = floor((CGFloat)_videoStreamHeight / scale);
+        if (maxWidth > 0.0 && maxHeight > 0.0 && (fittedWidth > maxWidth || fittedHeight > maxHeight)) {
+            CGFloat capScale = MIN(maxWidth / fittedWidth, maxHeight / fittedHeight);
+            fittedWidth = floor(fittedWidth * capScale);
+            fittedHeight = floor(fittedHeight * capScale);
+        }
+    }
     CGFloat x = floor((width - fittedWidth) / 2.0);
     CGFloat y = floor((height - fittedHeight) / 2.0);
     self.videoSurface.frame = NSMakeRect(x, y, fittedWidth, fittedHeight);
+    [self applyVideoUpscalingFiltersToView:self.videoSurface];
     CGFloat overlaySize = 46.0;
     self.microphoneActiveOverlay.frame = NSMakeRect(NSMaxX(self.videoSurface.frame) - overlaySize - 18.0,
                                                    NSMinY(self.videoSurface.frame) + 18.0,
@@ -529,7 +618,7 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
                                                    overlaySize);
     if (self.sidebarHUD) {
         CGFloat panelWidth = NSWidth(self.sidebarHUD.frame);
-        CGFloat panelHeight = MIN(700.0, MAX(450.0, height - 36.0));
+        CGFloat panelHeight = MIN(760.0, MAX(520.0, height - 36.0));
         self.sidebarHUD.frame = NSMakeRect(18.0, floor((height - panelHeight) / 2.0), panelWidth, panelHeight);
     }
 }
@@ -661,6 +750,26 @@ static NSColor *OPNSidebarColor(CGFloat white, CGFloat alpha) {
         }
     }
     OPN::SaveStreamBitrateIndex(nearestIndex);
+}
+
+- (void)upscalingModePopupChanged:(NSPopUpButton *)popup {
+    NSInteger index = MAX(0, MIN(popup.indexOfSelectedItem, (NSInteger)OPN::StreamUpscalingModeOptions().size() - 1));
+    const OPN::StreamUpscalingModeOption &option = OPN::StreamUpscalingModeOptions()[(size_t)index];
+    OPN::SaveStreamUpscalingModeIndex((int)index);
+    [self setVideoUpscalingMode:option.value
+                      sharpness:_videoUpscalingSharpness
+                    streamWidth:_videoStreamWidth
+                   streamHeight:_videoStreamHeight];
+}
+
+- (void)upscalingSharpnessSliderChanged:(NSSlider *)slider {
+    NSInteger sharpness = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 10));
+    slider.doubleValue = sharpness;
+    OPN::SaveStreamUpscalingSharpness((int)sharpness);
+    [self setVideoUpscalingMode:_videoUpscalingMode
+                      sharpness:sharpness
+                    streamWidth:_videoStreamWidth
+                   streamHeight:_videoStreamHeight];
 }
 
 - (void)updateSidebarBitrateStatus {

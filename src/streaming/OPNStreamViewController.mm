@@ -2455,6 +2455,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.remoteControllersBitmap = OPNConnectedControllerBitmap();
     settings.availableSupportedControllers = OPNAvailableSupportedControllers();
     [self.streamView setVideoAspectRatio:(CGFloat)OPNAspectRatioForResolution(effectiveResolution, streamProfile.AspectRatio())];
+    [self.streamView setVideoUpscalingMode:streamProfile.upscalingMode
+                                 sharpness:streamProfile.upscalingSharpness
+                               streamWidth:effectiveResolution.width
+                              streamHeight:effectiveResolution.height];
     [self.streamView setSuppressInputWhenWindowInactive:streamProfile.suppressInputWhenInactive ? YES : NO];
     [self.streamView setDirectMouseInputEnabled:streamProfile.directMouseInput ? YES : NO];
     [self.streamView setMaxBitrateMbps:settings.maxBitrateMbps];

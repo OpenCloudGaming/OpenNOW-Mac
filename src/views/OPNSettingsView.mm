@@ -171,6 +171,7 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 @property (nonatomic, assign) NSInteger selectedBitrate;
 @property (nonatomic, assign) NSInteger selectedColorDepth;
 @property (nonatomic, assign) NSInteger selectedPrefilterMode;
+@property (nonatomic, assign) NSInteger selectedUpscalingMode;
 @property (nonatomic, assign) NSInteger selectedMicrophoneMode;
 @property (nonatomic, assign) NSInteger selectedMicrophoneDevice;
 @property (nonatomic, assign) BOOL enableL4S;
@@ -228,6 +229,7 @@ using namespace OPN;
         _selectedBitrate = profile.bitrateIndex;
         _selectedColorDepth = profile.colorQualityIndex;
         _selectedPrefilterMode = profile.prefilterModeIndex;
+        _selectedUpscalingMode = profile.upscalingModeIndex;
         _selectedMicrophoneMode = profile.microphoneMode == "push-to-talk" ? 1 : (profile.microphoneMode == "voice-activity" ? 2 : 0);
         _selectedMicrophoneDevice = 0;
         _enableL4S = profile.enableL4S;
@@ -546,7 +548,7 @@ using namespace OPN;
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
     OPN::StreamPreferenceProfile effectiveProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(profile, capabilities);
-    NSView *video = [self panelWithTitle:@"Video" height:1060.0];
+    NSView *video = [self panelWithTitle:@"Video" height:1210.0];
     [video addSubview:[self rowLabel:@"Aspect Ratio" y:112.0]];
     NSMutableArray<NSString *> *aspectTitles = [NSMutableArray array];
     for (const OPN::StreamAspectOption &option : OPN::StreamAspectOptions()) {
@@ -677,29 +679,50 @@ using namespace OPN;
     adjustmentLabel.maximumNumberOfLines = 2;
     [video addSubview:adjustmentLabel];
 
+    NSMutableArray<NSString *> *upscalingTitles = [NSMutableArray array];
+    for (const OPN::StreamUpscalingModeOption &option : OPN::StreamUpscalingModeOptions()) {
+        [upscalingTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
+    }
+    [video addSubview:[self rowLabel:@"Resolution Upscaling" y:878.0]];
+    [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:868.0 widths:@[@72.0, @112.0, @124.0]];
+
+    [video addSubview:OpnLabel(@"Detail Enhancement", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 938.0, MIN(120.0, controlWidth), 38.0)
+                                                                  value:profile.upscalingSharpness
+                                                                 action:@selector(upscalingSharpnessPopupChanged:)];
+    [video addSubview:upscalingSharpnessPopup];
+
+    NSTextField *upscalingHint = OpnLabel(@"Off avoids enlarging the stream when possible. Enhanced and AI Enhanced use local high-quality scaling and detail enhancement while streaming.",
+                                          NSMakeRect(controlX, 986.0, controlWidth, 42.0),
+                                          12.0,
+                                          OpnColor(kTextMuted),
+                                          NSFontWeightRegular);
+    upscalingHint.maximumNumberOfLines = 2;
+    [video addSubview:upscalingHint];
+
     NSMutableArray<NSString *> *prefilterTitles = [NSMutableArray array];
     for (const OPN::StreamPrefilterModeOption &option : OPN::StreamPrefilterModeOptions()) {
         [prefilterTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
     }
-    [video addSubview:[self rowLabel:@"AI Filter" y:878.0]];
-    [self addOptionGroupTo:video group:10 titles:prefilterTitles selected:self.selectedPrefilterMode y:868.0 widths:@[@72.0, @72.0, @96.0]];
+    [video addSubview:[self rowLabel:@"AI Filter" y:1048.0]];
+    [self addOptionGroupTo:video group:10 titles:prefilterTitles selected:self.selectedPrefilterMode y:1038.0 widths:@[@72.0, @72.0, @96.0]];
 
-    [video addSubview:[self rowLabel:@"Custom Levels" y:934.0]];
-    [video addSubview:OpnLabel(@"Sharpness", NSMakeRect(controlX, 902.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
-    NSPopUpButton *sharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 922.0, MIN(120.0, controlWidth), 38.0)
-                                                         value:profile.prefilterSharpness
-                                                        action:@selector(prefilterSharpnessPopupChanged:)];
+    [video addSubview:[self rowLabel:@"Custom Levels" y:1104.0]];
+    [video addSubview:OpnLabel(@"Sharpness", NSMakeRect(controlX, 1072.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *sharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 1092.0, MIN(120.0, controlWidth), 38.0)
+                                                          value:profile.prefilterSharpness
+                                                         action:@selector(prefilterSharpnessPopupChanged:)];
     [video addSubview:sharpnessPopup];
 
     CGFloat denoiseX = controlX + MIN(160.0, controlWidth * 0.5);
-    [video addSubview:OpnLabel(@"Denoise", NSMakeRect(denoiseX, 902.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
-    NSPopUpButton *denoisePopup = [self integerPopupWithFrame:NSMakeRect(denoiseX, 922.0, MIN(120.0, controlWidth), 38.0)
+    [video addSubview:OpnLabel(@"Denoise", NSMakeRect(denoiseX, 1072.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
+    NSPopUpButton *denoisePopup = [self integerPopupWithFrame:NSMakeRect(denoiseX, 1092.0, MIN(120.0, controlWidth), 38.0)
                                                         value:profile.prefilterDenoise
                                                        action:@selector(prefilterDenoisePopupChanged:)];
     [video addSubview:denoisePopup];
 
     NSTextField *prefilterHint = OpnLabel(@"Auto lets GFN choose supported enhancement. Custom sends the sharpness and denoise levels from 0 to 10.",
-                                           NSMakeRect(controlX, 988.0, controlWidth, 42.0),
+                                           NSMakeRect(controlX, 1158.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),
                                           NSFontWeightRegular);
@@ -1204,6 +1227,7 @@ using namespace OPN;
         case 9: [self applyPerformanceProfile:index]; break;
         case 10: OPN::SaveStreamPrefilterModeIndex((int)index); break;
         case 11: OpnSetAppIconThemePreference(index == 1 ? OPNAppIconThemeGreen : (index == 2 ? OPNAppIconThemeBlue : OPNAppIconThemeBlack)); break;
+        case 12: OPN::SaveStreamUpscalingModeIndex((int)index); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
@@ -1214,6 +1238,7 @@ using namespace OPN;
     self.selectedBitrate = profile.bitrateIndex;
     self.selectedColorDepth = profile.colorQualityIndex;
     self.selectedPrefilterMode = profile.prefilterModeIndex;
+    self.selectedUpscalingMode = profile.upscalingModeIndex;
     self.enableL4S = profile.enableL4S;
     self.enableHdr = profile.enableHdr;
     [self rebuildContent];
@@ -1284,6 +1309,11 @@ using namespace OPN;
 
 - (void)prefilterDenoisePopupChanged:(NSPopUpButton *)sender {
     OPN::SaveStreamPrefilterDenoise((int)sender.indexOfSelectedItem);
+    [self rebuildContent];
+}
+
+- (void)upscalingSharpnessPopupChanged:(NSPopUpButton *)sender {
+    OPN::SaveStreamUpscalingSharpness((int)sender.indexOfSelectedItem);
     [self rebuildContent];
 }
 

@@ -23,6 +23,8 @@ static NSString *const kColorQualityIndexKey = @"OpenNOW.Stream.ColorQualityInde
 static NSString *const kPrefilterModeIndexKey = @"OpenNOW.Stream.PrefilterModeIndex";
 static NSString *const kPrefilterSharpnessKey = @"OpenNOW.Stream.PrefilterSharpness";
 static NSString *const kPrefilterDenoiseKey = @"OpenNOW.Stream.PrefilterDenoise";
+static NSString *const kUpscalingModeIndexKey = @"OpenNOW.Stream.UpscalingModeIndex";
+static NSString *const kUpscalingSharpnessKey = @"OpenNOW.Stream.UpscalingSharpness";
 static NSString *const kRecordingVideoBitrateMbpsKey = @"OpenNOW.Stream.RecordingVideoBitrateMbps";
 static NSString *const kRecordingAudioBitrateKbpsKey = @"OpenNOW.Stream.RecordingAudioBitrateKbps";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
@@ -114,6 +116,15 @@ const std::vector<StreamPrefilterModeOption> &StreamPrefilterModeOptions() {
         {"Off", 0},
         {"Auto", 1},
         {"Custom", 2},
+    };
+    return options;
+}
+
+const std::vector<StreamUpscalingModeOption> &StreamUpscalingModeOptions() {
+    static const std::vector<StreamUpscalingModeOption> options = {
+        {"Off", 0},
+        {"Enhanced", 1},
+        {"AI Enhanced", 2},
     };
     return options;
 }
@@ -566,6 +577,12 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.prefilterMode = profile.prefilterModeOption.value;
     profile.prefilterSharpness = ClampedStoredInteger(kPrefilterSharpnessKey, 0, 11);
     profile.prefilterDenoise = ClampedStoredInteger(kPrefilterDenoiseKey, 0, 11);
+
+    const auto &upscalingModeOptions = StreamUpscalingModeOptions();
+    profile.upscalingModeIndex = ClampedStoredInteger(kUpscalingModeIndexKey, 1, (int)upscalingModeOptions.size());
+    profile.upscalingModeOption = upscalingModeOptions[(size_t)profile.upscalingModeIndex];
+    profile.upscalingMode = profile.upscalingModeOption.value;
+    profile.upscalingSharpness = ClampedStoredInteger(kUpscalingSharpnessKey, 4, 11);
     profile.recordingVideoBitrateMbps = ClampedStoredInteger(kRecordingVideoBitrateMbpsKey, 0, 201);
     profile.recordingAudioBitrateKbps = (int)std::llround(ClampedStoredDouble(kRecordingAudioBitrateKbpsKey, 160.0, 64.0, 320.0));
 
@@ -1360,6 +1377,16 @@ void SaveStreamPrefilterSharpness(int sharpness) {
 void SaveStreamPrefilterDenoise(int denoise) {
     int clamped = std::max(0, std::min(denoise, 10));
     SaveCanonicalIntegerPreference(kPrefilterDenoiseKey, clamped);
+}
+
+void SaveStreamUpscalingModeIndex(int upscalingModeIndex) {
+    int clamped = std::max(0, std::min(upscalingModeIndex, (int)StreamUpscalingModeOptions().size() - 1));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingModeIndexKey];
+}
+
+void SaveStreamUpscalingSharpness(int sharpness) {
+    int clamped = std::max(0, std::min(sharpness, 10));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingSharpnessKey];
 }
 
 void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps) {
