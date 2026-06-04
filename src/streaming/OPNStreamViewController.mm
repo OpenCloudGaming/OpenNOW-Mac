@@ -2134,8 +2134,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
                 if (clean && strongSelf->_connectedOnce) {
-                    OPN::LogInfo(@"[StreamVC] Signaling closed cleanly after connection; ending stream normally");
-                    [strongSelf endStreamWithSuccess:YES errorMessage:""];
+                    OPN::LogInfo(@"[StreamVC] Signaling closed cleanly after WebRTC connection; keeping stream active");
                     return;
                 }
                 std::string error = reasonCopy.empty() ? std::string("Signaling connection closed") : reasonCopy;
