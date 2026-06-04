@@ -1177,7 +1177,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         NSImageView *iconView = self.storeIconViews[index];
         int variantIndex = index < self.storeIconVariantIndexes.count ? self.storeIconVariantIndexes[index].intValue : -1;
         BOOL selected = variantIndex == self.selectedVariantIndex && !_gameData.variants.empty();
-        iconView.layer.borderWidth = selected ? 2.0 : 1.0;
+        iconView.layer.borderWidth = 1.0;
         iconView.layer.borderColor = (selected
             ? OpnColor(OPN::kBrandGreen, 0.96)
             : (self.storeFocused ? OpnColor(OPN::kBrandGreen, 0.42) : OpnColor(0xFFFFFF, 0.18))).CGColor;
