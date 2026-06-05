@@ -148,8 +148,8 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         return nil;
     }
 
-    const size_t width = CVPixelBufferGetWidthOfPlane(pixelBuffer, isNV12 ? 0 : 0);
-    const size_t height = CVPixelBufferGetHeightOfPlane(pixelBuffer, isNV12 ? 0 : 0);
+    const size_t width = isNV12 ? CVPixelBufferGetWidthOfPlane(pixelBuffer, 0) : CVPixelBufferGetWidth(pixelBuffer);
+    const size_t height = isNV12 ? CVPixelBufferGetHeightOfPlane(pixelBuffer, 0) : CVPixelBufferGetHeight(pixelBuffer);
     if (width == 0 || height == 0) {
         if (fallback) *fallback = @"empty CVPixelBuffer dimensions";
         return nil;
@@ -540,8 +540,9 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 - (OPNVideoGovernorTier)governedTierForRequestedTier:(OPNVideoGovernorTier)requestedTier settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result {
     if (self.governorTier > requestedTier) self.governorTier = requestedTier;
     if (self.governorTier == OPNVideoGovernorTierNative) {
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor cooling down on native renderer";
-        return OPNVideoGovernorTierNative;
+        self.governorTier = OPNVideoGovernorTierSpatial;
+        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor restored minimum enhanced tier";
+        return OPNVideoGovernorTierSpatial;
     }
     if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier == OPNVideoGovernorTierMetalFX) {
         if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded MetalFX to custom spatial scaler";
@@ -568,7 +569,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         if (activeTier == OPNVideoGovernorTierMetalFX) {
             self.governorTier = OPNVideoGovernorTierSpatial;
         } else if (activeTier == OPNVideoGovernorTierSpatial) {
-            self.governorTier = OPNVideoGovernorTierNative;
+            self.governorTier = OPNVideoGovernorTierSpatial;
         }
         self.overloadScore = 0;
         self.recoveryScore = 0;

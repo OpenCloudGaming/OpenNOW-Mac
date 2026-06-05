@@ -763,7 +763,7 @@ static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weig
 
 static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-    style.alignment = NSTextAlignmentRight;
+    style.alignment = NSTextAlignmentLeft;
     style.lineBreakMode = NSLineBreakByTruncatingTail;
     return [[NSAttributedString alloc] initWithString:text ?: @""
                                             attributes:@{
@@ -781,7 +781,7 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
         self.wantsLayer = YES;
         self.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
 
-        _statsLineLabel = OPNStatsText(@"", 10.0, NSFontWeightMedium, NSColor.clearColor, NSTextAlignmentRight);
+        _statsLineLabel = OPNStatsText(@"", 10.0, NSFontWeightMedium, NSColor.clearColor, NSTextAlignmentLeft);
         _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingTail;
         _statsLineLabel.maximumNumberOfLines = 1;
         _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
@@ -1535,10 +1535,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     if (!stats.videoEnhancementActiveTier.empty()) {
         NSString *activeTier = [NSString stringWithUTF8String:stats.videoEnhancementActiveTier.c_str()];
         NSString *drawable = [NSString stringWithUTF8String:stats.videoEnhancementDrawableResolution.c_str()];
+        NSString *fallbackReason = [NSString stringWithUTF8String:stats.videoEnhancementFallbackReason.c_str()];
         if (stats.videoEnhancementFrameTimeMs >= 0.0) {
             enhancement = [NSString stringWithFormat:@"enh %@ %@ %.1fms", activeTier, drawable, stats.videoEnhancementFrameTimeMs];
         } else {
             enhancement = [NSString stringWithFormat:@"enh %@ %@", activeTier, drawable];
+        }
+        if ([activeTier containsString:@"fallback"] && fallbackReason.length > 0) {
+            enhancement = [enhancement stringByAppendingFormat:@" (%@)", fallbackReason];
         }
     }
     [self.statsOverlay updateLatencyMs:latencyMs
