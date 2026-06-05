@@ -8,6 +8,13 @@
 #include "../streaming/OPNStreamPreferences.h"
 #include <QuartzCore/QuartzCore.h>
 #include <CoreAudio/CoreAudio.h>
+#import <Metal/Metal.h>
+#if __has_include(<MetalFX/MetalFX.h>)
+#import <MetalFX/MetalFX.h>
+#define OPN_SETTINGS_HAVE_METALFX 1
+#else
+#define OPN_SETTINGS_HAVE_METALFX 0
+#endif
 #include <cmath>
 
 static const CGFloat kSettingsNavHeight = 64.0;
@@ -34,6 +41,42 @@ static NSDictionary<NSString *, NSString *> *OPNWebRTCBackendRuntimeInfo(void) {
         @"effective": active,
         @"codec": [NSString stringWithFormat:@"%@ effective (%@ requested)", effectiveCodec, requestedCodec],
         @"libwebrtc": [NSString stringWithFormat:@"%@ (%@)", libWebRTCAvailable ? @"Available" : @"Unavailable", libDescription],
+    };
+}
+
+static NSDictionary<NSString *, NSString *> *OPNLocalEnhancementRuntimeInfo(void) {
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    BOOL libWebRTCAvailable = OPN::LibWebRTCStreamSession::IsAvailable() ? YES : NO;
+    BOOL metalAvailable = device != nil;
+    NSString *gpuName = device.name.length > 0 ? device.name : (metalAvailable ? @"Metal GPU" : @"No Metal device detected");
+    NSString *metalSpatial = metalAvailable
+        ? [NSString stringWithFormat:@"Supported on %@", gpuName]
+        : @"Unavailable: this Mac does not expose a Metal device";
+
+    NSString *metalFX = @"Unavailable: MetalFX headers are not present in this build";
+#if OPN_SETTINGS_HAVE_METALFX
+    if (!metalAvailable) {
+        metalFX = @"Unavailable: this Mac does not expose a Metal device";
+    } else if (!NSClassFromString(@"MTLFXSpatialScalerDescriptor")) {
+        metalFX = @"Unavailable: MetalFX is not present on this macOS version";
+    } else if (@available(macOS 13.0, *)) {
+        metalFX = [MTLFXSpatialScalerDescriptor supportsDevice:device]
+            ? [NSString stringWithFormat:@"Supported on %@", gpuName]
+            : [NSString stringWithFormat:@"Unavailable on %@", gpuName];
+    } else {
+        metalFX = @"Unavailable: requires macOS 13 or newer";
+    }
+#endif
+
+    NSString *enhancedRecording = metalAvailable
+        ? @"Supported while local upscaling is active; raw recording remains fallback"
+        : @"Unavailable: enhanced capture requires Metal; raw recording remains fallback";
+    NSString *nativeRenderer = libWebRTCAvailable ? @"Supported" : @"Unavailable: libwebrtc framework is missing";
+    NSString *summary = [NSString stringWithFormat:@"Metal spatial upscaling: %@\nMetalFX spatial upscaling: %@\nEnhanced recording output: %@\nNative fallback renderer: %@", metalSpatial, metalFX, enhancedRecording, nativeRenderer];
+
+    return @{
+        @"gpu": gpuName,
+        @"summary": summary,
     };
 }
 
@@ -980,7 +1023,7 @@ using namespace OPN;
 }
 
 - (void)buildAboutContent {
-    NSView *panel = [self panelWithTitle:@"About" height:428.0];
+    NSView *panel = [self panelWithTitle:@"About" height:596.0];
     CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
@@ -988,6 +1031,7 @@ using namespace OPN;
     NSString *version = [info[@"CFBundleShortVersionString"] isKindOfClass:NSString.class] ? info[@"CFBundleShortVersionString"] : @"0.0.0";
     NSString *build = [info[@"CFBundleVersion"] isKindOfClass:NSString.class] ? info[@"CFBundleVersion"] : @"0";
     NSString *bundleIdentifier = NSBundle.mainBundle.bundleIdentifier ?: @"Unavailable";
+    NSDictionary<NSString *, NSString *> *enhancements = OPNLocalEnhancementRuntimeInfo();
 
     NSTextField *summary = OpnLabel(@"OpenNOW is an open-source macOS client for launching and streaming cloud games.",
                                     NSMakeRect(24.0, 92.0, MAX(260.0, panelWidth - 48.0), 38.0),
@@ -999,14 +1043,25 @@ using namespace OPN;
 
     [self addInfoRowToPanel:panel title:@"Version" value:[NSString stringWithFormat:@"%@ (%@)", version, build] y:154.0 valueWidth:controlWidth monospaceValue:NO];
     [self addInfoRowToPanel:panel title:@"Bundle ID" value:bundleIdentifier y:206.0 valueWidth:controlWidth monospaceValue:YES];
+    [self addInfoRowToPanel:panel title:@"System GPU" value:enhancements[@"gpu"] y:258.0 valueWidth:controlWidth monospaceValue:NO];
 
-    NSButton *updateButton = OpnButton(@"Check for Updates", NSMakeRect(controlX, 268.0, MIN(210.0, controlWidth), 40.0), OpnColor(kBrandGreen, 0.18), OpnColor(kBrandGreen), true, OpnColor(kBrandGreen, 0.45));
+    [panel addSubview:[self rowLabel:@"Compatible Enhancements" y:318.0]];
+    NSTextField *enhancementLabel = OpnLabel(enhancements[@"summary"] ?: @"Unavailable",
+                                             NSMakeRect(controlX, 316.0, controlWidth, 94.0),
+                                             12.0,
+                                             OpnColor(kTextSecondary),
+                                             NSFontWeightRegular);
+    enhancementLabel.maximumNumberOfLines = 4;
+    enhancementLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    [panel addSubview:enhancementLabel];
+
+    NSButton *updateButton = OpnButton(@"Check for Updates", NSMakeRect(controlX, 434.0, MIN(210.0, controlWidth), 40.0), OpnColor(kBrandGreen, 0.18), OpnColor(kBrandGreen), true, OpnColor(kBrandGreen, 0.45));
     updateButton.target = self;
     updateButton.action = @selector(checkForUpdatesClicked:);
     [panel addSubview:updateButton];
 
-    [self addInfoRowToPanel:panel title:@"Cache" value:@"Catalog data, downloaded artwork, image memory cache, and URL cache" y:326.0 valueWidth:controlWidth monospaceValue:NO];
-    NSButton *clearCachesButton = OpnButton(@"Clear All Caches", NSMakeRect(controlX, 366.0, MIN(210.0, controlWidth), 40.0), OpnColor(kErrorRed, 0.14), OpnColor(kErrorRed), true, OpnColor(kErrorRed, 0.42));
+    [self addInfoRowToPanel:panel title:@"Cache" value:@"Catalog data, downloaded artwork, image memory cache, and URL cache" y:492.0 valueWidth:controlWidth monospaceValue:NO];
+    NSButton *clearCachesButton = OpnButton(@"Clear All Caches", NSMakeRect(controlX, 532.0, MIN(210.0, controlWidth), 40.0), OpnColor(kErrorRed, 0.14), OpnColor(kErrorRed), true, OpnColor(kErrorRed, 0.42));
     clearCachesButton.target = self;
     clearCachesButton.action = @selector(clearCachesClicked:);
     [panel addSubview:clearCachesButton];
