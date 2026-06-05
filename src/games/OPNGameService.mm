@@ -1,17 +1,23 @@
 #include "OPNGameService.h"
 #include "OPNGameDataCache.h"
+#include "common/OPNHTTP.h"
 #include "streaming/OPNSessionManager.h"
 #include "streaming/OPNSignalingClient.h"
 #include "streaming/OPNStreamPreferences.h"
 #include "streaming/OPNStreamSession.h"
 #include "common/OPNLocale.h"
 #include <CommonCrypto/CommonCrypto.h>
+#include <AppKit/NSWorkspace.h>
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <unistd.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include "common/OPNSentry.h"
 
 namespace OPN {
@@ -92,10 +98,10 @@ static void DispatchStoreURLCallback(const StoreURLCallback &completion,
 }
 
 static void DispatchProviderInfoCallback(const ProviderInfoCallback &completion,
-                                         bool success,
-                                         const GameProviderInfo &providerInfo,
-                                         const GameProviderEndpoint &selectedEndpoint,
-                                         const std::string &error) {
+                                          bool success,
+                                          const GameProviderInfo &providerInfo,
+                                          const GameProviderEndpoint &selectedEndpoint,
+                                          const std::string &error) {
     if (!completion) return;
     ProviderInfoCallback completionCopy = completion;
     GameProviderInfo providerInfoCopy = providerInfo;
@@ -106,9 +112,46 @@ static void DispatchProviderInfoCallback(const ProviderInfoCallback &completion,
     });
 }
 
+static void DispatchOwnershipActionCallback(const OwnershipActionCallback &completion,
+                                            bool success,
+                                            const std::string &error) {
+    if (!completion) return;
+    OwnershipActionCallback completionCopy = completion;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, errorCopy);
+    });
+}
+
+static void DispatchUserAccountCallback(const UserAccountCallback &completion,
+                                        bool success,
+                                        const UserAccountInfo &accountInfo,
+                                        const std::string &error) {
+    if (!completion) return;
+    UserAccountCallback completionCopy = completion;
+    UserAccountInfo accountInfoCopy = accountInfo;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, accountInfoCopy, errorCopy);
+    });
+}
+
+static void DispatchStoreDefinitionsCallback(const StoreDefinitionsCallback &completion,
+                                             bool success,
+                                             const std::vector<StoreDefinition> &definitions,
+                                             const std::string &error) {
+    if (!completion) return;
+    StoreDefinitionsCallback completionCopy = completion;
+    std::vector<StoreDefinition> definitionsCopy = definitions;
+    std::string errorCopy = error;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completionCopy(success, definitionsCopy, errorCopy);
+    });
+}
+
 static void DispatchGraphQLCallback(const std::function<void(NSDictionary *, NSString *)> &completion,
-                                    NSDictionary *payload,
-                                    NSString *message) {
+                                     NSDictionary *payload,
+                                     NSString *message) {
     if (!completion) return;
     std::function<void(NSDictionary *, NSString *)> completionCopy = completion;
     NSDictionary *payloadCopy = payload;
@@ -128,11 +171,15 @@ static NSString *kAppMetaDataHash = @"cf8b620dfd03617017ba7c858cee65197e1ace5180
 static NSString *kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *kNvClientVersion = @"2.0.80.173";
 static NSString *const kProviderServiceUrlsEndpoint = @"https://pcs.geforcenow.com/v1/serviceUrls";
+static NSString *const kAccountLinkingServer = @"https://als.geforcenow.com";
+static NSString *const kAccountLinkingClientId = @"gfn-pc";
 static constexpr const char *kDefaultSubscriptionVpcId = "NP-AMS-08";
 static constexpr int kDefaultCatalogFetchCount = 96;
 static constexpr int kMaxCatalogPages = 3;
 static constexpr NSTimeInterval kCatalogCacheFreshSeconds = 15.0 * 60.0;
 static constexpr NSTimeInterval kCatalogDefinitionsFreshSeconds = 24.0 * 60.0 * 60.0;
+static constexpr NSTimeInterval kAccountLinkingRequestTimeoutSeconds = 15.0;
+static constexpr int kAccountLinkingCallbackTimeoutSeconds = 5 * 60;
 static void GetServerVpcId(const std::string &token,
                            const std::string &providerStreamingBaseUrl,
                            std::function<void(const std::string &vpcId)> completion);
@@ -152,6 +199,10 @@ GameService::GameService() {
 
 void GameService::SetAccessToken(const std::string &token) {
     m_accessToken = token;
+}
+
+void GameService::SetAccountLinkingToken(const std::string &token) {
+    m_accountLinkingToken = token;
 }
 
 void GameService::SetVpcId(const std::string &id) {
@@ -197,6 +248,102 @@ static bool SafeBool(id value) {
         return [lower isEqualToString:@"true"] || [lower isEqualToString:@"1"] || [lower isEqualToString:@"yes"];
     }
     return false;
+}
+
+static NSString *PercentEncodeQueryValue(NSString *value) {
+    NSMutableCharacterSet *allowed = [[NSCharacterSet URLQueryAllowedCharacterSet] mutableCopy];
+    [allowed removeCharactersInString:@"&=?#%+"];
+    NSString *encoded = [value ?: @"" stringByAddingPercentEncodingWithAllowedCharacters:allowed];
+    return encoded ?: @"";
+}
+
+static NSInteger AccountLinkingHTTPStatusCode(NSURLResponse *response) {
+    NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
+    return http ? http.statusCode : 0;
+}
+
+static NSString *AccountLinkingResponseSnippet(NSData *data) {
+    if (data.length == 0) return @"";
+    NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (text.length == 0) return @"";
+    NSString *normalized = [text stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+    normalized = [normalized stringByReplacingOccurrencesOfString:@"\r" withString:@" "];
+    return normalized.length > 512 ? [normalized substringToIndex:512] : normalized;
+}
+
+static UserAccountInfo ParseUserAccountInfo(NSDictionary *data) {
+    UserAccountInfo info;
+    NSDictionary *userAccount = [data[@"userAccount"] isKindOfClass:[NSDictionary class]] ? data[@"userAccount"] : nil;
+    if (!userAccount) return info;
+
+    NSArray *subscriptions = [userAccount[@"subscriptions"] isKindOfClass:[NSArray class]] ? userAccount[@"subscriptions"] : @[];
+    for (NSDictionary *subscription in subscriptions) {
+        if (![subscription isKindOfClass:[NSDictionary class]]) continue;
+        NSString *identifier = SafeStr(subscription[@"id"]);
+        if (identifier.length > 0) info.subscriptions.push_back(identifier.UTF8String);
+    }
+
+    NSArray *stores = [userAccount[@"storesData"] isKindOfClass:[NSArray class]] ? userAccount[@"storesData"] : @[];
+    for (NSDictionary *storeData in stores) {
+        if (![storeData isKindOfClass:[NSDictionary class]]) continue;
+        StoreAccountInfo storeInfo;
+        if (NSString *store = SafeStr(storeData[@"store"])) storeInfo.store = store.UTF8String;
+        NSDictionary *linkingData = [storeData[@"accountLinkingData"] isKindOfClass:[NSDictionary class]] ? storeData[@"accountLinkingData"] : nil;
+        if (linkingData) {
+            storeInfo.hasAccountLinkingData = true;
+            if (NSString *value = SafeStr(linkingData[@"userDisplayName"])) storeInfo.userDisplayName = value.UTF8String;
+            if (NSString *value = SafeStr(linkingData[@"expiresIn"])) storeInfo.expiresIn = value.UTF8String;
+            if (NSString *value = SafeStr(linkingData[@"userIdentifier"])) storeInfo.userIdentifier = value.UTF8String;
+
+            NSDictionary *syncingData = [linkingData[@"accountSyncingData"] isKindOfClass:[NSDictionary class]] ? linkingData[@"accountSyncingData"] : nil;
+            if (syncingData) {
+                storeInfo.hasAccountSyncingData = true;
+                storeInfo.syncing.totalNumberOfSyncedGfnGames = SafeInt(syncingData[@"totalNumberOfSyncedGfnGames"]);
+                if (NSString *value = SafeStr(syncingData[@"syncState"])) storeInfo.syncing.syncState = value.UTF8String;
+                if (NSString *value = SafeStr(syncingData[@"syncDate"])) storeInfo.syncing.syncDate = value.UTF8String;
+            }
+        }
+        if (!storeInfo.store.empty()) info.stores.push_back(storeInfo);
+    }
+    return info;
+}
+
+static std::vector<StoreDefinition> ParseStoreDefinitions(NSDictionary *data) {
+    std::vector<StoreDefinition> definitions;
+    NSArray *stores = [data[@"appStoreDefinitions"] isKindOfClass:[NSArray class]] ? data[@"appStoreDefinitions"] : @[];
+    for (NSDictionary *storeData in stores) {
+        if (![storeData isKindOfClass:[NSDictionary class]]) continue;
+        StoreDefinition definition;
+        if (NSString *value = SafeStr(storeData[@"store"])) definition.store = value.UTF8String;
+        if (NSString *value = SafeStr(storeData[@"label"])) definition.label = value.UTF8String;
+        if (NSString *value = SafeStr(storeData[@"smallImageUrl"])) definition.smallImageUrl = value.UTF8String;
+        definition.sortOrder = SafeInt(storeData[@"sortOrder"]);
+
+        NSArray *features = [storeData[@"features"] isKindOfClass:[NSArray class]] ? storeData[@"features"] : @[];
+        for (NSDictionary *featureData in features) {
+            if (![featureData isKindOfClass:[NSDictionary class]]) continue;
+            StoreFeatureInfo feature;
+            if (NSString *value = SafeStr(featureData[@"__typename"])) feature.type = value.UTF8String;
+            if (NSString *value = SafeStr(featureData[@"displayProposition"])) feature.displayProposition = value.UTF8String;
+            feature.supported = SafeBool(featureData[@"supported"]);
+            if (!feature.type.empty()) definition.features.push_back(feature);
+        }
+
+        NSDictionary *metadata = [storeData[@"accountLinkingMetadata"] isKindOfClass:[NSDictionary class]] ? storeData[@"accountLinkingMetadata"] : nil;
+        if (metadata) {
+            definition.accountLinkingMetadata.supportedVariantIds = SafeStringVector(metadata[@"supportedVariantIds"]);
+            definition.accountLinkingMetadata.isSupported = SafeBool(metadata[@"isSupported"]);
+            definition.accountLinkingMetadata.isRequired = SafeBool(metadata[@"isRequired"]);
+            if (NSString *value = SafeStr(metadata[@"label"])) definition.accountLinkingMetadata.label = value.UTF8String;
+        }
+
+        if (!definition.store.empty()) definitions.push_back(definition);
+    }
+    std::sort(definitions.begin(), definitions.end(), [](const StoreDefinition &lhs, const StoreDefinition &rhs) {
+        if (lhs.sortOrder != rhs.sortOrder) return lhs.sortOrder < rhs.sortOrder;
+        return lhs.store < rhs.store;
+    });
+    return definitions;
 }
 
 static NSDictionary *ProviderInfoDictionary(NSDictionary *json) {
@@ -268,6 +415,90 @@ static GameProviderEndpoint SelectGameProviderEndpoint(const GameProviderInfo &i
     fallback.loginProvider = info.defaultProvider;
     fallback.streamingServiceUrl = DefaultStreamingBaseUrl();
     return fallback;
+}
+
+static int CreateAccountLinkingCallbackListener(int *selectedPort) {
+    static const int candidatePorts[] = {2259, 6460, 7119, 8870, 9096};
+    for (int port : candidatePorts) {
+        int sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) continue;
+        int reuse = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        struct sockaddr_in addr = {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(port);
+        if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0 && listen(sock, 1) == 0) {
+            if (selectedPort) *selectedPort = port;
+            return sock;
+        }
+        close(sock);
+    }
+    return -1;
+}
+
+static void SendAccountLinkingCallbackPage(int clientSock, bool success) {
+    const char *successBody =
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Account Linking</title></head>"
+        "<body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\">"
+        "<main><h1>Account link complete</h1><p>You can close this window and return to OpenNOW.</p></main>"
+        "<script>setTimeout(function(){window.close()},1200)</script></body></html>";
+    const char *errorBody =
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Account Linking</title></head>"
+        "<body style=\"background:#140606;color:#fff0f0;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\">"
+        "<main><h1>Account link failed</h1><p>Return to OpenNOW to try again.</p></main></body></html>";
+    const char *body = success ? successBody : errorBody;
+    std::string response = std::string("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: ") +
+        std::to_string(strlen(body)) + "\r\n\r\n" + body;
+    send(clientSock, response.c_str(), response.size(), 0);
+}
+
+static void WaitForAccountLinkingCallback(int serverSock,
+                                          const std::string &store,
+                                          const OwnershipActionCallback &completion) {
+    OwnershipActionCallback callback = completion;
+    std::string storeCopy = store;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(serverSock, &readSet);
+        struct timeval timeout = {};
+        timeout.tv_sec = kAccountLinkingCallbackTimeoutSeconds;
+        timeout.tv_usec = 0;
+        int ready = select(serverSock + 1, &readSet, NULL, NULL, &timeout);
+        if (ready <= 0) {
+            close(serverSock);
+            DispatchOwnershipActionCallback(callback, false, ready == 0 ? "Timed out waiting for account linking callback" : "Account linking callback listener failed");
+            return;
+        }
+
+        int clientSock = accept(serverSock, NULL, NULL);
+        close(serverSock);
+        if (clientSock < 0) {
+            DispatchOwnershipActionCallback(callback, false, "Failed to accept account linking callback");
+            return;
+        }
+
+        char buffer[4096] = {0};
+        ssize_t bytesRead = recv(clientSock, buffer, sizeof(buffer) - 1, 0);
+        std::string request = bytesRead > 0 ? std::string(buffer, (size_t)bytesRead) : std::string();
+        bool hasError = request.find("error=") != std::string::npos || request.find("error_description=") != std::string::npos;
+        SendAccountLinkingCallbackPage(clientSock, !hasError);
+        close(clientSock);
+
+        if (bytesRead <= 0) {
+            DispatchOwnershipActionCallback(callback, false, "Empty account linking callback request");
+            return;
+        }
+        if (hasError) {
+            DispatchOwnershipActionCallback(callback, false, "Account linking was not completed");
+            return;
+        }
+
+        OPN::LogInfo(@"[GameService] Account linking callback received for store=%s", storeCopy.c_str());
+        DispatchOwnershipActionCallback(callback, true, "");
+    });
 }
 
 void GameService::FetchProviderInfo(const std::string &idpId, ProviderInfoCallback completion) {
@@ -1040,6 +1271,243 @@ void GameService::ResolveStoreURL(const GameInfo &game, int variantIndex, StoreU
                 DispatchStoreURLCallback(callback, true, storeURL, "");
             });
     });
+}
+
+void GameService::FetchUserAccount(UserAccountCallback completion) {
+    UserAccountCallback callback = completion;
+    std::string query = R"(
+    query GetUserAccount {
+      userAccount {
+        subscriptions { id }
+        storesData {
+          store
+          accountLinkingData {
+            userDisplayName
+            expiresIn
+            userIdentifier
+            accountSyncingData {
+              totalNumberOfSyncedGfnGames
+              syncState
+              syncDate
+            }
+          }
+        }
+      }
+    }
+    )";
+
+    postGraphQlJson(query, @{}, [callback](NSDictionary *data, NSString *error) {
+        if (error.length > 0) {
+            DispatchUserAccountCallback(callback, false, UserAccountInfo{}, error.UTF8String);
+            return;
+        }
+        DispatchUserAccountCallback(callback, true, ParseUserAccountInfo(data), "");
+    });
+}
+
+void GameService::FetchStoreDefinitions(StoreDefinitionsCallback completion) {
+    StoreDefinitionsCallback callback = completion;
+    std::string query = R"(
+    query GetStoreDefinitions($locale: String!) {
+      appStoreDefinitions(language: $locale) {
+        store
+        label
+        sortOrder
+        smallImageUrl
+        features {
+          __typename
+          ... on AccountLinkingSso {
+            displayProposition
+            supported
+          }
+          ... on AccountGamesSyncing {
+            displayProposition
+            supported
+          }
+          ... on AccountSubscriptions {
+            displayProposition
+          }
+        }
+        accountLinkingMetadata {
+          supportedVariantIds
+          isSupported
+          isRequired
+          label
+        }
+      }
+    }
+    )";
+    NSDictionary *variables = @{ @"locale": [NSString stringWithUTF8String:CurrentGFNLocale().c_str()] };
+    postGraphQlJson(query, variables, [callback](NSDictionary *data, NSString *error) {
+        if (error.length > 0) {
+            DispatchStoreDefinitionsCallback(callback, false, {}, error.UTF8String);
+            return;
+        }
+        DispatchStoreDefinitionsCallback(callback, true, ParseStoreDefinitions(data), "");
+    });
+}
+
+void GameService::ownedVariantMutation(const std::string &mutationName,
+                                       const std::string &fieldName,
+                                       const std::string &variantId,
+                                       OwnershipActionCallback completion) {
+    if (variantId.empty()) {
+        DispatchOwnershipActionCallback(completion, false, "Missing variant ID");
+        return;
+    }
+    NSString *field = [NSString stringWithUTF8String:fieldName.c_str()];
+    NSString *mutation = [NSString stringWithFormat:
+        @"mutation %@($cmsId: String!, $locale: String!) { %@ (language: $locale, variantId: $cmsId) { app { id } } }",
+        [NSString stringWithUTF8String:mutationName.c_str()], field];
+    NSDictionary *variables = @{
+        @"cmsId": [NSString stringWithUTF8String:variantId.c_str()],
+        @"locale": [NSString stringWithUTF8String:CurrentGFNLocale().c_str()],
+    };
+    postGraphQlJson(mutation.UTF8String, variables, [completion, field](NSDictionary *data, NSString *error) {
+        if (error.length > 0) {
+            DispatchOwnershipActionCallback(completion, false, error.UTF8String);
+            return;
+        }
+        NSDictionary *result = [data[field] isKindOfClass:[NSDictionary class]] ? data[field] : nil;
+        NSDictionary *app = [result[@"app"] isKindOfClass:[NSDictionary class]] ? result[@"app"] : nil;
+        NSString *appId = SafeStr(app[@"id"]);
+        if (appId.length == 0) {
+            DispatchOwnershipActionCallback(completion, false, "Ownership mutation response did not include an app ID");
+            return;
+        }
+        DispatchOwnershipActionCallback(completion, true, "");
+    });
+}
+
+void GameService::AddOwnedVariant(const std::string &variantId, OwnershipActionCallback completion) {
+    ownedVariantMutation("AddOwnedVariant", "addOwnedVariant", variantId, completion);
+}
+
+void GameService::RemoveOwnedVariant(const std::string &variantId, OwnershipActionCallback completion) {
+    ownedVariantMutation("RemoveOwnedVariant", "removeOwnedVariant", variantId, completion);
+}
+
+void GameService::SelectOwnedVariant(const std::string &variantId, OwnershipActionCallback completion) {
+    ownedVariantMutation("SelectOwnedVariant", "selectOwnedVariant", variantId, completion);
+}
+
+void GameService::SyncAccountProvider(const std::string &store, OwnershipActionCallback completion) {
+    bool usingAccountLinkingToken = !m_accountLinkingToken.empty();
+    std::string token = usingAccountLinkingToken ? m_accountLinkingToken : m_accessToken;
+    if (token.empty()) {
+        DispatchOwnershipActionCallback(completion, false, "Missing account-linking token");
+        return;
+    }
+    if (store.empty()) {
+        DispatchOwnershipActionCallback(completion, false, "Missing store for sync");
+        return;
+    }
+
+    NSString *storeString = [NSString stringWithUTF8String:store.c_str()];
+    NSString *urlString = [NSString stringWithFormat:@"%@/v1/sync/%@", kAccountLinkingServer, PercentEncodeQueryValue(storeString)];
+    OPN::LogInfo(@"[GameService] ALS sync request store=%s tokenSource=%@", store.c_str(), usingAccountLinkingToken ? @"account-linking" : @"access");
+    NSMutableURLRequest *request = MakeHTTPRequest(urlString, @"POST", kAccountLinkingRequestTimeoutSeconds, @{
+        @"Authorization": [NSString stringWithFormat:@"Bearer %s", token.c_str()],
+        @"Accept": @"application/json, text/plain, */*",
+        @"Content-Type": @"application/json",
+    });
+    if (!request) {
+        DispatchOwnershipActionCallback(completion, false, "Invalid ALS sync URL");
+        return;
+    }
+    request.HTTPBody = [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
+    OwnershipActionCallback callback = completion;
+    std::string storeCopy = store;
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            OPN::LogError(@"[GameService] ALS sync network error store=%s error=%@", storeCopy.c_str(), error.localizedDescription ?: @"unknown");
+            DispatchOwnershipActionCallback(callback, false, error.localizedDescription.UTF8String);
+            return;
+        }
+        NSInteger statusCode = AccountLinkingHTTPStatusCode(response);
+        if (statusCode != 202) {
+            NSString *bodySnippet = AccountLinkingResponseSnippet(data);
+            OPN::LogError(@"[GameService] ALS sync failed store=%s status=%ld body=%@", storeCopy.c_str(), (long)statusCode, bodySnippet.length > 0 ? bodySnippet : @"<empty>");
+            std::string message = statusCode > 0 ? ("ALS sync returned HTTP " + std::to_string((long)statusCode)) : std::string("Missing ALS sync response");
+            DispatchOwnershipActionCallback(callback, false, message);
+            return;
+        }
+        DispatchOwnershipActionCallback(callback, true, "");
+    }];
+    [task resume];
+}
+
+void GameService::StartAccountLinking(const std::string &store, OwnershipActionCallback completion) {
+    bool usingAccountLinkingToken = !m_accountLinkingToken.empty();
+    std::string token = usingAccountLinkingToken ? m_accountLinkingToken : m_accessToken;
+    if (token.empty()) {
+        DispatchOwnershipActionCallback(completion, false, "Missing account-linking token");
+        return;
+    }
+    if (store.empty()) {
+        DispatchOwnershipActionCallback(completion, false, "Missing store for account linking");
+        return;
+    }
+
+    int selectedPort = 0;
+    int listener = CreateAccountLinkingCallbackListener(&selectedPort);
+    if (listener < 0 || selectedPort <= 0) {
+        DispatchOwnershipActionCallback(completion, false, "No available port for account linking callback");
+        return;
+    }
+
+    NSString *storeString = [NSString stringWithUTF8String:store.c_str()];
+    NSString *redirectUri = [NSString stringWithFormat:@"http://localhost:%d/", selectedPort];
+    NSString *urlString = [NSString stringWithFormat:@"%@/v1/login_url?platform=%@&redirect_uri=%@&client_id=%@",
+        kAccountLinkingServer,
+        PercentEncodeQueryValue(storeString),
+        PercentEncodeQueryValue(redirectUri),
+        PercentEncodeQueryValue(kAccountLinkingClientId)];
+    OPN::LogInfo(@"[GameService] ALS login_url request store=%s port=%d tokenSource=%@", store.c_str(), selectedPort, usingAccountLinkingToken ? @"account-linking" : @"access");
+    NSMutableURLRequest *request = MakeHTTPRequest(urlString, @"GET", kAccountLinkingRequestTimeoutSeconds, @{
+        @"Authorization": [NSString stringWithFormat:@"Bearer %s", token.c_str()],
+        @"Accept": @"application/json, text/plain, */*",
+    });
+    if (!request) {
+        close(listener);
+        DispatchOwnershipActionCallback(completion, false, "Invalid ALS login URL request");
+        return;
+    }
+
+    OwnershipActionCallback callback = completion;
+    std::string storeCopy = store;
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSString *message = nil;
+        if (!ValidateHTTPResponse(response, data, error, 200, &message)) {
+            NSInteger statusCode = AccountLinkingHTTPStatusCode(response);
+            NSString *bodySnippet = AccountLinkingResponseSnippet(data);
+            OPN::LogError(@"[GameService] ALS login_url failed store=%s status=%ld error=%@ body=%@", storeCopy.c_str(), (long)statusCode, message ?: @"unknown", bodySnippet.length > 0 ? bodySnippet : @"<empty>");
+            close(listener);
+            DispatchOwnershipActionCallback(callback, false, (message ?: @"ALS login URL request failed").UTF8String);
+            return;
+        }
+        id object = JSONObjectFromData(data, &message);
+        NSDictionary *json = [object isKindOfClass:[NSDictionary class]] ? (NSDictionary *)object : nil;
+        NSString *loginUrl = SafeStr(json[@"login_url"]);
+        if (loginUrl.length == 0) {
+            close(listener);
+            DispatchOwnershipActionCallback(callback, false, "ALS login URL response did not include login_url");
+            return;
+        }
+
+        NSURL *url = [NSURL URLWithString:loginUrl];
+        if (!url) {
+            close(listener);
+            DispatchOwnershipActionCallback(callback, false, "ALS returned an invalid login URL");
+            return;
+        }
+
+        WaitForAccountLinkingCallback(listener, storeCopy, callback);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (![[NSWorkspace sharedWorkspace] openURL:url]) OPN::LogError(@"[GameService] Unable to open account linking URL for store=%s", storeCopy.c_str());
+        });
+    }];
+    [task resume];
 }
 
 

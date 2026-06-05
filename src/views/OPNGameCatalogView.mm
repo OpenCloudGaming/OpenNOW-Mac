@@ -1301,21 +1301,9 @@ static bool OPNStoreGameNeedsPurchase(const OPN::GameInfo &game, int variantInde
     return false;
 }
 
-static NSString *OPNStorePurchaseURLForGame(const OPN::GameInfo &game, int variantIndex) {
-    const OPN::GameVariant *selectedVariant = OPNStoreVariantAtIndex(game, variantIndex);
-    if (selectedVariant && !selectedVariant->storeUrl.empty()) return OPNStoreString(selectedVariant->storeUrl, @"");
-    for (const OPN::GameVariant &variant : game.variants) {
-        if (OPNStoreVariantIsNotOwned(variant) && !variant.storeUrl.empty()) return OPNStoreString(variant.storeUrl, @"");
-    }
-    for (const OPN::GameVariant &variant : game.variants) {
-        if (!variant.storeUrl.empty()) return OPNStoreString(variant.storeUrl, @"");
-    }
-    return @"";
-}
-
 static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int variantIndex, BOOL prominent) {
     if (OPNStoreGameNeedsPurchase(game, variantIndex)) {
-        return @"Buy";
+        return prominent ? @"Add to Library" : @"ADD";
     }
     return prominent ? @"Play Now" : @"PLAY";
 }
@@ -1623,11 +1611,6 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 }
 
 - (void)selectPressed {
-    if (OPNStoreGameNeedsPurchase(self.gameData, self.selectedVariantIndex)) {
-        NSString *purchaseURL = OPNStorePurchaseURLForGame(self.gameData, self.selectedVariantIndex);
-        if (self.onBuy) self.onBuy(purchaseURL ?: @"");
-        return;
-    }
     if (self.onSelect) self.onSelect();
 }
 

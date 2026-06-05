@@ -16,6 +16,49 @@ struct GameVariant {
     bool inLibrary = false;
 };
 
+struct StoreAccountSyncingInfo {
+    int totalNumberOfSyncedGfnGames = 0;
+    std::string syncState;
+    std::string syncDate;
+};
+
+struct StoreAccountInfo {
+    std::string store;
+    std::string userDisplayName;
+    std::string expiresIn;
+    std::string userIdentifier;
+    bool hasAccountLinkingData = false;
+    bool hasAccountSyncingData = false;
+    StoreAccountSyncingInfo syncing;
+};
+
+struct UserAccountInfo {
+    std::vector<std::string> subscriptions;
+    std::vector<StoreAccountInfo> stores;
+};
+
+struct StoreFeatureInfo {
+    std::string type;
+    std::string displayProposition;
+    bool supported = false;
+};
+
+struct StoreAccountLinkingMetadata {
+    std::vector<std::string> supportedVariantIds;
+    bool isSupported = false;
+    bool isRequired = false;
+    std::string label;
+};
+
+struct StoreDefinition {
+    std::string store;
+    std::string label;
+    std::string smallImageUrl;
+    int sortOrder = 0;
+    std::vector<StoreFeatureInfo> features;
+    StoreAccountLinkingMetadata accountLinkingMetadata;
+};
+
 struct GameInfo {
     std::string id;
     std::string uuid;

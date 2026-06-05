@@ -57,6 +57,10 @@
 @property (nonatomic, assign) BOOL gameLibraryRefreshInFlight;
 @property (nonatomic, assign) BOOL featuredGamesRefreshInFlight;
 @property (nonatomic, assign) BOOL activeSessionsRefreshInFlight;
+@property (nonatomic, strong) NSView *ownershipSyncOverlayView;
+@property (nonatomic, strong) NSTextField *ownershipSyncTitleLabel;
+@property (nonatomic, strong) NSTextField *ownershipSyncMessageLabel;
+@property (nonatomic, strong) NSProgressIndicator *ownershipSyncSpinner;
 @property (nonatomic, assign) NSInteger catalogBrowseGeneration;
 @property (nonatomic, assign) BOOL activeSessionResumeInFlight;
 @property (nonatomic, assign) NSInteger activeSessionResumeGeneration;
@@ -125,10 +129,40 @@
 - (void)dismissCloudmatchServerPicker;
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen;
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex;
+- (void)configureGameServiceTokensForSession:(const OPN::AuthSession &)session;
+- (void)refreshOwnershipAuthWithCompletion:(void (^)(BOOL refreshed))completion;
+- (void)showOwnershipSyncProgressForGameTitle:(NSString *)gameTitle storeName:(NSString *)storeName;
+- (void)updateOwnershipSyncProgressMessage:(NSString *)message;
+- (void)dismissOwnershipSyncProgress;
 - (BOOL)presentOwnershipRemediationIfNeededForGame:(const OPN::GameInfo &)game
-                                      variantIndex:(int)variantIndex
-                                     accountLinked:(bool)accountLinked
-                                   continueHandler:(void (^)(void))continueHandler;
+                                       variantIndex:(int)variantIndex
+                                      returnScreen:(OPN::AuthScreen)returnScreen
+                                      accountLinked:(bool)accountLinked
+                                    continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)presentOwnershipOptionsForGame:(const OPN::GameInfo &)game
+                           variantIndex:(int)variantIndex
+                          returnScreen:(OPN::AuthScreen)returnScreen
+                       storeDefinitions:(const std::vector<OPN::StoreDefinition> &)storeDefinitions
+                            userAccount:(const OPN::UserAccountInfo &)userAccount
+                        continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)markVariantOwnedForGame:(const OPN::GameInfo &)game
+                    variantIndex:(int)variantIndex
+                 continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)syncOwnershipForGame:(const OPN::GameInfo &)game
+                 variantIndex:(int)variantIndex
+                        store:(const std::string &)store
+                retryingAuth:(BOOL)retryingAuth
+              continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)linkAccountForGame:(const OPN::GameInfo &)game
+              variantIndex:(int)variantIndex
+                     store:(const std::string &)store
+             syncAfterLink:(BOOL)syncAfterLink
+              retryingAuth:(BOOL)retryingAuth
+           continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)refreshLibraryAfterOwnershipChangeForGame:(const OPN::GameInfo &)game
+                                     variantIndex:(int)variantIndex
+                                       requireGame:(BOOL)requireGame
+                                       completion:(void (^)(BOOL ownedAfterRefresh))completion;
 - (void)startStreamWithTitle:(const std::string &)title
                        appId:(const std::string &)appId
                     apiToken:(const std::string &)apiToken
@@ -393,16 +427,12 @@ static bool OPNIsUnauthorizedError(const std::string &error) {
     return error.find("401") != std::string::npos;
 }
 
-static bool OPNIsOwnedLibraryStatus(const std::string &status) {
-    return OPN::GameServiceStatusOwnedForLaunch(status);
-}
-
 static bool OPNChooseAccountLinked(const OPN::GameInfo &game, const OPN::GameVariant *selectedVariant) {
     if (game.playType == "INSTALL_TO_PLAY") return false;
-    if (selectedVariant && OPNIsOwnedLibraryStatus(selectedVariant->serviceStatus)) return true;
+    if (selectedVariant) return OPN::GameVariantOwnedForLaunch(*selectedVariant);
     if (game.isInLibrary) return true;
     for (const auto &variant : game.variants) {
-        if (OPNIsOwnedLibraryStatus(variant.serviceStatus)) return true;
+        if (OPN::GameVariantOwnedForLaunch(variant)) return true;
     }
     return false;
 }
@@ -410,6 +440,74 @@ static bool OPNChooseAccountLinked(const OPN::GameInfo &game, const OPN::GameVar
 static const OPN::GameVariant *OPNVariantAtIndex(const OPN::GameInfo &game, int variantIndex) {
     if (variantIndex < 0 || variantIndex >= (int)game.variants.size()) return nullptr;
     return &game.variants[(size_t)variantIndex];
+}
+
+static int OPNFirstOwnedVariantIndex(const OPN::GameInfo &game, int excludedVariantIndex) {
+    for (size_t i = 0; i < game.variants.size(); i++) {
+        if ((int)i == excludedVariantIndex) continue;
+        if (!game.variants[i].id.empty() && OPN::GameVariantOwnedForLaunch(game.variants[i])) return (int)i;
+    }
+    return -1;
+}
+
+static bool OPNStoreStringEquals(const std::string &lhs, const std::string &rhs) {
+    if (lhs.size() != rhs.size()) return false;
+    for (size_t i = 0; i < lhs.size(); i++) {
+        if (std::tolower((unsigned char)lhs[i]) != std::tolower((unsigned char)rhs[i])) return false;
+    }
+    return true;
+}
+
+static const OPN::StoreDefinition *OPNStoreDefinitionForStore(const std::vector<OPN::StoreDefinition> &definitions,
+                                                             const std::string &store) {
+    for (const OPN::StoreDefinition &definition : definitions) {
+        if (OPNStoreStringEquals(definition.store, store)) return &definition;
+    }
+    return nullptr;
+}
+
+static const OPN::StoreAccountInfo *OPNStoreAccountForStore(const OPN::UserAccountInfo &accountInfo,
+                                                           const std::string &store) {
+    for (const OPN::StoreAccountInfo &storeInfo : accountInfo.stores) {
+        if (OPNStoreStringEquals(storeInfo.store, store)) return &storeInfo;
+    }
+    return nullptr;
+}
+
+static bool OPNStoreFeatureSupported(const OPN::StoreDefinition *definition, const std::string &featureType) {
+    if (!definition) return false;
+    for (const OPN::StoreFeatureInfo &feature : definition->features) {
+        if (feature.supported && feature.type == featureType) return true;
+    }
+    return false;
+}
+
+static bool OPNStoreDefinitionSupportsVariant(const OPN::StoreDefinition *definition, const std::string &variantId) {
+    if (!definition) return false;
+    const std::vector<std::string> &supportedIds = definition->accountLinkingMetadata.supportedVariantIds;
+    if (supportedIds.empty()) return true;
+    return std::find(supportedIds.begin(), supportedIds.end(), variantId) != supportedIds.end();
+}
+
+static bool OPNStoreAccountConnected(const OPN::StoreAccountInfo *accountInfo) {
+    return accountInfo != nullptr && !accountInfo->store.empty();
+}
+
+static bool OPNLibraryContainsOwnedVariant(const std::vector<OPN::GameInfo> &games,
+                                           const OPN::GameInfo &requestedGame,
+                                           const OPN::GameVariant &requestedVariant) {
+    for (const OPN::GameInfo &game : games) {
+        bool sameGame = (!requestedGame.id.empty() && game.id == requestedGame.id) ||
+            (!requestedGame.uuid.empty() && game.uuid == requestedGame.uuid);
+        if (!sameGame) continue;
+        if (game.isInLibrary && requestedVariant.id.empty()) return true;
+        for (const OPN::GameVariant &variant : game.variants) {
+            bool sameVariant = (!requestedVariant.id.empty() && variant.id == requestedVariant.id) ||
+                (!requestedVariant.appStore.empty() && OPNStoreStringEquals(variant.appStore, requestedVariant.appStore));
+            if (sameVariant && OPN::GameVariantOwnedForLaunch(variant)) return true;
+        }
+    }
+    return false;
 }
 
 static bool OPNGameHasAppId(const OPN::GameInfo &game, int appId) {
@@ -1637,6 +1735,110 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     OPN::LogInfo(@"[AppDelegate] Window setup complete");
 }
 
+- (void)configureGameServiceTokensForSession:(const OPN::AuthSession &)session {
+    using namespace OPN;
+    std::string apiToken = session.idToken.empty() ? session.accessToken : session.idToken;
+    GameService::Shared().SetAccessToken(apiToken);
+    GameService::Shared().SetAccountLinkingToken(apiToken);
+}
+
+- (void)refreshOwnershipAuthWithCompletion:(void (^)(BOOL refreshed))completion {
+    __weak __typeof__(self) weakSelf = self;
+    OPN::AuthService::Shared().RefreshSession(^(bool success, const OPN::AuthSession &fresh, const std::string &error) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            if (completion) completion(NO);
+            return;
+        }
+        if (!success || !fresh.isAuthenticated || fresh.accessToken.empty()) {
+            OPN::LogError(@"[AppDelegate] Ownership auth refresh failed: %s", error.c_str());
+            if (completion) completion(NO);
+            return;
+        }
+        strongSelf.currentSession = fresh;
+        if (strongSelf.pendingCredentials.stayLoggedIn) OPN::AuthService::Shared().SaveSession(fresh);
+        [strongSelf configureGameServiceTokensForSession:fresh];
+        [strongSelf refreshAccountMenu];
+        if (completion) completion(YES);
+    }, true);
+}
+
+- (void)showOwnershipSyncProgressForGameTitle:(NSString *)gameTitle storeName:(NSString *)storeName {
+    NSView *parentView = self.window.contentView;
+    if (!parentView) return;
+
+    if (!self.ownershipSyncOverlayView) {
+        NSView *overlay = [[NSView alloc] initWithFrame:parentView.bounds];
+        overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        overlay.wantsLayer = YES;
+        overlay.layer.backgroundColor = OpnColor(0x020304, 0.64).CGColor;
+
+        CGFloat panelWidth = 430.0;
+        CGFloat panelHeight = 210.0;
+        NSRect panelFrame = NSMakeRect((NSWidth(overlay.bounds) - panelWidth) * 0.5,
+                                       (NSHeight(overlay.bounds) - panelHeight) * 0.5,
+                                       panelWidth,
+                                       panelHeight);
+        NSView *panel = [[NSView alloc] initWithFrame:panelFrame];
+        panel.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+        panel.wantsLayer = YES;
+        panel.layer.backgroundColor = OpnColor(0x0A0C0F, 0.98).CGColor;
+        panel.layer.cornerRadius = 24.0;
+        panel.layer.borderWidth = 1.0;
+        panel.layer.borderColor = OpnColor(0xFFFFFF, 0.14).CGColor;
+        panel.layer.shadowColor = NSColor.blackColor.CGColor;
+        panel.layer.shadowOpacity = 0.34;
+        panel.layer.shadowRadius = 28.0;
+        panel.layer.shadowOffset = CGSizeMake(0.0, 16.0);
+        [overlay addSubview:panel];
+
+        NSProgressIndicator *spinner = OpnSpinner(NSMakeRect((panelWidth - 34.0) * 0.5, panelHeight - 66.0, 34.0, 34.0));
+        [spinner startAnimation:nil];
+        [panel addSubview:spinner];
+
+        NSTextField *titleLabel = OpnLabel(@"Syncing Store Library", NSMakeRect(32.0, 92.0, panelWidth - 64.0, 28.0), 19.0, OpnColor(OPN::kTextPrimary), NSFontWeightBold, NSTextAlignmentCenter);
+        titleLabel.maximumNumberOfLines = 1;
+        [panel addSubview:titleLabel];
+
+        NSTextField *messageLabel = OpnLabel(@"", NSMakeRect(36.0, 48.0, panelWidth - 72.0, 44.0), 13.0, OpnColor(OPN::kTextSecondary), NSFontWeightRegular, NSTextAlignmentCenter);
+        messageLabel.maximumNumberOfLines = 2;
+        [panel addSubview:messageLabel];
+
+        NSTextField *footerLabel = OpnLabel(@"This usually takes about 15 seconds.", NSMakeRect(36.0, 24.0, panelWidth - 72.0, 18.0), 11.0, OpnColor(0x8E969F), NSFontWeightRegular, NSTextAlignmentCenter);
+        [panel addSubview:footerLabel];
+
+        self.ownershipSyncOverlayView = overlay;
+        self.ownershipSyncTitleLabel = titleLabel;
+        self.ownershipSyncMessageLabel = messageLabel;
+        self.ownershipSyncSpinner = spinner;
+        OpnDisableFocusHighlights(overlay);
+    }
+
+    self.ownershipSyncTitleLabel.stringValue = @"Syncing Store Library";
+    NSString *title = gameTitle.length > 0 ? gameTitle : @"this game";
+    NSString *store = storeName.length > 0 ? storeName : @"the selected store";
+    [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Asking GeForce NOW to sync %@ for %@.", store, title]];
+
+    if (self.ownershipSyncOverlayView.superview != parentView) {
+        [self.ownershipSyncOverlayView removeFromSuperview];
+        self.ownershipSyncOverlayView.frame = parentView.bounds;
+        [parentView addSubview:self.ownershipSyncOverlayView positioned:NSWindowAbove relativeTo:nil];
+    }
+}
+
+- (void)updateOwnershipSyncProgressMessage:(NSString *)message {
+    self.ownershipSyncMessageLabel.stringValue = message.length > 0 ? message : @"Syncing your store library...";
+}
+
+- (void)dismissOwnershipSyncProgress {
+    [self.ownershipSyncSpinner stopAnimation:nil];
+    [self.ownershipSyncOverlayView removeFromSuperview];
+    self.ownershipSyncOverlayView = nil;
+    self.ownershipSyncTitleLabel = nil;
+    self.ownershipSyncMessageLabel = nil;
+    self.ownershipSyncSpinner = nil;
+}
+
 - (void)launchGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex returnScreen:(OPN::AuthScreen)returnScreen {
     using namespace OPN;
 
@@ -1651,6 +1853,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
+    [self configureGameServiceTokensForSession:self.currentSession];
 
     std::string effectiveAppId;
     std::string selectedStore;
@@ -1671,27 +1874,27 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     __weak __typeof__(self) weakSelf = self;
     std::string gameTitle = launchGameInfo.title;
-    void (^startRequestedGame)(void) = [^{
+    void (^startRequestedGame)(bool) = [^(bool accountLinkedForLaunch) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         [strongSelf startStreamWithTitle:gameTitle
                                    appId:effectiveAppId
                                 apiToken:apiToken
-                           accountLinked:accountLinked
+                           accountLinked:accountLinkedForLaunch
                             selectedStore:selectedStore
                            returnScreen:returnScreen
                          resumeSessionId:""
                              resumeServer:""];
     } copy];
 
-    void (^continueLaunchAfterServerSelection)(void) = [^{
+    void (^continueLaunchAfterServerSelection)(bool) = [^(bool accountLinkedForLaunch) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
 
         SessionManager::Shared().SetAccessToken(apiToken);
         SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
         OPN::GameInfo requestedGame = launchGameInfo;
-        void (^startRequestedGameCopy)(void) = [startRequestedGame copy];
+        void (^startRequestedGameCopy)(void) = [^{ startRequestedGame(accountLinkedForLaunch); } copy];
         SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             std::vector<ActiveSessionEntry> sessionsCopy = sessions;
             std::string errorCopy = error;
@@ -1779,59 +1982,384 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         });
     } copy];
 
-    void (^beginServerSelection)(void) = [^{
+    void (^beginServerSelection)(bool) = [^(bool accountLinkedForLaunch) {
         NSString *pickerGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
         [self showCloudmatchServerPickerForGameTitle:pickerGameTitle
                                             apiToken:apiToken
                                           completion:^(BOOL confirmed) {
             if (!confirmed) return;
-            continueLaunchAfterServerSelection();
+            continueLaunchAfterServerSelection(accountLinkedForLaunch);
         }];
     } copy];
 
     if ([self presentOwnershipRemediationIfNeededForGame:launchGameInfo
                                             variantIndex:variantIndex
+                                           returnScreen:returnScreen
                                            accountLinked:accountLinked
-                                         continueHandler:beginServerSelection]) {
+                                          continueHandler:beginServerSelection]) {
         return;
     }
-    beginServerSelection();
+    beginServerSelection(accountLinked);
 }
 
 - (BOOL)presentOwnershipRemediationIfNeededForGame:(const OPN::GameInfo &)game
-                                      variantIndex:(int)variantIndex
-                                     accountLinked:(bool)accountLinked
-                                   continueHandler:(void (^)(void))continueHandler {
-    OPN::GameOwnershipRemediation remediation = OPN::GameOwnershipRemediationForLaunch(game, variantIndex, accountLinked);
-    if (!remediation.Required()) return NO;
-    int storeVariantIndex = remediation.storeVariantIndex >= 0 ? remediation.storeVariantIndex : variantIndex;
-    const OPN::GameVariant *storeVariant = OPNVariantAtIndex(game, storeVariantIndex);
-    if (!storeVariant) return NO;
+                                       variantIndex:(int)variantIndex
+                                      returnScreen:(OPN::AuthScreen)returnScreen
+                                      accountLinked:(bool)accountLinked
+                                    continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler {
+    using namespace OPN;
+    const GameVariant *selectedVariant = OPNVariantAtIndex(game, variantIndex);
+    if (!selectedVariant) return NO;
 
-    OPN::GameInfo gameCopy = game;
-    int variantIndexCopy = storeVariantIndex;
-    NSString *title = [NSString stringWithUTF8String:remediation.title.c_str()] ?: @"Store Account Required";
-    NSString *reason = [NSString stringWithUTF8String:remediation.reason.c_str()] ?: @"This game requires store account setup before launch.";
-    NSString *guidance = [NSString stringWithUTF8String:remediation.guidance.c_str()] ?: @"Open the store to finish setup. If you already completed that step, continue anyway.";
-    NSString *actionLabel = [NSString stringWithUTF8String:remediation.actionLabel.c_str()] ?: @"Open Store";
+    (void)accountLinked;
 
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    __weak __typeof__(self) weakSelf = self;
+
+    if (game.playType == "INSTALL_TO_PLAY") {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Install Required";
+        alert.informativeText = @"This game must be installed or prepared through the selected store before GeForce NOW can launch it.";
+        [alert addButtonWithTitle:@"Open Store"];
+        [alert addButtonWithTitle:@"Cancel"];
+        [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (returnCode == NSAlertFirstButtonReturn) [strongSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
+        }];
+        return YES;
+    }
+
+    GameService::Shared().FetchStoreDefinitions([weakSelf, gameCopy, variantIndexCopy, returnScreen, continueHandler](bool definitionsOK, const std::vector<StoreDefinition> &definitions, const std::string &definitionsError) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        std::vector<StoreDefinition> definitionsCopy = definitionsOK ? definitions : std::vector<StoreDefinition>();
+        if (!definitionsOK) OPN::LogError(@"[AppDelegate] Store definitions unavailable for ownership flow: %s", definitionsError.c_str());
+        GameService::Shared().FetchUserAccount([weakSelf, gameCopy, variantIndexCopy, returnScreen, definitionsCopy, continueHandler](bool accountOK, const UserAccountInfo &accountInfo, const std::string &accountError) {
+            __typeof__(self) accountSelf = weakSelf;
+            if (!accountSelf) return;
+            UserAccountInfo accountCopy = accountOK ? accountInfo : UserAccountInfo{};
+            if (!accountOK) OPN::LogError(@"[AppDelegate] User account unavailable for ownership flow: %s", accountError.c_str());
+            [accountSelf presentOwnershipOptionsForGame:gameCopy
+                                           variantIndex:variantIndexCopy
+                                           returnScreen:returnScreen
+                                       storeDefinitions:definitionsCopy
+                                            userAccount:accountCopy
+                                        continueHandler:continueHandler];
+        });
+    });
+    return YES;
+}
+
+- (void)presentOwnershipOptionsForGame:(const OPN::GameInfo &)game
+                           variantIndex:(int)variantIndex
+                          returnScreen:(OPN::AuthScreen)returnScreen
+                       storeDefinitions:(const std::vector<OPN::StoreDefinition> &)storeDefinitions
+                            userAccount:(const OPN::UserAccountInfo &)userAccount
+                        continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler {
+    using namespace OPN;
+    const GameVariant *variant = OPNVariantAtIndex(game, variantIndex);
+    if (!variant) return;
+    std::string store = variant->appStore;
+    NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(store).c_str()] ?: @"the selected store";
+    NSString *gameTitle = game.title.empty() ? @"Selected Game" : [NSString stringWithUTF8String:game.title.c_str()];
+    const StoreDefinition *definition = OPNStoreDefinitionForStore(storeDefinitions, store);
+    const StoreAccountInfo *account = OPNStoreAccountForStore(userAccount, store);
+    bool selectedVariantOwned = GameVariantOwnedForLaunch(*variant);
+    int ownedVariantIndex = OPNFirstOwnedVariantIndex(game, variantIndex);
+    const GameVariant *ownedVariant = OPNVariantAtIndex(game, ownedVariantIndex);
+    bool gameOwnedOnDifferentVariant = !selectedVariantOwned && (ownedVariant != nullptr || game.isInLibrary);
+    bool owned = selectedVariantOwned;
+    bool variantSupported = OPNStoreDefinitionSupportsVariant(definition, variant->id);
+    bool linkingSupported = variantSupported && (OPNStoreFeatureSupported(definition, "AccountLinkingSso") || (definition && definition->accountLinkingMetadata.isSupported));
+    bool syncSupported = variantSupported && OPNStoreFeatureSupported(definition, "AccountGamesSyncing");
+    bool connected = OPNStoreAccountConnected(account);
+    bool requiredLinkMissing = owned && linkingSupported && definition && definition->accountLinkingMetadata.isRequired && !connected;
+    if (owned && !requiredLinkMissing) {
+        if (continueHandler) continueHandler(true);
+        return;
+    }
+
+    enum OwnershipActionTag : NSInteger {
+        OwnershipActionLink = 1,
+        OwnershipActionSync = 2,
+        OwnershipActionMarkOwned = 3,
+        OwnershipActionOpenStore = 4,
+        OwnershipActionCancel = 5,
+        OwnershipActionLaunchOwned = 6,
+    };
+
+    NSMutableArray<NSNumber *> *actions = [NSMutableArray array];
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = title;
-    alert.informativeText = [NSString stringWithFormat:@"%@ %@", reason, guidance];
-    [alert addButtonWithTitle:actionLabel];
-    [alert addButtonWithTitle:@"Continue Anyway"];
+    alert.messageText = requiredLinkMissing ? @"Link Store Account" : (gameOwnedOnDifferentVariant ? @"Selected Store Not Owned" : (connected && syncSupported ? @"Sync Store Library" : @"Add Game to Library"));
+    if (gameOwnedOnDifferentVariant) {
+        NSString *ownedStoreName = ownedVariant ? ([NSString stringWithUTF8String:GameStoreDisplayName(ownedVariant->appStore).c_str()] ?: @"another store") : @"another store";
+        alert.informativeText = [NSString stringWithFormat:@"You own %@ on %@, but the selected %@ version is not marked as owned in your GeForce NOW library.", gameTitle, ownedStoreName, storeName];
+        if (ownedVariant) {
+            [alert addButtonWithTitle:[NSString stringWithFormat:@"Launch %@ Version", ownedStoreName]];
+            [actions addObject:@(OwnershipActionLaunchOwned)];
+        }
+        if (connected && syncSupported) {
+            [alert addButtonWithTitle:@"Sync Selected Store"];
+            [actions addObject:@(OwnershipActionSync)];
+        } else if (!connected && linkingSupported) {
+            [alert addButtonWithTitle:@"Link Selected Store"];
+            [actions addObject:@(OwnershipActionLink)];
+        }
+    } else if (requiredLinkMissing) {
+        alert.informativeText = [NSString stringWithFormat:@"%@ requires a linked %@ account before GeForce NOW can launch it.", gameTitle, storeName];
+        [alert addButtonWithTitle:@"Link Account"];
+        [actions addObject:@(OwnershipActionLink)];
+    } else if (!connected && linkingSupported) {
+        alert.informativeText = [NSString stringWithFormat:@"%@ is not marked as owned for %@. Link your %@ account, then OpenNOW will ask GeForce NOW to sync your library.", gameTitle, storeName, storeName];
+        [alert addButtonWithTitle:@"Link Account"];
+        [actions addObject:@(OwnershipActionLink)];
+    } else if (connected && syncSupported) {
+        NSString *persona = account && !account->userDisplayName.empty() ? [NSString stringWithUTF8String:account->userDisplayName.c_str()] : @"your linked account";
+        alert.informativeText = [NSString stringWithFormat:@"%@ is not marked as owned for %@. Sync %@ through GeForce NOW to refresh ownership from %@.", gameTitle, storeName, persona, storeName];
+        [alert addButtonWithTitle:@"Sync Library"];
+        [actions addObject:@(OwnershipActionSync)];
+    } else {
+        alert.informativeText = [NSString stringWithFormat:@"%@ is not marked as owned in your GeForce NOW library for %@. Mark it as owned through GeForce NOW or open the store to purchase or claim it.", gameTitle, storeName];
+    }
+
+    if (!requiredLinkMissing) {
+        [alert addButtonWithTitle:@"Mark as Owned"];
+        [actions addObject:@(OwnershipActionMarkOwned)];
+    }
+    [alert addButtonWithTitle:@"Open Store"];
+    [actions addObject:@(OwnershipActionOpenStore)];
     [alert addButtonWithTitle:@"Cancel"];
+    [actions addObject:@(OwnershipActionCancel)];
+
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    int ownedVariantIndexCopy = ownedVariantIndex;
+    std::string storeCopy = store;
     __weak __typeof__(self) weakSelf = self;
     [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
-        if (returnCode == NSAlertFirstButtonReturn) {
+        NSInteger actionIndex = returnCode - NSAlertFirstButtonReturn;
+        if (actionIndex < 0 || actionIndex >= (NSInteger)actions.count) return;
+        NSInteger action = actions[(NSUInteger)actionIndex].integerValue;
+        if (action == OwnershipActionLaunchOwned) {
+            [strongSelf launchGame:gameCopy variantIndex:ownedVariantIndexCopy returnScreen:returnScreen];
+        } else if (action == OwnershipActionLink) {
+            [strongSelf linkAccountForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy syncAfterLink:!requiredLinkMissing retryingAuth:NO continueHandler:continueHandler];
+        } else if (action == OwnershipActionSync) {
+            [strongSelf syncOwnershipForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy retryingAuth:NO continueHandler:continueHandler];
+        } else if (action == OwnershipActionMarkOwned) {
+            [strongSelf markVariantOwnedForGame:gameCopy variantIndex:variantIndexCopy continueHandler:continueHandler];
+        } else if (action == OwnershipActionOpenStore) {
             [strongSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
+        }
+    }];
+}
+
+- (void)markVariantOwnedForGame:(const OPN::GameInfo &)game
+                    variantIndex:(int)variantIndex
+                 continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler {
+    using namespace OPN;
+    const GameVariant *variant = OPNVariantAtIndex(game, variantIndex);
+    if (!variant || variant->id.empty()) {
+        NSBeep();
+        return;
+    }
+
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::string variantId = variant->id;
+    __weak __typeof__(self) weakSelf = self;
+    GameService::Shared().AddOwnedVariant(variantId, [weakSelf, gameCopy, variantIndexCopy, variantId, continueHandler](bool success, const std::string &error) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (!success) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Unable to Mark as Owned";
+            alert.informativeText = error.empty() ? @"GeForce NOW did not accept the ownership update." : [NSString stringWithUTF8String:error.c_str()];
+            [alert addButtonWithTitle:@"OK"];
+            [alert beginSheetModalForWindow:strongSelf.window completionHandler:nil];
             return;
         }
-        if (returnCode == NSAlertSecondButtonReturn && continueHandler) continueHandler();
+
+        GameService::Shared().SelectOwnedVariant(variantId, [weakSelf, gameCopy, variantIndexCopy, continueHandler](bool selectOK, const std::string &selectError) {
+            __typeof__(self) selectSelf = weakSelf;
+            if (!selectSelf) return;
+            if (!selectOK) OPN::LogError(@"[AppDelegate] selectOwnedVariant failed after addOwnedVariant: %s", selectError.c_str());
+            [selectSelf refreshLibraryAfterOwnershipChangeForGame:gameCopy
+                                                     variantIndex:variantIndexCopy
+                                                       requireGame:NO
+                                                       completion:^(BOOL) {
+                if (continueHandler) continueHandler(true);
+            }];
+        });
+    });
+}
+
+- (void)syncOwnershipForGame:(const OPN::GameInfo &)game
+                 variantIndex:(int)variantIndex
+                        store:(const std::string &)store
+                retryingAuth:(BOOL)retryingAuth
+              continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler {
+    using namespace OPN;
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::string storeCopy = store;
+    NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
+    NSString *gameTitle = game.title.empty() ? @"Selected Game" : [NSString stringWithUTF8String:game.title.c_str()];
+    [self showOwnershipSyncProgressForGameTitle:gameTitle storeName:storeName];
+    if (retryingAuth) {
+        [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Retrying %@ sync with a refreshed GeForce NOW session.", storeName]];
+    }
+    __weak __typeof__(self) weakSelf = self;
+    GameService::Shared().SyncAccountProvider(storeCopy, [weakSelf, gameCopy, variantIndexCopy, storeCopy, retryingAuth, continueHandler](bool success, const std::string &error) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (!success) {
+            if (!retryingAuth && OPNIsUnauthorizedError(error)) {
+                [strongSelf updateOwnershipSyncProgressMessage:@"Refreshing your GeForce NOW sign-in, then retrying sync..."];
+                [strongSelf refreshOwnershipAuthWithCompletion:^(BOOL refreshed) {
+                    __typeof__(self) retrySelf = weakSelf;
+                    if (!retrySelf) return;
+                    if (refreshed) {
+                        [retrySelf syncOwnershipForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy retryingAuth:YES continueHandler:continueHandler];
+                        return;
+                    }
+                    [retrySelf syncOwnershipForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy retryingAuth:YES continueHandler:continueHandler];
+                }];
+                return;
+            }
+            [strongSelf dismissOwnershipSyncProgress];
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Library Sync Failed";
+            alert.informativeText = error.empty() ? @"GeForce NOW could not start the store library sync." : [NSString stringWithUTF8String:error.c_str()];
+            [alert addButtonWithTitle:@"Mark as Owned"];
+            [alert addButtonWithTitle:@"Open Store"];
+            [alert addButtonWithTitle:@"Cancel"];
+            [alert beginSheetModalForWindow:strongSelf.window completionHandler:^(NSModalResponse returnCode) {
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                if (returnCode == NSAlertFirstButtonReturn) [retrySelf markVariantOwnedForGame:gameCopy variantIndex:variantIndexCopy continueHandler:continueHandler];
+                if (returnCode == NSAlertSecondButtonReturn) [retrySelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
+            }];
+            return;
+        }
+
+        [strongSelf updateOwnershipSyncProgressMessage:@"GeForce NOW accepted the sync. Waiting for your store library to finish processing..."];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            __typeof__(self) refreshSelf = weakSelf;
+            if (!refreshSelf) return;
+            [refreshSelf updateOwnershipSyncProgressMessage:@"Refreshing OpenNOW with the latest GeForce NOW library data..."];
+            [refreshSelf refreshLibraryAfterOwnershipChangeForGame:gameCopy
+                                                      variantIndex:variantIndexCopy
+                                                        requireGame:YES
+                                                        completion:^(BOOL ownedAfterRefresh) {
+                __typeof__(self) resultSelf = weakSelf;
+                if (!resultSelf) return;
+                [resultSelf dismissOwnershipSyncProgress];
+                if (ownedAfterRefresh) {
+                    if (continueHandler) continueHandler(true);
+                    return;
+                }
+
+                NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Game Not Found After Sync";
+                alert.informativeText = [NSString stringWithFormat:@"GeForce NOW synced %@, but this game still was not reported as owned. You can mark it as owned through GeForce NOW or open the store to check purchase/claim status.", storeName];
+                [alert addButtonWithTitle:@"Mark as Owned"];
+                [alert addButtonWithTitle:@"Open Store"];
+                [alert addButtonWithTitle:@"Cancel"];
+                [alert beginSheetModalForWindow:resultSelf.window completionHandler:^(NSModalResponse returnCode) {
+                    __typeof__(self) actionSelf = weakSelf;
+                    if (!actionSelf) return;
+                    if (returnCode == NSAlertFirstButtonReturn) [actionSelf markVariantOwnedForGame:gameCopy variantIndex:variantIndexCopy continueHandler:continueHandler];
+                    if (returnCode == NSAlertSecondButtonReturn) [actionSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
+                }];
+            }];
+        });
+    });
+}
+
+- (void)linkAccountForGame:(const OPN::GameInfo &)game
+              variantIndex:(int)variantIndex
+                     store:(const std::string &)store
+             syncAfterLink:(BOOL)syncAfterLink
+              retryingAuth:(BOOL)retryingAuth
+           continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler {
+    using namespace OPN;
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::string storeCopy = store;
+    __weak __typeof__(self) weakSelf = self;
+    GameService::Shared().StartAccountLinking(storeCopy, [weakSelf, gameCopy, variantIndexCopy, storeCopy, syncAfterLink, retryingAuth, continueHandler](bool success, const std::string &error) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (!success) {
+            if (!retryingAuth && OPNIsUnauthorizedError(error)) {
+                [strongSelf refreshOwnershipAuthWithCompletion:^(BOOL refreshed) {
+                    __typeof__(self) retrySelf = weakSelf;
+                    if (!retrySelf) return;
+                    if (refreshed) {
+                        [retrySelf linkAccountForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy syncAfterLink:syncAfterLink retryingAuth:YES continueHandler:continueHandler];
+                        return;
+                    }
+                    [retrySelf linkAccountForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy syncAfterLink:syncAfterLink retryingAuth:YES continueHandler:continueHandler];
+                }];
+                return;
+            }
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Account Linking Failed";
+            alert.informativeText = error.empty() ? @"GeForce NOW did not complete account linking." : [NSString stringWithUTF8String:error.c_str()];
+            [alert addButtonWithTitle:@"Mark as Owned"];
+            [alert addButtonWithTitle:@"Open Store"];
+            [alert addButtonWithTitle:@"Cancel"];
+            [alert beginSheetModalForWindow:strongSelf.window completionHandler:^(NSModalResponse returnCode) {
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                if (returnCode == NSAlertFirstButtonReturn) [retrySelf markVariantOwnedForGame:gameCopy variantIndex:variantIndexCopy continueHandler:continueHandler];
+                if (returnCode == NSAlertSecondButtonReturn) [retrySelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
+            }];
+            return;
+        }
+        if (syncAfterLink) {
+            [strongSelf syncOwnershipForGame:gameCopy variantIndex:variantIndexCopy store:storeCopy retryingAuth:NO continueHandler:continueHandler];
+        } else if (continueHandler) {
+            continueHandler(true);
+        }
+    });
+}
+
+- (void)refreshLibraryAfterOwnershipChangeForGame:(const OPN::GameInfo &)game
+                                     variantIndex:(int)variantIndex
+                                      requireGame:(BOOL)requireGame
+                                       completion:(void (^)(BOOL ownedAfterRefresh))completion {
+    using namespace OPN;
+    GameInfo gameCopy = game;
+    const GameVariant *variant = OPNVariantAtIndex(game, variantIndex);
+    GameVariant variantCopy = variant ? *variant : GameVariant{};
+    std::string accountIdentifier = OPNAuthSessionIdentifier(self.currentSession);
+    __weak __typeof__(self) weakSelf = self;
+    [self fetchGameLibraryWithRetry:YES completion:^(BOOL success, const std::vector<GameInfo> &games) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        BOOL ownedAfterRefresh = NO;
+        if (success && accountIdentifier == OPNAuthSessionIdentifier(strongSelf.currentSession)) {
+            std::string fingerprint = OPNGameLibraryFingerprint(games);
+            strongSelf.cachedGameLibrary = games;
+            strongSelf.cachedGameLibraryFingerprint = fingerprint;
+            strongSelf.cachedGameLibraryAccountIdentifier = accountIdentifier;
+            strongSelf.hasCachedGameLibrary = YES;
+            if (strongSelf.currentScreen == AuthScreen::Catalog && strongSelf.catalogView) {
+                [strongSelf.catalogView setGames:games];
+            } else if (strongSelf.currentScreen == AuthScreen::Store && strongSelf.storeView) {
+                [strongSelf.storeView setLibraryGames:games];
+            }
+            ownedAfterRefresh = (!variantCopy.id.empty() || !variantCopy.appStore.empty()) ? OPNLibraryContainsOwnedVariant(games, gameCopy, variantCopy) : NO;
+        }
+        if (completion) completion(requireGame ? ownedAfterRefresh : YES);
     }];
-    return YES;
 }
 
 - (void)openPurchaseURL:(NSString *)purchaseURL forGame:(const OPN::GameInfo &)game variantIndex:(int)variantIndex {

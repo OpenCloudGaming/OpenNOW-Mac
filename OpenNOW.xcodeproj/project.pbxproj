@@ -70,10 +70,6 @@
 			isa = PBXBuildFile;
 			fileRef = 5D30F02C98B697F3AB67CD3F;
 		};
-		A03BF986AC5FB5D8A63F89CF /* OPNStoreView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 51EF0EA65004031BC3F1D096;
-		};
 		FE6A155D74A6768A507DF3AB /* OPNStreamView.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 24D4F5F148ABE96F6C8D54D7;
@@ -631,20 +627,6 @@
 			path = src/streaming/OPNSignalingClient.mm;
 			sourceTree = "<group>";
 		};
-		DC65478A7A3AA5C456F06C1C /* OPNStoreView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStoreView.h;
-			path = src/views/OPNStoreView.h;
-			sourceTree = "<group>";
-		};
-		51EF0EA65004031BC3F1D096 /* OPNStoreView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNStoreView.mm;
-			path = src/views/OPNStoreView.mm;
-			sourceTree = "<group>";
-		};
 		D1280850F847EF1ED1508ACA /* OPNStreamBackend.h in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.c.h;
@@ -997,7 +979,6 @@
 				AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.mm in PBXFileReference */,
 				2A4752FFB2BED66E22198CE4 /* OPNLoadingView.mm in PBXFileReference */,
 				240E6A8BBC2CC765479CEF3D /* OPNSettingsView.mm in PBXFileReference */,
-				51EF0EA65004031BC3F1D096 /* OPNStoreView.mm in PBXFileReference */,
 				DB79E5FA853AC3173A1B8C79 /* OPNAuthenticatingView.h in PBXFileReference */,
 				09C065FAD2707F6C9B38E11F /* OPNBackdropView.h in PBXFileReference */,
 				80FD49B2D2C3C194CC9FFA6E /* OPNCarouselFocusLayout.h in PBXFileReference */,
@@ -1008,7 +989,6 @@
 				1E004EA1147EA6B071E2D813 /* OPNGameCatalogView.h in PBXFileReference */,
 				D9F6C4A4AB9594825BB35CDD /* OPNLoadingView.h in PBXFileReference */,
 				0C4B00965C712B3B067ECA6F /* OPNSettingsView.h in PBXFileReference */,
-				DC65478A7A3AA5C456F06C1C /* OPNStoreView.h in PBXFileReference */,
 			);
 			name = views;
 			sourceTree = "<group>";
@@ -1104,7 +1084,6 @@
 				E61312258EEB2041AA067B25 /* OPNGameCatalogView.mm in PBXBuildFile */,
 				10C4D542D668FF3D8F86E08F /* OPNLoadingView.mm in PBXBuildFile */,
 				CD04F899B27FABB06F2EEB35 /* OPNSettingsView.mm in PBXBuildFile */,
-				A03BF986AC5FB5D8A63F89CF /* OPNStoreView.mm in PBXBuildFile */,
 				20E194CFFBA3687D0A48D383 /* OPNPremiumBackdrop.metal in PBXBuildFile */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

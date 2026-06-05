@@ -23,16 +23,22 @@ using LaunchProgressCallback = std::function<void(const std::string &message, co
 using SubscriptionCallback = std::function<void(bool success, const SubscriptionInfo &subscription,
                                                   const std::string &error)>;
 using StoreURLCallback = std::function<void(bool success, const std::string &storeURL,
-                                             const std::string &error)>;
+                                              const std::string &error)>;
 using ProviderInfoCallback = std::function<void(bool success, const GameProviderInfo &providerInfo,
-                                                const GameProviderEndpoint &selectedEndpoint,
-                                                const std::string &error)>;
+                                                 const GameProviderEndpoint &selectedEndpoint,
+                                                 const std::string &error)>;
+using OwnershipActionCallback = std::function<void(bool success, const std::string &error)>;
+using UserAccountCallback = std::function<void(bool success, const UserAccountInfo &accountInfo,
+                                               const std::string &error)>;
+using StoreDefinitionsCallback = std::function<void(bool success, const std::vector<StoreDefinition> &definitions,
+                                                    const std::string &error)>;
 
 class GameService {
 public:
     static GameService &Shared();
 
     void SetAccessToken(const std::string &token);
+    void SetAccountLinkingToken(const std::string &token);
     void SetVpcId(const std::string &id);
     void SetUserId(const std::string &id);
     void SetStreamingBaseUrl(const std::string &url);
@@ -51,6 +57,13 @@ public:
     void FetchLibraryGames(CatalogCallback completion);
     void FetchSubscriptionInfo(const std::string &userId, SubscriptionCallback completion);
     void ResolveStoreURL(const GameInfo &game, int variantIndex, StoreURLCallback completion);
+    void FetchUserAccount(UserAccountCallback completion);
+    void FetchStoreDefinitions(StoreDefinitionsCallback completion);
+    void AddOwnedVariant(const std::string &variantId, OwnershipActionCallback completion);
+    void RemoveOwnedVariant(const std::string &variantId, OwnershipActionCallback completion);
+    void SelectOwnedVariant(const std::string &variantId, OwnershipActionCallback completion);
+    void SyncAccountProvider(const std::string &store, OwnershipActionCallback completion);
+    void StartAccountLinking(const std::string &store, OwnershipActionCallback completion);
 
     void LaunchGame(const std::string &appId,
                     const std::string &internalTitle,
@@ -70,8 +83,13 @@ private:
                      std::function<void(NSDictionary *, NSString *)> completion);
 
     void postGraphQlJson(const std::string &query,
-                         NSDictionary *variables,
-                         std::function<void(NSDictionary *, NSString *)> completion);
+                          NSDictionary *variables,
+                          std::function<void(NSDictionary *, NSString *)> completion);
+
+    void ownedVariantMutation(const std::string &mutationName,
+                              const std::string &fieldName,
+                              const std::string &variantId,
+                              OwnershipActionCallback completion);
 
     GameInfo parseGameItem(NSDictionary *item);
     std::vector<PanelResult> parsePanelResults(NSArray *rawPanels);
@@ -81,6 +99,7 @@ private:
     NSDictionary *baseHeaders();
 
     std::string m_accessToken;
+    std::string m_accountLinkingToken;
     std::string m_vpcId;
     std::string m_userId;
     std::string m_graphqlURL;
