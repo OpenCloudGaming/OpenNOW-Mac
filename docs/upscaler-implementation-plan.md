@@ -245,11 +245,11 @@ Tasks:
 
 | Status | Task | Acceptance Criteria |
 | --- | --- | --- |
-| Planned | Select a small real-time SR architecture suitable for Apple Silicon | Model fits target latency and memory budget |
+| Done | Select a small real-time SR architecture suitable for Apple Silicon | First supported contract is a compact single-image Core ML image-to-image SR model (`OPNNeuralSpatialUpscaler.mlmodelc`) that runs with `MLComputeUnitsAll` and is only enabled on Apple-family GPUs |
 | Planned | Build or acquire training data from game frames with compression artifacts | Training data reflects GFN-like streams, HUD text, particles, motion, and dark scenes |
 | Planned | Train separate profiles for 1.5x, 2x, and artifact cleanup | Model avoids oversharpened UI and temporal shimmer |
-| Planned | Convert model to Core ML ML Program with fp16 or int8 variants | Runtime loads model without dynamic network access |
-| Planned | Add neural tier behind capability and power checks | Intel or unsupported Macs fall back cleanly |
+| In Progress | Convert model to Core ML ML Program with fp16 or int8 variants | Runtime now deterministically looks for a bundled `OPNNeuralSpatialUpscaler.mlmodelc`; model asset production remains pending |
+| Done | Add neural tier behind capability and power checks | Core ML tier is gated by model availability, Apple GPU family support, thermal state, and Low Power Mode; unsupported Macs fall back cleanly |
 
 Exit criteria:
 
@@ -258,6 +258,16 @@ Exit criteria:
 | Quality | Neural spatial beats MetalFX/custom spatial in blind internal comparisons |
 | Latency | 1080p-to-4K stays viable at 60 FPS on target Apple Silicon hardware |
 | Packaging | Model assets are versioned, signed, and loaded deterministically |
+
+Current model contract:
+
+| Area | Requirement |
+| --- | --- |
+| Bundle name | `OPNNeuralSpatialUpscaler.mlmodelc` in the app bundle |
+| Input | One Core ML image feature; renderer letterboxes/scales the current source texture into the model input constraint |
+| Output | One Core ML image feature; renderer aspect-fits the predicted image into the drawable |
+| Activation | Auto mode selects Neural Spatial only when the compiled model loads and power/capability checks pass |
+| Fallback | Missing model, unsupported device, thermal pressure, Low Power Mode, or prediction failure falls back to MetalFX/custom spatial with diagnostics |
 
 ### Milestone 9: Neural Temporal Super-Resolution
 
@@ -427,7 +437,7 @@ Legend: `Done`, `In Progress`, `Planned`, `Blocked`.
 | Done | 2026-06-05 | Higher-order sampling and Metal denoise | Added Catmull-Rom style RGB sampling and bounded shader denoise before sharpening |
 | Done | 2026-06-05 | Milestone 6 implementation | Added automatic frame-budget governor that downgrades from MetalFX to spatial to native, and recovers after sustained headroom |
 | Done | 2026-06-05 | Milestone 7 implementation | Added enhanced-frame recording bridge from renderer to session to recording manager, with raw stream fallback |
-| Planned | Not started | Milestone 8 research | Neural spatial model |
+| In Progress | 2026-06-05 | Milestone 8 implementation | Added Core ML neural-spatial tier scaffolding, model contract, capability/power gate, and deterministic fallback to existing spatial tiers; trained model asset remains pending |
 | Planned | Not started | Milestone 9 research | Neural temporal model |
 
 ## Immediate Next Actions
@@ -447,6 +457,7 @@ Start with Milestone 1 because it derisks every later tier.
 | 9 | Done: Add true MetalFX scaler binding and I420 GPU plane ingestion | `OPNVideoEnhancementRenderer.mm`, `Makefile` |
 | 10 | Done: Add adaptive enhancement governor | `OPNVideoEnhancementRenderer.mm`, `OPNStreamSession.h`, `OPNLibWebRTCStreamSession.*` |
 | 11 | Done: Add enhanced recording bridge | `OPNVideoEnhancementRenderer.*`, `OPNLibWebRTCStreamSession.*`, `OPNStreamView.mm`, `OPNStreamRecordingManager.*` |
+| 12 | In progress: Add gated Neural Spatial tier and model contract | `OPNVideoEnhancementRenderer.*`, `OPNLibWebRTCStreamSession.mm`, `Makefile`, model asset pending |
 
 ## Verification Log
 
