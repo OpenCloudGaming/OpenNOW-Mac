@@ -63,6 +63,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     CMTime _systemAudioTimelineOffset;
     CMTime _microphoneAudioTimelineOffset;
     BOOL _videoFrameAppendInFlight;
+    BOOL _enhancedVideoActive;
     uint64_t _droppedVideoFrames;
     CFTimeInterval _lastDroppedVideoFrameLogTime;
     AVCaptureSession *_microphoneCaptureSession;
@@ -86,6 +87,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         _systemAudioTimelineOffset = kCMTimeInvalid;
         _microphoneAudioTimelineOffset = kCMTimeInvalid;
         _videoFrameAppendInFlight = NO;
+        _enhancedVideoActive = NO;
         _droppedVideoFrames = 0;
         _lastDroppedVideoFrameLogTime = 0.0;
         [self refreshRecentRecordings];
@@ -144,6 +146,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         self->_systemAudioTimelineOffset = kCMTimeInvalid;
         self->_microphoneAudioTimelineOffset = kCMTimeInvalid;
         self->_videoFrameAppendInFlight = NO;
+        self->_enhancedVideoActive = NO;
         self->_droppedVideoFrames = 0;
         self->_lastDroppedVideoFrameLogTime = 0.0;
     });
@@ -206,6 +209,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     if (!frame || (!self.recording && !self.starting)) return;
     RTCVideoFrame *videoFrame = (__bridge RTCVideoFrame *)frame;
     @synchronized (self) {
+        if (_enhancedVideoActive) return;
         if (_videoFrameAppendInFlight) {
             [self recordDroppedVideoFrame];
             return;
@@ -256,6 +260,58 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
 #else
     (void)frame;
 #endif
+}
+
+- (void)appendEnhancedPixelBuffer:(CVPixelBufferRef)pixelBuffer {
+    if (!pixelBuffer || (!self.recording && !self.starting)) return;
+    CVPixelBufferRetain(pixelBuffer);
+    @synchronized (self) {
+        _enhancedVideoActive = YES;
+        if (_videoFrameAppendInFlight) {
+            CVPixelBufferRelease(pixelBuffer);
+            [self recordDroppedVideoFrame];
+            return;
+        }
+        _videoFrameAppendInFlight = YES;
+    }
+    dispatch_async(_writerQueue, ^{
+        @autoreleasepool {
+            if (!self->_acceptingSamples || !self.currentRecordingURL) {
+                CVPixelBufferRelease(pixelBuffer);
+                [self finishVideoFrameAppend];
+                return;
+            }
+
+            CGSize size = CGSizeMake(CVPixelBufferGetWidth(pixelBuffer), CVPixelBufferGetHeight(pixelBuffer));
+            if (size.width < 2.0 || size.height < 2.0) {
+                CVPixelBufferRelease(pixelBuffer);
+                [self finishVideoFrameAppend];
+                return;
+            }
+            if (!self->_writer && ![self createWriterWithVideoSize:size]) {
+                CVPixelBufferRelease(pixelBuffer);
+                [self finishVideoFrameAppend];
+                return;
+            }
+            if (self->_writer.status != AVAssetWriterStatusWriting || !self->_videoInput.readyForMoreMediaData) {
+                CVPixelBufferRelease(pixelBuffer);
+                [self finishVideoFrameAppend];
+                return;
+            }
+
+            CMTime presentationTime = [self nextVideoPresentationTime];
+            BOOL appended = [self->_pixelBufferAdaptor appendPixelBuffer:pixelBuffer withPresentationTime:presentationTime];
+            CVPixelBufferRelease(pixelBuffer);
+            if (!appended) {
+                OPN::LogError(@"[Recording] Enhanced video append failed: %@", self->_writer.error ?: (NSError *)nil);
+            } else if (self.starting) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self updateStatus:@"Recording" starting:NO recording:YES notify:YES];
+                });
+            }
+            [self finishVideoFrameAppend];
+        }
+    });
 }
 
 - (void)finishVideoFrameAppend {

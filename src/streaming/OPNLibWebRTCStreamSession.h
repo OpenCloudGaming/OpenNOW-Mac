@@ -40,8 +40,10 @@ public:
     void SetMicrophoneVolume(double volume) override;
     void SetMaxBitrateMbps(int mbps) override;
     void SetLocalVideoEnhancement(int mode, int sharpness, int denoise) override;
+    void SetEnhancedVideoFrameCaptureEnabled(bool enabled) override;
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
+    void OnEnhancedVideoFrame(VideoFrameCallback cb) override;
     void OnGameAudioFrame(GameAudioFrameCallback cb) override;
     void OnClipboardText(ClipboardTextCallback cb) override;
     void RefreshAudioDevices() override;
@@ -56,6 +58,8 @@ public:
     void HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len);
     void HandleAudioDeviceChange();
     void HandleVideoFrame(void *frame);
+    void HandleEnhancedVideoFrame(void *pixelBuffer);
+    bool WantsEnhancedVideoFrames() const;
     void HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels);
     double GameVolume() const;
     int TargetFps() const;
@@ -65,7 +69,14 @@ public:
                                    const std::string &renderMode,
                                    const std::string &frameSource,
                                    const std::string &renderPath,
-                                   const std::string &fallback);
+                                   const std::string &fallback,
+                                   const std::string &enhancementConfiguredTier,
+                                   const std::string &enhancementActiveTier,
+                                   const std::string &enhancementFallbackReason,
+                                   const std::string &enhancementSourceResolution,
+                                   const std::string &enhancementDrawableResolution,
+                                   double enhancementFrameTimeMs,
+                                   uint64_t enhancementDroppedFrames);
 
 private:
     void HandleStatsReport(void *report);
@@ -114,6 +125,7 @@ private:
     int m_localEnhancementMode = 1;
     int m_localEnhancementSharpness = 4;
     int m_localEnhancementDenoise = 0;
+    bool m_enhancedVideoFrameCaptureEnabled = false;
     int m_adaptiveBitrateMbps = 0;
     int m_minAdaptiveBitrateMbps = 0;
     int m_adaptiveCongestionScore = 0;
@@ -126,6 +138,7 @@ private:
     StreamStateCallback m_onState;
     MicrophoneLevelCallback m_onMicrophoneLevel;
     VideoFrameCallback m_onVideoFrame;
+    VideoFrameCallback m_onEnhancedVideoFrame;
     GameAudioFrameCallback m_onGameAudioFrame;
     ClipboardTextCallback m_onClipboardText;
 };

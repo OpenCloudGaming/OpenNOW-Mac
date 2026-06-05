@@ -8,6 +8,7 @@
 
 #import <GameController/GameController.h>
 #import <ApplicationServices/ApplicationServices.h>
+#import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
 
 #include <algorithm>
@@ -180,6 +181,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _recordingManager.onStateChanged = ^{
             OPNStreamView *strongSelf = weakSelf;
             if (!strongSelf) return;
+            if (strongSelf->_streamSession) strongSelf->_streamSession->SetEnhancedVideoFrameCaptureEnabled(strongSelf.recordingManager.isRecording || strongSelf.recordingManager.isStarting);
             [strongSelf updateRecordingControls];
         };
         self.wantsLayer = YES;
@@ -446,6 +448,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     OPN::IStreamSession *previousSession = _streamSession;
     if (previousSession && previousSession != session) {
         previousSession->OnVideoFrame(OPN::VideoFrameCallback{});
+        previousSession->OnEnhancedVideoFrame(OPN::VideoFrameCallback{});
         previousSession->OnGameAudioFrame(OPN::GameAudioFrameCallback{});
         previousSession->OnMicrophoneLevel(OPN::MicrophoneLevelCallback{});
         previousSession->OnClipboardText(OPN::ClipboardTextCallback{});
@@ -456,6 +459,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
         session->SetMicrophoneVolume(_microphoneVolumeLevel);
         session->SetMaxBitrateMbps(_maxBitrateMbps);
         session->SetLocalVideoEnhancement((int)_videoUpscalingMode, (int)_videoUpscalingSharpness, (int)_videoUpscalingDenoise);
+        session->SetEnhancedVideoFrameCaptureEnabled(self.recordingManager.isRecording || self.recordingManager.isStarting);
         __weak OPNStreamView *weakSelf = self;
         session->OnMicrophoneLevel([weakSelf](double level) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -468,6 +472,11 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
             OPNStreamView *strongSelf = weakSelf;
             if (!strongSelf) return;
             [strongSelf.recordingManager appendWebRTCVideoFrame:frame];
+        });
+        session->OnEnhancedVideoFrame([weakSelf](void *pixelBuffer) {
+            OPNStreamView *strongSelf = weakSelf;
+            if (!strongSelf) return;
+            [strongSelf.recordingManager appendEnhancedPixelBuffer:(CVPixelBufferRef)pixelBuffer];
         });
         session->OnGameAudioFrame([weakSelf](const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
             OPNStreamView *strongSelf = weakSelf;
@@ -564,6 +573,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 
 - (BOOL)toggleRecordingShortcut {
     [self.recordingManager toggleRecordingForGameTitle:_recordingGameTitle window:self.window];
+    if (_streamSession) _streamSession->SetEnhancedVideoFrameCaptureEnabled(self.recordingManager.isRecording || self.recordingManager.isStarting);
     [self updateRecordingControls];
     return YES;
 }

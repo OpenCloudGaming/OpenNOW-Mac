@@ -49,6 +49,13 @@ struct StreamStats {
     std::string videoFrameSource;
     std::string videoRenderPath;
     std::string videoRendererFallback;
+    std::string videoEnhancementConfiguredTier;
+    std::string videoEnhancementActiveTier;
+    std::string videoEnhancementFallbackReason;
+    std::string videoEnhancementSourceResolution;
+    std::string videoEnhancementDrawableResolution;
+    double videoEnhancementFrameTimeMs = -1.0;
+    uint64_t videoEnhancementDroppedFrames = 0;
     int fps = 0;
 };
 
@@ -79,8 +86,10 @@ public:
     virtual void SetMicrophoneVolume(double volume) = 0;
     virtual void SetMaxBitrateMbps(int mbps) = 0;
     virtual void SetLocalVideoEnhancement(int mode, int sharpness, int denoise) { (void)mode; (void)sharpness; (void)denoise; }
+    virtual void SetEnhancedVideoFrameCaptureEnabled(bool enabled) { (void)enabled; }
     virtual void OnMicrophoneLevel(MicrophoneLevelCallback cb) = 0;
     virtual void OnVideoFrame(VideoFrameCallback cb) = 0;
+    virtual void OnEnhancedVideoFrame(VideoFrameCallback cb) { (void)cb; }
     virtual void OnGameAudioFrame(GameAudioFrameCallback cb) = 0;
     virtual void OnClipboardText(ClipboardTextCallback cb) = 0;
     virtual void RefreshAudioDevices() = 0;
@@ -121,8 +130,10 @@ public:
     void SetGameVolume(double volume) override;
     void SetMicrophoneVolume(double volume) override;
     void SetMaxBitrateMbps(int mbps) override;
+    void SetEnhancedVideoFrameCaptureEnabled(bool enabled) override { (void)enabled; }
     void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
     void OnVideoFrame(VideoFrameCallback cb) override;
+    void OnEnhancedVideoFrame(VideoFrameCallback cb) override { (void)cb; }
     void OnGameAudioFrame(GameAudioFrameCallback cb) override;
     void OnClipboardText(ClipboardTextCallback cb) override { m_onClipboardText = std::move(cb); }
     void RefreshAudioDevices() override;

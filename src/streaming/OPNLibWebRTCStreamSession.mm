@@ -1,4 +1,5 @@
 #include "OPNLibWebRTCStreamSession.h"
+#include "OPNVideoEnhancementRenderer.h"
 #include "OPNWebRTCDataChannelUtils.h"
 #include "common/OPNSentry.h"
 
@@ -1192,27 +1193,33 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 @property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererRGB;
 @property(nonatomic, strong) id<OPNRTCMetalRenderer> rendererI420;
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
-@property(nonatomic, strong) CIContext *ciContext;
-@property(nonatomic, assign) CGColorSpaceRef outputColorSpace;
+@property(nonatomic, strong) OPNVideoEnhancementRenderer *enhancementRenderer;
+@property(nonatomic, assign) CGSize sourceFrameSize;
 @property(nonatomic, assign) int targetFps;
 @property(nonatomic, assign) uint64_t frameSerial;
 @property(nonatomic, assign) uint64_t lastDrawnFrameSerial;
+@property(nonatomic, assign) uint64_t enhancementDroppedFrameCount;
+@property(nonatomic, assign) double lastEnhancementFrameTimeMs;
 @property(nonatomic, assign) CFTimeInterval lastDiagnosticsUpdateTime;
 @property(nonatomic, assign) BOOL drawScheduled;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+- (void)updateDrawableSizeForCurrentBackingScale;
 - (void)scheduleDraw;
 - (id<OPNRTCMetalRenderer>)newRendererNamed:(NSString *)className fallback:(NSString **)fallback;
 - (id<OPNRTCMetalRenderer>)i420RendererWithFallback:(NSString **)fallback;
 - (id<OPNRTCMetalRenderer>)rendererForFrame:(RTCVideoFrame *)frame
-                                pixelFormat:(NSString **)pixelFormat
-                                 renderMode:(NSString **)renderMode
-                                frameSource:(NSString **)frameSource
-                                 renderPath:(NSString **)renderPath
-                                    fallback:(NSString **)fallback;
-- (BOOL)drawProcessedFrame:(RTCVideoFrame *)frame renderPath:(NSString **)renderPath fallback:(NSString **)fallback;
-- (CIImage *)imageForFrame:(RTCVideoFrame *)frame temporaryPixelBuffer:(CVPixelBufferRef *)temporaryPixelBuffer;
-- (CVPixelBufferRef)newBGRAFallbackPixelBufferForI420Frame:(RTCVideoFrame *)frame;
+                                 pixelFormat:(NSString **)pixelFormat
+                                  renderMode:(NSString **)renderMode
+                                 frameSource:(NSString **)frameSource
+                                  renderPath:(NSString **)renderPath
+                                     fallback:(NSString **)fallback;
 @end
+
+static NSString *OPNVideoResolutionString(CGSize size) {
+    int width = (int)std::llround(std::max<CGFloat>(0.0, size.width));
+    int height = (int)std::llround(std::max<CGFloat>(0.0, size.height));
+    return width > 0 && height > 0 ? [NSString stringWithFormat:@"%dx%d", width, height] : @"unknown";
+}
 
 @implementation OPNMetalVideoView
 
@@ -1221,8 +1228,11 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
     if (self) {
         _owner = owner;
         _targetFps = MAX(30, MIN(targetFps, 240));
+        _sourceFrameSize = CGSizeZero;
         _frameSerial = 0;
         _lastDrawnFrameSerial = 0;
+        _enhancementDroppedFrameCount = 0;
+        _lastEnhancementFrameTimeMs = -1.0;
         _lastDiagnosticsUpdateTime = 0.0;
         _drawScheduled = NO;
         self.wantsLayer = YES;
@@ -1248,30 +1258,50 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
         [self addSubview:_metalView];
         if (_metalView.device) {
             _commandQueue = [_metalView.device newCommandQueue];
-            _ciContext = [CIContext contextWithMTLDevice:_metalView.device options:@{kCIContextWorkingColorSpace: [NSNull null]}];
-            _outputColorSpace = CGColorSpaceCreateDeviceRGB();
+            _enhancementRenderer = [[OPNVideoEnhancementRenderer alloc] initWithDevice:_metalView.device commandQueue:_commandQueue];
         }
     }
     return self;
 }
 
-- (void)dealloc {
-    if (_outputColorSpace) {
-        CGColorSpaceRelease(_outputColorSpace);
-        _outputColorSpace = nil;
-    }
-}
-
 - (void)layout {
     [super layout];
     self.metalView.frame = self.bounds;
+    [self updateDrawableSizeForCurrentBackingScale];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    [self updateDrawableSizeForCurrentBackingScale];
 }
 
 - (void)setSize:(CGSize)size {
     if (size.width <= 0.0 || size.height <= 0.0) return;
+    @synchronized (self) {
+        self.sourceFrameSize = size;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.metalView.drawableSize = size;
+        [self updateDrawableSizeForCurrentBackingScale];
     });
+}
+
+- (void)updateDrawableSizeForCurrentBackingScale {
+    if (!self.metalView) return;
+    CGFloat scale = self.window.backingScaleFactor;
+    if (scale <= 0.0) scale = self.metalView.window.backingScaleFactor;
+    if (scale <= 0.0) scale = NSScreen.mainScreen.backingScaleFactor;
+    if (scale <= 0.0) scale = 1.0;
+
+    CGSize boundsSize = self.metalView.bounds.size;
+    if (boundsSize.width <= 0.0 || boundsSize.height <= 0.0) return;
+
+    CGSize drawableSize = CGSizeMake(std::max<CGFloat>(1.0, floor(boundsSize.width * scale)),
+                                     std::max<CGFloat>(1.0, floor(boundsSize.height * scale)));
+    CGSize currentSize = self.metalView.drawableSize;
+    if ((int)std::llround(currentSize.width) != (int)std::llround(drawableSize.width) ||
+        (int)std::llround(currentSize.height) != (int)std::llround(drawableSize.height)) {
+        self.metalView.drawableSize = drawableSize;
+    }
 }
 
 - (void)renderFrame:(RTCVideoFrame *)frame {
@@ -1306,34 +1336,79 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 
 - (void)drawInMTKView:(MTKView *)view {
     if (view != self.metalView) return;
+    [self updateDrawableSizeForCurrentBackingScale];
+
     RTCVideoFrame *frame = nil;
     uint64_t drawSerial = 0;
+    CGSize sourceSize = CGSizeZero;
     @synchronized (self) {
         frame = self.videoFrame;
         drawSerial = self.frameSerial;
+        sourceSize = self.sourceFrameSize;
     }
     if (!frame || frame.width <= 0 || frame.height <= 0 || drawSerial == 0 || drawSerial == self.lastDrawnFrameSerial) return;
+    if (sourceSize.width <= 0.0 || sourceSize.height <= 0.0) sourceSize = CGSizeMake(frame.width, frame.height);
 
     NSString *pixelFormat = @"unknown";
     NSString *renderMode = @"I420";
     NSString *frameSource = @"unknown";
     NSString *renderPath = @"RTCMTLI420Renderer";
     NSString *fallback = @"";
+    NSString *enhancementConfiguredTier = @"Off";
+    NSString *enhancementActiveTier = @"Native";
+    NSString *enhancementFallbackReason = @"";
+    NSString *enhancementSourceResolution = OPNVideoResolutionString(sourceSize);
+    NSString *enhancementDrawableResolution = OPNVideoResolutionString(self.metalView.drawableSize);
+    double enhancementFrameTimeMs = -1.0;
     int enhancementMode = 0;
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
-    if (enhancementMode > 0 && (enhancementSharpness > 0 || enhancementDenoise > 0)) {
-        if ([self drawProcessedFrame:frame renderPath:&renderPath fallback:&fallback]) {
-            pixelFormat = @"CoreImage";
-            renderMode = @"Upscaler";
-            frameSource = @"processed frame";
+    if (enhancementMode > 0) {
+        OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
+        settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
+        settings.sharpness = enhancementSharpness;
+        settings.denoise = enhancementDenoise;
+        settings.sourceSize = sourceSize;
+        settings.drawableSize = self.metalView.drawableSize;
+        settings.targetFrameTimeMs = 1000.0 / (double)std::max(1, self.targetFps);
+        settings.captureEnhancedPixelBuffer = self.owner ? self.owner->WantsEnhancedVideoFrames() : NO;
+        OPNVideoEnhancementResult *result = [[OPNVideoEnhancementResult alloc] init];
+        if ([self.enhancementRenderer renderFrame:frame toView:self.metalView settings:settings result:result]) {
+            pixelFormat = result.pixelFormat ?: @"unknown";
+            renderMode = result.renderMode ?: @"Upscaler";
+            frameSource = result.frameSource ?: @"processed frame";
+            renderPath = result.renderPath ?: @"OPNVideoEnhancementRenderer";
+            fallback = result.fallbackReason ?: @"";
+            enhancementConfiguredTier = result.configuredTier ?: @"Upscaler";
+            enhancementActiveTier = result.activeTier ?: @"Enhanced";
+            enhancementFallbackReason = result.tierFallbackReason ?: @"";
+            enhancementSourceResolution = result.sourceResolution ?: enhancementSourceResolution;
+            enhancementDrawableResolution = result.drawableResolution ?: enhancementDrawableResolution;
+            enhancementFrameTimeMs = result.frameTimeMs;
+            self.enhancementDroppedFrameCount = result.droppedFrames;
             self.lastDrawnFrameSerial = drawSerial;
-        } else if (fallback.length == 0) {
-            fallback = @"processed renderer unavailable; using WebRTC renderer";
+            if (result.enhancedPixelBuffer && self.owner) {
+                self.owner->HandleEnhancedVideoFrame(result.enhancedPixelBuffer);
+                CVPixelBufferRelease(result.enhancedPixelBuffer);
+                result.enhancedPixelBuffer = nil;
+            }
+        } else {
+            fallback = result.fallbackReason.length > 0 ? result.fallbackReason : @"processed renderer unavailable; using WebRTC renderer";
+            enhancementConfiguredTier = result.configuredTier ?: @"Upscaler";
+            enhancementActiveTier = @"Native fallback";
+            enhancementFallbackReason = result.tierFallbackReason.length > 0 ? result.tierFallbackReason : fallback;
+            enhancementSourceResolution = result.sourceResolution ?: enhancementSourceResolution;
+            enhancementDrawableResolution = result.drawableResolution ?: enhancementDrawableResolution;
+            self.enhancementDroppedFrameCount = result.droppedFrames;
+        }
+        if (self.lastDrawnFrameSerial != drawSerial) {
+            enhancementActiveTier = @"Native fallback";
+            enhancementFallbackReason = fallback.length > 0 ? fallback : @"processed renderer failed";
         }
     }
     if (self.lastDrawnFrameSerial == drawSerial) {
+        self.lastEnhancementFrameTimeMs = enhancementFrameTimeMs;
         CFTimeInterval now = CACurrentMediaTime();
         if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
             self.lastDiagnosticsUpdateTime = now;
@@ -1341,7 +1416,14 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
                                                   OPN::OPNNSStringToString(renderMode),
                                                   OPN::OPNNSStringToString(frameSource),
                                                   OPN::OPNNSStringToString(renderPath),
-                                                  OPN::OPNNSStringToString(fallback));
+                                                  OPN::OPNNSStringToString(fallback),
+                                                  OPN::OPNNSStringToString(enhancementConfiguredTier),
+                                                  OPN::OPNNSStringToString(enhancementActiveTier),
+                                                  OPN::OPNNSStringToString(enhancementFallbackReason),
+                                                  OPN::OPNNSStringToString(enhancementSourceResolution),
+                                                  OPN::OPNNSStringToString(enhancementDrawableResolution),
+                                                  enhancementFrameTimeMs,
+                                                  self.enhancementDroppedFrameCount);
         }
         return;
     }
@@ -1357,6 +1439,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
         [renderer drawFrame:frame];
         self.lastDrawnFrameSerial = drawSerial;
     }
+    self.lastEnhancementFrameTimeMs = enhancementFrameTimeMs;
     CFTimeInterval now = CACurrentMediaTime();
     if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
         self.lastDiagnosticsUpdateTime = now;
@@ -1364,164 +1447,15 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
                                               OPN::OPNNSStringToString(renderMode),
                                               OPN::OPNNSStringToString(frameSource),
                                               OPN::OPNNSStringToString(renderPath),
-                                              OPN::OPNNSStringToString(fallback));
+                                              OPN::OPNNSStringToString(fallback),
+                                              OPN::OPNNSStringToString(enhancementConfiguredTier),
+                                              OPN::OPNNSStringToString(enhancementActiveTier),
+                                              OPN::OPNNSStringToString(enhancementFallbackReason),
+                                              OPN::OPNNSStringToString(enhancementSourceResolution),
+                                              OPN::OPNNSStringToString(enhancementDrawableResolution),
+                                              enhancementFrameTimeMs,
+                                              self.enhancementDroppedFrameCount);
     }
-}
-
-- (BOOL)drawProcessedFrame:(RTCVideoFrame *)frame renderPath:(NSString **)renderPath fallback:(NSString **)fallback {
-    if (!frame || !self.ciContext || !self.commandQueue || !self.metalView.currentDrawable) {
-        if (fallback) *fallback = @"processed renderer missing Metal drawable";
-        return NO;
-    }
-    int enhancementMode = 0;
-    int sharpness = 0;
-    int denoise = 0;
-    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, sharpness, denoise);
-    if (enhancementMode <= 0 || (sharpness <= 0 && denoise <= 0)) return NO;
-
-    CVPixelBufferRef temporaryPixelBuffer = nil;
-    CIImage *image = [self imageForFrame:frame temporaryPixelBuffer:&temporaryPixelBuffer];
-    if (!image) {
-        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
-        if (fallback) *fallback = @"processed renderer could not create CIImage";
-        return NO;
-    }
-
-    CGRect sourceExtent = image.extent;
-    if (CGRectIsEmpty(sourceExtent) || sourceExtent.size.width <= 0.0 || sourceExtent.size.height <= 0.0) {
-        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
-        if (fallback) *fallback = @"processed renderer got empty frame";
-        return NO;
-    }
-
-    if (denoise > 0) {
-        CIFilter *noiseReduction = [CIFilter filterWithName:@"CINoiseReduction"];
-        [noiseReduction setDefaults];
-        [noiseReduction setValue:image forKey:kCIInputImageKey];
-        [noiseReduction setValue:@(0.01 + ((double)denoise / 10.0) * 0.055) forKey:@"inputNoiseLevel"];
-        [noiseReduction setValue:@(0.20 + ((double)sharpness / 10.0) * 0.25) forKey:@"inputSharpness"];
-        image = noiseReduction.outputImage ?: image;
-    }
-
-    id<CAMetalDrawable> drawable = self.metalView.currentDrawable;
-    CGSize drawableSize = self.metalView.drawableSize;
-    if (!drawable || drawableSize.width <= 0.0 || drawableSize.height <= 0.0) {
-        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
-        if (fallback) *fallback = @"processed renderer got empty drawable";
-        return NO;
-    }
-
-    const CGFloat scale = MIN(drawableSize.width / sourceExtent.size.width, drawableSize.height / sourceExtent.size.height);
-    if (scale > 0.0 && std::isfinite((double)scale)) {
-        CIFilter *lanczos = [CIFilter filterWithName:@"CILanczosScaleTransform"];
-        [lanczos setDefaults];
-        [lanczos setValue:image forKey:kCIInputImageKey];
-        [lanczos setValue:@(scale) forKey:kCIInputScaleKey];
-        [lanczos setValue:@1.0 forKey:kCIInputAspectRatioKey];
-        image = lanczos.outputImage ?: [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-    }
-
-    if (sharpness > 0) {
-        CIFilter *unsharp = [CIFilter filterWithName:@"CIUnsharpMask"];
-        [unsharp setDefaults];
-        [unsharp setValue:image forKey:kCIInputImageKey];
-        [unsharp setValue:@(0.45 + ((double)sharpness / 10.0) * 1.0) forKey:kCIInputIntensityKey];
-        [unsharp setValue:@(0.55 + ((double)sharpness / 10.0) * 1.15) forKey:kCIInputRadiusKey];
-        image = unsharp.outputImage ?: image;
-    }
-
-    CGRect scaledExtent = image.extent;
-    CGFloat x = floor((drawableSize.width - scaledExtent.size.width) * 0.5 - scaledExtent.origin.x);
-    CGFloat y = floor((drawableSize.height - scaledExtent.size.height) * 0.5 - scaledExtent.origin.y);
-    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(x, y)];
-
-    id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
-    if (!commandBuffer) {
-        if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
-        if (fallback) *fallback = @"processed renderer could not create command buffer";
-        return NO;
-    }
-
-    MTLRenderPassDescriptor *clearPass = [MTLRenderPassDescriptor renderPassDescriptor];
-    clearPass.colorAttachments[0].texture = drawable.texture;
-    clearPass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    clearPass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    clearPass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-    id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:clearPass];
-    [encoder endEncoding];
-
-    CGRect outputBounds = CGRectMake(0.0, 0.0, drawableSize.width, drawableSize.height);
-    [self.ciContext render:image
-              toMTLTexture:drawable.texture
-             commandBuffer:commandBuffer
-                    bounds:outputBounds
-                colorSpace:self.outputColorSpace];
-    [commandBuffer presentDrawable:drawable];
-    [commandBuffer commit];
-    if (temporaryPixelBuffer) CVPixelBufferRelease(temporaryPixelBuffer);
-    if (renderPath) *renderPath = @"OPNCoreImageMetalUpscaler";
-    return YES;
-}
-
-- (CIImage *)imageForFrame:(RTCVideoFrame *)frame temporaryPixelBuffer:(CVPixelBufferRef *)temporaryPixelBuffer {
-    if (!frame) return nil;
-    id<RTCVideoFrameBuffer> buffer = frame.buffer;
-    if ([buffer isKindOfClass:RTCCVPixelBuffer.class]) {
-        RTCCVPixelBuffer *cvBuffer = (RTCCVPixelBuffer *)buffer;
-        CIImage *image = [CIImage imageWithCVPixelBuffer:cvBuffer.pixelBuffer];
-        if (cvBuffer.requiresCropping) {
-            CGRect crop = CGRectMake(cvBuffer.cropX, cvBuffer.cropY, cvBuffer.cropWidth, cvBuffer.cropHeight);
-            image = [[image imageByCroppingToRect:crop] imageByApplyingTransform:CGAffineTransformMakeTranslation(-crop.origin.x, -crop.origin.y)];
-        }
-        return image;
-    }
-
-    CVPixelBufferRef pixelBuffer = [self newBGRAFallbackPixelBufferForI420Frame:frame];
-    if (!pixelBuffer) return nil;
-    if (temporaryPixelBuffer) *temporaryPixelBuffer = pixelBuffer;
-    return [CIImage imageWithCVPixelBuffer:pixelBuffer];
-}
-
-- (CVPixelBufferRef)newBGRAFallbackPixelBufferForI420Frame:(RTCVideoFrame *)frame {
-    RTCVideoFrame *i420Frame = [frame newI420VideoFrame];
-    id<RTCI420Buffer> i420 = (id<RTCI420Buffer>)i420Frame.buffer;
-    if (!i420 || i420.width <= 0 || i420.height <= 0) return nil;
-
-    NSDictionary *attributes = @{(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES};
-    CVPixelBufferRef output = nil;
-    CVReturn result = CVPixelBufferCreate(kCFAllocatorDefault,
-                                          (size_t)i420.width,
-                                          (size_t)i420.height,
-                                          kCVPixelFormatType_32BGRA,
-                                          (__bridge CFDictionaryRef)attributes,
-                                          &output);
-    if (result != kCVReturnSuccess || !output) return nil;
-
-    CVPixelBufferLockBaseAddress(output, 0);
-    uint8_t *dst = (uint8_t *)CVPixelBufferGetBaseAddress(output);
-    const size_t dstStride = CVPixelBufferGetBytesPerRow(output);
-    for (int y = 0; y < i420.height; y++) {
-        uint8_t *row = dst + (size_t)y * dstStride;
-        const uint8_t *yRow = i420.dataY + y * i420.strideY;
-        const uint8_t *uRow = i420.dataU + (y / 2) * i420.strideU;
-        const uint8_t *vRow = i420.dataV + (y / 2) * i420.strideV;
-        for (int x = 0; x < i420.width; x++) {
-            int yy = (int)yRow[x];
-            int uu = (int)uRow[x / 2] - 128;
-            int vv = (int)vRow[x / 2] - 128;
-            int r = yy + (int)std::lround(1.402 * vv);
-            int g = yy - (int)std::lround(0.344136 * uu + 0.714136 * vv);
-            int b = yy + (int)std::lround(1.772 * uu);
-            row[x * 4 + 0] = (uint8_t)std::max(0, std::min(255, b));
-            row[x * 4 + 1] = (uint8_t)std::max(0, std::min(255, g));
-            row[x * 4 + 2] = (uint8_t)std::max(0, std::min(255, r));
-            row[x * 4 + 3] = 255;
-        }
-    }
-    CVPixelBufferUnlockBaseAddress(output, 0);
-    return output;
 }
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size {
@@ -1861,6 +1795,13 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.videoFrameSource = "pending";
         m_latestStats.videoRenderPath = "pending";
         m_latestStats.videoRendererFallback = "";
+        m_latestStats.videoEnhancementConfiguredTier = "pending";
+        m_latestStats.videoEnhancementActiveTier = "pending";
+        m_latestStats.videoEnhancementFallbackReason = "";
+        m_latestStats.videoEnhancementSourceResolution = "pending";
+        m_latestStats.videoEnhancementDrawableResolution = "pending";
+        m_latestStats.videoEnhancementFrameTimeMs = -1.0;
+        m_latestStats.videoEnhancementDroppedFrames = 0;
         m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
         m_lastStatsRequestMs = 0;
@@ -2313,6 +2254,11 @@ void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, i
     m_localEnhancementDenoise = std::max(0, std::min(denoise, 10));
 }
 
+void LibWebRTCStreamSession::SetEnhancedVideoFrameCaptureEnabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_enhancedVideoFrameCaptureEnabled = enabled;
+}
+
 void LibWebRTCStreamSession::UpdateAdaptiveBitrate(const StreamStats &stats) {
     if (!stats.available) return;
 
@@ -2378,6 +2324,10 @@ void LibWebRTCStreamSession::OnVideoFrame(VideoFrameCallback cb) {
     m_onVideoFrame = std::move(cb);
 }
 
+void LibWebRTCStreamSession::OnEnhancedVideoFrame(VideoFrameCallback cb) {
+    m_onEnhancedVideoFrame = std::move(cb);
+}
+
 void LibWebRTCStreamSession::OnGameAudioFrame(GameAudioFrameCallback cb) {
     m_onGameAudioFrame = std::move(cb);
 }
@@ -2398,6 +2348,15 @@ void LibWebRTCStreamSession::HandleVideoFrame(void *frame) {
     (void)frame;
 #endif
     if (m_onVideoFrame) m_onVideoFrame(frame);
+}
+
+void LibWebRTCStreamSession::HandleEnhancedVideoFrame(void *pixelBuffer) {
+    if (m_onEnhancedVideoFrame) m_onEnhancedVideoFrame(pixelBuffer);
+}
+
+bool LibWebRTCStreamSession::WantsEnhancedVideoFrames() const {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    return m_enhancedVideoFrameCaptureEnabled && (bool)m_onEnhancedVideoFrame;
 }
 
 void LibWebRTCStreamSession::HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
@@ -3036,13 +2995,27 @@ void LibWebRTCStreamSession::SetVideoRenderDiagnostics(const std::string &pixelF
                                                        const std::string &renderMode,
                                                        const std::string &frameSource,
                                                        const std::string &renderPath,
-                                                       const std::string &fallback) {
+                                                       const std::string &fallback,
+                                                       const std::string &enhancementConfiguredTier,
+                                                       const std::string &enhancementActiveTier,
+                                                       const std::string &enhancementFallbackReason,
+                                                       const std::string &enhancementSourceResolution,
+                                                       const std::string &enhancementDrawableResolution,
+                                                       double enhancementFrameTimeMs,
+                                                       uint64_t enhancementDroppedFrames) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_latestStats.videoPixelFormat = pixelFormat;
     m_latestStats.videoRenderMode = renderMode;
     m_latestStats.videoFrameSource = frameSource;
     m_latestStats.videoRenderPath = renderPath;
     m_latestStats.videoRendererFallback = fallback;
+    m_latestStats.videoEnhancementConfiguredTier = enhancementConfiguredTier;
+    m_latestStats.videoEnhancementActiveTier = enhancementActiveTier;
+    m_latestStats.videoEnhancementFallbackReason = enhancementFallbackReason;
+    m_latestStats.videoEnhancementSourceResolution = enhancementSourceResolution;
+    m_latestStats.videoEnhancementDrawableResolution = enhancementDrawableResolution;
+    m_latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs;
+    m_latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames;
 }
 
 void LibWebRTCStreamSession::StartInputHeartbeat() {

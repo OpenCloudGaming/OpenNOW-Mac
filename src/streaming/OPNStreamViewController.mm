@@ -54,6 +54,7 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
                     fps:(NSInteger)fps
               renderFps:(double)renderFps
                   codec:(NSString *)codec
+            enhancement:(NSString *)enhancement
         framesDropped:(uint64_t)framesDropped;
 @end
 
@@ -808,6 +809,7 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
                     fps:(NSInteger)fps
               renderFps:(double)renderFps
                   codec:(NSString *)codec
+            enhancement:(NSString *)enhancement
              framesDropped:(uint64_t)framesDropped {
     NSString *latencyText = latencyMs >= 0 ? [NSString stringWithFormat:@"%ld ms", (long)latencyMs] : @"measuring";
     NSString *bitrateText = bitrateMbps >= 0.0 ? [NSString stringWithFormat:@"%.1f Mbps", bitrateMbps] : @"--";
@@ -822,13 +824,15 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
         streamText = [NSString stringWithFormat:@"%@/%@", streamText, codec];
     }
     NSString *renderText = renderFps >= 0.0 ? [NSString stringWithFormat:@"%.0f fps", renderFps] : @"-- fps";
+    NSString *enhancementText = enhancement.length > 0 ? enhancement : @"enh --";
     NSString *dropText = framesDropped > 0 ? [NSString stringWithFormat:@"drop %llu", (unsigned long long)framesDropped] : @"drop 0";
     NSString *lossText = packetsLost > 0 ? [NSString stringWithFormat:@"loss %lld", (long long)packetsLost] : @"loss 0";
-    NSString *statsText = [NSString stringWithFormat:@"%@ | %@ | %@ | %@ | %@ | %@",
+    NSString *statsText = [NSString stringWithFormat:@"%@ | %@ | %@ | %@ | %@ | %@ | %@",
                            latencyText,
                            bitrateText,
                            streamText,
                            renderText,
+                           enhancementText,
                            dropText,
                            lossText];
     _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(statsText);
@@ -1527,6 +1531,16 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     int64_t packetsLost = stats.available ? stats.packetsLost : -1;
     NSString *resolution = [NSString stringWithUTF8String:stats.resolution.c_str()];
     NSString *codec = [NSString stringWithUTF8String:stats.codec.c_str()];
+    NSString *enhancement = @"";
+    if (!stats.videoEnhancementActiveTier.empty()) {
+        NSString *activeTier = [NSString stringWithUTF8String:stats.videoEnhancementActiveTier.c_str()];
+        NSString *drawable = [NSString stringWithUTF8String:stats.videoEnhancementDrawableResolution.c_str()];
+        if (stats.videoEnhancementFrameTimeMs >= 0.0) {
+            enhancement = [NSString stringWithFormat:@"enh %@ %@ %.1fms", activeTier, drawable, stats.videoEnhancementFrameTimeMs];
+        } else {
+            enhancement = [NSString stringWithFormat:@"enh %@ %@", activeTier, drawable];
+        }
+    }
     [self.statsOverlay updateLatencyMs:latencyMs
                             bitrateMbps:stats.inboundBitrateMbps
                            packetsLost:packetsLost
@@ -1534,7 +1548,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                      fps:stats.fps
                                renderFps:stats.renderFps
                                      codec:codec
-                             framesDropped:stats.framesDropped];
+                               enhancement:enhancement
+                              framesDropped:stats.framesDropped];
 }
 
 - (void)startStatsRefreshTimer {
