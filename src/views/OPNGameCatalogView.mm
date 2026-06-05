@@ -2,6 +2,7 @@
 #import "OPNLoadingView.h"
 #import "../common/OPNColorTokens.h"
 #include "../common/OPNSentry.h"
+#include "../common/OPNGameRemediation.h"
 #import "../common/OPNUIHelpers.h"
 #import <GameController/GameController.h>
 #include <QuartzCore/QuartzCore.h>
@@ -1280,7 +1281,7 @@ static int OPNStoreSelectedLibraryVariantIndex(const OPN::GameInfo &libraryGame)
 }
 
 static bool OPNStoreVariantIsOwned(const OPN::GameVariant &variant) {
-    return OPNStoreVariantIsLibrarySelected(variant);
+    return OPN::GameVariantOwnedForLaunch(variant);
 }
 
 static bool OPNStoreVariantIsNotOwned(const OPN::GameVariant &variant) {
@@ -1290,6 +1291,11 @@ static bool OPNStoreVariantIsNotOwned(const OPN::GameVariant &variant) {
 static const OPN::GameVariant *OPNStoreVariantAtIndex(const OPN::GameInfo &game, int variantIndex) {
     if (variantIndex < 0 || variantIndex >= (int)game.variants.size()) return nullptr;
     return &game.variants[(size_t)variantIndex];
+}
+
+static bool OPNStoreVariantCanBeMarkedUnowned(const OPN::GameInfo &game, int variantIndex) {
+    const OPN::GameVariant *variant = OPNStoreVariantAtIndex(game, variantIndex);
+    return variant && !variant->id.empty() && OPNStoreVariantIsOwned(*variant);
 }
 
 static bool OPNStoreGameNeedsPurchase(const OPN::GameInfo &game, int variantIndex) {
@@ -1314,6 +1320,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) NSTimeInterval imageRevealDelay;
 @property (nonatomic, copy) void (^onSelect)(void);
 @property (nonatomic, copy) void (^onBuy)(NSString *purchaseURL);
+@property (nonatomic, copy) void (^onMarkUnowned)(void);
 @property (nonatomic, copy) void (^onHover)(void);
 - (instancetype)initWithFrame:(NSRect)frame game:(const OPN::GameInfo &)game prominent:(BOOL)prominent;
 - (void)setStoreFocused:(BOOL)focused;
@@ -1612,6 +1619,23 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 
 - (void)selectPressed {
     if (self.onSelect) self.onSelect();
+}
+
+- (void)markUnownedPressed:(id)sender {
+    (void)sender;
+    if (self.onMarkUnowned) self.onMarkUnowned();
+}
+
+- (NSMenu *)menuForEvent:(NSEvent *)event {
+    (void)event;
+    if (!OPNStoreVariantCanBeMarkedUnowned(_gameData, self.selectedVariantIndex)) return nil;
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Game Actions"];
+    NSMenuItem *markUnownedItem = [[NSMenuItem alloc] initWithTitle:@"Mark Selected Store as Unowned"
+                                                             action:@selector(markUnownedPressed:)
+                                                      keyEquivalent:@""];
+    markUnownedItem.target = self;
+    [menu addItem:markUnownedItem];
+    return menu;
 }
 
 - (void)activate {
@@ -2978,6 +3002,13 @@ using namespace OPN;
             if (!strongSelf || !strongCard || !strongSelf.onBuyGame) return;
             int variantIndex = strongCard.selectedVariantIndex >= 0 ? strongCard.selectedVariantIndex : 0;
             strongSelf.onBuyGame(strongCard.game, variantIndex, purchaseURL ?: @"");
+        };
+        card.onMarkUnowned = ^{
+            __typeof__(self) strongSelf = weakSelf;
+            OPNStoreGameTile *strongCard = weakCard;
+            if (!strongSelf || !strongCard || !strongSelf.onMarkGameUnowned) return;
+            int variantIndex = strongCard.selectedVariantIndex >= 0 ? strongCard.selectedVariantIndex : 0;
+            strongSelf.onMarkGameUnowned(strongCard.game, variantIndex);
         };
         NSInteger hoverRowIndex = self.rowCards.count;
         NSInteger hoverColumnIndex = column;

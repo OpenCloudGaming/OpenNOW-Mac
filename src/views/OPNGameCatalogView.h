@@ -6,6 +6,7 @@
 
 @property (nonatomic, copy) void (^onSelectGame)(const OPN::GameInfo &game, int variantIndex);
 @property (nonatomic, copy) void (^onBuyGame)(const OPN::GameInfo &game, int variantIndex, NSString *purchaseURL);
+@property (nonatomic, copy) void (^onMarkGameUnowned)(const OPN::GameInfo &game, int variantIndex);
 @property (nonatomic, copy) void (^onSignOut)();
 @property (nonatomic, copy) void (^onGameCountChanged)(NSInteger count);
 @property (nonatomic, copy) void (^onCatalogBrowseRequested)(NSString *searchQuery, NSString *sortId, const std::vector<std::string> &filterIds);

@@ -31,6 +31,13 @@
 #include <unordered_set>
 #include "common/OPNSentry.h"
 
+struct OPNSyncObservation {
+    bool hasData = false;
+    int totalNumberOfSyncedGfnGames = 0;
+    std::string syncState;
+    std::string syncDate;
+};
+
 @interface AppDelegate ()
 @property (nonatomic, strong) OPNBackdropView *rootView;
 @property (nonatomic, strong) OPNGameCatalogView *catalogView;
@@ -60,6 +67,7 @@
 @property (nonatomic, strong) NSView *ownershipSyncOverlayView;
 @property (nonatomic, strong) NSTextField *ownershipSyncTitleLabel;
 @property (nonatomic, strong) NSTextField *ownershipSyncMessageLabel;
+@property (nonatomic, strong) NSTextField *ownershipSyncFooterLabel;
 @property (nonatomic, strong) NSProgressIndicator *ownershipSyncSpinner;
 @property (nonatomic, assign) NSInteger catalogBrowseGeneration;
 @property (nonatomic, assign) BOOL activeSessionResumeInFlight;
@@ -133,6 +141,7 @@
 - (void)refreshOwnershipAuthWithCompletion:(void (^)(BOOL refreshed))completion;
 - (void)showOwnershipSyncProgressForGameTitle:(NSString *)gameTitle storeName:(NSString *)storeName;
 - (void)updateOwnershipSyncProgressMessage:(NSString *)message;
+- (void)updateOwnershipSyncProgressFooter:(NSString *)footer;
 - (void)dismissOwnershipSyncProgress;
 - (BOOL)presentOwnershipRemediationIfNeededForGame:(const OPN::GameInfo &)game
                                        variantIndex:(int)variantIndex
@@ -145,9 +154,27 @@
                        storeDefinitions:(const std::vector<OPN::StoreDefinition> &)storeDefinitions
                             userAccount:(const OPN::UserAccountInfo &)userAccount
                         continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)autoResyncOwnershipForGame:(const OPN::GameInfo &)game
+                       variantIndex:(int)variantIndex
+                      returnScreen:(OPN::AuthScreen)returnScreen
+                            stores:(const std::vector<std::string> &)stores
+                  storeDefinitions:(const std::vector<OPN::StoreDefinition> &)storeDefinitions
+                     retryingAuth:(BOOL)retryingAuth
+                   continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)monitorAutoResyncOwnershipForGame:(const OPN::GameInfo &)game
+                             variantIndex:(int)variantIndex
+                          returnScreen:(OPN::AuthScreen)returnScreen
+                                  stores:(const std::vector<std::string> &)stores
+                              baselines:(const std::vector<OPNSyncObservation> &)baselines
+                             deadlineAt:(NSDate *)deadlineAt
+                                 attempt:(NSInteger)attempt
+                         continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler
+                         fallbackHandler:(void (^)(void))fallbackHandler;
 - (void)markVariantOwnedForGame:(const OPN::GameInfo &)game
                     variantIndex:(int)variantIndex
                  continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
+- (void)markVariantUnownedForGame:(const OPN::GameInfo &)game
+                      variantIndex:(int)variantIndex;
 - (void)syncOwnershipForGame:(const OPN::GameInfo &)game
                  variantIndex:(int)variantIndex
                         store:(const std::string &)store
@@ -161,8 +188,15 @@
            continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler;
 - (void)refreshLibraryAfterOwnershipChangeForGame:(const OPN::GameInfo &)game
                                      variantIndex:(int)variantIndex
-                                       requireGame:(BOOL)requireGame
-                                       completion:(void (^)(BOOL ownedAfterRefresh))completion;
+                                        requireGame:(BOOL)requireGame
+                                        completion:(void (^)(BOOL ownedAfterRefresh))completion;
+- (void)monitorOwnershipSyncForGame:(const OPN::GameInfo &)game
+                        variantIndex:(int)variantIndex
+                               store:(const std::string &)store
+                            baseline:(const OPNSyncObservation &)baseline
+                          deadlineAt:(NSDate *)deadlineAt
+                              attempt:(NSInteger)attempt
+                           completion:(void (^)(BOOL ownedAfterRefresh, NSString *failureMessage))completion;
 - (void)startStreamWithTitle:(const std::string &)title
                        appId:(const std::string &)appId
                     apiToken:(const std::string &)apiToken
@@ -427,6 +461,111 @@ static bool OPNIsUnauthorizedError(const std::string &error) {
     return error.find("401") != std::string::npos;
 }
 
+static constexpr NSTimeInterval OPNOwnershipSyncMonitorTimeoutSeconds = 15.0;
+static constexpr NSTimeInterval OPNOwnershipSyncPollIntervalSeconds = 3.0;
+
+static bool OPNSyncStateSucceeded(const std::string &syncState) {
+    return syncState == "SYNC_SUCCESS";
+}
+
+static bool OPNSyncStateFailed(const std::string &syncState) {
+    return syncState == "SYNC_DENIED" || syncState == "PROFILE_NOT_CREATED" || syncState == "SYNC_FAILED";
+}
+
+static bool OPNSyncObservationChanged(const OPNSyncObservation &current, const OPNSyncObservation &baseline) {
+    if (!current.hasData || !baseline.hasData) return false;
+    return current.syncState != baseline.syncState ||
+        current.syncDate != baseline.syncDate ||
+        current.totalNumberOfSyncedGfnGames != baseline.totalNumberOfSyncedGfnGames;
+}
+
+static bool OPNSyncObservationHasFreshState(const OPNSyncObservation &current, const OPNSyncObservation &baseline) {
+    if (!current.hasData) return false;
+    if (!baseline.hasData) return false;
+    return OPNSyncObservationChanged(current, baseline);
+}
+
+static bool OPNStoreStringEquals(const std::string &lhs, const std::string &rhs);
+static const OPN::StoreAccountInfo *OPNStoreAccountForStore(const OPN::UserAccountInfo &accountInfo,
+                                                            const std::string &store);
+
+static OPNSyncObservation OPNSyncObservationForStore(const OPN::UserAccountInfo &accountInfo,
+                                                     const std::string &store) {
+    OPNSyncObservation observation;
+    const OPN::StoreAccountInfo *account = OPNStoreAccountForStore(accountInfo, store);
+    if (!account || !account->hasAccountSyncingData) return observation;
+    observation.hasData = true;
+    observation.totalNumberOfSyncedGfnGames = account->syncing.totalNumberOfSyncedGfnGames;
+    observation.syncState = account->syncing.syncState;
+    observation.syncDate = account->syncing.syncDate;
+    return observation;
+}
+
+static std::vector<OPNSyncObservation> OPNSyncObservationsForStores(const OPN::UserAccountInfo &accountInfo,
+                                                                    const std::vector<std::string> &stores) {
+    std::vector<OPNSyncObservation> observations;
+    observations.reserve(stores.size());
+    for (const std::string &store : stores) {
+        observations.push_back(OPNSyncObservationForStore(accountInfo, store));
+    }
+    return observations;
+}
+
+static const OPNSyncObservation *OPNSyncObservationForStoreInList(const std::vector<std::string> &stores,
+                                                                  const std::vector<OPNSyncObservation> &observations,
+                                                                  const std::string &store) {
+    for (size_t i = 0; i < stores.size() && i < observations.size(); i++) {
+        if (OPNStoreStringEquals(stores[i], store)) return &observations[i];
+    }
+    return nullptr;
+}
+
+static NSTimeInterval OPNSyncRemainingSeconds(NSDate *deadlineAt) {
+    if (!deadlineAt) return 0.0;
+    return MAX(0.0, [deadlineAt timeIntervalSinceNow]);
+}
+
+static NSString *OPNSyncRemainingFooter(NSDate *deadlineAt) {
+    NSTimeInterval remaining = OPNSyncRemainingSeconds(deadlineAt);
+    if (remaining <= 0.0) return @"Doing one final library refresh.";
+    return [NSString stringWithFormat:@"About %.0fs left before showing manual options.", ceil(remaining)];
+}
+
+static NSString *OPNSyncProgressMessage(const OPNSyncObservation &current,
+                                        const OPNSyncObservation &baseline,
+                                        NSString *storeName,
+                                        NSDate *deadlineAt,
+                                        NSInteger attempt) {
+    NSString *displayStore = storeName.length > 0 ? storeName : @"the selected store";
+    NSInteger displayAttempt = MAX((NSInteger)1, attempt + 1);
+    bool fresh = OPNSyncObservationHasFreshState(current, baseline);
+    if (fresh && OPNSyncStateSucceeded(current.syncState)) {
+        return [NSString stringWithFormat:@"%@ sync finished. Checking if this game is now in your library...", displayStore];
+    }
+    if (fresh && OPNSyncStateFailed(current.syncState)) {
+        return [NSString stringWithFormat:@"%@ reported a sync problem. Refreshing once more before showing options...", displayStore];
+    }
+    NSTimeInterval remaining = OPNSyncRemainingSeconds(deadlineAt);
+    if (remaining > 0.0) {
+        return [NSString stringWithFormat:@"Waiting for %@ to update your GeForce NOW library... (%ld)", displayStore, (long)displayAttempt];
+    }
+    return [NSString stringWithFormat:@"Refreshing %@ library data one final time...", displayStore];
+}
+
+static NSString *OPNSyncFailureMessage(const std::string &syncState, NSString *storeName) {
+    NSString *displayStore = storeName.length > 0 ? storeName : @"the selected store";
+    if (syncState == "SYNC_DENIED") {
+        return [NSString stringWithFormat:@"GeForce NOW could not sync %@ because the store account denied library access. Check your store privacy or connection settings, then try again.", displayStore];
+    }
+    if (syncState == "PROFILE_NOT_CREATED") {
+        return [NSString stringWithFormat:@"GeForce NOW could not sync %@ because the store profile is not ready or could not be found. Open the store profile, then try again.", displayStore];
+    }
+    if (syncState == "SYNC_FAILED") {
+        return [NSString stringWithFormat:@"GeForce NOW reported that %@ library sync failed. Try syncing again or open the store to check the account connection.", displayStore];
+    }
+    return [NSString stringWithFormat:@"GeForce NOW did not report a successful %@ library sync before the timeout.", displayStore];
+}
+
 static bool OPNChooseAccountLinked(const OPN::GameInfo &game, const OPN::GameVariant *selectedVariant) {
     if (game.playType == "INSTALL_TO_PLAY") return false;
     if (selectedVariant) return OPN::GameVariantOwnedForLaunch(*selectedVariant);
@@ -493,13 +632,72 @@ static bool OPNStoreAccountConnected(const OPN::StoreAccountInfo *accountInfo) {
     return accountInfo != nullptr && !accountInfo->store.empty();
 }
 
+static bool OPNStoreVectorContains(const std::vector<std::string> &stores, const std::string &store) {
+    for (const std::string &candidate : stores) {
+        if (OPNStoreStringEquals(candidate, store)) return true;
+    }
+    return false;
+}
+
+static bool OPNGameMatchesRequested(const OPN::GameInfo &game, const OPN::GameInfo &requestedGame) {
+    return (!requestedGame.id.empty() && game.id == requestedGame.id) ||
+        (!requestedGame.uuid.empty() && game.uuid == requestedGame.uuid);
+}
+
+static const OPN::GameInfo *OPNFindMatchingGame(const std::vector<OPN::GameInfo> &games,
+                                                const OPN::GameInfo &requestedGame) {
+    for (const OPN::GameInfo &game : games) {
+        if (OPNGameMatchesRequested(game, requestedGame)) return &game;
+    }
+    return nullptr;
+}
+
+static int OPNSelectedOwnedVariantIndex(const OPN::GameInfo &game,
+                                        const OPN::GameVariant &requestedVariant) {
+    for (size_t i = 0; i < game.variants.size(); i++) {
+        const OPN::GameVariant &variant = game.variants[i];
+        bool sameVariant = (!requestedVariant.id.empty() && variant.id == requestedVariant.id) ||
+            (!requestedVariant.appStore.empty() && OPNStoreStringEquals(variant.appStore, requestedVariant.appStore));
+        if (sameVariant && OPN::GameVariantOwnedForLaunch(variant)) return (int)i;
+    }
+    return -1;
+}
+
+static std::vector<std::string> OPNAutoResyncStoresForGame(const OPN::GameInfo &game,
+                                                           const std::vector<OPN::StoreDefinition> &definitions,
+                                                           const OPN::UserAccountInfo &accountInfo) {
+    std::vector<std::string> stores;
+    for (const OPN::GameVariant &variant : game.variants) {
+        if (variant.appStore.empty()) continue;
+        const OPN::StoreDefinition *definition = OPNStoreDefinitionForStore(definitions, variant.appStore);
+        if (!OPNStoreFeatureSupported(definition, "AccountGamesSyncing")) continue;
+        if (!OPNStoreDefinitionSupportsVariant(definition, variant.id)) continue;
+        const OPN::StoreAccountInfo *account = OPNStoreAccountForStore(accountInfo, variant.appStore);
+        if (!OPNStoreAccountConnected(account)) continue;
+        if (!OPNStoreVectorContains(stores, variant.appStore)) stores.push_back(variant.appStore);
+    }
+    return stores;
+}
+
+static NSString *OPNStoreListDisplayName(const std::vector<std::string> &stores) {
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (const std::string &store : stores) {
+        NSString *name = [NSString stringWithUTF8String:OPN::GameStoreDisplayName(store).c_str()];
+        if (name.length > 0) [names addObject:name];
+    }
+    if (names.count == 0) return @"connected stores";
+    if (names.count == 1) return names.firstObject;
+    if (names.count == 2) return [NSString stringWithFormat:@"%@ and %@", names[0], names[1]];
+    NSString *lastName = names.lastObject;
+    NSArray<NSString *> *leadingNames = [names subarrayWithRange:NSMakeRange(0, names.count - 1)];
+    return [NSString stringWithFormat:@"%@, and %@", [leadingNames componentsJoinedByString:@", "], lastName];
+}
+
 static bool OPNLibraryContainsOwnedVariant(const std::vector<OPN::GameInfo> &games,
                                            const OPN::GameInfo &requestedGame,
                                            const OPN::GameVariant &requestedVariant) {
     for (const OPN::GameInfo &game : games) {
-        bool sameGame = (!requestedGame.id.empty() && game.id == requestedGame.id) ||
-            (!requestedGame.uuid.empty() && game.uuid == requestedGame.uuid);
-        if (!sameGame) continue;
+        if (!OPNGameMatchesRequested(game, requestedGame)) continue;
         if (game.isInLibrary && requestedVariant.id.empty()) return true;
         for (const OPN::GameVariant &variant : game.variants) {
             bool sameVariant = (!requestedVariant.id.empty() && variant.id == requestedVariant.id) ||
@@ -1804,12 +2002,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         messageLabel.maximumNumberOfLines = 2;
         [panel addSubview:messageLabel];
 
-        NSTextField *footerLabel = OpnLabel(@"This usually takes about 15 seconds.", NSMakeRect(36.0, 24.0, panelWidth - 72.0, 18.0), 11.0, OpnColor(0x8E969F), NSFontWeightRegular, NSTextAlignmentCenter);
+        NSTextField *footerLabel = OpnLabel(@"Waiting for GeForce NOW library updates.", NSMakeRect(36.0, 24.0, panelWidth - 72.0, 18.0), 11.0, OpnColor(0x8E969F), NSFontWeightRegular, NSTextAlignmentCenter);
         [panel addSubview:footerLabel];
 
         self.ownershipSyncOverlayView = overlay;
         self.ownershipSyncTitleLabel = titleLabel;
         self.ownershipSyncMessageLabel = messageLabel;
+        self.ownershipSyncFooterLabel = footerLabel;
         self.ownershipSyncSpinner = spinner;
         OpnDisableFocusHighlights(overlay);
     }
@@ -1818,6 +2017,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     NSString *title = gameTitle.length > 0 ? gameTitle : @"this game";
     NSString *store = storeName.length > 0 ? storeName : @"the selected store";
     [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Asking GeForce NOW to sync %@ for %@.", store, title]];
+    [self updateOwnershipSyncProgressFooter:@"Waiting for GeForce NOW library updates."];
 
     if (self.ownershipSyncOverlayView.superview != parentView) {
         [self.ownershipSyncOverlayView removeFromSuperview];
@@ -1830,12 +2030,17 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.ownershipSyncMessageLabel.stringValue = message.length > 0 ? message : @"Syncing your store library...";
 }
 
+- (void)updateOwnershipSyncProgressFooter:(NSString *)footer {
+    self.ownershipSyncFooterLabel.stringValue = footer.length > 0 ? footer : @"Waiting for GeForce NOW library updates.";
+}
+
 - (void)dismissOwnershipSyncProgress {
     [self.ownershipSyncSpinner stopAnimation:nil];
     [self.ownershipSyncOverlayView removeFromSuperview];
     self.ownershipSyncOverlayView = nil;
     self.ownershipSyncTitleLabel = nil;
     self.ownershipSyncMessageLabel = nil;
+    self.ownershipSyncFooterLabel = nil;
     self.ownershipSyncSpinner = nil;
 }
 
@@ -2041,6 +2246,21 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             if (!accountSelf) return;
             UserAccountInfo accountCopy = accountOK ? accountInfo : UserAccountInfo{};
             if (!accountOK) OPN::LogError(@"[AppDelegate] User account unavailable for ownership flow: %s", accountError.c_str());
+            const GameVariant *selectedVariant = OPNVariantAtIndex(gameCopy, variantIndexCopy);
+            std::vector<std::string> autoResyncStores;
+            if (selectedVariant && !GameVariantOwnedForLaunch(*selectedVariant)) {
+                autoResyncStores = OPNAutoResyncStoresForGame(gameCopy, definitionsCopy, accountCopy);
+            }
+            if (!autoResyncStores.empty()) {
+                [accountSelf autoResyncOwnershipForGame:gameCopy
+                                           variantIndex:variantIndexCopy
+                                          returnScreen:returnScreen
+                                                stores:autoResyncStores
+                                      storeDefinitions:definitionsCopy
+                                          retryingAuth:NO
+                                       continueHandler:continueHandler];
+                return;
+            }
             [accountSelf presentOwnershipOptionsForGame:gameCopy
                                            variantIndex:variantIndexCopy
                                            returnScreen:returnScreen
@@ -2116,8 +2336,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [alert addButtonWithTitle:@"Link Account"];
         [actions addObject:@(OwnershipActionLink)];
     } else if (connected && syncSupported) {
-        NSString *persona = account && !account->userDisplayName.empty() ? [NSString stringWithUTF8String:account->userDisplayName.c_str()] : @"your linked account";
-        alert.informativeText = [NSString stringWithFormat:@"%@ is not marked as owned for %@. Sync %@ through GeForce NOW to refresh ownership from %@.", gameTitle, storeName, persona, storeName];
+        alert.informativeText = [NSString stringWithFormat:@"%@ is not marked as owned for %@. Sync your %@ library through GeForce NOW to refresh ownership.", gameTitle, storeName, storeName];
         [alert addButtonWithTitle:@"Sync Library"];
         [actions addObject:@(OwnershipActionSync)];
     } else {
@@ -2156,6 +2375,236 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             [strongSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
         }
     }];
+}
+
+- (void)autoResyncOwnershipForGame:(const OPN::GameInfo &)game
+                       variantIndex:(int)variantIndex
+                      returnScreen:(OPN::AuthScreen)returnScreen
+                            stores:(const std::vector<std::string> &)stores
+                  storeDefinitions:(const std::vector<OPN::StoreDefinition> &)storeDefinitions
+                     retryingAuth:(BOOL)retryingAuth
+                   continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler {
+    using namespace OPN;
+    if (stores.empty()) return;
+
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::vector<std::string> storesCopy = stores;
+    std::vector<StoreDefinition> definitionsCopy = storeDefinitions;
+    NSString *gameTitle = game.title.empty() ? @"Selected Game" : [NSString stringWithUTF8String:game.title.c_str()];
+    NSString *storeListName = OPNStoreListDisplayName(storesCopy);
+
+    [self showOwnershipSyncProgressForGameTitle:gameTitle storeName:storeListName];
+    self.ownershipSyncTitleLabel.stringValue = @"Checking Connected Libraries";
+    NSString *action = retryingAuth ? @"Retrying" : @"Asking";
+    [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"%@ GeForce NOW to sync %@ before showing ownership options.", action, storeListName]];
+
+    __weak __typeof__(self) weakSelf = self;
+    void (^fallbackToOptions)(void) = [^{
+        __typeof__(self) fallbackSelf = weakSelf;
+        if (!fallbackSelf) return;
+        [fallbackSelf dismissOwnershipSyncProgress];
+        GameService::Shared().FetchUserAccount([weakSelf, gameCopy, variantIndexCopy, returnScreen, definitionsCopy, continueHandler](bool accountOK, const UserAccountInfo &accountInfo, const std::string &accountError) {
+            __typeof__(self) accountSelf = weakSelf;
+            if (!accountSelf) return;
+            UserAccountInfo accountCopy = accountOK ? accountInfo : UserAccountInfo{};
+            if (!accountOK) OPN::LogError(@"[AppDelegate] User account unavailable after auto-resync: %s", accountError.c_str());
+            [accountSelf presentOwnershipOptionsForGame:gameCopy
+                                           variantIndex:variantIndexCopy
+                                           returnScreen:returnScreen
+                                       storeDefinitions:definitionsCopy
+                                            userAccount:accountCopy
+                                        continueHandler:continueHandler];
+        });
+    } copy];
+
+    [self updateOwnershipSyncProgressFooter:@"Reading connected-store sync state..."];
+    GameService::Shared().FetchUserAccount([weakSelf, gameCopy, variantIndexCopy, returnScreen, storesCopy, definitionsCopy, retryingAuth, fallbackToOptions, continueHandler](bool baselineOK, const UserAccountInfo &baselineAccount, const std::string &baselineError) {
+        __typeof__(self) baselineSelf = weakSelf;
+        if (!baselineSelf) return;
+        std::vector<OPNSyncObservation> baselines = baselineOK ? OPNSyncObservationsForStores(baselineAccount, storesCopy) : std::vector<OPNSyncObservation>(storesCopy.size());
+        if (!baselineOK) OPN::LogError(@"[AppDelegate] User account unavailable before auto-resync baseline: %s", baselineError.c_str());
+        [baselineSelf updateOwnershipSyncProgressFooter:@"Sending sync requests to GeForce NOW..."];
+
+    struct AutoResyncState {
+        bool anySyncAccepted = false;
+        bool unauthorized = false;
+        std::string firstError;
+    };
+    auto syncState = std::make_shared<AutoResyncState>();
+    dispatch_group_t syncGroup = dispatch_group_create();
+    for (const std::string &store : storesCopy) {
+        dispatch_group_enter(syncGroup);
+        GameService::Shared().SyncAccountProvider(store, [syncState, syncGroup, store](bool success, const std::string &error) {
+            if (success) {
+                syncState->anySyncAccepted = true;
+            } else {
+                if (syncState->firstError.empty()) syncState->firstError = error;
+                if (OPNIsUnauthorizedError(error)) syncState->unauthorized = true;
+                OPN::LogError(@"[AppDelegate] Auto-resync request failed for %s: %s", store.c_str(), error.c_str());
+            }
+            dispatch_group_leave(syncGroup);
+        });
+    }
+
+    dispatch_group_notify(syncGroup, dispatch_get_main_queue(), ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (syncState->unauthorized && !retryingAuth) {
+            [strongSelf updateOwnershipSyncProgressMessage:@"Refreshing your GeForce NOW sign-in, then retrying connected-library sync..."];
+            [strongSelf refreshOwnershipAuthWithCompletion:^(BOOL) {
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                [retrySelf autoResyncOwnershipForGame:gameCopy
+                                         variantIndex:variantIndexCopy
+                                        returnScreen:returnScreen
+                                              stores:storesCopy
+                                    storeDefinitions:definitionsCopy
+                                       retryingAuth:YES
+                                     continueHandler:continueHandler];
+            }];
+            return;
+        }
+        if (!syncState->anySyncAccepted) {
+            if (!syncState->firstError.empty()) {
+                OPN::LogError(@"[AppDelegate] Auto-resync could not start for any connected store: %s", syncState->firstError.c_str());
+            }
+            if (fallbackToOptions) fallbackToOptions();
+            return;
+        }
+
+        [strongSelf updateOwnershipSyncProgressMessage:@"GeForce NOW accepted connected-library sync. Monitoring refreshed library data..."];
+        NSDate *deadlineAt = [NSDate dateWithTimeIntervalSinceNow:OPNOwnershipSyncMonitorTimeoutSeconds];
+        [strongSelf monitorAutoResyncOwnershipForGame:gameCopy
+                                         variantIndex:variantIndexCopy
+                                        returnScreen:returnScreen
+                                              stores:storesCopy
+                                           baselines:baselines
+                                         deadlineAt:deadlineAt
+                                             attempt:0
+                                     continueHandler:continueHandler
+                                     fallbackHandler:fallbackToOptions];
+    });
+    });
+}
+
+- (void)monitorAutoResyncOwnershipForGame:(const OPN::GameInfo &)game
+                             variantIndex:(int)variantIndex
+                            returnScreen:(OPN::AuthScreen)returnScreen
+                                  stores:(const std::vector<std::string> &)stores
+                              baselines:(const std::vector<OPNSyncObservation> &)baselines
+                             deadlineAt:(NSDate *)deadlineAt
+                                 attempt:(NSInteger)attempt
+                         continueHandler:(void (^)(bool accountLinkedForLaunch))continueHandler
+                         fallbackHandler:(void (^)(void))fallbackHandler {
+    using namespace OPN;
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::vector<std::string> storesCopy = stores;
+    std::vector<OPNSyncObservation> baselinesCopy = baselines;
+    const GameVariant *selectedVariant = OPNVariantAtIndex(gameCopy, variantIndexCopy);
+    GameVariant requestedVariant = selectedVariant ? *selectedVariant : GameVariant{};
+    NSString *storeListName = OPNStoreListDisplayName(storesCopy);
+    NSInteger displayAttempt = MAX((NSInteger)1, attempt + 1);
+    [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Checking connected libraries after %@ sync... (%ld)", storeListName, (long)displayAttempt]];
+    [self updateOwnershipSyncProgressFooter:OPNSyncRemainingFooter(deadlineAt)];
+
+    __weak __typeof__(self) weakSelf = self;
+    GameService::Shared().FetchUserAccount([weakSelf, gameCopy, variantIndexCopy, returnScreen, storesCopy, baselinesCopy, requestedVariant, deadlineAt, attempt, continueHandler, fallbackHandler](bool accountOK, const UserAccountInfo &accountInfo, const std::string &accountError) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        NSString *freshFailureMessage = nil;
+        if (accountOK) {
+            for (const std::string &store : storesCopy) {
+                NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(store).c_str()] ?: @"the selected store";
+                const StoreAccountInfo *account = OPNStoreAccountForStore(accountInfo, store);
+                OPNSyncObservation currentObservation = OPNSyncObservationForStore(accountInfo, store);
+                const OPNSyncObservation *baseline = OPNSyncObservationForStoreInList(storesCopy, baselinesCopy, store);
+                OPNSyncObservation emptyBaseline;
+                const OPNSyncObservation &baselineObservation = baseline ? *baseline : emptyBaseline;
+                bool fresh = OPNSyncObservationHasFreshState(currentObservation, baselineObservation);
+                if (fresh && OPNSyncStateSucceeded(currentObservation.syncState)) {
+                    [strongSelf updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"%@ sync finished. Checking if this game is now in your library...", storeName]];
+                }
+                if (fresh && OPNSyncStateFailed(currentObservation.syncState) && freshFailureMessage.length == 0) {
+                    freshFailureMessage = OPNSyncFailureMessage(currentObservation.syncState, storeName);
+                }
+                if (account && !account->syncing.syncState.empty() && !OPNSyncStateSucceeded(account->syncing.syncState)) {
+                    OPN::LogError(@"[AppDelegate] Auto-resync state for %s: %s", store.c_str(), account->syncing.syncState.c_str());
+                }
+            }
+            [strongSelf updateOwnershipSyncProgressFooter:OPNSyncRemainingFooter(deadlineAt)];
+        } else {
+            OPN::LogError(@"[AppDelegate] User account unavailable while monitoring auto-resync: %s", accountError.c_str());
+        }
+
+        std::string accountIdentifier = OPNAuthSessionIdentifier(strongSelf.currentSession);
+        [strongSelf fetchGameLibraryWithRetry:YES completion:^(BOOL success, const std::vector<GameInfo> &games) {
+            __typeof__(self) resultSelf = weakSelf;
+            if (!resultSelf) return;
+
+            const GameInfo *refreshedGame = nullptr;
+            int selectedOwnedIndex = -1;
+            int firstOwnedIndex = -1;
+            if (success && accountIdentifier == OPNAuthSessionIdentifier(resultSelf.currentSession)) {
+                std::string fingerprint = OPNGameLibraryFingerprint(games);
+                resultSelf.cachedGameLibrary = games;
+                resultSelf.cachedGameLibraryFingerprint = fingerprint;
+                resultSelf.cachedGameLibraryAccountIdentifier = accountIdentifier;
+                resultSelf.hasCachedGameLibrary = YES;
+                if (resultSelf.currentScreen == AuthScreen::Catalog && resultSelf.catalogView) {
+                    [resultSelf.catalogView setGames:games];
+                } else if (resultSelf.currentScreen == AuthScreen::Store && resultSelf.storeView) {
+                    [resultSelf.storeView setLibraryGames:games];
+                }
+
+                refreshedGame = OPNFindMatchingGame(games, gameCopy);
+                if (refreshedGame) {
+                    selectedOwnedIndex = OPNSelectedOwnedVariantIndex(*refreshedGame, requestedVariant);
+                    firstOwnedIndex = OPNFirstOwnedVariantIndex(*refreshedGame, -1);
+                }
+            }
+
+            if (selectedOwnedIndex >= 0) {
+                [resultSelf dismissOwnershipSyncProgress];
+                if (continueHandler) continueHandler(true);
+                return;
+            }
+            if (refreshedGame && firstOwnedIndex >= 0) {
+                GameInfo refreshedCopy = *refreshedGame;
+                [resultSelf dismissOwnershipSyncProgress];
+                [resultSelf launchGame:refreshedCopy variantIndex:firstOwnedIndex returnScreen:returnScreen];
+                return;
+            }
+
+            if (freshFailureMessage.length > 0) {
+                OPN::LogError(@"[AppDelegate] Auto-resync fresh failure: %@", freshFailureMessage);
+                if (fallbackHandler) fallbackHandler();
+                return;
+            }
+
+            BOOL timedOut = deadlineAt && [deadlineAt timeIntervalSinceNow] <= 0.0;
+            if (timedOut) {
+                OPN::LogInfo(@"[AppDelegate] Auto-resync did not find ownership before timeout for title=%@", OPNAppStringFromStdString(gameCopy.title, @""));
+                if (fallbackHandler) fallbackHandler();
+                return;
+            }
+
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(OPNOwnershipSyncPollIntervalSeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                [retrySelf monitorAutoResyncOwnershipForGame:gameCopy
+                                                variantIndex:variantIndexCopy
+                                               returnScreen:returnScreen
+                                                     stores:storesCopy
+                                                  baselines:baselinesCopy
+                                                deadlineAt:deadlineAt
+                                                    attempt:attempt + 1
+                                            continueHandler:continueHandler
+                                            fallbackHandler:fallbackHandler];
+            });
+        }];
+    });
 }
 
 - (void)markVariantOwnedForGame:(const OPN::GameInfo &)game
@@ -2198,6 +2647,63 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     });
 }
 
+- (void)markVariantUnownedForGame:(const OPN::GameInfo &)game
+                      variantIndex:(int)variantIndex {
+    using namespace OPN;
+    const GameVariant *variant = OPNVariantAtIndex(game, variantIndex);
+    if (!variant || variant->id.empty() || !GameVariantOwnedForLaunch(*variant)) {
+        NSBeep();
+        return;
+    }
+
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::string variantId = variant->id;
+    NSString *gameTitle = game.title.empty() ? @"Selected Game" : [NSString stringWithUTF8String:game.title.c_str()];
+    NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(variant->appStore).c_str()] ?: @"the selected store";
+
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.messageText = @"Mark Store Version as Unowned?";
+    confirm.informativeText = [NSString stringWithFormat:@"This removes the %@ version of %@ from your GeForce NOW library. You can add it again later by syncing your library or marking it as owned.", storeName, gameTitle];
+    [confirm addButtonWithTitle:@"Mark as Unowned"];
+    [confirm addButtonWithTitle:@"Cancel"];
+
+    __weak __typeof__(self) weakSelf = self;
+    [confirm beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || returnCode != NSAlertFirstButtonReturn) return;
+
+        [strongSelf showOwnershipSyncProgressForGameTitle:gameTitle storeName:storeName];
+        strongSelf.ownershipSyncTitleLabel.stringValue = @"Updating GeForce NOW Library";
+        [strongSelf updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Asking GeForce NOW to mark the %@ version as unowned.", storeName]];
+        [strongSelf updateOwnershipSyncProgressFooter:@"Refreshing library data after the update."];
+
+        GameService::Shared().RemoveOwnedVariant(variantId, [weakSelf, gameCopy, variantIndexCopy, storeName](bool success, const std::string &error) {
+            __typeof__(self) resultSelf = weakSelf;
+            if (!resultSelf) return;
+            if (!success) {
+                [resultSelf dismissOwnershipSyncProgress];
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Unable to Mark as Unowned";
+                alert.informativeText = error.empty() ? @"GeForce NOW did not accept the ownership update." : [NSString stringWithUTF8String:error.c_str()];
+                [alert addButtonWithTitle:@"OK"];
+                [alert beginSheetModalForWindow:resultSelf.window completionHandler:nil];
+                return;
+            }
+
+            [resultSelf updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"%@ was updated. Refreshing your GeForce NOW library...", storeName]];
+            [resultSelf refreshLibraryAfterOwnershipChangeForGame:gameCopy
+                                                     variantIndex:variantIndexCopy
+                                                       requireGame:NO
+                                                       completion:^(BOOL) {
+                __typeof__(self) refreshSelf = weakSelf;
+                if (!refreshSelf) return;
+                [refreshSelf dismissOwnershipSyncProgress];
+            }];
+        });
+    }];
+}
+
 - (void)syncOwnershipForGame:(const OPN::GameInfo &)game
                  variantIndex:(int)variantIndex
                         store:(const std::string &)store
@@ -2214,7 +2720,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Retrying %@ sync with a refreshed GeForce NOW session.", storeName]];
     }
     __weak __typeof__(self) weakSelf = self;
-    GameService::Shared().SyncAccountProvider(storeCopy, [weakSelf, gameCopy, variantIndexCopy, storeCopy, retryingAuth, continueHandler](bool success, const std::string &error) {
+    [self updateOwnershipSyncProgressFooter:@"Reading current store sync state..."];
+    GameService::Shared().FetchUserAccount([weakSelf, gameCopy, variantIndexCopy, storeCopy, retryingAuth, continueHandler](bool baselineOK, const UserAccountInfo &baselineAccount, const std::string &baselineError) {
+        __typeof__(self) baselineSelf = weakSelf;
+        if (!baselineSelf) return;
+        OPNSyncObservation baseline = baselineOK ? OPNSyncObservationForStore(baselineAccount, storeCopy) : OPNSyncObservation{};
+        if (!baselineOK) OPN::LogError(@"[AppDelegate] User account unavailable before sync baseline: %s", baselineError.c_str());
+        NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
+        [baselineSelf updateOwnershipSyncProgressFooter:@"Sending sync request to GeForce NOW..."];
+        if (!retryingAuth) {
+            [baselineSelf updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Asking GeForce NOW to sync %@ library ownership.", storeName]];
+        }
+    GameService::Shared().SyncAccountProvider(storeCopy, [weakSelf, gameCopy, variantIndexCopy, storeCopy, retryingAuth, baseline, continueHandler](bool success, const std::string &error) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         if (!success) {
@@ -2247,38 +2764,114 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             return;
         }
 
-        [strongSelf updateOwnershipSyncProgressMessage:@"GeForce NOW accepted the sync. Waiting for your store library to finish processing..."];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            __typeof__(self) refreshSelf = weakSelf;
-            if (!refreshSelf) return;
-            [refreshSelf updateOwnershipSyncProgressMessage:@"Refreshing OpenNOW with the latest GeForce NOW library data..."];
-            [refreshSelf refreshLibraryAfterOwnershipChangeForGame:gameCopy
-                                                      variantIndex:variantIndexCopy
-                                                        requireGame:YES
-                                                        completion:^(BOOL ownedAfterRefresh) {
-                __typeof__(self) resultSelf = weakSelf;
-                if (!resultSelf) return;
-                [resultSelf dismissOwnershipSyncProgress];
-                if (ownedAfterRefresh) {
-                    if (continueHandler) continueHandler(true);
-                    return;
-                }
+        [strongSelf updateOwnershipSyncProgressMessage:@"GeForce NOW accepted the sync. Monitoring store sync status..."];
+        NSDate *deadlineAt = [NSDate dateWithTimeIntervalSinceNow:OPNOwnershipSyncMonitorTimeoutSeconds];
+        [strongSelf monitorOwnershipSyncForGame:gameCopy
+                                   variantIndex:variantIndexCopy
+                                          store:storeCopy
+                                      baseline:baseline
+                                     deadlineAt:deadlineAt
+                                         attempt:0
+                                      completion:^(BOOL ownedAfterRefresh, NSString *failureMessage) {
+            __typeof__(self) resultSelf = weakSelf;
+            if (!resultSelf) return;
+            [resultSelf dismissOwnershipSyncProgress];
+            if (ownedAfterRefresh) {
+                if (continueHandler) continueHandler(true);
+                return;
+            }
 
-                NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
-                NSAlert *alert = [[NSAlert alloc] init];
-                alert.messageText = @"Game Not Found After Sync";
-                alert.informativeText = [NSString stringWithFormat:@"GeForce NOW synced %@, but this game still was not reported as owned. You can mark it as owned through GeForce NOW or open the store to check purchase/claim status.", storeName];
-                [alert addButtonWithTitle:@"Mark as Owned"];
-                [alert addButtonWithTitle:@"Open Store"];
-                [alert addButtonWithTitle:@"Cancel"];
-                [alert beginSheetModalForWindow:resultSelf.window completionHandler:^(NSModalResponse returnCode) {
-                    __typeof__(self) actionSelf = weakSelf;
-                    if (!actionSelf) return;
-                    if (returnCode == NSAlertFirstButtonReturn) [actionSelf markVariantOwnedForGame:gameCopy variantIndex:variantIndexCopy continueHandler:continueHandler];
-                    if (returnCode == NSAlertSecondButtonReturn) [actionSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
-                }];
+            NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = failureMessage.length > 0 ? @"Library Sync Failed" : @"Game Not Found After Sync";
+            alert.informativeText = failureMessage.length > 0
+                ? failureMessage
+                : [NSString stringWithFormat:@"GeForce NOW synced %@, but this game still was not reported as owned. You can mark it as owned through GeForce NOW or open the store to check purchase/claim status.", storeName];
+            [alert addButtonWithTitle:@"Mark as Owned"];
+            [alert addButtonWithTitle:@"Open Store"];
+            [alert addButtonWithTitle:@"Cancel"];
+            [alert beginSheetModalForWindow:resultSelf.window completionHandler:^(NSModalResponse returnCode) {
+                __typeof__(self) actionSelf = weakSelf;
+                if (!actionSelf) return;
+                if (returnCode == NSAlertFirstButtonReturn) [actionSelf markVariantOwnedForGame:gameCopy variantIndex:variantIndexCopy continueHandler:continueHandler];
+                if (returnCode == NSAlertSecondButtonReturn) [actionSelf openPurchaseURL:@"" forGame:gameCopy variantIndex:variantIndexCopy];
             }];
-        });
+        }];
+    });
+    });
+}
+
+- (void)monitorOwnershipSyncForGame:(const OPN::GameInfo &)game
+                        variantIndex:(int)variantIndex
+                               store:(const std::string &)store
+                            baseline:(const OPNSyncObservation &)baseline
+                          deadlineAt:(NSDate *)deadlineAt
+                              attempt:(NSInteger)attempt
+                           completion:(void (^)(BOOL ownedAfterRefresh, NSString *failureMessage))completion {
+    using namespace OPN;
+    GameInfo gameCopy = game;
+    int variantIndexCopy = variantIndex;
+    std::string storeCopy = store;
+    OPNSyncObservation baselineCopy = baseline;
+    NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
+    [self updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"Waiting for %@ to update your GeForce NOW library...", storeName]];
+    [self updateOwnershipSyncProgressFooter:OPNSyncRemainingFooter(deadlineAt)];
+
+    __weak __typeof__(self) weakSelf = self;
+    GameService::Shared().FetchUserAccount([weakSelf, gameCopy, variantIndexCopy, storeCopy, baselineCopy, deadlineAt, attempt, completion](bool accountOK, const UserAccountInfo &accountInfo, const std::string &accountError) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+
+        OPNSyncObservation currentObservation;
+        NSString *storeName = [NSString stringWithUTF8String:GameStoreDisplayName(storeCopy).c_str()] ?: @"the selected store";
+        if (accountOK) {
+            currentObservation = OPNSyncObservationForStore(accountInfo, storeCopy);
+            [strongSelf updateOwnershipSyncProgressMessage:OPNSyncProgressMessage(currentObservation, baselineCopy, storeName, deadlineAt, attempt)];
+            [strongSelf updateOwnershipSyncProgressFooter:OPNSyncRemainingFooter(deadlineAt)];
+        } else {
+            OPN::LogError(@"[AppDelegate] User account unavailable while monitoring sync: %s", accountError.c_str());
+        }
+
+        [strongSelf refreshLibraryAfterOwnershipChangeForGame:gameCopy
+                                                 variantIndex:variantIndexCopy
+                                                   requireGame:YES
+                                                   completion:^(BOOL ownedAfterRefresh) {
+            __typeof__(self) resultSelf = weakSelf;
+            if (!resultSelf) return;
+            if (ownedAfterRefresh) {
+                if (completion) completion(YES, nil);
+                return;
+            }
+
+            bool freshFailure = OPNSyncObservationHasFreshState(currentObservation, baselineCopy) && OPNSyncStateFailed(currentObservation.syncState);
+            if (freshFailure) {
+                NSString *failureMessage = OPNSyncFailureMessage(currentObservation.syncState, storeName);
+                if (completion) completion(NO, failureMessage);
+                return;
+            }
+
+            BOOL timedOut = deadlineAt && [deadlineAt timeIntervalSinceNow] <= 0.0;
+            if (timedOut) {
+                NSString *failureMessage = nil;
+                if (OPNSyncObservationHasFreshState(currentObservation, baselineCopy) && !OPNSyncStateSucceeded(currentObservation.syncState)) {
+                    failureMessage = OPNSyncFailureMessage(currentObservation.syncState, storeName);
+                }
+                if (completion) completion(NO, failureMessage);
+                return;
+            }
+
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(OPNOwnershipSyncPollIntervalSeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                __typeof__(self) retrySelf = weakSelf;
+                if (!retrySelf) return;
+                [retrySelf monitorOwnershipSyncForGame:gameCopy
+                                          variantIndex:variantIndexCopy
+                                                 store:storeCopy
+                                              baseline:baselineCopy
+                                            deadlineAt:deadlineAt
+                                                attempt:attempt + 1
+                                             completion:completion];
+            });
+        }];
     });
 }
 
@@ -2740,6 +3333,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     if (!strongSelf) return;
                     [strongSelf openPurchaseURL:purchaseURL forGame:game variantIndex:variantIndex];
                 };
+                store.onMarkGameUnowned = ^(const GameInfo &game, int variantIndex) {
+                    __typeof__(self) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf markVariantUnownedForGame:game variantIndex:variantIndex];
+                };
                 store.onBackRequested = ^{
                     __typeof__(self) strongSelf = weakSelf;
                     if (!strongSelf) return;
@@ -2839,6 +3437,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf) return;
                 [strongSelf launchGame:game variantIndex:variantIndex returnScreen:AuthScreen::Catalog];
+            };
+
+            catalog.onMarkGameUnowned = ^(const GameInfo &game, int variantIndex) {
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [strongSelf markVariantUnownedForGame:game variantIndex:variantIndex];
             };
 
             catalog.onCatalogBrowseRequested = ^(NSString *searchQuery, NSString *sortId, const std::vector<std::string> &filterIds) {
