@@ -1069,7 +1069,6 @@ GameInfo GameService::parseGameItem(NSDictionary *app) {
                     gv.librarySelected = [sel isKindOfClass:[NSNumber class]] ? [sel boolValue] : false;
                     if (gv.librarySelected) gv.inLibrary = true;
                 }
-                { NSString *s = SafeStr(variantService[@"status"]); if (gv.serviceStatus.empty() && s) gv.serviceStatus = [s UTF8String]; }
             }
 
             if (!gv.appStore.empty() && gv.appStore != "UNKNOWN" && gv.appStore != "NONE") {
@@ -2199,6 +2198,7 @@ void GameService::FetchLibraryGames(CatalogCallback completion) {
                                         merged.description = g.description;
                                     if (merged.variants.empty())
                                         merged.variants = g.variants;
+                                    MergeMissingStoreMetadata(merged, g);
                                     merged.isInLibrary = g.isInLibrary;
                                     if (HasVisibleVariants(merged)) {
                                         enriched.push_back(merged);

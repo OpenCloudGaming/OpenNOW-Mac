@@ -1092,6 +1092,33 @@ static bool OPNStoreContainsStoreName(const std::vector<std::string> &stores, co
     return false;
 }
 
+static bool OPNStoreServiceStatusOwnedForLaunch(const std::string &status) {
+    return status == "MANUAL" || status == "PLATFORM_SYNC" || status == "IN_LIBRARY";
+}
+
+static bool OPNStoreClearGameOwnershipMetadata(OPN::GameInfo &game) {
+    bool changed = false;
+    if (game.isInLibrary) {
+        game.isInLibrary = false;
+        changed = true;
+    }
+    for (OPN::GameVariant &variant : game.variants) {
+        if (variant.inLibrary) {
+            variant.inLibrary = false;
+            changed = true;
+        }
+        if (variant.librarySelected) {
+            variant.librarySelected = false;
+            changed = true;
+        }
+        if (OPNStoreServiceStatusOwnedForLaunch(variant.serviceStatus)) {
+            variant.serviceStatus.clear();
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 static bool OPNStoreMergeGameStoreMetadata(OPN::GameInfo &target, const OPN::GameInfo &source) {
     bool changed = false;
     if (target.launchAppId.empty() && !source.launchAppId.empty()) {
@@ -1243,10 +1270,7 @@ static OPN::PanelSection OPNCatalogSingleLibrarySectionForGames(const std::vecto
 }
 
 static bool OPNStoreVariantIsLibrarySelected(const OPN::GameVariant &variant) {
-    return variant.librarySelected || variant.inLibrary ||
-           variant.serviceStatus == "MANUAL" ||
-           variant.serviceStatus == "PLATFORM_SYNC" ||
-           variant.serviceStatus == "IN_LIBRARY";
+    return variant.librarySelected || variant.inLibrary || OPNStoreServiceStatusOwnedForLaunch(variant.serviceStatus);
 }
 
 static bool OPNCatalogGameHasAccessibleVariants(const OPN::GameInfo &game) {
@@ -1833,6 +1857,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> ownedLibraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> featuredGames;
+@property (nonatomic, assign) BOOL hasLibraryState;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
 @property (nonatomic, strong) NSMutableArray<OPNStoreRowLayout *> *rowLayouts;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *heroImageLoadTokens;
@@ -2110,6 +2135,7 @@ using namespace OPN;
 - (void)setGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
     _ownedLibraryGames = games;
+    self.hasLibraryState = YES;
     std::vector<PanelResult> catalogPanels = OPNCatalogPanelsForGames(games);
     NSInteger gameCount = 0;
     for (const PanelResult &panel : catalogPanels) {
@@ -2177,6 +2203,7 @@ using namespace OPN;
 - (void)setLibraryGames:(const std::vector<OPN::GameInfo> &)games {
     _libraryGames = games;
     _ownedLibraryGames = games;
+    self.hasLibraryState = YES;
     [self mergeKnownStoreMetadataIntoPanels];
     _searchLibrarySnapshot = std::make_shared<const std::vector<GameInfo>>(_ownedLibraryGames);
     _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
@@ -2190,11 +2217,12 @@ using namespace OPN;
 }
 
 - (BOOL)mergeKnownStoreMetadataIntoPanels {
-    if (_panels.empty() || _libraryGames.empty()) return NO;
+    if (_panels.empty()) return NO;
     BOOL changed = NO;
     for (PanelResult &panel : _panels) {
         for (PanelSection &section : panel.sections) {
             for (GameInfo &storeGame : section.games) {
+                if (self.hasLibraryState && OPNStoreClearGameOwnershipMetadata(storeGame)) changed = YES;
                 for (const GameInfo &knownGame : _libraryGames) {
                     if (!OPNStoreGameMatchesLibraryGame(storeGame, knownGame)) continue;
                     if (OPNStoreMergeGameStoreMetadata(storeGame, knownGame)) changed = YES;

@@ -461,6 +461,10 @@ static bool OPNIsUnauthorizedError(const std::string &error) {
     return error.find("401") != std::string::npos;
 }
 
+static bool OPNIsNotFoundError(const std::string &error) {
+    return error.find("404") != std::string::npos;
+}
+
 static constexpr NSTimeInterval OPNOwnershipSyncMonitorTimeoutSeconds = 15.0;
 static constexpr NSTimeInterval OPNOwnershipSyncPollIntervalSeconds = 3.0;
 
@@ -2681,7 +2685,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         GameService::Shared().RemoveOwnedVariant(variantId, [weakSelf, gameCopy, variantIndexCopy, storeName](bool success, const std::string &error) {
             __typeof__(self) resultSelf = weakSelf;
             if (!resultSelf) return;
-            if (!success) {
+            BOOL alreadyUnowned = !success && OPNIsNotFoundError(error);
+            if (!success && !alreadyUnowned) {
                 [resultSelf dismissOwnershipSyncProgress];
                 NSAlert *alert = [[NSAlert alloc] init];
                 alert.messageText = @"Unable to Mark as Unowned";
@@ -2689,6 +2694,9 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 [alert addButtonWithTitle:@"OK"];
                 [alert beginSheetModalForWindow:resultSelf.window completionHandler:nil];
                 return;
+            }
+            if (alreadyUnowned) {
+                OPN::LogInfo(@"[AppDelegate] RemoveOwnedVariant reported already-unowned for %@", storeName);
             }
 
             [resultSelf updateOwnershipSyncProgressMessage:[NSString stringWithFormat:@"%@ was updated. Refreshing your GeForce NOW library...", storeName]];
