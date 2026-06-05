@@ -1055,7 +1055,6 @@ StreamSettings StreamSettingsByApplyingCloudVariables(StreamSettings settings,
     if (!variables.allowH265 && settings.codec == "H265") settings.codec = "H264";
     if (!variables.allowAV1 && settings.codec == "AV1") settings.codec = "H264";
     if (!variables.allowHDR || !capabilities.hdrDisplaySupported) settings.enableHdr = false;
-    if (!variables.allowL4S) settings.enableL4S = false;
     if (!variables.allowReflex) settings.enableReflex = false;
     if (variables.fetched && !variables.allowPrefilter) settings.prefilterMode = 0;
     if (settings.prefilterMode == 0) {

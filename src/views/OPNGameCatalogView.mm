@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
+#include <memory>
 
 static const CGFloat kStoreTopInset = 0.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
@@ -24,8 +26,12 @@ static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
 static const CGFloat kStoreButtonHintPillHeight = 40.0;
 static const CGFloat kStoreButtonHintPillBottomInset = 18.0;
+static const CGFloat kStoreSearchPanelMinWidth = 300.0;
+static const CGFloat kStoreSearchPanelMaxWidth = 420.0;
 static const CGFloat kStoreRailInertiaMinimumVelocity = 8.0;
 static const CGFloat kStoreRailInertiaResistancePerSecond = 0.035;
+static const NSInteger kStoreRailImagePreloadCardBuffer = 4;
+static const NSTimeInterval kStoreSearchDebounceInterval = 0.18;
 
 static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
@@ -249,6 +255,15 @@ static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
         return;
     }
 
+    if ([glyph isEqualToString:@"square"]) {
+        CGFloat inset = minSide * 0.25;
+        NSRect squareRect = NSInsetRect(circleRect, inset, inset);
+        NSBezierPath *path = [NSBezierPath bezierPathWithRect:squareRect];
+        path.lineWidth = 1.8;
+        [path stroke];
+        return;
+    }
+
     NSString *label = glyph.uppercaseString;
     NSDictionary<NSAttributedStringKey, id> *attributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:12.0 weight:NSFontWeightBlack],
@@ -439,6 +454,154 @@ static NSSize OPNStoreTileMetricsForRailWidth(CGFloat width) {
 
 static NSString *OPNStoreString(const std::string &value, NSString *fallback) {
     return value.empty() ? (fallback ?: @"") : [NSString stringWithUTF8String:value.c_str()];
+}
+
+static NSString *OPNStoreSearchNormalizedString(NSString *value) {
+    NSString *folded = [[value ?: @"" stringByFoldingWithOptions:NSDiacriticInsensitiveSearch | NSCaseInsensitiveSearch locale:NSLocale.currentLocale] lowercaseString];
+    NSMutableString *normalized = [NSMutableString stringWithCapacity:folded.length];
+    NSCharacterSet *alphanumeric = NSCharacterSet.alphanumericCharacterSet;
+    BOOL previousWasSpace = YES;
+    for (NSUInteger i = 0; i < folded.length; i++) {
+        unichar c = [folded characterAtIndex:i];
+        if ([alphanumeric characterIsMember:c]) {
+            [normalized appendFormat:@"%C", c];
+            previousWasSpace = NO;
+        } else if (!previousWasSpace) {
+            [normalized appendString:@" "];
+            previousWasSpace = YES;
+        }
+    }
+    return [normalized stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+}
+
+static NSArray<NSString *> *OPNStoreSearchTokens(NSString *normalized) {
+    if (normalized.length == 0) return @[];
+    NSArray<NSString *> *rawTokens = [normalized componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSMutableArray<NSString *> *tokens = [NSMutableArray array];
+    for (NSString *token in rawTokens) {
+        if (token.length > 0) [tokens addObject:token];
+    }
+    return tokens;
+}
+
+static NSString *OPNStoreSearchAcronym(NSArray<NSString *> *tokens) {
+    NSMutableString *acronym = [NSMutableString stringWithCapacity:tokens.count];
+    for (NSString *token in tokens) {
+        if (token.length > 0) [acronym appendString:[token substringToIndex:1]];
+    }
+    return acronym;
+}
+
+static BOOL OPNStoreSearchIsSubsequence(NSString *needle, NSString *haystack) {
+    if (needle.length == 0) return YES;
+    NSUInteger needleIndex = 0;
+    for (NSUInteger i = 0; i < haystack.length && needleIndex < needle.length; i++) {
+        if ([needle characterAtIndex:needleIndex] == [haystack characterAtIndex:i]) needleIndex++;
+    }
+    return needleIndex == needle.length;
+}
+
+static NSInteger OPNStoreSearchEditDistance(NSString *left, NSString *right, NSInteger limit) {
+    NSUInteger leftLength = left.length;
+    NSUInteger rightLength = right.length;
+    if (leftLength == 0) return (NSInteger)rightLength;
+    if (rightLength == 0) return (NSInteger)leftLength;
+    if (llabs((long long)leftLength - (long long)rightLength) > limit) return limit + 1;
+
+    std::vector<NSInteger> previous(rightLength + 1, 0);
+    std::vector<NSInteger> current(rightLength + 1, 0);
+    for (NSUInteger j = 0; j <= rightLength; j++) previous[j] = (NSInteger)j;
+    for (NSUInteger i = 1; i <= leftLength; i++) {
+        current[0] = (NSInteger)i;
+        NSInteger best = current[0];
+        unichar leftChar = [left characterAtIndex:i - 1];
+        for (NSUInteger j = 1; j <= rightLength; j++) {
+            NSInteger cost = leftChar == [right characterAtIndex:j - 1] ? 0 : 1;
+            current[j] = MIN(MIN(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + cost);
+            best = MIN(best, current[j]);
+        }
+        if (best > limit) return limit + 1;
+        std::swap(previous, current);
+    }
+    return previous[rightLength];
+}
+
+static NSInteger OPNStoreSearchTokenScore(NSString *queryToken, NSArray<NSString *> *titleTokens) {
+    NSInteger best = 0;
+    for (NSString *titleToken in titleTokens) {
+        if ([titleToken isEqualToString:queryToken]) best = MAX(best, 120);
+        else if ([titleToken hasPrefix:queryToken]) best = MAX(best, 95 - (NSInteger)MIN((NSUInteger)20, titleToken.length - queryToken.length));
+        else if ([titleToken containsString:queryToken]) best = MAX(best, 70);
+        else if (queryToken.length >= 3 && OPNStoreSearchIsSubsequence(queryToken, titleToken)) best = MAX(best, 48);
+        if (queryToken.length >= 4) {
+            NSInteger limit = queryToken.length <= 5 ? 1 : 2;
+            NSInteger distance = OPNStoreSearchEditDistance(queryToken, titleToken, limit);
+            if (distance <= limit) best = MAX(best, 58 - distance * 12);
+        }
+    }
+    return best;
+}
+
+static NSInteger OPNStoreSearchScoreForTitle(NSString *title, NSString *query) {
+    NSString *normalizedQuery = OPNStoreSearchNormalizedString(query);
+    if (normalizedQuery.length == 0) return 1;
+    NSString *normalizedTitle = OPNStoreSearchNormalizedString(title);
+    if (normalizedTitle.length == 0) return 0;
+    NSArray<NSString *> *queryTokens = OPNStoreSearchTokens(normalizedQuery);
+    NSArray<NSString *> *titleTokens = OPNStoreSearchTokens(normalizedTitle);
+    if (queryTokens.count == 0 || titleTokens.count == 0) return 0;
+
+    NSInteger score = 0;
+    if ([normalizedTitle isEqualToString:normalizedQuery]) score += 1200;
+    else if ([normalizedTitle hasPrefix:normalizedQuery]) score += 850;
+    else if ([normalizedTitle containsString:normalizedQuery]) score += 650;
+
+    NSString *titleAcronym = OPNStoreSearchAcronym(titleTokens);
+    NSString *queryAcronym = [normalizedQuery stringByReplacingOccurrencesOfString:@" " withString:@""];
+    if (queryAcronym.length > 1 && [titleAcronym hasPrefix:queryAcronym]) score += 420;
+
+    NSInteger tokenScore = 0;
+    for (NSString *queryToken in queryTokens) {
+        NSInteger best = OPNStoreSearchTokenScore(queryToken, titleTokens);
+        if (best <= 0) return score >= 650 ? score : 0;
+        tokenScore += best;
+    }
+    score += tokenScore;
+    score += MAX(0, 80 - (NSInteger)normalizedTitle.length);
+    return score;
+}
+
+static std::vector<OPN::GameInfo> OPNStoreSearchFilteredGames(const std::vector<OPN::GameInfo> &games, NSString *query) {
+    if (OPNStoreSearchNormalizedString(query).length == 0) return games;
+    std::vector<std::pair<NSInteger, OPN::GameInfo>> scored;
+    scored.reserve(games.size());
+    for (const OPN::GameInfo &game : games) {
+        NSInteger score = OPNStoreSearchScoreForTitle(OPNStoreString(game.title, @""), query);
+        if (score > 0) scored.push_back({score, game});
+    }
+    std::stable_sort(scored.begin(), scored.end(), [](const auto &left, const auto &right) {
+        return left.first > right.first;
+    });
+    std::vector<OPN::GameInfo> result;
+    result.reserve(scored.size());
+    for (const auto &entry : scored) result.push_back(entry.second);
+    return result;
+}
+
+static std::vector<OPN::PanelResult> OPNStoreSearchFilteredPanels(const std::vector<OPN::PanelResult> &panels, NSString *query) {
+    if (OPNStoreSearchNormalizedString(query).length == 0) return panels;
+    std::vector<OPN::PanelResult> filteredPanels;
+    for (const OPN::PanelResult &panel : panels) {
+        OPN::PanelResult filteredPanel = panel;
+        filteredPanel.sections.clear();
+        for (const OPN::PanelSection &section : panel.sections) {
+            OPN::PanelSection filteredSection = section;
+            filteredSection.games = OPNStoreSearchFilteredGames(section.games, query);
+            if (!filteredSection.games.empty()) filteredPanel.sections.push_back(filteredSection);
+        }
+        if (!filteredPanel.sections.empty()) filteredPanels.push_back(filteredPanel);
+    }
+    return filteredPanels;
 }
 
 static NSString *OPNStoreDisplayLabel(NSString *value) {
@@ -1168,6 +1331,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)setStoreFocused:(BOOL)focused;
 - (void)activate;
 - (void)cycleSelectedVariant;
+- (void)ensureImageLoaded;
 @end
 
 @interface OPNStoreGameTile ()
@@ -1192,6 +1356,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) BOOL pendingMouseSelection;
 @property (nonatomic, assign) BOOL draggingRail;
 @property (nonatomic, assign) NSPoint lastDragLocationInWindow;
+@property (nonatomic, assign) BOOL imageLoadRequested;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
 - (void)updateStoreIconSelection;
 @end
@@ -1338,7 +1503,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         [self addSubview:_playButton];
 
         self.selectedVariantIndex = _selectedVariantIndex;
-        [self loadImage];
+        self.imageView.image = OPNStoreFallbackArtworkImage();
         [self updateTrackingAreas];
     }
     return self;
@@ -1575,6 +1740,12 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     [self loadImageFromCandidates:candidates index:0];
 }
 
+- (void)ensureImageLoaded {
+    if (self.imageLoadRequested) return;
+    self.imageLoadRequested = YES;
+    [self loadImage];
+}
+
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index {
     NSUInteger generation = self.imageLoadGeneration;
     if (index >= urlStrings.count) {
@@ -1632,13 +1803,25 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @implementation OPNStoreRowLayout
 @end
 
-@interface OPNGameCatalogView ()
+@interface OPNGameCatalogView () <NSSearchFieldDelegate>
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) OPNStoreDocumentView *documentView;
 @property (nonatomic, strong) OPNLoadingView *loadingView;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, strong) OPNStoreHintPillView *buttonHintPillView;
 @property (nonatomic, strong) NSStackView *buttonHintStackView;
+@property (nonatomic, strong) NSView *searchPanelView;
+@property (nonatomic, strong) NSSearchField *searchField;
+@property (nonatomic, copy) NSString *searchQuery;
+@property (nonatomic, copy) NSString *completedSearchQuery;
+@property (nonatomic, assign) NSInteger searchGeneration;
+@property (nonatomic, assign) BOOL searchInFlight;
+@property (nonatomic, strong) NSTimer *searchDebounceTimer;
+@property (nonatomic, strong) dispatch_queue_t searchQueue;
+@property (nonatomic, assign) std::shared_ptr<const std::vector<OPN::GameInfo>> searchLibrarySnapshot;
+@property (nonatomic, assign) std::shared_ptr<const std::vector<OPN::PanelResult>> searchPanelsSnapshot;
+@property (nonatomic, assign) std::vector<OPN::GameInfo> filteredLibraryGames;
+@property (nonatomic, assign) std::vector<OPN::PanelResult> filteredPanels;
 @property (nonatomic, assign) std::vector<OPN::PanelResult> panels;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> libraryGames;
 @property (nonatomic, assign) std::vector<OPN::GameInfo> ownedLibraryGames;
@@ -1682,7 +1865,10 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)updateDesktopHeroFrameForCurrentBounds;
 - (void)updateRowFramesForCurrentBounds;
 - (void)updateRowVirtualizationForVisibleBounds;
+- (void)updateImagePreloadingForRowLayout:(OPNStoreRowLayout *)rowLayout;
+- (void)updateImagePreloadingForMountedRows;
 - (void)updateButtonHintPillFrame;
+- (void)updateSearchPanelFrame;
 - (void)rebuildButtonHintPillForCurrentController;
 - (void)updateDesktopHeroLogoFrame;
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
@@ -1696,6 +1882,8 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 - (void)refreshLibrarySelections;
 - (void)updateFocusedTiles;
 - (void)updateHeroTileOnly;
+- (void)scheduleAsyncSearchForCurrentQuery;
+- (void)performAsyncSearchTimerFired:(NSTimer *)timer;
 @end
 
 @implementation OPNGameCatalogView
@@ -1730,6 +1918,7 @@ using namespace OPN;
         _documentView = [[OPNStoreDocumentView alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(frame), NSHeight(frame))];
         _documentView.wantsLayer = YES;
         _scrollView.documentView = _documentView;
+        _scrollView.contentView.postsBoundsChangedNotifications = YES;
 
         _statusLabel = OpnLabel(@"", NSZeroRect, 15.0, OpnColor(kTextMuted), NSFontWeightMedium, NSTextAlignmentCenter);
         [self addSubview:_statusLabel];
@@ -1753,7 +1942,27 @@ using namespace OPN;
         _buttonHintStackView.spacing = 18.0;
         [_buttonHintPillView addSubview:_buttonHintStackView];
         _buttonHintControllerFamily = (OPNStoreControllerFamily)NSIntegerMin;
+        _searchQuery = @"";
+        _completedSearchQuery = @"";
+        _searchQueue = dispatch_queue_create("io.opencg.opennow.catalog-search", DISPATCH_QUEUE_SERIAL);
+        _searchLibrarySnapshot = std::make_shared<const std::vector<GameInfo>>(_ownedLibraryGames);
+        _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
         [self rebuildButtonHintPillForCurrentController];
+
+        _searchPanelView = [[NSView alloc] initWithFrame:NSZeroRect];
+        _searchPanelView.wantsLayer = YES;
+        _searchPanelView.layer.backgroundColor = OpnColor(kBlack, 0.64).CGColor;
+        _searchPanelView.layer.cornerRadius = 18.0;
+        _searchPanelView.layer.borderWidth = 1.0;
+        _searchPanelView.layer.borderColor = OpnColor(kBrandGreen, 0.34).CGColor;
+        [self addSubview:_searchPanelView positioned:NSWindowAbove relativeTo:nil];
+
+        _searchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
+        _searchField.placeholderString = @"Search library and store titles";
+        _searchField.delegate = self;
+        _searchField.focusRingType = NSFocusRingTypeNone;
+        _searchField.font = [NSFont systemFontOfSize:15.0 weight:NSFontWeightSemibold];
+        [_searchPanelView addSubview:_searchField];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(interfacePreferencesChanged:)
@@ -1794,6 +2003,7 @@ using namespace OPN;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.heroRotationTimer invalidate];
     [self.resizeRenderTimer invalidate];
+    [self.searchDebounceTimer invalidate];
     [self cancelHeroImageLoads];
 }
 
@@ -1805,6 +2015,23 @@ using namespace OPN;
 - (void)controllerConfigurationChanged:(NSNotification *)notification {
     (void)notification;
     [self rebuildButtonHintPillForCurrentController];
+}
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+    if (notification.object != self.searchField) return;
+    self.searchQuery = self.searchField.stringValue ?: @"";
+    self.searchGeneration++;
+    [self.searchDebounceTimer invalidate];
+    self.searchDebounceTimer = nil;
+    if (OPNStoreSearchNormalizedString(self.searchQuery).length > 0) {
+        self.searchDebounceTimer = [NSTimer scheduledTimerWithTimeInterval:kStoreSearchDebounceInterval
+                                                                     target:self
+                                                                   selector:@selector(performAsyncSearchTimerFired:)
+                                                                   userInfo:nil
+                                                                    repeats:NO];
+        return;
+    }
+    [self scheduleAsyncSearchForCurrentQuery];
 }
 
 - (void)removeButtonHintGroups {
@@ -1908,12 +2135,16 @@ using namespace OPN;
     if (self.hasContent && fingerprint == self.panelsFingerprint) {
         _panels = panels;
         [self mergeKnownStoreMetadataIntoPanels];
+        _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
+        if (OPNStoreSearchNormalizedString(self.searchQuery).length > 0) [self scheduleAsyncSearchForCurrentQuery];
         [self refreshLibrarySelections];
         return;
     }
     _panels = panels;
     self.panelsFingerprint = fingerprint;
     [self mergeKnownStoreMetadataIntoPanels];
+    _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
+    if (OPNStoreSearchNormalizedString(self.searchQuery).length > 0) [self scheduleAsyncSearchForCurrentQuery];
     self.currentHeroIndex = 0;
     self.initialHeroReady = NO;
     self.initialHeroPreloadInFlight = NO;
@@ -1940,6 +2171,9 @@ using namespace OPN;
     _libraryGames = games;
     _ownedLibraryGames = games;
     [self mergeKnownStoreMetadataIntoPanels];
+    _searchLibrarySnapshot = std::make_shared<const std::vector<GameInfo>>(_ownedLibraryGames);
+    _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
+    if (OPNStoreSearchNormalizedString(self.searchQuery).length > 0) [self scheduleAsyncSearchForCurrentQuery];
     if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) {
         [self refreshLibrarySelections];
         [self scheduleRenderStore];
@@ -2072,6 +2306,22 @@ using namespace OPN;
                                                 floor((kStoreButtonHintPillHeight - stackHeight) * 0.5),
                                                 stackWidth,
                                                 stackHeight);
+    [self updateSearchPanelFrame];
+}
+
+- (void)updateSearchPanelFrame {
+    if (!self.searchPanelView || !self.searchField) return;
+    CGFloat width = NSWidth(self.bounds);
+    CGFloat height = NSHeight(self.bounds);
+    CGFloat scale = height <= 760.0 ? 0.82 : (height < 900.0 ? 0.92 : 1.0);
+    CGFloat panelHeight = floor(44.0 * scale);
+    CGFloat availableWidth = MAX(kStoreSearchPanelMinWidth, width - 48.0);
+    CGFloat panelWidth = MIN(kStoreSearchPanelMaxWidth, availableWidth);
+    CGFloat x = floor((width - panelWidth) * 0.5);
+    CGFloat y = floor((140.0 * scale - panelHeight) * 0.5);
+    self.searchPanelView.frame = NSMakeRect(x, y, panelWidth, panelHeight);
+    self.searchPanelView.layer.cornerRadius = panelHeight * 0.5;
+    self.searchField.frame = NSMakeRect(14.0, floor((panelHeight - 30.0) * 0.5), panelWidth - 28.0, 30.0);
 }
 
 - (void)scheduleRenderStore {
@@ -2189,6 +2439,66 @@ using namespace OPN;
     if (self.heroImageLoadTokens.count > 12) [self.heroImageLoadTokens removeObjectsInRange:NSMakeRange(0, self.heroImageLoadTokens.count - 8)];
 }
 
+- (void)scheduleAsyncSearchForCurrentQuery {
+    [self.searchDebounceTimer invalidate];
+    self.searchDebounceTimer = nil;
+    NSString *query = self.searchQuery ?: @"";
+    NSString *normalizedQuery = OPNStoreSearchNormalizedString(query);
+    self.searchGeneration++;
+    NSInteger generation = self.searchGeneration;
+
+    if (normalizedQuery.length == 0) {
+        self.searchInFlight = NO;
+        self.completedSearchQuery = @"";
+        _filteredLibraryGames.clear();
+        _filteredPanels.clear();
+        self.currentHeroIndex = 0;
+        self.initialHeroReady = NO;
+        self.initialHeroPreloadInFlight = NO;
+        self.initialHeroPreloadGeneration++;
+        self.initialHeroImage = nil;
+        self.initialHeroIdentity = nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != self.searchGeneration) return;
+            [self renderStoreWhenInitialHeroReady];
+        });
+        return;
+    }
+
+    self.searchInFlight = YES;
+    std::shared_ptr<const std::vector<GameInfo>> libraryGames = _searchLibrarySnapshot ?: std::make_shared<const std::vector<GameInfo>>(_ownedLibraryGames);
+    std::shared_ptr<const std::vector<PanelResult>> panels = _searchPanelsSnapshot ?: std::make_shared<const std::vector<PanelResult>>(_panels);
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_async(self.searchQueue, ^{
+        std::vector<GameInfo> filteredLibraryGames = OPNStoreSearchFilteredGames(*libraryGames, query);
+        std::vector<PanelResult> filteredPanels = OPNStoreSearchFilteredPanels(*panels, query);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || generation != strongSelf.searchGeneration) return;
+            strongSelf.searchInFlight = NO;
+            strongSelf.completedSearchQuery = query;
+            strongSelf->_filteredLibraryGames = filteredLibraryGames;
+            strongSelf->_filteredPanels = filteredPanels;
+            strongSelf.currentHeroIndex = 0;
+            strongSelf.initialHeroReady = NO;
+            strongSelf.initialHeroPreloadInFlight = NO;
+            strongSelf.initialHeroPreloadGeneration++;
+            strongSelf.initialHeroImage = nil;
+            strongSelf.initialHeroIdentity = nil;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (generation != strongSelf.searchGeneration) return;
+                [strongSelf renderStoreWhenInitialHeroReady];
+            });
+        });
+    });
+}
+
+- (void)performAsyncSearchTimerFired:(NSTimer *)timer {
+    (void)timer;
+    self.searchDebounceTimer = nil;
+    [self scheduleAsyncSearchForCurrentQuery];
+}
+
 - (CGFloat)heroAspectForGame:(const GameInfo &)game {
     NSNumber *aspect = self.heroAspectByIdentity[OpnGameIdentityForHero(game)];
     return aspect.doubleValue > 0.0 ? aspect.doubleValue : kStoreFallbackHeroAspect;
@@ -2234,13 +2544,17 @@ using namespace OPN;
 
     CGFloat rowY = heroGame ? y + heroHeight + 48.0 : y;
     NSInteger renderedRows = 0;
-    PanelSection librarySection = OPNCatalogSingleLibrarySectionForGames(_ownedLibraryGames);
+    BOOL hasCompletedSearch = OPNStoreSearchNormalizedString(self.completedSearchQuery).length > 0;
+    const std::vector<GameInfo> &visibleLibraryGames = hasCompletedSearch ? _filteredLibraryGames : _ownedLibraryGames;
+    const std::vector<PanelResult> &visiblePanels = hasCompletedSearch ? _filteredPanels : _panels;
+
+    PanelSection librarySection = OPNCatalogSingleLibrarySectionForGames(visibleLibraryGames);
     if (!librarySection.games.empty()) {
         [self addSection:librarySection index:renderedRows y:rowY contentX:contentX width:width];
         rowY += kStoreRowHeight;
         renderedRows++;
     }
-    for (const PanelResult &panel : _panels) {
+    for (const PanelResult &panel : visiblePanels) {
         for (const PanelSection &section : panel.sections) {
             if (section.games.empty()) continue;
             [self addSection:section index:renderedRows y:rowY contentX:contentX width:width];
@@ -2417,6 +2731,7 @@ using namespace OPN;
             x += cardWidth + kStoreCardSpacing;
         }
         rowLayout.documentView.frame = NSMakeRect(0.0, 0.0, MAX(x + 24.0, NSWidth(rowLayout.scrollView.frame)), kStoreTileHeight + 30.0);
+        [self updateImagePreloadingForRowLayout:rowLayout];
         rowY += kStoreRowHeight;
     }
     if (self.rowLayouts.count > 0) {
@@ -2441,6 +2756,29 @@ using namespace OPN;
         rowLayout.titleLabel.hidden = !shouldMount;
         rowLayout.hintLabel.hidden = !shouldMount;
         rowLayout.scrollView.hidden = !shouldMount;
+        if (shouldMount) [self updateImagePreloadingForRowLayout:rowLayout];
+    }
+}
+
+- (void)updateImagePreloadingForMountedRows {
+    for (OPNStoreRowLayout *rowLayout in self.rowLayouts) {
+        if (!rowLayout.mounted) continue;
+        [self updateImagePreloadingForRowLayout:rowLayout];
+    }
+}
+
+- (void)updateImagePreloadingForRowLayout:(OPNStoreRowLayout *)rowLayout {
+    if (!rowLayout || !rowLayout.mounted || rowLayout.cards.count == 0) return;
+    NSRect visibleRect = rowLayout.scrollView.contentView.bounds;
+    CGFloat cardSpan = kStoreTileWidth + kStoreCardSpacing;
+    if (rowLayout.cards.count > 0) {
+        OPNStoreGameTile *firstCard = rowLayout.cards.firstObject;
+        cardSpan = MAX(1.0, NSWidth(firstCard.frame) + kStoreCardSpacing);
+    }
+    CGFloat horizontalBuffer = cardSpan * (CGFloat)kStoreRailImagePreloadCardBuffer;
+    NSRect preloadRect = NSInsetRect(visibleRect, -horizontalBuffer, 0.0);
+    for (OPNStoreGameTile *card in rowLayout.cards) {
+        if (NSIntersectsRect(card.frame, preloadRect)) [card ensureImageLoaded];
     }
 }
 
@@ -2621,6 +2959,11 @@ using namespace OPN;
     OPNStoreDocumentView *rowDocument = [[OPNStoreDocumentView alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(rowScroll.frame), kStoreTileHeight + 30.0)];
     rowDocument.wantsLayer = YES;
     rowScroll.documentView = rowDocument;
+    rowScroll.contentView.postsBoundsChangedNotifications = YES;
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(rowScrollViewBoundsDidChange:)
+                                                 name:NSViewBoundsDidChangeNotification
+                                               object:rowScroll.contentView];
 
     NSMutableArray<OPNStoreGameTile *> *cards = [NSMutableArray array];
     NSSize tileMetrics = OPNStoreTileMetricsForRailWidth(availableWidth);
@@ -2628,7 +2971,6 @@ using namespace OPN;
     CGFloat fittedTileHeight = tileMetrics.height;
     CGFloat x = 0.0;
     NSInteger column = 0;
-    NSInteger maxCards = 24;
     for (const GameInfo &game : section.games) {
         BOOL focused = NO;
         CGFloat cardWidth = focused ? fittedTileWidth + 28.0 : fittedTileWidth;
@@ -2668,7 +3010,6 @@ using namespace OPN;
         [cards addObject:card];
         x += cardWidth + kStoreCardSpacing;
         column++;
-        if (column >= maxCards) break;
     }
     rowDocument.frame = NSMakeRect(0, 0, MAX(x + 24.0, NSWidth(rowScroll.frame)), kStoreTileHeight + 30.0);
     [self.rowCards addObject:cards];
@@ -2685,6 +3026,7 @@ using namespace OPN;
     rowLayout.mounted = YES;
     [self.rowLayouts addObject:rowLayout];
     [self updateRowVirtualizationForVisibleBounds];
+    [self updateImagePreloadingForRowLayout:rowLayout];
 }
 
 - (void)updateFocusedTiles {
@@ -2764,8 +3106,6 @@ using namespace OPN;
             [self moveGamepadFocusByRows:-1 columns:0];
             return;
         case NSDownArrowFunctionKey:
-        case 's':
-        case 'S':
             [self moveGamepadFocusByRows:1 columns:0];
             return;
         case NSTabCharacter:
@@ -2789,10 +3129,19 @@ using namespace OPN;
 - (void)storeScrollViewBoundsDidChange:(NSNotification *)notification {
     if (notification.object != self.scrollView.contentView) return;
     [self updateRowVirtualizationForVisibleBounds];
+    [self updateImagePreloadingForMountedRows];
     for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
         for (OPNStoreGameTile *tile in row) {
             [tile resetMouseTrackingIfOutside];
         }
+    }
+}
+
+- (void)rowScrollViewBoundsDidChange:(NSNotification *)notification {
+    for (OPNStoreRowLayout *rowLayout in self.rowLayouts) {
+        if (notification.object != rowLayout.scrollView.contentView) continue;
+        [self updateImagePreloadingForRowLayout:rowLayout];
+        return;
     }
 }
 

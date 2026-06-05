@@ -617,7 +617,7 @@ TEST_CASE("CloudVariablesParseAndClampNativeSettings") {
     CHECK_EQ(applied.codec, "H264");
     CHECK_EQ(applied.maxBitrateMbps, 25);
     CHECK(!applied.enableHdr);
-    CHECK(!applied.enableL4S);
+    CHECK(applied.enableL4S);
     CHECK(!applied.enableReflex);
 }
 
