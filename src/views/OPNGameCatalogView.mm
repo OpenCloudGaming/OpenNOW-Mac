@@ -1607,9 +1607,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     self.layer.shadowRadius = focused ? 26.0 : 0.0;
     self.layer.shadowOffset = CGSizeZero;
     self.layer.zPosition = focused ? 10.0 : 0.0;
-    CATransform3D transform = CATransform3DIdentity;
-    if (focused) transform = CATransform3DScale(transform, self.prominent ? 1.020 : 1.055, self.prominent ? 1.020 : 1.055, 1.0);
-    self.layer.transform = transform;
+    self.layer.transform = CATransform3DIdentity;
     [CATransaction commit];
     self.playButton.hidden = !(self.prominent || focused);
 }
@@ -2758,12 +2756,8 @@ using namespace OPN;
         CGFloat fittedTileHeight = tileMetrics.height;
         CGFloat x = 0.0;
         for (OPNStoreGameTile *card in rowLayout.cards) {
-            BOOL focused = card.storeFocused;
-            CGFloat cardWidth = focused ? fittedTileWidth + 28.0 : fittedTileWidth;
-            CGFloat cardHeight = focused ? fittedTileHeight + 16.0 : fittedTileHeight;
-            CGFloat cardY = focused ? 0.0 : 10.0;
-            card.frame = NSMakeRect(x, cardY, cardWidth, cardHeight);
-            x += cardWidth + kStoreCardSpacing;
+            card.frame = NSMakeRect(x, 10.0, fittedTileWidth, fittedTileHeight);
+            x += fittedTileWidth + kStoreCardSpacing;
         }
         rowLayout.documentView.frame = NSMakeRect(0.0, 0.0, MAX(x + 24.0, NSWidth(rowLayout.scrollView.frame)), kStoreTileHeight + 30.0);
         [self updateImagePreloadingForRowLayout:rowLayout];
@@ -3007,14 +3001,10 @@ using namespace OPN;
     CGFloat x = 0.0;
     NSInteger column = 0;
     for (const GameInfo &game : section.games) {
-        BOOL focused = NO;
-        CGFloat cardWidth = focused ? fittedTileWidth + 28.0 : fittedTileWidth;
-        CGFloat cardHeight = focused ? fittedTileHeight + 16.0 : fittedTileHeight;
-        CGFloat cardY = focused ? 0.0 : 10.0;
-        OPNStoreGameTile *card = [[OPNStoreGameTile alloc] initWithFrame:NSMakeRect(x, cardY, cardWidth, cardHeight) game:game prominent:NO];
+        OPNStoreGameTile *card = [[OPNStoreGameTile alloc] initWithFrame:NSMakeRect(x, 10.0, fittedTileWidth, fittedTileHeight) game:game prominent:NO];
         card.imageRevealDelay = MIN(0.42, 0.035 * column + 0.025 * sectionIndex);
         card.selectedVariantIndex = [self selectedVariantIndexForStoreGame:game];
-        [card setStoreFocused:focused];
+        [card setStoreFocused:NO];
         __weak __typeof__(self) weakSelf = self;
         __weak OPNStoreGameTile *weakCard = card;
         card.onSelect = ^{
@@ -3050,7 +3040,7 @@ using namespace OPN;
         };
         [rowDocument addSubview:card];
         [cards addObject:card];
-        x += cardWidth + kStoreCardSpacing;
+        x += fittedTileWidth + kStoreCardSpacing;
         column++;
     }
     rowDocument.frame = NSMakeRect(0, 0, MAX(x + 24.0, NSWidth(rowScroll.frame)), kStoreTileHeight + 30.0);

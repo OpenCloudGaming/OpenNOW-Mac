@@ -88,6 +88,7 @@ private:
     void *m_statsQueue = nullptr;
     void *m_microphoneLevelTimer = nullptr;
     void *m_audioDeviceMonitorContext = nullptr;
+    std::shared_ptr<std::atomic_bool> m_callbackLiveness;
     std::atomic<bool> m_audioDeviceMonitoringActive{false};
     bool m_inputReady = false;
     bool m_reliableOpen = false;

@@ -148,6 +148,7 @@ int64_t AuthService::getIdTokenExpiry(NSString *idToken) {
     NSData *payloadData = [[NSData alloc] initWithBase64EncodedString:payload options:0];
     if (!payloadData) return 0;
     NSDictionary *claims = [NSJSONSerialization JSONObjectWithData:payloadData options:0 error:nil];
+    if (![claims isKindOfClass:NSDictionary.class]) return 0;
     if (!claims) return 0;
     NSNumber *exp = claims[@"exp"];
     return exp ? ([exp longLongValue] * 1000) : 0;
@@ -323,8 +324,21 @@ static void CompleteRefreshWithSession(AuthSession session, AuthCallback complet
 static int FindAvailablePort() {
     static const int candidatePorts[] = {2259, 6460, 7119, 8870, 9096};
     for (int port : candidatePorts) {
+        int probeSock = socket(AF_INET, SOCK_STREAM, 0);
+        if (probeSock >= 0) {
+            struct sockaddr_in probeAddr = {};
+            probeAddr.sin_family = AF_INET;
+            probeAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            probeAddr.sin_port = htons(port);
+            bool hasListener = connect(probeSock, (struct sockaddr *)&probeAddr, sizeof(probeAddr)) == 0;
+            close(probeSock);
+            if (hasListener) continue;
+        }
+
         int sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) continue;
+        int reuse = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
         struct sockaddr_in addr = {};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -345,8 +359,12 @@ void AuthService::RefreshSession(AuthCallback completion, bool forceRefresh) {
         return;
     }
 
-    if (!forceRefresh && session.IsAccessTokenValid() && ShouldRefreshClientToken(session)) {
-        CompleteRefreshWithSession(session, completion);
+    if (!forceRefresh && session.IsAccessTokenValid()) {
+        if (ShouldRefreshClientToken(session)) {
+            CompleteRefreshWithSession(session, completion);
+        } else {
+            completion(true, session, "");
+        }
         return;
     }
 
@@ -1116,12 +1134,17 @@ AuthSession AuthService::ParseOAuthSession(NSDictionary *json) {
             NSData *payloadData = [[NSData alloc] initWithBase64EncodedString:payload options:0];
             if (payloadData) {
                 NSDictionary *claims = [NSJSONSerialization JSONObjectWithData:payloadData options:0 error:nil];
+                if (![claims isKindOfClass:NSDictionary.class]) claims = nil;
+                if (claims) {
                 {
                     NSString *v = claims[@"sub"];
                     s.userId = v ? std::string([v UTF8String]) : std::string();
                 }
                 {
-                    NSString *v = [claims[@"preferred_username"] isKindOfClass:NSString.class] ? claims[@"preferred_username"] : nil;
+                    NSString *v = [claims[@"name"] isKindOfClass:NSString.class] ? claims[@"name"] : nil;
+                    if (v.length == 0) {
+                        v = [claims[@"preferred_username"] isKindOfClass:NSString.class] ? claims[@"preferred_username"] : nil;
+                    }
                     s.displayName = v ? std::string([v UTF8String]) : std::string();
                 }
                 {
@@ -1136,9 +1159,11 @@ AuthSession AuthService::ParseOAuthSession(NSDictionary *json) {
                     NSString *v = claims[@"idp_id"];
                     s.idpId = v ? std::string([v UTF8String]) : std::string();
                 }
+                }
             }
         }
     }
+    if (idToken && s.membershipTier.empty()) s.membershipTier = "Free";
     if (s.idpId.empty()) s.idpId = AuthService::kDefaultIdpId;
     if (s.expiresAt == 0) {
         s.expiresAt = static_cast<int64_t>([[NSDate date] timeIntervalSince1970]) + 86400;

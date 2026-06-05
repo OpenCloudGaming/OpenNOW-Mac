@@ -161,56 +161,60 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
 
 
     void (^onOpen)(NSString *) = ^(NSString *proto) {
-        (void)proto;
-        if (!IsCurrentGeneration(generation)) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            (void)proto;
+            if (!IsCurrentGeneration(generation)) return;
 
-        m_didOpen = true;
-
-
-
-        SendPeerInfo();
-        SetupHeartbeat();
+            m_didOpen = true;
 
 
-        onConnect(true, "");
+
+            SendPeerInfo();
+            SetupHeartbeat();
+
+
+            onConnect(true, "");
+        });
     };
 
 
     void (^onError)(NSError *) = ^(NSError *error) {
-        if (!IsCurrentGeneration(generation)) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!IsCurrentGeneration(generation)) return;
 
 
 
-        if (m_didOpen) {
-            if (IsSocketNotConnectedError(error)) {
-                OPN::LogInfo(@"[Signaling] Post-connection socket closed: %@", error.localizedDescription ?: @"unknown error");
-                if (m_onClosed) m_onClosed(true, "");
-            } else {
-                OPN::LogError(@"[Signaling] Post-connection error: %@", error);
-                NSString *message = error.localizedDescription ?: @"Signaling connection closed with error";
-                if (m_onClosed) m_onClosed(false, message.UTF8String ?: "Signaling connection closed with error");
+            if (m_didOpen) {
+                if (IsSocketNotConnectedError(error)) {
+                    OPN::LogInfo(@"[Signaling] Post-connection socket closed: %@", error.localizedDescription ?: @"unknown error");
+                    if (m_onClosed) m_onClosed(true, "");
+                } else {
+                    OPN::LogError(@"[Signaling] Post-connection error: %@", error);
+                    NSString *message = error.localizedDescription ?: @"Signaling connection closed with error";
+                    if (m_onClosed) m_onClosed(false, message.UTF8String ?: "Signaling connection closed with error");
+                }
+                return;
             }
-            return;
-        }
-        NSString *message = SignalingConnectionErrorDescription(error, url);
-        OPN::LogError(@"[Signaling] %@", message);
-        std::string msg = message.UTF8String ?: "Signaling connect failed";
-        onConnect(false, msg);
+            NSString *message = SignalingConnectionErrorDescription(error, url);
+            OPN::LogError(@"[Signaling] %@", message);
+            std::string msg = message.UTF8String ?: "Signaling connect failed";
+            onConnect(false, msg);
+        });
     };
 
 
     void (^onClose)(NSURLSessionWebSocketCloseCode, NSString *) = ^(NSURLSessionWebSocketCloseCode code, NSString *reason) {
-        if (!IsCurrentGeneration(generation)) return;
-        OPN::LogInfo(@"[Signaling] WebSocket closed: code=%ld, reason=%@", (long)code, reason);
-        ClearHeartbeat();
-        m_webSocketTask = nullptr;
-        if (m_didOpen && m_onClosed) {
-            BOOL clean = code == NSURLSessionWebSocketCloseCodeNormalClosure || code == NSURLSessionWebSocketCloseCodeGoingAway;
-            m_onClosed(clean, reason.UTF8String ?: "");
-        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!IsCurrentGeneration(generation)) return;
+            OPN::LogInfo(@"[Signaling] WebSocket closed: code=%ld, reason=%@", (long)code, reason);
+            ClearHeartbeat();
+            m_webSocketTask = nullptr;
+            if (m_didOpen && m_onClosed) {
+                BOOL clean = code == NSURLSessionWebSocketCloseCodeNormalClosure || code == NSURLSessionWebSocketCloseCodeGoingAway;
+                m_onClosed(clean, reason.UTF8String ?: "");
+            }
+        });
     };
-
-
     delegate = [[_OPNWebSocketDelegate alloc] init];
     delegate.onOpen = onOpen;
     delegate.onError = onError;
@@ -239,12 +243,11 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (!IsCurrentGeneration(generation)) return;
-        if (m_webSocketTask) {
+        if (m_webSocketTask && !m_didOpen) {
             NSURLSessionWebSocketTask *t = (__bridge NSURLSessionWebSocketTask *)m_webSocketTask;
-            if (t.state != NSURLSessionTaskStateRunning) {
-                [t cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure reason:nil];
-                onConnect(false, "Signaling connection timeout");
-            }
+            [t cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure reason:nil];
+            Disconnect();
+            onConnect(false, "Signaling connection timeout");
         }
     });
 }
@@ -316,6 +319,7 @@ void SignalingClient::RearmReceiveHandler() {
     __block SignalingClient *blockSelf = this;
 
     [task receiveMessageWithCompletionHandler:^(NSURLSessionWebSocketMessage *msg, NSError *err) {
+        dispatch_async(dispatch_get_main_queue(), ^{
         if (!blockSelf->IsCurrentGeneration(generation)) return;
 
         if (err) {
@@ -334,6 +338,7 @@ void SignalingClient::RearmReceiveHandler() {
 
 
         blockSelf->RearmReceiveHandler();
+        });
     }];
 }
 

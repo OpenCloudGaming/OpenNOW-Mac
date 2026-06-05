@@ -82,6 +82,7 @@ struct OPNSyncObservation {
 @property (nonatomic, strong) NSView *desktopTopChromeView;
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
+@property (nonatomic, strong) NSButton *desktopAccountTypePill;
 @property (nonatomic, strong) NSView *desktopRemainingPlayTimePill;
 @property (nonatomic, strong) NSTextField *desktopRemainingPlayTimeLabel;
 @property (nonatomic, strong) NSButton *desktopSettingsPillButton;
@@ -371,6 +372,8 @@ static NSString *OPNDisplayTier(const std::string &tier) {
     if ([upper isEqualToString:@"FREE"]) return @"Free";
     return raw.capitalizedString;
 }
+
+static NSString *const OPNAccountManagementURLString = @"https://www.nvidia.com/en-us/account/gfn/manage/";
 
 static NSString *OPNFormatHours(double hours) {
     if (!std::isfinite(hours) || hours < 0) hours = 0;
@@ -1206,6 +1209,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.rootView) return;
     if (self.desktopAccountSwitcher && self.desktopAccountSwitcher.superview != self.rootView) {
         self.desktopAccountSwitcher = nil;
+        self.desktopAccountTypePill = nil;
         self.desktopRemainingPlayTimePill = nil;
         self.desktopRemainingPlayTimeLabel = nil;
     }
@@ -1228,6 +1232,26 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     switcher.layer.shadowOffset = CGSizeZero;
     self.desktopAccountSwitcher = switcher;
     [self.rootView addSubview:switcher positioned:NSWindowAbove relativeTo:self.desktopTopChromeView];
+
+    NSButton *accountTypePill = [[NSButton alloc] initWithFrame:NSZeroRect];
+    accountTypePill.bordered = NO;
+    accountTypePill.bezelStyle = NSBezelStyleRegularSquare;
+    accountTypePill.buttonType = NSButtonTypeMomentaryChange;
+    accountTypePill.focusRingType = NSFocusRingTypeNone;
+    accountTypePill.target = self;
+    accountTypePill.action = @selector(desktopAccountTypePillClicked:);
+    accountTypePill.title = @"";
+    accountTypePill.wantsLayer = YES;
+    accountTypePill.layer.cornerRadius = 10.0;
+    accountTypePill.layer.backgroundColor = OpnColor(OPN::kBlack, 0.50).CGColor;
+    accountTypePill.layer.borderColor = NSColor.clearColor.CGColor;
+    accountTypePill.layer.borderWidth = 0.0;
+    accountTypePill.layer.shadowColor = NSColor.blackColor.CGColor;
+    accountTypePill.layer.shadowOpacity = 0.0;
+    accountTypePill.layer.shadowRadius = 0.0;
+    accountTypePill.layer.shadowOffset = CGSizeZero;
+    self.desktopAccountTypePill = accountTypePill;
+    [self.rootView addSubview:accountTypePill positioned:NSWindowAbove relativeTo:switcher];
 
     NSView *playTimePill = [[NSView alloc] initWithFrame:NSZeroRect];
     playTimePill.wantsLayer = YES;
@@ -1310,6 +1334,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     CGFloat accountX = MAX(24.0, width - switcherWidth - 58.0 * scale);
     CGFloat accountY = floor((140.0 * scale - controlHeight) * 0.5);
     self.desktopAccountSwitcher.frame = NSMakeRect(accountX, accountY, switcherWidth, controlHeight);
+    CGFloat accountTypeHeight = floor(20.0 * scale);
+    CGFloat accountTypeY = accountY + controlHeight + 6.0 * scale;
+    self.desktopAccountTypePill.frame = NSMakeRect(accountX + 10.0 * scale, accountTypeY, switcherWidth - 20.0 * scale, accountTypeHeight);
+    self.desktopAccountTypePill.layer.cornerRadius = accountTypeHeight * 0.5;
     CGFloat pillWidth = 172.0 * scale;
     self.desktopRemainingPlayTimePill.frame = NSMakeRect(accountX - pillWidth - 14.0 * scale, accountY, pillWidth, controlHeight);
     self.desktopRemainingPlayTimePill.layer.cornerRadius = controlHeight * 0.5;
@@ -1351,6 +1379,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (!self.desktopAccountSwitcher) return;
     BOOL visible = OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen);
     self.desktopAccountSwitcher.hidden = !visible;
+    NSString *accountType = [self.rootView.accountStatus ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    BOOL accountTypeVisible = visible && accountType.length > 0;
+    self.desktopAccountTypePill.hidden = !accountTypeVisible;
+    CGFloat scale = OPNDesktopChromeScale(NSHeight(self.rootView.bounds));
+    NSString *accountTypeTitle = accountType.length > 0 ? [accountType stringByAppendingString:@" Account"] : @"";
+    self.desktopAccountTypePill.attributedTitle = [[NSAttributedString alloc] initWithString:accountTypeTitle attributes:@{
+        NSFontAttributeName: [NSFont systemFontOfSize:9.5 * scale weight:NSFontWeightBlack],
+        NSForegroundColorAttributeName: OpnColor(OPN::kTextPrimary, 0.96),
+    }];
     NSString *remainingPlayTime = [self.rootView.remainingPlayTime ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     BOOL playTimeVisible = visible && remainingPlayTime.length > 0;
     self.desktopRemainingPlayTimePill.hidden = !playTimeVisible;
@@ -3661,6 +3698,22 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
     if (OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen)) {
         [self transitionToScreen:OPN::AuthScreen::Settings];
+    }
+}
+
+- (void)desktopAccountTypePillClicked:(NSButton *)sender {
+    (void)sender;
+    NSURL *url = [NSURL URLWithString:OPNAccountManagementURLString];
+    if (!url || url.scheme.length == 0 || url.host.length == 0) {
+        OPN::LogError(@"[AppDelegate] Invalid account management URL: %@", OPNAccountManagementURLString);
+        NSBeep();
+        return;
+    }
+
+    OPN::LogInfo(@"[AppDelegate] Opening account management URL");
+    if (![[NSWorkspace sharedWorkspace] openURL:url]) {
+        OPN::LogError(@"[AppDelegate] Failed to open account management URL");
+        NSBeep();
     }
 }
 

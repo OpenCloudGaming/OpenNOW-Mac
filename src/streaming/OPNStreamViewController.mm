@@ -1577,22 +1577,26 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     OPN::SessionInfo currentSession = _activeSessionInfo;
     __weak __typeof__(self) weakSelf = self;
     OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf](bool success, const OPN::SessionInfo &info, const std::string &error) {
+        OPN::SessionInfo infoCopy = info;
+        std::string errorCopy = error;
+        dispatch_async(dispatch_get_main_queue(), ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         strongSelf->_playtimeRefreshInFlight = NO;
         if (strongSelf->_streamEnded) return;
         if (!success) {
-            OPN::LogError(@"[StreamVC] Playtime refresh failed: %s", error.c_str());
+            OPN::LogError(@"[StreamVC] Playtime refresh failed: %s", errorCopy.c_str());
             return;
         }
-        if (!info.sessionId.empty()) {
-            strongSelf->_activeSessionInfo = info;
+        if (!infoCopy.sessionId.empty()) {
+            strongSelf->_activeSessionInfo = infoCopy;
             strongSelf->_hasActiveSessionInfo = YES;
         }
-        if (!info.remainingPlaytimeAvailable) return;
-        [strongSelf setRemainingPlaytimeHours:info.remainingPlaytimeHours unlimited:info.remainingPlaytimeUnlimited];
+        if (!infoCopy.remainingPlaytimeAvailable) return;
+        [strongSelf setRemainingPlaytimeHours:infoCopy.remainingPlaytimeHours unlimited:infoCopy.remainingPlaytimeUnlimited];
         [strongSelf.streamView startRemainingPlaytimeCountdown];
-        OPN::LogInfo(@"[StreamVC] Refreshed live session playtime remaining=%.2fh unlimited=%d", info.remainingPlaytimeHours, info.remainingPlaytimeUnlimited);
+        OPN::LogInfo(@"[StreamVC] Refreshed live session playtime remaining=%.2fh unlimited=%d", infoCopy.remainingPlaytimeHours, infoCopy.remainingPlaytimeUnlimited);
+        });
     });
 }
 

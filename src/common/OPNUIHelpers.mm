@@ -9,6 +9,7 @@ NSString *const OPNInterfacePreferencesDidChangeNotification = @"OpenNOW.Interfa
 static NSString *const OPNAutoFullScreenDefaultsKey = @"OpenNOW.Interface.AutoFullScreen";
 static NSString *const OPNAppIconThemeDefaultsKey = @"OpenNOW.Interface.AppIconTheme";
 static const CGFloat OPNBackgroundTintStrength = 0.85;
+typedef void (^OpnImageLoadCancelHandler)(void);
 
 static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
     static NSOperationQueue *queue;
@@ -26,6 +27,7 @@ static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
 - (void)opnSetOperation:(NSOperation *)operation;
 - (void)opnSetTask:(NSURLSessionDataTask *)task;
 - (void)opnAddChildToken:(OpnImageLoadToken *)token;
+- (void)opnSetCancelHandler:(OpnImageLoadCancelHandler)handler;
 @end
 
 @implementation OpnImageLoadToken {
@@ -34,6 +36,7 @@ static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
     NSOperation *_operation;
     NSURLSessionDataTask *_task;
     NSMutableArray<OpnImageLoadToken *> *_children;
+    OpnImageLoadCancelHandler _cancelHandler;
 }
 
 - (instancetype)init {
@@ -56,15 +59,19 @@ static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
     NSArray<OpnImageLoadToken *> *children = nil;
     NSOperation *operation = nil;
     NSURLSessionDataTask *task = nil;
+    OpnImageLoadCancelHandler cancelHandler = nil;
     [_lock lock];
     if (!_cancelled) {
         _cancelled = YES;
         operation = _operation;
         task = _task;
+        cancelHandler = [_cancelHandler copy];
+        _cancelHandler = nil;
         children = [_children copy];
         [_children removeAllObjects];
     }
     [_lock unlock];
+    if (cancelHandler) cancelHandler();
     [operation cancel];
     [task cancel];
     for (OpnImageLoadToken *child in children) [child cancel];
@@ -96,6 +103,16 @@ static NSOperationQueue *OpnImageLoaderOperationQueue(void) {
     if (!cancelNow) [_children addObject:token];
     [_lock unlock];
     if (cancelNow) [token cancel];
+}
+
+- (void)opnSetCancelHandler:(OpnImageLoadCancelHandler)handler {
+    BOOL cancelNow = NO;
+    [_lock lock];
+    _cancelHandler = [handler copy];
+    cancelNow = _cancelled;
+    if (cancelNow) _cancelHandler = nil;
+    [_lock unlock];
+    if (cancelNow && handler) handler();
 }
 
 @end
@@ -151,6 +168,24 @@ static NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion 
         pendingCompletions = [NSMutableDictionary dictionary];
     });
     return pendingCompletions;
+}
+
+static NSMutableDictionary<NSString *, NSOperation *> *OpnPendingImageOperations(void) {
+    static NSMutableDictionary<NSString *, NSOperation *> *pendingOperations;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pendingOperations = [NSMutableDictionary dictionary];
+    });
+    return pendingOperations;
+}
+
+static NSMutableDictionary<NSString *, NSURLSessionDataTask *> *OpnPendingImageTasks(void) {
+    static NSMutableDictionary<NSString *, NSURLSessionDataTask *> *pendingTasks;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pendingTasks = [NSMutableDictionary dictionary];
+    });
+    return pendingTasks;
 }
 
 static NSMutableDictionary<NSString *, NSDate *> *OpnImageFailureCache(void) {
@@ -209,6 +244,31 @@ static NSString *OpnImageCacheKey(NSString *urlString, CGFloat maxPixelDimension
     return [NSString stringWithFormat:@"%@|%ld", urlString ?: @"", (long)OpnImageCachePixelBucket(maxPixelDimension)];
 }
 
+static void OpnCancelPendingImageCompletion(NSString *cacheKey, OpnImageLoadToken *token) {
+    if (cacheKey.length == 0 || !token) return;
+    NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *pendingCompletions = OpnPendingImageCompletions();
+    NSOperation *operationToCancel = nil;
+    NSURLSessionDataTask *taskToCancel = nil;
+    @synchronized (pendingCompletions) {
+        NSMutableArray<OpnPendingImageCompletion *> *entries = pendingCompletions[cacheKey];
+        NSIndexSet *indexes = [entries indexesOfObjectsPassingTest:^BOOL(OpnPendingImageCompletion *entry, NSUInteger idx, BOOL *stop) {
+            (void)idx;
+            (void)stop;
+            return entry.token == token;
+        }];
+        if (indexes.count > 0) [entries removeObjectsAtIndexes:indexes];
+        if (entries.count == 0) {
+            [pendingCompletions removeObjectForKey:cacheKey];
+            operationToCancel = OpnPendingImageOperations()[cacheKey];
+            taskToCancel = OpnPendingImageTasks()[cacheKey];
+            [OpnPendingImageOperations() removeObjectForKey:cacheKey];
+            [OpnPendingImageTasks() removeObjectForKey:cacheKey];
+        }
+    }
+    [operationToCancel cancel];
+    [taskToCancel cancel];
+}
+
 static NSImage *OpnDecodedImageFromData(NSData *data, CGFloat maxPixelDimension) {
     if (data.length == 0) return nil;
     NSInteger pixelLimit = OpnImageCachePixelBucket(maxPixelDimension);
@@ -245,7 +305,10 @@ static void OpnCompleteImageRequest(NSString *cacheKey, NSString *urlString, NSI
         }
         if (data.length > 0) [OpnImageDataMemoryCache() setObject:data forKey:cacheKey cost:data.length];
         completions = [pendingCompletions[cacheKey] copy];
+        for (OpnPendingImageCompletion *entry in completions) [entry.token opnSetCancelHandler:nil];
         [pendingCompletions removeObjectForKey:cacheKey];
+        [OpnPendingImageOperations() removeObjectForKey:cacheKey];
+        [OpnPendingImageTasks() removeObjectForKey:cacheKey];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
         for (OpnPendingImageCompletion *entry in completions) {
@@ -484,6 +547,11 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat ma
     OpnPendingImageCompletion *pendingEntry = [[OpnPendingImageCompletion alloc] init];
     pendingEntry.token = token;
     pendingEntry.completion = [completion copy];
+    __weak OpnImageLoadToken *weakToken = token;
+    [token opnSetCancelHandler:^{
+        OpnImageLoadToken *strongToken = weakToken;
+        if (strongToken) OpnCancelPendingImageCompletion(cacheKey, strongToken);
+    }];
 
     NSMutableDictionary<NSString *, NSMutableArray<OpnPendingImageCompletion *> *> *pendingCompletions = OpnPendingImageCompletions();
     @synchronized (pendingCompletions) {
@@ -501,7 +569,15 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat ma
             NSImage *image = OpnDecodedImageFromData(diskData, maxPixelDimension);
             OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? diskData : nil, image == nil);
         }];
-        [token opnSetOperation:decodeOperation];
+        BOOL shouldStart = NO;
+        @synchronized (pendingCompletions) {
+            shouldStart = pendingCompletions[cacheKey] != nil;
+            if (shouldStart) OpnPendingImageOperations()[cacheKey] = decodeOperation;
+        }
+        if (!shouldStart || token.isCancelled) {
+            [decodeOperation cancel];
+            return token;
+        }
         [OpnImageLoaderOperationQueue() addOperation:decodeOperation];
         return token;
     }
@@ -524,10 +600,26 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat ma
             if (image) OPN::GameDataCache::Shared().SaveImage(normalizedURL, data);
             OpnCompleteImageRequest(cacheKey, normalizedURL, image, image ? data : nil, image == nil);
         }];
-        [token opnSetOperation:decodeOperation];
+        BOOL shouldDecode = NO;
+        @synchronized (pendingCompletions) {
+            shouldDecode = pendingCompletions[cacheKey] != nil;
+            if (shouldDecode) OpnPendingImageOperations()[cacheKey] = decodeOperation;
+        }
+        if (!shouldDecode) {
+            [decodeOperation cancel];
+            return;
+        }
         [OpnImageLoaderOperationQueue() addOperation:decodeOperation];
     }];
-    [token opnSetTask:task];
+    BOOL shouldStartTask = NO;
+    @synchronized (pendingCompletions) {
+        shouldStartTask = pendingCompletions[cacheKey] != nil;
+        if (shouldStartTask) OpnPendingImageTasks()[cacheKey] = task;
+    }
+    if (!shouldStartTask || token.isCancelled) {
+        [task cancel];
+        return token;
+    }
     [task resume];
     return token;
 }

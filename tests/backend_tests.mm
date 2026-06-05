@@ -1098,6 +1098,16 @@ TEST_CASE("ParseOAuthSessionHandlesMalformedIdTokensAndDefaultExpiry") {
     CHECK_EQ(invalidPayloadSession.idTokenExpiry, 0);
     CHECK_EQ(invalidPayloadSession.clientTokenExpiry, 0);
     CHECK_EQ(invalidPayloadSession.membershipTier, "Free");
+
+    NSDictionary *nonObjectPayloadToken = @{
+        @"access_token": @"token-c",
+        @"id_token": @"eyJhbGciOiJub25lIn0.W10.signature"
+    };
+    OPN::AuthSession nonObjectPayloadSession = OPN::AuthService::ParseOAuthSession(nonObjectPayloadToken);
+    CHECK(nonObjectPayloadSession.isAuthenticated);
+    CHECK_EQ(nonObjectPayloadSession.idTokenExpiry, 0);
+    CHECK_EQ(nonObjectPayloadSession.userId, "");
+    CHECK_EQ(nonObjectPayloadSession.membershipTier, "Free");
 }
 
 TEST_CASE("ParseOAuthSessionHandlesUnauthenticatedResponse") {
@@ -1479,6 +1489,36 @@ TEST_CASE("RefreshSessionHandlesMissingAndUnrefreshableSessions") {
     CHECK(done);
     CHECK(!success);
     CHECK_EQ(error, "No refresh mechanism available");
+}
+
+TEST_CASE("RefreshSessionUsesValidSavedSessionWithoutNetwork") {
+    AuthTestEnvironment environment;
+    OPN::AuthService &auth = OPN::AuthService::Shared();
+    int callIndex = 0;
+    ScopedURLMock mock([&](NSURLRequest *) -> MockHTTPResponse {
+        ++callIndex;
+        return MockHTTPResponse{500, JSONData(@{@"error": @"unexpected network"}), nil};
+    });
+
+    OPN::AuthSession saved = MakeAuthenticatedSession("valid-user", "valid@example.com", "valid-access");
+    auth.SaveSession(saved);
+
+    bool done = false;
+    bool success = false;
+    OPN::AuthSession loaded;
+    std::string error;
+    auth.RefreshSession([&](bool ok, const OPN::AuthSession &session, const std::string &message) {
+        success = ok;
+        loaded = session;
+        error = message;
+        done = true;
+    });
+
+    CHECK(done);
+    CHECK(success);
+    CHECK_EQ(loaded.accessToken, "valid-access");
+    CHECK_EQ(error, "");
+    CHECK_EQ(callIndex, 0);
 }
 
 TEST_CASE("RefreshSessionRefreshesClientTokenAndOAuthTokens") {
@@ -1937,6 +1977,12 @@ TEST_CASE("game-cache/catalog freshness metadata") {
     std::string unique = [[[NSUUID UUID] UUIDString] UTF8String];
     std::string key = cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24);
     CHECK(cache.CatalogKey("other-account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24) != key);
+    CHECK(cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24, "en_US", "https://one.example/", "VPC-A") !=
+          cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24, "fr_FR", "https://one.example/", "VPC-A"));
+    CHECK(cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24, "en_US", "https://one.example/", "VPC-A") !=
+          cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24, "en_US", "https://two.example/", "VPC-A"));
+    CHECK(cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24, "en_US", "https://one.example/", "VPC-A") !=
+          cache.CatalogKey("account-" + unique, "unit-" + unique, "last_played", {"owned"}, 24, "en_US", "https://one.example/", "VPC-B"));
 
     OPN::CatalogBrowseResult saved;
     saved.numberReturned = 1;
@@ -1962,6 +2008,16 @@ TEST_CASE("game-cache/catalog freshness metadata") {
 
     OPN::CatalogBrowseResult stale;
     CHECK(!cache.LoadFreshCatalog(key, 0.0, stale));
+
+    std::string emptyKey = cache.CatalogKey("account-empty-" + unique, "no-results-" + unique, "relevance", {}, 24);
+    OPN::CatalogBrowseResult emptySaved;
+    emptySaved.searchQuery = "no-results-" + unique;
+    emptySaved.selectedSortId = "relevance";
+    cache.SaveCatalog(emptyKey, emptySaved);
+    OPN::CatalogBrowseResult emptyLoaded;
+    CHECK(cache.LoadCatalog(emptyKey, emptyLoaded));
+    CHECK(emptyLoaded.games.empty());
+    CHECK_EQ(emptyLoaded.searchQuery, emptySaved.searchQuery);
 }
 
 TEST_CASE("game-cache/catalog definitions freshness") {
@@ -2088,6 +2144,41 @@ TEST_CASE("game-service/provider info selects matching idp endpoint") {
     CHECK_EQ(endpoint.loginProvider, "ally");
     CHECK_EQ(endpoint.streamingServiceUrl, "https://ally.cloudmatch.example.net/");
     CHECK_EQ(OPN::GameService::Shared().ProviderStreamingBaseUrl(), "https://ally.cloudmatch.example.net/");
+}
+
+TEST_CASE("game-service/provider info falls back for invalid streaming endpoint") {
+    ScopedURLMock mock([](NSURLRequest *) {
+        NSDictionary *body = @{
+            @"gfnServiceInfo": @{
+                @"defaultProvider": @"nvidia",
+                @"gfnServiceEndpoints": @[
+                    @{
+                        @"loginProvider": @"nvidia",
+                        @"streamingServiceUrl": @"http://invalid.example.test",
+                        @"idpId": @"default-idp"
+                    }
+                ]
+            }
+        };
+        return MockHTTPResponse{200, JSONData(body), nil};
+    });
+
+    bool done = false;
+    bool success = false;
+    OPN::GameProviderEndpoint endpoint;
+    OPN::GameService::Shared().FetchProviderInfo("default-idp", [&](bool ok,
+                                                                       const OPN::GameProviderInfo &,
+                                                                       const OPN::GameProviderEndpoint &selectedEndpoint,
+                                                                       const std::string &) {
+        success = ok;
+        endpoint = selectedEndpoint;
+        done = true;
+    });
+
+    CHECK(WaitUntil([&] { return done; }));
+    CHECK(success);
+    CHECK_EQ(endpoint.streamingServiceUrl, "https://prod.cloudmatchbeta.nvidiagrid.net/");
+    CHECK_EQ(OPN::GameService::Shared().ProviderStreamingBaseUrl(), "https://prod.cloudmatchbeta.nvidiagrid.net/");
 }
 
 }

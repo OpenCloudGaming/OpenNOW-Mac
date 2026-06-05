@@ -15,7 +15,10 @@ public:
                            const std::string &searchQuery,
                            const std::string &sortId,
                            const std::vector<std::string> &filterIds,
-                           int fetchCount) const;
+                           int fetchCount,
+                           const std::string &locale = "",
+                           const std::string &providerStreamingBaseUrl = "",
+                           const std::string &vpcId = "") const;
     bool LoadCatalog(const std::string &key, CatalogBrowseResult &result) const;
     bool LoadFreshCatalog(const std::string &key,
                           NSTimeInterval maxAgeSeconds,

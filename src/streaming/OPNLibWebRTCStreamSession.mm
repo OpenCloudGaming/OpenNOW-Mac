@@ -42,7 +42,7 @@
 namespace OPN {
 
 static constexpr int OPNPartialReliableInputLifetimeMs = 5;
-static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
+[[maybe_unused]] static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
 
 static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector) {
     AudioDeviceID device = kAudioObjectUnknown;
@@ -93,7 +93,7 @@ static void OPNUnlockRTCAudioSession(id audioSession) {
     }
 }
 
-static void OPNSetRTCAudioSessionActive(id audioSession, BOOL active, NSString *phase) {
+[[maybe_unused]] static void OPNSetRTCAudioSessionActive(id audioSession, BOOL active, NSString *phase) {
     SEL selector = NSSelectorFromString(@"setActive:error:");
     if (![audioSession respondsToSelector:selector]) return;
 
@@ -104,7 +104,7 @@ static void OPNSetRTCAudioSessionActive(id audioSession, BOOL active, NSString *
     }
 }
 
-static void OPNResetRTCAudioSessionRouteToDefaults(id audioSession) {
+[[maybe_unused]] static void OPNResetRTCAudioSessionRouteToDefaults(id audioSession) {
     OPNLockRTCAudioSession(audioSession);
 
     SEL preferredInputSelector = NSSelectorFromString(@"setPreferredInput:error:");
@@ -501,6 +501,7 @@ struct OPNLibWebRTCIceCredentials {
     return codec == "H264" || codec == "H265" || codec == "AV1";
 }
 
+#if defined(OPN_HAVE_LIBWEBRTC)
 [[maybe_unused]] static bool OPNCodecCapabilityMatches(RTCRtpCodecCapability *codec, const std::string &normalizedCodec) {
     NSString *name = codec.name ?: @"";
     NSString *mimeType = codec.mimeType ?: @"";
@@ -519,6 +520,7 @@ struct OPNLibWebRTCIceCredentials {
            [mimeType containsString:@"/RTX"] || [mimeType containsString:@"/RED"] ||
            [mimeType containsString:@"/ULPFEC"] || [mimeType containsString:@"/FLEXFEC-03"];
 }
+#endif
 
 [[maybe_unused]] static std::string OPNPreferCodecInOffer(const std::string &sdp, const std::string &normalizedCodec) {
     std::vector<std::string> lines = OPNSplitSdpLines(sdp);
@@ -1816,6 +1818,7 @@ std::string LibWebRTCStreamSession::AvailabilityDescription() {
 LibWebRTCStreamSession::LibWebRTCStreamSession() {
     dispatch_queue_t statsQueue = dispatch_queue_create("io.opencg.opennow.webrtc.stats", DISPATCH_QUEUE_SERIAL);
     m_statsQueue = (__bridge_retained void *)statsQueue;
+    m_callbackLiveness = std::make_shared<std::atomic_bool>(true);
 }
 
 LibWebRTCStreamSession::~LibWebRTCStreamSession() {
@@ -1832,6 +1835,8 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
                                    const StreamSettings &settings,
                                    StreamStateCallback onState) {
     Stop();
+    m_callbackLiveness = std::make_shared<std::atomic_bool>(true);
+    auto callbackLiveness = m_callbackLiveness;
     m_settings = settings;
     m_configuredMaxBitrateMbps = std::max(1, settings.maxBitrateMbps);
     m_adaptiveBitrateMbps = m_configuredMaxBitrateMbps;
@@ -1958,6 +1963,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
     NSString *originalOfferString = OPNStringToNSString(offerSdp);
     const bool canRetryOriginalOffer = processedOfferSdp != offerSdp;
     void (^handleRemoteDescriptionSet)(void) = ^{
+        if (!callbackLiveness->load()) return;
         OPNLibWebRTCSessionImpl *strongImpl = weakImpl;
         if (!strongImpl) return;
 
@@ -1984,6 +1990,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 
         RTCMediaConstraints *answerConstraints = [[RTCMediaConstraints alloc] initWithMandatoryConstraints:nil optionalConstraints:nil];
         [strongImpl.peerConnection answerForConstraints:answerConstraints completionHandler:^(RTCSessionDescription *answer, NSError *answerError) {
+            if (!callbackLiveness->load()) return;
             OPNLibWebRTCSessionImpl *answerImpl = weakImpl;
             if (!answerImpl) return;
             if (answerError || !answer) {
@@ -2010,6 +2017,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
             RTCSessionDescription *localAnswer = [[RTCSessionDescription alloc] initWithType:RTCSdpTypeAnswer sdp:OPNStringToNSString(localAnswerSdp)];
 
             [answerImpl.peerConnection setLocalDescription:localAnswer completionHandler:^(NSError *localError) {
+                if (!callbackLiveness->load()) return;
                 if (localError) {
                     const std::string message = "setLocalDescription failed: " + OPNNSStringToString(localError.localizedDescription);
                     this->HandleConnectionState(false, message);
@@ -2031,6 +2039,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 
     RTCSessionDescription *offer = [[RTCSessionDescription alloc] initWithType:RTCSdpTypeOffer sdp:processedOfferString];
     [impl.peerConnection setRemoteDescription:offer completionHandler:^(NSError *error) {
+        if (!callbackLiveness->load()) return;
         OPNLibWebRTCSessionImpl *strongImpl = weakImpl;
         if (!strongImpl) return;
         if (!error) {
@@ -2046,6 +2055,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         OPN::LogInfo(@"[LibWebRTC] filtered offer rejected (%@); retrying original GFN offer", error.localizedDescription);
         RTCSessionDescription *originalOffer = [[RTCSessionDescription alloc] initWithType:RTCSdpTypeOffer sdp:originalOfferString];
         [strongImpl.peerConnection setRemoteDescription:originalOffer completionHandler:^(NSError *retryError) {
+            if (!callbackLiveness->load()) return;
             if (retryError) {
                 const std::string message = "setRemoteDescription failed: " + OPNNSStringToString(retryError.localizedDescription);
                 this->HandleConnectionState(false, message);
@@ -2062,6 +2072,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 }
 
 void LibWebRTCStreamSession::Stop() {
+    if (m_callbackLiveness) m_callbackLiveness->store(false);
     StopAudioDeviceMonitoring();
     StopStatsPolling();
     StopMicrophoneLevelPolling();
@@ -2262,6 +2273,7 @@ void LibWebRTCStreamSession::SetMicrophoneVolume(double volume) {
 }
 
 void LibWebRTCStreamSession::ApplyRuntimeBitrateLimit(int mbps, const char *reason) {
+    (void)reason;
     int clampedMbps = std::max(1, std::min(mbps, 250));
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
@@ -2618,8 +2630,9 @@ void LibWebRTCStreamSession::HandleAudioDeviceChange() {
               outputDevice);
     m_defaultInputDevice = inputDevice;
     m_defaultOutputDevice = outputDevice;
-    const uint64_t generation = ++m_audioDeviceChangeGeneration;
     RefreshAudioDevices();
+#if defined(OPN_HAVE_LIBWEBRTC)
+    const uint64_t generation = ++m_audioDeviceChangeGeneration;
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     const bool customAudioDeviceActive = impl.audioDevice != nil;
     if (!customAudioDeviceActive && OPNEnvFlagEnabled("OPN_ENABLE_WEBRTC_AUDIO_HOTSWAP_RECOVERY", true)) {
@@ -2634,6 +2647,7 @@ void LibWebRTCStreamSession::HandleAudioDeviceChange() {
             monitorContext.owner->HandleConnectionState(false, "webrtc audio device changed");
         });
     }
+#endif
 }
 
 void LibWebRTCStreamSession::StartMicrophoneLevelPolling() {

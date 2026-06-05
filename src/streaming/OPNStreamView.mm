@@ -447,6 +447,8 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     if (previousSession && previousSession != session) {
         previousSession->OnVideoFrame(OPN::VideoFrameCallback{});
         previousSession->OnGameAudioFrame(OPN::GameAudioFrameCallback{});
+        previousSession->OnMicrophoneLevel(OPN::MicrophoneLevelCallback{});
+        previousSession->OnClipboardText(OPN::ClipboardTextCallback{});
     }
     _streamSession = session;
     if (session) {

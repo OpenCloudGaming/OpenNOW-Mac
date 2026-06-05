@@ -18,8 +18,8 @@ static CGFloat OPNSmoothstep(CGFloat value) {
         _itemSize = NSMakeSize(164.0, 164.0);
         _itemSpacing = 26.0;
         _sideInset = 64.0;
-        _focusScale = 1.14;
-        _minimumScale = 0.88;
+        _focusScale = 1.0;
+        _minimumScale = 1.0;
         _minimumAlpha = 0.48;
         _cachedAttributes = [NSMutableArray array];
         _cachedContentSize = NSZeroSize;

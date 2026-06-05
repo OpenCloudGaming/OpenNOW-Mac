@@ -219,10 +219,13 @@ GameDataCache::GameDataCache() {
 }
 
 std::string GameDataCache::CatalogKey(const std::string &accountIdentifier,
-                                      const std::string &searchQuery,
-                                      const std::string &sortId,
-                                      const std::vector<std::string> &filterIds,
-                                      int fetchCount) const {
+                                       const std::string &searchQuery,
+                                       const std::string &sortId,
+                                       const std::vector<std::string> &filterIds,
+                                       int fetchCount,
+                                       const std::string &locale,
+                                       const std::string &providerStreamingBaseUrl,
+                                       const std::string &vpcId) const {
     std::vector<std::string> sortedFilters = filterIds;
     std::sort(sortedFilters.begin(), sortedFilters.end());
     NSMutableArray<NSString *> *filters = [NSMutableArray arrayWithCapacity:sortedFilters.size()];
@@ -233,7 +236,10 @@ std::string GameDataCache::CatalogKey(const std::string &accountIdentifier,
         @"s": OPNStringFromStd(sortId),
         @"f": filters,
         @"c": @(fetchCount),
-        @"v": @4,
+        @"l": OPNStringFromStd(locale),
+        @"p": OPNStringFromStd(providerStreamingBaseUrl),
+        @"vp": OPNStringFromStd(vpcId),
+        @"v": @5,
     };
     NSData *data = [NSJSONSerialization dataWithJSONObject:key options:0 error:nil];
     NSString *string = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
@@ -255,7 +261,7 @@ bool GameDataCache::LoadCatalog(const std::string &key, CatalogBrowseResult &res
     result.selectedFilterIds = OPNStringsFromArray(dict[@"sf"]);
     NSArray *games = [dict[@"g"] isKindOfClass:[NSArray class]] ? dict[@"g"] : nil;
     for (id entry in games) result.games.push_back(OPNGameFromDictionary(entry));
-    return !result.games.empty();
+    return true;
 }
 
 bool GameDataCache::LoadFreshCatalog(const std::string &key,
@@ -275,7 +281,7 @@ bool GameDataCache::LoadFreshCatalog(const std::string &key,
     result.selectedFilterIds = OPNStringsFromArray(dict[@"sf"]);
     NSArray *games = [dict[@"g"] isKindOfClass:[NSArray class]] ? dict[@"g"] : nil;
     for (id entry in games) result.games.push_back(OPNGameFromDictionary(entry));
-    return !result.games.empty();
+    return true;
 }
 
 void GameDataCache::SaveCatalog(const std::string &key, const CatalogBrowseResult &result) const {

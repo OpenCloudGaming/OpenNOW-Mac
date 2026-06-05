@@ -9,6 +9,7 @@
 #include <CommonCrypto/CommonCrypto.h>
 #include <AppKit/NSWorkspace.h>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstring>
 #include <memory>
@@ -532,6 +533,7 @@ void GameService::FetchProviderInfo(const std::string &idpId, ProviderInfoCallba
         GameProviderEndpoint endpoint = SelectGameProviderEndpoint(info, idpIdCopy);
         if (endpoint.streamingServiceUrl.empty()) endpoint.streamingServiceUrl = DefaultStreamingBaseUrl();
         this->m_providerStreamingBaseUrl = NormalizeStreamingBaseUrl(endpoint.streamingServiceUrl);
+        if (this->m_providerStreamingBaseUrl.empty()) this->m_providerStreamingBaseUrl = DefaultStreamingBaseUrl();
         endpoint.streamingServiceUrl = this->m_providerStreamingBaseUrl;
         DispatchProviderInfoCallback(callback, true, info, endpoint, "");
     }] resume];
@@ -592,12 +594,9 @@ void GameService::postGraphQL(const std::string &operationName,
         [[[[NSUUID UUID] UUIDString] stringByReplacingOccurrencesOfString:@"-" withString:@""] substringToIndex:8]];
 
 
-    NSString *encodedRequestType = [[NSString stringWithUTF8String:operationName.c_str()]
-        stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
-    NSString *encodedExtensions = [extStr stringByAddingPercentEncodingWithAllowedCharacters:
-        NSCharacterSet.URLQueryAllowedCharacterSet];
-    NSString *encodedVariables = [varStr stringByAddingPercentEncodingWithAllowedCharacters:
-        NSCharacterSet.URLQueryAllowedCharacterSet];
+    NSString *encodedRequestType = PercentEncodeQueryValue([NSString stringWithUTF8String:operationName.c_str()]);
+    NSString *encodedExtensions = PercentEncodeQueryValue(extStr);
+    NSString *encodedVariables = PercentEncodeQueryValue(varStr);
 
     NSString *urlStr = [NSString stringWithFormat:@"https://games.geforce.com/graphql?requestType=%@&extensions=%@&huId=%@&variables=%@",
         encodedRequestType, encodedExtensions, huId, encodedVariables];
@@ -1519,39 +1518,47 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                                      int fetchCount,
                                      CatalogBrowseCallback completion) {
     std::string token = m_accessToken;
+    std::string accountIdentifier = m_userId;
+    std::string providerStreamingBaseUrl = ProviderStreamingBaseUrl();
     CatalogBrowseCallback callback = completion;
-    NSString *catalogLocale = [NSString stringWithUTF8String:CurrentGFNLocale().c_str()];
+    std::string catalogLocaleText = CurrentGFNLocale();
+    NSString *catalogLocale = [NSString stringWithUTF8String:catalogLocaleText.c_str()];
     OPN::LogInfo(@"[GameService] BrowseCatalogGames start search=%s sort=%s filters=%lu fetchCount=%d", searchQuery.c_str(), sortId.c_str(), (unsigned long)filterIds.size(), fetchCount);
-    std::string requestedSortIdForCache = sortId.empty() ? "last_played" : sortId;
-    int requestedFetchCountForCache = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
-    std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(m_userId, searchQuery, requestedSortIdForCache, filterIds, requestedFetchCountForCache);
 
-    CatalogBrowseResult freshCachedResult;
-    NSDictionary *freshDefinitions = nil;
-    if (GameDataCache::Shared().LoadFreshCatalog(catalogCacheKey, kCatalogCacheFreshSeconds, freshCachedResult) &&
-        GameDataCache::Shared().LoadCatalogDefinitions(catalogLocale, kCatalogDefinitionsFreshSeconds, &freshDefinitions)) {
-        NSMutableDictionary<NSString *, NSDictionary *> *unusedFilterPayloads = [NSMutableDictionary dictionary];
-        ParseCatalogDefinitions(freshDefinitions, freshCachedResult, unusedFilterPayloads);
-        OPN::LogInfo(@"[GameService] catalog fresh cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)freshCachedResult.games.size());
-        DispatchCatalogBrowseCallback(callback, true, freshCachedResult, "");
-        return;
-    }
-
-    dispatch_async(GameServiceWorkQueue(), ^{
-        CatalogBrowseResult cachedResult;
-        if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
-            OPN::LogInfo(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
-            DispatchCatalogBrowseCallback(callback, true, cachedResult, "");
-        }
-    });
-
-    GetServerVpcId(token, ProviderStreamingBaseUrl(), [this, callback, searchQuery, sortId, filterIds, fetchCount, catalogCacheKey, catalogLocale](const std::string &vpcId) {
+    GetServerVpcId(token, providerStreamingBaseUrl, [this, callback, accountIdentifier, providerStreamingBaseUrl, catalogLocaleText, catalogLocale, searchQuery, sortId, filterIds, fetchCount](const std::string &vpcId) {
         NSString *vpcIdObj = [NSString stringWithUTF8String:vpcId.c_str()];
         std::string requestedSearch = searchQuery;
         std::string requestedSortId = sortId.empty() ? "last_played" : sortId;
         std::vector<std::string> requestedFilterIds = filterIds;
         int requestedFetchCount = std::max(24, std::min(fetchCount > 0 ? fetchCount : kDefaultCatalogFetchCount, 200));
         OPN::LogInfo(@"[GameService] BrowseCatalogGames vpc=%s requestedFetchCount=%d", vpcId.c_str(), requestedFetchCount);
+        std::string catalogCacheKey = GameDataCache::Shared().CatalogKey(accountIdentifier,
+                                                                        requestedSearch,
+                                                                        requestedSortId,
+                                                                        requestedFilterIds,
+                                                                        requestedFetchCount,
+                                                                        catalogLocaleText,
+                                                                        providerStreamingBaseUrl,
+                                                                        vpcId);
+        auto deliveredCachedResult = std::make_shared<std::atomic_bool>(false);
+
+        CatalogBrowseResult freshCachedResult;
+        NSDictionary *freshDefinitions = nil;
+        if (GameDataCache::Shared().LoadFreshCatalog(catalogCacheKey, kCatalogCacheFreshSeconds, freshCachedResult) &&
+            GameDataCache::Shared().LoadCatalogDefinitions(catalogLocale, kCatalogDefinitionsFreshSeconds, &freshDefinitions)) {
+            NSMutableDictionary<NSString *, NSDictionary *> *unusedFilterPayloads = [NSMutableDictionary dictionary];
+            ParseCatalogDefinitions(freshDefinitions, freshCachedResult, unusedFilterPayloads);
+            OPN::LogInfo(@"[GameService] catalog fresh cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)freshCachedResult.games.size());
+            DispatchCatalogBrowseCallback(callback, true, freshCachedResult, "");
+            return;
+        }
+
+        CatalogBrowseResult cachedResult;
+        if (GameDataCache::Shared().LoadCatalog(catalogCacheKey, cachedResult)) {
+            deliveredCachedResult->store(true);
+            OPN::LogInfo(@"[GameService] catalog cache hit key=%s games=%lu", catalogCacheKey.c_str(), (unsigned long)cachedResult.games.size());
+            DispatchCatalogBrowseCallback(callback, true, cachedResult, "");
+        }
 
         std::string definitionsQuery = R"(
         query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
@@ -1564,9 +1571,10 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
         }
         )";
 
-        auto handleDefinitions = [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey, catalogLocale](NSDictionary *definitionsData, NSString *definitionsError) {
+        auto handleDefinitions = [this, callback, vpcIdObj, requestedSearch, requestedSortId, requestedFilterIds, requestedFetchCount, catalogCacheKey, catalogLocale, deliveredCachedResult](NSDictionary *definitionsData, NSString *definitionsError) {
                 if (definitionsError.length > 0) {
                     OPN::LogError(@"[GameService] catalog definitions failed error=%@", definitionsError);
+                    if (deliveredCachedResult->load()) return;
                     DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, [definitionsError UTF8String]);
                     return;
                 }
@@ -1703,11 +1711,13 @@ void GameService::BrowseCatalogGames(const std::string &searchQuery,
                         dispatch_async(GameServiceWorkQueue(), ^{
                         if (error.length > 0) {
                             OPN::LogError(@"[GameService] catalog page failed page=%ld error=%@", (long)*page, error);
+                            if (deliveredCachedResult->load()) return;
                             DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, [error UTF8String]);
                             return;
                         }
                         NSDictionary *appsDict = data[@"apps"];
                         if (![appsDict isKindOfClass:[NSDictionary class]]) {
+                            if (deliveredCachedResult->load()) return;
                             DispatchCatalogBrowseCallback(callback, false, CatalogBrowseResult{}, "No apps data");
                             return;
                         }

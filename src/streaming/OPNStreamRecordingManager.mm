@@ -361,6 +361,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     return time;
 }
 
+#if defined(OPN_HAVE_LIBWEBRTC)
 - (CVPixelBufferRef)copyPixelBufferFromVideoFrame:(RTCVideoFrame *)frame {
 #if defined(OPN_HAVE_LIBWEBRTC)
     CVPixelBufferRef output = nil;
@@ -429,6 +430,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     (void)output;
 #endif
 }
+#endif
 
 - (void)appendAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer kind:(OPNRecordingAudioKind)kind {
     if (!sampleBuffer || (!self.recording && !self.starting)) return;
@@ -678,18 +680,15 @@ static NSString *OPNRecordingFilename(NSString *gameTitle) {
     return [NSString stringWithFormat:@"OpenNOW-%@-%@.mp4", safe, [formatter stringFromDate:NSDate.date]];
 }
 
-static CGSize OPNRecordingFrameSize(RTCVideoFrame *frame) {
 #if defined(OPN_HAVE_LIBWEBRTC)
+static CGSize OPNRecordingFrameSize(RTCVideoFrame *frame) {
     if (!frame) return CGSizeZero;
     if (frame.rotation == RTCVideoRotation_90 || frame.rotation == RTCVideoRotation_270) {
         return CGSizeMake(frame.height, frame.width);
     }
     return CGSizeMake(frame.width, frame.height);
-#else
-    (void)frame;
-    return CGSizeZero;
-#endif
 }
+#endif
 
 @end
 
