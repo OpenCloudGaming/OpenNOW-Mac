@@ -12,7 +12,6 @@ typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
     OPNVideoEnhancementTierOff = 0,
     OPNVideoEnhancementTierSpatial = 1,
     OPNVideoEnhancementTierMetalFX = 2,
-    OPNVideoEnhancementTierNeuralSpatial = 3,
 };
 
 @interface OPNVideoEnhancementSettings : NSObject
@@ -48,5 +47,4 @@ typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
            settings:(OPNVideoEnhancementSettings *)settings
              result:(OPNVideoEnhancementResult *)result;
 - (BOOL)isMetalFXAvailable;
-- (BOOL)isNeuralSpatialAvailable;
 @end

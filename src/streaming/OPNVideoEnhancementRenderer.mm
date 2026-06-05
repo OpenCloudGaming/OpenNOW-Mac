@@ -4,12 +4,6 @@
 #import <CoreVideo/CoreVideo.h>
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/QuartzCore.h>
-#if __has_include(<CoreML/CoreML.h>)
-#import <CoreML/CoreML.h>
-#define OPN_HAVE_COREML 1
-#else
-#define OPN_HAVE_COREML 0
-#endif
 #if __has_include(<MetalFX/MetalFX.h>)
 #import <MetalFX/MetalFX.h>
 #define OPN_HAVE_METALFX 1
@@ -40,7 +34,6 @@ static NSString *OPNEnhancementResolutionString(CGSize size) {
 
 static NSString *OPNEnhancementTierName(OPNVideoEnhancementTier tier) {
     switch (tier) {
-        case OPNVideoEnhancementTierNeuralSpatial: return @"Neural Spatial";
         case OPNVideoEnhancementTierSpatial: return @"Spatial";
         case OPNVideoEnhancementTierMetalFX: return @"MetalFX";
         case OPNVideoEnhancementTierOff: return @"Off";
@@ -70,7 +63,6 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     OPNVideoGovernorTierNative = 0,
     OPNVideoGovernorTierSpatial = 1,
     OPNVideoGovernorTierMetalFX = 2,
-    OPNVideoGovernorTierNeuralSpatial = 3,
 };
 
 @interface OPNVideoTextureFrame : NSObject
@@ -238,199 +230,6 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 
 @end
 
-@interface OPNNeuralSpatialUpscaler : NSObject
-- (instancetype)initWithDevice:(id<MTLDevice>)device ciContext:(CIContext *)ciContext outputColorSpace:(CGColorSpaceRef)outputColorSpace;
-- (BOOL)isAvailable;
-- (CVPixelBufferRef)newUpscaledPixelBufferFromTexture:(id<MTLTexture>)sourceTexture fallback:(NSString **)fallback CF_RETURNS_RETAINED;
-@end
-
-@implementation OPNNeuralSpatialUpscaler {
-    id<MTLDevice> _device;
-    CIContext *_ciContext;
-    CGColorSpaceRef _outputColorSpace;
-#if OPN_HAVE_COREML
-    MLModel *_model;
-    NSString *_inputName;
-    NSString *_outputName;
-#endif
-    BOOL _modelLoadAttempted;
-}
-
-- (instancetype)initWithDevice:(id<MTLDevice>)device ciContext:(CIContext *)ciContext outputColorSpace:(CGColorSpaceRef)outputColorSpace {
-    self = [super init];
-    if (self) {
-        _device = device;
-        _ciContext = ciContext;
-        _outputColorSpace = outputColorSpace ? CGColorSpaceRetain(outputColorSpace) : nil;
-    }
-    return self;
-}
-
-- (void)dealloc {
-    if (_outputColorSpace) {
-        CGColorSpaceRelease(_outputColorSpace);
-        _outputColorSpace = nil;
-    }
-}
-
-- (BOOL)isAvailable {
-    NSString *fallback = @"";
-    return [self loadModelIfNeededWithFallback:&fallback] && [self deviceAllowsNeuralSpatial];
-}
-
-- (BOOL)deviceAllowsNeuralSpatial {
-    if (!_device) return NO;
-    if (NSProcessInfo.processInfo.thermalState >= NSProcessInfoThermalStateSerious) return NO;
-    if (@available(macOS 12.0, *)) {
-        if (NSProcessInfo.processInfo.lowPowerModeEnabled) return NO;
-    }
-    if (@available(macOS 11.0, *)) {
-        return [_device supportsFamily:MTLGPUFamilyApple1];
-    }
-    return NO;
-}
-
-- (BOOL)loadModelIfNeededWithFallback:(NSString **)fallback {
-#if OPN_HAVE_COREML
-    if (_model) return YES;
-    if (_modelLoadAttempted) {
-        if (fallback) *fallback = @"Neural spatial model unavailable; using spatial scaler";
-        return NO;
-    }
-    _modelLoadAttempted = YES;
-
-    NSURL *modelURL = [NSBundle.mainBundle URLForResource:@"OPNNeuralSpatialUpscaler" withExtension:@"mlmodelc"];
-    if (!modelURL) {
-        if (fallback) *fallback = @"Neural spatial model asset missing; using spatial scaler";
-        return NO;
-    }
-
-    NSError *modelError = nil;
-    MLModelConfiguration *configuration = [[MLModelConfiguration alloc] init];
-    configuration.computeUnits = MLComputeUnitsAll;
-    _model = [MLModel modelWithContentsOfURL:modelURL configuration:configuration error:&modelError];
-    if (!_model) {
-        if (fallback) *fallback = modelError.localizedDescription.length > 0 ? [NSString stringWithFormat:@"Neural spatial model load failed: %@", modelError.localizedDescription] : @"Neural spatial model load failed";
-        return NO;
-    }
-
-    NSDictionary<NSString *, MLFeatureDescription *> *inputs = _model.modelDescription.inputDescriptionsByName;
-    for (NSString *name in inputs) {
-        MLFeatureDescription *description = inputs[name];
-        if (description.type == MLFeatureTypeImage) {
-            _inputName = [name copy];
-            break;
-        }
-    }
-    NSDictionary<NSString *, MLFeatureDescription *> *outputs = _model.modelDescription.outputDescriptionsByName;
-    for (NSString *name in outputs) {
-        MLFeatureDescription *description = outputs[name];
-        if (description.type == MLFeatureTypeImage) {
-            _outputName = [name copy];
-            break;
-        }
-    }
-    if (_inputName.length == 0 || _outputName.length == 0) {
-        _model = nil;
-        if (fallback) *fallback = @"Neural spatial model must expose image input and image output";
-        return NO;
-    }
-    return YES;
-#else
-    if (fallback) *fallback = @"Core ML headers unavailable; using spatial scaler";
-    return NO;
-#endif
-}
-
-- (CVPixelBufferRef)newUpscaledPixelBufferFromTexture:(id<MTLTexture>)sourceTexture fallback:(NSString **)fallback {
-#if OPN_HAVE_COREML
-    if (![self deviceAllowsNeuralSpatial]) {
-        if (fallback) *fallback = @"Neural spatial disabled by device power or thermal state";
-        return nil;
-    }
-    if (![self loadModelIfNeededWithFallback:fallback]) return nil;
-    CVPixelBufferRef inputPixelBuffer = [self newModelInputPixelBufferFromTexture:sourceTexture fallback:fallback];
-    if (!inputPixelBuffer) return nil;
-
-    NSError *featureError = nil;
-    MLFeatureValue *inputValue = [MLFeatureValue featureValueWithPixelBuffer:inputPixelBuffer];
-    MLDictionaryFeatureProvider *provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:@{_inputName: inputValue} error:&featureError];
-    CVPixelBufferRelease(inputPixelBuffer);
-    if (!provider) {
-        if (fallback) *fallback = featureError.localizedDescription.length > 0 ? [NSString stringWithFormat:@"Neural spatial input failed: %@", featureError.localizedDescription] : @"Neural spatial input failed";
-        return nil;
-    }
-
-    NSError *predictionError = nil;
-    id<MLFeatureProvider> prediction = [_model predictionFromFeatures:provider error:&predictionError];
-    if (!prediction) {
-        if (fallback) *fallback = predictionError.localizedDescription.length > 0 ? [NSString stringWithFormat:@"Neural spatial prediction failed: %@", predictionError.localizedDescription] : @"Neural spatial prediction failed";
-        return nil;
-    }
-    MLFeatureValue *outputValue = [prediction featureValueForName:_outputName];
-    CVPixelBufferRef outputPixelBuffer = outputValue.imageBufferValue;
-    if (!outputPixelBuffer) {
-        if (fallback) *fallback = @"Neural spatial output image missing";
-        return nil;
-    }
-    CVPixelBufferRetain(outputPixelBuffer);
-    return outputPixelBuffer;
-#else
-    (void)sourceTexture;
-    if (fallback) *fallback = @"Core ML headers unavailable; using spatial scaler";
-    return nil;
-#endif
-}
-
-- (CVPixelBufferRef)newModelInputPixelBufferFromTexture:(id<MTLTexture>)sourceTexture fallback:(NSString **)fallback {
-    if (!sourceTexture || !_ciContext || !_outputColorSpace) {
-        if (fallback) *fallback = @"Neural spatial input texture unavailable";
-        return nil;
-    }
-    size_t width = sourceTexture.width;
-    size_t height = sourceTexture.height;
-#if OPN_HAVE_COREML
-    MLFeatureDescription *inputDescription = _model.modelDescription.inputDescriptionsByName[_inputName];
-    if (inputDescription.imageConstraint.pixelsWide > 0 && inputDescription.imageConstraint.pixelsHigh > 0) {
-        width = (size_t)inputDescription.imageConstraint.pixelsWide;
-        height = (size_t)inputDescription.imageConstraint.pixelsHigh;
-    }
-#endif
-    if (width == 0 || height == 0) {
-        if (fallback) *fallback = @"Neural spatial input dimensions unavailable";
-        return nil;
-    }
-    NSDictionary *attributes = @{(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{}};
-    CVPixelBufferRef pixelBuffer = nil;
-    CVReturn createResult = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, (__bridge CFDictionaryRef)attributes, &pixelBuffer);
-    if (createResult != kCVReturnSuccess || !pixelBuffer) {
-        if (fallback) *fallback = @"Neural spatial input allocation failed";
-        return nil;
-    }
-    CIImage *image = [CIImage imageWithMTLTexture:sourceTexture options:@{kCIImageColorSpace: (__bridge id)_outputColorSpace}];
-    if (!image) {
-        CVPixelBufferRelease(pixelBuffer);
-        if (fallback) *fallback = @"Neural spatial input image creation failed";
-        return nil;
-    }
-    CGRect extent = image.extent;
-    if (!CGRectIsEmpty(extent) && extent.size.width > 0.0 && extent.size.height > 0.0) {
-        CGFloat scale = MIN((CGFloat)width / extent.size.width, (CGFloat)height / extent.size.height);
-        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-        CGRect scaledExtent = image.extent;
-        CGFloat x = floor(((CGFloat)width - scaledExtent.size.width) * 0.5 - scaledExtent.origin.x);
-        CGFloat y = floor(((CGFloat)height - scaledExtent.size.height) * 0.5 - scaledExtent.origin.y);
-        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(x, y)];
-    }
-    [_ciContext render:image toCVPixelBuffer:pixelBuffer bounds:CGRectMake(0.0, 0.0, width, height) colorSpace:_outputColorSpace];
-    return pixelBuffer;
-}
-
-@end
-
 @interface OPNMetalFXUpscaler : NSObject
 - (instancetype)initWithDevice:(id<MTLDevice>)device;
 - (BOOL)isAvailable;
@@ -529,7 +328,6 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 @property(nonatomic, strong) CIContext *ciContext;
 @property(nonatomic, assign) CGColorSpaceRef outputColorSpace;
 @property(nonatomic, strong) OPNVideoTextureSource *textureSource;
-@property(nonatomic, strong) OPNNeuralSpatialUpscaler *neuralSpatialUpscaler;
 @property(nonatomic, strong) OPNMetalFXUpscaler *metalFXUpscaler;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialRGBPipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialNV12Pipeline;
@@ -550,7 +348,6 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         _ciContext = device ? [CIContext contextWithMTLDevice:device options:@{kCIContextWorkingColorSpace: [NSNull null]}] : nil;
         _outputColorSpace = CGColorSpaceCreateDeviceRGB();
         _textureSource = [[OPNVideoTextureSource alloc] initWithDevice:device];
-        _neuralSpatialUpscaler = [[OPNNeuralSpatialUpscaler alloc] initWithDevice:device ciContext:_ciContext outputColorSpace:_outputColorSpace];
         _metalFXUpscaler = [[OPNMetalFXUpscaler alloc] initWithDevice:device];
         _spatialRGBPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_rgb"];
         _spatialNV12Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_nv12"];
@@ -572,10 +369,6 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 
 - (BOOL)isMetalFXAvailable {
     return [self.metalFXUpscaler isAvailable];
-}
-
-- (BOOL)isNeuralSpatialAvailable {
-    return [self.neuralSpatialUpscaler isAvailable];
 }
 
 - (id<MTLRenderPipelineState>)newSpatialPipelineWithDevice:(id<MTLDevice>)device fragmentFunction:(NSString *)fragmentFunctionName {
@@ -689,16 +482,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     result.pixelFormat = pixelFormat;
     result.frameSource = frameSource;
 
-    OPNVideoGovernorTier requestedTier = OPNVideoGovernorTierSpatial;
-    if (settings.configuredTier == OPNVideoEnhancementTierNeuralSpatial) {
-        requestedTier = OPNVideoGovernorTierNeuralSpatial;
-    } else if (settings.configuredTier == OPNVideoEnhancementTierMetalFX) {
-        requestedTier = OPNVideoGovernorTierMetalFX;
-    }
-    if (requestedTier == OPNVideoGovernorTierNeuralSpatial && ![self isNeuralSpatialAvailable]) {
-        requestedTier = [self isMetalFXAvailable] ? OPNVideoGovernorTierMetalFX : OPNVideoGovernorTierSpatial;
-        result.tierFallbackReason = @"Neural spatial unavailable; using best spatial scaler";
-    }
+    OPNVideoGovernorTier requestedTier = settings.configuredTier == OPNVideoEnhancementTierMetalFX ? OPNVideoGovernorTierMetalFX : OPNVideoGovernorTierSpatial;
     if (requestedTier == OPNVideoGovernorTierMetalFX && ![self isMetalFXAvailable]) requestedTier = OPNVideoGovernorTierSpatial;
     OPNVideoGovernorTier activeTier = [self governedTierForRequestedTier:requestedTier settings:settings result:result];
     if (activeTier == OPNVideoGovernorTierNative) {
@@ -712,10 +496,6 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         result.tierFallbackReason = @"MetalFX unavailable; using custom spatial scaler";
     }
 
-    if (textureFrame && activeTier == OPNVideoGovernorTierNeuralSpatial && [self renderNeuralTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start]) {
-        [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:activeTier settings:settings];
-        return YES;
-    }
     if (textureFrame && activeTier == OPNVideoGovernorTierMetalFX && [self renderMetalFXTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start]) {
         [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:activeTier settings:settings];
         return YES;
@@ -764,16 +544,8 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor restored minimum enhanced tier";
         return OPNVideoGovernorTierSpatial;
     }
-    if (self.governorTier == OPNVideoGovernorTierMetalFX && requestedTier == OPNVideoGovernorTierNeuralSpatial) {
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded Neural Spatial to MetalFX";
-        return OPNVideoGovernorTierMetalFX;
-    }
     if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier == OPNVideoGovernorTierMetalFX) {
         if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded MetalFX to custom spatial scaler";
-        return OPNVideoGovernorTierSpatial;
-    }
-    if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier == OPNVideoGovernorTierNeuralSpatial) {
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded Neural Spatial to custom spatial scaler";
         return OPNVideoGovernorTierSpatial;
     }
     (void)settings;
@@ -794,9 +566,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     }
 
     if (self.overloadScore >= 3) {
-        if (activeTier == OPNVideoGovernorTierNeuralSpatial) {
-            self.governorTier = requestedTier >= OPNVideoGovernorTierMetalFX ? OPNVideoGovernorTierMetalFX : OPNVideoGovernorTierSpatial;
-        } else if (activeTier == OPNVideoGovernorTierMetalFX) {
+        if (activeTier == OPNVideoGovernorTierMetalFX) {
             self.governorTier = OPNVideoGovernorTierSpatial;
         } else if (activeTier == OPNVideoGovernorTierSpatial) {
             self.governorTier = OPNVideoGovernorTierSpatial;
@@ -809,97 +579,11 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     if (self.recoveryScore >= 90) {
         if (self.governorTier == OPNVideoGovernorTierNative) {
             self.governorTier = OPNVideoGovernorTierSpatial;
-        } else if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier >= OPNVideoGovernorTierMetalFX) {
+        } else if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier == OPNVideoGovernorTierMetalFX) {
             self.governorTier = OPNVideoGovernorTierMetalFX;
-        } else if (self.governorTier == OPNVideoGovernorTierMetalFX && requestedTier == OPNVideoGovernorTierNeuralSpatial) {
-            self.governorTier = OPNVideoGovernorTierNeuralSpatial;
         }
         self.recoveryScore = 0;
     }
-}
-
-- (BOOL)renderNeuralTextureFrame:(OPNVideoTextureFrame *)textureFrame
-                         drawable:(id<CAMetalDrawable>)drawable
-                         settings:(OPNVideoEnhancementSettings *)settings
-                           result:(OPNVideoEnhancementResult *)result
-                            start:(CFTimeInterval)start {
-    if (![self isNeuralSpatialAvailable]) {
-        result.tierFallbackReason = @"Neural spatial unavailable; using best spatial scaler";
-        return NO;
-    }
-    id<MTLTexture> sourceTexture = textureFrame.rgbTexture;
-    if (textureFrame.kind != OPNVideoTextureFrameKindRGB) {
-        id<MTLTexture> primaryTexture = textureFrame.lumaTexture;
-        if (!primaryTexture) return NO;
-        MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                                               width:primaryTexture.width
-                                                                                              height:primaryTexture.height
-                                                                                           mipmapped:NO];
-        descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-        descriptor.storageMode = MTLStorageModePrivate;
-        sourceTexture = [self.device newTextureWithDescriptor:descriptor];
-        if (!sourceTexture) {
-            result.tierFallbackReason = @"Neural spatial intermediate texture allocation failed; using best spatial scaler";
-            return NO;
-        }
-        id<MTLCommandBuffer> conversionCommandBuffer = [self.commandQueue commandBuffer];
-        if (!conversionCommandBuffer || ![self encodeSpatialTextureFrame:textureFrame destinationTexture:sourceTexture commandBuffer:conversionCommandBuffer settings:settings result:result]) {
-            result.tierFallbackReason = @"Neural spatial RGB conversion failed; using best spatial scaler";
-            return NO;
-        }
-        [conversionCommandBuffer commit];
-        [conversionCommandBuffer waitUntilCompleted];
-    }
-
-    NSString *neuralFallback = @"";
-    CVPixelBufferRef neuralPixelBuffer = [self.neuralSpatialUpscaler newUpscaledPixelBufferFromTexture:sourceTexture fallback:&neuralFallback];
-    if (!neuralPixelBuffer) {
-        result.tierFallbackReason = neuralFallback.length > 0 ? neuralFallback : @"Neural spatial inference failed; using best spatial scaler";
-        return NO;
-    }
-
-    CIImage *image = [CIImage imageWithCVPixelBuffer:neuralPixelBuffer options:@{kCIImageColorSpace: (__bridge id)self.outputColorSpace}];
-    if (!image) {
-        CVPixelBufferRelease(neuralPixelBuffer);
-        result.tierFallbackReason = @"Neural spatial output image creation failed; using best spatial scaler";
-        return NO;
-    }
-    CGRect sourceExtent = image.extent;
-    if (!CGRectIsEmpty(sourceExtent) && sourceExtent.size.width > 0.0 && sourceExtent.size.height > 0.0) {
-        CGFloat scale = MIN(settings.drawableSize.width / sourceExtent.size.width, settings.drawableSize.height / sourceExtent.size.height);
-        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-        CGRect scaledExtent = image.extent;
-        CGFloat x = floor((settings.drawableSize.width - scaledExtent.size.width) * 0.5 - scaledExtent.origin.x);
-        CGFloat y = floor((settings.drawableSize.height - scaledExtent.size.height) * 0.5 - scaledExtent.origin.y);
-        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(x, y)];
-    }
-
-    id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
-    if (!commandBuffer) {
-        CVPixelBufferRelease(neuralPixelBuffer);
-        result.fallbackReason = @"Neural spatial could not create command buffer";
-        return NO;
-    }
-    MTLRenderPassDescriptor *clearPass = [MTLRenderPassDescriptor renderPassDescriptor];
-    clearPass.colorAttachments[0].texture = drawable.texture;
-    clearPass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    clearPass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    clearPass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-    id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:clearPass];
-    [encoder endEncoding];
-    CGRect outputBounds = CGRectMake(0.0, 0.0, settings.drawableSize.width, settings.drawableSize.height);
-    [self.ciContext render:image toMTLTexture:drawable.texture commandBuffer:commandBuffer bounds:outputBounds colorSpace:self.outputColorSpace];
-    [commandBuffer presentDrawable:drawable];
-    [commandBuffer commit];
-    if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
-    CVPixelBufferRelease(neuralPixelBuffer);
-
-    result.renderPath = @"OPNCoreMLNeuralSpatialUpscaler";
-    result.activeTier = @"Neural Spatial";
-    result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
-    result.droppedFrames = self.droppedFrames;
-    if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
-    return YES;
 }
 
 - (BOOL)renderMetalFXTextureFrame:(OPNVideoTextureFrame *)textureFrame
@@ -972,8 +656,8 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     [commandBuffer commit];
     if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
 
-    result.renderPath = settings.configuredTier == OPNVideoEnhancementTierMetalFX || settings.configuredTier == OPNVideoEnhancementTierNeuralSpatial ? @"OPNEnhancedFallbackSpatial" : @"OPNMetalSpatialUpscaler";
-    result.activeTier = settings.configuredTier == OPNVideoEnhancementTierMetalFX || settings.configuredTier == OPNVideoEnhancementTierNeuralSpatial ? @"Enhanced Spatial fallback" : @"Metal Spatial";
+    result.renderPath = settings.configuredTier == OPNVideoEnhancementTierMetalFX ? @"OPNMetalFXUpscalerFallbackSpatial" : @"OPNMetalSpatialUpscaler";
+    result.activeTier = settings.configuredTier == OPNVideoEnhancementTierMetalFX ? @"MetalFX Spatial fallback" : @"Metal Spatial";
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
     if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];

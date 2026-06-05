@@ -1366,11 +1366,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
-        if ([self.enhancementRenderer isNeuralSpatialAvailable]) {
-            settings.configuredTier = OPNVideoEnhancementTierNeuralSpatial;
-        } else {
-            settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
-        }
+        settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
         settings.sharpness = enhancementSharpness;
         settings.denoise = enhancementDenoise;
         settings.sourceSize = sourceSize;
