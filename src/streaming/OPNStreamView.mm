@@ -665,17 +665,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
         fittedHeight = height;
         fittedWidth = floor(height * targetAspect);
     }
-    if (_videoUpscalingMode <= 0 && _videoStreamWidth > 0 && _videoStreamHeight > 0) {
-        CGFloat scale = self.window.backingScaleFactor > 0.0 ? self.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
-        if (scale <= 0.0) scale = 1.0;
-        CGFloat maxWidth = floor((CGFloat)_videoStreamWidth / scale);
-        CGFloat maxHeight = floor((CGFloat)_videoStreamHeight / scale);
-        if (maxWidth > 0.0 && maxHeight > 0.0 && (fittedWidth > maxWidth || fittedHeight > maxHeight)) {
-            CGFloat capScale = MIN(maxWidth / fittedWidth, maxHeight / fittedHeight);
-            fittedWidth = floor(fittedWidth * capScale);
-            fittedHeight = floor(fittedHeight * capScale);
-        }
-    }
     CGFloat x = floor((width - fittedWidth) / 2.0);
     CGFloat y = floor((height - fittedHeight) / 2.0);
     self.videoSurface.frame = NSMakeRect(x, y, fittedWidth, fittedHeight);
