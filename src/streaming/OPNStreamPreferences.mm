@@ -24,6 +24,7 @@ static NSString *const kPrefilterModeIndexKey = @"OpenNOW.Stream.PrefilterModeIn
 static NSString *const kPrefilterSharpnessKey = @"OpenNOW.Stream.PrefilterSharpness";
 static NSString *const kPrefilterDenoiseKey = @"OpenNOW.Stream.PrefilterDenoise";
 static NSString *const kUpscalingModeIndexKey = @"OpenNOW.Stream.UpscalingModeIndex";
+static NSString *const kUpscalingTargetIndexKey = @"OpenNOW.Stream.UpscalingTargetIndex";
 static NSString *const kUpscalingSharpnessKey = @"OpenNOW.Stream.UpscalingSharpness";
 static NSString *const kUpscalingDenoiseKey = @"OpenNOW.Stream.UpscalingDenoise";
 static NSString *const kRecordingVideoBitrateMbpsKey = @"OpenNOW.Stream.RecordingVideoBitrateMbps";
@@ -127,6 +128,14 @@ const std::vector<StreamUpscalingModeOption> &StreamUpscalingModeOptions() {
         {"Auto", 1},
         {"Spatial", 2},
         {"MetalFX", 3},
+    };
+    return options;
+}
+
+const std::vector<StreamUpscalingTargetOption> &StreamUpscalingTargetOptions() {
+    static const std::vector<StreamUpscalingTargetOption> options = {
+        {"2K", 1440},
+        {"4K", 2160},
     };
     return options;
 }
@@ -584,8 +593,12 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.upscalingModeIndex = ClampedStoredInteger(kUpscalingModeIndexKey, 1, (int)upscalingModeOptions.size());
     profile.upscalingModeOption = upscalingModeOptions[(size_t)profile.upscalingModeIndex];
     profile.upscalingMode = profile.upscalingModeOption.value;
-    profile.upscalingSharpness = ClampedStoredInteger(kUpscalingSharpnessKey, 4, 21);
-    profile.upscalingDenoise = ClampedStoredInteger(kUpscalingDenoiseKey, 0, 11);
+    const auto &upscalingTargetOptions = StreamUpscalingTargetOptions();
+    profile.upscalingTargetIndex = ClampedStoredInteger(kUpscalingTargetIndexKey, 1, (int)upscalingTargetOptions.size());
+    profile.upscalingTargetOption = upscalingTargetOptions[(size_t)profile.upscalingTargetIndex];
+    profile.upscalingTargetHeight = profile.upscalingTargetOption.height;
+    profile.upscalingSharpness = ClampedStoredInteger(kUpscalingSharpnessKey, 4, 41);
+    profile.upscalingDenoise = ClampedStoredInteger(kUpscalingDenoiseKey, 0, 21);
     profile.recordingVideoBitrateMbps = ClampedStoredInteger(kRecordingVideoBitrateMbpsKey, 0, 201);
     profile.recordingAudioBitrateKbps = (int)std::llround(ClampedStoredDouble(kRecordingAudioBitrateKbpsKey, 160.0, 64.0, 320.0));
 
@@ -1386,13 +1399,18 @@ void SaveStreamUpscalingModeIndex(int upscalingModeIndex) {
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingModeIndexKey];
 }
 
+void SaveStreamUpscalingTargetIndex(int upscalingTargetIndex) {
+    int clamped = std::max(0, std::min(upscalingTargetIndex, (int)StreamUpscalingTargetOptions().size() - 1));
+    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingTargetIndexKey];
+}
+
 void SaveStreamUpscalingSharpness(int sharpness) {
-    int clamped = std::max(0, std::min(sharpness, 20));
+    int clamped = std::max(0, std::min(sharpness, 40));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingSharpnessKey];
 }
 
 void SaveStreamUpscalingDenoise(int denoise) {
-    int clamped = std::max(0, std::min(denoise, 10));
+    int clamped = std::max(0, std::min(denoise, 20));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingDenoiseKey];
 }
 

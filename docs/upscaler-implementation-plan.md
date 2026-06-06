@@ -161,8 +161,8 @@ Tasks:
 | --- | --- | --- |
 | Done | Add `src/shaders/OPNVideoEnhancement.metal` | Shader source is currently compiled from the renderer so the Makefile can build without a Metal asset pipeline change |
 | Done | Implement aspect-fit sampling with high-quality bicubic or Lanczos-like kernel | RGB path now uses Catmull-Rom style bicubic sampling; YUV paths use GPU plane sampling with bounded cleanup |
-| Done | Add edge-aware sharpening with clamp controls | Shader applies bounded local sharpening from the local 0-20 sharpness setting |
-| Done | Add compression-aware denoise pass | Metal shader applies bounded local denoise before sharpening using the existing 0-10 denoise setting |
+| Done | Add edge-aware sharpening with clamp controls | Shader applies bounded local sharpening from the local 0-40 sharpness setting |
+| Done | Add compression-aware denoise pass | Metal shader applies bounded local denoise before sharpening using the local 0-20 denoise setting |
 | Done | Fold color conversion, scale, sharpen, and tone management into minimal passes | BGRA and NV12 paths render directly to the drawable in one render pass |
 
 Exit criteria:
@@ -429,6 +429,7 @@ Legend: `Done`, `In Progress`, `Planned`, `Blocked`.
 | Done | 2026-06-05 | Milestone 7 implementation | Added enhanced-frame recording bridge from renderer to session to recording manager, with raw stream fallback |
 | Done | 2026-06-05 | Milestone 6 explicit tier controls | Added Off, Auto, Spatial, and MetalFX local upscaling preferences with session tier mapping and preference tests |
 | Done | 2026-06-05 | 4K local upscaling default and stronger sharpness | Enhanced modes now render to at least a 4K drawable target and local sharpness supports 0-20 |
+| Done | 2026-06-05 | Sidebar upscaling target and stronger local controls | Sidebar now offers 2K/4K local upscaling target selection; local sharpness supports 0-40 and denoise supports 0-20 |
 | Planned | Not started | Milestone 8 research | Neural spatial model |
 | Planned | Not started | Milestone 9 research | Neural temporal model |
 
@@ -465,6 +466,8 @@ Start with Milestone 1 because it derisks every later tier.
 | 2026-06-05 | `make all` | Passed after explicit Off/Auto/Spatial/MetalFX upscaling tier controls |
 | 2026-06-05 | `make test` | Passed, 72 tests |
 | 2026-06-05 | `make all` | Passed after 4K enhanced target and local sharpness range increase |
+| 2026-06-05 | `make test` | Passed, 72 tests |
+| 2026-06-05 | `make all` | Passed after sidebar 2K/4K target selector, sidebar cleanup, and local 40/20 control ranges |
 | 2026-06-05 | `make test` | Passed, 72 tests |
 
 ## Definition of Done

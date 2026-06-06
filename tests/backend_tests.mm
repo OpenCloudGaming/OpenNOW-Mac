@@ -525,14 +525,22 @@ TEST_CASE("PrefilterPreferencesReadBundleAndGlobalDefaults") {
 
 TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     ScopedStreamIntegerPreference mode(@"OpenNOW.Stream.UpscalingModeIndex");
+    ScopedStreamIntegerPreference target(@"OpenNOW.Stream.UpscalingTargetIndex");
     ScopedStreamIntegerPreference sharpness(@"OpenNOW.Stream.UpscalingSharpness");
     ScopedStreamIntegerPreference denoise(@"OpenNOW.Stream.UpscalingDenoise");
 
     OPN::StreamPreferenceProfile defaults = OPN::LoadStreamPreferenceProfile();
     CHECK_EQ(defaults.upscalingMode, 1);
     CHECK_EQ(defaults.upscalingModeOption.label, "Auto");
+    CHECK_EQ(defaults.upscalingTargetHeight, 2160);
+    CHECK_EQ(defaults.upscalingTargetOption.label, "4K");
     CHECK_EQ(defaults.upscalingSharpness, 4);
     CHECK_EQ(defaults.upscalingDenoise, 0);
+
+    OPN::SaveStreamUpscalingTargetIndex(0);
+    OPN::StreamPreferenceProfile twoK = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(twoK.upscalingTargetHeight, 1440);
+    CHECK_EQ(twoK.upscalingTargetOption.label, "2K");
 
     OPN::SaveStreamUpscalingModeIndex(2);
     OPN::StreamPreferenceProfile spatial = OPN::LoadStreamPreferenceProfile();
@@ -551,12 +559,13 @@ TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     OPN::StreamPreferenceProfile clamped = OPN::LoadStreamPreferenceProfile();
     CHECK_EQ(clamped.upscalingMode, 3);
     CHECK_EQ(clamped.upscalingModeOption.label, "MetalFX");
+    CHECK_EQ(clamped.upscalingTargetHeight, 1440);
     CHECK_EQ(clamped.upscalingSharpness, 0);
-    CHECK_EQ(clamped.upscalingDenoise, 10);
+    CHECK_EQ(clamped.upscalingDenoise, 20);
 
     OPN::SaveStreamUpscalingSharpness(42);
     OPN::StreamPreferenceProfile maxSharpness = OPN::LoadStreamPreferenceProfile();
-    CHECK_EQ(maxSharpness.upscalingSharpness, 20);
+    CHECK_EQ(maxSharpness.upscalingSharpness, 40);
 }
 
 TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {

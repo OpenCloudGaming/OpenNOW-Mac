@@ -699,8 +699,8 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     }
     float texel[2] = {primaryTexture.width > 0 ? 1.0f / (float)primaryTexture.width : 0.0f,
                       primaryTexture.height > 0 ? 1.0f / (float)primaryTexture.height : 0.0f};
-    float sharpness = std::max(0.0f, std::min(2.0f, (float)settings.sharpness / 10.0f));
-    float denoise = std::max(0.0f, std::min(0.65f, (float)settings.denoise / 10.0f));
+    float sharpness = std::max(0.0f, std::min(4.0f, (float)settings.sharpness / 10.0f));
+    float denoise = std::max(0.0f, std::min(1.0f, ((float)settings.denoise / 10.0f) * 0.65f));
     [encoder setRenderPipelineState:pipeline];
     [encoder setFragmentTexture:primaryTexture atIndex:0];
     if (textureFrame.kind == OPNVideoTextureFrameKindNV12) [encoder setFragmentTexture:textureFrame.chromaTexture atIndex:1];
@@ -796,11 +796,12 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         return NO;
     }
     if (settings.denoise > 0) {
-        double localSharpnessScale = std::max(0.0, std::min(2.0, (double)settings.sharpness / 10.0));
+        double localSharpnessScale = std::max(0.0, std::min(4.0, (double)settings.sharpness / 10.0));
+        double localDenoiseScale = std::max(0.0, std::min(2.0, (double)settings.denoise / 10.0));
         CIFilter *noiseReduction = [CIFilter filterWithName:@"CINoiseReduction"];
         [noiseReduction setDefaults];
         [noiseReduction setValue:image forKey:kCIInputImageKey];
-        [noiseReduction setValue:@(0.01 + ((double)settings.denoise / 10.0) * 0.055) forKey:@"inputNoiseLevel"];
+        [noiseReduction setValue:@(0.01 + localDenoiseScale * 0.055) forKey:@"inputNoiseLevel"];
         [noiseReduction setValue:@(0.20 + localSharpnessScale * 0.25) forKey:@"inputSharpness"];
         image = noiseReduction.outputImage ?: image;
     }
@@ -814,7 +815,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         image = lanczos.outputImage ?: [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
     }
     if (settings.sharpness > 0) {
-        double localSharpnessScale = std::max(0.0, std::min(2.0, (double)settings.sharpness / 10.0));
+        double localSharpnessScale = std::max(0.0, std::min(4.0, (double)settings.sharpness / 10.0));
         CIFilter *unsharp = [CIFilter filterWithName:@"CIUnsharpMask"];
         [unsharp setDefaults];
         [unsharp setValue:image forKey:kCIInputImageKey];

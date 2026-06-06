@@ -55,6 +55,11 @@ struct StreamUpscalingModeOption {
     int value = 0;
 };
 
+struct StreamUpscalingTargetOption {
+    std::string label;
+    int height = 2160;
+};
+
 struct StreamMicrophoneModeOption {
     std::string label;
     std::string value;
@@ -123,6 +128,8 @@ struct StreamPreferenceProfile {
     int prefilterModel = 0;
     int upscalingModeIndex = 1;
     int upscalingMode = 1;
+    int upscalingTargetIndex = 1;
+    int upscalingTargetHeight = 2160;
     int upscalingSharpness = 4;
     int upscalingDenoise = 0;
     int recordingVideoBitrateMbps = 0;
@@ -147,6 +154,7 @@ struct StreamPreferenceProfile {
     StreamColorQualityOption colorQuality;
     StreamPrefilterModeOption prefilterModeOption;
     StreamUpscalingModeOption upscalingModeOption;
+    StreamUpscalingTargetOption upscalingTargetOption;
 
     double AspectRatio() const;
 };
@@ -158,6 +166,7 @@ const std::vector<StreamBitrateOption> &StreamBitrateOptions();
 const std::vector<StreamColorQualityOption> &StreamColorQualityOptions();
 const std::vector<StreamPrefilterModeOption> &StreamPrefilterModeOptions();
 const std::vector<StreamUpscalingModeOption> &StreamUpscalingModeOptions();
+const std::vector<StreamUpscalingTargetOption> &StreamUpscalingTargetOptions();
 const std::vector<StreamMicrophoneModeOption> &StreamMicrophoneModeOptions();
 std::vector<StreamMicrophoneDeviceOption> LoadMicrophoneDeviceOptions();
 std::vector<StreamResolutionOption> StreamResolutionOptionsForAspect(int aspectIndex);
@@ -216,6 +225,7 @@ void SaveStreamPrefilterModeIndex(int prefilterModeIndex);
 void SaveStreamPrefilterSharpness(int sharpness);
 void SaveStreamPrefilterDenoise(int denoise);
 void SaveStreamUpscalingModeIndex(int upscalingModeIndex);
+void SaveStreamUpscalingTargetIndex(int upscalingTargetIndex);
 void SaveStreamUpscalingSharpness(int sharpness);
 void SaveStreamUpscalingDenoise(int denoise);
 void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps);

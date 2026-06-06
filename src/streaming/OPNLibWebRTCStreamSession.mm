@@ -1301,7 +1301,8 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     int enhancementMode = 0;
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
-    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
+    int enhancementTargetHeight = 2160;
+    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
     if (enhancementMode > 0) {
         drawableSize = [self enhancementDrawableSizeForBoundsSize:boundsSize scale:scale];
     }
@@ -1317,7 +1318,13 @@ static NSString *OPNVideoResolutionString(CGSize size) {
                                     std::max<CGFloat>(1.0, floor(boundsSize.height * scale)));
     CGFloat aspect = boundsSize.height > 0.0 ? boundsSize.width / boundsSize.height : 16.0 / 9.0;
     if (aspect <= 0.1 || !std::isfinite((double)aspect)) aspect = 16.0 / 9.0;
-    CGFloat targetWidth = aspect >= 1.0 ? 3840.0 : 2160.0 * aspect;
+    int enhancementMode = 0;
+    int enhancementSharpness = 0;
+    int enhancementDenoise = 0;
+    int enhancementTargetHeight = 2160;
+    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
+    CGFloat targetHeightPixels = (CGFloat)std::max(1440, std::min(enhancementTargetHeight, 2160));
+    CGFloat targetWidth = targetHeightPixels * aspect;
     CGFloat targetHeight = targetWidth / aspect;
     return CGSizeMake(std::max<CGFloat>(backingSize.width, floor(targetWidth)),
                       std::max<CGFloat>(backingSize.height, floor(targetHeight)));
@@ -1382,7 +1389,8 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     int enhancementMode = 0;
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
-    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
+    int enhancementTargetHeight = 2160;
+    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
     [self updateDrawableSizeForCurrentBackingScale];
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
@@ -2273,11 +2281,12 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
     ApplyRuntimeBitrateLimit(clampedMbps, "manual");
 }
 
-void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise) {
+void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise, int targetHeight) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_localEnhancementMode = std::max(0, std::min(mode, 3));
-    m_localEnhancementSharpness = std::max(0, std::min(sharpness, 20));
-    m_localEnhancementDenoise = std::max(0, std::min(denoise, 10));
+    m_localEnhancementSharpness = std::max(0, std::min(sharpness, 40));
+    m_localEnhancementDenoise = std::max(0, std::min(denoise, 20));
+    m_localEnhancementTargetHeight = std::max(1440, std::min(targetHeight, 2160));
 }
 
 void LibWebRTCStreamSession::SetEnhancedVideoFrameCaptureEnabled(bool enabled) {
@@ -3002,11 +3011,12 @@ int LibWebRTCStreamSession::TargetFps() const {
     return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
 }
 
-void LibWebRTCStreamSession::LocalVideoEnhancement(int &mode, int &sharpness, int &denoise) const {
+void LibWebRTCStreamSession::LocalVideoEnhancement(int &mode, int &sharpness, int &denoise, int &targetHeight) const {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     mode = m_localEnhancementMode;
     sharpness = m_localEnhancementSharpness;
     denoise = m_localEnhancementDenoise;
+    targetHeight = m_localEnhancementTargetHeight;
 }
 
 void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, const std::string &pipelineMode) {

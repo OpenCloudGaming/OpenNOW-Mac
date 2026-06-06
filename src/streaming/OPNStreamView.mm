@@ -12,7 +12,6 @@
 #import <QuartzCore/QuartzCore.h>
 
 #include <algorithm>
-#include <climits>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -97,6 +96,8 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
     double _pendingMouseDy;
     int _maxBitrateMbps;
     NSInteger _videoUpscalingMode;
+    NSInteger _videoUpscalingTargetIndex;
+    NSInteger _videoUpscalingTargetHeight;
     NSInteger _videoUpscalingSharpness;
     NSInteger _videoUpscalingDenoise;
     NSInteger _videoStreamWidth;
@@ -114,12 +115,11 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
 @property (nonatomic, strong) NSView *microphoneActiveOverlay;
 @property (nonatomic, strong) NSView *sidebarHUD;
 @property (nonatomic, strong) NSTextField *sidebarMicStatusValue;
-@property (nonatomic, strong) NSTextField *sidebarBitrateValue;
 @property (nonatomic, strong) NSTextField *sidebarPlaytimeValue;
 @property (nonatomic, strong) NSTextField *sidebarRecordingStatusValue;
 @property (nonatomic, strong) NSTimer *playtimeTimer;
-@property (nonatomic, strong) NSSlider *bitrateSlider;
 @property (nonatomic, strong) NSPopUpButton *upscalingModePopup;
+@property (nonatomic, strong) NSPopUpButton *upscalingTargetPopup;
 @property (nonatomic, strong) NSSlider *upscalingSharpnessSlider;
 @property (nonatomic, strong) NSSlider *upscalingDenoiseSlider;
 @property (nonatomic, strong) NSSlider *gameVolumeSlider;
@@ -164,6 +164,8 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
         _videoUpscalingMode = profile.upscalingMode;
+        _videoUpscalingTargetIndex = profile.upscalingTargetIndex;
+        _videoUpscalingTargetHeight = profile.upscalingTargetHeight;
         _videoUpscalingSharpness = profile.upscalingSharpness;
         _videoUpscalingDenoise = profile.upscalingDenoise;
         _videoStreamWidth = profile.resolution.width;
@@ -263,10 +265,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     panel.layer.borderColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.12].CGColor;
     panel.hidden = YES;
 
-    NSTextField *title = OPNSidebarLabel(@"Stream Controls", 18.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    title.frame = NSMakeRect(20.0, 18.0, 180.0, 24.0);
-    [panel addSubview:title];
-
     NSButton *close = [[NSButton alloc] initWithFrame:NSMakeRect(NSWidth(panel.frame) - 48.0, 14.0, 30.0, 30.0)];
     close.title = @"x";
     close.bordered = NO;
@@ -275,9 +273,8 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     close.contentTintColor = NSColor.whiteColor;
     [panel addSubview:close];
 
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 56.0, NSWidth(panel.frame) - 24.0, 116.0), 0.045)];
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 176.0, NSWidth(panel.frame) - 24.0, 56.0), 0.060)];
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 240.0, NSWidth(panel.frame) - 24.0, 192.0), 0.060)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 56.0, NSWidth(panel.frame) - 24.0, 76.0), 0.045)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 144.0, NSWidth(panel.frame) - 24.0, 288.0), 0.060)];
     [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 444.0, NSWidth(panel.frame) - 24.0, 152.0), 0.045)];
     [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 600.0, NSWidth(panel.frame) - 24.0, 76.0), 0.045)];
     [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 670.0, NSWidth(panel.frame) - 24.0, 116.0), 0.060)];
@@ -290,24 +287,9 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     self.sidebarMicStatusValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
     [self addSidebarRowTo:panel title:@"Mic" value:self.sidebarMicStatusValue y:104.0];
 
-    [panel addSubview:OPNSidebarSeparator(20.0, 132.0, NSWidth(panel.frame) - 40.0)];
-
-    self.sidebarBitrateValue = OPNSidebarLabel(@"-- Mbps", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
-    [self addSidebarRowTo:panel title:@"Bitrate" value:self.sidebarBitrateValue y:142.0];
-    [panel addSubview:OPNSidebarLabel(@"Stream Bitrate", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 180.0, 180.0, 18.0);
-    self.bitrateSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 204.0, NSWidth(panel.frame) - 40.0, 22.0)];
-    self.bitrateSlider.minValue = 15.0;
-    self.bitrateSlider.maxValue = 100.0;
-    self.bitrateSlider.doubleValue = profile.maxBitrateMbps;
-    self.bitrateSlider.target = self;
-    self.bitrateSlider.action = @selector(bitrateSliderChanged:);
-    self.bitrateSlider.continuous = YES;
-    [panel addSubview:self.bitrateSlider];
-
     [panel addSubview:OPNSidebarLabel(@"Resolution Upscaling", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 246.0, 190.0, 18.0);
-    self.upscalingModePopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20.0, 272.0, NSWidth(panel.frame) - 40.0, 30.0) pullsDown:NO];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 150.0, 190.0, 18.0);
+    self.upscalingModePopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20.0, 176.0, NSWidth(panel.frame) - 40.0, 30.0) pullsDown:NO];
     for (const OPN::StreamUpscalingModeOption &option : OPN::StreamUpscalingModeOptions()) {
         [self.upscalingModePopup addItemWithTitle:[NSString stringWithUTF8String:option.label.c_str()]];
     }
@@ -316,30 +298,41 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     self.upscalingModePopup.action = @selector(upscalingModePopupChanged:);
     [panel addSubview:self.upscalingModePopup];
 
-    [panel addSubview:OPNSidebarSeparator(20.0, 310.0, NSWidth(panel.frame) - 40.0)];
+    [panel addSubview:OPNSidebarLabel(@"Upscaling Target", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 214.0, 190.0, 18.0);
+    self.upscalingTargetPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20.0, 240.0, NSWidth(panel.frame) - 40.0, 30.0) pullsDown:NO];
+    for (const OPN::StreamUpscalingTargetOption &option : OPN::StreamUpscalingTargetOptions()) {
+        [self.upscalingTargetPopup addItemWithTitle:[NSString stringWithUTF8String:option.label.c_str()]];
+    }
+    [self.upscalingTargetPopup selectItemAtIndex:MAX(0, MIN((NSInteger)profile.upscalingTargetIndex, (NSInteger)OPN::StreamUpscalingTargetOptions().size() - 1))];
+    self.upscalingTargetPopup.target = self;
+    self.upscalingTargetPopup.action = @selector(upscalingTargetPopupChanged:);
+    [panel addSubview:self.upscalingTargetPopup];
+
+    [panel addSubview:OPNSidebarSeparator(20.0, 278.0, NSWidth(panel.frame) - 40.0)];
 
     [panel addSubview:OPNSidebarLabel(@"Local Sharpness", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 318.0, 190.0, 18.0);
-    self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 342.0, NSWidth(panel.frame) - 40.0, 22.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 286.0, 190.0, 18.0);
+    self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 310.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.upscalingSharpnessSlider.minValue = 0.0;
-    self.upscalingSharpnessSlider.maxValue = 20.0;
+    self.upscalingSharpnessSlider.maxValue = 40.0;
     self.upscalingSharpnessSlider.doubleValue = profile.upscalingSharpness;
-    self.upscalingSharpnessSlider.numberOfTickMarks = 21;
+    self.upscalingSharpnessSlider.numberOfTickMarks = 41;
     self.upscalingSharpnessSlider.allowsTickMarkValuesOnly = YES;
     self.upscalingSharpnessSlider.target = self;
     self.upscalingSharpnessSlider.action = @selector(upscalingSharpnessSliderChanged:);
     self.upscalingSharpnessSlider.continuous = YES;
     [panel addSubview:self.upscalingSharpnessSlider];
 
-    [panel addSubview:OPNSidebarSeparator(20.0, 372.0, NSWidth(panel.frame) - 40.0)];
+    [panel addSubview:OPNSidebarSeparator(20.0, 340.0, NSWidth(panel.frame) - 40.0)];
 
     [panel addSubview:OPNSidebarLabel(@"Denoise", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 380.0, 190.0, 18.0);
-    self.upscalingDenoiseSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 404.0, NSWidth(panel.frame) - 40.0, 22.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 348.0, 190.0, 18.0);
+    self.upscalingDenoiseSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 372.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.upscalingDenoiseSlider.minValue = 0.0;
-    self.upscalingDenoiseSlider.maxValue = 10.0;
+    self.upscalingDenoiseSlider.maxValue = 20.0;
     self.upscalingDenoiseSlider.doubleValue = profile.upscalingDenoise;
-    self.upscalingDenoiseSlider.numberOfTickMarks = 11;
+    self.upscalingDenoiseSlider.numberOfTickMarks = 21;
     self.upscalingDenoiseSlider.allowsTickMarkValuesOnly = YES;
     self.upscalingDenoiseSlider.target = self;
     self.upscalingDenoiseSlider.action = @selector(upscalingDenoiseSliderChanged:);
@@ -399,7 +392,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     self.sidebarHUD = panel;
     [self addSubview:panel positioned:NSWindowAbove relativeTo:self.microphoneActiveOverlay];
     [self updateSidebarMicStatus];
-    [self updateSidebarBitrateStatus];
     [self updateSidebarPlaytimeStatus];
     [self updateRecordingControls];
 }
@@ -459,7 +451,10 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
         session->SetGameVolume(_gameVolume);
         session->SetMicrophoneVolume(_microphoneVolumeLevel);
         session->SetMaxBitrateMbps(_maxBitrateMbps);
-        session->SetLocalVideoEnhancement((int)_videoUpscalingMode, (int)_videoUpscalingSharpness, (int)_videoUpscalingDenoise);
+        session->SetLocalVideoEnhancement((int)_videoUpscalingMode,
+                                          (int)_videoUpscalingSharpness,
+                                          (int)_videoUpscalingDenoise,
+                                          (int)_videoUpscalingTargetHeight);
         [self updateEnhancedVideoRecordingPreference];
         __weak OPNStreamView *weakSelf = self;
         session->OnMicrophoneLevel([weakSelf](double level) {
@@ -516,9 +511,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 - (void)setMaxBitrateMbps:(NSInteger)mbps {
     int clampedMbps = std::max(1, std::min((int)mbps, 250));
     _maxBitrateMbps = clampedMbps;
-    if (self.bitrateSlider) self.bitrateSlider.doubleValue = clampedMbps;
     if (_streamSession) _streamSession->SetMaxBitrateMbps(clampedMbps);
-    [self updateSidebarBitrateStatus];
 }
 
 - (void)setMicrophoneMode:(const std::string &)mode pushToTalkKeyCode:(uint16_t)keyCode modifierMask:(uint16_t)modifierMask {
@@ -606,12 +599,15 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 
 - (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness denoise:(NSInteger)denoise streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight {
     _videoUpscalingMode = MAX(0, MIN(mode, 3));
-    _videoUpscalingSharpness = MAX(0, MIN(sharpness, 20));
-    _videoUpscalingDenoise = MAX(0, MIN(denoise, 10));
+    _videoUpscalingSharpness = MAX(0, MIN(sharpness, 40));
+    _videoUpscalingDenoise = MAX(0, MIN(denoise, 20));
     _videoStreamWidth = MAX(0, streamWidth);
     _videoStreamHeight = MAX(0, streamHeight);
     if (_streamSession) {
-        _streamSession->SetLocalVideoEnhancement((int)_videoUpscalingMode, (int)_videoUpscalingSharpness, (int)_videoUpscalingDenoise);
+        _streamSession->SetLocalVideoEnhancement((int)_videoUpscalingMode,
+                                                 (int)_videoUpscalingSharpness,
+                                                 (int)_videoUpscalingDenoise,
+                                                 (int)_videoUpscalingTargetHeight);
     }
     [self updateEnhancedVideoRecordingPreference];
     [self applyVideoUpscalingFiltersToView:self.videoSurface];
@@ -791,25 +787,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     OPN::SaveStreamMicrophoneVolume(_microphoneVolumeLevel);
 }
 
-- (void)bitrateSliderChanged:(NSSlider *)slider {
-    int mbps = (int)std::lround(slider.doubleValue);
-    mbps = std::max(15, std::min(mbps, 100));
-    slider.doubleValue = mbps;
-    [self setMaxBitrateMbps:mbps];
-
-    const std::vector<OPN::StreamBitrateOption> &options = OPN::StreamBitrateOptions();
-    int nearestIndex = 0;
-    int nearestDistance = INT_MAX;
-    for (size_t i = 0; i < options.size(); i++) {
-        int distance = std::abs(options[i].mbps - mbps);
-        if (distance < nearestDistance) {
-            nearestDistance = distance;
-            nearestIndex = (int)i;
-        }
-    }
-    OPN::SaveStreamBitrateIndex(nearestIndex);
-}
-
 - (void)upscalingModePopupChanged:(NSPopUpButton *)popup {
     NSInteger index = MAX(0, MIN(popup.indexOfSelectedItem, (NSInteger)OPN::StreamUpscalingModeOptions().size() - 1));
     const OPN::StreamUpscalingModeOption &option = OPN::StreamUpscalingModeOptions()[(size_t)index];
@@ -821,8 +798,23 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
                    streamHeight:_videoStreamHeight];
 }
 
+- (void)upscalingTargetPopupChanged:(NSPopUpButton *)popup {
+    NSInteger index = MAX(0, MIN(popup.indexOfSelectedItem, (NSInteger)OPN::StreamUpscalingTargetOptions().size() - 1));
+    const OPN::StreamUpscalingTargetOption &option = OPN::StreamUpscalingTargetOptions()[(size_t)index];
+    _videoUpscalingTargetIndex = index;
+    _videoUpscalingTargetHeight = option.height;
+    OPN::SaveStreamUpscalingTargetIndex((int)index);
+    if (_streamSession) {
+        _streamSession->SetLocalVideoEnhancement((int)_videoUpscalingMode,
+                                                 (int)_videoUpscalingSharpness,
+                                                 (int)_videoUpscalingDenoise,
+                                                 (int)_videoUpscalingTargetHeight);
+    }
+    [self setNeedsLayout:YES];
+}
+
 - (void)upscalingSharpnessSliderChanged:(NSSlider *)slider {
-    NSInteger sharpness = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 20));
+    NSInteger sharpness = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 40));
     slider.doubleValue = sharpness;
     OPN::SaveStreamUpscalingSharpness((int)sharpness);
     [self setVideoUpscalingMode:_videoUpscalingMode
@@ -833,7 +825,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 }
 
 - (void)upscalingDenoiseSliderChanged:(NSSlider *)slider {
-    NSInteger denoise = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 10));
+    NSInteger denoise = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 20));
     slider.doubleValue = denoise;
     OPN::SaveStreamUpscalingDenoise((int)denoise);
     [self setVideoUpscalingMode:_videoUpscalingMode
@@ -841,10 +833,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
                         denoise:denoise
                     streamWidth:_videoStreamWidth
                    streamHeight:_videoStreamHeight];
-}
-
-- (void)updateSidebarBitrateStatus {
-    self.sidebarBitrateValue.stringValue = [NSString stringWithFormat:@"%d Mbps", _maxBitrateMbps];
 }
 
 - (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited {
@@ -895,7 +883,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     if (_microphoneMode == "push-to-talk") {
         mode = self.microphoneActiveOverlay.hidden ? @"PTT muted" : @"PTT live";
     } else if (_microphoneMode == "voice-activity") {
-        mode = self.microphoneActiveOverlay.hidden ? @"Open mic muted" : @"Open mic live";
+        mode = self.microphoneActiveOverlay.hidden ? @"Open mic" : @"Open mic live";
     }
     self.sidebarMicStatusValue.stringValue = mode;
 }

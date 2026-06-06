@@ -732,7 +732,7 @@ using namespace OPN;
     [video addSubview:OpnLabel(@"Local Sharpness", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 938.0, MIN(120.0, controlWidth), 38.0)
                                                                   value:profile.upscalingSharpness
-                                                               maxValue:20
+                                                               maxValue:40
                                                                  action:@selector(upscalingSharpnessPopupChanged:)];
     [video addSubview:upscalingSharpnessPopup];
 
@@ -740,7 +740,7 @@ using namespace OPN;
     [video addSubview:OpnLabel(@"Local Denoise", NSMakeRect(upscalingDenoiseX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingDenoisePopup = [self integerPopupWithFrame:NSMakeRect(upscalingDenoiseX, 938.0, MIN(120.0, controlWidth), 38.0)
                                                                 value:profile.upscalingDenoise
-                                                              maxValue:10
+                                                              maxValue:20
                                                                action:@selector(upscalingDenoisePopupChanged:)];
     [video addSubview:upscalingDenoisePopup];
 

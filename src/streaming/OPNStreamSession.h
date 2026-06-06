@@ -85,7 +85,7 @@ public:
     virtual void SetGameVolume(double volume) = 0;
     virtual void SetMicrophoneVolume(double volume) = 0;
     virtual void SetMaxBitrateMbps(int mbps) = 0;
-    virtual void SetLocalVideoEnhancement(int mode, int sharpness, int denoise) { (void)mode; (void)sharpness; (void)denoise; }
+    virtual void SetLocalVideoEnhancement(int mode, int sharpness, int denoise, int targetHeight) { (void)mode; (void)sharpness; (void)denoise; (void)targetHeight; }
     virtual void SetEnhancedVideoFrameCaptureEnabled(bool enabled) { (void)enabled; }
     virtual void OnMicrophoneLevel(MicrophoneLevelCallback cb) = 0;
     virtual void OnVideoFrame(VideoFrameCallback cb) = 0;
