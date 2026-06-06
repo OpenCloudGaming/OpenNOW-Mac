@@ -148,6 +148,7 @@ struct StreamPreferenceProfile {
     int microphonePushToTalkModifierMask = 0;
     std::string microphonePushToTalkKeyLabel = "V";
     std::string microphonePushToTalkComboLabel = "V";
+    std::string selectedRegionUrl;
     StreamAspectOption aspect;
     StreamResolutionOption resolution;
     StreamCodecOption codec;
@@ -199,9 +200,17 @@ StreamSettings StreamSettingsByApplyingCloudVariables(StreamSettings settings,
                                                       const StreamDeviceCapabilities &capabilities);
 
 StreamPreferenceProfile LoadStreamPreferenceProfile();
+bool LoadStreamPreferenceProfileForGame(const std::string &appId, StreamPreferenceProfile &profile);
+void SaveStreamPreferenceProfileForGame(const std::string &appId, const StreamPreferenceProfile &profile);
+void DeleteStreamPreferenceProfileForGame(const std::string &appId);
+bool StreamPreferenceProfileEnabledForGame(const std::string &appId);
+bool StreamPreferenceProfileExistsForGame(const std::string &appId);
+void SetStreamPreferenceProfileEnabledForGame(const std::string &appId, bool enabled);
 const char *DefaultStreamingBaseUrl();
 std::string LoadSelectedStreamRegionUrl();
 std::string LoadSelectedStreamingBaseUrl();
+std::string LoadSelectedStreamRegionUrlForGame(const std::string &appId);
+std::string LoadSelectedStreamingBaseUrlForGame(const std::string &appId);
 void SaveSelectedStreamRegionUrl(const std::string &url);
 std::vector<StreamRegionOption> LoadCachedStreamRegions();
 void SaveCachedStreamRegions(const std::vector<StreamRegionOption> &regions);

@@ -592,6 +592,53 @@ TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {
     CHECK(!OPN::LoadStreamPreferenceProfile().enableHdr);
 }
 
+TEST_CASE("GameStreamProfilesSaveLoadToggleAndDelete") {
+    ScopedStreamObjectPreference profilesPreference(@"OpenNOW.Stream.GameProfiles");
+    OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
+    profile.aspectIndex = 1;
+    profile.aspect = OPN::StreamAspectOptions()[(size_t)profile.aspectIndex];
+    profile.resolutionIndex = 2;
+    profile.resolution = OPN::StreamResolutionOptionsForAspect(profile.aspectIndex)[(size_t)profile.resolutionIndex];
+    profile.fpsIndex = 2;
+    profile.fps = OPN::StreamFpsOptions()[(size_t)profile.fpsIndex];
+    profile.codecIndex = 1;
+    profile.codec = OPN::StreamCodecOptions()[(size_t)profile.codecIndex];
+    profile.bitrateIndex = 4;
+    profile.bitrate = OPN::StreamBitrateOptions()[(size_t)profile.bitrateIndex];
+    profile.maxBitrateMbps = profile.bitrate.mbps;
+    profile.colorQualityIndex = 2;
+    profile.colorQuality = OPN::StreamColorQualityOptions()[(size_t)profile.colorQualityIndex];
+    profile.enableHdr = true;
+    profile.enableL4S = true;
+    profile.directMouseInput = false;
+    profile.selectedRegionUrl = "https://profile.example/";
+
+    OPN::SaveStreamPreferenceProfileForGame("1234", profile);
+
+    CHECK(OPN::StreamPreferenceProfileExistsForGame("1234"));
+    CHECK(OPN::StreamPreferenceProfileEnabledForGame("1234"));
+    CHECK_EQ(OPN::LoadSelectedStreamingBaseUrlForGame("1234"), "https://profile.example/");
+
+    OPN::StreamPreferenceProfile loaded;
+    REQUIRE(OPN::LoadStreamPreferenceProfileForGame("1234", loaded));
+    CHECK_EQ(loaded.resolution.Value(), profile.resolution.Value());
+    CHECK_EQ(loaded.fps, 120);
+    CHECK_EQ(loaded.codec.value, "H265");
+    CHECK_EQ(loaded.maxBitrateMbps, 100);
+    CHECK_EQ(loaded.colorQuality.value, "10bit_420");
+    CHECK(loaded.enableHdr);
+    CHECK(loaded.enableL4S);
+    CHECK(!loaded.directMouseInput);
+
+    OPN::SetStreamPreferenceProfileEnabledForGame("1234", false);
+    CHECK(OPN::StreamPreferenceProfileExistsForGame("1234"));
+    CHECK(!OPN::StreamPreferenceProfileEnabledForGame("1234"));
+    CHECK(!OPN::LoadStreamPreferenceProfileForGame("1234", loaded));
+
+    OPN::DeleteStreamPreferenceProfileForGame("1234");
+    CHECK(!OPN::StreamPreferenceProfileExistsForGame("1234"));
+}
+
 TEST_CASE("NetworkPreflightParsesMeasurementsAndRecommendsBitrate") {
     OPN::StreamNetworkPreflightResult seed;
     seed.latencyMs = 40;

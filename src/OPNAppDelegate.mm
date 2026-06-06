@@ -2115,6 +2115,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     if (effectiveAppId.empty()) {
         effectiveAppId = launchGameInfo.launchAppId.empty() ? launchGameInfo.id : launchGameInfo.launchAppId;
     }
+    std::string launchStreamingBaseUrl = LoadSelectedStreamingBaseUrlForGame(effectiveAppId);
     OPN::LogInfo(@"[AppDelegate] Using appId=%s, store=%s, accountLinked=%d",
           effectiveAppId.c_str(), selectedStore.c_str(), accountLinked);
 
@@ -2138,10 +2139,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
 
         SessionManager::Shared().SetAccessToken(apiToken);
-        SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+        SessionManager::Shared().SetStreamingBaseUrl(launchStreamingBaseUrl);
         OPN::GameInfo requestedGame = launchGameInfo;
         void (^startRequestedGameCopy)(void) = [^{ startRequestedGame(accountLinkedForLaunch); } copy];
-        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen, launchStreamingBaseUrl](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             std::vector<ActiveSessionEntry> sessionsCopy = sessions;
             std::string errorCopy = error;
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -2209,7 +2210,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     if (!promptSelf) return;
                     [promptSelf showAuthenticatingWithMessage:@"Deleting existing session..."];
                     SessionManager::Shared().SetAccessToken(apiToken);
-                    SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+                    SessionManager::Shared().SetStreamingBaseUrl(launchStreamingBaseUrl);
                     void (^deleteStartRequestedGame)(void) = [startRequestedGameCopy copy];
                     SessionManager::Shared().StopSession(activeSession.sessionId, activeSession.serverIp, [weakSelf, deleteStartRequestedGame](bool stopOk, const std::string &stopError) {
                         std::string stopErrorCopy = stopError;

@@ -4,6 +4,7 @@
 #include "../common/OPNSentry.h"
 #include "../common/OPNGameRemediation.h"
 #import "../common/OPNUIHelpers.h"
+#include "../streaming/OPNStreamPreferences.h"
 #import <GameController/GameController.h>
 #include <QuartzCore/QuartzCore.h>
 #include <algorithm>
@@ -1338,6 +1339,21 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     return prominent ? @"Play Now" : @"PLAY";
 }
 
+static std::string OPNStoreGameProfileAppId(const OPN::GameInfo &game, int variantIndex) {
+    const OPN::GameVariant *variant = OPNStoreVariantAtIndex(game, variantIndex);
+    if (variant && !variant->id.empty()) return variant->id;
+    if (!game.launchAppId.empty()) return game.launchAppId;
+    return game.id;
+}
+
+static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int variantIndex) {
+    if (OPNStoreGameNeedsPurchase(game, variantIndex)) return @"Not owned";
+    std::string appId = OPNStoreGameProfileAppId(game, variantIndex);
+    if (!appId.empty() && OPN::StreamPreferenceProfileEnabledForGame(appId)) return @"Profile active";
+    NSInteger storeCount = MAX((NSInteger)game.availableStores.size(), (NSInteger)game.variants.size());
+    return storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready";
+}
+
 @interface OPNStoreGameTile : NSView
 @property (nonatomic, readonly) OPN::GameInfo game;
 @property (nonatomic, assign) int selectedVariantIndex;
@@ -1378,6 +1394,9 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
 @property (nonatomic, assign) BOOL imageLoadRequested;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
 - (void)updateStoreIconSelection;
+- (void)saveCurrentStreamSettingsAsProfilePressed:(id)sender;
+- (void)togglePerGameStreamProfilePressed:(id)sender;
+- (void)deletePerGameStreamProfilePressed:(id)sender;
 @end
 
 @implementation OPNStoreGameTile
@@ -1387,11 +1406,7 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
         selectedVariantIndex = MAX(0, MIN((int)_gameData.variants.size() - 1, selectedVariantIndex));
     }
     _selectedVariantIndex = selectedVariantIndex;
-    NSInteger storeCount = MAX((NSInteger)_gameData.availableStores.size(), (NSInteger)_gameData.variants.size());
-    BOOL needsPurchase = OPNStoreGameNeedsPurchase(_gameData, _selectedVariantIndex);
-    self.availabilityLabel.stringValue = needsPurchase
-        ? @"Not owned"
-        : (storeCount > 1 ? [NSString stringWithFormat:@"%ld stores", (long)storeCount] : @"Cloud ready");
+    self.availabilityLabel.stringValue = OPNStoreAvailabilityTitle(_gameData, _selectedVariantIndex);
     self.playButton.title = OPNStorePrimaryActionTitle(_gameData, _selectedVariantIndex, self.prominent);
     [self updateStoreIconSelection];
 }
@@ -1648,10 +1663,61 @@ static NSString *OPNStorePrimaryActionTitle(const OPN::GameInfo &game, int varia
     if (self.onMarkUnowned) self.onMarkUnowned();
 }
 
+- (void)saveCurrentStreamSettingsAsProfilePressed:(id)sender {
+    (void)sender;
+    std::string appId = OPNStoreGameProfileAppId(_gameData, self.selectedVariantIndex);
+    if (appId.empty()) return;
+    OPN::SaveStreamPreferenceProfileForGame(appId, OPN::LoadStreamPreferenceProfile());
+    self.selectedVariantIndex = self.selectedVariantIndex;
+}
+
+- (void)togglePerGameStreamProfilePressed:(id)sender {
+    (void)sender;
+    std::string appId = OPNStoreGameProfileAppId(_gameData, self.selectedVariantIndex);
+    if (appId.empty() || !OPN::StreamPreferenceProfileExistsForGame(appId)) return;
+    OPN::SetStreamPreferenceProfileEnabledForGame(appId, !OPN::StreamPreferenceProfileEnabledForGame(appId));
+    self.selectedVariantIndex = self.selectedVariantIndex;
+}
+
+- (void)deletePerGameStreamProfilePressed:(id)sender {
+    (void)sender;
+    std::string appId = OPNStoreGameProfileAppId(_gameData, self.selectedVariantIndex);
+    if (appId.empty()) return;
+    OPN::DeleteStreamPreferenceProfileForGame(appId);
+    self.selectedVariantIndex = self.selectedVariantIndex;
+}
+
 - (NSMenu *)menuForEvent:(NSEvent *)event {
     (void)event;
-    if (!OPNStoreVariantCanBeMarkedUnowned(_gameData, self.selectedVariantIndex)) return nil;
+    std::string appId = OPNStoreGameProfileAppId(_gameData, self.selectedVariantIndex);
+    BOOL hasAppId = !appId.empty();
+    BOOL hasProfile = hasAppId && OPN::StreamPreferenceProfileExistsForGame(appId);
+    BOOL profileEnabled = hasAppId && OPN::StreamPreferenceProfileEnabledForGame(appId);
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Game Actions"];
+    NSMenuItem *saveProfileItem = [[NSMenuItem alloc] initWithTitle:@"Save Current Stream Settings as Game Profile"
+                                                             action:@selector(saveCurrentStreamSettingsAsProfilePressed:)
+                                                      keyEquivalent:@""];
+    saveProfileItem.target = self;
+    saveProfileItem.enabled = hasAppId;
+    [menu addItem:saveProfileItem];
+
+    NSMenuItem *toggleProfileItem = [[NSMenuItem alloc] initWithTitle:@"Use Game Stream Profile"
+                                                               action:@selector(togglePerGameStreamProfilePressed:)
+                                                        keyEquivalent:@""];
+    toggleProfileItem.target = self;
+    toggleProfileItem.enabled = hasProfile;
+    toggleProfileItem.state = profileEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [menu addItem:toggleProfileItem];
+
+    NSMenuItem *deleteProfileItem = [[NSMenuItem alloc] initWithTitle:@"Delete Game Stream Profile"
+                                                               action:@selector(deletePerGameStreamProfilePressed:)
+                                                        keyEquivalent:@""];
+    deleteProfileItem.target = self;
+    deleteProfileItem.enabled = hasProfile;
+    [menu addItem:deleteProfileItem];
+
+    if (!OPNStoreVariantCanBeMarkedUnowned(_gameData, self.selectedVariantIndex)) return menu;
+    [menu addItem:NSMenuItem.separatorItem];
     NSMenuItem *markUnownedItem = [[NSMenuItem alloc] initWithTitle:@"Mark Selected Store as Unowned"
                                                              action:@selector(markUnownedPressed:)
                                                       keyEquivalent:@""];

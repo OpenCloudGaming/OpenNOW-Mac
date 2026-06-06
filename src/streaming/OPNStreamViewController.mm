@@ -2440,6 +2440,17 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPNDisplayStreamProfile displayProfile = ResolveDisplayStreamProfile(self.view.window);
     OPN::StreamPreferenceProfile requestedStreamProfile = OPN::LoadStreamPreferenceProfile();
+    OPN::StreamPreferenceProfile gameStreamProfile;
+    if (OPN::LoadStreamPreferenceProfileForGame(_appId, gameStreamProfile)) {
+        requestedStreamProfile = gameStreamProfile;
+        OPN::LogInfo(@"[StreamVC] Applying per-game stream profile for appId=%s resolutionIndex=%d fps=%d codec=%s bitrate=%dMbps region=%s",
+              _appId.c_str(),
+              requestedStreamProfile.resolutionIndex,
+              requestedStreamProfile.fps,
+              requestedStreamProfile.codec.value.c_str(),
+              requestedStreamProfile.maxBitrateMbps,
+              requestedStreamProfile.selectedRegionUrl.c_str());
+    }
     OPN::StreamDeviceCapabilities capabilities = OPN::LoadStreamDeviceCapabilities();
     OPN::StreamPreferenceProfile streamProfile = OPN::EffectiveStreamPreferenceProfileForCapabilities(requestedStreamProfile, capabilities);
     if (OPNStreamCodecSelectionIsExplicit(requestedStreamProfile)) {
@@ -2596,7 +2607,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         [strongSelf resetQualityGuardrailsForBitrate:finalSettings.maxBitrateMbps];
                         [strongSelf.streamView setMaxBitrateMbps:finalSettings.maxBitrateMbps];
 
-                        std::string baseUrl = preflightCopy.streamingBaseUrl.empty() ? OPN::LoadSelectedStreamingBaseUrl() : preflightCopy.streamingBaseUrl;
+                        std::string baseUrl = preflightCopy.streamingBaseUrl.empty() ? OPN::LoadSelectedStreamingBaseUrlForGame(strongSelf->_appId) : preflightCopy.streamingBaseUrl;
                         OPN::LogInfo(@"[StreamVC] Network preflight region=%s type=%s latency=%dms bandwidth=%.0fMbps loss=%.1f jitter=%dms bitrate=%dMbps testId=%s automatic=%d",
                               baseUrl.c_str(),
                               finalSettings.networkType.c_str(),

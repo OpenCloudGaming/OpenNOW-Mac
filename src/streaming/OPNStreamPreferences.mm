@@ -45,6 +45,8 @@ static NSString *const kCachedRegionsKey = @"OpenNOW.Stream.CachedRegions";
 static NSString *const kCachedCloudVariablesJSONKey = @"OpenNOW.Stream.CloudVariablesJSON";
 static NSString *const kCachedCloudVariablesTimestampKey = @"OpenNOW.Stream.CloudVariablesTimestamp";
 static NSString *const kHDREnabledKey = @"OpenNOW.Stream.HDREnabled";
+static NSString *const kGameProfilesKey = @"OpenNOW.Stream.GameProfiles";
+static NSString *const kGameProfileEnabledKey = @"enabled";
 static NSString *const kOpenNOWDefaultsDomain = @"io.github.opencloudgaming.opennow";
 static NSString *const kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *const kNvClientVersion = @"2.0.80.173";
@@ -632,6 +634,8 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.microphonePushToTalkKeyLabel = StreamMicrophonePushToTalkKeyLabel(profile.microphonePushToTalkKeyCode);
     profile.microphonePushToTalkComboLabel = StreamMicrophonePushToTalkComboLabel(profile.microphonePushToTalkKeyCode,
                                                                                   profile.microphonePushToTalkModifierMask);
+    NSString *selectedRegionUrl = [NSUserDefaults.standardUserDefaults stringForKey:kSelectedRegionUrlKey];
+    profile.selectedRegionUrl = selectedRegionUrl.length > 0 ? [selectedRegionUrl UTF8String] : "";
     return profile;
 }
 
@@ -651,6 +655,213 @@ static std::string NormalizedHTTPSBaseUrlOrEmpty(const std::string &url) {
 static std::string NormalizedBaseUrl(const std::string &url) {
     std::string normalized = NormalizedHTTPSBaseUrlOrEmpty(url);
     return normalized.empty() ? kDefaultStreamingBaseUrl : normalized;
+}
+
+static NSString *NSStringFromStdString(const std::string &value) {
+    return [NSString stringWithUTF8String:value.c_str()];
+}
+
+static NSString *GameProfileStorageKey(const std::string &appId) {
+    if (appId.empty()) return nil;
+    NSString *key = [[NSString alloc] initWithBytes:appId.data() length:appId.size() encoding:NSUTF8StringEncoding];
+    return key.length > 0 ? key : nil;
+}
+
+static NSMutableDictionary<NSString *, NSDictionary *> *MutableGameProfilesDictionary() {
+    NSDictionary *stored = [NSUserDefaults.standardUserDefaults dictionaryForKey:kGameProfilesKey];
+    return [stored isKindOfClass:NSDictionary.class] ? [stored mutableCopy] : [NSMutableDictionary dictionary];
+}
+
+static NSDictionary *GameProfileDictionaryForAppId(const std::string &appId) {
+    NSString *key = GameProfileStorageKey(appId);
+    if (key.length == 0) return nil;
+    NSDictionary *profiles = [NSUserDefaults.standardUserDefaults dictionaryForKey:kGameProfilesKey];
+    NSDictionary *profile = [profiles[key] isKindOfClass:NSDictionary.class] ? profiles[key] : nil;
+    return profile;
+}
+
+static int ClampedDictionaryInteger(NSDictionary *dictionary, NSString *key, int defaultValue, int upperBoundExclusive) {
+    NSNumber *value = [dictionary[key] isKindOfClass:NSNumber.class] ? dictionary[key] : nil;
+    int stored = value ? value.intValue : defaultValue;
+    if (upperBoundExclusive <= 0) return 0;
+    return std::max(0, std::min(stored, upperBoundExclusive - 1));
+}
+
+static double ClampedDictionaryDouble(NSDictionary *dictionary, NSString *key, double defaultValue, double minValue, double maxValue) {
+    NSNumber *value = [dictionary[key] isKindOfClass:NSNumber.class] ? dictionary[key] : nil;
+    double stored = value ? value.doubleValue : defaultValue;
+    if (!std::isfinite(stored)) stored = defaultValue;
+    return std::max(minValue, std::min(stored, maxValue));
+}
+
+static bool DictionaryBool(NSDictionary *dictionary, NSString *key, bool defaultValue) {
+    NSNumber *value = [dictionary[key] isKindOfClass:NSNumber.class] ? dictionary[key] : nil;
+    return value ? value.boolValue : defaultValue;
+}
+
+static std::string DictionaryString(NSDictionary *dictionary, NSString *key, const std::string &defaultValue = std::string()) {
+    NSString *value = [dictionary[key] isKindOfClass:NSString.class] ? dictionary[key] : nil;
+    return value.length > 0 ? std::string(value.UTF8String) : defaultValue;
+}
+
+static StreamPreferenceProfile StreamPreferenceProfileFromDictionary(NSDictionary *dictionary) {
+    StreamPreferenceProfile profile;
+    const auto &aspects = StreamAspectOptions();
+    profile.aspectIndex = ClampedDictionaryInteger(dictionary, kAspectIndexKey, 1, (int)aspects.size());
+    profile.aspect = aspects[(size_t)profile.aspectIndex];
+
+    std::vector<StreamResolutionOption> resolutions = StreamResolutionOptionsForAspect(profile.aspectIndex);
+    profile.resolutionIndex = ClampedDictionaryInteger(dictionary, kResolutionIndexKey, profile.aspectIndex == 1 ? 2 : 0, (int)resolutions.size());
+    profile.resolution = resolutions[(size_t)profile.resolutionIndex];
+
+    const auto &fpsOptions = StreamFpsOptions();
+    profile.fpsIndex = ClampedDictionaryInteger(dictionary, kFpsIndexKey, 1, (int)fpsOptions.size());
+    profile.fps = fpsOptions[(size_t)profile.fpsIndex];
+
+    const auto &codecOptions = StreamCodecOptions();
+    profile.codecIndex = ClampedDictionaryInteger(dictionary, kCodecIndexKey, 0, (int)codecOptions.size());
+    profile.codec = codecOptions[(size_t)profile.codecIndex];
+
+    const auto &bitrateOptions = StreamBitrateOptions();
+    profile.bitrateIndex = ClampedDictionaryInteger(dictionary, kBitrateIndexKey, 2, (int)bitrateOptions.size());
+    profile.bitrate = bitrateOptions[(size_t)profile.bitrateIndex];
+    profile.maxBitrateMbps = profile.bitrate.mbps;
+
+    const auto &colorQualityOptions = StreamColorQualityOptions();
+    profile.colorQualityIndex = ClampedDictionaryInteger(dictionary, kColorQualityIndexKey, 0, (int)colorQualityOptions.size());
+    profile.colorQuality = colorQualityOptions[(size_t)profile.colorQualityIndex];
+
+    const auto &prefilterModeOptions = StreamPrefilterModeOptions();
+    profile.prefilterModeIndex = ClampedDictionaryInteger(dictionary, kPrefilterModeIndexKey, 0, (int)prefilterModeOptions.size());
+    profile.prefilterModeOption = prefilterModeOptions[(size_t)profile.prefilterModeIndex];
+    profile.prefilterMode = profile.prefilterModeOption.value;
+    profile.prefilterSharpness = ClampedDictionaryInteger(dictionary, kPrefilterSharpnessKey, 0, 11);
+    profile.prefilterDenoise = ClampedDictionaryInteger(dictionary, kPrefilterDenoiseKey, 0, 11);
+
+    const auto &upscalingModeOptions = StreamUpscalingModeOptions();
+    profile.upscalingModeIndex = ClampedDictionaryInteger(dictionary, kUpscalingModeIndexKey, 1, (int)upscalingModeOptions.size());
+    profile.upscalingModeOption = upscalingModeOptions[(size_t)profile.upscalingModeIndex];
+    profile.upscalingMode = profile.upscalingModeOption.value;
+    const auto &upscalingTargetOptions = StreamUpscalingTargetOptions();
+    profile.upscalingTargetIndex = ClampedDictionaryInteger(dictionary, kUpscalingTargetIndexKey, 1, (int)upscalingTargetOptions.size());
+    profile.upscalingTargetOption = upscalingTargetOptions[(size_t)profile.upscalingTargetIndex];
+    profile.upscalingTargetHeight = profile.upscalingTargetOption.height;
+    profile.upscalingSharpness = ClampedDictionaryInteger(dictionary, kUpscalingSharpnessKey, 4, 41);
+    profile.upscalingDenoise = ClampedDictionaryInteger(dictionary, kUpscalingDenoiseKey, 0, 21);
+
+    profile.recordingVideoBitrateMbps = ClampedDictionaryInteger(dictionary, kRecordingVideoBitrateMbpsKey, 0, 201);
+    profile.recordingAudioBitrateKbps = (int)std::llround(ClampedDictionaryDouble(dictionary, kRecordingAudioBitrateKbpsKey, 160.0, 64.0, 320.0));
+    profile.recordingEnhancedVideoEnabled = DictionaryBool(dictionary, kRecordingEnhancedVideoEnabledKey, true);
+    profile.enableL4S = DictionaryBool(dictionary, kL4SEnabledKey, false);
+    profile.enableHdr = DictionaryBool(dictionary, kHDREnabledKey, false);
+    profile.enablePowerSaver = DictionaryBool(dictionary, kPowerSaverEnabledKey, false);
+    profile.suppressInputWhenInactive = DictionaryBool(dictionary, kSuppressInputWhenInactiveKey, true);
+    profile.directMouseInput = DictionaryBool(dictionary, kDirectMouseInputKey, true);
+    profile.gameVolume = ClampedDictionaryDouble(dictionary, kGameVolumeKey, 1.0, 0.0, 1.0);
+    profile.microphoneVolume = ClampedDictionaryDouble(dictionary, kMicrophoneVolumeKey, 1.0, 0.0, 1.0);
+
+    profile.microphoneMode = DictionaryString(dictionary, kMicrophoneModeKey, "disabled");
+    bool validMicrophoneMode = false;
+    for (const StreamMicrophoneModeOption &option : StreamMicrophoneModeOptions()) {
+        if (option.value == profile.microphoneMode) {
+            validMicrophoneMode = true;
+            break;
+        }
+    }
+    if (!validMicrophoneMode) profile.microphoneMode = "disabled";
+    profile.microphoneDeviceId = DictionaryString(dictionary, kMicrophoneDeviceIdKey);
+    profile.microphonePushToTalkKeyCode = ClampedDictionaryInteger(dictionary, kMicrophonePushToTalkKeyCodeKey, 9, 128);
+    profile.microphonePushToTalkModifierMask = NormalizedPushToTalkModifierMask(profile.microphonePushToTalkKeyCode,
+                                                                                ClampedDictionaryInteger(dictionary, kMicrophonePushToTalkModifierMaskKey, 0, 32));
+    profile.microphonePushToTalkKeyLabel = StreamMicrophonePushToTalkKeyLabel(profile.microphonePushToTalkKeyCode);
+    profile.microphonePushToTalkComboLabel = StreamMicrophonePushToTalkComboLabel(profile.microphonePushToTalkKeyCode,
+                                                                                  profile.microphonePushToTalkModifierMask);
+    profile.selectedRegionUrl = DictionaryString(dictionary, kSelectedRegionUrlKey);
+    return profile;
+}
+
+static NSDictionary *DictionaryFromStreamPreferenceProfile(const StreamPreferenceProfile &profile, bool enabled) {
+    NSMutableDictionary *dictionary = [@{
+        kGameProfileEnabledKey: @(enabled),
+        kAspectIndexKey: @(profile.aspectIndex),
+        kResolutionIndexKey: @(profile.resolutionIndex),
+        kFpsIndexKey: @(profile.fpsIndex),
+        kCodecIndexKey: @(profile.codecIndex),
+        kBitrateIndexKey: @(profile.bitrateIndex),
+        kColorQualityIndexKey: @(profile.colorQualityIndex),
+        kPrefilterModeIndexKey: @(profile.prefilterModeIndex),
+        kPrefilterSharpnessKey: @(profile.prefilterSharpness),
+        kPrefilterDenoiseKey: @(profile.prefilterDenoise),
+        kUpscalingModeIndexKey: @(profile.upscalingModeIndex),
+        kUpscalingTargetIndexKey: @(profile.upscalingTargetIndex),
+        kUpscalingSharpnessKey: @(profile.upscalingSharpness),
+        kUpscalingDenoiseKey: @(profile.upscalingDenoise),
+        kRecordingVideoBitrateMbpsKey: @(profile.recordingVideoBitrateMbps),
+        kRecordingAudioBitrateKbpsKey: @(profile.recordingAudioBitrateKbps),
+        kRecordingEnhancedVideoEnabledKey: @(profile.recordingEnhancedVideoEnabled),
+        kL4SEnabledKey: @(profile.enableL4S),
+        kHDREnabledKey: @(profile.enableHdr),
+        kPowerSaverEnabledKey: @(profile.enablePowerSaver),
+        kSuppressInputWhenInactiveKey: @(profile.suppressInputWhenInactive),
+        kDirectMouseInputKey: @(profile.directMouseInput),
+        kGameVolumeKey: @(profile.gameVolume),
+        kMicrophoneVolumeKey: @(profile.microphoneVolume),
+        kMicrophoneModeKey: NSStringFromStdString(profile.microphoneMode),
+        kMicrophonePushToTalkKeyCodeKey: @(profile.microphonePushToTalkKeyCode),
+        kMicrophonePushToTalkModifierMaskKey: @(profile.microphonePushToTalkModifierMask),
+    } mutableCopy];
+    if (!profile.microphoneDeviceId.empty()) dictionary[kMicrophoneDeviceIdKey] = NSStringFromStdString(profile.microphoneDeviceId);
+    std::string normalizedRegionUrl = NormalizedHTTPSBaseUrlOrEmpty(profile.selectedRegionUrl);
+    if (!normalizedRegionUrl.empty()) dictionary[kSelectedRegionUrlKey] = NSStringFromStdString(normalizedRegionUrl);
+    return dictionary;
+}
+
+bool LoadStreamPreferenceProfileForGame(const std::string &appId, StreamPreferenceProfile &profile) {
+    NSDictionary *dictionary = GameProfileDictionaryForAppId(appId);
+    if (!dictionary) return false;
+    if (!DictionaryBool(dictionary, kGameProfileEnabledKey, false)) return false;
+    profile = StreamPreferenceProfileFromDictionary(dictionary);
+    return true;
+}
+
+void SaveStreamPreferenceProfileForGame(const std::string &appId, const StreamPreferenceProfile &profile) {
+    NSString *key = GameProfileStorageKey(appId);
+    if (key.length == 0) return;
+    NSMutableDictionary *profiles = MutableGameProfilesDictionary();
+    profiles[key] = DictionaryFromStreamPreferenceProfile(profile, true);
+    [NSUserDefaults.standardUserDefaults setObject:profiles forKey:kGameProfilesKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
+}
+
+void DeleteStreamPreferenceProfileForGame(const std::string &appId) {
+    NSString *key = GameProfileStorageKey(appId);
+    if (key.length == 0) return;
+    NSMutableDictionary *profiles = MutableGameProfilesDictionary();
+    [profiles removeObjectForKey:key];
+    [NSUserDefaults.standardUserDefaults setObject:profiles forKey:kGameProfilesKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
+}
+
+bool StreamPreferenceProfileExistsForGame(const std::string &appId) {
+    return GameProfileDictionaryForAppId(appId) != nil;
+}
+
+bool StreamPreferenceProfileEnabledForGame(const std::string &appId) {
+    NSDictionary *dictionary = GameProfileDictionaryForAppId(appId);
+    return dictionary ? DictionaryBool(dictionary, kGameProfileEnabledKey, false) : false;
+}
+
+void SetStreamPreferenceProfileEnabledForGame(const std::string &appId, bool enabled) {
+    NSString *key = GameProfileStorageKey(appId);
+    if (key.length == 0) return;
+    NSDictionary *existing = GameProfileDictionaryForAppId(appId);
+    if (!existing) return;
+    NSMutableDictionary *profile = [existing mutableCopy];
+    profile[kGameProfileEnabledKey] = @(enabled);
+    NSMutableDictionary *profiles = MutableGameProfilesDictionary();
+    profiles[key] = profile;
+    [NSUserDefaults.standardUserDefaults setObject:profiles forKey:kGameProfilesKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
 }
 
 static std::string CurrentNetworkType() {
@@ -711,6 +922,22 @@ std::string LoadSelectedStreamingBaseUrl() {
         return !region.url.empty() && region.latencyMs >= 0;
     });
     return best == regions.end() ? kDefaultStreamingBaseUrl : NormalizedBaseUrl(best->url);
+}
+
+std::string LoadSelectedStreamRegionUrlForGame(const std::string &appId) {
+    NSDictionary *dictionary = GameProfileDictionaryForAppId(appId);
+    if (!dictionary || !DictionaryBool(dictionary, kGameProfileEnabledKey, false)) return LoadSelectedStreamRegionUrl();
+    std::string selected = DictionaryString(dictionary, kSelectedRegionUrlKey);
+    return NormalizedHTTPSBaseUrlOrEmpty(selected);
+}
+
+std::string LoadSelectedStreamingBaseUrlForGame(const std::string &appId) {
+    NSDictionary *dictionary = GameProfileDictionaryForAppId(appId);
+    if (dictionary && DictionaryBool(dictionary, kGameProfileEnabledKey, false)) {
+        std::string selected = DictionaryString(dictionary, kSelectedRegionUrlKey);
+        if (!selected.empty()) return NormalizedBaseUrl(selected);
+    }
+    return LoadSelectedStreamingBaseUrl();
 }
 
 void SaveSelectedStreamRegionUrl(const std::string &url) {
