@@ -1366,7 +1366,13 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
-        settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
+        if (enhancementMode == 3) {
+            settings.configuredTier = OPNVideoEnhancementTierMetalFX;
+        } else if (enhancementMode == 2) {
+            settings.configuredTier = OPNVideoEnhancementTierSpatial;
+        } else {
+            settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
+        }
         settings.sharpness = enhancementSharpness;
         settings.denoise = enhancementDenoise;
         settings.sourceSize = sourceSize;
@@ -2249,7 +2255,7 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
 
 void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
-    m_localEnhancementMode = std::max(0, std::min(mode, 2));
+    m_localEnhancementMode = std::max(0, std::min(mode, 3));
     m_localEnhancementSharpness = std::max(0, std::min(sharpness, 10));
     m_localEnhancementDenoise = std::max(0, std::min(denoise, 10));
 }

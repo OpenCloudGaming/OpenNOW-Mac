@@ -530,15 +530,27 @@ TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
 
     OPN::StreamPreferenceProfile defaults = OPN::LoadStreamPreferenceProfile();
     CHECK_EQ(defaults.upscalingMode, 1);
+    CHECK_EQ(defaults.upscalingModeOption.label, "Auto");
     CHECK_EQ(defaults.upscalingSharpness, 4);
     CHECK_EQ(defaults.upscalingDenoise, 0);
+
+    OPN::SaveStreamUpscalingModeIndex(2);
+    OPN::StreamPreferenceProfile spatial = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(spatial.upscalingMode, 2);
+    CHECK_EQ(spatial.upscalingModeOption.label, "Spatial");
+
+    OPN::SaveStreamUpscalingModeIndex(3);
+    OPN::StreamPreferenceProfile metalFX = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(metalFX.upscalingMode, 3);
+    CHECK_EQ(metalFX.upscalingModeOption.label, "MetalFX");
 
     OPN::SaveStreamUpscalingModeIndex(99);
     OPN::SaveStreamUpscalingSharpness(-3);
     OPN::SaveStreamUpscalingDenoise(42);
 
     OPN::StreamPreferenceProfile clamped = OPN::LoadStreamPreferenceProfile();
-    CHECK_EQ(clamped.upscalingMode, 1);
+    CHECK_EQ(clamped.upscalingMode, 3);
+    CHECK_EQ(clamped.upscalingModeOption.label, "MetalFX");
     CHECK_EQ(clamped.upscalingSharpness, 0);
     CHECK_EQ(clamped.upscalingDenoise, 10);
 }

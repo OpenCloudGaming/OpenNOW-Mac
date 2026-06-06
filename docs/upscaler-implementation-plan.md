@@ -205,7 +205,7 @@ Tasks:
 | Done | Add local enhancement timing fields to `StreamStats` | UI can show enhancement cost and active tier |
 | Done | Implement tier downgrade on missed frame budget, low render FPS, high decode time, or thermal pressure | Renderer downgrades MetalFX to spatial, then spatial to native when frame budget is repeatedly missed |
 | Done | Implement slow upgrade after sustained headroom | Renderer restores spatial or MetalFX after sustained headroom |
-| In Progress | Add user preference for auto, fixed tier, or off | Existing Upscaler mode now behaves as Auto; explicit fixed-tier UI remains future work |
+| Done | Add user preference for auto, fixed tier, or off | Local Upscaling now exposes Off, Auto, Spatial, and MetalFX; fixed MetalFX falls back through existing spatial diagnostics when unsupported |
 | Done | Persist active configured tier separately from governor-selected runtime tier | Diagnostics report configured tier, active tier, and governor fallback reason |
 
 Exit criteria:
@@ -427,6 +427,7 @@ Legend: `Done`, `In Progress`, `Planned`, `Blocked`.
 | Done | 2026-06-05 | Higher-order sampling and Metal denoise | Added Catmull-Rom style RGB sampling and bounded shader denoise before sharpening |
 | Done | 2026-06-05 | Milestone 6 implementation | Added automatic frame-budget governor that downgrades from MetalFX to spatial to native, and recovers after sustained headroom |
 | Done | 2026-06-05 | Milestone 7 implementation | Added enhanced-frame recording bridge from renderer to session to recording manager, with raw stream fallback |
+| Done | 2026-06-05 | Milestone 6 explicit tier controls | Added Off, Auto, Spatial, and MetalFX local upscaling preferences with session tier mapping and preference tests |
 | Planned | Not started | Milestone 8 research | Neural spatial model |
 | Planned | Not started | Milestone 9 research | Neural temporal model |
 
@@ -447,6 +448,7 @@ Start with Milestone 1 because it derisks every later tier.
 | 9 | Done: Add true MetalFX scaler binding and I420 GPU plane ingestion | `OPNVideoEnhancementRenderer.mm`, `Makefile` |
 | 10 | Done: Add adaptive enhancement governor | `OPNVideoEnhancementRenderer.mm`, `OPNStreamSession.h`, `OPNLibWebRTCStreamSession.*` |
 | 11 | Done: Add enhanced recording bridge | `OPNVideoEnhancementRenderer.*`, `OPNLibWebRTCStreamSession.*`, `OPNStreamView.mm`, `OPNStreamRecordingManager.*` |
+| 12 | Done: Add explicit non-neural upscaling tier controls | `OPNStreamPreferences.*`, `OPNLibWebRTCStreamSession.mm`, `OPNStreamView.mm`, `OPNSettingsView.mm`, `tests/backend_tests.mm` |
 
 ## Verification Log
 
@@ -458,6 +460,8 @@ Start with Milestone 1 because it derisks every later tier.
 | 2026-06-05 | `make all` | Passed after true MetalFX binding, I420 GPU plane upload, higher-order sampling, and Metal denoise |
 | 2026-06-05 | `make test` | Passed, 72 tests |
 | 2026-06-05 | `make all` | Passed after adaptive governor and enhanced recording bridge |
+| 2026-06-05 | `make test` | Passed, 72 tests |
+| 2026-06-05 | `make all` | Passed after explicit Off/Auto/Spatial/MetalFX upscaling tier controls |
 | 2026-06-05 | `make test` | Passed, 72 tests |
 
 ## Definition of Done

@@ -727,7 +727,7 @@ using namespace OPN;
         [upscalingTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
     }
     [video addSubview:[self rowLabel:@"Resolution Upscaling" y:878.0]];
-    [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:868.0 widths:@[@72.0, @124.0]];
+    [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:868.0 widths:@[@64.0, @70.0, @84.0, @84.0]];
 
     [video addSubview:OpnLabel(@"Local Sharpness", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 938.0, MIN(120.0, controlWidth), 38.0)
@@ -742,7 +742,7 @@ using namespace OPN;
                                                               action:@selector(upscalingDenoisePopupChanged:)];
     [video addSubview:upscalingDenoisePopup];
 
-    NSTextField *upscalingHint = OpnLabel(@"Off avoids enlarging the stream when possible. Upscaler uses a Metal-backed local processor for Lanczos scaling, denoise, and sharpening.",
+    NSTextField *upscalingHint = OpnLabel(@"Auto chooses the best available local tier. Spatial fixes the custom Metal scaler. MetalFX requests Apple's scaler and falls back to Spatial when unavailable.",
                                           NSMakeRect(controlX, 986.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),
