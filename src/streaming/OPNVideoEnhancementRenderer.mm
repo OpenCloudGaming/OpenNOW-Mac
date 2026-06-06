@@ -860,9 +860,10 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 }
 
 - (CVPixelBufferRef)newPixelBufferFromTexture:(id<MTLTexture>)texture size:(CGSize)size {
-    if (!texture || !self.ciContext || size.width <= 0.0 || size.height <= 0.0) return nil;
-    const size_t width = (size_t)std::max<CGFloat>(2.0, std::floor(size.width));
-    const size_t height = (size_t)std::max<CGFloat>(2.0, std::floor(size.height));
+    (void)size;
+    if (!texture || !self.commandQueue || texture.width < 2 || texture.height < 2) return nil;
+    const size_t width = texture.width;
+    const size_t height = texture.height;
     NSDictionary *attributes = @{(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
                                  (__bridge NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
                                  (__bridge NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
@@ -870,14 +871,43 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     CVPixelBufferRef pixelBuffer = nil;
     CVReturn result = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, (__bridge CFDictionaryRef)attributes, &pixelBuffer);
     if (result != kCVReturnSuccess || !pixelBuffer) return nil;
-    CIImage *image = [CIImage imageWithMTLTexture:texture options:@{kCIImageColorSpace: (__bridge id)self.outputColorSpace}];
-    if (!image) {
+
+    const NSUInteger sourceBytesPerRow = width * 4;
+    id<MTLBuffer> sourceBuffer = [self.device newBufferWithLength:sourceBytesPerRow * height options:MTLResourceStorageModeShared];
+    id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
+    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+    if (!sourceBuffer || !commandBuffer || !blitEncoder) {
         CVPixelBufferRelease(pixelBuffer);
         return nil;
     }
-    image = [[image imageByApplyingTransform:CGAffineTransformMakeScale(1.0, -1.0)] imageByApplyingTransform:CGAffineTransformMakeTranslation(0.0, (CGFloat)height)];
-    CGRect bounds = CGRectMake(0.0, 0.0, width, height);
-    [self.ciContext render:image toCVPixelBuffer:pixelBuffer bounds:bounds colorSpace:self.outputColorSpace];
+
+    MTLOrigin origin = MTLOriginMake(0, 0, 0);
+    MTLSize sourceSize = MTLSizeMake(width, height, 1);
+    [blitEncoder copyFromTexture:texture
+                     sourceSlice:0
+                     sourceLevel:0
+                    sourceOrigin:origin
+                      sourceSize:sourceSize
+                        toBuffer:sourceBuffer
+               destinationOffset:0
+          destinationBytesPerRow:sourceBytesPerRow
+        destinationBytesPerImage:sourceBytesPerRow * height];
+    [blitEncoder endEncoding];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+    if (commandBuffer.status == MTLCommandBufferStatusError) {
+        CVPixelBufferRelease(pixelBuffer);
+        return nil;
+    }
+
+    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+    uint8_t *destination = (uint8_t *)CVPixelBufferGetBaseAddress(pixelBuffer);
+    const size_t destinationBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+    const uint8_t *source = (const uint8_t *)sourceBuffer.contents;
+    for (size_t y = 0; y < height; y++) {
+        std::memcpy(destination + y * destinationBytesPerRow, source + y * sourceBytesPerRow, sourceBytesPerRow);
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
     return pixelBuffer;
 }
 
