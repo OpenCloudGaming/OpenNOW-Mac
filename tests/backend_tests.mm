@@ -18,6 +18,7 @@
 #include "../src/streaming/OPNStreamPreferences.h"
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
+#include "../src/common/OPNDiscordPresence.h"
 #include "../src/common/OPNGameRemediation.h"
 #include "../src/common/OPNGFNError.h"
 #include "../src/common/OPNHTTP.h"
@@ -590,6 +591,34 @@ TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {
 
     OPN::SaveStreamHDREnabled(false);
     CHECK(!OPN::LoadStreamPreferenceProfile().enableHdr);
+}
+
+TEST_CASE("DiscordPresenceModeDefaultsOffAndPersistsChanges") {
+    ScopedStreamObjectPreference preference(@"OpenNOW.Discord.PresenceMode");
+
+    CHECK(OPN::LoadDiscordPresenceMode() == OPN::DiscordPresenceMode::Off);
+
+    OPN::SaveDiscordPresenceMode(OPN::DiscordPresenceMode::StatusOnly);
+    CHECK(OPN::LoadDiscordPresenceMode() == OPN::DiscordPresenceMode::StatusOnly);
+
+    OPN::SaveDiscordPresenceMode(OPN::DiscordPresenceMode::FullDetails);
+    CHECK(OPN::LoadDiscordPresenceMode() == OPN::DiscordPresenceMode::FullDetails);
+
+    OPN::SaveDiscordPresenceMode(OPN::DiscordPresenceMode::Off);
+    CHECK(OPN::LoadDiscordPresenceMode() == OPN::DiscordPresenceMode::Off);
+}
+
+TEST_CASE("DiscordPresenceActivityPayloadEscapesFields") {
+    std::string payload = OPN::DiscordPresenceActivityPayloadForTesting("Playing \"Cloud\"\nGame",
+                                                                        "4K 120 FPS · H265",
+                                                                        1234567890,
+                                                                        42);
+
+    CHECK(payload.find("\"cmd\":\"SET_ACTIVITY\"") != std::string::npos);
+    CHECK(payload.find("\"pid\":42") != std::string::npos);
+    CHECK(payload.find("Playing \\\"Cloud\\\"\\nGame") != std::string::npos);
+    CHECK(payload.find("4K 120 FPS") != std::string::npos);
+    CHECK(payload.find("\"start\":1234567890") != std::string::npos);
 }
 
 TEST_CASE("GameStreamProfilesSaveLoadToggleAndDelete") {

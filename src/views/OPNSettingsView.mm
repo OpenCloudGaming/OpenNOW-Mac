@@ -3,6 +3,7 @@
 #import "../common/OPNUIHelpers.h"
 #include "../games/OPNGameDataCache.h"
 #include "../games/OPNGameService.h"
+#include "../common/OPNDiscordPresence.h"
 #include "../streaming/OPNLibWebRTCStreamSession.h"
 #include "../streaming/OPNStreamBackend.h"
 #include "../streaming/OPNStreamPreferences.h"
@@ -989,7 +990,7 @@ using namespace OPN;
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     self.directMouseInput = profile.directMouseInput;
 
-    NSView *panel = [self panelWithTitle:@"Interface" height:396.0];
+    NSView *panel = [self panelWithTitle:@"Interface" height:532.0];
     CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
@@ -1035,6 +1036,21 @@ using namespace OPN;
     autoFullScreenToggle.target = self;
     autoFullScreenToggle.action = @selector(autoFullScreenToggleChanged:);
     [panel addSubview:autoFullScreenToggle];
+
+    [panel addSubview:[self rowLabel:@"Discord Presence" y:410.0]];
+    OPN::DiscordPresenceMode presenceMode = OPN::LoadDiscordPresenceMode();
+    NSInteger selectedPresenceIndex = presenceMode == OPN::DiscordPresenceMode::StatusOnly ? 1 : (presenceMode == OPN::DiscordPresenceMode::FullDetails ? 2 : 0);
+    [self addOptionGroupTo:panel group:13 titles:@[@"Off", @"Status Only", @"Full Details"] selected:selectedPresenceIndex y:402.0 widths:@[@64.0, @118.0, @112.0]];
+    NSString *clientHint = OPN::LoadDiscordClientId().empty()
+        ? @"Requires OPN_DISCORD_CLIENT_ID or OPNDiscordClientID in the app bundle before Discord can show activity. Status Only hides game titles."
+        : @"Updates Discord while browsing, launching, and streaming. Status Only hides game titles; Full Details includes title and stream quality.";
+    NSTextField *discordHint = OpnLabel(clientHint,
+                                        NSMakeRect(controlX, 452.0, controlWidth, 54.0),
+                                        12.0,
+                                        OpnColor(kTextMuted),
+                                        NSFontWeightRegular);
+    discordHint.maximumNumberOfLines = 3;
+    [panel addSubview:discordHint];
 
     [self.documentView addSubview:panel];
 }
@@ -1308,6 +1324,7 @@ using namespace OPN;
         case 10: OPN::SaveStreamPrefilterModeIndex((int)index); break;
         case 11: OpnSetAppIconThemePreference(index == 1 ? OPNAppIconThemeGreen : (index == 2 ? OPNAppIconThemeBlue : OPNAppIconThemeBlack)); break;
         case 12: OPN::SaveStreamUpscalingModeIndex((int)index); break;
+        case 13: OPN::SaveDiscordPresenceMode(index == 1 ? OPN::DiscordPresenceMode::StatusOnly : (index == 2 ? OPN::DiscordPresenceMode::FullDetails : OPN::DiscordPresenceMode::Off)); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();

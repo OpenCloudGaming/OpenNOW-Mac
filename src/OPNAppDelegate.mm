@@ -15,6 +15,7 @@
 #import "common/OPNUIHelpers.h"
 #include "common/OPNLogCapture.h"
 #include "common/OPNLocale.h"
+#include "common/OPNDiscordPresence.h"
 #include "common/OPNGFNError.h"
 #include "common/OPNGameRemediation.h"
 #import "common/OPNGitHubUpdater.h"
@@ -1926,6 +1927,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     self.currentStreamTitle = title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:title.c_str()];
     self.activeStreamReturnScreen = returnScreen;
     self.streamDashboardHomeVisible = NO;
+    OPN::DiscordPresence::Shared().UpdateLaunching(title);
 
     __weak __typeof__(self) weakSelf = self;
     streamVC.onStreamEnd = ^(BOOL success, const std::string &error) {
@@ -1938,6 +1940,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             strongSelf.streamDashboardHomeVisible = NO;
             strongSelf.streamingController = nil;
             strongSelf.currentStreamTitle = nil;
+            OPN::DiscordPresence::Shared().Clear();
             [strongSelf transitionToScreen:returnScreen];
             if (!success && !errorCopy.empty()) {
                 [strongSelf showError:errorCopy canRetry:YES];
@@ -3321,6 +3324,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         }
 
         case AuthScreen::Store: {
+            OPN::DiscordPresence::Shared().UpdateBrowsing();
             OPNConfigureLibraryWindow(self.window);
             self.catalogView = nil;
             BOOL restoringCachedStore = self.storeView != nil;
@@ -3411,6 +3415,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         }
 
         case AuthScreen::Catalog: {
+            OPN::DiscordPresence::Shared().UpdateBrowsing();
             OPNConfigureLibraryWindow(self.window);
             self.storeView = nil;
             self.settingsView = nil;

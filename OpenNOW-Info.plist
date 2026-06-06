@@ -26,5 +26,7 @@
 	<string>OpenNOW uses the microphone for in-game voice chat and stream recordings when microphone support is enabled.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>OpenNOW uses screen capture APIs to record streams when recording is enabled.</string>
+	<key>OPNDiscordClientID</key>
+	<string>1479944467112001669</string>
 </dict>
 </plist>

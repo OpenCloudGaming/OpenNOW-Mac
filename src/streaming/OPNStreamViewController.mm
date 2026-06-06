@@ -7,6 +7,7 @@
 #include "OPNStreamPreferences.h"
 #include "../common/OPNLogCapture.h"
 #include "../common/OPNLocale.h"
+#include "../common/OPNDiscordPresence.h"
 #include "../common/OPNGFNError.h"
 #include "OPNSessionManager.h"
 #include "../games/OPNGameService.h"
@@ -2125,6 +2126,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     }
                     [s2.streamView takeFocus];
                     [s2 startInactivityTimer];
+                    OPN::DiscordPresence::Shared().UpdatePlaying(s2->_gameTitle,
+                                                                  negotiatedSettings.resolution,
+                                                                  negotiatedSettings.fps,
+                                                                  negotiatedSettings.maxBitrateMbps,
+                                                                  negotiatedSettings.codec);
                     [s2 showConnectedToastWithResolution:negotiatedSettings.resolution fps:negotiatedSettings.fps bitrate:negotiatedSettings.maxBitrateMbps codec:negotiatedSettings.codec];
                     [s2 startStatsRefreshTimer];
                     [s2 updateStatsOverlay];
