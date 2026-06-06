@@ -1,4 +1,5 @@
 #include "OPNStreamTypes.h"
+#include "common/OPNSessionHealthReport.h"
 #import <Cocoa/Cocoa.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -25,7 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setStreamInputSuppressed:(BOOL)suppressed;
 
 @property(nonatomic, copy) void (^onStreamEnd)
-    (BOOL success, const std::string &errorMessage);
+    (BOOL success, const std::string &errorMessage, const OPN::SessionHealthReport &report);
 @property(nonatomic, copy) void (^onDashboardToggleRequested)(void);
 
 - (void)requestQuitGameConfirmation;

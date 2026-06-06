@@ -4,6 +4,7 @@
 #include "../games/OPNGameDataCache.h"
 #include "../games/OPNGameService.h"
 #include "../common/OPNDiscordPresence.h"
+#include "../common/OPNSessionHealthReport.h"
 #include "../streaming/OPNLibWebRTCStreamSession.h"
 #include "../streaming/OPNStreamBackend.h"
 #include "../streaming/OPNStreamPreferences.h"
@@ -990,7 +991,7 @@ using namespace OPN;
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     self.directMouseInput = profile.directMouseInput;
 
-    NSView *panel = [self panelWithTitle:@"Interface" height:532.0];
+    NSView *panel = [self panelWithTitle:@"Interface" height:672.0];
     CGFloat panelWidth = MAX(320.0, NSWidth(panel.frame));
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
@@ -1051,6 +1052,21 @@ using namespace OPN;
                                         NSFontWeightRegular);
     discordHint.maximumNumberOfLines = 3;
     [panel addSubview:discordHint];
+
+    [panel addSubview:[self rowLabel:@"Session Reports" y:542.0]];
+    OPN::SessionReportDisplayMode reportMode = OPN::LoadSessionReportDisplayMode();
+    NSInteger selectedReportIndex = 0;
+    if (reportMode == OPN::SessionReportDisplayMode::Always) selectedReportIndex = 1;
+    else if (reportMode == OPN::SessionReportDisplayMode::ImportantOnly) selectedReportIndex = 2;
+    else if (reportMode == OPN::SessionReportDisplayMode::Off) selectedReportIndex = 3;
+    [self addOptionGroupTo:panel group:14 titles:@[@"Automatic", @"Always", @"Important Only", @"Off"] selected:selectedReportIndex y:534.0 widths:@[@104.0, @78.0, @128.0, @64.0]];
+    NSTextField *sessionReportHint = OpnLabel(@"Automatic shows reports only for failures, recovery, network warnings, guardrails, or poor stream quality. Important Only ignores soft quality-only signals.",
+                                             NSMakeRect(controlX, 584.0, controlWidth, 54.0),
+                                             12.0,
+                                             OpnColor(kTextMuted),
+                                             NSFontWeightRegular);
+    sessionReportHint.maximumNumberOfLines = 3;
+    [panel addSubview:sessionReportHint];
 
     [self.documentView addSubview:panel];
 }
@@ -1325,6 +1341,7 @@ using namespace OPN;
         case 11: OpnSetAppIconThemePreference(index == 1 ? OPNAppIconThemeGreen : (index == 2 ? OPNAppIconThemeBlue : OPNAppIconThemeBlack)); break;
         case 12: OPN::SaveStreamUpscalingModeIndex((int)index); break;
         case 13: OPN::SaveDiscordPresenceMode(index == 1 ? OPN::DiscordPresenceMode::StatusOnly : (index == 2 ? OPN::DiscordPresenceMode::FullDetails : OPN::DiscordPresenceMode::Off)); break;
+        case 14: OPN::SaveSessionReportDisplayMode(index == 1 ? OPN::SessionReportDisplayMode::Always : (index == 2 ? OPN::SessionReportDisplayMode::ImportantOnly : (index == 3 ? OPN::SessionReportDisplayMode::Off : OPN::SessionReportDisplayMode::Automatic))); break;
         default: break;
     }
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();

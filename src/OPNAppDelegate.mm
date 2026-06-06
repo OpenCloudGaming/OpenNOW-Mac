@@ -10,6 +10,7 @@
 #import "views/OPNErrorView.h"
 #import "views/OPNGameCatalogView.h"
 #import "views/OPNSettingsView.h"
+#import "views/OPNSessionReportView.h"
 #import "views/OPNCloudmatchServerPickerView.h"
 #import "common/OPNColorTokens.h"
 #import "common/OPNUIHelpers.h"
@@ -45,6 +46,7 @@ struct OPNSyncObservation {
 @property (nonatomic, strong) OPNSettingsView *settingsView;
 @property (nonatomic, strong) OPNGameCatalogView *storeView;
 @property (nonatomic, strong) OPNStreamViewController *streamingController;
+@property (nonatomic, strong) OPNSessionReportView *sessionReportView;
 @property (nonatomic, copy) NSString *currentStreamTitle;
 @property (nonatomic, assign) OPN::AuthScreen activeStreamReturnScreen;
 @property (nonatomic, assign) BOOL streamDashboardHomeVisible;
@@ -1930,10 +1932,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     OPN::DiscordPresence::Shared().UpdateLaunching(title);
 
     __weak __typeof__(self) weakSelf = self;
-    streamVC.onStreamEnd = ^(BOOL success, const std::string &error) {
+    streamVC.onStreamEnd = ^(BOOL success, const std::string &error, const OPN::SessionHealthReport &report) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         std::string errorCopy = error;
+        OPN::SessionHealthReport reportCopy = report;
         dispatch_async(dispatch_get_main_queue(), ^{
             OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
             [strongSelf stopStreamDashboardControllerPolling];
@@ -1942,8 +1945,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             strongSelf.currentStreamTitle = nil;
             OPN::DiscordPresence::Shared().Clear();
             [strongSelf transitionToScreen:returnScreen];
-            if (!success && !errorCopy.empty()) {
-                [strongSelf showError:errorCopy canRetry:YES];
+            if (!success && !errorCopy.empty()) OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Stream ended with error before report: %s", errorCopy.c_str()]);
+            OPN::SessionReportDisplayDecision decision = OPN::SessionHealthReportDisplayDecisionForReport(reportCopy, OPN::LoadSessionReportDisplayMode());
+            if (decision.shouldShow) {
+                [strongSelf showSessionReport:reportCopy];
+            } else {
+                OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Session report suppressed score=%d reason=%s", decision.score, decision.reason.c_str()]);
             }
         });
     };
@@ -4255,6 +4262,24 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     [self.contentContainer addSubview:view];
     self.currentScreen = OPN::AuthScreen::Error;
+}
+
+- (void)showSessionReport:(const OPN::SessionHealthReport &)report {
+    if (!self.contentContainer) return;
+    [self.sessionReportView removeFromSuperview];
+    OPNSessionReportView *view = [[OPNSessionReportView alloc] initWithFrame:self.contentContainer.bounds report:report];
+    view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    __weak __typeof__(self) weakSelf = self;
+    view.onDone = ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf.sessionReportView removeFromSuperview];
+        strongSelf.sessionReportView = nil;
+    };
+    self.sessionReportView = view;
+    [self.contentContainer addSubview:view positioned:NSWindowAbove relativeTo:nil];
+    OpnDisableFocusHighlights(view);
+    OPN::AppendLogEvent(@"[AppDelegate] Presented session health report");
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {

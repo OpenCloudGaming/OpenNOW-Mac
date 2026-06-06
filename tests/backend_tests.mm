@@ -5,6 +5,7 @@
 #include "doctest.h"
 
 #include <arpa/inet.h>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <netinet/in.h>
@@ -19,6 +20,7 @@
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
 #include "../src/common/OPNDiscordPresence.h"
+#include "../src/common/OPNSessionHealthReport.h"
 #include "../src/common/OPNGameRemediation.h"
 #include "../src/common/OPNGFNError.h"
 #include "../src/common/OPNHTTP.h"
@@ -619,6 +621,169 @@ TEST_CASE("DiscordPresenceActivityPayloadEscapesFields") {
     CHECK(payload.find("Playing \\\"Cloud\\\"\\nGame") != std::string::npos);
     CHECK(payload.find("4K 120 FPS") != std::string::npos);
     CHECK(payload.find("\"start\":1234567890") != std::string::npos);
+}
+
+TEST_CASE("SessionHealthReportAggregatesStatsAndTimeline") {
+    OPN::SessionHealthReportBuilder builder;
+    builder.Reset("Cloud Game", "123", "native", 10.0);
+
+    OPN::StreamSettings requested;
+    requested.resolution = "1920x1080";
+    requested.fps = 60;
+    requested.codec = "H264";
+    requested.maxBitrateMbps = 50;
+    builder.SetRequestedSettings(requested);
+    builder.MarkPhase("Network Preflight", 11.0);
+
+    OPN::StreamNetworkPreflightResult preflight;
+    preflight.streamingBaseUrl = "https://region.example";
+    preflight.networkType = "Wi-Fi";
+    preflight.latencyMs = 28;
+    preflight.jitterMs = 4;
+    preflight.measuredBandwidthMbps = 180.0;
+    preflight.packetLossPercent = 0.2;
+    preflight.usedAutomaticRegion = true;
+    builder.SetNetworkPreflight(preflight, "US Southwest");
+
+    OPN::StreamSettings finalSettings = requested;
+    finalSettings.codec = "H265";
+    finalSettings.maxBitrateMbps = 45;
+    builder.SetFinalSettings(finalSettings);
+    builder.MarkConnected(15.0);
+
+    OPN::StreamStats first;
+    first.available = true;
+    first.latencyMs = 30.0;
+    first.jitterMs = 5.0;
+    first.inboundBitrateMbps = 38.0;
+    first.packetLossPercent = 0.1;
+    first.renderFps = 59.0;
+    first.decodeTimeMs = 7.0;
+    first.framesReceived = 120;
+    first.framesDropped = 1;
+    first.packetsLost = 2;
+    first.resolution = "1920x1080";
+    first.codec = "H265";
+    first.fps = 60;
+    builder.AddStatsSample(first);
+
+    OPN::StreamStats second = first;
+    second.latencyMs = 50.0;
+    second.jitterMs = 7.0;
+    second.inboundBitrateMbps = 42.0;
+    second.packetLossPercent = 0.4;
+    second.framesReceived = 240;
+    second.framesDropped = 3;
+    second.packetsLost = 5;
+    builder.AddStatsSample(second);
+
+    OPN::SessionHealthReport report = builder.Finalize(true, "", 70.0);
+    CHECK(report.success);
+    CHECK(report.connected);
+    CHECK(std::fabs(report.launchSeconds - 5.0) < 0.001);
+    CHECK(std::fabs(report.durationSeconds - 60.0) < 0.001);
+    CHECK(report.stats.sampleCount == 2);
+    CHECK(std::fabs(report.stats.averageLatencyMs - 40.0) < 0.001);
+    CHECK(std::fabs(report.stats.maximumLatencyMs - 50.0) < 0.001);
+    CHECK(std::fabs(report.stats.averageBitrateMbps - 40.0) < 0.001);
+    CHECK(std::fabs(report.stats.maximumPacketLossPercent - 0.4) < 0.001);
+    CHECK(report.stats.framesDropped == 3);
+    CHECK(report.timeline.size() >= 3);
+}
+
+TEST_CASE("SessionHealthReportMarkdownEscapesAndOmitsSecrets") {
+    OPN::SessionHealthReportBuilder builder;
+    builder.Reset("Game\nTitle", "app-secret", "native", 0.0);
+    builder.RecordEvent("Recovery attempt", "token should not be included", 3.0);
+
+    OPN::SessionHealthReport report = builder.Finalize(false, "Failure \"quoted\"\nnext line", 8.0);
+    std::string markdown = OPN::SessionHealthReportMarkdown(report);
+
+    CHECK(markdown.find("Game Title") != std::string::npos);
+    CHECK(markdown.find("Failure \"quoted\" next line") != std::string::npos);
+    CHECK(markdown.find("app-secret") == std::string::npos);
+    CHECK(markdown.find("# OpenNOW Session Report") != std::string::npos);
+    CHECK(OPN::FormatSessionHealthDuration(125.0) == "2m 5s");
+}
+
+TEST_CASE("SessionReportDisplayModeDefaultsAutomaticAndPersistsChanges") {
+    ScopedStreamObjectPreference preference(@"OpenNOW.SessionReport.DisplayMode");
+
+    CHECK(OPN::LoadSessionReportDisplayMode() == OPN::SessionReportDisplayMode::Automatic);
+
+    OPN::SaveSessionReportDisplayMode(OPN::SessionReportDisplayMode::Always);
+    CHECK(OPN::LoadSessionReportDisplayMode() == OPN::SessionReportDisplayMode::Always);
+
+    OPN::SaveSessionReportDisplayMode(OPN::SessionReportDisplayMode::ImportantOnly);
+    CHECK(OPN::LoadSessionReportDisplayMode() == OPN::SessionReportDisplayMode::ImportantOnly);
+
+    OPN::SaveSessionReportDisplayMode(OPN::SessionReportDisplayMode::Off);
+    CHECK(OPN::LoadSessionReportDisplayMode() == OPN::SessionReportDisplayMode::Off);
+
+    OPN::SaveSessionReportDisplayMode(OPN::SessionReportDisplayMode::Automatic);
+    CHECK(OPN::LoadSessionReportDisplayMode() == OPN::SessionReportDisplayMode::Automatic);
+}
+
+TEST_CASE("SessionReportDisplayDecisionSuppressesHealthyAutomaticReports") {
+    OPN::SessionHealthReport report;
+    report.success = true;
+    report.connected = true;
+    report.finalBitrateMbps = 50;
+    report.finalFps = 60;
+    report.stats.available = true;
+    report.stats.averageLatencyMs = 42.0;
+    report.stats.maximumLatencyMs = 58.0;
+    report.stats.maximumPacketLossPercent = 0.0;
+    report.stats.averageBitrateMbps = 44.0;
+    report.stats.averageRenderFps = 60.0;
+
+    OPN::SessionReportDisplayDecision decision = OPN::SessionHealthReportDisplayDecisionForReport(report, OPN::SessionReportDisplayMode::Automatic);
+    CHECK(!decision.shouldShow);
+    CHECK(decision.score == 0);
+}
+
+TEST_CASE("SessionReportDisplayDecisionShowsFailuresAndOverrides") {
+    OPN::SessionHealthReport report;
+    report.success = false;
+    report.connected = false;
+    report.terminalError = "Unable to connect";
+
+    OPN::SessionReportDisplayDecision automatic = OPN::SessionHealthReportDisplayDecisionForReport(report, OPN::SessionReportDisplayMode::Automatic);
+    CHECK(automatic.shouldShow);
+    CHECK(automatic.score >= 100);
+
+    OPN::SessionReportDisplayDecision off = OPN::SessionHealthReportDisplayDecisionForReport(report, OPN::SessionReportDisplayMode::Off);
+    CHECK(!off.shouldShow);
+
+    OPN::SessionHealthReport healthy;
+    healthy.success = true;
+    healthy.connected = true;
+    OPN::SessionReportDisplayDecision always = OPN::SessionHealthReportDisplayDecisionForReport(healthy, OPN::SessionReportDisplayMode::Always);
+    CHECK(always.shouldShow);
+}
+
+TEST_CASE("SessionReportDisplayDecisionSeparatesAutomaticQualityFromImportantOnly") {
+    OPN::SessionHealthReport qualityReport;
+    qualityReport.success = true;
+    qualityReport.connected = true;
+    qualityReport.finalBitrateMbps = 50;
+    qualityReport.finalFps = 60;
+    qualityReport.stats.available = true;
+    qualityReport.stats.averageLatencyMs = 132.0;
+    qualityReport.stats.maximumLatencyMs = 180.0;
+    qualityReport.stats.maximumPacketLossPercent = 1.4;
+    qualityReport.stats.averageBitrateMbps = 20.0;
+    qualityReport.stats.averageRenderFps = 42.0;
+
+    OPN::SessionReportDisplayDecision automatic = OPN::SessionHealthReportDisplayDecisionForReport(qualityReport, OPN::SessionReportDisplayMode::Automatic);
+    CHECK(automatic.shouldShow);
+
+    OPN::SessionReportDisplayDecision importantOnly = OPN::SessionHealthReportDisplayDecisionForReport(qualityReport, OPN::SessionReportDisplayMode::ImportantOnly);
+    CHECK(!importantOnly.shouldShow);
+
+    qualityReport.events.push_back({"Quality guardrail applied", "capped at 40 Mbps", 12.0});
+    importantOnly = OPN::SessionHealthReportDisplayDecisionForReport(qualityReport, OPN::SessionReportDisplayMode::ImportantOnly);
+    CHECK(importantOnly.shouldShow);
 }
 
 TEST_CASE("GameStreamProfilesSaveLoadToggleAndDelete") {

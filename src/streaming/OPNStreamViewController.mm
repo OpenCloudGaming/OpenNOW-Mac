@@ -8,6 +8,7 @@
 #include "../common/OPNLogCapture.h"
 #include "../common/OPNLocale.h"
 #include "../common/OPNDiscordPresence.h"
+#include "../common/OPNSessionHealthReport.h"
 #include "../common/OPNGFNError.h"
 #include "OPNSessionManager.h"
 #include "../games/OPNGameService.h"
@@ -888,6 +889,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _remainingPlaytimeUnlimited;
     BOOL _remainingPlaytimeAvailable;
     BOOL _playtimeRefreshInFlight;
+    BOOL _healthReportStarted;
+    OPN::SessionHealthReportBuilder _healthReport;
 }
 
 - (instancetype)initWithGameTitle:(const std::string &)title
@@ -952,6 +955,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _remainingPlaytimeUnlimited = NO;
         _remainingPlaytimeAvailable = NO;
         _playtimeRefreshInFlight = NO;
+        _healthReportStarted = NO;
     }
     return self;
 }
@@ -1126,6 +1130,18 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (void)setLaunchStep:(NSInteger)stepIndex message:(NSString *)message {
+    const char *phase = "Launch";
+    switch (stepIndex) {
+        case 0: phase = "Network Preflight"; break;
+        case 1: phase = "Allocate Session"; break;
+        case 2: phase = "Connect Server"; break;
+        case 3: phase = "Signaling"; break;
+        case 4: phase = "WebRTC"; break;
+        case 5: phase = "Video Pipeline"; break;
+        case 6: phase = "Connected"; break;
+        default: break;
+    }
+    _healthReport.MarkPhase(phase, CACurrentMediaTime());
     dispatch_async(dispatch_get_main_queue(), ^{
         NSString *statusMessage = [self launchStatusMessageForStep:stepIndex baseMessage:message];
         if (self.loadingView) {
@@ -1498,6 +1514,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         if (_session) _session->SetMaxBitrateMbps(reducedBitrate);
         NSString *detail = [NSString stringWithFormat:@"%@ · capped at %d Mbps", signalText, reducedBitrate];
         [self showQualityGuardrailToastWithTitle:@"Stream quality guardrail applied" detail:detail warning:YES];
+        _healthReport.RecordEvent("Quality guardrail applied", [detail UTF8String] ?: "", now);
         OPN::LogInfo(@"[StreamVC] Quality guardrail lowered runtime bitrate to %d Mbps after signals: %@", reducedBitrate, signalText);
         return;
     }
@@ -1506,6 +1523,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _qualityWarningShown = YES;
         NSString *detail = [NSString stringWithFormat:@"%@ · consider 30 FPS or H264 if this continues", signalText];
         [self showQualityGuardrailToastWithTitle:@"Stream quality is unstable" detail:detail warning:YES];
+        _healthReport.RecordEvent("Quality warning", [detail UTF8String] ?: "", CACurrentMediaTime());
         OPN::LogInfo(@"[StreamVC] Quality warning shown after signals: %@", signalText);
     }
 }
@@ -1525,6 +1543,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _session->RequestStats();
         stats = _session->GetLatestStats();
     }
+    _healthReport.AddStatsSample(stats);
     [self evaluateQualityGuardrailsWithStats:stats];
     if (!self.statsOverlay) return;
 
@@ -1893,12 +1912,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     if (_streamEnded) return;
     OPN::LogInfo(@"[StreamVC] Stream ended due to user inactivity");
     OPN::AppendLogEvent(@"[StreamVC] Stream ended due to user inactivity");
+    _healthReport.RecordEvent("Inactivity timeout", "Session ended because no user activity was detected", CACurrentMediaTime());
     [self requestRemoteStopForActiveSession];
     [self endStreamWithSuccess:NO errorMessage:"Session ended due to inactivity."];
 }
 
 - (void)endStreamFromUserQuit {
     if (_streamEnded) return;
+    _healthReport.RecordEvent("User quit", "Stream ended from the quit confirmation", CACurrentMediaTime());
     [self requestRemoteStopForActiveSession];
     [self endStreamWithSuccess:YES errorMessage:""];
 }
@@ -2006,6 +2027,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
           (long)OPNMaxAutomaticRecoveryAttempts,
           delay,
           error.c_str());
+    _healthReport.RecordEvent("Recovery attempt", error, CACurrentMediaTime());
 
     [self finishLaunchMeasurementWithSuccess:NO reason:@"recovering"];
     [self ensureLoadingViewWithMessage:message];
@@ -2045,6 +2067,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPN::SessionInfo activeSessionInfo = sessionInfo;
     OPN::StreamSettings negotiatedSettings = OPNSettingsWithNegotiatedProfile(settings, activeSessionInfo);
+    _healthReport.SetSessionInfo(activeSessionInfo);
+    _healthReport.SetFinalSettings(negotiatedSettings);
     if (negotiatedSettings.resolution != settings.resolution
         || negotiatedSettings.fps != settings.fps
         || negotiatedSettings.codec != settings.codec
@@ -2083,6 +2107,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         [s startRemoteIceGraceTimerForLaunchGeneration:launchGeneration];
 
         [s setLaunchStep:4 message:@"Negotiating stream..."];
+        s->_healthReport.MarkPhase("Offer Received", CACurrentMediaTime());
         s->_session->SetNativeWindow((__bridge void *)[s.streamView nativeVideoView]);
 
         s->_session->OnAnswerReady([weakSelf, activeSessionInfo, offerSdpCopy, serverIceUfrag, launchGeneration](const OPN::SendAnswerRequest &answer) {
@@ -2117,6 +2142,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     s2->_recovering = NO;
                     [s2 beginLatencyActivity];
                     [s2 setLaunchStep:6 message:@"Connected!"];
+                    s2->_healthReport.MarkConnected(CACurrentMediaTime());
                     [s2 finishLaunchMeasurementWithSuccess:YES reason:@"connected"];
                     [s2.streamView setStreamSession:s2->_session];
                     [s2.streamView startRemainingPlaytimeCountdown];
@@ -2420,6 +2446,12 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)startStreamLaunchFlow {
     NSUInteger launchGeneration = ++_launchGeneration;
     BOOL recoveringLaunch = _recovering;
+    if (!_healthReportStarted) {
+        _healthReport.Reset(_gameTitle, _appId, _webRTCBackendName, CACurrentMediaTime());
+        _healthReportStarted = YES;
+    } else if (recoveringLaunch) {
+        _healthReport.MarkPhase("Recovery Prepare", CACurrentMediaTime());
+    }
     _launchFlowStartTime = CACurrentMediaTime();
     OPN::LogInfo(@"[StreamVC] Starting stream launch flow for game: %@ (appId=%s, recovery=%d attempt=%ld/%ld)",
           OPNStringFromStdString(_gameTitle, @""),
@@ -2552,6 +2584,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self setLaunchStep:0 message:@"Loading stream policy..."];
     __weak __typeof__(self) weakSelf = self;
     OPN::StreamSettings requestedSettings = settings;
+    _healthReport.SetRequestedSettings(requestedSettings);
     OPN::StreamPreferenceProfile preflightProfile = streamProfile;
     OPN::StreamDeviceCapabilities launchCapabilities = capabilities;
     OPN::FetchStreamCloudVariables(_apiToken, [weakSelf, requestedSettings, preflightProfile, launchCapabilities, launchGeneration, recoveringLaunch](const OPN::StreamCloudVariables &variables) {
@@ -2614,6 +2647,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         [strongSelf.streamView setMaxBitrateMbps:finalSettings.maxBitrateMbps];
 
                         std::string baseUrl = preflightCopy.streamingBaseUrl.empty() ? OPN::LoadSelectedStreamingBaseUrlForGame(strongSelf->_appId) : preflightCopy.streamingBaseUrl;
+                        strongSelf->_healthReport.SetNetworkPreflight(preflightCopy, baseUrl);
                         OPN::LogInfo(@"[StreamVC] Network preflight region=%s type=%s latency=%dms bandwidth=%.0fMbps loss=%.1f jitter=%dms bitrate=%dMbps testId=%s automatic=%d",
                               baseUrl.c_str(),
                               finalSettings.networkType.c_str(),
@@ -2635,6 +2669,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         };
                         NSString *networkWarning = nil;
                         if (!recoveringLaunch && OPNNetworkPreflightWarning(preflightCopy, preflightSettings.maxBitrateMbps, finalSettings.maxBitrateMbps, &networkWarning)) {
+                            strongSelf->_healthReport.RecordEvent("Network warning", [networkWarning UTF8String] ?: "OpenNOW detected poor network conditions", CACurrentMediaTime());
                             NSAlert *alert = [[NSAlert alloc] init];
                             alert.messageText = @"Network Test Warning";
                             alert.informativeText = networkWarning ?: @"OpenNOW detected poor network conditions. You can continue anyway, but stream quality may be reduced.";
@@ -2647,6 +2682,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                 }
                                 __typeof__(self) cancelSelf = weakSelf;
                                 if (!cancelSelf || cancelSelf->_streamEnded || cancelSelf->_launchGeneration != launchGeneration) return;
+                                cancelSelf->_healthReport.RecordEvent("Launch cancelled", "User cancelled after the network warning", CACurrentMediaTime());
                                 [cancelSelf endStreamWithSuccess:NO errorMessage:"Launch cancelled after network test warning."];
                             }];
                             return;
@@ -2673,6 +2709,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     if (_streamEnded) return;
     _streamEnded = YES;
     std::string displayError = success ? std::string() : OPN::UserFacingGFNErrorMessage(errorMessage, _gameTitle);
+    if (_session) {
+        _session->RequestStats();
+        _healthReport.AddStatsSample(_session->GetLatestStats());
+    }
+    OPN::SessionHealthReport finalizedReport = _healthReport.Finalize(success, displayError, CACurrentMediaTime());
     NSString *reason = success
         ? @"ended"
         : (displayError.empty() ? @"failed" : OPNStringFromStdString(displayError, @"failed"));
@@ -2696,7 +2737,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self cleanup];
 
     if (self.onStreamEnd) {
-        self.onStreamEnd(success, displayError);
+        self.onStreamEnd(success, displayError, finalizedReport);
     }
 }
 
