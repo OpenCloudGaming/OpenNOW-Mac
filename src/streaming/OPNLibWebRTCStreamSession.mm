@@ -1204,6 +1204,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 @property(nonatomic, assign) BOOL drawScheduled;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 - (void)updateDrawableSizeForCurrentBackingScale;
+- (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale;
 - (void)scheduleDraw;
 - (id<OPNRTCMetalRenderer>)newRendererNamed:(NSString *)className fallback:(NSString **)fallback;
 - (id<OPNRTCMetalRenderer>)i420RendererWithFallback:(NSString **)fallback;
@@ -1297,11 +1298,29 @@ static NSString *OPNVideoResolutionString(CGSize size) {
 
     CGSize drawableSize = CGSizeMake(std::max<CGFloat>(1.0, floor(boundsSize.width * scale)),
                                      std::max<CGFloat>(1.0, floor(boundsSize.height * scale)));
+    int enhancementMode = 0;
+    int enhancementSharpness = 0;
+    int enhancementDenoise = 0;
+    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
+    if (enhancementMode > 0) {
+        drawableSize = [self enhancementDrawableSizeForBoundsSize:boundsSize scale:scale];
+    }
     CGSize currentSize = self.metalView.drawableSize;
     if ((int)std::llround(currentSize.width) != (int)std::llround(drawableSize.width) ||
         (int)std::llround(currentSize.height) != (int)std::llround(drawableSize.height)) {
         self.metalView.drawableSize = drawableSize;
     }
+}
+
+- (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale {
+    CGSize backingSize = CGSizeMake(std::max<CGFloat>(1.0, floor(boundsSize.width * scale)),
+                                    std::max<CGFloat>(1.0, floor(boundsSize.height * scale)));
+    CGFloat aspect = boundsSize.height > 0.0 ? boundsSize.width / boundsSize.height : 16.0 / 9.0;
+    if (aspect <= 0.1 || !std::isfinite((double)aspect)) aspect = 16.0 / 9.0;
+    CGFloat targetWidth = aspect >= 1.0 ? 3840.0 : 2160.0 * aspect;
+    CGFloat targetHeight = targetWidth / aspect;
+    return CGSizeMake(std::max<CGFloat>(backingSize.width, floor(targetWidth)),
+                      std::max<CGFloat>(backingSize.height, floor(targetHeight)));
 }
 
 - (void)renderFrame:(RTCVideoFrame *)frame {
@@ -1364,6 +1383,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise);
+    [self updateDrawableSizeForCurrentBackingScale];
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
         if (enhancementMode == 3) {
@@ -2256,7 +2276,7 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
 void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_localEnhancementMode = std::max(0, std::min(mode, 3));
-    m_localEnhancementSharpness = std::max(0, std::min(sharpness, 10));
+    m_localEnhancementSharpness = std::max(0, std::min(sharpness, 20));
     m_localEnhancementDenoise = std::max(0, std::min(denoise, 10));
 }
 

@@ -553,6 +553,10 @@ TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     CHECK_EQ(clamped.upscalingModeOption.label, "MetalFX");
     CHECK_EQ(clamped.upscalingSharpness, 0);
     CHECK_EQ(clamped.upscalingDenoise, 10);
+
+    OPN::SaveStreamUpscalingSharpness(42);
+    OPN::StreamPreferenceProfile maxSharpness = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(maxSharpness.upscalingSharpness, 20);
 }
 
 TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {

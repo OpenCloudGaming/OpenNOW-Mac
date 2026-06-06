@@ -322,9 +322,9 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     panel.subviews.lastObject.frame = NSMakeRect(20.0, 318.0, 190.0, 18.0);
     self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 342.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.upscalingSharpnessSlider.minValue = 0.0;
-    self.upscalingSharpnessSlider.maxValue = 10.0;
+    self.upscalingSharpnessSlider.maxValue = 20.0;
     self.upscalingSharpnessSlider.doubleValue = profile.upscalingSharpness;
-    self.upscalingSharpnessSlider.numberOfTickMarks = 11;
+    self.upscalingSharpnessSlider.numberOfTickMarks = 21;
     self.upscalingSharpnessSlider.allowsTickMarkValuesOnly = YES;
     self.upscalingSharpnessSlider.target = self;
     self.upscalingSharpnessSlider.action = @selector(upscalingSharpnessSliderChanged:);
@@ -606,7 +606,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 
 - (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness denoise:(NSInteger)denoise streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight {
     _videoUpscalingMode = MAX(0, MIN(mode, 3));
-    _videoUpscalingSharpness = MAX(0, MIN(sharpness, 10));
+    _videoUpscalingSharpness = MAX(0, MIN(sharpness, 20));
     _videoUpscalingDenoise = MAX(0, MIN(denoise, 10));
     _videoStreamWidth = MAX(0, streamWidth);
     _videoStreamHeight = MAX(0, streamHeight);
@@ -822,7 +822,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 }
 
 - (void)upscalingSharpnessSliderChanged:(NSSlider *)slider {
-    NSInteger sharpness = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 10));
+    NSInteger sharpness = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 20));
     slider.doubleValue = sharpness;
     OPN::SaveStreamUpscalingSharpness((int)sharpness);
     [self setVideoUpscalingMode:_videoUpscalingMode

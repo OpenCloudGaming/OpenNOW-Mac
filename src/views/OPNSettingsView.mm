@@ -732,14 +732,16 @@ using namespace OPN;
     [video addSubview:OpnLabel(@"Local Sharpness", NSMakeRect(controlX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 938.0, MIN(120.0, controlWidth), 38.0)
                                                                   value:profile.upscalingSharpness
+                                                               maxValue:20
                                                                  action:@selector(upscalingSharpnessPopupChanged:)];
     [video addSubview:upscalingSharpnessPopup];
 
     CGFloat upscalingDenoiseX = controlX + MIN(160.0, controlWidth * 0.5);
     [video addSubview:OpnLabel(@"Local Denoise", NSMakeRect(upscalingDenoiseX, 918.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingDenoisePopup = [self integerPopupWithFrame:NSMakeRect(upscalingDenoiseX, 938.0, MIN(120.0, controlWidth), 38.0)
-                                                               value:profile.upscalingDenoise
-                                                              action:@selector(upscalingDenoisePopupChanged:)];
+                                                                value:profile.upscalingDenoise
+                                                              maxValue:10
+                                                               action:@selector(upscalingDenoisePopupChanged:)];
     [video addSubview:upscalingDenoisePopup];
 
     NSTextField *upscalingHint = OpnLabel(@"Auto chooses the best available local tier. Spatial fixes the custom Metal scaler. MetalFX requests Apple's scaler and falls back to Spatial when unavailable.",
@@ -761,6 +763,7 @@ using namespace OPN;
     [video addSubview:OpnLabel(@"Sharpness", NSMakeRect(controlX, 1072.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *sharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 1092.0, MIN(120.0, controlWidth), 38.0)
                                                           value:profile.prefilterSharpness
+                                                       maxValue:10
                                                          action:@selector(prefilterSharpnessPopupChanged:)];
     [video addSubview:sharpnessPopup];
 
@@ -768,6 +771,7 @@ using namespace OPN;
     [video addSubview:OpnLabel(@"Denoise", NSMakeRect(denoiseX, 1072.0, 120.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *denoisePopup = [self integerPopupWithFrame:NSMakeRect(denoiseX, 1092.0, MIN(120.0, controlWidth), 38.0)
                                                         value:profile.prefilterDenoise
+                                                     maxValue:10
                                                        action:@selector(prefilterDenoisePopupChanged:)];
     [video addSubview:denoisePopup];
 
@@ -1197,7 +1201,7 @@ using namespace OPN;
     return popup;
 }
 
-- (NSPopUpButton *)integerPopupWithFrame:(NSRect)frame value:(NSInteger)value action:(SEL)action {
+- (NSPopUpButton *)integerPopupWithFrame:(NSRect)frame value:(NSInteger)value maxValue:(NSInteger)maxValue action:(SEL)action {
     NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:frame pullsDown:NO];
     popup.target = self;
     popup.action = action;
@@ -1210,10 +1214,11 @@ using namespace OPN;
     popup.layer.borderWidth = 1.0;
     popup.layer.borderColor = OpnColor(kPanelBorder, 0.78).CGColor;
     [popup removeAllItems];
-    for (NSInteger i = 0; i <= 10; i++) {
+    NSInteger clampedMaxValue = MAX(0, maxValue);
+    for (NSInteger i = 0; i <= clampedMaxValue; i++) {
         [popup addItemWithTitle:[NSString stringWithFormat:@"%ld", (long)i]];
     }
-    NSInteger selected = MAX(0, MIN(value, 10));
+    NSInteger selected = MAX(0, MIN(value, clampedMaxValue));
     [popup selectItemAtIndex:selected];
     return popup;
 }
