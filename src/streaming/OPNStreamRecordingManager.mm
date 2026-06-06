@@ -63,7 +63,9 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     CMTime _systemAudioTimelineOffset;
     CMTime _microphoneAudioTimelineOffset;
     BOOL _videoFrameAppendInFlight;
+    BOOL _prefersEnhancedVideoCapture;
     BOOL _enhancedVideoActive;
+    CFTimeInterval _enhancedVideoFallbackDeadlineHostTime;
     uint64_t _droppedVideoFrames;
     CFTimeInterval _lastDroppedVideoFrameLogTime;
     AVCaptureSession *_microphoneCaptureSession;
@@ -87,7 +89,9 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         _systemAudioTimelineOffset = kCMTimeInvalid;
         _microphoneAudioTimelineOffset = kCMTimeInvalid;
         _videoFrameAppendInFlight = NO;
+        _prefersEnhancedVideoCapture = NO;
         _enhancedVideoActive = NO;
+        _enhancedVideoFallbackDeadlineHostTime = 0.0;
         _droppedVideoFrames = 0;
         _lastDroppedVideoFrameLogTime = 0.0;
         [self refreshRecentRecordings];
@@ -146,12 +150,27 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
         self->_systemAudioTimelineOffset = kCMTimeInvalid;
         self->_microphoneAudioTimelineOffset = kCMTimeInvalid;
         self->_videoFrameAppendInFlight = NO;
+        self->_enhancedVideoFallbackDeadlineHostTime = self->_prefersEnhancedVideoCapture ? CACurrentMediaTime() + 1.25 : 0.0;
         self->_enhancedVideoActive = NO;
         self->_droppedVideoFrames = 0;
         self->_lastDroppedVideoFrameLogTime = 0.0;
     });
 
     [self startAudioCaptureForWindow:window];
+}
+
+- (void)setPrefersEnhancedVideoCapture:(BOOL)prefersEnhancedVideoCapture {
+    @synchronized (self) {
+        BOOL changed = _prefersEnhancedVideoCapture != prefersEnhancedVideoCapture;
+        _prefersEnhancedVideoCapture = prefersEnhancedVideoCapture;
+        if (!prefersEnhancedVideoCapture) {
+            _enhancedVideoFallbackDeadlineHostTime = 0.0;
+            return;
+        }
+        if (changed || _enhancedVideoFallbackDeadlineHostTime <= 0.0) {
+            _enhancedVideoFallbackDeadlineHostTime = CACurrentMediaTime() + 1.25;
+        }
+    }
 }
 
 - (void)stopRecording {
@@ -210,6 +229,7 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     RTCVideoFrame *videoFrame = (__bridge RTCVideoFrame *)frame;
     @synchronized (self) {
         if (_enhancedVideoActive) return;
+        if (_prefersEnhancedVideoCapture && !_writer && CACurrentMediaTime() < _enhancedVideoFallbackDeadlineHostTime) return;
         if (_videoFrameAppendInFlight) {
             [self recordDroppedVideoFrame];
             return;
@@ -266,7 +286,6 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     if (!pixelBuffer || (!self.recording && !self.starting)) return;
     CVPixelBufferRetain(pixelBuffer);
     @synchronized (self) {
-        _enhancedVideoActive = YES;
         if (_videoFrameAppendInFlight) {
             CVPixelBufferRelease(pixelBuffer);
             [self recordDroppedVideoFrame];
@@ -288,10 +307,21 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
                 [self finishVideoFrameAppend];
                 return;
             }
+            if (self->_writer && (std::llround(self->_videoSize.width) != std::llround(size.width) || std::llround(self->_videoSize.height) != std::llround(size.height))) {
+                CVPixelBufferRelease(pixelBuffer);
+                @synchronized (self) {
+                    self->_enhancedVideoActive = NO;
+                }
+                [self finishVideoFrameAppend];
+                return;
+            }
             if (!self->_writer && ![self createWriterWithVideoSize:size]) {
                 CVPixelBufferRelease(pixelBuffer);
                 [self finishVideoFrameAppend];
                 return;
+            }
+            @synchronized (self) {
+                self->_enhancedVideoActive = YES;
             }
             if (self->_writer.status != AVAssetWriterStatusWriting || !self->_videoInput.readyForMoreMediaData) {
                 CVPixelBufferRelease(pixelBuffer);

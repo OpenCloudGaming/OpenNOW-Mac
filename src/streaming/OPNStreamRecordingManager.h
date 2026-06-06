@@ -17,6 +17,7 @@
 - (void)toggleRecordingForGameTitle:(NSString *)gameTitle window:(NSWindow *)window;
 - (void)startRecordingForGameTitle:(NSString *)gameTitle window:(NSWindow *)window;
 - (void)stopRecording;
+- (void)setPrefersEnhancedVideoCapture:(BOOL)prefersEnhancedVideoCapture;
 - (void)appendWebRTCVideoFrame:(void *)frame;
 - (void)appendEnhancedPixelBuffer:(CVPixelBufferRef)pixelBuffer;
 - (void)appendWebRTCAudioBufferList:(const AudioBufferList *)audioBufferList frameCount:(UInt32)frameCount sampleRate:(double)sampleRate channels:(UInt32)channels;

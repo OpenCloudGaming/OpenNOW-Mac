@@ -131,6 +131,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
 @property (nonatomic, strong) OPNStreamRecordingManager *recordingManager;
 @property (nonatomic, copy) NSString *recordingGameTitle;
 @property (nonatomic, assign) CGFloat videoAspectRatio;
+- (void)updateEnhancedVideoRecordingPreference;
 @end
 
 @implementation OPNStreamView
@@ -181,7 +182,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _recordingManager.onStateChanged = ^{
             OPNStreamView *strongSelf = weakSelf;
             if (!strongSelf) return;
-            if (strongSelf->_streamSession) strongSelf->_streamSession->SetEnhancedVideoFrameCaptureEnabled(strongSelf.recordingManager.isRecording || strongSelf.recordingManager.isStarting);
+            [strongSelf updateEnhancedVideoRecordingPreference];
             [strongSelf updateRecordingControls];
         };
         self.wantsLayer = YES;
@@ -459,7 +460,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
         session->SetMicrophoneVolume(_microphoneVolumeLevel);
         session->SetMaxBitrateMbps(_maxBitrateMbps);
         session->SetLocalVideoEnhancement((int)_videoUpscalingMode, (int)_videoUpscalingSharpness, (int)_videoUpscalingDenoise);
-        session->SetEnhancedVideoFrameCaptureEnabled(self.recordingManager.isRecording || self.recordingManager.isStarting);
+        [self updateEnhancedVideoRecordingPreference];
         __weak OPNStreamView *weakSelf = self;
         session->OnMicrophoneLevel([weakSelf](double level) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -573,7 +574,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 
 - (BOOL)toggleRecordingShortcut {
     [self.recordingManager toggleRecordingForGameTitle:_recordingGameTitle window:self.window];
-    if (_streamSession) _streamSession->SetEnhancedVideoFrameCaptureEnabled(self.recordingManager.isRecording || self.recordingManager.isStarting);
+    [self updateEnhancedVideoRecordingPreference];
     [self updateRecordingControls];
     return YES;
 }
@@ -612,8 +613,16 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     if (_streamSession) {
         _streamSession->SetLocalVideoEnhancement((int)_videoUpscalingMode, (int)_videoUpscalingSharpness, (int)_videoUpscalingDenoise);
     }
+    [self updateEnhancedVideoRecordingPreference];
     [self applyVideoUpscalingFiltersToView:self.videoSurface];
     [self setNeedsLayout:YES];
+}
+
+- (void)updateEnhancedVideoRecordingPreference {
+    BOOL recordingActive = self.recordingManager.isRecording || self.recordingManager.isStarting;
+    BOOL prefersEnhanced = recordingActive && _videoUpscalingMode > 0;
+    [self.recordingManager setPrefersEnhancedVideoCapture:prefersEnhanced];
+    if (_streamSession) _streamSession->SetEnhancedVideoFrameCaptureEnabled(prefersEnhanced);
 }
 
 - (void)applyVideoUpscalingFiltersToView:(NSView *)view {
