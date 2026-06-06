@@ -102,6 +102,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
     NSInteger _videoUpscalingDenoise;
     NSInteger _videoStreamWidth;
     NSInteger _videoStreamHeight;
+    BOOL _recordingEnhancedVideoEnabled;
     NSTimeInterval _remainingPlaytimeBaseSeconds;
     CFTimeInterval _remainingPlaytimeStartTime;
     BOOL _remainingPlaytimeUnlimited;
@@ -170,6 +171,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _videoUpscalingDenoise = profile.upscalingDenoise;
         _videoStreamWidth = profile.resolution.width;
         _videoStreamHeight = profile.resolution.height;
+        _recordingEnhancedVideoEnabled = profile.recordingEnhancedVideoEnabled ? YES : NO;
         _remainingPlaytimeBaseSeconds = 0.0;
         _remainingPlaytimeStartTime = 0.0;
         _remainingPlaytimeUnlimited = NO;
@@ -616,7 +618,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 
 - (void)updateEnhancedVideoRecordingPreference {
     BOOL recordingActive = self.recordingManager.isRecording || self.recordingManager.isStarting;
-    BOOL prefersEnhanced = recordingActive && _videoUpscalingMode > 0;
+    BOOL prefersEnhanced = recordingActive && _recordingEnhancedVideoEnabled && _videoUpscalingMode > 0;
     [self.recordingManager setPrefersEnhancedVideoCapture:prefersEnhanced];
     if (_streamSession) _streamSession->SetEnhancedVideoFrameCaptureEnabled(prefersEnhanced);
 }

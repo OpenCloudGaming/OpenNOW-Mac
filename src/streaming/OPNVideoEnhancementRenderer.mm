@@ -72,10 +72,20 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 @property(nonatomic, strong) id<MTLTexture> chromaTexture;
 @property(nonatomic, strong) id<MTLTexture> chromaUTexture;
 @property(nonatomic, strong) id<MTLTexture> chromaVTexture;
+@property(nonatomic, assign) CGRect cropRect;
+@property(nonatomic, assign) NSUInteger contentWidth;
+@property(nonatomic, assign) NSUInteger contentHeight;
 @end
 
 @implementation OPNVideoTextureFrame
 @end
+
+static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame) {
+    if (!textureFrame) return YES;
+    CGRect crop = textureFrame.cropRect;
+    return crop.origin.x <= 0.0001 && crop.origin.y <= 0.0001 &&
+        crop.size.width >= 0.9999 && crop.size.height >= 0.9999;
+}
 
 @implementation OPNVideoTextureSource {
     CVMetalTextureCacheRef _textureCache;
@@ -117,6 +127,9 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 
         OPNVideoTextureFrame *textureFrame = [[OPNVideoTextureFrame alloc] init];
         textureFrame.kind = OPNVideoTextureFrameKindI420;
+        textureFrame.cropRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
+        textureFrame.contentWidth = (NSUInteger)i420.width;
+        textureFrame.contentHeight = (NSUInteger)i420.height;
         textureFrame.lumaTexture = [self newPlaneTextureWithWidth:(NSUInteger)i420.width height:(NSUInteger)i420.height bytes:i420.dataY bytesPerRow:(NSUInteger)i420.strideY label:@"OpenNOW I420 Y"];
         textureFrame.chromaUTexture = [self newPlaneTextureWithWidth:(NSUInteger)i420.chromaWidth height:(NSUInteger)i420.chromaHeight bytes:i420.dataU bytesPerRow:(NSUInteger)i420.strideU label:@"OpenNOW I420 U"];
         textureFrame.chromaVTexture = [self newPlaneTextureWithWidth:(NSUInteger)i420.chromaWidth height:(NSUInteger)i420.chromaHeight bytes:i420.dataV bytesPerRow:(NSUInteger)i420.strideV label:@"OpenNOW I420 V"];
@@ -157,6 +170,23 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 
     OPNVideoTextureFrame *textureFrame = [[OPNVideoTextureFrame alloc] init];
     textureFrame.kind = isNV12 ? OPNVideoTextureFrameKindNV12 : OPNVideoTextureFrameKindRGB;
+    size_t contentWidth = width;
+    size_t contentHeight = height;
+    CGRect cropRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
+    if (cvBuffer.requiresCropping && cvBuffer.cropWidth > 0 && cvBuffer.cropHeight > 0) {
+        CGFloat cropX = std::max<CGFloat>(0.0, (CGFloat)cvBuffer.cropX);
+        CGFloat cropY = std::max<CGFloat>(0.0, (CGFloat)cvBuffer.cropY);
+        CGFloat cropWidth = std::min<CGFloat>((CGFloat)cvBuffer.cropWidth, (CGFloat)width - cropX);
+        CGFloat cropHeight = std::min<CGFloat>((CGFloat)cvBuffer.cropHeight, (CGFloat)height - cropY);
+        if (cropWidth > 0.0 && cropHeight > 0.0) {
+            cropRect = CGRectMake(cropX / (CGFloat)width, cropY / (CGFloat)height, cropWidth / (CGFloat)width, cropHeight / (CGFloat)height);
+            contentWidth = (size_t)std::llround(cropWidth);
+            contentHeight = (size_t)std::llround(cropHeight);
+        }
+    }
+    textureFrame.cropRect = cropRect;
+    textureFrame.contentWidth = std::max<size_t>(1, contentWidth);
+    textureFrame.contentHeight = std::max<size_t>(1, contentHeight);
 
     CVMetalTextureRef metalTexture = nil;
     CVReturn status = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
@@ -329,6 +359,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 @property(nonatomic, assign) CGColorSpaceRef outputColorSpace;
 @property(nonatomic, strong) OPNVideoTextureSource *textureSource;
 @property(nonatomic, strong) OPNMetalFXUpscaler *metalFXUpscaler;
+@property(nonatomic, strong) id<MTLTexture> metalFXIntermediateTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialRGBPipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialNV12Pipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialI420Pipeline;
@@ -336,6 +367,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
 @property(nonatomic, assign) OPNVideoGovernorTier governorTier;
 @property(nonatomic, assign) NSInteger overloadScore;
 @property(nonatomic, assign) NSInteger recoveryScore;
+- (id<MTLTexture>)reusableMetalFXIntermediateTextureWithWidth:(NSUInteger)width height:(NSUInteger)height;
 @end
 
 @implementation OPNVideoEnhancementRenderer
@@ -388,7 +420,13 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     "    float v3 = v2 * v;\n"
     "    return v <= 1.0 ? (1.5 * v3 - 2.5 * v2 + 1.0) : (v < 2.0 ? (-0.5 * v3 + 2.5 * v2 - 4.0 * v + 2.0) : 0.0);\n"
     "}\n"
-    "static float3 opn_rgb_bicubic(texture2d<float> sourceTexture, sampler s, float2 uv) {\n"
+    "static float2 opn_crop_uv(float2 texCoord, float4 crop) {\n"
+    "    return mix(crop.xy, crop.zw, clamp(texCoord, float2(0.0), float2(1.0)));\n"
+    "}\n"
+    "static float2 opn_clamp_crop(float2 uv, float4 crop) {\n"
+    "    return clamp(uv, crop.xy, crop.zw);\n"
+    "}\n"
+    "static float3 opn_rgb_bicubic(texture2d<float> sourceTexture, sampler s, float2 uv, float4 crop) {\n"
     "    float2 size = float2(sourceTexture.get_width(), sourceTexture.get_height());\n"
     "    float2 pixel = uv * size - 0.5;\n"
     "    float2 base = floor(pixel);\n"
@@ -398,7 +436,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     "    for (int j = -1; j <= 2; ++j) {\n"
     "        for (int i = -1; i <= 2; ++i) {\n"
     "            float2 samplePixel = base + float2(i, j) + 0.5;\n"
-    "            float2 sampleUv = clamp(samplePixel / size, float2(0.0), float2(1.0));\n"
+    "            float2 sampleUv = opn_clamp_crop(samplePixel / size, crop);\n"
     "            float w = opn_cubic(float(i) - f.x) * opn_cubic(f.y - float(j));\n"
     "            sum += sourceTexture.sample(s, sampleUv).rgb * w;\n"
     "            weightSum += w;\n"
@@ -421,28 +459,28 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     "    float3 denoised = mix(center, blur, clamp(denoise, 0.0, 1.0));\n"
     "    return clamp(denoised + (denoised - blur) * sharpness, float3(0.0), float3(1.0));\n"
     "}\n"
-    "fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]]) {\n"
+    "fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
-    "    float3 center = opn_rgb_bicubic(sourceTexture, s, uv);\n"
+    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
+    "    float3 center = opn_rgb_bicubic(sourceTexture, s, uv, crop);\n"
     "    float2 texel = max(scale, float2(1.0 / 8192.0));\n"
-    "    float3 blur = (opn_rgb_bicubic(sourceTexture, s, uv + float2(texel.x, 0.0)) + opn_rgb_bicubic(sourceTexture, s, uv - float2(texel.x, 0.0)) + opn_rgb_bicubic(sourceTexture, s, uv + float2(0.0, texel.y)) + opn_rgb_bicubic(sourceTexture, s, uv - float2(0.0, texel.y))) * 0.25;\n"
+    "    float3 blur = (opn_rgb_bicubic(sourceTexture, s, uv + float2(texel.x, 0.0), crop) + opn_rgb_bicubic(sourceTexture, s, uv - float2(texel.x, 0.0), crop) + opn_rgb_bicubic(sourceTexture, s, uv + float2(0.0, texel.y), crop) + opn_rgb_bicubic(sourceTexture, s, uv - float2(0.0, texel.y), crop)) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n"
-    "fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]]) {\n"
+    "fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
+    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
     "    float3 center = opn_nv12_rgb(yTexture, uvTexture, s, uv);\n"
     "    float2 texel = max(scale, float2(1.0 / 8192.0));\n"
-    "    float3 blur = (opn_nv12_rgb(yTexture, uvTexture, s, uv + float2(texel.x, 0.0)) + opn_nv12_rgb(yTexture, uvTexture, s, uv - float2(texel.x, 0.0)) + opn_nv12_rgb(yTexture, uvTexture, s, uv + float2(0.0, texel.y)) + opn_nv12_rgb(yTexture, uvTexture, s, uv - float2(0.0, texel.y))) * 0.25;\n"
+    "    float3 blur = (opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n"
-    "fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]]) {\n"
+    "fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
+    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
     "    float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);\n"
     "    float2 texel = max(scale, float2(1.0 / 8192.0));\n"
-    "    float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, uv + float2(texel.x, 0.0)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, uv - float2(texel.x, 0.0)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, uv + float2(0.0, texel.y)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, uv - float2(0.0, texel.y))) * 0.25;\n"
+    "    float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n";
 
@@ -592,36 +630,30 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
                             result:(OPNVideoEnhancementResult *)result
                              start:(CFTimeInterval)start {
     if (![self isMetalFXAvailable]) return NO;
-    id<MTLTexture> sourceTexture = nil;
-    if (textureFrame.kind == OPNVideoTextureFrameKindRGB) {
-        sourceTexture = textureFrame.rgbTexture;
-    } else {
-        id<MTLTexture> primaryTexture = textureFrame.lumaTexture;
-        if (!primaryTexture) return NO;
-        MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                                               width:primaryTexture.width
-                                                                                              height:primaryTexture.height
-                                                                                           mipmapped:NO];
-        descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-        descriptor.storageMode = MTLStorageModePrivate;
-        sourceTexture = [self.device newTextureWithDescriptor:descriptor];
-        if (!sourceTexture) {
-            result.tierFallbackReason = @"MetalFX intermediate texture allocation failed; using custom spatial scaler";
-            return NO;
-        }
-        id<MTLCommandBuffer> conversionCommandBuffer = [self.commandQueue commandBuffer];
-        if (!conversionCommandBuffer || ![self encodeSpatialTextureFrame:textureFrame destinationTexture:sourceTexture commandBuffer:conversionCommandBuffer settings:settings result:result]) {
-            result.tierFallbackReason = @"MetalFX RGB conversion failed; using custom spatial scaler";
-            return NO;
-        }
-        [conversionCommandBuffer commit];
-        [conversionCommandBuffer waitUntilCompleted];
-    }
-
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
     if (!commandBuffer) {
         result.fallbackReason = @"MetalFX could not create command buffer";
         return NO;
+    }
+    id<MTLTexture> sourceTexture = nil;
+    BOOL needsSpatialConversion = textureFrame.kind != OPNVideoTextureFrameKindRGB || !OPNVideoTextureFrameUsesFullCrop(textureFrame);
+    if (!needsSpatialConversion) {
+        sourceTexture = textureFrame.rgbTexture;
+    } else {
+        id<MTLTexture> primaryTexture = textureFrame.lumaTexture;
+        if (textureFrame.kind == OPNVideoTextureFrameKindRGB) primaryTexture = textureFrame.rgbTexture;
+        if (!primaryTexture) return NO;
+        NSUInteger width = textureFrame.contentWidth > 0 ? textureFrame.contentWidth : primaryTexture.width;
+        NSUInteger height = textureFrame.contentHeight > 0 ? textureFrame.contentHeight : primaryTexture.height;
+        sourceTexture = [self reusableMetalFXIntermediateTextureWithWidth:width height:height];
+        if (!sourceTexture) {
+            result.tierFallbackReason = @"MetalFX intermediate texture allocation failed; using custom spatial scaler";
+            return NO;
+        }
+        if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:sourceTexture commandBuffer:commandBuffer settings:settings result:result]) {
+            result.tierFallbackReason = @"MetalFX RGB conversion failed; using custom spatial scaler";
+            return NO;
+        }
     }
     NSString *metalFXFallback = @"";
     if (![self.metalFXUpscaler encodeTexture:sourceTexture toTexture:drawable.texture commandBuffer:commandBuffer fallback:&metalFXFallback]) {
@@ -637,6 +669,25 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     result.droppedFrames = self.droppedFrames;
     if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
     return YES;
+}
+
+- (id<MTLTexture>)reusableMetalFXIntermediateTextureWithWidth:(NSUInteger)width height:(NSUInteger)height {
+    if (!self.device || width == 0 || height == 0) return nil;
+    if (self.metalFXIntermediateTexture &&
+        self.metalFXIntermediateTexture.width == width &&
+        self.metalFXIntermediateTexture.height == height &&
+        self.metalFXIntermediateTexture.pixelFormat == MTLPixelFormatBGRA8Unorm) {
+        return self.metalFXIntermediateTexture;
+    }
+    MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                                           width:width
+                                                                                          height:height
+                                                                                       mipmapped:NO];
+    descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    descriptor.storageMode = MTLStorageModePrivate;
+    self.metalFXIntermediateTexture = [self.device newTextureWithDescriptor:descriptor];
+    self.metalFXIntermediateTexture.label = @"OpenNOW MetalFX conversion intermediate";
+    return self.metalFXIntermediateTexture;
 }
 
 - (BOOL)renderSpatialTextureFrame:(OPNVideoTextureFrame *)textureFrame
@@ -701,6 +752,20 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
                       primaryTexture.height > 0 ? 1.0f / (float)primaryTexture.height : 0.0f};
     float sharpness = std::max(0.0f, std::min(4.0f, (float)settings.sharpness / 10.0f));
     float denoise = std::max(0.0f, std::min(1.0f, ((float)settings.denoise / 10.0f) * 0.65f));
+    CGRect cropRect = textureFrame.cropRect;
+    if (cropRect.size.width <= 0.0 || cropRect.size.height <= 0.0) cropRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
+    float crop[4] = {
+        (float)std::max<CGFloat>(0.0, std::min<CGFloat>(cropRect.origin.x, 1.0)),
+        (float)std::max<CGFloat>(0.0, std::min<CGFloat>(cropRect.origin.y, 1.0)),
+        (float)std::max<CGFloat>(0.0, std::min<CGFloat>(cropRect.origin.x + cropRect.size.width, 1.0)),
+        (float)std::max<CGFloat>(0.0, std::min<CGFloat>(cropRect.origin.y + cropRect.size.height, 1.0)),
+    };
+    if (crop[2] <= crop[0] || crop[3] <= crop[1]) {
+        crop[0] = 0.0f;
+        crop[1] = 0.0f;
+        crop[2] = 1.0f;
+        crop[3] = 1.0f;
+    }
     [encoder setRenderPipelineState:pipeline];
     [encoder setFragmentTexture:primaryTexture atIndex:0];
     if (textureFrame.kind == OPNVideoTextureFrameKindNV12) [encoder setFragmentTexture:textureFrame.chromaTexture atIndex:1];
@@ -711,6 +776,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
     [encoder setFragmentBytes:texel length:sizeof(texel) atIndex:0];
     [encoder setFragmentBytes:&sharpness length:sizeof(sharpness) atIndex:1];
     [encoder setFragmentBytes:&denoise length:sizeof(denoise) atIndex:2];
+    [encoder setFragmentBytes:crop length:sizeof(crop) atIndex:3];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     return YES;

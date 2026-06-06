@@ -134,6 +134,7 @@ struct StreamPreferenceProfile {
     int upscalingDenoise = 0;
     int recordingVideoBitrateMbps = 0;
     int recordingAudioBitrateKbps = 160;
+    bool recordingEnhancedVideoEnabled = true;
     bool enableL4S = false;
     bool enableHdr = false;
     bool enablePowerSaver = false;
@@ -230,6 +231,7 @@ void SaveStreamUpscalingSharpness(int sharpness);
 void SaveStreamUpscalingDenoise(int denoise);
 void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps);
 void SaveStreamRecordingAudioBitrateKbps(int bitrateKbps);
+void SaveStreamRecordingEnhancedVideoEnabled(bool enabled);
 void SaveStreamL4SEnabled(bool enabled);
 void SaveStreamHDREnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);

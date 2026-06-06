@@ -568,6 +568,18 @@ TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     CHECK_EQ(maxSharpness.upscalingSharpness, 40);
 }
 
+TEST_CASE("RecordingEnhancedVideoPreferenceDefaultsOnAndPersistsChanges") {
+    ScopedStreamObjectPreference preference(@"OpenNOW.Stream.RecordingEnhancedVideoEnabled");
+
+    CHECK(OPN::LoadStreamPreferenceProfile().recordingEnhancedVideoEnabled);
+
+    OPN::SaveStreamRecordingEnhancedVideoEnabled(false);
+    CHECK(!OPN::LoadStreamPreferenceProfile().recordingEnhancedVideoEnabled);
+
+    OPN::SaveStreamRecordingEnhancedVideoEnabled(true);
+    CHECK(OPN::LoadStreamPreferenceProfile().recordingEnhancedVideoEnabled);
+}
+
 TEST_CASE("HDRPreferenceDefaultsOffAndPersistsChanges") {
     ScopedStreamObjectPreference preference(@"OpenNOW.Stream.HDREnabled");
 

@@ -29,6 +29,7 @@ static NSString *const kUpscalingSharpnessKey = @"OpenNOW.Stream.UpscalingSharpn
 static NSString *const kUpscalingDenoiseKey = @"OpenNOW.Stream.UpscalingDenoise";
 static NSString *const kRecordingVideoBitrateMbpsKey = @"OpenNOW.Stream.RecordingVideoBitrateMbps";
 static NSString *const kRecordingAudioBitrateKbpsKey = @"OpenNOW.Stream.RecordingAudioBitrateKbps";
+static NSString *const kRecordingEnhancedVideoEnabledKey = @"OpenNOW.Stream.RecordingEnhancedVideoEnabled";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
@@ -601,6 +602,8 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.upscalingDenoise = ClampedStoredInteger(kUpscalingDenoiseKey, 0, 21);
     profile.recordingVideoBitrateMbps = ClampedStoredInteger(kRecordingVideoBitrateMbpsKey, 0, 201);
     profile.recordingAudioBitrateKbps = (int)std::llround(ClampedStoredDouble(kRecordingAudioBitrateKbpsKey, 160.0, 64.0, 320.0));
+    id enhancedRecordingValue = [NSUserDefaults.standardUserDefaults objectForKey:kRecordingEnhancedVideoEnabledKey];
+    profile.recordingEnhancedVideoEnabled = [enhancedRecordingValue isKindOfClass:NSNumber.class] ? [(NSNumber *)enhancedRecordingValue boolValue] : true;
 
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
     profile.enableHdr = [NSUserDefaults.standardUserDefaults boolForKey:kHDREnabledKey];
@@ -1422,6 +1425,10 @@ void SaveStreamRecordingVideoBitrateMbps(int bitrateMbps) {
 void SaveStreamRecordingAudioBitrateKbps(int bitrateKbps) {
     int clamped = std::max(64, std::min(bitrateKbps, 320));
     [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kRecordingAudioBitrateKbpsKey];
+}
+
+void SaveStreamRecordingEnhancedVideoEnabled(bool enabled) {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kRecordingEnhancedVideoEnabledKey];
 }
 
 void SaveStreamL4SEnabled(bool enabled) {
