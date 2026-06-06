@@ -875,6 +875,7 @@ typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
         CVPixelBufferRelease(pixelBuffer);
         return nil;
     }
+    image = [[image imageByApplyingTransform:CGAffineTransformMakeScale(1.0, -1.0)] imageByApplyingTransform:CGAffineTransformMakeTranslation(0.0, (CGFloat)height)];
     CGRect bounds = CGRectMake(0.0, 0.0, width, height);
     [self.ciContext render:image toCVPixelBuffer:pixelBuffer bounds:bounds colorSpace:self.outputColorSpace];
     return pixelBuffer;
