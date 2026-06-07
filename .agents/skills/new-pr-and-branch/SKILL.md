@@ -1,17 +1,17 @@
 ---
 name: "new-pr-and-branch"
-description: "Create a new branch, commits changes, then opens pr against the dev branch."
+description: "Create a new branch, commits changes, then opens pr against the main branch."
 ---
 
 # new-pr-and-branch
 
-Create a new branch, commits changes, then opens pr against the dev branch.
+Create a new branch, commits changes, then opens pr against the main branch.
 
 ## Usage
 
 # Workflow
 1. Ensure the working tree is clean or explicitly handled.
-2. Create a descriptive branch from the latest dev.
+2. Create a descriptive branch from the latest main.
 3. Complete implementation and tests.
 4. Commit focused changes and push.
 5. Create a concise PR with summary and test notes.

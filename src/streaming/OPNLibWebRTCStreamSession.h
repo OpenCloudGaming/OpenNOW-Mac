@@ -54,6 +54,8 @@ public:
 
     void HandleLocalIceCandidate(const IceCandidatePayload &candidate);
     void HandleConnectionState(bool connected, const std::string &error);
+    void StartDisconnectGraceTimer(const std::string &reason);
+    void CancelDisconnectGraceTimer();
     void HandleDataChannelState(const std::string &label, bool open);
     void HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len);
     void HandleAudioDeviceChange();
@@ -63,6 +65,7 @@ public:
     void HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels);
     double GameVolume() const;
     int TargetFps() const;
+    bool LowLatencyMode() const;
     void LocalVideoEnhancement(int &mode, int &sharpness, int &denoise, int &targetHeight) const;
     void SetVideoRendererState(const std::string &sink, const std::string &pipelineMode);
     void SetVideoRenderDiagnostics(const std::string &pixelFormat,
@@ -96,6 +99,7 @@ private:
     void *m_impl = nullptr;
     void *m_nativeWindow = nullptr;
     void *m_inputHeartbeat = nullptr;
+    void *m_disconnectGraceTimer = nullptr;
     void *m_statsTimer = nullptr;
     void *m_statsQueue = nullptr;
     void *m_microphoneLevelTimer = nullptr;

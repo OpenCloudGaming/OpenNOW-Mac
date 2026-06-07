@@ -43,7 +43,9 @@
 namespace OPN {
 
 static constexpr int OPNPartialReliableInputLifetimeMs = 5;
+static constexpr int64_t OPNLibWebRTCDisconnectGraceMs = 3000;
 [[maybe_unused]] static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
+[[maybe_unused]] static constexpr uint64_t OPNLowLatencyInputBacklogLimitBytes = 4 * 1024;
 
 static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector) {
     AudioDeviceID device = kAudioObjectUnknown;
@@ -230,6 +232,168 @@ struct OPNLibWebRTCIceCredentials {
         out << payloads[i];
     }
     return out.str();
+}
+
+[[maybe_unused]] static std::string OPNTrimAscii(std::string value) {
+    while (!value.empty() && std::isspace((unsigned char)value.front())) value.erase(value.begin());
+    while (!value.empty() && std::isspace((unsigned char)value.back())) value.pop_back();
+    return value;
+}
+
+[[maybe_unused]] static std::string OPNLowerAscii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return value;
+}
+
+[[maybe_unused]] static std::string OPNFmtpParameterText(const std::string &line) {
+    size_t pos = line.find_first_of(" \t");
+    return pos == std::string::npos ? std::string() : line.substr(pos + 1);
+}
+
+[[maybe_unused]] static std::vector<std::pair<std::string, std::string>> OPNParseFmtpParameters(const std::string &parameters) {
+    std::vector<std::pair<std::string, std::string>> parsed;
+    std::stringstream stream(parameters);
+    std::string token;
+    while (std::getline(stream, token, ';')) {
+        token = OPNTrimAscii(token);
+        if (token.empty()) continue;
+        size_t equals = token.find('=');
+        if (equals == std::string::npos) {
+            parsed.emplace_back(OPNLowerAscii(token), std::string());
+            continue;
+        }
+        parsed.emplace_back(OPNLowerAscii(OPNTrimAscii(token.substr(0, equals))), OPNTrimAscii(token.substr(equals + 1)));
+    }
+    return parsed;
+}
+
+[[maybe_unused]] static std::string OPNGetFmtpParameter(const std::vector<std::pair<std::string, std::string>> &parameters,
+                                                       const std::string &key) {
+    std::string lowerKey = OPNLowerAscii(key);
+    for (const auto &parameter : parameters) {
+        if (parameter.first == lowerKey) return parameter.second;
+    }
+    return std::string();
+}
+
+[[maybe_unused]] static int OPNFmtpIntValue(const std::string &value) {
+    if (value.empty()) return -1;
+    for (char c : value) {
+        if (!std::isdigit((unsigned char)c)) return -1;
+    }
+    return atoi(value.c_str());
+}
+
+[[maybe_unused]] static bool OPNSetFmtpParameter(std::vector<std::pair<std::string, std::string>> &parameters,
+                                                 const std::string &key,
+                                                 const std::string &value) {
+    if (value.empty()) return false;
+    std::string lowerKey = OPNLowerAscii(key);
+    for (auto &parameter : parameters) {
+        if (parameter.first != lowerKey) continue;
+        if (parameter.second == value) return false;
+        parameter.second = value;
+        return true;
+    }
+    parameters.emplace_back(lowerKey, value);
+    return true;
+}
+
+[[maybe_unused]] static std::string OPNJoinFmtpParameters(const std::vector<std::pair<std::string, std::string>> &parameters) {
+    std::string out;
+    for (size_t i = 0; i < parameters.size(); i++) {
+        if (i) out += ';';
+        out += parameters[i].first;
+        if (!parameters[i].second.empty()) {
+            out += '=';
+            out += parameters[i].second;
+        }
+    }
+    return out;
+}
+
+[[maybe_unused]] static std::unordered_set<int> OPNSdpVideoPayloadsForCodec(const std::string &sdp,
+                                                                            const std::string &normalizedCodec) {
+    std::unordered_set<int> payloads;
+    bool inVideo = false;
+    for (const std::string &line : OPNSplitSdpLines(sdp)) {
+        if (OPNStartsWith(line, "m=")) {
+            inVideo = OPNStartsWith(line, "m=video");
+            continue;
+        }
+        if (!inVideo || !OPNStartsWith(line, "a=rtpmap:")) continue;
+        int pt = OPNPayloadTypeFromAttribute(line, "a=rtpmap:");
+        if (pt >= 0 && OPNRtpmapMatchesCodec(line, normalizedCodec)) payloads.insert(pt);
+    }
+    return payloads;
+}
+
+[[maybe_unused]] static std::unordered_map<int, std::string> OPNSdpVideoFmtpByPayload(const std::string &sdp) {
+    std::unordered_map<int, std::string> fmtpByPayload;
+    bool inVideo = false;
+    for (const std::string &line : OPNSplitSdpLines(sdp)) {
+        if (OPNStartsWith(line, "m=")) {
+            inVideo = OPNStartsWith(line, "m=video");
+            continue;
+        }
+        if (!inVideo || !OPNStartsWith(line, "a=fmtp:")) continue;
+        int pt = OPNPayloadTypeFromAttribute(line, "a=fmtp:");
+        if (pt >= 0) fmtpByPayload[pt] = OPNFmtpParameterText(line);
+    }
+    return fmtpByPayload;
+}
+
+[[maybe_unused]] static std::string OPNAlignH265AnswerFmtpToOffer(const std::string &answerSdp, const std::string &offerSdp) {
+    std::unordered_set<int> answerH265Payloads = OPNSdpVideoPayloadsForCodec(answerSdp, "H265");
+    if (answerH265Payloads.empty()) return answerSdp;
+
+    std::unordered_set<int> offerH265Payloads = OPNSdpVideoPayloadsForCodec(offerSdp, "H265");
+    std::unordered_map<int, std::string> offerFmtpByPayload = OPNSdpVideoFmtpByPayload(offerSdp);
+    std::vector<std::string> lines = OPNSplitSdpLines(answerSdp);
+    bool inVideo = false;
+    int alignedLines = 0;
+
+    for (std::string &line : lines) {
+        if (OPNStartsWith(line, "m=")) {
+            inVideo = OPNStartsWith(line, "m=video");
+            continue;
+        }
+        if (!inVideo || !OPNStartsWith(line, "a=fmtp:")) continue;
+        int pt = OPNPayloadTypeFromAttribute(line, "a=fmtp:");
+        if (pt < 0 || answerH265Payloads.find(pt) == answerH265Payloads.end()) continue;
+        if (offerH265Payloads.find(pt) == offerH265Payloads.end()) continue;
+
+        auto offerFmtp = offerFmtpByPayload.find(pt);
+        if (offerFmtp == offerFmtpByPayload.end()) continue;
+
+        std::vector<std::pair<std::string, std::string>> answerParameters = OPNParseFmtpParameters(OPNFmtpParameterText(line));
+        std::vector<std::pair<std::string, std::string>> offerParameters = OPNParseFmtpParameters(offerFmtp->second);
+        bool changed = false;
+
+        if (OPNGetFmtpParameter(answerParameters, "profile-id").empty()) {
+            changed = OPNSetFmtpParameter(answerParameters, "profile-id", OPNGetFmtpParameter(offerParameters, "profile-id")) || changed;
+        }
+        if (OPNGetFmtpParameter(answerParameters, "tier-flag").empty()) {
+            changed = OPNSetFmtpParameter(answerParameters, "tier-flag", OPNGetFmtpParameter(offerParameters, "tier-flag")) || changed;
+        }
+
+        std::string answerLevel = OPNGetFmtpParameter(answerParameters, "level-id");
+        std::string offerLevel = OPNGetFmtpParameter(offerParameters, "level-id");
+        int answerLevelValue = OPNFmtpIntValue(answerLevel);
+        int offerLevelValue = OPNFmtpIntValue(offerLevel);
+        if (answerLevel.empty() || (answerLevelValue >= 0 && offerLevelValue > answerLevelValue)) {
+            changed = OPNSetFmtpParameter(answerParameters, "level-id", offerLevel) || changed;
+        }
+
+        if (!changed) continue;
+        line = "a=fmtp:" + std::to_string(pt) + " " + OPNJoinFmtpParameters(answerParameters);
+        alignedLines++;
+    }
+
+    if (alignedLines > 0) {
+        OPN::LogInfo(@"[LibWebRTC] Aligned H265 answer fmtp with offer payloads=%d", alignedLines);
+    }
+    return OPNJoinSdpLinesLike(lines, answerSdp);
 }
 
 [[maybe_unused]] static std::string OPNExtractPublicIp(const std::string &hostOrIp) {
@@ -1202,6 +1366,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 @property(nonatomic, assign) double lastEnhancementFrameTimeMs;
 @property(nonatomic, assign) CFTimeInterval lastDiagnosticsUpdateTime;
 @property(nonatomic, assign) BOOL drawScheduled;
+@property(nonatomic, assign) BOOL drawableSizeDirty;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 - (void)updateDrawableSizeForCurrentBackingScale;
 - (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale;
@@ -1249,6 +1414,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         _lastEnhancementFrameTimeMs = -1.0;
         _lastDiagnosticsUpdateTime = 0.0;
         _drawScheduled = NO;
+        _drawableSizeDirty = YES;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
 
@@ -1266,7 +1432,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
             metalLayer.presentsWithTransaction = NO;
             metalLayer.allowsNextDrawableTimeout = NO;
             if (@available(macOS 10.13, *)) {
-                metalLayer.maximumDrawableCount = 3;
+                metalLayer.maximumDrawableCount = owner && owner->LowLatencyMode() ? 2 : 3;
             }
         }
         [self addSubview:_metalView];
@@ -1281,11 +1447,13 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
 - (void)layout {
     [super layout];
     self.metalView.frame = self.bounds;
+    self.drawableSizeDirty = YES;
     [self updateDrawableSizeForCurrentBackingScale];
 }
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    self.drawableSizeDirty = YES;
     [self updateDrawableSizeForCurrentBackingScale];
 }
 
@@ -1295,6 +1463,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         self.sourceFrameSize = size;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        self.drawableSizeDirty = YES;
         [self updateDrawableSizeForCurrentBackingScale];
     });
 }
@@ -1324,6 +1493,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         (int)std::llround(currentSize.height) != (int)std::llround(drawableSize.height)) {
         self.metalView.drawableSize = drawableSize;
     }
+    self.drawableSizeDirty = NO;
 }
 
 - (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale {
@@ -1378,7 +1548,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
 
 - (void)drawInMTKView:(MTKView *)view {
     if (view != self.metalView) return;
-    [self updateDrawableSizeForCurrentBackingScale];
+    if (self.drawableSizeDirty) [self updateDrawableSizeForCurrentBackingScale];
 
     RTCVideoFrame *frame = nil;
     uint64_t drawSerial = 0;
@@ -1408,7 +1578,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     int enhancementDenoise = 0;
     int enhancementTargetHeight = 2160;
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
-    [self updateDrawableSizeForCurrentBackingScale];
+    if (self.drawableSizeDirty) [self updateDrawableSizeForCurrentBackingScale];
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
         if (enhancementMode == 4) {
@@ -2001,12 +2171,13 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
             const std::string rawAnswerSdp = OPNNSStringToString(answer.sdp);
             OPNLogVideoSdpSummary("answer-raw-video", rawAnswerSdp);
             const bool enableAnswerMunging = OPNEnvFlagEnabled("OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE", false);
-            const std::string localAnswerSdp = enableAnswerMunging
+            const std::string mungedAnswerSdp = enableAnswerMunging
                 ? OPNMungeAnswerSdp(rawAnswerSdp, std::max(1000, this->m_settings.maxBitrateMbps * 1000))
                 : rawAnswerSdp;
             if (!enableAnswerMunging) {
                 OPN::LogInfo(@"[LibWebRTC] OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE=0; using raw local answer SDP");
             }
+            const std::string localAnswerSdp = OPNAlignH265AnswerFmtpToOffer(mungedAnswerSdp, processedOfferSdp);
             OPNLogVideoSdpSummary("answer-video", localAnswerSdp);
             if (!OPNVideoSdpHasMediaCodec(localAnswerSdp)) {
                 const std::string message = "createAnswer produced no negotiated video media codec";
@@ -2072,6 +2243,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 
 void LibWebRTCStreamSession::Stop() {
     if (m_callbackLiveness) m_callbackLiveness->store(false);
+    CancelDisconnectGraceTimer();
     StopAudioDeviceMonitoring();
     StopStatsPolling();
     StopMicrophoneLevelPolling();
@@ -2156,7 +2328,8 @@ void LibWebRTCStreamSession::SendInputPartiallyReliable(const uint8_t *data, siz
 #if defined(OPN_HAVE_LIBWEBRTC)
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.partialInputChannel || impl.partialInputChannel.readyState != RTCDataChannelStateOpen || !data || len == 0) return;
-    if (impl.partialInputChannel.bufferedAmount > OPNPartialReliableInputBacklogLimitBytes) return;
+    uint64_t backlogLimit = m_settings.lowLatencyMode ? OPNLowLatencyInputBacklogLimitBytes : OPNPartialReliableInputBacklogLimitBytes;
+    if (impl.partialInputChannel.bufferedAmount > backlogLimit) return;
     NSData *payload = [NSData dataWithBytes:data length:len];
     RTCDataBuffer *buffer = [[RTCDataBuffer alloc] initWithData:payload isBinary:YES];
     [impl.partialInputChannel sendData:buffer];
@@ -2782,6 +2955,7 @@ void LibWebRTCStreamSession::HandleLocalIceCandidate(const IceCandidatePayload &
 
 void LibWebRTCStreamSession::HandleConnectionState(bool connected, const std::string &error) {
     if (connected) {
+        CancelDisconnectGraceTimer();
         {
             std::lock_guard<std::mutex> lock(m_statsMutex);
             m_latestStats.available = true;
@@ -2794,6 +2968,43 @@ void LibWebRTCStreamSession::HandleConnectionState(bool connected, const std::st
     if (m_onState) {
         m_onState(connected, error);
     }
+}
+
+void LibWebRTCStreamSession::StartDisconnectGraceTimer(const std::string &reason) {
+    NSCAssert([NSThread isMainThread], @"disconnect grace timer must be accessed on main thread");
+    CancelDisconnectGraceTimer();
+    auto callbackLiveness = m_callbackLiveness;
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    if (!timer) {
+        HandleConnectionState(false, reason);
+        return;
+    }
+
+    void *timerToken = (__bridge_retained void *)timer;
+    m_disconnectGraceTimer = timerToken;
+    std::string reasonCopy = reason;
+    dispatch_source_set_timer(timer,
+                              dispatch_time(DISPATCH_TIME_NOW, OPNLibWebRTCDisconnectGraceMs * NSEC_PER_MSEC),
+                              DISPATCH_TIME_FOREVER,
+                              0);
+    dispatch_source_set_event_handler(timer, ^{
+        if (callbackLiveness && !callbackLiveness->load()) return;
+        if (m_disconnectGraceTimer != timerToken) return;
+        dispatch_source_t firedTimer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
+        m_disconnectGraceTimer = nullptr;
+        dispatch_source_cancel(firedTimer);
+        OPN::LogInfo(@"[LibWebRTC] disconnect grace expired after %lldms: %s", (long long)OPNLibWebRTCDisconnectGraceMs, reasonCopy.c_str());
+        HandleConnectionState(false, reasonCopy);
+    });
+    dispatch_resume(timer);
+}
+
+void LibWebRTCStreamSession::CancelDisconnectGraceTimer() {
+    NSCAssert([NSThread isMainThread], @"disconnect grace timer must be accessed on main thread");
+    if (!m_disconnectGraceTimer) return;
+    dispatch_source_t timer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
+    m_disconnectGraceTimer = nullptr;
+    dispatch_source_cancel(timer);
 }
 
 void LibWebRTCStreamSession::HandleStatsReport(void *report) {
@@ -3035,6 +3246,10 @@ int LibWebRTCStreamSession::TargetFps() const {
     return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
 }
 
+bool LibWebRTCStreamSession::LowLatencyMode() const {
+    return m_settings.lowLatencyMode;
+}
+
 void LibWebRTCStreamSession::LocalVideoEnhancement(int &mode, int &sharpness, int &denoise, int &targetHeight) const {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     mode = m_localEnhancementMode;
@@ -3136,12 +3351,21 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceConnectionState:(RTCIceConnectionState)newState {
     (void)peerConnection;
     OPN::LogInfo(@"[LibWebRTC] ICE state=%ld", (long)newState);
-    if (!_owner) return;
-    if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
-        _owner->HandleConnectionState(true, "");
-    } else if (newState == RTCIceConnectionStateFailed || newState == RTCIceConnectionStateClosed) {
-        _owner->HandleConnectionState(false, "libwebrtc ICE failed");
-    }
+    __weak OPNLibWebRTCSessionImpl *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        OPNLibWebRTCSessionImpl *strongSelf = weakSelf;
+        if (!strongSelf.owner) return;
+        OPN::LibWebRTCStreamSession *owner = strongSelf.owner;
+        if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(true, "");
+        } else if (newState == RTCIceConnectionStateDisconnected) {
+            owner->StartDisconnectGraceTimer("libwebrtc ICE disconnected");
+        } else if (newState == RTCIceConnectionStateFailed || newState == RTCIceConnectionStateClosed) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(false, "libwebrtc ICE failed");
+        }
+    });
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceGatheringState:(RTCIceGatheringState)newState {
@@ -3172,12 +3396,21 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeConnectionState:(RTCPeerConnectionState)newState {
     (void)peerConnection;
     OPN::LogInfo(@"[LibWebRTC] peer state=%ld", (long)newState);
-    if (!_owner) return;
-    if (newState == RTCPeerConnectionStateConnected) {
-        _owner->HandleConnectionState(true, "");
-    } else if (newState == RTCPeerConnectionStateFailed || newState == RTCPeerConnectionStateClosed) {
-        _owner->HandleConnectionState(false, "libwebrtc peer connection failed");
-    }
+    __weak OPNLibWebRTCSessionImpl *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        OPNLibWebRTCSessionImpl *strongSelf = weakSelf;
+        if (!strongSelf.owner) return;
+        OPN::LibWebRTCStreamSession *owner = strongSelf.owner;
+        if (newState == RTCPeerConnectionStateConnected) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(true, "");
+        } else if (newState == RTCPeerConnectionStateDisconnected) {
+            owner->StartDisconnectGraceTimer("libwebrtc peer connection disconnected");
+        } else if (newState == RTCPeerConnectionStateFailed || newState == RTCPeerConnectionStateClosed) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(false, "libwebrtc peer connection failed");
+        }
+    });
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didAddReceiver:(RTCRtpReceiver *)rtpReceiver streams:(NSArray<RTCMediaStream *> *)mediaStreams {

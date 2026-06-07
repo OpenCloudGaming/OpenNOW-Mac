@@ -30,12 +30,9 @@
 
 namespace OPN {
 
-
-
-
 static NSURL *BuildSignInUrl(const std::string &signalingServer,
-                              const std::string &sessionId,
-                              const std::string &signalingUrl,
+                               const std::string &sessionId,
+                               const std::string &signalingUrl,
                               const std::string &peerName) {
     NSString *host = [NSString stringWithUTF8String:signalingServer.c_str()];
     NSString *sessionIdObj = [NSString stringWithUTF8String:sessionId.c_str()];
@@ -331,24 +328,24 @@ void SignalingClient::RearmReceiveHandler() {
 
     [task receiveMessageWithCompletionHandler:^(NSURLSessionWebSocketMessage *msg, NSError *err) {
         dispatch_async(dispatch_get_main_queue(), ^{
-        if (!blockSelf->IsCurrentGeneration(generation)) return;
+            if (!blockSelf->IsCurrentGeneration(generation)) return;
 
-        if (err) {
-            if (IsSocketNotConnectedError(err)) {
-                OPN::LogInfo(@"[Signaling] Receive stopped after socket closed: %@", err.localizedDescription ?: @"unknown error");
-            } else {
-                OPN::LogError(@"[Signaling] Receive error: %@", err);
+            if (err) {
+                if (IsSocketNotConnectedError(err)) {
+                    OPN::LogInfo(@"[Signaling] Receive stopped after socket closed: %@", err.localizedDescription ?: @"unknown error");
+                } else {
+                    OPN::LogError(@"[Signaling] Receive error: %@", err);
+                }
+                return;
             }
-            return;
-        }
 
-        NSString *text = msg.string;
-        if (text) {
-            blockSelf->HandleMessage([text UTF8String]);
-        }
+            NSString *text = msg.string;
+            if (text) {
+                blockSelf->HandleMessage([text UTF8String]);
+            }
 
 
-        blockSelf->RearmReceiveHandler();
+            blockSelf->RearmReceiveHandler();
         });
     }];
 }
@@ -443,7 +440,11 @@ void SignalingClient::HandleMessage(const std::string &text) {
         OPN::LogInfo(@"[Signaling] Offer received, sdp length=%lu, m_onOffer=%p",
               (unsigned long)sdp.length, (void*)&m_onOffer);
         if (sdp && m_onOffer) {
-            m_onOffer([sdp UTF8String]);
+            std::string sdpCopy = [sdp UTF8String] ?: "";
+            SignalingOfferCallback cb = m_onOffer;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                cb(sdpCopy);
+            });
         }
         return;
     }
@@ -466,7 +467,10 @@ void SignalingClient::HandleMessage(const std::string &text) {
               ice.usernameFragment.empty() ? "(none)" : ice.usernameFragment.c_str(),
               ice.candidate.size());
         if (m_onIceCandidate) {
-            m_onIceCandidate(ice);
+            SignalingIceCallback cb = m_onIceCandidate;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                cb(ice);
+            });
         }
         return;
     }

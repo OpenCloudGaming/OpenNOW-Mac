@@ -200,7 +200,7 @@ static bool OPNFlushErrorsImmediately() {
 }
 
 static bool OPNShouldSendStructuredInfoLog() {
-    return true;
+    return OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_INFO_LOGS");
 }
 
 static const char *OPNSentryLogReturnName(log_return_value_t value) {
