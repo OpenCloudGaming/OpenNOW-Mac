@@ -571,6 +571,10 @@ static std::vector<OPN::ActiveSessionEntry> ActiveSessionEntriesFromArray(NSArra
 
 static bool ResolveResponseSessionId(NSString *responseSessionId, const std::string &requestedSessionId, std::string &resolvedSessionId, std::string &error) {
     std::string parsedSessionId = responseSessionId.length > 0 ? responseSessionId.UTF8String : "";
+    if (requestedSessionId.empty()) {
+        resolvedSessionId = parsedSessionId;
+        return true;
+    }
     if (!parsedSessionId.empty() && parsedSessionId != requestedSessionId) {
         error = "SESSION_ID_MISMATCH: requested " + requestedSessionId + " but response contained " + parsedSessionId;
         return false;
