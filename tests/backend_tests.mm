@@ -307,7 +307,9 @@ TEST_SUITE("streaming/backend")
 
 TEST_CASE("ResolveStreamWebRTCBackend") {
     OPN::StreamWebRTCBackend backend = OPN::ResolveStreamWebRTCBackend();
-    CHECK(backend == OPN::StreamWebRTCBackend::LibWebRTC);
+    std::string name = OPN::StreamWebRTCBackendName(backend);
+    CHECK_FALSE(name.empty());
+    CHECK_EQ(name, "libwebrtc");
 }
 
 TEST_CASE("StreamWebRTCBackendName") {
@@ -316,7 +318,10 @@ TEST_CASE("StreamWebRTCBackendName") {
 }
 
 TEST_CASE("StreamWebRTCBackendNameDefaultCase") {
-    std::string name = OPN::StreamWebRTCBackendName(static_cast<OPN::StreamWebRTCBackend>(0xFF));
+    // Intentionally use a value outside known enumerators to verify fallback/default handling.
+    constexpr int kUnknownBackendValue = 0xFF;
+    std::string name = OPN::StreamWebRTCBackendName(
+        static_cast<OPN::StreamWebRTCBackend>(kUnknownBackendValue));
     CHECK_EQ(name, "libwebrtc");
 }
 
@@ -433,6 +438,12 @@ static OPN::StreamPreferenceProfile ProfileWithSelections(int codecIndex, int fp
     const std::vector<OPN::StreamCodecOption> &codecs = OPN::StreamCodecOptions();
     const std::vector<int> &fpsOptions = OPN::StreamFpsOptions();
     const std::vector<OPN::StreamColorQualityOption> &colorOptions = OPN::StreamColorQualityOptions();
+    REQUIRE(codecIndex >= 0);
+    REQUIRE((size_t)codecIndex < codecs.size());
+    REQUIRE(fpsIndex >= 0);
+    REQUIRE((size_t)fpsIndex < fpsOptions.size());
+    REQUIRE(colorQualityIndex >= 0);
+    REQUIRE((size_t)colorQualityIndex < colorOptions.size());
     profile.codecIndex = codecIndex;
     profile.codec = codecs[(size_t)codecIndex];
     profile.fpsIndex = fpsIndex;
@@ -809,18 +820,35 @@ TEST_CASE("GameStreamProfilesSaveLoadToggleAndDelete") {
     ScopedStreamObjectPreference profilesPreference(@"OpenNOW.Stream.GameProfiles");
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     profile.aspectIndex = 1;
-    profile.aspect = OPN::StreamAspectOptions()[(size_t)profile.aspectIndex];
+    const auto aspectOptions = OPN::StreamAspectOptions();
+    REQUIRE(aspectOptions.size() > (size_t)profile.aspectIndex);
+    profile.aspect = aspectOptions[(size_t)profile.aspectIndex];
+
     profile.resolutionIndex = 2;
-    profile.resolution = OPN::StreamResolutionOptionsForAspect(profile.aspectIndex)[(size_t)profile.resolutionIndex];
+    const auto resolutionOptions = OPN::StreamResolutionOptionsForAspect(profile.aspectIndex);
+    REQUIRE(resolutionOptions.size() > (size_t)profile.resolutionIndex);
+    profile.resolution = resolutionOptions[(size_t)profile.resolutionIndex];
+
     profile.fpsIndex = 2;
-    profile.fps = OPN::StreamFpsOptions()[(size_t)profile.fpsIndex];
+    const auto fpsOptions = OPN::StreamFpsOptions();
+    REQUIRE(fpsOptions.size() > (size_t)profile.fpsIndex);
+    profile.fps = fpsOptions[(size_t)profile.fpsIndex];
+
     profile.codecIndex = 1;
-    profile.codec = OPN::StreamCodecOptions()[(size_t)profile.codecIndex];
+    const auto codecOptions = OPN::StreamCodecOptions();
+    REQUIRE(codecOptions.size() > (size_t)profile.codecIndex);
+    profile.codec = codecOptions[(size_t)profile.codecIndex];
+
     profile.bitrateIndex = 4;
-    profile.bitrate = OPN::StreamBitrateOptions()[(size_t)profile.bitrateIndex];
+    const auto bitrateOptions = OPN::StreamBitrateOptions();
+    REQUIRE(bitrateOptions.size() > (size_t)profile.bitrateIndex);
+    profile.bitrate = bitrateOptions[(size_t)profile.bitrateIndex];
     profile.maxBitrateMbps = profile.bitrate.mbps;
+
     profile.colorQualityIndex = 2;
-    profile.colorQuality = OPN::StreamColorQualityOptions()[(size_t)profile.colorQualityIndex];
+    const auto colorQualityOptions = OPN::StreamColorQualityOptions();
+    REQUIRE(colorQualityOptions.size() > (size_t)profile.colorQualityIndex);
+    profile.colorQuality = colorQualityOptions[(size_t)profile.colorQualityIndex];
     profile.enableHdr = true;
     profile.enableL4S = true;
     profile.directMouseInput = false;
