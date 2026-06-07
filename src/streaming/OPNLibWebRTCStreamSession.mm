@@ -2808,6 +2808,7 @@ void LibWebRTCStreamSession::HandleConnectionState(bool connected, const std::st
 }
 
 void LibWebRTCStreamSession::StartDisconnectGraceTimer(const std::string &reason) {
+    NSCAssert([NSThread isMainThread], @"disconnect grace timer must be accessed on main thread");
     CancelDisconnectGraceTimer();
     auto callbackLiveness = m_callbackLiveness;
     dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
@@ -2836,6 +2837,7 @@ void LibWebRTCStreamSession::StartDisconnectGraceTimer(const std::string &reason
 }
 
 void LibWebRTCStreamSession::CancelDisconnectGraceTimer() {
+    NSCAssert([NSThread isMainThread], @"disconnect grace timer must be accessed on main thread");
     if (!m_disconnectGraceTimer) return;
     dispatch_source_t timer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
     m_disconnectGraceTimer = nullptr;
@@ -3186,16 +3188,21 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceConnectionState:(RTCIceConnectionState)newState {
     (void)peerConnection;
     OPN::LogInfo(@"[LibWebRTC] ICE state=%ld", (long)newState);
-    if (!_owner) return;
-    if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
-        _owner->CancelDisconnectGraceTimer();
-        _owner->HandleConnectionState(true, "");
-    } else if (newState == RTCIceConnectionStateDisconnected) {
-        _owner->StartDisconnectGraceTimer("libwebrtc ICE disconnected");
-    } else if (newState == RTCIceConnectionStateFailed || newState == RTCIceConnectionStateClosed) {
-        _owner->CancelDisconnectGraceTimer();
-        _owner->HandleConnectionState(false, "libwebrtc ICE failed");
-    }
+    __weak OPNLibWebRTCSessionImpl *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        OPNLibWebRTCSessionImpl *strongSelf = weakSelf;
+        if (!strongSelf.owner) return;
+        OPN::LibWebRTCStreamSession *owner = strongSelf.owner;
+        if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(true, "");
+        } else if (newState == RTCIceConnectionStateDisconnected) {
+            owner->StartDisconnectGraceTimer("libwebrtc ICE disconnected");
+        } else if (newState == RTCIceConnectionStateFailed || newState == RTCIceConnectionStateClosed) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(false, "libwebrtc ICE failed");
+        }
+    });
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceGatheringState:(RTCIceGatheringState)newState {
@@ -3226,16 +3233,21 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeConnectionState:(RTCPeerConnectionState)newState {
     (void)peerConnection;
     OPN::LogInfo(@"[LibWebRTC] peer state=%ld", (long)newState);
-    if (!_owner) return;
-    if (newState == RTCPeerConnectionStateConnected) {
-        _owner->CancelDisconnectGraceTimer();
-        _owner->HandleConnectionState(true, "");
-    } else if (newState == RTCPeerConnectionStateDisconnected) {
-        _owner->StartDisconnectGraceTimer("libwebrtc peer connection disconnected");
-    } else if (newState == RTCPeerConnectionStateFailed || newState == RTCPeerConnectionStateClosed) {
-        _owner->CancelDisconnectGraceTimer();
-        _owner->HandleConnectionState(false, "libwebrtc peer connection failed");
-    }
+    __weak OPNLibWebRTCSessionImpl *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        OPNLibWebRTCSessionImpl *strongSelf = weakSelf;
+        if (!strongSelf.owner) return;
+        OPN::LibWebRTCStreamSession *owner = strongSelf.owner;
+        if (newState == RTCPeerConnectionStateConnected) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(true, "");
+        } else if (newState == RTCPeerConnectionStateDisconnected) {
+            owner->StartDisconnectGraceTimer("libwebrtc peer connection disconnected");
+        } else if (newState == RTCPeerConnectionStateFailed || newState == RTCPeerConnectionStateClosed) {
+            owner->CancelDisconnectGraceTimer();
+            owner->HandleConnectionState(false, "libwebrtc peer connection failed");
+        }
+    });
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didAddReceiver:(RTCRtpReceiver *)rtpReceiver streams:(NSArray<RTCMediaStream *> *)mediaStreams {
