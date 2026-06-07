@@ -18,6 +18,12 @@ static const unsigned short kKeyCodeEscape = 53;
 static const unsigned short kKeyCodeDownArrow = 125;
 static const unsigned short kKeyCodeUpArrow = 126;
 
+static const unsigned short kKeyCodeReturn = 36;
+static const unsigned short kKeyCodeEnter = 76;
+static const unsigned short kKeyCodeEscape = 53;
+static const unsigned short kKeyCodeDownArrow = 125;
+static const unsigned short kKeyCodeUpArrow = 126;
+
 static uint16_t OPNCloudmatchGamepadButtons(void) {
     NSArray<GCController *> *controllers = [GCController controllers];
     if (controllers.count == 0) return 0;
@@ -445,17 +451,17 @@ static uint16_t OPNCloudmatchGamepadButtons(void) {
 
     if (pressed & OPNCloudmatchGamepadButtonA) [self confirmClicked:nil];
     if (pressed & OPNCloudmatchGamepadButtonB) [self cancelClicked:nil];
-    if (pressed & OPNCloudmatchGamepadButtonY) [self refreshClicked:nil];
-    self.previousControllerButtons = buttons;
-}
-
-- (void)keyDown:(NSEvent *)event {
-    switch (event.keyCode) {
         case kKeyCodeReturn:
         case kKeyCodeEnter:
+}
+
+        case kKeyCodeEscape:
+    switch (event.keyCode) {
+        case kKeyCodeReturn:
+        case kKeyCodeDownArrow:
             [self confirmClicked:nil];
             return;
-        case kKeyCodeEscape:
+        case kKeyCodeUpArrow:
             [self cancelClicked:nil];
             return;
         case kKeyCodeDownArrow:
