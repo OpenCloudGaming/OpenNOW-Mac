@@ -377,13 +377,19 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     _image = image;
     NSRect proposedRect = image ? NSMakeRect(0.0, 0.0, image.size.width, image.size.height) : NSZeroRect;
     CGImageRef cgImage = image ? [image CGImageForProposedRect:&proposedRect context:nil hints:nil] : nil;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     self.imageLayer.contents = cgImage ? (__bridge id)cgImage : nil;
+    [CATransaction commit];
 }
 
 - (void)layout {
     [super layout];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     self.imageLayer.frame = self.bounds;
     self.fadeLayer.frame = self.bounds;
+    [CATransaction commit];
 }
 
 - (void)drawRect:(NSRect)dirtyRect {

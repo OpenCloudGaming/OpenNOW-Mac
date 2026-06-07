@@ -88,7 +88,7 @@ static NSDictionary<NSString *, NSString *> *OPNLocalEnhancementRuntimeInfo(void
 static NSInteger OPNSelectedPerformanceProfile(const OPN::StreamPreferenceProfile &profile) {
     if (!profile.enableL4S && !profile.enablePowerSaver && profile.codecIndex == 0 && profile.fpsIndex == 1 && profile.bitrateIndex == 2) return 0;
     if (!profile.enableL4S && !profile.enablePowerSaver && profile.codecIndex == 1 && profile.fpsIndex == 1 && profile.bitrateIndex == 4) return 1;
-    return -1;
+    return 2;
 }
 
 @interface OPNSettingsFlippedView : NSView
@@ -206,6 +206,8 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 @property (nonatomic, strong) NSTextField *titleLabel;
 @property (nonatomic, strong) NSView *shellView;
 @property (nonatomic, strong) NSView *sidebarView;
+@property (nonatomic, strong) NSTextField *sidebarTitleLabel;
+@property (nonatomic, strong) NSTextField *sidebarStatusLabel;
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSView *documentView;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *sidebarButtons;
@@ -234,6 +236,11 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 - (void)scheduleLayoutRebuildContent;
 - (void)layoutRebuildTimerFired:(NSTimer *)timer;
 - (void)applyPerformanceProfile:(NSInteger)index;
+- (void)scrollContentToTop;
+- (NSView *)sectionHeaderForSection:(NSString *)section;
+- (NSString *)subtitleForSection:(NSString *)section;
+- (NSColor *)accentColorForSection:(NSString *)section;
+- (NSString *)sidebarPrefixForSection:(NSString *)section index:(NSUInteger)index;
 - (void)addOptionGroupTo:(NSView *)parent
                    group:(NSInteger)group
                   titles:(NSArray<NSString *> *)titles
@@ -312,6 +319,14 @@ using namespace OPN;
         _sidebarView.layer.backgroundColor = OpnColor(0x08090B, 0.62).CGColor;
         [_shellView addSubview:_sidebarView];
         self.titleLabel.textColor = OpnColor(kTextPrimary);
+
+        _sidebarTitleLabel = OpnLabel(@"Settings", NSZeroRect, 13.0, OpnColor(kTextMuted), NSFontWeightSemibold);
+        _sidebarTitleLabel.stringValue = [_sidebarTitleLabel.stringValue uppercaseString];
+        [_sidebarView addSubview:_sidebarTitleLabel];
+
+        _sidebarStatusLabel = OpnLabel(@"Changes save automatically", NSZeroRect, 12.0, OpnColor(kTextSecondary), NSFontWeightRegular);
+        _sidebarStatusLabel.maximumNumberOfLines = 2;
+        [_sidebarView addSubview:_sidebarStatusLabel];
 
         [self buildSidebarButtons];
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -413,14 +428,14 @@ using namespace OPN;
         BOOL selected = button.tag == self.selectedSection;
         NSString *section = self.sectionNames[(NSUInteger)button.tag];
         button.hidden = NO;
-        button.title = OPNSettingsDisplayName(section);
+        button.title = [NSString stringWithFormat:@"  %@  %@", [self sidebarPrefixForSection:section index:(NSUInteger)button.tag], OPNSettingsDisplayName(section)];
         button.font = [NSFont systemFontOfSize:14.0 weight:selected ? NSFontWeightSemibold : NSFontWeightRegular];
-        button.alignment = NSTextAlignmentCenter;
+        button.alignment = NSTextAlignmentLeft;
         button.contentTintColor = selected ? OpnColor(kTextPrimary) : OpnColor(kTextSecondary);
         button.layer.cornerRadius = 10.0;
-        button.layer.borderWidth = 0.0;
-        button.layer.borderColor = (selected ? OpnColor(0xEFC8F7, 0.95) : OpnColor(0xFFFFFF, 0.18)).CGColor;
-        button.layer.backgroundColor = selected ? OpnColor(kBrandGreen, 0.12).CGColor : [NSColor clearColor].CGColor;
+        button.layer.borderWidth = selected ? 1.0 : 0.0;
+        button.layer.borderColor = OpnColor(kBrandGreen, selected ? 0.44 : 0.0).CGColor;
+        button.layer.backgroundColor = selected ? OpnColor(kBrandGreen, 0.14).CGColor : [NSColor clearColor].CGColor;
     }
 }
 
@@ -428,6 +443,7 @@ using namespace OPN;
     self.selectedSection = sender.tag;
     [self restyleSidebarButtons];
     [self rebuildContent];
+    [self scrollContentToTop];
 }
 
 - (void)moveGamepadSelectionBy:(NSInteger)delta {
@@ -437,6 +453,7 @@ using namespace OPN;
     self.selectedSection = nextSection;
     [self restyleSidebarButtons];
     [self rebuildContent];
+    [self scrollContentToTop];
 }
 
 - (void)activateGamepadSelection {
@@ -461,11 +478,13 @@ using namespace OPN;
     CGFloat sidebarWidth = width < 900.0 ? 210.0 : MIN(kSettingsSidebarWidth, MAX(240.0, contentWidth * 0.26));
     CGFloat columnGap = width < 900.0 ? 16.0 : kSettingsColumnGap;
     self.sidebarView.frame = NSMakeRect(0, 0, sidebarWidth, shellHeight);
+    self.sidebarTitleLabel.frame = NSMakeRect(24.0, 24.0, MAX(120.0, sidebarWidth - 48.0), 18.0);
+    self.sidebarStatusLabel.frame = NSMakeRect(24.0, 48.0, MAX(120.0, sidebarWidth - 48.0), 38.0);
 
-    CGFloat buttonY = 22.0;
+    CGFloat buttonY = 104.0;
     for (NSButton *button in self.sidebarButtons) {
         if (button.hidden) continue;
-        button.frame = NSMakeRect(18, buttonY, MAX(160.0, sidebarWidth - 36.0), 44);
+        button.frame = NSMakeRect(18, buttonY, MAX(160.0, sidebarWidth - 36.0), 46);
         buttonY += 54.0;
     }
 
@@ -511,6 +530,7 @@ using namespace OPN;
     }
     NSString *section = self.sectionNames[self.selectedSection];
     self.titleLabel.stringValue = @"";
+    [self.documentView addSubview:[self sectionHeaderForSection:section]];
     if ([section isEqualToString:@"Stream"]) {
         [self buildStreamContent];
     } else if ([section isEqualToString:@"Video"]) {
@@ -527,6 +547,82 @@ using namespace OPN;
         [self buildSimpleSectionContent:section];
     }
     [self setNeedsLayout:YES];
+}
+
+- (void)scrollContentToTop {
+    NSClipView *clipView = self.scrollView.contentView;
+    [clipView scrollToPoint:NSMakePoint(0.0, 0.0)];
+    [self.scrollView reflectScrolledClipView:clipView];
+}
+
+- (NSView *)sectionHeaderForSection:(NSString *)section {
+    CGFloat width = MAX(320.0, self.contentAreaWidth > 0 ? self.contentAreaWidth : 720.0);
+    NSView *header = [[OPNSettingsFlippedView alloc] initWithFrame:NSMakeRect(0.0, 0.0, width, 132.0)];
+    header.wantsLayer = YES;
+    header.layer.backgroundColor = OpnColor(0x121418, 0.82).CGColor;
+    header.layer.cornerRadius = 20.0;
+    header.layer.borderWidth = 1.0;
+    header.layer.borderColor = OpnColor(0xFFFFFF, 0.09).CGColor;
+
+    NSColor *accent = [self accentColorForSection:section];
+    NSView *accentBar = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 5.0, 132.0)];
+    accentBar.wantsLayer = YES;
+    accentBar.layer.backgroundColor = accent.CGColor;
+    accentBar.layer.cornerRadius = 2.5;
+    [header addSubview:accentBar];
+
+    NSString *displayName = OPNSettingsDisplayName(section);
+    NSTextField *eyebrow = OpnLabel([NSString stringWithFormat:@"%@ Settings", displayName], NSMakeRect(28.0, 24.0, width - 56.0, 18.0), 12.0, accent, NSFontWeightSemibold);
+    eyebrow.stringValue = [eyebrow.stringValue uppercaseString];
+    [header addSubview:eyebrow];
+
+    CGFloat titleWidth = width >= 520.0 ? width - 220.0 : width - 56.0;
+    NSTextField *title = OpnLabel(displayName, NSMakeRect(28.0, 46.0, titleWidth, 34.0), 26.0, OpnColor(kTextPrimary), NSFontWeightSemibold);
+    [header addSubview:title];
+
+    NSTextField *subtitle = OpnLabel([self subtitleForSection:section], NSMakeRect(28.0, 84.0, MAX(260.0, width - 56.0), 34.0), 13.0, OpnColor(kTextSecondary), NSFontWeightRegular);
+    subtitle.maximumNumberOfLines = 2;
+    [header addSubview:subtitle];
+
+    if (width >= 520.0) {
+        NSTextField *saveState = OpnLabel(@"Saved automatically", NSMakeRect(width - 202.0, 30.0, 164.0, 30.0), 12.0, OpnColor(kBrandGreen), NSFontWeightSemibold, NSTextAlignmentCenter);
+        saveState.wantsLayer = YES;
+        saveState.layer.backgroundColor = OpnColor(kBrandGreen, 0.12).CGColor;
+        saveState.layer.cornerRadius = 15.0;
+        saveState.layer.borderWidth = 1.0;
+        saveState.layer.borderColor = OpnColor(kBrandGreen, 0.38).CGColor;
+        [header addSubview:saveState];
+    }
+
+    return header;
+}
+
+- (NSString *)subtitleForSection:(NSString *)section {
+    NSDictionary<NSString *, NSString *> *subtitles = @{
+        @"Stream": @"Choose the route and latency behavior OpenNOW uses when starting new cloud gaming sessions.",
+        @"Video": @"Tune stream quality, recording output, HDR, codecs, and local enhancement for this Mac.",
+        @"Audio": @"Control microphone mode, input device, push-to-talk, and in-stream mute behavior.",
+        @"Input": @"Decide how keyboard, mouse, and controller input behaves when the app loses focus.",
+        @"Interface": @"Customize app presentation, stream window behavior, Discord presence, and session reports.",
+        @"About": @"Review build details, runtime capability checks, updates, and local cache controls.",
+        @"Thanks": @"Acknowledgements for the open-source work that helps make OpenNOW possible.",
+    };
+    return subtitles[section] ?: @"Adjust OpenNOW preferences for future sessions.";
+}
+
+- (NSColor *)accentColorForSection:(NSString *)section {
+    if ([section isEqualToString:@"Video"]) return OpnColor(0x64D2FF);
+    if ([section isEqualToString:@"Audio"]) return OpnColor(0xBF5AF2);
+    if ([section isEqualToString:@"Input"]) return OpnColor(0xFF9F0A);
+    if ([section isEqualToString:@"Interface"]) return OpnColor(0x5E5CE6);
+    if ([section isEqualToString:@"About"]) return OpnColor(0x0A84FF);
+    if ([section isEqualToString:@"Thanks"]) return OpnColor(0xFF375F);
+    return OpnColor(kBrandGreen);
+}
+
+- (NSString *)sidebarPrefixForSection:(NSString *)section index:(NSUInteger)index {
+    (void)section;
+    return [NSString stringWithFormat:@"%02lu", (unsigned long)(index + 1)];
 }
 
 - (NSView *)panelWithTitle:(NSString *)title height:(CGFloat)height {
@@ -549,32 +645,36 @@ using namespace OPN;
     CGFloat panelWidth = MAX(320.0, self.contentAreaWidth > 0 ? self.contentAreaWidth : 720.0);
     CGFloat controlX = [self controlXForPanelWidth:panelWidth];
     CGFloat controlWidth = [self controlWidthForPanelWidth:panelWidth];
-    NSView *region = [self panelWithTitle:@"Region" height:202.0];
-    [region addSubview:[self rowLabel:@"Server" y:112.0]];
-    [region addSubview:[self regionPopupWithFrame:NSMakeRect(controlX, 100.0, controlWidth, 42.0)]];
+    NSView *region = [self panelWithTitle:@"Region" height:180.0];
+    [region addSubview:[self rowLabel:@"Server" y:108.0]];
+    [region addSubview:[self regionPopupWithFrame:NSMakeRect(controlX, 96.0, controlWidth, 42.0)]];
     NSTextField *hint = OpnLabel(@"Automatic uses the lowest measured region when available. Pick a region to override it.",
-                                 NSMakeRect(controlX, 152.0, controlWidth, 34.0),
+                                 NSMakeRect(controlX, 144.0, controlWidth, 24.0),
                                  12.0,
                                  OpnColor(kTextMuted),
                                  NSFontWeightRegular);
-    hint.maximumNumberOfLines = 2;
+    hint.lineBreakMode = NSLineBreakByTruncatingTail;
     [region addSubview:hint];
     [self.documentView addSubview:region];
 
-    NSView *network = [self panelWithTitle:@"Network" height:392.0];
+    NSView *network = [self panelWithTitle:@"Network" height:348.0];
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
-    [network addSubview:[self rowLabel:@"Profile" y:112.0]];
-    [self addOptionGroupTo:network group:9 titles:@[@"Low Latency", @"Quality"] selected:OPNSelectedPerformanceProfile(profile) y:102.0 widths:@[@126.0, @92.0]];
-    NSTextField *profileHint = OpnLabel(@"Presets adjust codec, FPS, bitrate, and disable experimental L4S for new sessions. Manual controls can still override them.",
-                                         NSMakeRect(controlX, 152.0, controlWidth, 40.0),
-                                        12.0,
-                                        OpnColor(kTextMuted),
-                                        NSFontWeightRegular);
+    NSInteger selectedProfile = OPNSelectedPerformanceProfile(profile);
+    [network addSubview:[self rowLabel:@"Profile" y:108.0]];
+    [self addOptionGroupTo:network group:9 titles:@[@"Low Latency", @"Quality", @"Custom"] selected:selectedProfile y:98.0 widths:@[@126.0, @92.0, @92.0]];
+    NSString *profileHintText = selectedProfile == 2
+        ? @"Custom keeps your manual codec, FPS, and bitrate choices. Use a preset to quickly return to a known profile."
+        : @"Presets adjust codec, FPS, bitrate, and disable experimental L4S for new sessions. Manual controls can still override them.";
+    NSTextField *profileHint = OpnLabel(profileHintText,
+                                         NSMakeRect(controlX, 144.0, controlWidth, 36.0),
+                                         12.0,
+                                         OpnColor(kTextMuted),
+                                         NSFontWeightRegular);
     profileHint.maximumNumberOfLines = 2;
     [network addSubview:profileHint];
 
-    [network addSubview:[self rowLabel:@"Low Latency" y:224.0]];
-    NSButton *lowLatencyToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 216.0, controlWidth, 28.0)];
+    [network addSubview:[self rowLabel:@"Low Latency" y:204.0]];
+    NSButton *lowLatencyToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 196.0, controlWidth, 28.0)];
     lowLatencyToggle.buttonType = NSButtonTypeSwitch;
     lowLatencyToggle.title = @"Enable Low Latency Mode for new streams";
     lowLatencyToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -584,15 +684,15 @@ using namespace OPN;
     lowLatencyToggle.action = @selector(lowLatencyModeToggleChanged:);
     [network addSubview:lowLatencyToggle];
     NSTextField *lowLatencyHint = OpnLabel(@"Reduces startup/input/render latency by preferring cached route data, disabling local enhancement, and minimizing frame buffering.",
-                                           NSMakeRect(controlX, 256.0, controlWidth, 42.0),
+                                           NSMakeRect(controlX, 232.0, controlWidth, 34.0),
                                            12.0,
                                            OpnColor(kTextMuted),
                                            NSFontWeightRegular);
     lowLatencyHint.maximumNumberOfLines = 2;
     [network addSubview:lowLatencyHint];
 
-    [network addSubview:[self rowLabel:@"L4S Mode" y:324.0]];
-    NSButton *l4sToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 316.0, controlWidth, 28.0)];
+    [network addSubview:[self rowLabel:@"L4S Mode" y:292.0]];
+    NSButton *l4sToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 284.0, controlWidth, 28.0)];
     l4sToggle.buttonType = NSButtonTypeSwitch;
     l4sToggle.title = @"Enable experimental L4S requests";
     l4sToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -602,11 +702,11 @@ using namespace OPN;
     l4sToggle.action = @selector(l4sToggleChanged:);
     [network addSubview:l4sToggle];
     NSTextField *l4sHint = OpnLabel(@"May reduce latency on compatible paths, but can destabilize streams on some networks. Leave off unless testing.",
-                                    NSMakeRect(controlX, 356.0, controlWidth, 34.0),
+                                    NSMakeRect(controlX, 320.0, controlWidth, 24.0),
                                     12.0,
                                     OpnColor(kTextMuted),
                                     NSFontWeightRegular);
-    l4sHint.maximumNumberOfLines = 2;
+    l4sHint.lineBreakMode = NSLineBreakByTruncatingTail;
     [network addSubview:l4sHint];
     [self.documentView addSubview:network];
 

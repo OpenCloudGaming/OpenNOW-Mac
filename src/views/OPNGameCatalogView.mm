@@ -3133,6 +3133,10 @@ using namespace OPN;
     if (!view) return;
     if (index >= candidates.count) {
         if (view == self.desktopHeroArtworkView) {
+            if (animated) {
+                if (completion) completion(NO);
+                return;
+            }
             [self setDesktopHeroArtworkImage:OpnFallbackHeroArtworkImage() animated:animated];
         } else {
             view.image = OpnFallbackHeroArtworkImage();
@@ -3188,6 +3192,10 @@ using namespace OPN;
                 if (remainingLoads <= 0) {
                     completed = YES;
                     if (strongView == strongSelf.desktopHeroArtworkView) {
+                        if (animated) {
+                            if (completion) completion(NO);
+                            return;
+                        }
                         [strongSelf setDesktopHeroArtworkImage:OpnFallbackHeroArtworkImage() animated:animated];
                     } else {
                         strongView.image = OpnFallbackHeroArtworkImage();
