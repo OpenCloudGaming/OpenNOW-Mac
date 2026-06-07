@@ -54,6 +54,9 @@ static NSDictionary<NSString *, NSString *> *OPNLocalEnhancementRuntimeInfo(void
     NSString *metalSpatial = metalAvailable
         ? [NSString stringWithFormat:@"Supported on %@", gpuName]
         : @"Unavailable: this Mac does not expose a Metal device";
+    NSString *temporal = metalAvailable
+        ? [NSString stringWithFormat:@"Supported on %@", gpuName]
+        : @"Unavailable: temporal reconstruction requires Metal";
 
     NSString *metalFX = @"Unavailable: MetalFX headers are not present in this build";
 #if OPN_SETTINGS_HAVE_METALFX
@@ -74,7 +77,7 @@ static NSDictionary<NSString *, NSString *> *OPNLocalEnhancementRuntimeInfo(void
         ? @"Supported while local upscaling is active; raw recording remains fallback"
         : @"Unavailable: enhanced capture requires Metal; raw recording remains fallback";
     NSString *nativeRenderer = libWebRTCAvailable ? @"Supported" : @"Unavailable: libwebrtc framework is missing";
-    NSString *summary = [NSString stringWithFormat:@"Metal spatial upscaling: %@\nMetalFX spatial upscaling: %@\nEnhanced recording output: %@\nNative fallback renderer: %@", metalSpatial, metalFX, enhancedRecording, nativeRenderer];
+    NSString *summary = [NSString stringWithFormat:@"Metal spatial upscaling: %@\nTemporal reconstruction: %@\nMetalFX spatial upscaling: %@\nEnhanced recording output: %@\nNative fallback renderer: %@", metalSpatial, temporal, metalFX, enhancedRecording, nativeRenderer];
 
     return @{
         @"gpu": gpuName,
@@ -742,7 +745,7 @@ using namespace OPN;
         [upscalingTitles addObject:[NSString stringWithUTF8String:option.label.c_str()]];
     }
     [video addSubview:[self rowLabel:@"Resolution Upscaling" y:934.0]];
-    [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:924.0 widths:@[@64.0, @70.0, @84.0, @84.0]];
+    [self addOptionGroupTo:video group:12 titles:upscalingTitles selected:self.selectedUpscalingMode y:924.0 widths:@[@64.0, @70.0, @84.0, @84.0, @96.0]];
 
     [video addSubview:OpnLabel(@"Local Sharpness", NSMakeRect(controlX, 974.0, 160.0, 18.0), 11.0, OpnColor(kTextMuted), NSFontWeightMedium)];
     NSPopUpButton *upscalingSharpnessPopup = [self integerPopupWithFrame:NSMakeRect(controlX, 994.0, MIN(120.0, controlWidth), 38.0)
@@ -759,7 +762,7 @@ using namespace OPN;
                                                                action:@selector(upscalingDenoisePopupChanged:)];
     [video addSubview:upscalingDenoisePopup];
 
-    NSTextField *upscalingHint = OpnLabel(@"Auto chooses the best available local tier. Spatial fixes the custom Metal scaler. MetalFX requests Apple's scaler and falls back to Spatial when unavailable.",
+    NSTextField *upscalingHint = OpnLabel(@"Auto chooses Temporal when available, then MetalFX, then Spatial. Temporal reuses frame history to stabilize detail and falls back safely.",
                                           NSMakeRect(controlX, 1042.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),

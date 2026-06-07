@@ -600,7 +600,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 }
 
 - (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness denoise:(NSInteger)denoise streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight {
-    _videoUpscalingMode = MAX(0, MIN(mode, 3));
+    _videoUpscalingMode = MAX(0, MIN(mode, 4));
     _videoUpscalingSharpness = MAX(0, MIN(sharpness, 40));
     _videoUpscalingDenoise = MAX(0, MIN(denoise, 20));
     _videoStreamWidth = MAX(0, streamWidth);

@@ -131,6 +131,7 @@ const std::vector<StreamUpscalingModeOption> &StreamUpscalingModeOptions() {
         {"Auto", 1},
         {"Spatial", 2},
         {"MetalFX", 3},
+        {"Temporal", 4},
     };
     return options;
 }

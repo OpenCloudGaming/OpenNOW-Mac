@@ -1394,10 +1394,14 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     [self updateDrawableSizeForCurrentBackingScale];
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
-        if (enhancementMode == 3) {
+        if (enhancementMode == 4) {
+            settings.configuredTier = OPNVideoEnhancementTierTemporal;
+        } else if (enhancementMode == 3) {
             settings.configuredTier = OPNVideoEnhancementTierMetalFX;
         } else if (enhancementMode == 2) {
             settings.configuredTier = OPNVideoEnhancementTierSpatial;
+        } else if ([self.enhancementRenderer isTemporalAvailable]) {
+            settings.configuredTier = OPNVideoEnhancementTierTemporal;
         } else {
             settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
         }
