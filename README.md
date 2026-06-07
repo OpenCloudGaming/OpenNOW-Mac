@@ -1,6 +1,8 @@
 # OpenNOW
 
-OpenNOW is a native macOS cloud gaming client built with AppKit, Objective-C++, and WebRTC. It gives you a desktop-first way to sign in, browse games, and launch cloud streams without using a browser wrapper.
+OpenNOW is a native macOS cloud gaming client built with AppKit, Objective-C++, and WebRTC. It gives you a desktop-first way to sign in, browse games, and launch cloud streams.
+
+![OpenNOW console home](assets/console-home.png)
 
 ## Features
 
