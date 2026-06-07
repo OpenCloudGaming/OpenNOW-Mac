@@ -3096,9 +3096,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         : self.currentSession.idToken;
     SessionManager::Shared().SetAccessToken(apiToken);
     SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+    std::string persistedSessionId = SessionManager::Shared().LoadPersistedActiveSessionId();
 
     __weak __typeof__(self) weakSelf = self;
-    SessionManager::Shared().GetActiveSessions([weakSelf, generation, accountIdentifier, apiToken, screen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+    SessionManager::Shared().GetActiveSessions([weakSelf, generation, accountIdentifier, apiToken, screen, persistedSessionId](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
         std::vector<ActiveSessionEntry> sessionsCopy = sessions;
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -3115,11 +3116,26 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
             ActiveSessionEntry activeSession;
             BOOL foundActiveSession = NO;
-            for (const ActiveSessionEntry &session : sessionsCopy) {
-                if ((session.status == 2 || session.status == 3) && !session.sessionId.empty() && !session.serverIp.empty() && session.appId > 0) {
-                    activeSession = session;
-                    foundActiveSession = YES;
-                    break;
+            if (!persistedSessionId.empty()) {
+                for (const ActiveSessionEntry &session : sessionsCopy) {
+                    if (session.sessionId == persistedSessionId && (session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.serverIp.empty() && session.appId > 0) {
+                        activeSession = session;
+                        foundActiveSession = YES;
+                        break;
+                    }
+                }
+                if (!foundActiveSession) {
+                    OPN::LogInfo(@"[AppDelegate] Persisted active sessionId=%s was not returned by active sessions; clearing", persistedSessionId.c_str());
+                    SessionManager::Shared().ClearPersistedActiveSessionId(persistedSessionId);
+                    return;
+                }
+            } else {
+                for (const ActiveSessionEntry &session : sessionsCopy) {
+                    if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty() && session.appId > 0) {
+                        activeSession = session;
+                        foundActiveSession = YES;
+                        break;
+                    }
                 }
             }
             if (!foundActiveSession) return;

@@ -23,7 +23,6 @@ class IStreamSession;
 - (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited;
 - (void)startRemainingPlaytimeCountdown;
 - (void)stopRecordingIfNeeded;
-- (void)setMicrophoneLevel:(double)level;
 - (void)setSuppressInputWhenWindowInactive:(BOOL)suppress;
 - (void)setStreamInputSuppressed:(BOOL)suppressed;
 - (void)setDirectMouseInputEnabled:(BOOL)enabled;

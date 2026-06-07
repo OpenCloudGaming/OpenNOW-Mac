@@ -49,6 +49,7 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 @end
 
 @interface OPNStatsOverlayView : NSView
+- (NSSize)preferredSizeForMaxWidth:(CGFloat)maxWidth;
 - (void)updateLatencyMs:(NSInteger)latencyMs
             bitrateMbps:(double)bitrateMbps
             packetsLost:(int64_t)packetsLost
@@ -749,6 +750,12 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
     NSTextField *_statsLineLabel;
 }
 
+static constexpr CGFloat OPNStatsOverlayMinWidth = 320.0;
+static constexpr CGFloat OPNStatsOverlayMaxWidth = 620.0;
+static constexpr CGFloat OPNStatsOverlayHorizontalPadding = 8.0;
+static constexpr CGFloat OPNStatsOverlayVerticalPadding = 4.0;
+static constexpr CGFloat OPNStatsOverlayMinHeight = 22.0;
+
 static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color, NSTextAlignment alignment) {
     NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
     label.stringValue = text ?: @"";
@@ -766,7 +773,7 @@ static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weig
 static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
     style.alignment = NSTextAlignmentLeft;
-    style.lineBreakMode = NSLineBreakByTruncatingTail;
+    style.lineBreakMode = NSLineBreakByCharWrapping;
     return [[NSAttributedString alloc] initWithString:text ?: @""
                                             attributes:@{
         NSFontAttributeName: [NSFont monospacedSystemFontOfSize:10.0 weight:NSFontWeightMedium],
@@ -784,8 +791,8 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
         self.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
 
         _statsLineLabel = OPNStatsText(@"", 10.0, NSFontWeightMedium, NSColor.clearColor, NSTextAlignmentLeft);
-        _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        _statsLineLabel.maximumNumberOfLines = 1;
+        _statsLineLabel.lineBreakMode = NSLineBreakByCharWrapping;
+        _statsLineLabel.maximumNumberOfLines = 0;
         _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
         [self addSubview:_statsLineLabel];
     }
@@ -801,7 +808,21 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
 
 - (void)layout {
     [super layout];
-    _statsLineLabel.frame = NSInsetRect(self.bounds, 8.0, 1.0);
+    _statsLineLabel.frame = NSInsetRect(self.bounds, OPNStatsOverlayHorizontalPadding, OPNStatsOverlayVerticalPadding);
+}
+
+- (NSSize)preferredSizeForMaxWidth:(CGFloat)maxWidth {
+    CGFloat availableMaxWidth = MAX(1.0, maxWidth - OPNStatsOverlayHorizontalPadding * 2.0);
+    NSAttributedString *text = _statsLineLabel.attributedStringValue.length > 0
+        ? _statsLineLabel.attributedStringValue
+        : OPNStatsOutlinedLine(@"Stats: measuring");
+    NSRect textBounds = [text boundingRectWithSize:NSMakeSize(availableMaxWidth, CGFLOAT_MAX)
+                                          options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading];
+    CGFloat contentWidth = ceil(NSWidth(textBounds));
+    CGFloat contentHeight = ceil(NSHeight(textBounds));
+    CGFloat width = MIN(maxWidth, MAX(OPNStatsOverlayMinWidth, contentWidth + OPNStatsOverlayHorizontalPadding * 2.0));
+    CGFloat height = MAX(OPNStatsOverlayMinHeight, contentHeight + OPNStatsOverlayVerticalPadding * 2.0);
+    return NSMakeSize(width, height);
 }
 
 - (void)updateLatencyMs:(NSInteger)latencyMs
@@ -1269,12 +1290,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (NSRect)statsOverlayFrame {
-    CGFloat width = MIN(620.0, MAX(320.0, NSWidth(self.view.bounds) - 32.0));
-    CGFloat height = 22.0;
-    return NSMakeRect(MAX(16.0, NSWidth(self.view.bounds) - width - 16.0),
-                      floor(NSHeight(self.view.bounds) - height - 8.0),
-                      width,
-                      height);
+    CGFloat maxWidth = MIN(OPNStatsOverlayMaxWidth, MAX(1.0, NSWidth(self.view.bounds) - 32.0));
+    NSSize size = self.statsOverlay
+        ? [self.statsOverlay preferredSizeForMaxWidth:maxWidth]
+        : NSMakeSize(MIN(OPNStatsOverlayMinWidth, maxWidth), OPNStatsOverlayMinHeight);
+    CGFloat x = MAX(16.0, NSWidth(self.view.bounds) - size.width - 16.0);
+    CGFloat y = MAX(8.0, floor(NSHeight(self.view.bounds) - size.height - 8.0));
+    return NSMakeRect(x, y, size.width, size.height);
 }
 
 - (void)showConnectedToastWithResolution:(const std::string &)resolution
@@ -1574,6 +1596,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                      codec:codec
                                enhancement:enhancement
                               framesDropped:stats.framesDropped];
+    self.statsOverlay.frame = [self statsOverlayFrame];
 }
 
 - (void)startStatsRefreshTimer {
@@ -1615,7 +1638,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPN::SessionInfo currentSession = _activeSessionInfo;
     __weak __typeof__(self) weakSelf = self;
-    OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf](bool success, const OPN::SessionInfo &info, const std::string &error) {
+    OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf, currentSession](bool success, const OPN::SessionInfo &info, const std::string &error) {
         OPN::SessionInfo infoCopy = info;
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1625,6 +1648,12 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         if (strongSelf->_streamEnded) return;
         if (!success) {
             OPN::LogError(@"[StreamVC] Playtime refresh failed: %s", errorCopy.c_str());
+            return;
+        }
+        if (!infoCopy.sessionId.empty() && infoCopy.sessionId != currentSession.sessionId) {
+            OPN::LogError(@"[StreamVC] Ignoring playtime poll for mismatched sessionId=%s expected=%s",
+                          infoCopy.sessionId.c_str(),
+                          currentSession.sessionId.c_str());
             return;
         }
         if (!infoCopy.sessionId.empty()) {
@@ -2285,12 +2314,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     __weak __typeof__(self) weakSelf = self;
 
     if (_resumeExistingSession) {
-        OPN::LogInfo(@"[StreamVC] Claiming active session for silent resume: sessionId=%s", _resumeSessionId.c_str());
+        std::string requestedResumeSessionId = _resumeSessionId;
+        std::string requestedResumeServer = _resumeServer;
+        OPN::LogInfo(@"[StreamVC] Claiming active session for silent resume: sessionId=%s", requestedResumeSessionId.c_str());
         OPN::SessionManager::Shared().SetAccessToken(_apiToken);
         OPN::SessionManager::Shared().SetStreamingBaseUrl(streamingBaseUrl);
         [self setLaunchStep:1 message:@"Resuming active session..."];
-        OPN::SessionManager::Shared().ClaimSession(_resumeSessionId, _resumeServer, _appId, settings, recoveringLaunch,
-            [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch](bool success, const OPN::SessionInfo &info, const std::string &error) {
+        OPN::SessionManager::Shared().ClaimSession(requestedResumeSessionId, requestedResumeServer, _appId, settings, recoveringLaunch,
+            [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedResumeSessionId](bool success, const OPN::SessionInfo &info, const std::string &error) {
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
                 OPN::LogInfo(@"[StreamVC] Active session claim result: success=%d", success);
@@ -2309,11 +2340,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         return;
                     }
                     if (error.find("SESSION_NOT_PAUSED") != std::string::npos || error.find("\"statusCode\":34") != std::string::npos) {
-                        OPN::LogInfo(@"[StreamVC] Active session is not paused; re-resolving currently available session");
+                        OPN::LogInfo(@"[StreamVC] Active session is not paused; re-resolving requested sessionId=%s", requestedResumeSessionId.c_str());
                         [strongSelf setLaunchStep:1 message:@"Resuming current active session..."];
-                        std::string requestedSessionId = strongSelf->_resumeSessionId;
                         std::string requestedAppId = strongSelf->_appId;
-                        OPN::SessionManager::Shared().GetActiveSessions([weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedSessionId, requestedAppId](bool sessionsOk, const std::vector<OPN::ActiveSessionEntry> &sessions, const std::string &sessionsError) {
+                        OPN::SessionManager::Shared().GetActiveSessions([weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedResumeSessionId, requestedAppId](bool sessionsOk, const std::vector<OPN::ActiveSessionEntry> &sessions, const std::string &sessionsError) {
                             std::vector<OPN::ActiveSessionEntry> sessionsCopy = sessions;
                             std::string sessionsErrorCopy = sessionsError;
                             dispatch_async(dispatch_get_main_queue(), ^{
@@ -2326,43 +2356,24 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
                                 OPN::ActiveSessionEntry selectedSession;
                                 BOOL foundSession = NO;
-                                int requestedAppIdNumber = atoi(requestedAppId.c_str());
                                 for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
-                                    if (session.sessionId == requestedSessionId && !session.serverIp.empty()) {
+                                    if (session.sessionId == requestedResumeSessionId && !session.serverIp.empty()) {
                                         selectedSession = session;
                                         foundSession = YES;
                                         break;
                                     }
                                 }
-                                if (!foundSession && requestedAppIdNumber > 0) {
-                                    for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
-                                        if (session.appId == requestedAppIdNumber && !session.sessionId.empty() && !session.serverIp.empty()) {
-                                            selectedSession = session;
-                                            foundSession = YES;
-                                            break;
-                                        }
-                                    }
-                                }
                                 if (!foundSession) {
-                                    for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
-                                        if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
-                                            selectedSession = session;
-                                            foundSession = YES;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (!foundSession) {
-                                    [retrySelf endStreamWithSuccess:NO errorMessage:"No active session is available to resume"];
+                                    OPN::LogError(@"[StreamVC] Requested resume session is no longer active: sessionId=%s", requestedResumeSessionId.c_str());
+                                    [retrySelf endStreamWithSuccess:NO errorMessage:"Requested session is no longer available to resume"];
                                     return;
                                 }
 
                                 std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : requestedAppId;
-                                retrySelf->_resumeSessionId = selectedSession.sessionId;
                                 retrySelf->_resumeServer = selectedSession.serverIp;
                                 [retrySelf setLaunchStep:2 message:@"Connecting to current active session..."];
-                                OPN::SessionManager::Shared().ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settings, true,
-                                    [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch](bool retrySuccess, const OPN::SessionInfo &retryInfo, const std::string &retryError) {
+                                OPN::SessionManager::Shared().ClaimSession(requestedResumeSessionId, selectedSession.serverIp, selectedAppId, settings, true,
+                                    [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedResumeSessionId](bool retrySuccess, const OPN::SessionInfo &retryInfo, const std::string &retryError) {
                                         __typeof__(self) claimSelf = weakSelf;
                                         if (!claimSelf || claimSelf->_streamEnded || claimSelf->_launchGeneration != launchGeneration) return;
                                         if (!retrySuccess) {
@@ -2382,6 +2393,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                             [claimSelf endStreamWithSuccess:NO errorMessage:retryError];
                                             return;
                                         }
+                                        if (retryInfo.sessionId != requestedResumeSessionId) {
+                                            OPN::LogError(@"[StreamVC] Resume claim returned mismatched sessionId=%s expected=%s",
+                                                          retryInfo.sessionId.c_str(),
+                                                          requestedResumeSessionId.c_str());
+                                            [claimSelf endStreamWithSuccess:NO errorMessage:"Resume returned a different session id"];
+                                            return;
+                                        }
                                         [claimSelf connectWithSessionInfo:retryInfo settings:settings launchGeneration:launchGeneration];
                                     });
                             });
@@ -2393,6 +2411,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     [strongSelf setStatus:errMsg];
                     if ([strongSelf beginAutomaticRecoveryForError:error]) return;
                     [strongSelf endStreamWithSuccess:NO errorMessage:error];
+                    return;
+                }
+                if (info.sessionId != requestedResumeSessionId) {
+                    OPN::LogError(@"[StreamVC] Resume claim returned mismatched sessionId=%s expected=%s",
+                                  info.sessionId.c_str(),
+                                  requestedResumeSessionId.c_str());
+                    [strongSelf endStreamWithSuccess:NO errorMessage:"Resume returned a different session id"];
                     return;
                 }
                 [strongSelf connectWithSessionInfo:info settings:settings launchGeneration:launchGeneration];

@@ -96,7 +96,6 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
     double _pendingMouseDy;
     int _maxBitrateMbps;
     NSInteger _videoUpscalingMode;
-    NSInteger _videoUpscalingTargetIndex;
     NSInteger _videoUpscalingTargetHeight;
     NSInteger _videoUpscalingSharpness;
     NSInteger _videoUpscalingDenoise;
@@ -120,7 +119,6 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
 @property (nonatomic, strong) NSTextField *sidebarRecordingStatusValue;
 @property (nonatomic, strong) NSTimer *playtimeTimer;
 @property (nonatomic, strong) NSPopUpButton *upscalingModePopup;
-@property (nonatomic, strong) NSPopUpButton *upscalingTargetPopup;
 @property (nonatomic, strong) NSSlider *upscalingSharpnessSlider;
 @property (nonatomic, strong) NSSlider *upscalingDenoiseSlider;
 @property (nonatomic, strong) NSSlider *gameVolumeSlider;
@@ -128,11 +126,11 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
 @property (nonatomic, strong) NSView *microphoneMeterTrack;
 @property (nonatomic, strong) CALayer *microphoneMeterFill;
 @property (nonatomic, strong) NSButton *recordingButton;
-@property (nonatomic, strong) NSView *recentRecordingsContainer;
 @property (nonatomic, strong) OPNStreamRecordingManager *recordingManager;
 @property (nonatomic, copy) NSString *recordingGameTitle;
 @property (nonatomic, assign) CGFloat videoAspectRatio;
 - (void)updateEnhancedVideoRecordingPreference;
+- (void)setMicrophoneLevel:(double)level;
 @end
 
 @implementation OPNStreamView
@@ -165,7 +163,6 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
         _videoUpscalingMode = profile.upscalingMode;
-        _videoUpscalingTargetIndex = profile.upscalingTargetIndex;
         _videoUpscalingTargetHeight = profile.upscalingTargetHeight;
         _videoUpscalingSharpness = profile.upscalingSharpness;
         _videoUpscalingDenoise = profile.upscalingDenoise;
@@ -259,7 +256,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
 }
 
 - (void)createSidebarHUDWithProfile:(const OPN::StreamPreferenceProfile &)profile {
-    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 332.0, 840.0)];
+    NSView *panel = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 332.0, 660.0)];
     panel.wantsLayer = YES;
     panel.layer.cornerRadius = 18.0;
     panel.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.03 alpha:0.88].CGColor;
@@ -276,10 +273,9 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     [panel addSubview:close];
 
     [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 56.0, NSWidth(panel.frame) - 24.0, 76.0), 0.045)];
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 144.0, NSWidth(panel.frame) - 24.0, 288.0), 0.060)];
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 444.0, NSWidth(panel.frame) - 24.0, 152.0), 0.045)];
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 600.0, NSWidth(panel.frame) - 24.0, 76.0), 0.045)];
-    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 670.0, NSWidth(panel.frame) - 24.0, 116.0), 0.060)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 144.0, NSWidth(panel.frame) - 24.0, 200.0), 0.060)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 356.0, NSWidth(panel.frame) - 24.0, 152.0), 0.045)];
+    [panel addSubview:OPNSidebarSection(NSMakeRect(12.0, 520.0, NSWidth(panel.frame) - 24.0, 120.0), 0.060)];
 
     self.sidebarPlaytimeValue = OPNSidebarLabel(@"--", 12.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentRight);
     [self addSidebarRowTo:panel title:@"Playtime" value:self.sidebarPlaytimeValue y:66.0];
@@ -300,22 +296,11 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     self.upscalingModePopup.action = @selector(upscalingModePopupChanged:);
     [panel addSubview:self.upscalingModePopup];
 
-    [panel addSubview:OPNSidebarLabel(@"Upscaling Target", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 214.0, 190.0, 18.0);
-    self.upscalingTargetPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20.0, 240.0, NSWidth(panel.frame) - 40.0, 30.0) pullsDown:NO];
-    for (const OPN::StreamUpscalingTargetOption &option : OPN::StreamUpscalingTargetOptions()) {
-        [self.upscalingTargetPopup addItemWithTitle:[NSString stringWithUTF8String:option.label.c_str()]];
-    }
-    [self.upscalingTargetPopup selectItemAtIndex:MAX(0, MIN((NSInteger)profile.upscalingTargetIndex, (NSInteger)OPN::StreamUpscalingTargetOptions().size() - 1))];
-    self.upscalingTargetPopup.target = self;
-    self.upscalingTargetPopup.action = @selector(upscalingTargetPopupChanged:);
-    [panel addSubview:self.upscalingTargetPopup];
-
-    [panel addSubview:OPNSidebarSeparator(20.0, 278.0, NSWidth(panel.frame) - 40.0)];
+    [panel addSubview:OPNSidebarSeparator(20.0, 216.0, NSWidth(panel.frame) - 40.0)];
 
     [panel addSubview:OPNSidebarLabel(@"Local Sharpness", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 286.0, 190.0, 18.0);
-    self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 310.0, NSWidth(panel.frame) - 40.0, 22.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 228.0, 190.0, 18.0);
+    self.upscalingSharpnessSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 252.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.upscalingSharpnessSlider.minValue = 0.0;
     self.upscalingSharpnessSlider.maxValue = 40.0;
     self.upscalingSharpnessSlider.doubleValue = profile.upscalingSharpness;
@@ -326,11 +311,11 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     self.upscalingSharpnessSlider.continuous = YES;
     [panel addSubview:self.upscalingSharpnessSlider];
 
-    [panel addSubview:OPNSidebarSeparator(20.0, 340.0, NSWidth(panel.frame) - 40.0)];
+    [panel addSubview:OPNSidebarSeparator(20.0, 282.0, NSWidth(panel.frame) - 40.0)];
 
     [panel addSubview:OPNSidebarLabel(@"Denoise", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 348.0, 190.0, 18.0);
-    self.upscalingDenoiseSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 372.0, NSWidth(panel.frame) - 40.0, 22.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 294.0, 190.0, 18.0);
+    self.upscalingDenoiseSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(20.0, 318.0, NSWidth(panel.frame) - 40.0, 22.0)];
     self.upscalingDenoiseSlider.minValue = 0.0;
     self.upscalingDenoiseSlider.maxValue = 20.0;
     self.upscalingDenoiseSlider.doubleValue = profile.upscalingDenoise;
@@ -342,19 +327,21 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     [panel addSubview:self.upscalingDenoiseSlider];
 
     NSTextField *audioTitle = OPNSidebarLabel(@"Audio", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    audioTitle.frame = NSMakeRect(20.0, 448.0, 180.0, 20.0);
+    audioTitle.frame = NSMakeRect(20.0, 364.0, 180.0, 20.0);
     [panel addSubview:audioTitle];
     [panel addSubview:OPNSidebarLabel(@"Game Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 478.0, 180.0, 18.0);
-    self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:502.0 panel:panel];
-    [panel addSubview:OPNSidebarSeparator(20.0, 534.0, NSWidth(panel.frame) - 40.0)];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 394.0, 180.0, 18.0);
+    self.gameVolumeSlider = [self sidebarSliderWithValue:profile.gameVolume action:@selector(gameVolumeSliderChanged:) y:418.0 panel:panel];
+    [panel addSubview:OPNSidebarSeparator(20.0, 450.0, NSWidth(panel.frame) - 40.0)];
     [panel addSubview:OPNSidebarLabel(@"Mic Volume", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 544.0, 180.0, 18.0);
-    self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:568.0 panel:panel];
+    panel.subviews.lastObject.frame = NSMakeRect(20.0, 460.0, 180.0, 18.0);
+    self.microphoneVolumeSlider = [self sidebarSliderWithValue:profile.microphoneVolume action:@selector(microphoneVolumeSliderChanged:) y:484.0 panel:panel];
 
-    [panel addSubview:OPNSidebarLabel(@"Mic Meter", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft)];
-    panel.subviews.lastObject.frame = NSMakeRect(20.0, 606.0, 180.0, 18.0);
-    NSView *meterTrack = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 634.0, NSWidth(panel.frame) - 40.0, 14.0)];
+    NSTextField *recordingTitle = OPNSidebarLabel(@"Recording", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
+    recordingTitle.frame = NSMakeRect(20.0, 530.0, 180.0, 20.0);
+    [panel addSubview:recordingTitle];
+
+    NSView *meterTrack = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 560.0, NSWidth(panel.frame) - 40.0, 14.0)];
     meterTrack.wantsLayer = YES;
     meterTrack.layer.cornerRadius = 7.0;
     meterTrack.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.12].CGColor;
@@ -367,16 +354,13 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     self.microphoneMeterFill = meterFill;
     [panel addSubview:meterTrack];
 
-    NSTextField *recordingTitle = OPNSidebarLabel(@"Recording", 14.0, NSFontWeightSemibold, NSColor.whiteColor, NSTextAlignmentLeft);
-    recordingTitle.frame = NSMakeRect(20.0, 678.0, 180.0, 20.0);
-    [panel addSubview:recordingTitle];
-
-    self.sidebarRecordingStatusValue = OPNSidebarLabel(@"Ready", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
-    self.sidebarRecordingStatusValue.frame = NSMakeRect(20.0, 704.0, NSWidth(panel.frame) - 40.0, 18.0);
+    self.sidebarRecordingStatusValue = OPNSidebarLabel(@"", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
+    self.sidebarRecordingStatusValue.frame = NSMakeRect(20.0, 558.0, NSWidth(panel.frame) - 40.0, 18.0);
+    self.sidebarRecordingStatusValue.hidden = YES;
     [panel addSubview:self.sidebarRecordingStatusValue];
 
     NSButton *recordingButton = [NSButton buttonWithTitle:@"Start Recording" target:self action:@selector(recordingButtonClicked:)];
-    recordingButton.frame = NSMakeRect(20.0, 736.0, NSWidth(panel.frame) - 40.0, 38.0);
+    recordingButton.frame = NSMakeRect(20.0, 590.0, NSWidth(panel.frame) - 40.0, 38.0);
     recordingButton.bezelStyle = NSBezelStyleRegularSquare;
     recordingButton.bordered = NO;
     recordingButton.wantsLayer = YES;
@@ -384,12 +368,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     recordingButton.layer.backgroundColor = [NSColor colorWithCalibratedRed:0.0 green:0.48 blue:1.0 alpha:1.0].CGColor;
     [panel addSubview:recordingButton];
     self.recordingButton = recordingButton;
-
-    NSTextField *recentTitle = OPNSidebarLabel(@"Recent", 12.0, NSFontWeightMedium, OPNSidebarColor(0.82, 1.0), NSTextAlignmentLeft);
-    recentTitle.frame = NSMakeRect(20.0, 786.0, 180.0, 18.0);
-    [panel addSubview:recentTitle];
-    self.recentRecordingsContainer = [[NSView alloc] initWithFrame:NSMakeRect(20.0, 810.0, NSWidth(panel.frame) - 40.0, 30.0)];
-    [panel addSubview:self.recentRecordingsContainer];
 
     self.sidebarHUD = panel;
     [self addSubview:panel positioned:NSWindowAbove relativeTo:self.microphoneActiveOverlay];
@@ -674,7 +652,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
                                                    overlaySize);
     if (self.sidebarHUD) {
         CGFloat panelWidth = NSWidth(self.sidebarHUD.frame);
-        CGFloat panelHeight = MIN(840.0, MAX(580.0, height - 36.0));
+        CGFloat panelHeight = MIN(660.0, MAX(580.0, height - 36.0));
         self.sidebarHUD.frame = NSMakeRect(18.0, floor((height - panelHeight) / 2.0), panelWidth, panelHeight);
     }
 }
@@ -800,21 +778,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
                    streamHeight:_videoStreamHeight];
 }
 
-- (void)upscalingTargetPopupChanged:(NSPopUpButton *)popup {
-    NSInteger index = MAX(0, MIN(popup.indexOfSelectedItem, (NSInteger)OPN::StreamUpscalingTargetOptions().size() - 1));
-    const OPN::StreamUpscalingTargetOption &option = OPN::StreamUpscalingTargetOptions()[(size_t)index];
-    _videoUpscalingTargetIndex = index;
-    _videoUpscalingTargetHeight = option.height;
-    OPN::SaveStreamUpscalingTargetIndex((int)index);
-    if (_streamSession) {
-        _streamSession->SetLocalVideoEnhancement((int)_videoUpscalingMode,
-                                                 (int)_videoUpscalingSharpness,
-                                                 (int)_videoUpscalingDenoise,
-                                                 (int)_videoUpscalingTargetHeight);
-    }
-    [self setNeedsLayout:YES];
-}
-
 - (void)upscalingSharpnessSliderChanged:(NSSlider *)slider {
     NSInteger sharpness = MAX(0, MIN((NSInteger)std::lround(slider.doubleValue), 40));
     slider.doubleValue = sharpness;
@@ -902,36 +865,11 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     }
     self.recordingButton.title = title;
     self.recordingButton.layer.backgroundColor = buttonColor.CGColor;
-    self.sidebarRecordingStatusValue.stringValue = self.recordingManager.statusText ?: @"Ready";
-    [self rebuildRecentRecordingThumbnails];
-}
-
-- (void)rebuildRecentRecordingThumbnails {
-    if (!self.recentRecordingsContainer) return;
-    for (NSView *view in self.recentRecordingsContainer.subviews.copy) {
-        [view removeFromSuperview];
-    }
-    NSArray<NSURL *> *urls = self.recordingManager.recentRecordingURLs;
-    if (urls.count == 0) {
-        NSTextField *empty = OPNSidebarLabel(@"No recordings yet", 11.0, NSFontWeightRegular, OPNSidebarColor(0.58, 1.0), NSTextAlignmentLeft);
-        empty.frame = self.recentRecordingsContainer.bounds;
-        [self.recentRecordingsContainer addSubview:empty];
-        return;
-    }
-    CGFloat thumbWidth = 66.0;
-    CGFloat gap = 8.0;
-    NSUInteger count = MIN((NSUInteger)4, urls.count);
-    for (NSUInteger i = 0; i < count; i++) {
-        NSRect frame = NSMakeRect((thumbWidth + gap) * (CGFloat)i, 0.0, thumbWidth, 30.0);
-        NSImageView *imageView = [[NSImageView alloc] initWithFrame:frame];
-        imageView.wantsLayer = YES;
-        imageView.layer.cornerRadius = 7.0;
-        imageView.layer.masksToBounds = YES;
-        imageView.layer.backgroundColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.10].CGColor;
-        imageView.imageScaling = NSImageScaleAxesIndependently;
-        imageView.image = [self.recordingManager thumbnailForRecordingURL:urls[i] size:frame.size];
-        [self.recentRecordingsContainer addSubview:imageView];
-    }
+    NSString *status = self.recordingManager.statusText ?: @"";
+    BOOL showsRecordingStatus = status.length > 0 && ![status isEqualToString:@"Ready"];
+    self.sidebarRecordingStatusValue.stringValue = showsRecordingStatus ? status : @"";
+    self.sidebarRecordingStatusValue.hidden = !showsRecordingStatus;
+    self.microphoneMeterTrack.hidden = showsRecordingStatus;
 }
 
 - (void)setMicrophoneLevel:(double)level {

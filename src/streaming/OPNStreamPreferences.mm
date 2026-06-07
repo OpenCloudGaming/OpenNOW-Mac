@@ -51,6 +51,7 @@ static NSString *const kOpenNOWDefaultsDomain = @"io.github.opencloudgaming.open
 static NSString *const kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *const kNvClientVersion = @"2.0.80.173";
 static constexpr const char *kDefaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/";
+static constexpr int kDefaultUpscalingTargetIndex = 1;
 
 std::string StreamResolutionOption::Value() const {
     return std::to_string(width) + "x" + std::to_string(height);
@@ -151,6 +152,20 @@ const std::vector<StreamMicrophoneModeOption> &StreamMicrophoneModeOptions() {
         {"Open Mic", "voice-activity"},
     };
     return options;
+}
+
+static void ApplyDefaultUpscalingTarget(StreamPreferenceProfile &profile) {
+    const auto &options = StreamUpscalingTargetOptions();
+    if (options.empty()) {
+        profile.upscalingTargetIndex = 0;
+        profile.upscalingTargetOption = StreamUpscalingTargetOption{"4K", 2160};
+        profile.upscalingTargetHeight = profile.upscalingTargetOption.height;
+        return;
+    }
+    int index = std::max(0, std::min(kDefaultUpscalingTargetIndex, (int)options.size() - 1));
+    profile.upscalingTargetIndex = index;
+    profile.upscalingTargetOption = options[(size_t)profile.upscalingTargetIndex];
+    profile.upscalingTargetHeight = profile.upscalingTargetOption.height;
 }
 
 std::string StreamMicrophonePushToTalkKeyLabel(int keyCode) {
@@ -597,10 +612,7 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
     profile.upscalingModeIndex = ClampedStoredInteger(kUpscalingModeIndexKey, 1, (int)upscalingModeOptions.size());
     profile.upscalingModeOption = upscalingModeOptions[(size_t)profile.upscalingModeIndex];
     profile.upscalingMode = profile.upscalingModeOption.value;
-    const auto &upscalingTargetOptions = StreamUpscalingTargetOptions();
-    profile.upscalingTargetIndex = ClampedStoredInteger(kUpscalingTargetIndexKey, 1, (int)upscalingTargetOptions.size());
-    profile.upscalingTargetOption = upscalingTargetOptions[(size_t)profile.upscalingTargetIndex];
-    profile.upscalingTargetHeight = profile.upscalingTargetOption.height;
+    ApplyDefaultUpscalingTarget(profile);
     profile.upscalingSharpness = ClampedStoredInteger(kUpscalingSharpnessKey, 4, 41);
     profile.upscalingDenoise = ClampedStoredInteger(kUpscalingDenoiseKey, 0, 21);
     profile.recordingVideoBitrateMbps = ClampedStoredInteger(kRecordingVideoBitrateMbpsKey, 0, 201);
@@ -743,10 +755,7 @@ static StreamPreferenceProfile StreamPreferenceProfileFromDictionary(NSDictionar
     profile.upscalingModeIndex = ClampedDictionaryInteger(dictionary, kUpscalingModeIndexKey, 1, (int)upscalingModeOptions.size());
     profile.upscalingModeOption = upscalingModeOptions[(size_t)profile.upscalingModeIndex];
     profile.upscalingMode = profile.upscalingModeOption.value;
-    const auto &upscalingTargetOptions = StreamUpscalingTargetOptions();
-    profile.upscalingTargetIndex = ClampedDictionaryInteger(dictionary, kUpscalingTargetIndexKey, 1, (int)upscalingTargetOptions.size());
-    profile.upscalingTargetOption = upscalingTargetOptions[(size_t)profile.upscalingTargetIndex];
-    profile.upscalingTargetHeight = profile.upscalingTargetOption.height;
+    ApplyDefaultUpscalingTarget(profile);
     profile.upscalingSharpness = ClampedDictionaryInteger(dictionary, kUpscalingSharpnessKey, 4, 41);
     profile.upscalingDenoise = ClampedDictionaryInteger(dictionary, kUpscalingDenoiseKey, 0, 21);
 
@@ -1631,8 +1640,8 @@ void SaveStreamUpscalingModeIndex(int upscalingModeIndex) {
 }
 
 void SaveStreamUpscalingTargetIndex(int upscalingTargetIndex) {
-    int clamped = std::max(0, std::min(upscalingTargetIndex, (int)StreamUpscalingTargetOptions().size() - 1));
-    [NSUserDefaults.standardUserDefaults setInteger:clamped forKey:kUpscalingTargetIndexKey];
+    (void)upscalingTargetIndex;
+    [NSUserDefaults.standardUserDefaults setInteger:kDefaultUpscalingTargetIndex forKey:kUpscalingTargetIndexKey];
 }
 
 void SaveStreamUpscalingSharpness(int sharpness) {

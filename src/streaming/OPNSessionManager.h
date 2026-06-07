@@ -35,8 +35,12 @@ public:
                      SessionPollCallback completion);
 
     void StopSession(const std::string &sessionId,
-                      const std::string &serverIp,
-                      std::function<void(bool, const std::string &)> completion);
+                       const std::string &serverIp,
+                       std::function<void(bool, const std::string &)> completion);
+
+    std::string LoadPersistedActiveSessionId() const;
+    void StorePersistedActiveSessionId(const std::string &sessionId);
+    void ClearPersistedActiveSessionId(const std::string &sessionId = "");
 
     void ReportSessionAd(const SessionInfo &session,
                          const std::string &adId,

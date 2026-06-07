@@ -21,6 +21,7 @@ using OPN::StringValue;
 
 static NSString *kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *kNvClientVersion = @"2.0.80.173";
+static NSString *kPersistedActiveSessionIdKey = @"OpenNOW.Stream.ActiveSessionId";
 
 static NSString *GetUserAgent() {
     return @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173";
@@ -568,6 +569,16 @@ static std::vector<OPN::ActiveSessionEntry> ActiveSessionEntriesFromArray(NSArra
     return entries;
 }
 
+static bool ResolveResponseSessionId(NSString *responseSessionId, const std::string &requestedSessionId, std::string &resolvedSessionId, std::string &error) {
+    std::string parsedSessionId = responseSessionId.length > 0 ? responseSessionId.UTF8String : "";
+    if (!parsedSessionId.empty() && parsedSessionId != requestedSessionId) {
+        error = "SESSION_ID_MISMATCH: requested " + requestedSessionId + " but response contained " + parsedSessionId;
+        return false;
+    }
+    resolvedSessionId = parsedSessionId.empty() ? requestedSessionId : parsedSessionId;
+    return true;
+}
+
 static bool SelectSessionLimitReuseEntry(const std::vector<OPN::ActiveSessionEntry> &sessions,
                                          int requestedAppId,
                                          OPN::ActiveSessionEntry &selected) {
@@ -606,6 +617,29 @@ static std::string RandomUUID() {
     return std::string(str);
 }
 
+static std::string PersistedActiveSessionIdValue() {
+    NSString *value = [NSUserDefaults.standardUserDefaults stringForKey:kPersistedActiveSessionIdKey];
+    return value.length > 0 ? value.UTF8String : "";
+}
+
+static void StorePersistedActiveSessionIdValue(const std::string &sessionId) {
+    if (sessionId.empty()) return;
+    std::string existing = PersistedActiveSessionIdValue();
+    if (existing == sessionId) return;
+    [NSUserDefaults.standardUserDefaults setObject:StringFromStdString(sessionId) forKey:kPersistedActiveSessionIdKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
+    OPN::LogInfo(@"[SessionManager] Persisted active sessionId=%s", sessionId.c_str());
+}
+
+static void ClearPersistedActiveSessionIdValue(const std::string &sessionId) {
+    std::string existing = PersistedActiveSessionIdValue();
+    if (existing.empty()) return;
+    if (!sessionId.empty() && existing != sessionId) return;
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:kPersistedActiveSessionIdKey];
+    [NSUserDefaults.standardUserDefaults synchronize];
+    OPN::LogInfo(@"[SessionManager] Cleared persisted active sessionId=%s", existing.c_str());
+}
+
 namespace OPN {
 
 SessionManager &SessionManager::Shared() {
@@ -619,6 +653,18 @@ void SessionManager::SetAccessToken(const std::string &token) {
 
 void SessionManager::SetStreamingBaseUrl(const std::string &url) {
     m_streamingBaseUrl = ResolveSessionBaseUrl(url, "");
+}
+
+std::string SessionManager::LoadPersistedActiveSessionId() const {
+    return PersistedActiveSessionIdValue();
+}
+
+void SessionManager::ClearPersistedActiveSessionId(const std::string &sessionId) {
+    ClearPersistedActiveSessionIdValue(sessionId);
+}
+
+void SessionManager::StorePersistedActiveSessionId(const std::string &sessionId) {
+    StorePersistedActiveSessionIdValue(sessionId);
 }
 
 void SessionManager::MergeAndStoreAdState(SessionInfo &info) {
@@ -639,6 +685,8 @@ void SessionManager::CreateSession(const std::string &appId,
         completion(false, SessionInfo{}, "No access token");
         return;
     }
+
+    ClearPersistedActiveSessionIdValue("");
 
     std::string appIdCopy = appId;
     std::string internalTitleCopy = internalTitle;
@@ -824,6 +872,7 @@ void SessionManager::CreateSession(const std::string &appId,
             SessionInfo info;
             NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
             info.sessionId = [sid UTF8String] ?: "";
+            StorePersistedActiveSessionIdValue(info.sessionId);
         info.status = [session[@"status"] intValue];
         info.zone = [baseUrlStr UTF8String];
         info.streamingBaseUrl = [baseUrlStr UTF8String];
@@ -991,7 +1040,12 @@ void SessionManager::PollSession(const std::string &sessionId,
 
         SessionInfo info;
         NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
-        info.sessionId = [sid UTF8String] ?: "";
+        std::string sessionIdError;
+        if (!ResolveResponseSessionId(sid, sessionId, info.sessionId, sessionIdError)) {
+            cb(false, SessionInfo{}, sessionIdError);
+            return;
+        }
+        StorePersistedActiveSessionIdValue(info.sessionId);
         info.status = [session[@"status"] intValue];
         info.zone = [NSString stringWithUTF8String:base.c_str()].UTF8String;
         info.streamingBaseUrl = [NSString stringWithUTF8String:base.c_str()].UTF8String;
@@ -1108,6 +1162,8 @@ void SessionManager::StopSession(const std::string &sessionId,
         completion(false, "No access token");
         return;
     }
+
+    ClearPersistedActiveSessionIdValue(sessionId);
 
     std::string base = ResolveSessionBaseUrl(m_streamingBaseUrl, serverIp);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s",
@@ -1305,7 +1361,12 @@ void SessionManager::pollClaimSession(std::string sessionId,
         if (status == 2 || status == 3) {
             SessionInfo info;
             NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
-            info.sessionId = [sid UTF8String] ?: "";
+            std::string sessionIdError;
+            if (!ResolveResponseSessionId(sid, sessionId, info.sessionId, sessionIdError)) {
+                completion(false, SessionInfo{}, sessionIdError);
+                return;
+            }
+            StorePersistedActiveSessionIdValue(info.sessionId);
             info.status = status;
             info.zone = [baseUrl UTF8String];
             info.streamingBaseUrl = [baseUrl UTF8String];
@@ -1469,7 +1530,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
 
     NSDictionary *payload = @{
         @"action": @2,
-        @"data": @"RESUME",
+        @"data": @"MANUAL",
         @"sessionRequestData": @{
             @"audioMode": @2,
             @"remoteControllersBitmap": @((unsigned long long)settings.remoteControllersBitmap),
