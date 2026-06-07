@@ -1,14 +1,27 @@
 # OpenNOW
 
-OpenNOW is a native macOS cloud gaming client built with AppKit, Objective-C++, and WebRTC. It provides a desktop-first interface for signing in, browsing games, and launching cloud streams.
+OpenNOW is a native macOS cloud gaming client built for players who want a fast desktop app instead of a browser wrapper. It combines AppKit, Objective-C++, and WebRTC to deliver account sign-in, game discovery, low-latency streaming, stream tuning, recording, and diagnostics in one Mac-first experience.
 
-## Features
+## Why OpenNOW
 
-- Native AppKit UI with browser-based OAuth sign-in
-- Persistent sessions and account switching
-- Catalog browsing, library view, and game launch flow
-- Native WebRTC streaming with audio/video/input controls
-- Stream preferences for region, codec, bitrate, and recovery
+- Native Mac feel: AppKit UI, crisp keyboard/mouse handling, menu-driven controls, and no web shell overhead.
+- Stream quality control: tune region, codec, bitrate, frame rate, HDR, prefiltering, and recovery behavior before launch.
+- Visual enhancement pipeline: local Spatial, MetalFX, and Temporal upscaling paths with sharpness, denoise, and session diagnostics.
+- Built for real play sessions: recording, microphone support, anti-AFK, stats HUD, Discord Rich Presence, and fast access to stream controls.
+- Actionable diagnostics: end-session reports, protocol captures, quality events, logs, and health summaries make troubleshooting repeatable.
+
+## Key Features
+
+- Native AppKit interface with browser-based OAuth sign-in, persistent sessions, and account switching.
+- Game catalog and library browsing with a focused launch flow for cloud streams.
+- Native WebRTC streaming with video, game audio, microphone, clipboard, keyboard, mouse, and gamepad support.
+- Per-game stream profiles for resolution, FPS, codec, bitrate, region, color, and enhancement preferences.
+- Local upscaling and cleanup controls including Spatial, MetalFX, Temporal reconstruction, denoise, sharpness, and prefilter options.
+- MP4 stream recording with system audio, microphone capture, recent recording shortcuts, and Movies folder output.
+- Live stats overlay for latency, bitrate, packet loss, FPS, codec, dropped frames, and enhancement state.
+- End-session health reports with launch timing, network metrics, stream stats, events, recovery details, and video enhancement diagnostics.
+- Discord Rich Presence integration for sharing active game and stream profile details.
+- Sentry Native crash reporting support for production diagnostics.
 
 ## Requirements
 
@@ -55,10 +68,6 @@ make clean
 - `src/views/` - native AppKit views
 - `src/common/` - shared types and helpers
 - `assets/` - artwork and icons
-
-## Vendor Parity
-
-- `docs/vendor-functional-parity.md` tracks native OpenNOW behavior against the vendored GeForce NOW web app and records telemetry/feedback/PWA/Tizen surfaces as intentional non-goals.
 
 ## Contributing
 
