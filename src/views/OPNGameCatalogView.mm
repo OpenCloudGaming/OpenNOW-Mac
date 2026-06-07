@@ -3395,7 +3395,7 @@ using namespace OPN;
     rowLayout.documentView = rowDocument;
     rowLayout.cards = cards;
     rowLayout.y = y;
-    rowLayout.mounted = YES;
+    rowLayout.mounted = NO;
     [self.rowLayouts addObject:rowLayout];
 }
 
