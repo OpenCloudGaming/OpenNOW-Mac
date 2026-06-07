@@ -60,11 +60,10 @@ typedef NS_ENUM(NSInteger, OPNVideoTextureFrameKind) {
     OPNVideoTextureFrameKindI420 = 2,
 };
 
-typedef NS_ENUM(NSInteger, OPNVideoGovernorTier) {
-    OPNVideoGovernorTierNative = 0,
-    OPNVideoGovernorTierSpatial = 1,
-    OPNVideoGovernorTierMetalFX = 2,
-    OPNVideoGovernorTierTemporal = 3,
+typedef NS_ENUM(NSInteger, OPNVideoRenderTier) {
+    OPNVideoRenderTierSpatial = 1,
+    OPNVideoRenderTierMetalFX = 2,
+    OPNVideoRenderTierTemporal = 3,
 };
 
 @interface OPNVideoTextureFrame : NSObject
@@ -365,24 +364,24 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @property(nonatomic, strong) id<MTLTexture> temporalCurrentTexture;
 @property(nonatomic, strong) id<MTLTexture> temporalHistoryTexture;
 @property(nonatomic, strong) id<MTLTexture> temporalOutputTexture;
+@property(nonatomic, strong) id<MTLTexture> temporalMotionTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialRGBPipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialNV12Pipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialI420Pipeline;
+@property(nonatomic, strong) id<MTLRenderPipelineState> temporalMotionPipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> temporalCompositePipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> temporalPresentPipeline;
 @property(nonatomic, assign) uint64_t droppedFrames;
-@property(nonatomic, assign) OPNVideoGovernorTier governorTier;
-@property(nonatomic, assign) NSInteger overloadScore;
-@property(nonatomic, assign) NSInteger recoveryScore;
 @property(nonatomic, assign) BOOL temporalHistoryValid;
 @property(nonatomic, assign) NSUInteger temporalHistoryWidth;
 @property(nonatomic, assign) NSUInteger temporalHistoryHeight;
 @property(nonatomic, assign) NSUInteger temporalSourceWidth;
 @property(nonatomic, assign) NSUInteger temporalSourceHeight;
 - (id<MTLTexture>)reusableMetalFXIntermediateTextureWithWidth:(NSUInteger)width height:(NSUInteger)height;
-- (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height label:(NSString *)label;
+- (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat label:(NSString *)label;
 - (BOOL)renderTemporalTextureFrame:(OPNVideoTextureFrame *)textureFrame drawable:(id<CAMetalDrawable>)drawable settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result start:(CFTimeInterval)start;
-- (BOOL)encodeTemporalCurrentTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result;
+- (BOOL)encodeTemporalMotionTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
+- (BOOL)encodeTemporalCurrentTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result;
 - (BOOL)encodePresentTexture:(id<MTLTexture>)sourceTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
 @end
 
@@ -400,12 +399,10 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         _spatialRGBPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_rgb"];
         _spatialNV12Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_nv12"];
         _spatialI420Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_i420"];
+        _temporalMotionPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_temporal_motion" pixelFormat:MTLPixelFormatRGBA16Float];
         _temporalCompositePipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_temporal_composite"];
         _temporalPresentPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_present_rgb"];
         _droppedFrames = 0;
-        _governorTier = OPNVideoGovernorTierTemporal;
-        _overloadScore = 0;
-        _recoveryScore = 0;
         _temporalHistoryValid = NO;
     }
     return self;
@@ -423,10 +420,14 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 }
 
 - (BOOL)isTemporalAvailable {
-    return self.commandQueue && self.spatialRGBPipeline && self.spatialNV12Pipeline && self.spatialI420Pipeline && self.temporalCompositePipeline && self.temporalPresentPipeline;
+    return self.commandQueue && self.spatialRGBPipeline && self.spatialNV12Pipeline && self.spatialI420Pipeline && self.temporalMotionPipeline && self.temporalCompositePipeline && self.temporalPresentPipeline;
 }
 
 - (id<MTLRenderPipelineState>)newSpatialPipelineWithDevice:(id<MTLDevice>)device fragmentFunction:(NSString *)fragmentFunctionName {
+    return [self newSpatialPipelineWithDevice:device fragmentFunction:fragmentFunctionName pixelFormat:MTLPixelFormatBGRA8Unorm];
+}
+
+- (id<MTLRenderPipelineState>)newSpatialPipelineWithDevice:(id<MTLDevice>)device fragmentFunction:(NSString *)fragmentFunctionName pixelFormat:(MTLPixelFormat)pixelFormat {
     if (!device) return nil;
     static NSString *source = @
     "#include <metal_stdlib>\n"
@@ -509,27 +510,52 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "    float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n"
-    "fragment float4 opn_video_temporal_composite(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant float &historyWeight [[buffer(1)]], constant float &sharpness [[buffer(2)]], constant int &hasHistory [[buffer(3)]]) {\n"
+    "fragment float4 opn_video_temporal_motion(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant int &hasHistory [[buffer(1)]]) {\n"
+    "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
+    "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
+    "    if (hasHistory == 0) return float4(0.0, 0.0, 0.0, 1.0);\n"
+    "    float3 current = currentTexture.sample(s, uv).rgb;\n"
+    "    float currentLuma = opn_luma(current);\n"
+    "    float bestDiff = 1.0;\n"
+    "    float bestScore = 1.0;\n"
+    "    float2 bestOffset = float2(0.0);\n"
+    "    for (int y = -2; y <= 2; ++y) {\n"
+    "        for (int x = -2; x <= 2; ++x) {\n"
+    "            float2 offset = float2((float)x, (float)y) * texel * 2.0;\n"
+    "            float3 candidate = historyTexture.sample(s, clamp(uv + offset, float2(0.0), float2(1.0))).rgb;\n"
+    "            float diff = fabs(currentLuma - opn_luma(candidate));\n"
+    "            float score = diff + length(float2((float)x, (float)y)) * 0.003;\n"
+    "            if (score < bestScore) { bestScore = score; bestDiff = diff; bestOffset = offset; }\n"
+    "        }\n"
+    "    }\n"
+    "    float confidence = 1.0 - smoothstep(0.018, 0.135, bestDiff);\n"
+    "    return float4(bestOffset, confidence, bestDiff);\n"
+    "}\n"
+    "fragment float4 opn_video_temporal_composite(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], texture2d<float> motionTexture [[texture(2)]], constant float2 &texel [[buffer(0)]], constant float &historyWeight [[buffer(1)]], constant float &sharpness [[buffer(2)]], constant int &hasHistory [[buffer(3)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
     "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
     "    float3 current = currentTexture.sample(s, uv).rgb;\n"
     "    float3 blur = (currentTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb + currentTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb + currentTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb + currentTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb) * 0.25;\n"
     "    float3 history = current;\n"
     "    float historyDiff = 1.0;\n"
+    "    float motionConfidence = 0.0;\n"
     "    if (hasHistory != 0) {\n"
     "        float currentLuma = opn_luma(current);\n"
-    "        history = historyTexture.sample(s, uv).rgb;\n"
+    "        float4 motion = motionTexture.sample(s, uv);\n"
+    "        float2 historyUv = clamp(uv + motion.xy, float2(0.0), float2(1.0));\n"
+    "        motionConfidence = clamp(motion.z, 0.0, 1.0);\n"
+    "        history = historyTexture.sample(s, historyUv).rgb;\n"
     "        historyDiff = fabs(currentLuma - opn_luma(history));\n"
-    "        float3 candidate = historyTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;\n"
+    "        float3 candidate = historyTexture.sample(s, clamp(historyUv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;\n"
     "        float diff = fabs(currentLuma - opn_luma(candidate)); if (diff < historyDiff) { historyDiff = diff; history = candidate; }\n"
-    "        candidate = historyTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;\n"
+    "        candidate = historyTexture.sample(s, clamp(historyUv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;\n"
     "        diff = fabs(currentLuma - opn_luma(candidate)); if (diff < historyDiff) { historyDiff = diff; history = candidate; }\n"
-    "        candidate = historyTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "        candidate = historyTexture.sample(s, clamp(historyUv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
     "        diff = fabs(currentLuma - opn_luma(candidate)); if (diff < historyDiff) { historyDiff = diff; history = candidate; }\n"
-    "        candidate = historyTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "        candidate = historyTexture.sample(s, clamp(historyUv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
     "        diff = fabs(currentLuma - opn_luma(candidate)); if (diff < historyDiff) { historyDiff = diff; history = candidate; }\n"
     "    }\n"
-    "    float stability = 1.0 - smoothstep(0.018, 0.145, historyDiff);\n"
+    "    float stability = motionConfidence * (1.0 - smoothstep(0.018, 0.145, historyDiff));\n"
     "    float temporalMix = hasHistory != 0 ? clamp(historyWeight * stability, 0.0, 0.82) : 0.0;\n"
     "    float3 reconstructed = mix(current, history, temporalMix);\n"
     "    float edgeStrength = smoothstep(0.015, 0.22, length(current - blur));\n"
@@ -547,7 +573,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     MTLRenderPipelineDescriptor *descriptor = [[MTLRenderPipelineDescriptor alloc] init];
     descriptor.vertexFunction = [library newFunctionWithName:@"opn_video_vertex"];
     descriptor.fragmentFunction = [library newFunctionWithName:fragmentFunctionName];
-    descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    descriptor.colorAttachments[0].pixelFormat = pixelFormat;
     NSError *pipelineError = nil;
     return [device newRenderPipelineStateWithDescriptor:descriptor error:&pipelineError];
 }
@@ -577,55 +603,25 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     result.pixelFormat = pixelFormat;
     result.frameSource = frameSource;
 
-    OPNVideoGovernorTier requestedTier = OPNVideoGovernorTierSpatial;
+    OPNVideoRenderTier requestedTier = OPNVideoRenderTierSpatial;
     if (settings.configuredTier == OPNVideoEnhancementTierTemporal) {
-        requestedTier = OPNVideoGovernorTierTemporal;
+        requestedTier = OPNVideoRenderTierTemporal;
     } else if (settings.configuredTier == OPNVideoEnhancementTierMetalFX) {
-        requestedTier = OPNVideoGovernorTierMetalFX;
+        requestedTier = OPNVideoRenderTierMetalFX;
     }
-    if (requestedTier == OPNVideoGovernorTierTemporal && ![self isTemporalAvailable]) {
-        requestedTier = [self isMetalFXAvailable] ? OPNVideoGovernorTierMetalFX : OPNVideoGovernorTierSpatial;
-        result.tierFallbackReason = @"Temporal upscaler unavailable; using best spatial tier";
+    BOOL rendered = NO;
+    if (textureFrame && requestedTier == OPNVideoRenderTierTemporal) {
+        rendered = [self renderTemporalTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start];
+    } else if (textureFrame && requestedTier == OPNVideoRenderTierMetalFX) {
+        rendered = [self renderMetalFXTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start];
+    } else if (textureFrame && requestedTier == OPNVideoRenderTierSpatial) {
+        rendered = [self renderSpatialTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start];
     }
-    if (requestedTier == OPNVideoGovernorTierMetalFX && ![self isMetalFXAvailable]) requestedTier = OPNVideoGovernorTierSpatial;
-    OPNVideoGovernorTier activeTier = [self governedTierForRequestedTier:requestedTier settings:settings result:result];
-    if (activeTier == OPNVideoGovernorTierNative) {
-        result.fallbackReason = @"enhancement governor selected native renderer";
-        result.activeTier = @"Native fallback";
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor selected native renderer to preserve frame pacing";
-        return NO;
-    }
-
-    if (settings.configuredTier == OPNVideoEnhancementTierMetalFX && ![self isMetalFXAvailable]) {
-        result.tierFallbackReason = @"MetalFX unavailable; using custom spatial scaler";
-    }
-
-    if (textureFrame && activeTier == OPNVideoGovernorTierTemporal && [self renderTemporalTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start]) {
-        [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:activeTier settings:settings];
-        return YES;
-    }
-    if (textureFrame && activeTier == OPNVideoGovernorTierTemporal && result.tierFallbackReason.length == 0) {
-        result.tierFallbackReason = @"Temporal reconstruction failed; using best spatial tier";
-    }
-    if (textureFrame && activeTier == OPNVideoGovernorTierTemporal && [self isMetalFXAvailable] && [self renderMetalFXTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start]) {
-        [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:OPNVideoGovernorTierMetalFX settings:settings];
-        return YES;
-    }
-    if (textureFrame && activeTier == OPNVideoGovernorTierMetalFX && [self renderMetalFXTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start]) {
-        [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:activeTier settings:settings];
-        return YES;
-    }
-    if (textureFrame && [self renderSpatialTextureFrame:textureFrame drawable:drawable settings:settings result:result start:start]) {
-        [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:OPNVideoGovernorTierSpatial settings:settings];
+    if (rendered) {
         return YES;
     }
 
-    if (textureFallback.length > 0) result.tierFallbackReason = textureFallback;
-    if ([self renderCoreImageFrame:frame drawable:drawable settings:settings result:result start:start]) {
-        [self updateGovernorAfterFrameTime:result.frameTimeMs requestedTier:requestedTier activeTier:OPNVideoGovernorTierSpatial settings:settings];
-        return YES;
-    }
-
+    if (textureFallback.length > 0 && result.fallbackReason.length == 0) result.fallbackReason = textureFallback;
     [self recordDropInResult:result];
     return NO;
 }
@@ -652,65 +648,6 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     if (result.tierFallbackReason.length == 0) result.tierFallbackReason = result.fallbackReason.length > 0 ? result.fallbackReason : @"enhancement renderer failed";
 }
 
-- (OPNVideoGovernorTier)governedTierForRequestedTier:(OPNVideoGovernorTier)requestedTier settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result {
-    if (self.governorTier > requestedTier) self.governorTier = requestedTier;
-    if (self.governorTier == OPNVideoGovernorTierNative) {
-        self.governorTier = OPNVideoGovernorTierSpatial;
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor restored minimum enhanced tier";
-        return OPNVideoGovernorTierSpatial;
-    }
-    if (self.governorTier == OPNVideoGovernorTierMetalFX && requestedTier == OPNVideoGovernorTierTemporal) {
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded temporal reconstruction to MetalFX";
-        return OPNVideoGovernorTierMetalFX;
-    }
-    if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier == OPNVideoGovernorTierMetalFX) {
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded MetalFX to custom spatial scaler";
-        return OPNVideoGovernorTierSpatial;
-    }
-    if (self.governorTier == OPNVideoGovernorTierSpatial && requestedTier == OPNVideoGovernorTierTemporal) {
-        if (result.tierFallbackReason.length == 0) result.tierFallbackReason = @"governor downgraded temporal reconstruction to custom spatial scaler";
-        return OPNVideoGovernorTierSpatial;
-    }
-    (void)settings;
-    return requestedTier;
-}
-
-- (void)updateGovernorAfterFrameTime:(double)frameTimeMs requestedTier:(OPNVideoGovernorTier)requestedTier activeTier:(OPNVideoGovernorTier)activeTier settings:(OPNVideoEnhancementSettings *)settings {
-    double budgetMs = settings.targetFrameTimeMs > 0.0 ? settings.targetFrameTimeMs : 16.67;
-    BOOL overloaded = frameTimeMs > budgetMs * 0.92;
-    BOOL hasHeadroom = frameTimeMs > 0.0 && frameTimeMs < budgetMs * 0.55;
-
-    if (overloaded) {
-        self.overloadScore = std::min<NSInteger>(self.overloadScore + 1, 8);
-        self.recoveryScore = 0;
-    } else {
-        self.overloadScore = std::max<NSInteger>(0, self.overloadScore - 1);
-        self.recoveryScore = hasHeadroom ? std::min<NSInteger>(self.recoveryScore + 1, 180) : std::max<NSInteger>(0, self.recoveryScore - 1);
-    }
-
-    if (self.overloadScore >= 3) {
-        if (activeTier == OPNVideoGovernorTierTemporal) {
-            self.governorTier = [self isMetalFXAvailable] ? OPNVideoGovernorTierMetalFX : OPNVideoGovernorTierSpatial;
-        } else if (activeTier == OPNVideoGovernorTierMetalFX) {
-            self.governorTier = OPNVideoGovernorTierSpatial;
-        } else if (activeTier == OPNVideoGovernorTierSpatial) {
-            self.governorTier = OPNVideoGovernorTierSpatial;
-        }
-        self.overloadScore = 0;
-        self.recoveryScore = 0;
-        return;
-    }
-
-    if (self.recoveryScore >= 90) {
-        if (self.governorTier == OPNVideoGovernorTierNative) {
-            self.governorTier = OPNVideoGovernorTierSpatial;
-        } else if (self.governorTier < requestedTier) {
-            self.governorTier = requestedTier;
-        }
-        self.recoveryScore = 0;
-    }
-}
-
 - (BOOL)renderMetalFXTextureFrame:(OPNVideoTextureFrame *)textureFrame
                           drawable:(id<CAMetalDrawable>)drawable
                           settings:(OPNVideoEnhancementSettings *)settings
@@ -734,17 +671,17 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         NSUInteger height = textureFrame.contentHeight > 0 ? textureFrame.contentHeight : primaryTexture.height;
         sourceTexture = [self reusableMetalFXIntermediateTextureWithWidth:width height:height];
         if (!sourceTexture) {
-            result.tierFallbackReason = @"MetalFX intermediate texture allocation failed; using custom spatial scaler";
+            result.fallbackReason = @"MetalFX intermediate texture allocation failed";
             return NO;
         }
         if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:sourceTexture commandBuffer:commandBuffer settings:settings result:result]) {
-            result.tierFallbackReason = @"MetalFX RGB conversion failed; using custom spatial scaler";
+            result.fallbackReason = @"MetalFX RGB conversion failed";
             return NO;
         }
     }
     NSString *metalFXFallback = @"";
     if (![self.metalFXUpscaler encodeTexture:sourceTexture toTexture:drawable.texture commandBuffer:commandBuffer fallback:&metalFXFallback]) {
-        result.tierFallbackReason = metalFXFallback.length > 0 ? metalFXFallback : @"MetalFX encode failed; using custom spatial scaler";
+        result.fallbackReason = metalFXFallback.length > 0 ? metalFXFallback : @"MetalFX encode failed";
         return NO;
     }
     [commandBuffer presentDrawable:drawable];
@@ -777,10 +714,10 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     return self.metalFXIntermediateTexture;
 }
 
-- (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height label:(NSString *)label {
+- (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat label:(NSString *)label {
     if (!self.device || width == 0 || height == 0) return nil;
-    if (texture && texture.width == width && texture.height == height && texture.pixelFormat == MTLPixelFormatBGRA8Unorm) return texture;
-    MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+    if (texture && texture.width == width && texture.height == height && texture.pixelFormat == pixelFormat) return texture;
+    MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixelFormat
                                                                                            width:width
                                                                                           height:height
                                                                                        mipmapped:NO];
@@ -805,10 +742,11 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 
     NSUInteger width = drawable.texture.width;
     NSUInteger height = drawable.texture.height;
-    self.temporalCurrentTexture = [self reusableTemporalTexture:self.temporalCurrentTexture width:width height:height label:@"OpenNOW temporal current"];
-    self.temporalOutputTexture = [self reusableTemporalTexture:self.temporalOutputTexture width:width height:height label:@"OpenNOW temporal output"];
-    self.temporalHistoryTexture = [self reusableTemporalTexture:self.temporalHistoryTexture width:width height:height label:@"OpenNOW temporal history"];
-    if (!self.temporalCurrentTexture || !self.temporalOutputTexture || !self.temporalHistoryTexture) {
+    self.temporalCurrentTexture = [self reusableTemporalTexture:self.temporalCurrentTexture width:width height:height pixelFormat:MTLPixelFormatBGRA8Unorm label:@"OpenNOW temporal current"];
+    self.temporalOutputTexture = [self reusableTemporalTexture:self.temporalOutputTexture width:width height:height pixelFormat:MTLPixelFormatBGRA8Unorm label:@"OpenNOW temporal output"];
+    self.temporalHistoryTexture = [self reusableTemporalTexture:self.temporalHistoryTexture width:width height:height pixelFormat:MTLPixelFormatBGRA8Unorm label:@"OpenNOW temporal history"];
+    self.temporalMotionTexture = [self reusableTemporalTexture:self.temporalMotionTexture width:width height:height pixelFormat:MTLPixelFormatRGBA16Float label:@"OpenNOW temporal motion"];
+    if (!self.temporalCurrentTexture || !self.temporalOutputTexture || !self.temporalHistoryTexture || !self.temporalMotionTexture) {
         result.fallbackReason = @"temporal upscaler could not allocate history textures";
         self.temporalHistoryValid = NO;
         return NO;
@@ -829,7 +767,11 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         self.temporalHistoryValid = NO;
         return NO;
     }
-    if (![self encodeTemporalCurrentTexture:self.temporalCurrentTexture historyTexture:self.temporalHistoryTexture destinationTexture:self.temporalOutputTexture commandBuffer:commandBuffer settings:settings result:result]) {
+    if (![self encodeTemporalMotionTexture:self.temporalCurrentTexture historyTexture:self.temporalHistoryTexture motionTexture:self.temporalMotionTexture commandBuffer:commandBuffer result:result]) {
+        self.temporalHistoryValid = NO;
+        return NO;
+    }
+    if (![self encodeTemporalCurrentTexture:self.temporalCurrentTexture historyTexture:self.temporalHistoryTexture motionTexture:self.temporalMotionTexture destinationTexture:self.temporalOutputTexture commandBuffer:commandBuffer settings:settings result:result]) {
         self.temporalHistoryValid = NO;
         return NO;
     }
@@ -854,13 +796,46 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     return YES;
 }
 
+- (BOOL)encodeTemporalMotionTexture:(id<MTLTexture>)currentTexture
+                       historyTexture:(id<MTLTexture>)historyTexture
+                         motionTexture:(id<MTLTexture>)motionTexture
+                         commandBuffer:(id<MTLCommandBuffer>)commandBuffer
+                                result:(OPNVideoEnhancementResult *)result {
+    if (!currentTexture || !historyTexture || !motionTexture || !commandBuffer || !self.temporalMotionPipeline) {
+        result.fallbackReason = @"temporal upscaler missing motion target";
+        return NO;
+    }
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = motionTexture;
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:pass];
+    if (!encoder) {
+        result.fallbackReason = @"temporal upscaler could not create motion encoder";
+        return NO;
+    }
+    float texel[2] = {currentTexture.width > 0 ? 1.0f / (float)currentTexture.width : 0.0f,
+                      currentTexture.height > 0 ? 1.0f / (float)currentTexture.height : 0.0f};
+    int hasHistory = self.temporalHistoryValid ? 1 : 0;
+    [encoder setRenderPipelineState:self.temporalMotionPipeline];
+    [encoder setFragmentTexture:currentTexture atIndex:0];
+    [encoder setFragmentTexture:historyTexture atIndex:1];
+    [encoder setFragmentBytes:texel length:sizeof(texel) atIndex:0];
+    [encoder setFragmentBytes:&hasHistory length:sizeof(hasHistory) atIndex:1];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [encoder endEncoding];
+    return YES;
+}
+
 - (BOOL)encodeTemporalCurrentTexture:(id<MTLTexture>)currentTexture
                        historyTexture:(id<MTLTexture>)historyTexture
+                         motionTexture:(id<MTLTexture>)motionTexture
                    destinationTexture:(id<MTLTexture>)destinationTexture
                         commandBuffer:(id<MTLCommandBuffer>)commandBuffer
                              settings:(OPNVideoEnhancementSettings *)settings
                                result:(OPNVideoEnhancementResult *)result {
-    if (!currentTexture || !historyTexture || !destinationTexture || !commandBuffer || !self.temporalCompositePipeline) {
+    if (!currentTexture || !historyTexture || !motionTexture || !destinationTexture || !commandBuffer || !self.temporalCompositePipeline) {
         result.fallbackReason = @"temporal upscaler missing composite target";
         return NO;
     }
@@ -884,6 +859,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [encoder setRenderPipelineState:self.temporalCompositePipeline];
     [encoder setFragmentTexture:currentTexture atIndex:0];
     [encoder setFragmentTexture:historyTexture atIndex:1];
+    [encoder setFragmentTexture:motionTexture atIndex:2];
     [encoder setFragmentBytes:texel length:sizeof(texel) atIndex:0];
     [encoder setFragmentBytes:&historyWeight length:sizeof(historyWeight) atIndex:1];
     [encoder setFragmentBytes:&temporalSharpness length:sizeof(temporalSharpness) atIndex:2];
@@ -935,8 +911,8 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [commandBuffer commit];
     if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
 
-    result.renderPath = settings.configuredTier == OPNVideoEnhancementTierMetalFX ? @"OPNMetalFXUpscalerFallbackSpatial" : @"OPNMetalSpatialUpscaler";
-    result.activeTier = settings.configuredTier == OPNVideoEnhancementTierMetalFX ? @"MetalFX Spatial fallback" : @"Metal Spatial";
+    result.renderPath = @"OPNMetalSpatialUpscaler";
+    result.activeTier = @"Metal Spatial";
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
     if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];

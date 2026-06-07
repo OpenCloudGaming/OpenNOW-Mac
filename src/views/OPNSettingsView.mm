@@ -762,7 +762,7 @@ using namespace OPN;
                                                                action:@selector(upscalingDenoisePopupChanged:)];
     [video addSubview:upscalingDenoisePopup];
 
-    NSTextField *upscalingHint = OpnLabel(@"Auto chooses Temporal when available, then MetalFX, then Spatial. Temporal reuses frame history to stabilize detail and falls back safely.",
+    NSTextField *upscalingHint = OpnLabel(@"Auto chooses Temporal when available, then MetalFX, then Spatial. Explicit selections are forced; Temporal uses motion-guided frame history.",
                                           NSMakeRect(controlX, 1042.0, controlWidth, 42.0),
                                           12.0,
                                           OpnColor(kTextMuted),

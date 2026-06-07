@@ -2287,7 +2287,7 @@ void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
 
 void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise, int targetHeight) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
-    m_localEnhancementMode = std::max(0, std::min(mode, 3));
+    m_localEnhancementMode = std::max(0, std::min(mode, 4));
     m_localEnhancementSharpness = std::max(0, std::min(sharpness, 40));
     m_localEnhancementDenoise = std::max(0, std::min(denoise, 20));
     m_localEnhancementTargetHeight = std::max(1440, std::min(targetHeight, 2160));
