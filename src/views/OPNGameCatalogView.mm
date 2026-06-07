@@ -2322,6 +2322,10 @@ using namespace OPN;
     self.initialHeroImage = nil;
     self.initialHeroIdentity = nil;
     [self configureHeroRotationTimer];
+    if (self.hasContent) {
+        [self updateDesktopFeaturedHeroOnly];
+        return;
+    }
     [self renderStoreWhenInitialHeroReady];
 }
 
@@ -2329,13 +2333,13 @@ using namespace OPN;
     _libraryGames = games;
     _ownedLibraryGames = games;
     self.hasLibraryState = YES;
-    [self mergeKnownStoreMetadataIntoPanels];
+    BOOL changedPanelMetadata = [self mergeKnownStoreMetadataIntoPanels];
     _searchLibrarySnapshot = std::make_shared<const std::vector<GameInfo>>(_ownedLibraryGames);
     _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
     if (OPNStoreSearchNormalizedString(self.searchQuery).length > 0) [self scheduleAsyncSearchForCurrentQuery];
     if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) {
         [self refreshLibrarySelections];
-        [self scheduleRenderStore];
+        if (changedPanelMetadata) [self scheduleRenderStore];
     } else if (!_panels.empty()) {
         [self renderStoreWhenInitialHeroReady];
     }
@@ -2555,7 +2559,7 @@ using namespace OPN;
 
     NSString *gameIdentity = OpnGameIdentityForHero(*heroGame);
     NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(*heroGame);
-    NSImage *cachedImage = OpnCachedImageFromCandidates(candidates, 1600.0, nil);
+    NSImage *cachedImage = OpnCachedMemoryImageFromCandidates(candidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
         self.initialHeroImage = cachedImage;
         self.initialHeroIdentity = gameIdentity;
@@ -2967,7 +2971,7 @@ using namespace OPN;
     NSArray<NSString *> *heroCandidates = OpnHeroImageCandidatesForGame(game);
     NSImage *cachedImage = ([self.initialHeroIdentity isEqualToString:gameIdentity] && OPNStoreHeroImageHasVisibleContent(self.initialHeroImage))
         ? self.initialHeroImage
-        : OpnCachedImageFromCandidates(heroCandidates, 1600.0, nil);
+        : OpnCachedMemoryImageFromCandidates(heroCandidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
         [self setDesktopHeroArtworkImage:cachedImage animated:animated];
         [self updateDesktopHeroLogoFrame];
@@ -3106,7 +3110,7 @@ using namespace OPN;
             });
         });
     };
-    NSImage *cachedLogo = OpnCachedImageFromCandidates(candidates, 720.0, nil);
+    NSImage *cachedLogo = OpnCachedMemoryImageFromCandidates(candidates, 720.0, nil);
     if (cachedLogo) {
         applyLogoImage(cachedLogo);
         return;
@@ -3153,7 +3157,7 @@ using namespace OPN;
     }
 
     NSArray<NSString *> *remainingCandidates = [candidates subarrayWithRange:NSMakeRange(index, candidates.count - index)];
-    NSImage *cachedImage = OpnCachedImageFromCandidates(remainingCandidates, 1600.0, nil);
+    NSImage *cachedImage = OpnCachedMemoryImageFromCandidates(remainingCandidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
         if (view == self.desktopHeroArtworkView) {
             [self setDesktopHeroArtworkImage:cachedImage animated:animated];
@@ -3350,8 +3354,6 @@ using namespace OPN;
     rowLayout.y = y;
     rowLayout.mounted = YES;
     [self.rowLayouts addObject:rowLayout];
-    [self updateRowVirtualizationForVisibleBounds];
-    [self updateImagePreloadingForRowLayout:rowLayout];
 }
 
 - (void)updateFocusedTiles {

@@ -668,6 +668,25 @@ NSImage *OpnCachedImageForURL(NSString *urlString, CGFloat maxPixelDimension) {
     return image;
 }
 
+NSImage *OpnCachedMemoryImageForURL(NSString *urlString, CGFloat maxPixelDimension) {
+    NSString *normalizedURL = [[urlString ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
+    if (normalizedURL.length == 0) return nil;
+    return [OpnDecodedImageCache() objectForKey:OpnImageCacheKey(normalizedURL, maxPixelDimension)];
+}
+
+NSImage *OpnCachedMemoryImageFromCandidates(NSArray<NSString *> *candidates, CGFloat maxPixelDimension, NSString **resolvedURL) {
+    for (NSString *candidate in candidates) {
+        NSString *normalizedURL = [[candidate ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];
+        if (normalizedURL.length == 0) continue;
+        NSImage *image = OpnCachedMemoryImageForURL(normalizedURL, maxPixelDimension);
+        if (!image) continue;
+        if (resolvedURL) *resolvedURL = normalizedURL;
+        return image;
+    }
+    if (resolvedURL) *resolvedURL = nil;
+    return nil;
+}
+
 NSImage *OpnCachedImageFromCandidates(NSArray<NSString *> *candidates, CGFloat maxPixelDimension, NSString **resolvedURL) {
     for (NSString *candidate in candidates) {
         NSString *normalizedURL = [[candidate ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] copy];

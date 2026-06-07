@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #import <WebRTC/WebRTC.h>
@@ -419,15 +420,24 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @property(nonatomic, assign) NSUInteger temporalSourceWidth;
 @property(nonatomic, assign) NSUInteger temporalSourceHeight;
 @property(nonatomic, assign) NSUInteger temporalHistoryResetCount;
+@property(nonatomic, assign) NSUInteger enhancedCaptureWidth;
+@property(nonatomic, assign) NSUInteger enhancedCaptureHeight;
 - (id<MTLTexture>)reusableMetalFXIntermediateTextureWithWidth:(NSUInteger)width height:(NSUInteger)height;
 - (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat label:(NSString *)label;
+- (CVPixelBufferRef)consumeCompletedEnhancedPixelBuffer CF_RETURNS_RETAINED;
+- (void)clearCompletedEnhancedPixelBuffers;
+- (void)enqueueEnhancedPixelBufferCaptureFromTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer;
+- (CVPixelBufferRef)newPooledEnhancedPixelBufferWithWidth:(NSUInteger)width height:(NSUInteger)height CF_RETURNS_RETAINED;
 - (BOOL)renderTemporalTextureFrame:(OPNVideoTextureFrame *)textureFrame drawable:(id<CAMetalDrawable>)drawable settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result start:(CFTimeInterval)start;
 - (BOOL)encodeTemporalMotionTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture jitterDelta:(const float *)jitterDelta commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
 - (BOOL)encodeTemporalCurrentTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result;
 - (BOOL)encodePresentTexture:(id<MTLTexture>)sourceTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
 @end
 
-@implementation OPNVideoEnhancementRenderer
+@implementation OPNVideoEnhancementRenderer {
+    CVPixelBufferPoolRef _enhancedCapturePool;
+    NSMutableArray *_completedEnhancedPixelBuffers;
+}
 
 - (instancetype)initWithDevice:(id<MTLDevice>)device commandQueue:(id<MTLCommandQueue>)commandQueue {
     self = [super init];
@@ -453,6 +463,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         _temporalPreviousJitterX = 0.0f;
         _temporalPreviousJitterY = 0.0f;
         _temporalHistoryResetCount = 0;
+        _completedEnhancedPixelBuffers = [NSMutableArray array];
     }
     return self;
 }
@@ -462,6 +473,11 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         CGColorSpaceRelease(_outputColorSpace);
         _outputColorSpace = nil;
     }
+    if (_enhancedCapturePool) {
+        CVPixelBufferPoolRelease(_enhancedCapturePool);
+        _enhancedCapturePool = nil;
+    }
+    [self clearCompletedEnhancedPixelBuffers];
 }
 
 - (BOOL)isMetalFXAvailable {
@@ -681,6 +697,10 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [self populateResult:result settings:settings];
     if (!frame || !view || !settings || settings.configuredTier == OPNVideoEnhancementTierOff) {
         result.fallbackReason = @"enhancement disabled";
+        if (result.enhancedPixelBuffer) {
+            CVPixelBufferRelease(result.enhancedPixelBuffer);
+            result.enhancedPixelBuffer = nil;
+        }
         return NO;
     }
 
@@ -688,6 +708,10 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     if (!drawable || settings.drawableSize.width <= 0.0 || settings.drawableSize.height <= 0.0) {
         result.fallbackReason = @"enhancement renderer got empty drawable";
         [self recordDropInResult:result];
+        if (result.enhancedPixelBuffer) {
+            CVPixelBufferRelease(result.enhancedPixelBuffer);
+            result.enhancedPixelBuffer = nil;
+        }
         return NO;
     }
 
@@ -718,6 +742,10 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 
     if (textureFallback.length > 0 && result.fallbackReason.length == 0) result.fallbackReason = textureFallback;
     [self recordDropInResult:result];
+    if (result.enhancedPixelBuffer) {
+        CVPixelBufferRelease(result.enhancedPixelBuffer);
+        result.enhancedPixelBuffer = nil;
+    }
     return NO;
 }
 
@@ -735,7 +763,12 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     result.diagnostics = @"";
     result.frameTimeMs = -1.0;
     result.droppedFrames = self.droppedFrames;
-    result.enhancedPixelBuffer = nil;
+    if (settings.captureEnhancedPixelBuffer) {
+        result.enhancedPixelBuffer = [self consumeCompletedEnhancedPixelBuffer];
+    } else {
+        result.enhancedPixelBuffer = nil;
+        [self clearCompletedEnhancedPixelBuffers];
+    }
 }
 
 - (void)recordDropInResult:(OPNVideoEnhancementResult *)result {
@@ -780,14 +813,13 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         result.fallbackReason = metalFXFallback.length > 0 ? metalFXFallback : @"MetalFX encode failed";
         return NO;
     }
+    if (settings.captureEnhancedPixelBuffer) [self enqueueEnhancedPixelBufferCaptureFromTexture:drawable.texture commandBuffer:commandBuffer];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
-    if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
     result.renderPath = @"OPNMetalFXSpatialScaler";
     result.activeTier = @"MetalFX Spatial";
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
-    if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
     return YES;
 }
 
@@ -891,9 +923,9 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         return NO;
     }
 
+    if (settings.captureEnhancedPixelBuffer) [self enqueueEnhancedPixelBufferCaptureFromTexture:drawable.texture commandBuffer:commandBuffer];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
-    if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
     id<MTLTexture> previousHistory = self.temporalHistoryTexture;
     self.temporalHistoryTexture = self.temporalOutputTexture;
     self.temporalOutputTexture = previousHistory;
@@ -915,7 +947,6 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     }
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
-    if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
     return YES;
 }
 
@@ -1032,15 +1063,14 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:drawable.texture commandBuffer:commandBuffer settings:settings result:result jitter:nullptr]) {
         return NO;
     }
+    if (settings.captureEnhancedPixelBuffer) [self enqueueEnhancedPixelBufferCaptureFromTexture:drawable.texture commandBuffer:commandBuffer];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
-    if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
 
     result.renderPath = @"OPNMetalSpatialUpscaler";
     result.activeTier = settings.lowCostSpatial ? @"Metal Spatial Low Cost" : @"Metal Spatial";
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
-    if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
     return YES;
 }
 
@@ -1243,14 +1273,13 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [encoder endEncoding];
     CGRect outputBounds = CGRectMake(0.0, 0.0, settings.drawableSize.width, settings.drawableSize.height);
     [self.ciContext render:image toMTLTexture:drawable.texture commandBuffer:commandBuffer bounds:outputBounds colorSpace:self.outputColorSpace];
+    if (settings.captureEnhancedPixelBuffer) [self enqueueEnhancedPixelBufferCaptureFromTexture:drawable.texture commandBuffer:commandBuffer];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
-    if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
     result.renderPath = @"OPNCoreImageCompatibilityUpscaler";
     result.activeTier = @"CoreImage compatibility";
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
-    if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
     return YES;
 #else
     (void)frame;
@@ -1262,56 +1291,98 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 #endif
 }
 
-- (CVPixelBufferRef)newPixelBufferFromTexture:(id<MTLTexture>)texture size:(CGSize)size {
-    (void)size;
-    if (!texture || !self.commandQueue || texture.width < 2 || texture.height < 2) return nil;
-    const size_t width = texture.width;
-    const size_t height = texture.height;
-    NSDictionary *attributes = @{(__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
-                                 (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{}};
-    CVPixelBufferRef pixelBuffer = nil;
-    CVReturn result = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, (__bridge CFDictionaryRef)attributes, &pixelBuffer);
-    if (result != kCVReturnSuccess || !pixelBuffer) return nil;
-
-    const NSUInteger sourceBytesPerRow = width * 4;
-    id<MTLBuffer> sourceBuffer = [self.device newBufferWithLength:sourceBytesPerRow * height options:MTLResourceStorageModeShared];
-    id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
-    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
-    if (!sourceBuffer || !commandBuffer || !blitEncoder) {
-        CVPixelBufferRelease(pixelBuffer);
-        return nil;
+- (CVPixelBufferRef)consumeCompletedEnhancedPixelBuffer {
+    @synchronized (_completedEnhancedPixelBuffers) {
+        NSValue *entry = _completedEnhancedPixelBuffers.firstObject;
+        if (!entry) return nil;
+        [_completedEnhancedPixelBuffers removeObjectAtIndex:0];
+        return (CVPixelBufferRef)entry.pointerValue;
     }
+}
 
-    MTLOrigin origin = MTLOriginMake(0, 0, 0);
-    MTLSize sourceSize = MTLSizeMake(width, height, 1);
+- (void)clearCompletedEnhancedPixelBuffers {
+    @synchronized (_completedEnhancedPixelBuffers) {
+        for (NSValue *entry in _completedEnhancedPixelBuffers) {
+            CVPixelBufferRef pixelBuffer = (CVPixelBufferRef)entry.pointerValue;
+            if (pixelBuffer) CVPixelBufferRelease(pixelBuffer);
+        }
+        [_completedEnhancedPixelBuffers removeAllObjects];
+    }
+}
+
+- (CVPixelBufferRef)newPooledEnhancedPixelBufferWithWidth:(NSUInteger)width height:(NSUInteger)height {
+    if (width < 2 || height < 2) return nil;
+    if (!_enhancedCapturePool || self.enhancedCaptureWidth != width || self.enhancedCaptureHeight != height) {
+        if (_enhancedCapturePool) CVPixelBufferPoolRelease(_enhancedCapturePool);
+        NSDictionary *attributes = @{
+            (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
+            (__bridge NSString *)kCVPixelBufferWidthKey: @(width),
+            (__bridge NSString *)kCVPixelBufferHeightKey: @(height),
+            (__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
+            (__bridge NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
+            (__bridge NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
+            (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{},
+        };
+        CVReturn status = CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, (__bridge CFDictionaryRef)attributes, &_enhancedCapturePool);
+        if (status != kCVReturnSuccess) {
+            _enhancedCapturePool = nil;
+            return nil;
+        }
+        self.enhancedCaptureWidth = width;
+        self.enhancedCaptureHeight = height;
+    }
+    CVPixelBufferRef pixelBuffer = nil;
+    CVReturn status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, _enhancedCapturePool, &pixelBuffer);
+    return status == kCVReturnSuccess ? pixelBuffer : nil;
+}
+
+- (void)enqueueEnhancedPixelBufferCaptureFromTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer {
+    if (!texture || !commandBuffer || !self.device) return;
+    const NSUInteger width = texture.width;
+    const NSUInteger height = texture.height;
+    const NSUInteger sourceBytesPerRow = width * 4;
+    CVPixelBufferRef pixelBuffer = [self newPooledEnhancedPixelBufferWithWidth:width height:height];
+    if (!pixelBuffer) return;
+    id<MTLBuffer> sourceBuffer = [self.device newBufferWithLength:sourceBytesPerRow * height options:MTLResourceStorageModeShared];
+    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+    if (!sourceBuffer || !blitEncoder) {
+        CVPixelBufferRelease(pixelBuffer);
+        return;
+    }
     [blitEncoder copyFromTexture:texture
                      sourceSlice:0
                      sourceLevel:0
-                    sourceOrigin:origin
-                      sourceSize:sourceSize
+                    sourceOrigin:MTLOriginMake(0, 0, 0)
+                      sourceSize:MTLSizeMake(width, height, 1)
                         toBuffer:sourceBuffer
                destinationOffset:0
           destinationBytesPerRow:sourceBytesPerRow
         destinationBytesPerImage:sourceBytesPerRow * height];
     [blitEncoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    if (commandBuffer.status == MTLCommandBufferStatusError) {
-        CVPixelBufferRelease(pixelBuffer);
-        return nil;
-    }
 
-    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-    uint8_t *destination = (uint8_t *)CVPixelBufferGetBaseAddress(pixelBuffer);
-    const size_t destinationBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-    const uint8_t *source = (const uint8_t *)sourceBuffer.contents;
-    for (size_t y = 0; y < height; y++) {
-        std::memcpy(destination + y * destinationBytesPerRow, source + y * sourceBytesPerRow, sourceBytesPerRow);
-    }
-    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
-    return pixelBuffer;
+    NSMutableArray *completedBuffers = _completedEnhancedPixelBuffers;
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
+        if (completedCommandBuffer.status == MTLCommandBufferStatusError) {
+            CVPixelBufferRelease(pixelBuffer);
+            return;
+        }
+        CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+        uint8_t *destination = (uint8_t *)CVPixelBufferGetBaseAddress(pixelBuffer);
+        const size_t destinationBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+        const uint8_t *source = (const uint8_t *)sourceBuffer.contents;
+        for (size_t y = 0; y < height; y++) {
+            std::memcpy(destination + y * destinationBytesPerRow, source + y * sourceBytesPerRow, sourceBytesPerRow);
+        }
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+        @synchronized (completedBuffers) {
+            [completedBuffers addObject:[NSValue valueWithPointer:pixelBuffer]];
+            while (completedBuffers.count > 3) {
+                CVPixelBufferRef staleBuffer = (CVPixelBufferRef)((NSValue *)completedBuffers.firstObject).pointerValue;
+                if (staleBuffer) CVPixelBufferRelease(staleBuffer);
+                [completedBuffers removeObjectAtIndex:0];
+            }
+        }
+    }];
 }
 
 @end
