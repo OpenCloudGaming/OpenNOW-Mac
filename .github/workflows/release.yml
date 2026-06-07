@@ -87,7 +87,7 @@ jobs:
 
       - name: Build release binary
         shell: bash
-        run: make clean all OPTFLAGS="-O3 -DNDEBUG" ARCHFLAGS="-arch arm64"
+        run: make clean release ARCHFLAGS="-arch arm64"
 
       - name: Package app bundle
         shell: bash
@@ -97,7 +97,7 @@ jobs:
           rm -rf dist
           mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Frameworks" "${app_path}/Contents/Resources"
           cp OpenNOW-Info.plist "${app_path}/Contents/Info.plist"
-          cp build/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
+          cp build/release/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
           cp assets/logo.png "${app_path}/Contents/Resources/logo.png"
           cp assets/logo-mac.png "${app_path}/Contents/Resources/logo-mac.png"
           cp assets/logo-mac-Black.png "${app_path}/Contents/Resources/logo-mac-Black.png"
