@@ -308,7 +308,7 @@ TEST_SUITE("streaming/backend")
 TEST_CASE("ResolveStreamWebRTCBackend") {
     OPN::StreamWebRTCBackend backend = OPN::ResolveStreamWebRTCBackend();
     std::string name = OPN::StreamWebRTCBackendName(backend);
-    CHECK_FALSE(name.empty());
+    CHECK(!name.empty());
     CHECK_EQ(name, "libwebrtc");
 }
 
