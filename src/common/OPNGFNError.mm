@@ -200,7 +200,9 @@ static std::string MessageWithDetails(NSString *message, long long code, NSStrin
     return result.UTF8String ? result.UTF8String : "An unknown GeForce NOW error occurred.";
 }
 
-std::string UserFacingGFNErrorMessage(const std::string &errorMessage, const std::string &gameTitle) {
+static std::string UserFacingGFNErrorMessageWithState(const std::string &errorMessage,
+                                                      const std::string &gameTitle,
+                                                      bool sessionWasConnected) {
     if (errorMessage.empty()) return "An unknown error occurred.";
 
     std::string lower = ASCIILower(errorMessage);
@@ -349,10 +351,23 @@ std::string UserFacingGFNErrorMessage(const std::string &errorMessage, const std
     }
 
     if (Contains(lower, "terminal error state") || Contains(lower, "session failed") || Contains(lower, "session ended")) {
-        return MessageWithDetails(@"GeForce NOW ended the session before it was ready. Try launching again.", code, description);
+        NSString *message = sessionWasConnected
+            ? @"GeForce NOW ended the running session. Try launching again."
+            : @"GeForce NOW ended the session before it was ready. Try launching again.";
+        return MessageWithDetails(message, code, description);
     }
 
     return errorMessage;
+}
+
+std::string UserFacingGFNErrorMessage(const std::string &errorMessage, const std::string &gameTitle) {
+    return UserFacingGFNErrorMessageWithState(errorMessage, gameTitle, false);
+}
+
+std::string UserFacingGFNErrorMessage(const std::string &errorMessage,
+                                      const std::string &gameTitle,
+                                      bool sessionWasConnected) {
+    return UserFacingGFNErrorMessageWithState(errorMessage, gameTitle, sessionWasConnected);
 }
 
 }

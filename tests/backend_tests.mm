@@ -1197,6 +1197,15 @@ TEST_CASE("UserFacingGFNErrorMessageMapsActionableStoreAndAdFailures") {
     CHECK(ads.find("ad playback") != std::string::npos);
 }
 
+TEST_CASE("UserFacingGFNErrorMessageDistinguishesRuntimeTerminalSession") {
+    std::string launchMessage = OPN::UserFacingGFNErrorMessage("Session in terminal error state");
+    CHECK(launchMessage.find("before it was ready") != std::string::npos);
+
+    std::string runtimeMessage = OPN::UserFacingGFNErrorMessage("Session in terminal error state", "", true);
+    CHECK(runtimeMessage.find("running session") != std::string::npos);
+    CHECK(runtimeMessage.find("before it was ready") == std::string::npos);
+}
+
 }
 
 namespace game_remediation_tests {

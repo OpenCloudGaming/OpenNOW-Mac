@@ -2906,7 +2906,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
         @"connected_once": @(_connectedOnce),
     });
-    std::string displayError = success ? std::string() : OPN::UserFacingGFNErrorMessage(errorMessage, _gameTitle);
+    std::string displayError = success ? std::string() : OPN::UserFacingGFNErrorMessage(errorMessage, _gameTitle, _connectedOnce);
     if (_session) {
         _session->RequestStats();
         _healthReport.AddStatsSample(_session->GetLatestStats());
