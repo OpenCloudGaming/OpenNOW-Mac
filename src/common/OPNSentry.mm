@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -292,6 +293,27 @@ static sentry_transaction_t *OPNTransactionFromOpaque(void *transaction) {
     return static_cast<sentry_transaction_t *>(transaction);
 }
 
+static NSString *OPNSanitizedURLForTrace(NSURL *url) {
+    if (!url) return @"";
+    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    if (!components) return url.host ?: @"";
+    components.user = nil;
+    components.password = nil;
+    components.query = nil;
+    components.fragment = nil;
+    return components.string ?: url.host ?: @"";
+}
+
+static std::string OPNHTTPTransactionName(NSMutableURLRequest *request, const char *fallbackName) {
+    NSString *method = request.HTTPMethod.length > 0 ? request.HTTPMethod.uppercaseString : @"GET";
+    NSURL *url = request.URL;
+    NSString *host = url.host.length > 0 ? url.host : @"unknown-host";
+    NSString *path = url.path.length > 0 ? url.path : @"/";
+    NSString *name = [NSString stringWithFormat:@"HTTP %@ %@%@", method, host, path];
+    if (name.length == 0 && fallbackName && fallbackName[0] != '\0') name = [NSString stringWithUTF8String:fallbackName];
+    return OPNUtf8String(name);
+}
+
 static void OPNAddSentryTraceHeader(const char *key, const char *value, void *userdata) {
     if (!key || !value || !userdata) return;
     NSMutableURLRequest *request = (__bridge NSMutableURLRequest *)userdata;
@@ -311,6 +333,9 @@ SentryTransaction::SentryTransaction() noexcept
       m_previousTransaction(nullptr) {}
 
 SentryTransaction::SentryTransaction(const char *name, const char *operation) noexcept
+    : SentryTransaction(name, operation, true) {}
+
+SentryTransaction::SentryTransaction(const char *name, const char *operation, bool makeCurrent) noexcept
     : m_transaction(nullptr),
       m_previousTransaction(nullptr) {
 #if OPN_SENTRY_ENABLED
@@ -325,12 +350,15 @@ SentryTransaction::SentryTransaction(const char *name, const char *operation) no
     if (!transaction) return;
 
     m_transaction = transaction;
-    m_previousTransaction = OPNCurrentSentryTransaction;
-    OPNCurrentSentryTransaction = transaction;
-    sentry_set_transaction_object(transaction);
+    if (makeCurrent) {
+        m_previousTransaction = OPNCurrentSentryTransaction;
+        OPNCurrentSentryTransaction = transaction;
+        sentry_set_transaction_object(transaction);
+    }
 #else
     (void)name;
     (void)operation;
+    (void)makeCurrent;
 #endif
 }
 
@@ -364,6 +392,38 @@ void SentryTransaction::SetStatus(bool success) noexcept {
 #endif
 }
 
+void SentryTransaction::SetTag(const char *key, const char *value) noexcept {
+#if OPN_SENTRY_ENABLED
+    sentry_transaction_t *transaction = OPNTransactionFromOpaque(m_transaction);
+    if (!transaction || !key || key[0] == '\0' || !value) return;
+    sentry_transaction_set_tag(transaction, key, value);
+#else
+    (void)key;
+    (void)value;
+#endif
+}
+
+void SentryTransaction::SetData(const char *key, const char *value) noexcept {
+#if OPN_SENTRY_ENABLED
+    sentry_transaction_t *transaction = OPNTransactionFromOpaque(m_transaction);
+    if (!transaction || !key || key[0] == '\0' || !value) return;
+    sentry_transaction_set_data(transaction, key, sentry_value_new_string(value));
+#else
+    (void)key;
+    (void)value;
+#endif
+}
+
+void SentryTransaction::AddTraceHeaders(NSMutableURLRequest *request) const noexcept {
+#if OPN_SENTRY_ENABLED
+    sentry_transaction_t *transaction = OPNTransactionFromOpaque(m_transaction);
+    if (!request || !transaction) return;
+    sentry_transaction_iter_headers(transaction, OPNAddSentryTraceHeader, (__bridge void *)request);
+#else
+    (void)request;
+#endif
+}
+
 void SentryTransaction::Finish() noexcept {
 #if OPN_SENTRY_ENABLED
     sentry_transaction_t *transaction = OPNTransactionFromOpaque(m_transaction);
@@ -374,6 +434,50 @@ void SentryTransaction::Finish() noexcept {
     m_transaction = nullptr;
     m_previousTransaction = nullptr;
     sentry_transaction_finish(transaction);
+#endif
+}
+
+SentryTransactionFinishGuard::SentryTransactionFinishGuard(SentryTransactionPtr transaction) noexcept
+    : m_transaction(std::move(transaction)),
+      m_success(false) {}
+
+SentryTransactionFinishGuard::~SentryTransactionFinishGuard() {
+    Finish(m_success);
+}
+
+void SentryTransactionFinishGuard::SetSuccess(bool success) noexcept {
+    m_success = success;
+}
+
+void SentryTransactionFinishGuard::Finish(bool success) noexcept {
+    if (!m_transaction) return;
+    m_transaction->SetStatus(success);
+    m_transaction->Finish();
+    m_transaction.reset();
+}
+
+SentryTransactionPtr StartSentryTransaction(const char *name, const char *operation) {
+    auto transaction = std::make_shared<SentryTransaction>(name, operation, true);
+    return transaction->IsActive() ? transaction : nullptr;
+}
+
+SentryTransactionPtr TraceSentryHTTPRequest(NSMutableURLRequest *request, const char *name) {
+    if (!request) return nullptr;
+#if OPN_SENTRY_ENABLED
+    std::string transactionName = OPNHTTPTransactionName(request, name);
+    auto transaction = std::make_shared<SentryTransaction>(transactionName.c_str(), "http.client", false);
+    if (!transaction->IsActive()) return nullptr;
+    NSString *method = request.HTTPMethod.length > 0 ? request.HTTPMethod.uppercaseString : @"GET";
+    NSString *url = OPNSanitizedURLForTrace(request.URL);
+    transaction->SetTag("http.method", method.UTF8String ?: "GET");
+    if (request.URL.host.length > 0) transaction->SetTag("server.address", request.URL.host.UTF8String ?: "");
+    if (url.length > 0) transaction->SetData("url.full", url.UTF8String ?: "");
+    transaction->AddTraceHeaders(request);
+    AddSentryTraceHeaders(request);
+    return transaction;
+#else
+    (void)name;
+    return nullptr;
 #endif
 }
 

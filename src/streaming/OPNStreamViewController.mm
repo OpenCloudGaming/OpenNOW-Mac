@@ -911,6 +911,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _remainingPlaytimeAvailable;
     BOOL _playtimeRefreshInFlight;
     BOOL _healthReportStarted;
+    OPN::SentryTransactionPtr _streamLaunchTrace;
     OPN::SessionHealthReportBuilder _healthReport;
 }
 
@@ -1231,10 +1232,16 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (void)finishLaunchMeasurementWithSuccess:(BOOL)success reason:(NSString *)reason {
+    NSString *safeReason = reason.length > 0 ? reason : @"unknown";
+    if (_streamLaunchTrace && ![safeReason isEqualToString:@"stale-resume"]) {
+        _streamLaunchTrace->SetData("reason", safeReason.UTF8String ?: "unknown");
+        _streamLaunchTrace->SetStatus(success);
+        _streamLaunchTrace->Finish();
+        _streamLaunchTrace.reset();
+    }
     if (!self.launchSignpostActive) return;
     self.launchSignpostActive = NO;
     CFTimeInterval elapsedMs = (CACurrentMediaTime() - self.launchStartTime) * 1000.0;
-    NSString *safeReason = reason.length > 0 ? reason : @"unknown";
     os_signpost_interval_end(OPNStreamPerformanceLog(),
                              self.launchSignpostId,
                              "StreamLaunch",
@@ -2277,6 +2284,15 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPNDisplayStreamProfile displayProfile = ResolveDisplayStreamProfile(self.view.window);
     [self setLaunchStep:1 message:recoveringLaunch ? @"Reallocating cloud session..." : @"Allocating cloud session..."];
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetData("stream.resolution", settings.resolution.c_str());
+        _streamLaunchTrace->SetData("stream.codec", settings.codec.c_str());
+        std::string fps = std::to_string(settings.fps);
+        std::string bitrate = std::to_string(settings.maxBitrateMbps);
+        _streamLaunchTrace->SetData("stream.fps", fps.c_str());
+        _streamLaunchTrace->SetData("stream.max_bitrate_mbps", bitrate.c_str());
+        _streamLaunchTrace->SetData("stream.region", streamingBaseUrl.c_str());
+    }
     self.launchStartTime = CACurrentMediaTime();
     self.launchSignpostId = os_signpost_id_generate(OPNStreamPerformanceLog());
     self.launchSignpostActive = YES;
@@ -2471,6 +2487,18 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)startStreamLaunchFlow {
     NSUInteger launchGeneration = ++_launchGeneration;
     BOOL recoveringLaunch = _recovering;
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetStatus(false);
+        _streamLaunchTrace->Finish();
+        _streamLaunchTrace.reset();
+    }
+    _streamLaunchTrace = OPN::StartSentryTransaction(recoveringLaunch ? "Stream recovery launch" : "Stream launch", "stream.launch");
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetTag("recovery", recoveringLaunch ? "true" : "false");
+        _streamLaunchTrace->SetTag("backend", _webRTCBackendName.c_str());
+        _streamLaunchTrace->SetData("app.id", _appId.c_str());
+        _streamLaunchTrace->SetData("game.title", _gameTitle.c_str());
+    }
     if (!_healthReportStarted) {
         _healthReport.Reset(_gameTitle, _appId, _webRTCBackendName, CACurrentMediaTime());
         _healthReportStarted = YES;
@@ -2781,6 +2809,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     _stableResetGeneration++;
     _recovering = NO;
     _idleDeviceInputEnabled = NO;
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetStatus(false);
+        _streamLaunchTrace->Finish();
+        _streamLaunchTrace.reset();
+    }
     [self endLatencyActivity];
     [self cancelRemoteIceGraceTimer];
     [self stopInactivityTimer];

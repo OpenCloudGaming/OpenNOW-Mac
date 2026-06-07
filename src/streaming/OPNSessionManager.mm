@@ -806,73 +806,76 @@ void SessionManager::CreateSession(const std::string &appId,
 
     SessionCreateCallback cb = completion;
     NSString *baseUrlStr = baseUrlString;
+    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch create session");
 
-        [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            if (error || !data) {
-                cb(false, SessionInfo{}, [[error localizedDescription] UTF8String]);
-                return;
-            }
-            NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
-            LogProtocolJSONData(@"session create response", data);
-            if (http.statusCode != 200) {
-                NSString *responseBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
-                NSString *originalErrorString = [NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, responseBody];
-                std::string originalError = originalErrorString.UTF8String ? originalErrorString.UTF8String : "";
-                NSDictionary *errorJson = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-                if (IsSessionLimitExceededResponse(errorJson)) {
-                    std::vector<ActiveSessionEntry> sessions = ActiveSessionEntriesFromArray(ArrayValue(errorJson[@"otherUserSessions"]), baseUrl);
-                    ActiveSessionEntry selectedSession;
-                    if (SelectSessionLimitReuseEntry(sessions, appIdCopy.empty() ? 0 : atoi(appIdCopy.c_str()), selectedSession)) {
-                        OPN::LogInfo(@"[SessionManager] Reusing embedded active session after session limit sessionId=%s appId=%d status=%d server=%s",
-                                     selectedSession.sessionId.c_str(),
-                                     selectedSession.appId,
-                                     selectedSession.status,
-                                     selectedSession.serverIp.c_str());
-                        SessionCreateCallback reuseCompletion = [cb](bool reuseSuccess, const SessionInfo &reuseInfo, const std::string &reuseError) {
-                            cb(reuseSuccess, reuseInfo, reuseError);
-                        };
-                        if (IsReadyActiveSessionStatus(selectedSession.status)) {
-                            std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : appIdCopy;
-                            this->ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settingsCopy, true, reuseCompletion);
-                        } else {
-                            this->pollClaimSession(selectedSession.sessionId, selectedSession.serverIp, deviceId, clientId, NegotiatedStreamProfile{}, reuseCompletion);
-                        }
-                        return;
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
+        if (error || !data) {
+            cb(false, SessionInfo{}, [[error localizedDescription] UTF8String]);
+            return;
+        }
+        NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+        LogProtocolJSONData(@"session create response", data);
+        if (http.statusCode != 200) {
+            NSString *responseBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+            NSString *originalErrorString = [NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, responseBody];
+            std::string originalError = originalErrorString.UTF8String ? originalErrorString.UTF8String : "";
+            NSDictionary *errorJson = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if (IsSessionLimitExceededResponse(errorJson)) {
+                std::vector<ActiveSessionEntry> sessions = ActiveSessionEntriesFromArray(ArrayValue(errorJson[@"otherUserSessions"]), baseUrl);
+                ActiveSessionEntry selectedSession;
+                if (SelectSessionLimitReuseEntry(sessions, appIdCopy.empty() ? 0 : atoi(appIdCopy.c_str()), selectedSession)) {
+                    OPN::LogInfo(@"[SessionManager] Reusing embedded active session after session limit sessionId=%s appId=%d status=%d server=%s",
+                                 selectedSession.sessionId.c_str(),
+                                 selectedSession.appId,
+                                 selectedSession.status,
+                                 selectedSession.serverIp.c_str());
+                    traceGuard.SetSuccess(true);
+                    SessionCreateCallback reuseCompletion = [cb](bool reuseSuccess, const SessionInfo &reuseInfo, const std::string &reuseError) {
+                        cb(reuseSuccess, reuseInfo, reuseError);
+                    };
+                    if (IsReadyActiveSessionStatus(selectedSession.status)) {
+                        std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : appIdCopy;
+                        this->ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settingsCopy, true, reuseCompletion);
+                    } else {
+                        this->pollClaimSession(selectedSession.sessionId, selectedSession.serverIp, deviceId, clientId, NegotiatedStreamProfile{}, reuseCompletion);
                     }
+                    return;
                 }
-                cb(false, SessionInfo{}, originalError);
-                return;
             }
+            cb(false, SessionInfo{}, originalError);
+            return;
+        }
 
-            NSString *createBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-            if (VerboseSessionHttpLoggingEnabled()) {
-                OPN::LogInfo(@"[SessionManager] CreateSession response: %@", createBody);
-            }
+        NSString *createBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        if (VerboseSessionHttpLoggingEnabled()) {
+            OPN::LogInfo(@"[SessionManager] CreateSession response: %@", createBody);
+        }
 
-            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-            if (!json) {
-                cb(false, SessionInfo{}, "Failed to parse session response");
-                return;
-            }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (!json) {
+            cb(false, SessionInfo{}, "Failed to parse session response");
+            return;
+        }
 
-            NSDictionary *reqStatus = DictionaryValue(json[@"requestStatus"]);
-            NSNumber *statusCode = reqStatus[@"statusCode"];
-            if (!statusCode || statusCode.integerValue != 1) {
-                NSString *desc = reqStatus[@"statusDescription"] ?: @"unknown";
-                cb(false, SessionInfo{}, [[NSString stringWithFormat:@"API error %@: %@", statusCode, desc] UTF8String]);
-                return;
-            }
+        NSDictionary *reqStatus = DictionaryValue(json[@"requestStatus"]);
+        NSNumber *statusCode = reqStatus[@"statusCode"];
+        if (!statusCode || statusCode.integerValue != 1) {
+            NSString *desc = reqStatus[@"statusDescription"] ?: @"unknown";
+            cb(false, SessionInfo{}, [[NSString stringWithFormat:@"API error %@: %@", statusCode, desc] UTF8String]);
+            return;
+        }
 
-            NSDictionary *session = DictionaryValue(json[@"session"]);
-            if (!session) {
-                cb(false, SessionInfo{}, "No session in response");
-                return;
-            }
+        NSDictionary *session = DictionaryValue(json[@"session"]);
+        if (!session) {
+            cb(false, SessionInfo{}, "No session in response");
+            return;
+        }
 
-            SessionInfo info;
-            NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
-            info.sessionId = [sid UTF8String] ?: "";
-            StorePersistedActiveSessionIdValue(info.sessionId);
+        SessionInfo info;
+        NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
+        info.sessionId = [sid UTF8String] ?: "";
+        StorePersistedActiveSessionIdValue(info.sessionId);
         info.status = [session[@"status"] intValue];
         info.zone = [baseUrlStr UTF8String];
         info.streamingBaseUrl = [baseUrlStr UTF8String];
@@ -880,10 +883,6 @@ void SessionManager::CreateSession(const std::string &appId,
         info.gpuType = [gpu UTF8String] ?: "";
 
         ParseQueueProgress(session, info);
-
-
-
-
 
         NSArray *connections = ArrayValue(session[@"connectionInfo"]);
         for (NSDictionary *conn in connections) {
@@ -894,7 +893,6 @@ void SessionManager::CreateSession(const std::string &appId,
             NSString *resourcePath = [conn[@"resourcePath"] isKindOfClass:[NSString class]] ? conn[@"resourcePath"] : nil;
 
             if (usage == 14) {
-
                 NSString *serverIp = nil;
                 if (IsUsableEndpointHost(ip)) {
                     serverIp = ip;
@@ -928,7 +926,6 @@ void SessionManager::CreateSession(const std::string &appId,
                 }
             }
 
-
             if (usage == 2) {
                 NSString *mediaIp = nil;
                 if (IsUsableEndpointHost(ip)) {
@@ -945,7 +942,6 @@ void SessionManager::CreateSession(const std::string &appId,
                 }
             }
         }
-
 
         NSArray *iceServers = ArrayValue(session[@"iceServers"]);
         for (NSDictionary *ice in iceServers) {
@@ -968,7 +964,6 @@ void SessionManager::CreateSession(const std::string &appId,
         ParseRemainingPlaytime(session, info);
         MergeAndStoreAdState(info);
 
-
         NSDictionary *ctrlInfo = DictionaryValue(session[@"sessionControlInfo"]);
         NSString *ctrlIp = [ctrlInfo[@"ip"] isKindOfClass:[NSString class]] ? ctrlInfo[@"ip"] : nil;
         if (ctrlIp.length > 0 && info.serverIp.empty()) {
@@ -979,6 +974,7 @@ void SessionManager::CreateSession(const std::string &appId,
         info.clientId = clientId;
         info.deviceId = deviceId;
 
+        traceGuard.SetSuccess(true);
         cb(true, info, "");
     }] resume];
 }
@@ -1012,7 +1008,9 @@ void SessionManager::PollSession(const std::string &sessionId,
     [req setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
 
     SessionPollCallback cb = completion;
+    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch poll session");
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) {
             cb(false, SessionInfo{}, [[error localizedDescription] UTF8String]);
             return;
@@ -1151,6 +1149,7 @@ void SessionManager::PollSession(const std::string &sessionId,
 
         LogPollSessionSummary(http.statusCode, info);
 
+        traceGuard.SetSuccess(true);
         cb(true, info, "");
     }] resume];
 }
@@ -1171,8 +1170,10 @@ void SessionManager::StopSession(const std::string &sessionId,
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"DELETE";
     ApplyCommonCloudMatchHeaders(req, m_accessToken, StableCloudmatchDeviceId(), true);
+    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch stop session");
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) {
             completion(false, [[error localizedDescription] UTF8String]);
             return;
@@ -1183,6 +1184,7 @@ void SessionManager::StopSession(const std::string &sessionId,
             completion(false, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, bodyStr] UTF8String]);
             return;
         }
+        traceGuard.SetSuccess(true);
         completion(true, "");
     }] resume];
 }
@@ -1235,7 +1237,9 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
 
     auto cb = completion;
     SessionInfo sessionCopy = session;
+    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch report session ad");
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) {
             cb(false, SessionInfo{}, error ? [[error localizedDescription] UTF8String] : "No ad update response");
             return;
@@ -1263,6 +1267,7 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
             ParseSessionAds(sessionJson, updated.adState);
             this->MergeAndStoreAdState(updated);
         }
+        traceGuard.SetSuccess(true);
         cb(true, updated, "");
     }] resume];
 }
@@ -1293,7 +1298,9 @@ void SessionManager::GetActiveSessions(std::function<void(bool, const std::vecto
     [req setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
 
     auto cb = completion;
+    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch active sessions");
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) {
             cb(false, {}, [[error localizedDescription] UTF8String]);
             return;
@@ -1319,12 +1326,14 @@ void SessionManager::GetActiveSessions(std::function<void(bool, const std::vecto
 
         NSArray *sessions = ArrayValue(json[@"sessions"]);
         if (![sessions isKindOfClass:[NSArray class]]) {
+            traceGuard.SetSuccess(true);
             cb(true, {}, "");
             return;
         }
 
         std::vector<ActiveSessionEntry> result = ActiveSessionEntriesFromArray(sessions, base);
 
+        traceGuard.SetSuccess(true);
         cb(true, result, "");
     }] resume];
 }
@@ -1482,9 +1491,12 @@ void SessionManager::pollClaimSession(std::string sessionId,
         [req setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
         [req setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
         [req setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
+        auto trace = TraceSentryHTTPRequest(req, "Cloudmatch poll claim session");
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            SentryTransactionFinishGuard traceGuard(trace);
             (void)response;
+            if (!error && data) traceGuard.SetSuccess(true);
             poller(data, error);
         }] resume];
     };
@@ -1609,8 +1621,10 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     [validationReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
 
     SessionCreateCallback cb = completion;
+    auto validationTrace = TraceSentryHTTPRequest(validationReq, "Cloudmatch validate session claim");
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:validationReq completionHandler:^(NSData *vData, NSURLResponse *vResp, NSError *vErr) {
+        SentryTransactionFinishGuard validationTraceGuard(validationTrace);
         NSHTTPURLResponse *validationHttp = (NSHTTPURLResponse *)vResp;
         if (vErr) {
             OPN::LogError(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
@@ -1628,6 +1642,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"STALE_ACTIVE_SESSION: validation HTTP %ld: %@", (long)validationHttp.statusCode, validationBody] UTF8String]);
                 return;
             }
+            validationTraceGuard.SetSuccess(true);
         } else {
             OPN::LogError(@"[ClaimSession] Validation request returned no data and no error");
         }
@@ -1666,8 +1681,10 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         [claimReq setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
         [claimReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
         claimReq.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
+        auto claimTrace = TraceSentryHTTPRequest(claimReq, "Cloudmatch claim session");
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:claimReq completionHandler:^(NSData *cData, NSURLResponse *cResp, NSError *cErr) {
+            SentryTransactionFinishGuard claimTraceGuard(claimTrace);
             if (cErr || !cData) {
                 NSString *errDesc = cErr ? [cErr localizedDescription] : @"No data";
                 OPN::LogError(@"[ClaimSession] PUT failed: %@", errDesc);
@@ -1691,6 +1708,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim HTTP %ld: %@", (long)cHttp.statusCode, cBody] UTF8String]);
                 return;
             }
+            claimTraceGuard.SetSuccess(true);
 
             NSDictionary *cJson = [NSJSONSerialization JSONObjectWithData:cData options:0 error:nil];
             NSDictionary *cReqStatus = DictionaryValue(cJson[@"requestStatus"]);

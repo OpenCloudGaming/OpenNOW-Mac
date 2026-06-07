@@ -1,6 +1,7 @@
 #pragma once
 
 #import <Foundation/Foundation.h>
+#include <memory>
 
 namespace OPN {
 
@@ -8,6 +9,7 @@ class SentryTransaction final {
 public:
     SentryTransaction() noexcept;
     SentryTransaction(const char *name, const char *operation) noexcept;
+    SentryTransaction(const char *name, const char *operation, bool makeCurrent) noexcept;
     ~SentryTransaction();
 
     SentryTransaction(const SentryTransaction &) = delete;
@@ -17,12 +19,36 @@ public:
 
     bool IsActive() const noexcept;
     void SetStatus(bool success) noexcept;
+    void SetTag(const char *key, const char *value) noexcept;
+    void SetData(const char *key, const char *value) noexcept;
+    void AddTraceHeaders(NSMutableURLRequest *request) const noexcept;
     void Finish() noexcept;
 
 private:
     void *m_transaction;
     void *m_previousTransaction;
 };
+
+using SentryTransactionPtr = std::shared_ptr<SentryTransaction>;
+
+class SentryTransactionFinishGuard final {
+public:
+    explicit SentryTransactionFinishGuard(SentryTransactionPtr transaction) noexcept;
+    ~SentryTransactionFinishGuard();
+
+    SentryTransactionFinishGuard(const SentryTransactionFinishGuard &) = delete;
+    SentryTransactionFinishGuard &operator=(const SentryTransactionFinishGuard &) = delete;
+
+    void SetSuccess(bool success) noexcept;
+    void Finish(bool success) noexcept;
+
+private:
+    SentryTransactionPtr m_transaction;
+    bool m_success;
+};
+
+SentryTransactionPtr StartSentryTransaction(const char *name, const char *operation);
+SentryTransactionPtr TraceSentryHTTPRequest(NSMutableURLRequest *request, const char *name);
 
 void InitializeSentry();
 void CloseSentry();

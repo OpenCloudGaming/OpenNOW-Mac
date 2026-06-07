@@ -3700,11 +3700,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     NSURL *url = [NSURL URLWithString:avatarURLString];
     if (!url) return;
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    auto trace = OPN::TraceSentryHTTPRequest(request, "Account avatar image");
     __weak __typeof__(self) weakSelf = self;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
+        OPN::SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) return;
         NSImage *image = [[NSImage alloc] initWithData:data];
         if (!image) return;
+        traceGuard.SetSuccess(true);
         dispatch_async(dispatch_get_main_queue(), ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || !strongSelf.rootView) return;

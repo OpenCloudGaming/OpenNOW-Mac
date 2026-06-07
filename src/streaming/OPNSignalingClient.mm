@@ -158,12 +158,16 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
     int generation = ++m_connectionGeneration;
     NSURLSession *session = nil;
     _OPNWebSocketDelegate *delegate = nil;
+    __block SentryTransactionPtr connectTrace;
 
 
     void (^onOpen)(NSString *) = ^(NSString *proto) {
         dispatch_async(dispatch_get_main_queue(), ^{
             (void)proto;
             if (!IsCurrentGeneration(generation)) return;
+            SentryTransactionFinishGuard traceGuard(connectTrace);
+            traceGuard.Finish(true);
+            connectTrace.reset();
 
             m_didOpen = true;
 
@@ -195,6 +199,9 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
                 }
                 return;
             }
+            SentryTransactionFinishGuard traceGuard(connectTrace);
+            traceGuard.Finish(false);
+            connectTrace.reset();
             NSString *message = SignalingConnectionErrorDescription(error, url);
             OPN::LogError(@"[Signaling] %@", message);
             std::string msg = message.UTF8String ?: "Signaling connect failed";
@@ -232,6 +239,7 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
     [req setValue:@"https://play.geforcenow.com" forHTTPHeaderField:@"Origin"];
     [req setValue:@"Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36"
         forHTTPHeaderField:@"User-Agent"];
+    connectTrace = TraceSentryHTTPRequest(req, "Signaling WebSocket connect");
 
     NSURLSessionWebSocketTask *task = [session webSocketTaskWithRequest:req];
     m_webSocketTask = (__bridge_retained void *)task;
@@ -247,6 +255,9 @@ void SignalingClient::Connect(SignalingConnectCallback onConnect) {
             NSURLSessionWebSocketTask *t = (__bridge NSURLSessionWebSocketTask *)m_webSocketTask;
             [t cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure reason:nil];
             Disconnect();
+            SentryTransactionFinishGuard traceGuard(connectTrace);
+            traceGuard.Finish(false);
+            connectTrace.reset();
             onConnect(false, "Signaling connection timeout");
         }
     });

@@ -1,4 +1,5 @@
 #import "OPNGitHubUpdater.h"
+#include "OPNSentry.h"
 
 static NSString *const OPNGitHubUpdaterErrorDomain = @"OpenNOW.GitHubUpdater";
 
@@ -67,8 +68,10 @@ typedef NS_ENUM(NSInteger, OPNGitHubUpdaterErrorCode) {
     request.HTTPMethod = @"GET";
     [request setValue:@"application/vnd.github+json" forHTTPHeaderField:@"Accept"];
     [request setValue:@"OpenNOW-Updater" forHTTPHeaderField:@"User-Agent"];
+    auto trace = OPN::TraceSentryHTTPRequest(request, "GitHub update check");
 
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        OPN::SentryTransactionFinishGuard traceGuard(trace);
         if (error) {
             [self completeUpdateCheck:completion release:nil error:error];
             return;
@@ -92,9 +95,11 @@ typedef NS_ENUM(NSInteger, OPNGitHubUpdaterErrorCode) {
             return;
         }
         if ([self compareVersion:release.version toVersion:self.currentVersion] <= 0) {
+            traceGuard.SetSuccess(true);
             [self completeUpdateCheck:completion release:nil error:nil];
             return;
         }
+        traceGuard.SetSuccess(true);
         [self completeUpdateCheck:completion release:release error:nil];
     }];
     [task resume];
@@ -113,8 +118,10 @@ typedef NS_ENUM(NSInteger, OPNGitHubUpdaterErrorCode) {
         return;
     }
 
-    NSURLRequest *request = [NSURLRequest requestWithURL:downloadURL];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:downloadURL];
+    auto trace = OPN::TraceSentryHTTPRequest(request, "GitHub update download");
     NSURLSessionDownloadTask *task = [self.session downloadTaskWithRequest:request completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+        OPN::SentryTransactionFinishGuard traceGuard(trace);
         if (error || !location) {
             [self completeInstall:completion launched:NO error:error ?: [self errorWithCode:OPNGitHubUpdaterErrorDownloadFailed description:@"The update archive could not be downloaded."]];
             return;
@@ -124,6 +131,7 @@ typedef NS_ENUM(NSInteger, OPNGitHubUpdaterErrorCode) {
             [self completeInstall:completion launched:NO error:[self errorWithCode:OPNGitHubUpdaterErrorDownloadFailed description:@"GitHub did not return the update archive."]];
             return;
         }
+        traceGuard.SetSuccess(true);
         [self stageAndLaunchInstallerForDownloadedArchive:location release:release currentBundleURL:bundleURL completion:completion];
     }];
     [task resume];

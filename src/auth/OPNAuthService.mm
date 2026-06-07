@@ -170,11 +170,13 @@ void AuthService::FetchStarFleetUserInfo(const std::string &accessToken,
         @"Accept": @"application/json",
         @"User-Agent": [NSString stringWithUTF8String:kDefaultUserAgent],
     });
+    auto trace = TraceSentryHTTPRequest(req, "Auth user info");
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
+                SentryTransactionFinishGuard traceGuard(trace);
                 NSString *message = nil;
                 if (!ValidateHTTPResponse(response, data, error, 200, &message)) {
                     completion(false, nil, [message UTF8String]);
@@ -186,6 +188,7 @@ void AuthService::FetchStarFleetUserInfo(const std::string &accessToken,
                     completion(false, nil, [(message ?: @"Invalid JSON response") UTF8String]);
                     return;
                 }
+                traceGuard.SetSuccess(true);
                 completion(true, info, "");
             });
         }];
@@ -204,12 +207,14 @@ void AuthService::FetchClientToken(const std::string &accessToken,
         @"Accept": @"application/json, text/plain, */*",
         @"User-Agent": [NSString stringWithUTF8String:kDefaultUserAgent],
     });
+    auto trace = TraceSentryHTTPRequest(req, "Auth client token");
     OPN::LogInfo(@"[OpenNOW] FetchClientToken: accessToken length=%zu", accessToken.size());
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
+                SentryTransactionFinishGuard traceGuard(trace);
                 NSString *message = nil;
                 if (!ValidateHTTPResponse(response, data, error, 200, &message)) {
                     completion(false, "", [message UTF8String]);
@@ -227,6 +232,7 @@ void AuthService::FetchClientToken(const std::string &accessToken,
                     return;
                 }
                 NSString *expiresIn = json[@"expires_in"] ? [json[@"expires_in"] stringValue] : @"";
+                traceGuard.SetSuccess(true);
                 completion(true, [ct UTF8String], [expiresIn UTF8String]);
             });
         }];
@@ -388,10 +394,12 @@ void AuthService::RefreshSession(AuthCallback completion, bool forceRefresh) {
             FormURLEncode(savedSession.refreshToken).c_str(),
             FormURLEncode(kOAuthClientId).c_str()];
         NSMutableURLRequest *req = CreateTokenRequest(bodyStr);
+        auto trace = TraceSentryHTTPRequest(req, "Auth refresh token grant");
         NSURLSessionDataTask *task = [[NSURLSession sharedSession]
             dataTaskWithRequest:req
             completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
                 dispatch_async(dispatch_get_main_queue(), ^{
+                    SentryTransactionFinishGuard traceGuard(trace);
                     if (error) {
                         completionCopy(false, savedSession, [[error localizedDescription] UTF8String]);
                         return;
@@ -405,6 +413,7 @@ void AuthService::RefreshSession(AuthCallback completion, bool forceRefresh) {
                     }
 
                     AuthSession refreshed = MergeRefreshedSession(savedSession, AuthService::ParseOAuthSession(json));
+                    traceGuard.SetSuccess(true);
                     CompleteRefreshWithSession(refreshed, completionCopy);
                 });
             }];
@@ -425,10 +434,12 @@ void AuthService::RefreshSession(AuthCallback completion, bool forceRefresh) {
         FormURLEncode(kOAuthClientId).c_str(),
         FormURLEncode(session.userId).c_str()];
     NSMutableURLRequest *req = CreateTokenRequest(bodyStr);
+    auto trace = TraceSentryHTTPRequest(req, "Auth client token grant");
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
+                SentryTransactionFinishGuard traceGuard(trace);
                 NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
                 NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
                 if (error || http.statusCode != 200 || !json) {
@@ -437,6 +448,7 @@ void AuthService::RefreshSession(AuthCallback completion, bool forceRefresh) {
                 }
 
                 AuthSession refreshed = MergeRefreshedSession(savedSession, AuthService::ParseOAuthSession(json));
+                traceGuard.SetSuccess(true);
                 CompleteRefreshWithSession(refreshed, completionCopy);
             });
         }];
@@ -464,16 +476,19 @@ void AuthService::ServerLogout(const std::string &idToken,
 
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.timeoutInterval = 10.0;
+    auto trace = TraceSentryHTTPRequest(req, "Auth logout");
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *, NSURLResponse *, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
+                SentryTransactionFinishGuard traceGuard(trace);
                 ClearSession();
                 if (error) {
                     completion(false, [[error localizedDescription] UTF8String]);
                     return;
                 }
+                traceGuard.SetSuccess(true);
                 completion(true, "");
             });
         }];
@@ -691,10 +706,12 @@ void AuthService::doOAuthTokenExchange(NSString *authCode, NSString *codeVerifie
         FormURLEncode(StdStringFromNSString(redirectUri)).c_str(),
         FormURLEncode(StdStringFromNSString(codeVerifier)).c_str()];
     req.HTTPBody = [bodyStr dataUsingEncoding:NSUTF8StringEncoding];
+    auto trace = TraceSentryHTTPRequest(req, "Auth OAuth token exchange");
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            SentryTransactionFinishGuard traceGuard(trace);
             if (error) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(false, AuthSession{}, [[error localizedDescription] UTF8String]);
@@ -714,6 +731,7 @@ void AuthService::doOAuthTokenExchange(NSString *authCode, NSString *codeVerifie
                 return;
             }
 
+            traceGuard.SetSuccess(true);
             dispatch_async(dispatch_get_main_queue(), ^{
                 AuthSession session = ParseOAuthSession(json);
                 if (!providerIdpIdCopy.empty()) session.idpId = providerIdpIdCopy;
