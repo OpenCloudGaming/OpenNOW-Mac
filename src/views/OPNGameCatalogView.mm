@@ -936,16 +936,39 @@ static NSArray<NSString *> *OPNStoreLogoCandidatesForGame(const OPN::GameInfo &g
     return urls;
 }
 
+static NSCache<NSString *, NSImage *> *OPNStoreLogoCropCache(void) {
+    static NSCache<NSString *, NSImage *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 120;
+        cache.totalCostLimit = 32 * 1024 * 1024;
+    });
+    return cache;
+}
+
 static NSImage *OPNStoreVisibleLogoImage(NSImage *image) {
     if (!image || image.size.width <= 0.0 || image.size.height <= 0.0) return image;
+    NSString *cacheKey = [NSString stringWithFormat:@"%p:%.0fx%.0f", (__bridge void *)image, image.size.width, image.size.height];
+    NSImage *cached = [OPNStoreLogoCropCache() objectForKey:cacheKey];
+    if (cached) return cached;
     NSRect proposedRect = NSMakeRect(0.0, 0.0, image.size.width, image.size.height);
     CGImageRef source = [image CGImageForProposedRect:&proposedRect context:nil hints:nil];
     if (!source) return image;
 
-    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithCGImage:source];
-    NSInteger width = bitmap.pixelsWide;
-    NSInteger height = bitmap.pixelsHigh;
+    NSInteger width = (NSInteger)CGImageGetWidth(source);
+    NSInteger height = (NSInteger)CGImageGetHeight(source);
     if (width <= 0 || height <= 0) return image;
+    const size_t bytesPerPixel = 4;
+    const size_t bytesPerRow = (size_t)width * bytesPerPixel;
+    std::vector<unsigned char> pixels((size_t)height * bytesPerRow, 0);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGContextRef context = CGBitmapContextCreate(pixels.data(), (size_t)width, (size_t)height, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) return image;
+    CGContextDrawImage(context, CGRectMake(0.0, 0.0, (CGFloat)width, (CGFloat)height), source);
+    CGContextRelease(context);
 
     NSInteger minX = width;
     NSInteger minY = height;
@@ -953,8 +976,8 @@ static NSImage *OPNStoreVisibleLogoImage(NSImage *image) {
     NSInteger maxY = -1;
     for (NSInteger y = 0; y < height; y++) {
         for (NSInteger x = 0; x < width; x++) {
-            NSColor *color = [bitmap colorAtX:x y:y];
-            if (color.alphaComponent <= 0.04) continue;
+            size_t offset = (size_t)y * bytesPerRow + (size_t)x * bytesPerPixel;
+            if (pixels[offset + 3] <= 10) continue;
             minX = MIN(minX, x);
             minY = MIN(minY, y);
             maxX = MAX(maxX, x);
@@ -978,7 +1001,9 @@ static NSImage *OPNStoreVisibleLogoImage(NSImage *image) {
     if (!cropped) return image;
     NSImage *croppedImage = [[NSImage alloc] initWithCGImage:cropped size:NSMakeSize((CGFloat)cropWidth, (CGFloat)cropHeight)];
     CGImageRelease(cropped);
-    return croppedImage ?: image;
+    NSImage *result = croppedImage ?: image;
+    [OPNStoreLogoCropCache() setObject:result forKey:cacheKey cost:(NSUInteger)MAX((NSInteger)1, cropWidth * cropHeight * 4)];
+    return result;
 }
 
 static NSRect OPNStoreHeroVisibleArtworkRectForImage(NSImage *image, NSRect bounds) {
@@ -1384,6 +1409,7 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 - (void)activate;
 - (void)cycleSelectedVariant;
 - (void)ensureImageLoaded;
+- (void)cancelImageLoad;
 @end
 
 @interface OPNStoreGameTile ()
@@ -1410,6 +1436,7 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @property (nonatomic, assign) NSPoint lastDragLocationInWindow;
 @property (nonatomic, assign) BOOL imageLoadRequested;
 @property (nonatomic, assign) NSUInteger imageLoadGeneration;
+@property (nonatomic, strong) OpnImageLoadToken *imageLoadToken;
 - (void)updateStoreIconSelection;
 - (void)saveCurrentStreamSettingsAsProfilePressed:(id)sender;
 - (void)togglePerGameStreamProfilePressed:(id)sender;
@@ -1417,6 +1444,10 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @end
 
 @implementation OPNStoreGameTile
+
+- (void)dealloc {
+    [self.imageLoadToken cancel];
+}
 
 - (void)setSelectedVariantIndex:(int)selectedVariantIndex {
     if (!_gameData.variants.empty()) {
@@ -1858,6 +1889,14 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
     [self loadImage];
 }
 
+- (void)cancelImageLoad {
+    if (!self.imageLoadToken) return;
+    [self.imageLoadToken cancel];
+    self.imageLoadToken = nil;
+    self.imageLoadRequested = self.imageView.image != nil && self.imageView.image != OPNStoreFallbackArtworkImage();
+    self.imageLoadGeneration++;
+}
+
 - (void)loadImageFromCandidates:(NSArray<NSString *> *)urlStrings index:(NSUInteger)index {
     NSUInteger generation = self.imageLoadGeneration;
     if (index >= urlStrings.count) {
@@ -1873,12 +1912,13 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
     __weak __typeof__(self) weakSelf = self;
     CGFloat scale = self.window.screen.backingScaleFactor > 0.0 ? self.window.screen.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
     CGFloat maxPixelDimension = MAX(NSWidth(self.bounds), NSHeight(self.bounds)) * MAX(1.0, scale) * (self.prominent ? 1.6 : 1.25);
-    OpnLoadImageForURL(urlString, maxPixelDimension, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
+    self.imageLoadToken = OpnLoadImageForURLCancellable(urlString, maxPixelDimension, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
         (void)resolvedURL;
         (void)data;
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         if (generation != strongSelf.imageLoadGeneration) return;
+        strongSelf.imageLoadToken = nil;
         if (!image) {
             [strongSelf loadImageFromCandidates:urlStrings index:index + 1];
             return;
@@ -1958,6 +1998,8 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @property (nonatomic, assign) NSInteger currentHeroIndex;
 @property (nonatomic, assign) NSInteger focusedRowIndex;
 @property (nonatomic, assign) NSInteger focusedColumnIndex;
+@property (nonatomic, weak) OPNStoreGameTile *focusedTile;
+@property (nonatomic, weak) OPNStoreGameTile *hoveredTile;
 @property (nonatomic, assign) CGFloat lastLayoutWidth;
 @property (nonatomic, assign) CGFloat lastLayoutHeight;
 @property (nonatomic, assign) BOOL renderStoreScheduled;
@@ -2301,15 +2343,41 @@ using namespace OPN;
 
 - (BOOL)mergeKnownStoreMetadataIntoPanels {
     if (_panels.empty()) return NO;
+    std::unordered_map<std::string, const GameInfo *> byUuid;
+    std::unordered_map<std::string, const GameInfo *> byId;
+    std::unordered_map<std::string, const GameInfo *> byLaunchId;
+    std::unordered_map<std::string, const GameInfo *> byTitle;
+    auto addIndexedGame = [](std::unordered_map<std::string, const GameInfo *> &index, const std::string &key, const GameInfo &game) {
+        if (!key.empty() && index.find(key) == index.end()) index.emplace(key, &game);
+    };
+    auto normalizedTitle = [](const std::string &title) -> std::string {
+        NSString *normalized = OPNStoreSearchNormalizedString(OPNStoreString(title, @""));
+        return normalized.length > 0 ? std::string(normalized.UTF8String ?: "") : std::string();
+    };
+    for (const GameInfo &knownGame : _libraryGames) {
+        addIndexedGame(byUuid, knownGame.uuid, knownGame);
+        addIndexedGame(byId, knownGame.id, knownGame);
+        addIndexedGame(byLaunchId, knownGame.launchAppId, knownGame);
+        addIndexedGame(byTitle, normalizedTitle(knownGame.title), knownGame);
+    }
+    auto findKnownGame = [&](const GameInfo &storeGame) -> const GameInfo * {
+        auto lookup = [](const std::unordered_map<std::string, const GameInfo *> &index, const std::string &key) -> const GameInfo * {
+            if (key.empty()) return nullptr;
+            auto it = index.find(key);
+            return it == index.end() ? nullptr : it->second;
+        };
+        if (const GameInfo *game = lookup(byUuid, storeGame.uuid)) return game;
+        if (const GameInfo *game = lookup(byId, storeGame.id)) return game;
+        if (const GameInfo *game = lookup(byLaunchId, storeGame.launchAppId)) return game;
+        return lookup(byTitle, normalizedTitle(storeGame.title));
+    };
     BOOL changed = NO;
     for (PanelResult &panel : _panels) {
         for (PanelSection &section : panel.sections) {
             for (GameInfo &storeGame : section.games) {
                 if (self.hasLibraryState && OPNStoreClearGameOwnershipMetadata(storeGame)) changed = YES;
-                for (const GameInfo &knownGame : _libraryGames) {
-                    if (!OPNStoreGameMatchesLibraryGame(storeGame, knownGame)) continue;
-                    if (OPNStoreMergeGameStoreMetadata(storeGame, knownGame)) changed = YES;
-                }
+                const GameInfo *knownGame = findKnownGame(storeGame);
+                if (knownGame && OPNStoreMergeGameStoreMetadata(storeGame, *knownGame)) changed = YES;
             }
         }
     }
@@ -2508,8 +2576,9 @@ using namespace OPN;
     NSInteger preloadGeneration = self.initialHeroPreloadGeneration;
     __weak __typeof__(self) weakSelf = self;
     __block BOOL completed = NO;
-    __block NSInteger remainingLoads = (NSInteger)candidates.count;
-    for (NSString *candidateURL in candidates) {
+    NSArray<NSString *> *activeCandidates = [candidates subarrayWithRange:NSMakeRange(0, MIN((NSUInteger)2, candidates.count))];
+    __block NSInteger remainingLoads = (NSInteger)activeCandidates.count;
+    for (NSString *candidateURL in activeCandidates) {
         OpnImageLoadToken *token = OpnLoadImageForURLCancellable(candidateURL, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
             (void)resolvedURL;
             (void)data;
@@ -2979,6 +3048,7 @@ using namespace OPN;
         rowLayout.hintLabel.hidden = !shouldMount;
         rowLayout.scrollView.hidden = !shouldMount;
         if (shouldMount) [self updateImagePreloadingForRowLayout:rowLayout];
+        else for (OPNStoreGameTile *card in rowLayout.cards) [card cancelImageLoad];
     }
 }
 
@@ -3001,6 +3071,7 @@ using namespace OPN;
     NSRect preloadRect = NSInsetRect(visibleRect, -horizontalBuffer, 0.0);
     for (OPNStoreGameTile *card in rowLayout.cards) {
         if (NSIntersectsRect(card.frame, preloadRect)) [card ensureImageLoaded];
+        else [card cancelImageLoad];
     }
 }
 
@@ -3024,14 +3095,23 @@ using namespace OPN;
 
 - (void)loadDesktopHeroLogoForGame:(const GameInfo &)game generation:(NSInteger)generation animated:(BOOL)animated {
     NSArray<NSString *> *candidates = OPNStoreLogoCandidatesForGame(game);
+    __weak __typeof__(self) weakSelf = self;
+    void (^applyLogoImage)(NSImage *) = ^(NSImage *image) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NSImage *visibleLogo = OPNStoreVisibleLogoImage(image);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || generation != strongSelf.desktopHeroGeneration || !strongSelf.desktopHeroContainer.superview) return;
+                [strongSelf setDesktopHeroLogoImage:visibleLogo animated:animated];
+            });
+        });
+    };
     NSImage *cachedLogo = OpnCachedImageFromCandidates(candidates, 720.0, nil);
     if (cachedLogo) {
-        NSImage *visibleLogo = OPNStoreVisibleLogoImage(cachedLogo);
-        [self setDesktopHeroLogoImage:visibleLogo animated:animated];
+        applyLogoImage(cachedLogo);
         return;
     }
 
-    __weak __typeof__(self) weakSelf = self;
     OpnImageLoadToken *token = OpnLoadImageFromCandidatesCancellable(candidates, 720.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
         (void)resolvedURL;
         (void)data;
@@ -3044,8 +3124,7 @@ using namespace OPN;
             [strongSelf setDesktopHeroLogoImage:nil animated:animated];
             return;
         }
-        NSImage *visibleLogo = OPNStoreVisibleLogoImage(image);
-        [strongSelf setDesktopHeroLogoImage:visibleLogo animated:animated];
+        applyLogoImage(image);
     });
     [self trackHeroImageLoadToken:token];
 }
@@ -3094,8 +3173,9 @@ using namespace OPN;
     __weak OPNHeroArtworkView *weakView = view;
     __weak __typeof__(self) weakSelf = self;
     __block BOOL completed = NO;
-    __block NSInteger remainingLoads = (NSInteger)remainingCandidates.count;
-    for (NSString *candidateURL in remainingCandidates) {
+    NSArray<NSString *> *activeCandidates = [remainingCandidates subarrayWithRange:NSMakeRange(0, MIN((NSUInteger)2, remainingCandidates.count))];
+    __block NSInteger remainingLoads = (NSInteger)activeCandidates.count;
+    for (NSString *candidateURL in activeCandidates) {
         OpnImageLoadToken *token = OpnLoadImageForURLCancellable(candidateURL, 1600.0, ^(NSImage *image, NSString *resolvedURL, NSData *data) {
             (void)resolvedURL;
             (void)data;
@@ -3235,7 +3315,9 @@ using namespace OPN;
         NSInteger hoverColumnIndex = column;
         card.onHover = ^{
             __typeof__(self) strongSelf = weakSelf;
+            OPNStoreGameTile *strongCard = weakCard;
             if (!strongSelf) return;
+            strongSelf.hoveredTile = strongCard;
             if (strongSelf.focusedRowIndex == hoverRowIndex && strongSelf.focusedColumnIndex == hoverColumnIndex) return;
             strongSelf.focusedRowIndex = hoverRowIndex;
             strongSelf.focusedColumnIndex = hoverColumnIndex;
@@ -3270,12 +3352,14 @@ using namespace OPN;
     NSMutableArray<OPNStoreGameTile *> *focusedRow = self.rowCards[(NSUInteger)self.focusedRowIndex];
     if (focusedRow.count == 0) return;
     self.focusedColumnIndex = MAX(0, MIN((NSInteger)focusedRow.count - 1, self.focusedColumnIndex));
-    for (NSUInteger rowIndex = 0; rowIndex < self.rowCards.count; rowIndex++) {
-        NSMutableArray<OPNStoreGameTile *> *row = self.rowCards[rowIndex];
-        for (NSUInteger columnIndex = 0; columnIndex < row.count; columnIndex++) {
-            [row[columnIndex] setStoreFocused:(NSInteger)rowIndex == self.focusedRowIndex && (NSInteger)columnIndex == self.focusedColumnIndex];
-        }
+    OPNStoreGameTile *nextFocusedTile = focusedRow[(NSUInteger)self.focusedColumnIndex];
+    if (self.focusedTile == nextFocusedTile) {
+        [nextFocusedTile setStoreFocused:YES];
+        return;
     }
+    [self.focusedTile setStoreFocused:NO];
+    [nextFocusedTile setStoreFocused:YES];
+    self.focusedTile = nextFocusedTile;
 }
 
 - (void)scrollFocusedTileIntoView {
@@ -3365,11 +3449,7 @@ using namespace OPN;
     if (notification.object != self.scrollView.contentView) return;
     [self updateRowVirtualizationForVisibleBounds];
     [self updateImagePreloadingForMountedRows];
-    for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
-        for (OPNStoreGameTile *tile in row) {
-            [tile resetMouseTrackingIfOutside];
-        }
-    }
+    [self.hoveredTile resetMouseTrackingIfOutside];
 }
 
 - (void)rowScrollViewBoundsDidChange:(NSNotification *)notification {

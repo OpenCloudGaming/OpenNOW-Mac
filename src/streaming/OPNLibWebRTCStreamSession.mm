@@ -1367,6 +1367,10 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 @property(nonatomic, assign) CFTimeInterval lastDiagnosticsUpdateTime;
 @property(nonatomic, assign) BOOL drawScheduled;
 @property(nonatomic, assign) BOOL drawableSizeDirty;
+@property(nonatomic, strong) OPNVideoEnhancementSettings *enhancementSettings;
+@property(nonatomic, strong) OPNVideoEnhancementResult *enhancementResult;
+@property(nonatomic, assign) NSInteger enhancementOverBudgetCount;
+@property(nonatomic, assign) NSInteger adaptiveEnhancementPenalty;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 - (void)updateDrawableSizeForCurrentBackingScale;
 - (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale;
@@ -1415,6 +1419,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         _lastDiagnosticsUpdateTime = 0.0;
         _drawScheduled = NO;
         _drawableSizeDirty = YES;
+        _enhancementOverBudgetCount = 0;
+        _adaptiveEnhancementPenalty = 0;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
 
@@ -1422,7 +1428,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         _metalView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         _metalView.framebufferOnly = NO;
         _metalView.autoResizeDrawable = NO;
-        _metalView.paused = YES;
+        _metalView.paused = NO;
         _metalView.enableSetNeedsDisplay = NO;
         _metalView.preferredFramesPerSecond = _targetFps;
         _metalView.delegate = self;
@@ -1439,6 +1445,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         if (_metalView.device) {
             _commandQueue = [_metalView.device newCommandQueue];
             _enhancementRenderer = [[OPNVideoEnhancementRenderer alloc] initWithDevice:_metalView.device commandQueue:_commandQueue];
+            _enhancementSettings = [[OPNVideoEnhancementSettings alloc] init];
+            _enhancementResult = [[OPNVideoEnhancementResult alloc] init];
         }
     }
     return self;
@@ -1521,15 +1529,9 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         self.owner->HandleVideoFrame((__bridge void *)frame);
     }
     if (!frame) return;
-    BOOL shouldScheduleDraw = NO;
     @synchronized (self) {
         self.videoFrame = frame;
         self.frameSerial++;
-        shouldScheduleDraw = !self.drawScheduled;
-        self.drawScheduled = YES;
-    }
-    if (shouldScheduleDraw) {
-        [self scheduleDraw];
     }
 }
 
@@ -1578,9 +1580,14 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     int enhancementDenoise = 0;
     int enhancementTargetHeight = 2160;
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
+    if (self.adaptiveEnhancementPenalty > 0) {
+        if (enhancementMode == 4) enhancementMode = [self.enhancementRenderer isMetalFXAvailable] ? 3 : 2;
+        else if (enhancementMode == 3 && ![self.enhancementRenderer isMetalFXAvailable]) enhancementMode = 2;
+        else if (enhancementMode == 2 && self.adaptiveEnhancementPenalty > 1) enhancementMode = 0;
+    }
     if (self.drawableSizeDirty) [self updateDrawableSizeForCurrentBackingScale];
     if (enhancementMode > 0) {
-        OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
+        OPNVideoEnhancementSettings *settings = self.enhancementSettings ?: [[OPNVideoEnhancementSettings alloc] init];
         if (enhancementMode == 4) {
             settings.configuredTier = OPNVideoEnhancementTierTemporal;
         } else if (enhancementMode == 3) {
@@ -1596,7 +1603,10 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         settings.drawableSize = self.metalView.drawableSize;
         settings.targetFrameTimeMs = 1000.0 / (double)std::max(1, self.targetFps);
         settings.captureEnhancedPixelBuffer = self.owner ? self.owner->WantsEnhancedVideoFrames() : NO;
-        OPNVideoEnhancementResult *result = [[OPNVideoEnhancementResult alloc] init];
+        settings.lowCostSpatial = self.adaptiveEnhancementPenalty > 0;
+        CFTimeInterval diagnosticsNow = CACurrentMediaTime();
+        settings.emitDiagnostics = self.lastDiagnosticsUpdateTime <= 0.0 || diagnosticsNow - self.lastDiagnosticsUpdateTime >= 1.0;
+        OPNVideoEnhancementResult *result = self.enhancementResult ?: [[OPNVideoEnhancementResult alloc] init];
         if ([self.enhancementRenderer renderFrame:frame toView:self.metalView settings:settings result:result]) {
             pixelFormat = result.pixelFormat ?: @"unknown";
             renderMode = result.renderMode ?: @"Upscaler";
@@ -1612,6 +1622,16 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
             enhancementFrameTimeMs = result.frameTimeMs;
             self.enhancementDroppedFrameCount = result.droppedFrames;
             self.lastDrawnFrameSerial = drawSerial;
+            if (enhancementFrameTimeMs > settings.targetFrameTimeMs * 1.15) {
+                self.enhancementOverBudgetCount++;
+                if (self.enhancementOverBudgetCount >= 10) {
+                    self.adaptiveEnhancementPenalty = MIN((NSInteger)2, self.adaptiveEnhancementPenalty + 1);
+                    self.enhancementOverBudgetCount = 0;
+                }
+            } else if (enhancementFrameTimeMs > 0.0 && enhancementFrameTimeMs < settings.targetFrameTimeMs * 0.72) {
+                self.enhancementOverBudgetCount = 0;
+                if (self.adaptiveEnhancementPenalty > 0) self.adaptiveEnhancementPenalty--;
+            }
             if (result.enhancedPixelBuffer && self.owner) {
                 self.owner->HandleEnhancedVideoFrame(result.enhancedPixelBuffer);
                 CVPixelBufferRelease(result.enhancedPixelBuffer);
@@ -1701,7 +1721,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         if (fallback) *fallback = [NSString stringWithFormat:@"%@ rejected MTKView", className];
         return nil;
     }
-    self.metalView.paused = YES;
+    self.metalView.paused = NO;
     self.metalView.enableSetNeedsDisplay = NO;
     self.metalView.preferredFramesPerSecond = self.targetFps;
     return renderer;
@@ -2909,7 +2929,8 @@ void LibWebRTCStreamSession::RequestStats() {
 void LibWebRTCStreamSession::StartStatsPolling() {
 #if defined(OPN_HAVE_LIBWEBRTC)
     if (m_statsTimer) return;
-    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_queue_t statsQueue = m_statsQueue ? (__bridge dispatch_queue_t)m_statsQueue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, statsQueue);
     if (!timer) return;
 
     m_statsTimer = (__bridge_retained void *)timer;

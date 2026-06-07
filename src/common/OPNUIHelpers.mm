@@ -3,6 +3,7 @@
 #include "games/OPNGameDataCache.h"
 #include "OPNSentry.h"
 #import <ImageIO/ImageIO.h>
+#import <QuartzCore/QuartzCore.h>
 #include <cmath>
 
 NSString *const OPNInterfacePreferencesDidChangeNotification = @"OpenNOW.InterfacePreferencesDidChange";
@@ -342,40 +343,51 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     }
 }
 
+@interface OPNHeroArtworkView ()
+@property (nonatomic, strong) CALayer *imageLayer;
+@property (nonatomic, strong) CAGradientLayer *fadeLayer;
+@end
+
 @implementation OPNHeroArtworkView
+
+- (instancetype)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.wantsLayer = YES;
+        self.layer.backgroundColor = OpnColor(OPN::kBackground, 1.0).CGColor;
+        _imageLayer = [CALayer layer];
+        _imageLayer.contentsGravity = kCAGravityResizeAspectFill;
+        _imageLayer.masksToBounds = YES;
+        [self.layer addSublayer:_imageLayer];
+        _fadeLayer = [CAGradientLayer layer];
+        _fadeLayer.colors = @[(id)OpnColor(OPN::kBackground, 0.0).CGColor,
+                              (id)OpnColor(OPN::kBackground, 0.28).CGColor,
+                              (id)OpnColor(OPN::kBackground, 1.0).CGColor];
+        _fadeLayer.locations = @[@0.0, @0.46, @1.0];
+        _fadeLayer.startPoint = CGPointMake(0.5, 0.0);
+        _fadeLayer.endPoint = CGPointMake(0.5, 1.0);
+        [self.layer addSublayer:_fadeLayer];
+    }
+    return self;
+}
 
 - (BOOL)isFlipped { return YES; }
 
 - (void)setImage:(NSImage *)image {
     _image = image;
-    [self setNeedsDisplay:YES];
+    NSRect proposedRect = image ? NSMakeRect(0.0, 0.0, image.size.width, image.size.height) : NSZeroRect;
+    CGImageRef cgImage = image ? [image CGImageForProposedRect:&proposedRect context:nil hints:nil] : nil;
+    self.imageLayer.contents = cgImage ? (__bridge id)cgImage : nil;
+}
+
+- (void)layout {
+    [super layout];
+    self.imageLayer.frame = self.bounds;
+    self.fadeLayer.frame = self.bounds;
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
-    [OpnColor(OPN::kBackground, 1.0) setFill];
-    NSRectFill(self.bounds);
-    if (!self.image || self.image.size.width <= 0.0 || self.image.size.height <= 0.0) return;
-
-    CGFloat scale = MAX(NSWidth(self.bounds) / self.image.size.width, NSHeight(self.bounds) / self.image.size.height);
-    CGFloat targetWidth = floor(self.image.size.width * scale);
-    CGFloat drawnHeight = floor(self.image.size.height * scale);
-    NSRect target = NSMakeRect(floor(NSMidX(self.bounds) - targetWidth * 0.5),
-                               floor(NSMidY(self.bounds) - drawnHeight * 0.5),
-                               targetWidth,
-                               drawnHeight);
-
-    [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
-
-    CGFloat gradientHeight = MAX(1.0, NSHeight(self.bounds));
-    NSInteger steps = MAX((NSInteger)1, (NSInteger)ceil(gradientHeight / 2.0));
-    for (NSInteger step = 0; step < steps; step++) {
-        CGFloat progress = steps <= 1 ? 1.0 : (CGFloat)step / (CGFloat)(steps - 1);
-        CGFloat alpha = 1.00 * pow(progress, 0.5);
-        [OpnColor(OPN::kBackground, alpha) setFill];
-        NSRectFillUsingOperation(NSMakeRect(NSMinX(self.bounds), NSMinY(self.bounds) + (CGFloat)step * 2.0, NSWidth(self.bounds), 2.0), NSCompositingOperationSourceOver);
-    }
-
 }
 
 @end

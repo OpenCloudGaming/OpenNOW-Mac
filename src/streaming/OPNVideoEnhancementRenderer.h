@@ -23,6 +23,8 @@ typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
 @property(nonatomic, assign) CGSize drawableSize;
 @property(nonatomic, assign) double targetFrameTimeMs;
 @property(nonatomic, assign) BOOL captureEnhancedPixelBuffer;
+@property(nonatomic, assign) BOOL lowCostSpatial;
+@property(nonatomic, assign) BOOL emitDiagnostics;
 @end
 
 @interface OPNVideoEnhancementResult : NSObject

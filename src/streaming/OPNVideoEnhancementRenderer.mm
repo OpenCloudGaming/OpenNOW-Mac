@@ -103,6 +103,9 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @implementation OPNVideoTextureSource {
     CVMetalTextureCacheRef _textureCache;
     id<MTLDevice> _device;
+    id<MTLTexture> _i420LumaTexture;
+    id<MTLTexture> _i420ChromaUTexture;
+    id<MTLTexture> _i420ChromaVTexture;
 }
 
 - (instancetype)initWithDevice:(id<MTLDevice>)device {
@@ -143,9 +146,9 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         textureFrame.cropRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
         textureFrame.contentWidth = (NSUInteger)i420.width;
         textureFrame.contentHeight = (NSUInteger)i420.height;
-        textureFrame.lumaTexture = [self newPlaneTextureWithWidth:(NSUInteger)i420.width height:(NSUInteger)i420.height bytes:i420.dataY bytesPerRow:(NSUInteger)i420.strideY label:@"OpenNOW I420 Y"];
-        textureFrame.chromaUTexture = [self newPlaneTextureWithWidth:(NSUInteger)i420.chromaWidth height:(NSUInteger)i420.chromaHeight bytes:i420.dataU bytesPerRow:(NSUInteger)i420.strideU label:@"OpenNOW I420 U"];
-        textureFrame.chromaVTexture = [self newPlaneTextureWithWidth:(NSUInteger)i420.chromaWidth height:(NSUInteger)i420.chromaHeight bytes:i420.dataV bytesPerRow:(NSUInteger)i420.strideV label:@"OpenNOW I420 V"];
+        textureFrame.lumaTexture = [self reusablePlaneTexture:&_i420LumaTexture width:(NSUInteger)i420.width height:(NSUInteger)i420.height bytes:i420.dataY bytesPerRow:(NSUInteger)i420.strideY label:@"OpenNOW I420 Y"];
+        textureFrame.chromaUTexture = [self reusablePlaneTexture:&_i420ChromaUTexture width:(NSUInteger)i420.chromaWidth height:(NSUInteger)i420.chromaHeight bytes:i420.dataU bytesPerRow:(NSUInteger)i420.strideU label:@"OpenNOW I420 U"];
+        textureFrame.chromaVTexture = [self reusablePlaneTexture:&_i420ChromaVTexture width:(NSUInteger)i420.chromaWidth height:(NSUInteger)i420.chromaHeight bytes:i420.dataV bytesPerRow:(NSUInteger)i420.strideV label:@"OpenNOW I420 V"];
         if (!textureFrame.lumaTexture || !textureFrame.chromaUTexture || !textureFrame.chromaVTexture) {
             if (frameSource) *frameSource = NSStringFromClass([buffer class]) ?: @"unknown";
             if (pixelFormat) *pixelFormat = @"I420";
@@ -271,6 +274,26 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     return texture;
 }
 
+- (id<MTLTexture>)reusablePlaneTexture:(id<MTLTexture> __strong *)texture width:(NSUInteger)width height:(NSUInteger)height bytes:(const uint8_t *)bytes bytesPerRow:(NSUInteger)bytesPerRow label:(NSString *)label {
+    if (!texture || !_device || !bytes || width == 0 || height == 0 || bytesPerRow == 0) return nil;
+    id<MTLTexture> existing = *texture;
+    if (!existing || existing.width != width || existing.height != height || existing.pixelFormat != MTLPixelFormatR8Unorm) {
+        MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                                                                               width:width
+                                                                                              height:height
+                                                                                           mipmapped:NO];
+        descriptor.usage = MTLTextureUsageShaderRead;
+        descriptor.storageMode = MTLStorageModeShared;
+        existing = [_device newTextureWithDescriptor:descriptor];
+        existing.label = label;
+        *texture = existing;
+    }
+    if (!existing) return nil;
+    MTLRegion region = MTLRegionMake2D(0, 0, width, height);
+    [existing replaceRegion:region mipmapLevel:0 withBytes:bytes bytesPerRow:bytesPerRow];
+    return existing;
+}
+
 @end
 
 @interface OPNMetalFXUpscaler : NSObject
@@ -380,6 +403,9 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialRGBPipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialNV12Pipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> spatialI420Pipeline;
+@property(nonatomic, strong) id<MTLRenderPipelineState> fastSpatialRGBPipeline;
+@property(nonatomic, strong) id<MTLRenderPipelineState> fastSpatialNV12Pipeline;
+@property(nonatomic, strong) id<MTLRenderPipelineState> fastSpatialI420Pipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> temporalMotionPipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> temporalCompositePipeline;
 @property(nonatomic, strong) id<MTLRenderPipelineState> temporalPresentPipeline;
@@ -415,6 +441,9 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         _spatialRGBPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_rgb"];
         _spatialNV12Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_nv12"];
         _spatialI420Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_i420"];
+        _fastSpatialRGBPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_fast_rgb"];
+        _fastSpatialNV12Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_fast_nv12"];
+        _fastSpatialI420Pipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_fast_i420"];
         _temporalMotionPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_temporal_motion" pixelFormat:MTLPixelFormatRGBA16Float];
         _temporalCompositePipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_temporal_composite"];
         _temporalPresentPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_present_rgb"];
@@ -548,6 +577,21 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "    float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);\n"
     "    float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
+    "}\n"
+    "fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {\n"
+    "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
+    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
+    "    return float4(sourceTexture.sample(s, uv).rgb, 1.0);\n"
+    "}\n"
+    "fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {\n"
+    "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
+    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
+    "    return float4(opn_nv12_rgb(yTexture, uvTexture, s, uv), 1.0);\n"
+    "}\n"
+    "fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {\n"
+    "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
+    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
+    "    return float4(opn_i420_rgb(yTexture, uTexture, vTexture, s, uv), 1.0);\n"
     "}\n"
     "fragment float4 opn_video_temporal_motion(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant int &hasHistory [[buffer(1)]], constant float2 &jitterDelta [[buffer(2)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
@@ -686,8 +730,8 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     result.configuredTier = OPNEnhancementTierName(settings.configuredTier);
     result.activeTier = @"Native fallback";
     result.tierFallbackReason = @"";
-    result.sourceResolution = OPNEnhancementResolutionString(settings.sourceSize);
-    result.drawableResolution = OPNEnhancementResolutionString(settings.drawableSize);
+    result.sourceResolution = settings.emitDiagnostics ? OPNEnhancementResolutionString(settings.sourceSize) : @"";
+    result.drawableResolution = settings.emitDiagnostics ? OPNEnhancementResolutionString(settings.drawableSize) : @"";
     result.diagnostics = @"";
     result.frameTimeMs = -1.0;
     result.droppedFrames = self.droppedFrames;
@@ -860,13 +904,15 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 
     result.renderPath = @"OPNMetalTemporalUpscaler";
     result.activeTier = @"Temporal reconstruction";
-    result.diagnostics = [NSString stringWithFormat:@"motion %dx%d half-res; jitter 4-sample %.2f,%.2f px; history %@; resets %llu; rejection scene/disocclusion/edge-aware",
-                          (int)motionWidth,
-                          (int)motionHeight,
-                          jitterPixelsX,
-                          jitterPixelsY,
-                          hadHistoryBeforeFrame ? @"reused" : @"priming",
-                          (unsigned long long)self.temporalHistoryResetCount];
+    if (settings.emitDiagnostics) {
+        result.diagnostics = [NSString stringWithFormat:@"motion %dx%d half-res; jitter 4-sample %.2f,%.2f px; history %@; resets %llu; rejection scene/disocclusion/edge-aware",
+                              (int)motionWidth,
+                              (int)motionHeight,
+                              jitterPixelsX,
+                              jitterPixelsY,
+                              hadHistoryBeforeFrame ? @"reused" : @"priming",
+                              (unsigned long long)self.temporalHistoryResetCount];
+    }
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
     if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
@@ -991,7 +1037,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     if (settings.captureEnhancedPixelBuffer) [commandBuffer waitUntilCompleted];
 
     result.renderPath = @"OPNMetalSpatialUpscaler";
-    result.activeTier = @"Metal Spatial";
+    result.activeTier = settings.lowCostSpatial ? @"Metal Spatial Low Cost" : @"Metal Spatial";
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
     if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
@@ -1020,13 +1066,13 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     }
 
     id<MTLTexture> primaryTexture = textureFrame.rgbTexture;
-    id<MTLRenderPipelineState> pipeline = self.spatialRGBPipeline;
+    id<MTLRenderPipelineState> pipeline = settings.lowCostSpatial && self.fastSpatialRGBPipeline ? self.fastSpatialRGBPipeline : self.spatialRGBPipeline;
     if (textureFrame.kind == OPNVideoTextureFrameKindNV12) {
         primaryTexture = textureFrame.lumaTexture;
-        pipeline = self.spatialNV12Pipeline;
+        pipeline = settings.lowCostSpatial && self.fastSpatialNV12Pipeline ? self.fastSpatialNV12Pipeline : self.spatialNV12Pipeline;
     } else if (textureFrame.kind == OPNVideoTextureFrameKindI420) {
         primaryTexture = textureFrame.lumaTexture;
-        pipeline = self.spatialI420Pipeline;
+        pipeline = settings.lowCostSpatial && self.fastSpatialI420Pipeline ? self.fastSpatialI420Pipeline : self.spatialI420Pipeline;
     }
     if (!primaryTexture || !pipeline) {
         result.fallbackReason = @"spatial scaler missing texture or pipeline";
@@ -1066,6 +1112,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [encoder setFragmentBytes:activeJitter length:sizeof(float) * 2 atIndex:4];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
+    if (settings.lowCostSpatial) result.activeTier = @"Metal Spatial Low Cost";
     return YES;
 }
 
