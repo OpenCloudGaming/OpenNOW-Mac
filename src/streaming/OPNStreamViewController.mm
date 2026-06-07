@@ -1937,7 +1937,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded) return;
     _streamEnded = YES;
-    [self requestRemoteStopForActiveSession];
+    OPN::LogInfo(@"[StreamVC] Application terminating; preserving remote session for resume");
     [self finishLaunchMeasurementWithSuccess:YES reason:@"application terminating"];
     [self cleanup];
 }
