@@ -12,6 +12,12 @@ typedef NS_OPTIONS(uint16_t, OPNCloudmatchGamepadButton) {
     OPNCloudmatchGamepadButtonY = 1u << 4,
 };
 
+static const unsigned short kKeyCodeReturn = 36;
+static const unsigned short kKeyCodeEnter = 76;
+static const unsigned short kKeyCodeEscape = 53;
+static const unsigned short kKeyCodeDownArrow = 125;
+static const unsigned short kKeyCodeUpArrow = 126;
+
 static uint16_t OPNCloudmatchGamepadButtons(void) {
     NSArray<GCController *> *controllers = [GCController controllers];
     if (controllers.count == 0) return 0;
@@ -445,17 +451,17 @@ static uint16_t OPNCloudmatchGamepadButtons(void) {
 
 - (void)keyDown:(NSEvent *)event {
     switch (event.keyCode) {
-        case 36:
-        case 76:
+        case kKeyCodeReturn:
+        case kKeyCodeEnter:
             [self confirmClicked:nil];
             return;
-        case 53:
+        case kKeyCodeEscape:
             [self cancelClicked:nil];
             return;
-        case 125:
+        case kKeyCodeDownArrow:
             [self moveSelectionBy:1];
             return;
-        case 126:
+        case kKeyCodeUpArrow:
             [self moveSelectionBy:-1];
             return;
         default:
