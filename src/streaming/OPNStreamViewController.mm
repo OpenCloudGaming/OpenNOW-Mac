@@ -2170,6 +2170,12 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     [self setLaunchStep:2 message:@"Connecting to game server..."];
 
     OPN::SessionInfo activeSessionInfo = sessionInfo;
+    if (activeSessionInfo.sessionId.empty()) {
+        OPN::LogError(@"[StreamVC] Cannot connect with empty sessionId");
+        [self endStreamWithSuccess:NO errorMessage:"Session response is missing session id"];
+        return;
+    }
+
     OPN::StreamSettings negotiatedSettings = OPNSettingsWithNegotiatedProfile(settings, activeSessionInfo);
     _healthReport.SetSessionInfo(activeSessionInfo);
     _healthReport.SetFinalSettings(negotiatedSettings);

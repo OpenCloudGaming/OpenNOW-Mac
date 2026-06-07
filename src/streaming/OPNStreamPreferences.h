@@ -248,6 +248,8 @@ void SaveStreamSuppressInputWhenInactive(bool enabled);
 void SaveStreamDirectMouseInputEnabled(bool enabled);
 void SaveStreamGameVolume(double volume);
 void SaveStreamMicrophoneVolume(double volume);
+bool LoadStreamMicrophoneShortcutEnabled();
+void SaveStreamMicrophoneShortcutEnabled(bool enabled);
 void SaveStreamMicrophoneMode(const std::string &mode);
 void SaveStreamMicrophoneDeviceId(const std::string &deviceId);
 void SaveStreamMicrophonePushToTalkKeyCode(int keyCode);

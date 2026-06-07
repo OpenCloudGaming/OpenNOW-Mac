@@ -1,13 +1,33 @@
 APP_NAME := OpenNOW
 BUILD_DIR := build
-OBJ_DIR := $(BUILD_DIR)/obj
+CONFIG ?= Debug
+CONFIG_LC := $(shell printf '%s' '$(CONFIG)' | tr '[:upper:]' '[:lower:]')
+SUPPORTED_CONFIG := $(filter $(CONFIG_LC),debug release)
+ifeq ($(SUPPORTED_CONFIG),)
+$(error CONFIG must be Debug or Release)
+endif
+
+JOBS ?= $(shell sysctl -n hw.logicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || printf 4)
+ifeq ($(filter release,$(MAKECMDGOALS)),)
+ifeq ($(filter -j%,$(MAKEFLAGS)),)
+ifneq ($(strip $(JOBS)),)
+MAKEFLAGS += -j$(JOBS)
+endif
+endif
+endif
+
+OBJ_DIR := $(BUILD_DIR)/obj/$(CONFIG_LC)
 SRC := $(shell find src -name '*.mm' | sort)
-BIN := $(BUILD_DIR)/$(APP_NAME)
+BIN := $(BUILD_DIR)/$(CONFIG_LC)/$(APP_NAME)
 INFO_PLIST := OpenNOW-Info.plist
 
 CXX := clang++
 ARCHFLAGS ?= -arch arm64
+ifeq ($(CONFIG_LC),release)
 OPTFLAGS ?= -O3 -DNDEBUG
+else
+OPTFLAGS ?= -O0 -g -DDEBUG=1
+endif
 WEBRTC_FRAMEWORK_DIR ?= third_party/webrtc-official
 ifneq ($(strip $(WEBRTC_FRAMEWORK_DIR)),)
 WEBRTC_FLAT_FRAMEWORK := $(WEBRTC_FRAMEWORK_DIR)/WebRTC.framework
@@ -42,14 +62,17 @@ LDFLAGS := $(ARCHFLAGS) -framework Cocoa -framework QuartzCore -framework Metal 
 TEST_SRC := tests/backend_tests.mm
 TEST_HEADERS := tests/doctest.h
 TEST_DEPS := src/streaming/OPNStreamBackend.mm src/streaming/OPNStreamPreferences.mm src/streaming/OPNSessionAdPresentation.mm src/streaming/OPNSessionParsing.mm src/streaming/OPNSessionManager.mm src/auth/OPNAuthService.mm src/games/OPNGameDataCache.mm src/games/OPNGameService.mm src/common/OPNLocale.mm src/common/OPNDiscordPresence.mm src/common/OPNSessionHealthReport.mm src/common/OPNGameRemediation.mm src/common/OPNGFNError.mm src/common/OPNProtocolDebug.mm src/common/OPNHTTP.mm src/common/OPNDeviceIdentity.mm src/common/OPNSentry.mm
-TEST_BIN := $(BUILD_DIR)/backend_tests
+TEST_BIN := $(BUILD_DIR)/$(CONFIG_LC)/backend_tests
 APP_OBJS := $(patsubst %.mm,$(OBJ_DIR)/%.o,$(SRC))
 TEST_OBJS := $(patsubst %.mm,$(OBJ_DIR)/%.o,$(TEST_SRC) $(TEST_DEPS))
 DEPS := $(sort $(APP_OBJS:.o=.d) $(TEST_OBJS:.o=.d))
 
-.PHONY: all run clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
+.PHONY: all release run clean test qt-configure qt-build qt-run qt-clean libwebrtc-sdk qt-configure-webrtc qt-build-webrtc qt-run-webrtc
 
 all: $(BIN)
+
+release:
+	$(MAKE) -j$(JOBS) CONFIG=Release all
 
 
 $(OBJ_DIR)/%.o: %.mm
@@ -59,11 +82,11 @@ $(OBJ_DIR)/%.o: %.mm
 $(OBJ_DIR)/tests/backend_tests.o: $(TEST_HEADERS)
 
 $(BIN): $(APP_OBJS) $(INFO_PLIST)
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(dir $@)
 	$(CXX) $(APP_OBJS) $(LDFLAGS) -o $(BIN)
 
 $(TEST_BIN): $(TEST_OBJS) $(INFO_PLIST)
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(dir $@)
 	$(CXX) $(TEST_OBJS) $(LDFLAGS) -Wl,-undefined,dynamic_lookup -framework Foundation -o $(TEST_BIN)
 
 test: $(TEST_BIN)

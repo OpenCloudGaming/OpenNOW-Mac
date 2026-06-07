@@ -159,6 +159,7 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _sidebarOpen = NO;
         OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
         _directMouseInputEnabled = profile.directMouseInput ? YES : NO;
+        _microphoneShortcutEnabled = OPN::LoadStreamMicrophoneShortcutEnabled() ? YES : NO;
         _gameVolume = profile.gameVolume;
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
@@ -500,7 +501,6 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     _pushToTalkModifierMask = OPNPushToTalkNormalizedModifierMask(keyCode, modifierMask);
     _pushToTalkPrimaryKeyDown = NO;
     _pushToTalkMicEnabled = NO;
-    _microphoneShortcutEnabled = YES;
     [self applyMicrophoneShortcutState];
 }
 
@@ -537,6 +537,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     } else {
         [self applyMicrophoneShortcutState];
     }
+    OPN::SaveStreamMicrophoneShortcutEnabled(_microphoneShortcutEnabled ? true : false);
     OPN::LogInfo(@"[StreamView] Microphone shortcut toggled %s", _microphoneShortcutEnabled ? "on" : "off");
     return YES;
 }
@@ -848,7 +849,7 @@ static NSView *OPNSidebarSeparator(CGFloat x, CGFloat y, CGFloat width) {
     if (_microphoneMode == "push-to-talk") {
         mode = self.microphoneActiveOverlay.hidden ? @"PTT muted" : @"PTT live";
     } else if (_microphoneMode == "voice-activity") {
-        mode = self.microphoneActiveOverlay.hidden ? @"Open mic" : @"Open mic live";
+        mode = _microphoneShortcutEnabled ? @"Open mic live" : @"Open mic muted";
     }
     self.sidebarMicStatusValue.stringValue = mode;
 }
