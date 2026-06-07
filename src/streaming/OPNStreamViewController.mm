@@ -1227,8 +1227,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
             OPN::SessionInfo updatedInfoCopy = updatedInfo;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!callbackSelf || callbackSelf->_streamEnded || !callbackSelf.loadingView) return;
-                callbackSelf->_activeSessionInfo = updatedInfoCopy;
-                callbackSelf->_hasActiveSessionInfo = YES;
+                if (!updatedInfoCopy.sessionId.empty()) {
+                    callbackSelf->_activeSessionInfo = updatedInfoCopy;
+                    callbackSelf->_hasActiveSessionInfo = YES;
+                }
                 [callbackSelf.loadingView updateAdState:updatedInfoCopy.adState];
             });
         });
