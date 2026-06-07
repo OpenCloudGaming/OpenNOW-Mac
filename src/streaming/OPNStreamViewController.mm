@@ -540,7 +540,7 @@ static BOOL OPNResumeErrorShouldCreateFreshSession(const std::string &error) {
     return error.find("STALE_ACTIVE_SESSION") != std::string::npos ||
            error.find("Claim HTTP 400") != std::string::npos ||
            error.find("\"statusCode\":0") != std::string::npos ||
-           error.find("UNKNOWN 8A8C0000") != std::string::npos;
+           error.find("8A8C0000") != std::string::npos;
 }
 
 static NSTimeInterval OPNRecoveryDelayForAttempt(NSInteger attempt) {
