@@ -16,6 +16,7 @@
 
 #include "../src/streaming/OPNStreamBackend.h"
 #include "../src/streaming/OPNSessionAdPresentation.h"
+#include "../src/streaming/OPNSessionManager.h"
 #include "../src/streaming/OPNStreamPreferences.h"
 #include "../src/auth/OPNAuthService.h"
 #include "../src/common/OPNAuthTypes.h"
@@ -2296,6 +2297,41 @@ TEST_CASE("game-cache/catalog freshness metadata") {
     CHECK(cache.LoadCatalog(emptyKey, emptyLoaded));
     CHECK(emptyLoaded.games.empty());
     CHECK_EQ(emptyLoaded.searchQuery, emptySaved.searchQuery);
+}
+
+TEST_CASE("game-service launch aborts on active-session auth failure") {
+    int activeSessionRequests = 0;
+    int createSessionRequests = 0;
+    ScopedURLMock mock([&](NSURLRequest *request) {
+        CHECK([request.URL.host isEqualToString:@"prod.cloudmatchbeta.nvidiagrid.net"]);
+        CHECK([request.URL.path isEqualToString:@"/v2/session"]);
+        if ([request.HTTPMethod isEqualToString:@"POST"]) {
+            ++createSessionRequests;
+            return MockHTTPResponse{500, [@"unexpected create" dataUsingEncoding:NSUTF8StringEncoding], nil};
+        }
+        ++activeSessionRequests;
+        return MockHTTPResponse{401, [NSData data], nil};
+    });
+
+    OPN::GameService::Shared().SetAccessToken("expired-token");
+    OPN::GameService::Shared().SetStreamingBaseUrl("");
+    OPN::StreamSettings settings;
+    bool done = false;
+    bool success = true;
+    std::string error;
+    OPN::GameService::Shared().LaunchGame("107070708", "Forza Horizon 6", settings, false,
+        [](const std::string &, const OPN::SessionInfo &) {},
+        [&](bool ok, const OPN::SessionInfo &, const std::string &, const std::string &message) {
+            success = ok;
+            error = message;
+            done = true;
+        });
+
+    CHECK(WaitUntil([&] { return done; }));
+    CHECK(!success);
+    CHECK_EQ(error, "HTTP 401");
+    CHECK_EQ(activeSessionRequests, 1);
+    CHECK_EQ(createSessionRequests, 0);
 }
 
 TEST_CASE("game-cache/catalog definitions freshness") {

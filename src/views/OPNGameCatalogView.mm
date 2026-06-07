@@ -24,10 +24,13 @@ static const CGFloat kStoreHeroMinContentInset = 30.0;
 static const CGFloat kStoreHeroMaxContentInset = 106.0;
 static const CGFloat kStoreHeroContentInsetRatio = 0.055;
 static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
+static const CGFloat kStoreHeroMaxHeight = 520.0;
 static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
+static const CGFloat kStoreHeroFirstRowSpacing = 85.0;
 static const CGFloat kStoreButtonHintPillHeight = 40.0;
 static const CGFloat kStoreButtonHintPillBottomInset = 18.0;
+static const CGFloat kStoreTopFoldNextRowInset = 0.0;
 static const CGFloat kStoreSearchPanelMinWidth = 300.0;
 static const CGFloat kStoreSearchPanelMaxWidth = 420.0;
 static const CGFloat kStoreRailInertiaMinimumVelocity = 8.0;
@@ -37,7 +40,16 @@ static const NSTimeInterval kStoreSearchDebounceInterval = 0.18;
 
 static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
     CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
-    return floor(MAX(1.0, width) / MAX(1.0, safeAspect));
+    CGFloat aspectHeight = MAX(1.0, width) / MAX(1.0, safeAspect);
+    return floor(MIN(kStoreHeroMaxHeight, aspectHeight));
+}
+
+static CGFloat OPNStoreNextRowYAfterRow(CGFloat rowY, NSInteger rowIndex, BOOL hasHero, CGFloat viewportHeight) {
+    CGFloat nextRowY = rowY + kStoreRowHeight;
+    if (hasHero && rowIndex == 0) {
+        nextRowY = MAX(nextRowY, floor(MAX(1.0, viewportHeight) + kStoreTopFoldNextRowInset));
+    }
+    return nextRowY;
 }
 
 @interface OPNStoreDocumentView : NSView
@@ -967,17 +979,7 @@ static NSImage *OPNStoreVisibleLogoImage(NSImage *image) {
 
 static NSRect OPNStoreHeroVisibleArtworkRectForImage(NSImage *image, NSRect bounds) {
     if (!image || image.size.width <= 0.0 || image.size.height <= 0.0) return bounds;
-    CGFloat imageAspect = image.size.width / image.size.height;
-    CGFloat viewAspect = MAX(1.0, NSWidth(bounds)) / MAX(1.0, NSHeight(bounds));
-    NSRect target = bounds;
-    if (imageAspect > viewAspect) {
-        target.size.height = floor(NSWidth(bounds) / imageAspect);
-        target.origin.y = 0.0;
-    } else if (imageAspect < viewAspect) {
-        target.size.width = floor(NSHeight(bounds) * imageAspect);
-        target.origin.x = 0.0;
-    }
-    return target;
+    return bounds;
 }
 
 static NSRect OPNStoreHeroLogoFrameForImage(NSImage *image, NSRect bounds, NSImage *artworkImage) {
@@ -2641,7 +2643,7 @@ using namespace OPN;
         [self addDesktopHeroStageForGame:*heroGame y:y contentX:0.0 width:viewportWidth height:heroHeight];
     }
 
-    CGFloat rowY = heroGame ? y + heroHeight + 48.0 : y;
+    CGFloat rowY = heroGame ? y + heroHeight + kStoreHeroFirstRowSpacing : y;
     NSInteger renderedRows = 0;
     BOOL hasCompletedSearch = OPNStoreSearchNormalizedString(self.completedSearchQuery).length > 0;
     const std::vector<GameInfo> &visibleLibraryGames = hasCompletedSearch ? _filteredLibraryGames : _ownedLibraryGames;
@@ -2650,14 +2652,14 @@ using namespace OPN;
     PanelSection librarySection = OPNCatalogSingleLibrarySectionForGames(visibleLibraryGames);
     if (!librarySection.games.empty()) {
         [self addSection:librarySection index:renderedRows y:rowY contentX:contentX width:width];
-        rowY += kStoreRowHeight;
+        rowY = OPNStoreNextRowYAfterRow(rowY, renderedRows, heroGame != nullptr, NSHeight(self.bounds));
         renderedRows++;
     }
     for (const PanelResult &panel : visiblePanels) {
         for (const PanelSection &section : panel.sections) {
             if (section.games.empty()) continue;
             [self addSection:section index:renderedRows y:rowY contentX:contentX width:width];
-            rowY += kStoreRowHeight;
+            rowY = OPNStoreNextRowYAfterRow(rowY, renderedRows, heroGame != nullptr, NSHeight(self.bounds));
             renderedRows++;
         }
     }
@@ -2807,7 +2809,9 @@ using namespace OPN;
     CGFloat width = MAX(980.0, NSWidth(self.bounds));
     CGFloat contentX = OPNStoreHeroContentInsetForWidth(width);
     CGFloat availableWidth = MAX(320.0, width - contentX * 2.0);
-    CGFloat rowY = NSIsEmptyRect(self.desktopFeaturedHeroFrame) ? kStoreTopInset : NSMaxY(self.desktopFeaturedHeroFrame) + 48.0;
+    CGFloat rowY = NSIsEmptyRect(self.desktopFeaturedHeroFrame) ? kStoreTopInset : NSMaxY(self.desktopFeaturedHeroFrame) + kStoreHeroFirstRowSpacing;
+    NSInteger rowIndex = 0;
+    BOOL hasHero = !NSIsEmptyRect(self.desktopFeaturedHeroFrame);
     for (OPNStoreRowLayout *rowLayout in self.rowLayouts) {
         rowLayout.y = rowY;
         CGFloat y = rowY;
@@ -2827,7 +2831,8 @@ using namespace OPN;
         }
         rowLayout.documentView.frame = NSMakeRect(0.0, 0.0, MAX(x + 24.0, NSWidth(rowLayout.scrollView.frame)), kStoreTileHeight + 30.0);
         [self updateImagePreloadingForRowLayout:rowLayout];
-        rowY += kStoreRowHeight;
+        rowY = OPNStoreNextRowYAfterRow(rowY, rowIndex, hasHero, NSHeight(self.bounds));
+        rowIndex++;
     }
     if (self.rowLayouts.count > 0) {
         self.documentView.frame = NSMakeRect(0.0, 0.0, width, MAX(NSHeight(self.bounds), rowY + 88.0));

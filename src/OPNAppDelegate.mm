@@ -82,6 +82,7 @@ struct OPNSyncObservation {
 @property (nonatomic, assign) uint16_t activeSessionPromptPreviousButtons;
 @property (nonatomic, strong) OPNCloudmatchServerPickerView *cloudmatchServerPickerView;
 @property (nonatomic, assign) NSInteger cloudmatchServerPickerGeneration;
+@property (nonatomic, assign) NSInteger gameLaunchGeneration;
 @property (nonatomic, strong) NSView *desktopTopChromeView;
 @property (nonatomic, strong) NSTextField *desktopBrandLabel;
 @property (nonatomic, strong) NSPopUpButton *desktopAccountSwitcher;
@@ -396,6 +397,14 @@ static std::string OPNAuthSessionIdentifier(const OPN::AuthSession &session) {
     if (!session.email.empty()) return session.email;
     if (!session.displayName.empty()) return session.displayName;
     return session.accessToken;
+}
+
+static bool OPNSessionProbeAuthenticationError(const std::string &error) {
+    return error.find("HTTP 401") != std::string::npos ||
+           error.find("HTTP 403") != std::string::npos ||
+           error.find("AUTH_FAILURE") != std::string::npos ||
+           error.find("auth_failure") != std::string::npos ||
+           error.find("No access token") != std::string::npos;
 }
 
 static NSString *OPNAuthSessionDisplayName(const OPN::AuthSession &session) {
@@ -2104,6 +2113,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     }
 
     OPN::GameInfo launchGameInfo = game;
+    NSInteger launchGeneration = ++self.gameLaunchGeneration;
 
     OPN::LogInfo(@"[AppDelegate] Game selected: title=%@, id=%s, uuid=%s, variantIndex=%d", OPNAppStringFromStdString(launchGameInfo.title, @""), launchGameInfo.id.c_str(), launchGameInfo.uuid.c_str(), variantIndex);
 
@@ -2134,6 +2144,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     void (^startRequestedGame)(bool) = [^(bool accountLinkedForLaunch) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf) return;
+        if (strongSelf.gameLaunchGeneration != launchGeneration) {
+            OPN::LogInfo(@"[AppDelegate] Ignoring stale launch continuation for appId=%s", effectiveAppId.c_str());
+            return;
+        }
         [strongSelf startStreamWithTitle:gameTitle
                                    appId:effectiveAppId
                                 apiToken:apiToken
@@ -2147,18 +2161,31 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     void (^continueLaunchAfterServerSelection)(bool) = [^(bool accountLinkedForLaunch) {
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
+        if (strongSelf.gameLaunchGeneration != launchGeneration) {
+            OPN::LogInfo(@"[AppDelegate] Ignoring stale launch probe for appId=%s", effectiveAppId.c_str());
+            return;
+        }
 
         SessionManager::Shared().SetAccessToken(apiToken);
         SessionManager::Shared().SetStreamingBaseUrl(launchStreamingBaseUrl);
         OPN::GameInfo requestedGame = launchGameInfo;
         void (^startRequestedGameCopy)(void) = [^{ startRequestedGame(accountLinkedForLaunch); } copy];
-        SessionManager::Shared().GetActiveSessions([weakSelf, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen, launchStreamingBaseUrl](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+        SessionManager::Shared().GetActiveSessions([weakSelf, launchGeneration, startRequestedGameCopy, requestedGame, gameTitle, effectiveAppId, apiToken, returnScreen, launchStreamingBaseUrl](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
             std::vector<ActiveSessionEntry> sessionsCopy = sessions;
             std::string errorCopy = error;
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
+                if (strongSelf.gameLaunchGeneration != launchGeneration) {
+                    OPN::LogInfo(@"[AppDelegate] Ignoring stale active-session launch result for appId=%s", effectiveAppId.c_str());
+                    return;
+                }
                 if (!ok) {
+                    if (OPNSessionProbeAuthenticationError(errorCopy)) {
+                        OPN::LogError(@"[AppDelegate] Active session launch probe authentication failed, aborting launch: %s", errorCopy.c_str());
+                        [strongSelf showError:errorCopy canRetry:YES];
+                        return;
+                    }
                     OPN::LogError(@"[AppDelegate] Active session launch probe failed, continuing launch: %s", errorCopy.c_str());
                     startRequestedGameCopy();
                     return;
@@ -2240,11 +2267,19 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     } copy];
 
     void (^beginServerSelection)(bool) = [^(bool accountLinkedForLaunch) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (strongSelf.gameLaunchGeneration != launchGeneration) {
+            OPN::LogInfo(@"[AppDelegate] Ignoring stale server selection for appId=%s", effectiveAppId.c_str());
+            return;
+        }
         NSString *pickerGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
-        [self showCloudmatchServerPickerForGameTitle:pickerGameTitle
+        [strongSelf showCloudmatchServerPickerForGameTitle:pickerGameTitle
                                             apiToken:apiToken
                                           completion:^(BOOL confirmed) {
             if (!confirmed) return;
+            __typeof__(self) completionSelf = weakSelf;
+            if (!completionSelf || completionSelf.gameLaunchGeneration != launchGeneration) return;
             continueLaunchAfterServerSelection(accountLinkedForLaunch);
         }];
     } copy];

@@ -2626,6 +2626,14 @@ static bool IsSessionLimitExceededError(const std::string &error) {
            error.find("\"statusCode\":11") != std::string::npos;
 }
 
+static bool IsSessionAuthenticationError(const std::string &error) {
+    return error.find("HTTP 401") != std::string::npos ||
+           error.find("HTTP 403") != std::string::npos ||
+           error.find("AUTH_FAILURE") != std::string::npos ||
+           error.find("auth_failure") != std::string::npos ||
+           error.find("No access token") != std::string::npos;
+}
+
 static std::string HostFromStreamingResourcePath(NSString *resourcePath) {
     if (resourcePath.length == 0) return "";
     std::string value = [resourcePath UTF8String];
@@ -2848,9 +2856,13 @@ void GameService::LaunchGame(const std::string &appId,
     SessionManager::Shared().SetAccessToken(m_accessToken);
 
     SessionManager::Shared().GetActiveSessions([appId, internalTitle, settings, recoveryMode, progress, completion](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
-        (void)error;
         if (!ok) {
-            OPN::LogError(@"[GameService] GetActiveSessions failed, falling through to CreateSession");
+            if (IsSessionAuthenticationError(error)) {
+                OPN::LogError(@"[GameService] GetActiveSessions authentication failed, aborting launch: %s", error.c_str());
+                DispatchLaunchCompletion(completion, false, SessionInfo{}, "", error);
+                return;
+            }
+            OPN::LogError(@"[GameService] GetActiveSessions failed, falling through to CreateSession: %s", error.c_str());
             SessionManager::Shared().CreateSession(appId, internalTitle, settings,
                 [appId, internalTitle, settings, recoveryMode, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
                     if (!success) {
