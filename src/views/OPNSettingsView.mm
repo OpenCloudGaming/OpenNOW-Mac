@@ -207,7 +207,6 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 @property (nonatomic, strong) NSView *shellView;
 @property (nonatomic, strong) NSView *sidebarView;
 @property (nonatomic, strong) NSTextField *sidebarTitleLabel;
-@property (nonatomic, strong) NSTextField *sidebarStatusLabel;
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSView *documentView;
 @property (nonatomic, strong) NSMutableArray<NSButton *> *sidebarButtons;
@@ -323,10 +322,6 @@ using namespace OPN;
         _sidebarTitleLabel = OpnLabel(@"Settings", NSZeroRect, 13.0, OpnColor(kTextMuted), NSFontWeightSemibold);
         _sidebarTitleLabel.stringValue = [_sidebarTitleLabel.stringValue uppercaseString];
         [_sidebarView addSubview:_sidebarTitleLabel];
-
-        _sidebarStatusLabel = OpnLabel(@"Changes save automatically", NSZeroRect, 12.0, OpnColor(kTextSecondary), NSFontWeightRegular);
-        _sidebarStatusLabel.maximumNumberOfLines = 2;
-        [_sidebarView addSubview:_sidebarStatusLabel];
 
         [self buildSidebarButtons];
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -479,9 +474,8 @@ using namespace OPN;
     CGFloat columnGap = width < 900.0 ? 16.0 : kSettingsColumnGap;
     self.sidebarView.frame = NSMakeRect(0, 0, sidebarWidth, shellHeight);
     self.sidebarTitleLabel.frame = NSMakeRect(24.0, 24.0, MAX(120.0, sidebarWidth - 48.0), 18.0);
-    self.sidebarStatusLabel.frame = NSMakeRect(24.0, 48.0, MAX(120.0, sidebarWidth - 48.0), 38.0);
 
-    CGFloat buttonY = 104.0;
+    CGFloat buttonY = 62.0;
     for (NSButton *button in self.sidebarButtons) {
         if (button.hidden) continue;
         button.frame = NSMakeRect(18, buttonY, MAX(160.0, sidebarWidth - 36.0), 46);
@@ -576,23 +570,12 @@ using namespace OPN;
     eyebrow.stringValue = [eyebrow.stringValue uppercaseString];
     [header addSubview:eyebrow];
 
-    CGFloat titleWidth = width >= 520.0 ? width - 220.0 : width - 56.0;
-    NSTextField *title = OpnLabel(displayName, NSMakeRect(28.0, 46.0, titleWidth, 34.0), 26.0, OpnColor(kTextPrimary), NSFontWeightSemibold);
+    NSTextField *title = OpnLabel(displayName, NSMakeRect(28.0, 46.0, width - 56.0, 34.0), 26.0, OpnColor(kTextPrimary), NSFontWeightSemibold);
     [header addSubview:title];
 
     NSTextField *subtitle = OpnLabel([self subtitleForSection:section], NSMakeRect(28.0, 84.0, MAX(260.0, width - 56.0), 34.0), 13.0, OpnColor(kTextSecondary), NSFontWeightRegular);
     subtitle.maximumNumberOfLines = 2;
     [header addSubview:subtitle];
-
-    if (width >= 520.0) {
-        NSTextField *saveState = OpnLabel(@"Saved automatically", NSMakeRect(width - 202.0, 30.0, 164.0, 30.0), 12.0, OpnColor(kBrandGreen), NSFontWeightSemibold, NSTextAlignmentCenter);
-        saveState.wantsLayer = YES;
-        saveState.layer.backgroundColor = OpnColor(kBrandGreen, 0.12).CGColor;
-        saveState.layer.cornerRadius = 15.0;
-        saveState.layer.borderWidth = 1.0;
-        saveState.layer.borderColor = OpnColor(kBrandGreen, 0.38).CGColor;
-        [header addSubview:saveState];
-    }
 
     return header;
 }
