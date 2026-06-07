@@ -1222,6 +1222,19 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     return width > 0 && height > 0 ? [NSString stringWithFormat:@"%dx%d", width, height] : @"unknown";
 }
 
+static BOOL OPNMetalDeviceIsAppleM1Class(id<MTLDevice> device) {
+    NSString *deviceName = device.name.lowercaseString ?: @"";
+    return [deviceName hasPrefix:@"apple m1"];
+}
+
+static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRenderer *renderer, id<MTLDevice> device) {
+    if (OPNMetalDeviceIsAppleM1Class(device)) {
+        return [renderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
+    }
+    if ([renderer isTemporalAvailable]) return OPNVideoEnhancementTierTemporal;
+    return [renderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
+}
+
 @implementation OPNMetalVideoView
 
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner {
@@ -1324,6 +1337,9 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     int enhancementTargetHeight = 2160;
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
     CGFloat targetHeightPixels = (CGFloat)std::max(1440, std::min(enhancementTargetHeight, 2160));
+    if (enhancementMode == 1 && OPNMetalDeviceIsAppleM1Class(self.metalView.device)) {
+        targetHeightPixels = std::min<CGFloat>(targetHeightPixels, 1440.0);
+    }
     CGFloat targetWidth = targetHeightPixels * aspect;
     CGFloat targetHeight = targetWidth / aspect;
     return CGSizeMake(std::max<CGFloat>(backingSize.width, floor(targetWidth)),
@@ -1401,10 +1417,8 @@ static NSString *OPNVideoResolutionString(CGSize size) {
             settings.configuredTier = OPNVideoEnhancementTierMetalFX;
         } else if (enhancementMode == 2) {
             settings.configuredTier = OPNVideoEnhancementTierSpatial;
-        } else if ([self.enhancementRenderer isTemporalAvailable]) {
-            settings.configuredTier = OPNVideoEnhancementTierTemporal;
         } else {
-            settings.configuredTier = [self.enhancementRenderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
+            settings.configuredTier = OPNAutomaticEnhancementTier(self.enhancementRenderer, self.metalView.device);
         }
         settings.sharpness = enhancementSharpness;
         settings.denoise = enhancementDenoise;

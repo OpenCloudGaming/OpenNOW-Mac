@@ -1,6 +1,7 @@
 #import "OPNUIHelpers.h"
 #import "OPNColorTokens.h"
 #include "games/OPNGameDataCache.h"
+#include "OPNSentry.h"
 #import <ImageIO/ImageIO.h>
 #include <cmath>
 
@@ -585,13 +586,17 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString, CGFloat ma
         return token;
     }
 
-    NSURLSessionDataTask *task = [OpnImageLoaderSession() dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    auto trace = OPN::TraceSentryHTTPRequest(request, "Image asset");
+    NSURLSessionDataTask *task = [OpnImageLoaderSession() dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        OPN::SentryTransactionFinishGuard traceGuard(trace);
         NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         if (error || data.length == 0 || (http && http.statusCode >= 400)) {
             BOOL cacheFailure = !error || error.code != NSURLErrorCancelled;
             OpnCompleteImageRequest(cacheKey, normalizedURL, nil, nil, cacheFailure);
             return;
         }
+        traceGuard.SetSuccess(true);
         NSBlockOperation *decodeOperation = [NSBlockOperation blockOperationWithBlock:^{
             NSImage *image = OpnDecodedImageFromData(data, maxPixelDimension);
             if (image) OPN::GameDataCache::Shared().SaveImage(normalizedURL, data);

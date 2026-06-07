@@ -49,6 +49,7 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 @end
 
 @interface OPNStatsOverlayView : NSView
+- (NSSize)preferredSizeForMaxWidth:(CGFloat)maxWidth;
 - (void)updateLatencyMs:(NSInteger)latencyMs
             bitrateMbps:(double)bitrateMbps
             packetsLost:(int64_t)packetsLost
@@ -134,6 +135,22 @@ static BOOL OPNShouldReportTerminalStreamFailure(NSString *message) {
 static NSString *OPNBoundedStreamFailureMessage(NSString *message) {
     if (message.length <= 700) return message;
     return [[message substringToIndex:700] stringByAppendingString:@"..."];
+}
+
+static NSDictionary<NSString *, id> *OPNStreamMetricAttributes(NSString *outcome,
+                                                                BOOL recovering,
+                                                                const std::string &backend,
+                                                                const std::string &codec,
+                                                                const std::string &resolution,
+                                                                int fps) {
+    return @{
+        @"outcome": outcome.length > 0 ? outcome : @"unknown",
+        @"recovery": @(recovering),
+        @"backend": OPNStringFromStdString(backend, @"unknown"),
+        @"codec": OPNStringFromStdString(codec, @"unknown"),
+        @"resolution": OPNStringFromStdString(resolution, @"unknown"),
+        @"fps": @(fps),
+    };
 }
 
 static NSString *OPNStreamFailureReportMessage(NSString *message) {
@@ -753,6 +770,12 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
     NSTextField *_statsLineLabel;
 }
 
+static constexpr CGFloat OPNStatsOverlayMinWidth = 320.0;
+static constexpr CGFloat OPNStatsOverlayMaxWidth = 620.0;
+static constexpr CGFloat OPNStatsOverlayHorizontalPadding = 8.0;
+static constexpr CGFloat OPNStatsOverlayVerticalPadding = 4.0;
+static constexpr CGFloat OPNStatsOverlayMinHeight = 22.0;
+
 static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color, NSTextAlignment alignment) {
     NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
     label.stringValue = text ?: @"";
@@ -770,7 +793,7 @@ static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weig
 static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
     style.alignment = NSTextAlignmentLeft;
-    style.lineBreakMode = NSLineBreakByTruncatingTail;
+    style.lineBreakMode = NSLineBreakByCharWrapping;
     return [[NSAttributedString alloc] initWithString:text ?: @""
                                             attributes:@{
         NSFontAttributeName: [NSFont monospacedSystemFontOfSize:10.0 weight:NSFontWeightMedium],
@@ -788,8 +811,8 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
         self.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
 
         _statsLineLabel = OPNStatsText(@"", 10.0, NSFontWeightMedium, NSColor.clearColor, NSTextAlignmentLeft);
-        _statsLineLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        _statsLineLabel.maximumNumberOfLines = 1;
+        _statsLineLabel.lineBreakMode = NSLineBreakByCharWrapping;
+        _statsLineLabel.maximumNumberOfLines = 0;
         _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
         [self addSubview:_statsLineLabel];
     }
@@ -805,7 +828,21 @@ static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
 
 - (void)layout {
     [super layout];
-    _statsLineLabel.frame = NSInsetRect(self.bounds, 8.0, 1.0);
+    _statsLineLabel.frame = NSInsetRect(self.bounds, OPNStatsOverlayHorizontalPadding, OPNStatsOverlayVerticalPadding);
+}
+
+- (NSSize)preferredSizeForMaxWidth:(CGFloat)maxWidth {
+    CGFloat availableMaxWidth = MAX(1.0, maxWidth - OPNStatsOverlayHorizontalPadding * 2.0);
+    NSAttributedString *text = _statsLineLabel.attributedStringValue.length > 0
+        ? _statsLineLabel.attributedStringValue
+        : OPNStatsOutlinedLine(@"Stats: measuring");
+    NSRect textBounds = [text boundingRectWithSize:NSMakeSize(availableMaxWidth, CGFLOAT_MAX)
+                                          options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading];
+    CGFloat contentWidth = ceil(NSWidth(textBounds));
+    CGFloat contentHeight = ceil(NSHeight(textBounds));
+    CGFloat width = MIN(maxWidth, MAX(OPNStatsOverlayMinWidth, contentWidth + OPNStatsOverlayHorizontalPadding * 2.0));
+    CGFloat height = MAX(OPNStatsOverlayMinHeight, contentHeight + OPNStatsOverlayVerticalPadding * 2.0);
+    return NSMakeSize(width, height);
 }
 
 - (void)updateLatencyMs:(NSInteger)latencyMs
@@ -884,6 +921,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     CFTimeInterval _lastStreamActivityTime;
     CFTimeInterval _lastIdleDeviceInputTime;
     CFTimeInterval _launchFlowStartTime;
+    CFTimeInterval _connectedStartTime;
+    CFTimeInterval _lastMetricsSampleTime;
     CFTimeInterval _lastQualityGuardrailChangeTime;
     NSInteger _qualityDegradedSampleCount;
     BOOL _qualityWarningShown;
@@ -894,6 +933,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     BOOL _remainingPlaytimeAvailable;
     BOOL _playtimeRefreshInFlight;
     BOOL _healthReportStarted;
+    OPN::SentryTransactionPtr _streamLaunchTrace;
     OPN::SessionHealthReportBuilder _healthReport;
 }
 
@@ -950,6 +990,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _lastStreamActivityTime = 0;
         _lastIdleDeviceInputTime = 0;
         _launchFlowStartTime = 0;
+        _connectedStartTime = 0;
+        _lastMetricsSampleTime = 0;
         _lastQualityGuardrailChangeTime = 0;
         _qualityDegradedSampleCount = 0;
         _qualityWarningShown = NO;
@@ -1216,10 +1258,24 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (void)finishLaunchMeasurementWithSuccess:(BOOL)success reason:(NSString *)reason {
+    NSString *safeReason = reason.length > 0 ? reason : @"unknown";
+    CFTimeInterval elapsedMs = self.launchSignpostActive ? (CACurrentMediaTime() - self.launchStartTime) * 1000.0 : 0.0;
+    if (elapsedMs > 0.0) {
+        OPN::RecordSentryDistributionMetric("opennow.stream.launch.duration", elapsedMs, "millisecond", @{
+            @"outcome": success ? @"success" : @"failure",
+            @"reason": safeReason,
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"recovery": @(_recovering),
+        });
+    }
+    if (_streamLaunchTrace && ![safeReason isEqualToString:@"stale-resume"]) {
+        _streamLaunchTrace->SetData("reason", safeReason.UTF8String ?: "unknown");
+        _streamLaunchTrace->SetStatus(success);
+        _streamLaunchTrace->Finish();
+        _streamLaunchTrace.reset();
+    }
     if (!self.launchSignpostActive) return;
     self.launchSignpostActive = NO;
-    CFTimeInterval elapsedMs = (CACurrentMediaTime() - self.launchStartTime) * 1000.0;
-    NSString *safeReason = reason.length > 0 ? reason : @"unknown";
     os_signpost_interval_end(OPNStreamPerformanceLog(),
                              self.launchSignpostId,
                              "StreamLaunch",
@@ -1275,12 +1331,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 }
 
 - (NSRect)statsOverlayFrame {
-    CGFloat width = MIN(620.0, MAX(320.0, NSWidth(self.view.bounds) - 32.0));
-    CGFloat height = 22.0;
-    return NSMakeRect(MAX(16.0, NSWidth(self.view.bounds) - width - 16.0),
-                      floor(NSHeight(self.view.bounds) - height - 8.0),
-                      width,
-                      height);
+    CGFloat maxWidth = MIN(OPNStatsOverlayMaxWidth, MAX(1.0, NSWidth(self.view.bounds) - 32.0));
+    NSSize size = self.statsOverlay
+        ? [self.statsOverlay preferredSizeForMaxWidth:maxWidth]
+        : NSMakeSize(MIN(OPNStatsOverlayMinWidth, maxWidth), OPNStatsOverlayMinHeight);
+    CGFloat x = MAX(16.0, NSWidth(self.view.bounds) - size.width - 16.0);
+    CGFloat y = MAX(8.0, floor(NSHeight(self.view.bounds) - size.height - 8.0));
+    return NSMakeRect(x, y, size.width, size.height);
 }
 
 - (void)showConnectedToastWithResolution:(const std::string &)resolution
@@ -1516,6 +1573,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _runtimeMaxBitrateMbps = reducedBitrate;
         _lastQualityGuardrailChangeTime = now;
         _qualityDegradedSampleCount = 0;
+        OPN::RecordSentryCounterMetric("opennow.stream.quality_guardrail.count", 1, @{
+            @"action": @"bitrate_reduced",
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"new_bitrate_mbps": @(reducedBitrate),
+        });
         [self.streamView setMaxBitrateMbps:reducedBitrate];
         if (_session) _session->SetMaxBitrateMbps(reducedBitrate);
         NSString *detail = [NSString stringWithFormat:@"%@ · capped at %d Mbps", signalText, reducedBitrate];
@@ -1527,6 +1589,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (!_qualityWarningShown) {
         _qualityWarningShown = YES;
+        OPN::RecordSentryCounterMetric("opennow.stream.quality_guardrail.count", 1, @{
+            @"action": @"warning",
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+        });
         NSString *detail = [NSString stringWithFormat:@"%@ · consider 30 FPS or H264 if this continues", signalText];
         [self showQualityGuardrailToastWithTitle:@"Stream quality is unstable" detail:detail warning:YES];
         _healthReport.RecordEvent("Quality warning", [detail UTF8String] ?: "", CACurrentMediaTime());
@@ -1551,6 +1617,21 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }
     _healthReport.AddStatsSample(stats);
     [self evaluateQualityGuardrailsWithStats:stats];
+    CFTimeInterval now = CACurrentMediaTime();
+    if (stats.available && _connectedOnce && now - _lastMetricsSampleTime >= 10.0) {
+        _lastMetricsSampleTime = now;
+        NSDictionary<NSString *, id> *attributes = @{
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"codec": OPNStringFromStdString(stats.codec, @"unknown"),
+            @"resolution": OPNStringFromStdString(stats.resolution, @"unknown"),
+        };
+        OPN::RecordSentryGaugeMetric("opennow.stream.latency", stats.latencyMs, "millisecond", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.jitter", stats.jitterMs, "millisecond", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.packet_loss", stats.packetLossPercent, "percent", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.bitrate", stats.inboundBitrateMbps, "megabit/second", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.render_fps", stats.renderFps, "frame/second", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.frames_dropped", (double)stats.framesDropped, "frame", attributes);
+    }
     if (!self.statsOverlay) return;
 
     NSInteger latencyMs = stats.latencyMs >= 0 ? (NSInteger)std::llround(stats.latencyMs) : -1;
@@ -1580,6 +1661,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                      codec:codec
                                enhancement:enhancement
                               framesDropped:stats.framesDropped];
+    self.statsOverlay.frame = [self statsOverlayFrame];
 }
 
 - (void)startStatsRefreshTimer {
@@ -1621,7 +1703,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPN::SessionInfo currentSession = _activeSessionInfo;
     __weak __typeof__(self) weakSelf = self;
-    OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf](bool success, const OPN::SessionInfo &info, const std::string &error) {
+    OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf, currentSession](bool success, const OPN::SessionInfo &info, const std::string &error) {
         OPN::SessionInfo infoCopy = info;
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1631,6 +1713,12 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         if (strongSelf->_streamEnded) return;
         if (!success) {
             OPN::LogError(@"[StreamVC] Playtime refresh failed: %s", errorCopy.c_str());
+            return;
+        }
+        if (!infoCopy.sessionId.empty() && infoCopy.sessionId != currentSession.sessionId) {
+            OPN::LogError(@"[StreamVC] Ignoring playtime poll for mismatched sessionId=%s expected=%s",
+                          infoCopy.sessionId.c_str(),
+                          currentSession.sessionId.c_str());
             return;
         }
         if (!infoCopy.sessionId.empty()) {
@@ -1830,8 +1918,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                               sessionInfo.serverIp,
                                               [sessionInfo](bool ok, const std::string &error) {
         if (ok) {
+            OPN::RecordSentryCounterMetric("opennow.stream.remote_stop.count", 1, @{@"outcome": @"success"});
             OPN::LogInfo(@"[StreamVC] Remote session stop succeeded sessionId=%s", sessionInfo.sessionId.c_str());
         } else {
+            OPN::RecordSentryCounterMetric("opennow.stream.remote_stop.count", 1, @{@"outcome": @"failure"});
             OPN::LogError(@"[StreamVC] Remote session stop failed sessionId=%s error=%s",
                   sessionInfo.sessionId.c_str(),
                   error.empty() ? "unknown" : error.c_str());
@@ -1917,6 +2007,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)endStreamFromInactivityTimeout {
     if (_streamEnded) return;
     OPN::LogInfo(@"[StreamVC] Stream ended due to user inactivity");
+    OPN::RecordSentryCounterMetric("opennow.stream.end_reason.count", 1, @{@"reason": @"inactivity"});
     OPN::AppendLogEvent(@"[StreamVC] Stream ended due to user inactivity");
     _healthReport.RecordEvent("Inactivity timeout", "Session ended because no user activity was detected", CACurrentMediaTime());
     [self requestRemoteStopForActiveSession];
@@ -1925,6 +2016,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)endStreamFromUserQuit {
     if (_streamEnded) return;
+    OPN::RecordSentryCounterMetric("opennow.stream.end_reason.count", 1, @{@"reason": @"user_quit"});
     _healthReport.RecordEvent("User quit", "Stream ended from the quit confirmation", CACurrentMediaTime());
     [self requestRemoteStopForActiveSession];
     [self endStreamWithSuccess:YES errorMessage:""];
@@ -1943,6 +2035,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded) return;
     _streamEnded = YES;
+    OPN::RecordSentryCounterMetric("opennow.stream.end_reason.count", 1, @{@"reason": @"application_terminate"});
     OPN::LogInfo(@"[StreamVC] Application terminating; preserving remote session for resume");
     [self finishLaunchMeasurementWithSuccess:YES reason:@"application terminating"];
     [self cleanup];
@@ -2022,6 +2115,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     _recoveryAttempt++;
     _recovering = YES;
+    OPN::RecordSentryCounterMetric("opennow.stream.recovery.count", 1, @{
+        @"outcome": @"started",
+        @"attempt": @(_recoveryAttempt),
+        @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+    });
     _stableResetGeneration++;
     NSUInteger recoveryGeneration = ++_launchGeneration;
     NSTimeInterval delay = OPNRecoveryDelayForAttempt(_recoveryAttempt);
@@ -2144,8 +2242,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                 if (!s2 || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
                 if (connected) {
                     [s2 cancelRemoteIceGraceTimer];
+                    BOOL recoveredLaunch = s2->_recovering;
                     s2->_connectedOnce = YES;
+                    s2->_connectedStartTime = CACurrentMediaTime();
                     s2->_recovering = NO;
+                    OPN::RecordSentryCounterMetric("opennow.stream.connection.count", 1, OPNStreamMetricAttributes(@"connected", recoveredLaunch, s2->_webRTCBackendName, negotiatedSettings.codec, negotiatedSettings.resolution, negotiatedSettings.fps));
                     [s2 beginLatencyActivity];
                     [s2 setLaunchStep:6 message:@"Connected!"];
                     s2->_healthReport.MarkConnected(CACurrentMediaTime());
@@ -2254,6 +2355,15 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     OPNDisplayStreamProfile displayProfile = ResolveDisplayStreamProfile(self.view.window);
     [self setLaunchStep:1 message:recoveringLaunch ? @"Reallocating cloud session..." : @"Allocating cloud session..."];
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetData("stream.resolution", settings.resolution.c_str());
+        _streamLaunchTrace->SetData("stream.codec", settings.codec.c_str());
+        std::string fps = std::to_string(settings.fps);
+        std::string bitrate = std::to_string(settings.maxBitrateMbps);
+        _streamLaunchTrace->SetData("stream.fps", fps.c_str());
+        _streamLaunchTrace->SetData("stream.max_bitrate_mbps", bitrate.c_str());
+        _streamLaunchTrace->SetData("stream.region", streamingBaseUrl.c_str());
+    }
     self.launchStartTime = CACurrentMediaTime();
     self.launchSignpostId = os_signpost_id_generate(OPNStreamPerformanceLog());
     self.launchSignpostActive = YES;
@@ -2291,12 +2401,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     __weak __typeof__(self) weakSelf = self;
 
     if (_resumeExistingSession) {
-        OPN::LogInfo(@"[StreamVC] Claiming active session for silent resume: sessionId=%s", _resumeSessionId.c_str());
+        std::string requestedResumeSessionId = _resumeSessionId;
+        std::string requestedResumeServer = _resumeServer;
+        OPN::LogInfo(@"[StreamVC] Claiming active session for silent resume: sessionId=%s", requestedResumeSessionId.c_str());
         OPN::SessionManager::Shared().SetAccessToken(_apiToken);
         OPN::SessionManager::Shared().SetStreamingBaseUrl(streamingBaseUrl);
         [self setLaunchStep:1 message:@"Resuming active session..."];
-        OPN::SessionManager::Shared().ClaimSession(_resumeSessionId, _resumeServer, _appId, settings, recoveringLaunch,
-            [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch](bool success, const OPN::SessionInfo &info, const std::string &error) {
+        OPN::SessionManager::Shared().ClaimSession(requestedResumeSessionId, requestedResumeServer, _appId, settings, recoveringLaunch,
+            [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedResumeSessionId](bool success, const OPN::SessionInfo &info, const std::string &error) {
                 __typeof__(self) strongSelf = weakSelf;
                 if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
                 OPN::LogInfo(@"[StreamVC] Active session claim result: success=%d", success);
@@ -2315,11 +2427,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                         return;
                     }
                     if (error.find("SESSION_NOT_PAUSED") != std::string::npos || error.find("\"statusCode\":34") != std::string::npos) {
-                        OPN::LogInfo(@"[StreamVC] Active session is not paused; re-resolving currently available session");
+                        OPN::LogInfo(@"[StreamVC] Active session is not paused; re-resolving requested sessionId=%s", requestedResumeSessionId.c_str());
                         [strongSelf setLaunchStep:1 message:@"Resuming current active session..."];
-                        std::string requestedSessionId = strongSelf->_resumeSessionId;
                         std::string requestedAppId = strongSelf->_appId;
-                        OPN::SessionManager::Shared().GetActiveSessions([weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedSessionId, requestedAppId](bool sessionsOk, const std::vector<OPN::ActiveSessionEntry> &sessions, const std::string &sessionsError) {
+                        OPN::SessionManager::Shared().GetActiveSessions([weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedResumeSessionId, requestedAppId](bool sessionsOk, const std::vector<OPN::ActiveSessionEntry> &sessions, const std::string &sessionsError) {
                             std::vector<OPN::ActiveSessionEntry> sessionsCopy = sessions;
                             std::string sessionsErrorCopy = sessionsError;
                             dispatch_async(dispatch_get_main_queue(), ^{
@@ -2332,43 +2443,24 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
                                 OPN::ActiveSessionEntry selectedSession;
                                 BOOL foundSession = NO;
-                                int requestedAppIdNumber = atoi(requestedAppId.c_str());
                                 for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
-                                    if (session.sessionId == requestedSessionId && !session.serverIp.empty()) {
+                                    if (session.sessionId == requestedResumeSessionId && !session.serverIp.empty()) {
                                         selectedSession = session;
                                         foundSession = YES;
                                         break;
                                     }
                                 }
-                                if (!foundSession && requestedAppIdNumber > 0) {
-                                    for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
-                                        if (session.appId == requestedAppIdNumber && !session.sessionId.empty() && !session.serverIp.empty()) {
-                                            selectedSession = session;
-                                            foundSession = YES;
-                                            break;
-                                        }
-                                    }
-                                }
                                 if (!foundSession) {
-                                    for (const OPN::ActiveSessionEntry &session : sessionsCopy) {
-                                        if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty()) {
-                                            selectedSession = session;
-                                            foundSession = YES;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (!foundSession) {
-                                    [retrySelf endStreamWithSuccess:NO errorMessage:"No active session is available to resume"];
+                                    OPN::LogError(@"[StreamVC] Requested resume session is no longer active: sessionId=%s", requestedResumeSessionId.c_str());
+                                    [retrySelf endStreamWithSuccess:NO errorMessage:"Requested session is no longer available to resume"];
                                     return;
                                 }
 
                                 std::string selectedAppId = selectedSession.appId > 0 ? std::to_string(selectedSession.appId) : requestedAppId;
-                                retrySelf->_resumeSessionId = selectedSession.sessionId;
                                 retrySelf->_resumeServer = selectedSession.serverIp;
                                 [retrySelf setLaunchStep:2 message:@"Connecting to current active session..."];
-                                OPN::SessionManager::Shared().ClaimSession(selectedSession.sessionId, selectedSession.serverIp, selectedAppId, settings, true,
-                                    [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch](bool retrySuccess, const OPN::SessionInfo &retryInfo, const std::string &retryError) {
+                                OPN::SessionManager::Shared().ClaimSession(requestedResumeSessionId, selectedSession.serverIp, selectedAppId, settings, true,
+                                    [weakSelf, settings, streamProfile, streamingBaseUrl, launchGeneration, recoveringLaunch, requestedResumeSessionId](bool retrySuccess, const OPN::SessionInfo &retryInfo, const std::string &retryError) {
                                         __typeof__(self) claimSelf = weakSelf;
                                         if (!claimSelf || claimSelf->_streamEnded || claimSelf->_launchGeneration != launchGeneration) return;
                                         if (!retrySuccess) {
@@ -2388,6 +2480,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                             [claimSelf endStreamWithSuccess:NO errorMessage:retryError];
                                             return;
                                         }
+                                        if (retryInfo.sessionId != requestedResumeSessionId) {
+                                            OPN::LogError(@"[StreamVC] Resume claim returned mismatched sessionId=%s expected=%s",
+                                                          retryInfo.sessionId.c_str(),
+                                                          requestedResumeSessionId.c_str());
+                                            [claimSelf endStreamWithSuccess:NO errorMessage:"Resume returned a different session id"];
+                                            return;
+                                        }
                                         [claimSelf connectWithSessionInfo:retryInfo settings:settings launchGeneration:launchGeneration];
                                     });
                             });
@@ -2399,6 +2498,13 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     [strongSelf setStatus:errMsg];
                     if ([strongSelf beginAutomaticRecoveryForError:error]) return;
                     [strongSelf endStreamWithSuccess:NO errorMessage:error];
+                    return;
+                }
+                if (info.sessionId != requestedResumeSessionId) {
+                    OPN::LogError(@"[StreamVC] Resume claim returned mismatched sessionId=%s expected=%s",
+                                  info.sessionId.c_str(),
+                                  requestedResumeSessionId.c_str());
+                    [strongSelf endStreamWithSuccess:NO errorMessage:"Resume returned a different session id"];
                     return;
                 }
                 [strongSelf connectWithSessionInfo:info settings:settings launchGeneration:launchGeneration];
@@ -2452,6 +2558,18 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)startStreamLaunchFlow {
     NSUInteger launchGeneration = ++_launchGeneration;
     BOOL recoveringLaunch = _recovering;
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetStatus(false);
+        _streamLaunchTrace->Finish();
+        _streamLaunchTrace.reset();
+    }
+    _streamLaunchTrace = OPN::StartSentryTransaction(recoveringLaunch ? "Stream recovery launch" : "Stream launch", "stream.launch");
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetTag("recovery", recoveringLaunch ? "true" : "false");
+        _streamLaunchTrace->SetTag("backend", _webRTCBackendName.c_str());
+        _streamLaunchTrace->SetData("app.id", _appId.c_str());
+        _streamLaunchTrace->SetData("game.title", _gameTitle.c_str());
+    }
     if (!_healthReportStarted) {
         _healthReport.Reset(_gameTitle, _appId, _webRTCBackendName, CACurrentMediaTime());
         _healthReportStarted = YES;
@@ -2459,6 +2577,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _healthReport.MarkPhase("Recovery Prepare", CACurrentMediaTime());
     }
     _launchFlowStartTime = CACurrentMediaTime();
+    OPN::RecordSentryCounterMetric("opennow.stream.launch.count", 1, @{
+        @"outcome": recoveringLaunch ? @"recovery_started" : @"started",
+        @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+    });
     OPN::LogInfo(@"[StreamVC] Starting stream launch flow for game: %@ (appId=%s, recovery=%d attempt=%ld/%ld)",
           OPNStringFromStdString(_gameTitle, @""),
           _appId.c_str(),
@@ -2559,6 +2681,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         AVAuthorizationStatus microphoneStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
         if (microphoneStatus == AVAuthorizationStatusDenied || microphoneStatus == AVAuthorizationStatusRestricted) {
             OPN::LogError(@"[StreamVC] Microphone permission denied or restricted; cannot start mic-enabled stream");
+            OPN::RecordSentryCounterMetric("opennow.stream.launch.count", 1, @{@"outcome": @"microphone_permission_denied"});
             [self setStatus:@"Microphone permission is disabled. Enable it in macOS Settings > Privacy & Security > Microphone."];
             [self endStreamWithSuccess:NO errorMessage:"Microphone permission denied"];
             return;
@@ -2575,6 +2698,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     if (strongSelf->_launchGeneration != permissionGeneration) return;
                     if (!granted) {
                         OPN::LogError(@"[StreamVC] macOS microphone permission request denied");
+                        OPN::RecordSentryCounterMetric("opennow.stream.launch.count", 1, @{@"outcome": @"microphone_permission_denied"});
                         [strongSelf setStatus:@"Microphone permission was denied. Enable it in macOS Settings > Privacy & Security > Microphone."];
                         [strongSelf endStreamWithSuccess:NO errorMessage:"Microphone permission denied"];
                         return;
@@ -2714,6 +2838,19 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded) return;
     _streamEnded = YES;
+    if (_connectedStartTime > 0.0) {
+        CFTimeInterval streamDurationMs = MAX(0.0, (CACurrentMediaTime() - _connectedStartTime) * 1000.0);
+        OPN::RecordSentryDistributionMetric("opennow.stream.duration", streamDurationMs, "millisecond", @{
+            @"outcome": success ? @"success" : @"failure",
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"connected_once": @(_connectedOnce),
+        });
+    }
+    OPN::RecordSentryCounterMetric("opennow.stream.connection.count", 1, @{
+        @"outcome": success ? @"ended" : @"failed",
+        @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+        @"connected_once": @(_connectedOnce),
+    });
     std::string displayError = success ? std::string() : OPN::UserFacingGFNErrorMessage(errorMessage, _gameTitle);
     if (_session) {
         _session->RequestStats();
@@ -2762,6 +2899,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     _stableResetGeneration++;
     _recovering = NO;
     _idleDeviceInputEnabled = NO;
+    if (_streamLaunchTrace) {
+        _streamLaunchTrace->SetStatus(false);
+        _streamLaunchTrace->Finish();
+        _streamLaunchTrace.reset();
+    }
     [self endLatencyActivity];
     [self cancelRemoteIceGraceTimer];
     [self stopInactivityTimer];

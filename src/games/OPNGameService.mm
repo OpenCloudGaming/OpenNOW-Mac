@@ -514,9 +514,11 @@ void GameService::FetchProviderInfo(const std::string &idpId, ProviderInfoCallba
     request.timeoutInterval = 10.0;
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 GFN-PC/2.0.80.173" forHTTPHeaderField:@"User-Agent"];
+    auto trace = TraceSentryHTTPRequest(request, "Game provider info");
 
     ProviderInfoCallback callback = completion;
     [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (error || !data || http.statusCode != 200) {
             GameProviderInfo info;
@@ -535,6 +537,7 @@ void GameService::FetchProviderInfo(const std::string &idpId, ProviderInfoCallba
         this->m_providerStreamingBaseUrl = NormalizeStreamingBaseUrl(endpoint.streamingServiceUrl);
         if (this->m_providerStreamingBaseUrl.empty()) this->m_providerStreamingBaseUrl = DefaultStreamingBaseUrl();
         endpoint.streamingServiceUrl = this->m_providerStreamingBaseUrl;
+        traceGuard.SetSuccess(true);
         DispatchProviderInfoCallback(callback, true, info, endpoint, "");
     }] resume];
 }
@@ -617,10 +620,12 @@ void GameService::postGraphQL(const std::string &operationName,
     for (NSString *key in allHeaders) {
         [req setValue:allHeaders[key] forHTTPHeaderField:key];
     }
+    auto trace = TraceSentryHTTPRequest(req, operationName.c_str());
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            SentryTransactionFinishGuard traceGuard(trace);
             NSDictionary *payload = nil;
             NSString *message = @"";
             if (error) {
@@ -640,6 +645,7 @@ void GameService::postGraphQL(const std::string &operationName,
                         NSDictionary *dataPayload = json[@"data"];
                         if ([dataPayload isKindOfClass:[NSDictionary class]]) {
                             payload = dataPayload;
+                            traceGuard.SetSuccess(true);
                         } else {
                             message = @"No data in GraphQL response";
                         }
@@ -1158,10 +1164,12 @@ void GameService::postGraphQlJson(const std::string &query,
         [req setValue:hdrs[key] forHTTPHeaderField:key];
     }
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    auto trace = TraceSentryHTTPRequest(req, "Game GraphQL JSON");
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithRequest:req
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            SentryTransactionFinishGuard traceGuard(trace);
             NSDictionary *payload = nil;
             NSString *message = @"";
             if (error) {
@@ -1181,6 +1189,7 @@ void GameService::postGraphQlJson(const std::string &query,
                         NSDictionary *dataPayload = json[@"data"];
                         if ([dataPayload isKindOfClass:[NSDictionary class]]) {
                             payload = dataPayload;
+                            traceGuard.SetSuccess(true);
                         } else {
                             message = @"No data in GraphQL response";
                         }
@@ -1414,9 +1423,11 @@ void GameService::SyncAccountProvider(const std::string &store, OwnershipActionC
         return;
     }
     request.HTTPBody = [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
+    auto trace = TraceSentryHTTPRequest(request, "Account linking sync");
     OwnershipActionCallback callback = completion;
     std::string storeCopy = store;
     NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         if (error) {
             OPN::LogError(@"[GameService] ALS sync network error store=%s error=%@", storeCopy.c_str(), error.localizedDescription ?: @"unknown");
             DispatchOwnershipActionCallback(callback, false, error.localizedDescription.UTF8String);
@@ -1430,6 +1441,7 @@ void GameService::SyncAccountProvider(const std::string &store, OwnershipActionC
             DispatchOwnershipActionCallback(callback, false, message);
             return;
         }
+        traceGuard.SetSuccess(true);
         DispatchOwnershipActionCallback(callback, true, "");
     }];
     [task resume];
@@ -1472,9 +1484,11 @@ void GameService::StartAccountLinking(const std::string &store, OwnershipActionC
         return;
     }
 
+    auto trace = TraceSentryHTTPRequest(request, "Account linking login URL");
     OwnershipActionCallback callback = completion;
     std::string storeCopy = store;
     NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         NSString *message = nil;
         if (!ValidateHTTPResponse(response, data, error, 200, &message)) {
             NSInteger statusCode = AccountLinkingHTTPStatusCode(response);
@@ -1500,6 +1514,7 @@ void GameService::StartAccountLinking(const std::string &store, OwnershipActionC
             return;
         }
 
+        traceGuard.SetSuccess(true);
         WaitForAccountLinkingCallback(listener, storeCopy, callback);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (![[NSWorkspace sharedWorkspace] openURL:url]) OPN::LogError(@"[GameService] Unable to open account linking URL for store=%s", storeCopy.c_str());
@@ -1894,11 +1909,13 @@ void GameService::FetchPublicGames(CatalogCallback completion) {
         req.timeoutInterval = 20.0;
         [req setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
    forHTTPHeaderField:@"User-Agent"];
+        auto trace = TraceSentryHTTPRequest(req, "Public games catalog");
 
         NSURLSessionDataTask *task = [[NSURLSession sharedSession]
             dataTaskWithRequest:req
             completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
                 dispatch_async(GameServiceWorkQueue(), ^{
+                    SentryTransactionFinishGuard traceGuard(trace);
                     NSArray *json = (!error && data) ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
                     if (![json isKindOfClass:[NSArray class]]) {
                         if (index + 1 < locales->size()) {
@@ -1961,6 +1978,7 @@ void GameService::FetchPublicGames(CatalogCallback completion) {
 
                         games.push_back(g);
                     }
+                    traceGuard.SetSuccess(true);
                     DispatchCatalogCallback(completion, true, games, "");
                 });
             }];
@@ -2007,11 +2025,13 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
         [req setValue:@"NVIDIA-CLASSIC" forHTTPHeaderField:@"nv-client-streamer"];
         [req setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
         [req setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
+        auto trace = TraceSentryHTTPRequest(req, "Subscription info");
 
         NSURLSessionDataTask *task = [[NSURLSession sharedSession]
             dataTaskWithRequest:req
             completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
                 dispatch_async(GameServiceWorkQueue(), ^{
+                    SentryTransactionFinishGuard traceGuard(trace);
                     if (error) {
                         DispatchSubscriptionCallback(callback, false, SubscriptionInfo{}, [[error localizedDescription] UTF8String]);
                         return;
@@ -2045,6 +2065,7 @@ void GameService::FetchSubscriptionInfo(const std::string &userId, SubscriptionC
                         : nil;
                     NSNumber *allowed = [state[@"isGamePlayAllowed"] isKindOfClass:[NSNumber class]] ? state[@"isGamePlayAllowed"] : nil;
                     info.isGamePlayAllowed = allowed ? allowed.boolValue : true;
+                    traceGuard.SetSuccess(true);
                     DispatchSubscriptionCallback(callback, true, info, "");
                 });
             }];
@@ -2072,8 +2093,10 @@ static void GetServerVpcId(const std::string &token,
     [req setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
     [req setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
     [req setValue:@"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173" forHTTPHeaderField:@"User-Agent"];
+    auto trace = TraceSentryHTTPRequest(req, "Server VPC info");
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) {
             completion("GFN-PC");
             return;
@@ -2089,6 +2112,7 @@ static void GetServerVpcId(const std::string &token,
             completion("GFN-PC");
             return;
         }
+        traceGuard.SetSuccess(true);
         completion([serverId UTF8String]);
     }] resume];
 }

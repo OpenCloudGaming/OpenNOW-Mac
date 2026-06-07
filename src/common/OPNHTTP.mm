@@ -1,9 +1,41 @@
 #include "OPNHTTP.h"
+#include "OPNSentry.h"
 
 namespace OPN {
 
 static void OPNSetErrorMessage(NSString **errorMessage, NSString *message) {
     if (errorMessage) *errorMessage = message ?: @"Unknown error";
+}
+
+static NSString *OPNHTTPStatusBucket(NSInteger statusCode) {
+    if (statusCode < 100) return @"unknown";
+    return [NSString stringWithFormat:@"%ldxx", (long)(statusCode / 100)];
+}
+
+static NSDictionary<NSString *, id> *OPNHTTPMetricAttributes(NSURLResponse *response,
+                                                             NSError *error,
+                                                             NSInteger expectedStatus,
+                                                             NSString *outcome) {
+    NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+    NSMutableDictionary<NSString *, id> *attributes = [@{
+        @"outcome": outcome.length > 0 ? outcome : @"unknown",
+        @"method": @"unknown",
+        @"host": http.URL.host.length > 0 ? http.URL.host : @"unknown",
+        @"expected_status": @(expectedStatus),
+    } mutableCopy];
+    if (http) {
+        attributes[@"status_code"] = @(http.statusCode);
+        attributes[@"status_bucket"] = OPNHTTPStatusBucket(http.statusCode);
+    }
+    if (error.domain.length > 0) {
+        attributes[@"error_domain"] = error.domain;
+        attributes[@"error_code"] = @(error.code);
+    }
+    return attributes;
+}
+
+static void OPNRecordHTTPMetric(NSURLResponse *response, NSError *error, NSInteger expectedStatus, NSString *outcome) {
+    OPN::RecordSentryCounterMetric("opennow.http.requests.count", 1, OPNHTTPMetricAttributes(response, error, expectedStatus, outcome));
 }
 
 NSMutableURLRequest *MakeHTTPRequest(NSString *urlString,
@@ -19,6 +51,7 @@ NSMutableURLRequest *MakeHTTPRequest(NSString *urlString,
         NSString *value = headers[key];
         if (key.length > 0 && value.length > 0) [request setValue:value forHTTPHeaderField:key];
     }
+    OPN::AddSentryTraceHeaders(request);
     return request;
 }
 
@@ -55,21 +88,26 @@ bool ValidateHTTPResponse(NSURLResponse *response,
                           NSString **errorMessage) {
     if (error) {
         OPNSetErrorMessage(errorMessage, error.localizedDescription ?: @"Network error");
+        OPNRecordHTTPMetric(response, error, expectedStatus, @"network_error");
         return false;
     }
     NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
     if (!http) {
         OPNSetErrorMessage(errorMessage, @"Missing HTTP response");
+        OPNRecordHTTPMetric(response, nil, expectedStatus, @"missing_response");
         return false;
     }
     if (http.statusCode != expectedStatus) {
         OPNSetErrorMessage(errorMessage, [NSString stringWithFormat:@"HTTP %ld", (long)http.statusCode]);
+        OPNRecordHTTPMetric(response, nil, expectedStatus, @"http_error");
         return false;
     }
     if (!data) {
         OPNSetErrorMessage(errorMessage, @"Empty response body");
+        OPNRecordHTTPMetric(response, nil, expectedStatus, @"empty_body");
         return false;
     }
+    OPNRecordHTTPMetric(response, nil, expectedStatus, @"success");
     return true;
 }
 

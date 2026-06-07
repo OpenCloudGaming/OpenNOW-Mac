@@ -262,6 +262,19 @@ static BOOL OPNWindowIsFullScreen(NSWindow *window) {
     return window && ((window.styleMask & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen);
 }
 
+static NSString *OPNMetricScreenName(OPN::AuthScreen screen) {
+    switch (screen) {
+        case OPN::AuthScreen::EmailEntry: return @"email_entry";
+        case OPN::AuthScreen::Authenticating: return @"authenticating";
+        case OPN::AuthScreen::Store: return @"store";
+        case OPN::AuthScreen::Catalog: return @"catalog";
+        case OPN::AuthScreen::Settings: return @"settings";
+        case OPN::AuthScreen::Error: return @"error";
+        case OPN::AuthScreen::OAuthBrowser: return @"oauth_browser";
+    }
+    return @"unknown";
+}
+
 static BOOL OPNAppDelegateScreenSupportsDesktopNavigation(OPN::AuthScreen screen) {
     return screen == OPN::AuthScreen::Catalog || screen == OPN::AuthScreen::Store || screen == OPN::AuthScreen::Settings;
 }
@@ -922,6 +935,8 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     (void)notification;
     using namespace OPN;
 
+    OPN::RecordSentryCounterMetric("opennow.app.launch.count", 1, nil);
+    SentryTransaction launchTrace("OpenNOW launch", "app.start");
     NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     [self applyApplicationIconTheme];
 
@@ -967,6 +982,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     BOOL shouldAutoSignIn = saved.isAuthenticated && AuthService::Shared().GetStayLoggedIn();
     BOOL canUseSavedSessionAsIs = saved.IsAccessTokenValid() && saved.IsClientTokenValid();
     BOOL canRefreshSavedSession = saved.IsAccessTokenValid() || !saved.refreshToken.empty() || !saved.clientToken.empty();
+    OPN::RecordSentryCounterMetric("opennow.auth.startup.count", 1, @{
+        @"saved_session": @(saved.isAuthenticated),
+        @"auto_sign_in": @(shouldAutoSignIn),
+        @"refresh_needed": @(shouldAutoSignIn && canRefreshSavedSession && !canUseSavedSessionAsIs),
+    });
     if (shouldAutoSignIn && canUseSavedSessionAsIs) {
         self.currentSession = saved;
         [self transitionToScreen:AuthScreen::Store];
@@ -978,11 +998,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
             __typeof__(self) s = weakSelf;
             if (!s) return;
             if (success) {
+                OPN::RecordSentryCounterMetric("opennow.auth.refresh.count", 1, @{@"source": @"startup", @"outcome": @"success"});
                 s.currentSession = fresh;
                 AuthService::Shared().SaveSession(fresh);
                 [s refreshAccountMenu];
                 [s transitionToScreen:AuthScreen::Store];
             } else {
+                OPN::RecordSentryCounterMetric("opennow.auth.refresh.count", 1, @{@"source": @"startup", @"outcome": @"failure"});
                 OPN::AuthSession fallback = AuthService::Shared().LoadSavedSession();
                 if (fallback.isAuthenticated && fallback.IsAccessTokenValid()) {
                     s.currentSession = fallback;
@@ -1001,10 +1023,12 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self restoreSavedWindowPresentation];
     [self startApplicationUpdateChecks];
     [self startDesktopControllerPolling];
+    launchTrace.SetStatus(true);
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;
+    OPN::RecordSentryCounterMetric("opennow.app.lifecycle.count", 1, @{@"phase": @"terminate"});
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.window saveFrameUsingName:OPNMainWindowFrameAutosaveName];
     [self saveWindowPresentation];
@@ -1917,6 +1941,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
 
     if ([self hasVisibleStreamingController]) {
+        OPN::RecordSentryCounterMetric("opennow.stream.start.count", 1, @{
+            @"source": resumeSessionId.empty() ? @"new" : @"resume",
+            @"outcome": @"ignored_active_stream",
+            @"return_screen": OPNMetricScreenName(returnScreen),
+        });
         OPN::LogInfo(@"[AppDelegate] Ignoring stream start while stream is active: title=%@, appId=%s", OPNAppStringFromStdString(title, @""), appId.c_str());
         return;
     }
@@ -1933,6 +1962,64 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     // NVIDIA API, surfaced as "Your NVIDIA session expired." Refreshing here prevents that.
     __weak __typeof__(self) weakSelf = self;
     AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &refreshError) {
+    OPN::RecordSentryCounterMetric("opennow.stream.start.count", 1, @{
+        @"source": resumeSessionId.empty() ? @"new" : @"resume",
+        @"outcome": @"started",
+        @"return_screen": OPNMetricScreenName(returnScreen),
+        @"account_linked": @(accountLinked),
+    });
+
+    self.catalogView = nil;
+    self.storeView = nil;
+    self.settingsView = nil;
+
+    OPNStreamViewController *streamVC = [[OPNStreamViewController alloc] initWithGameTitle:title
+                                                                                      appId:appId
+                                                                                   apiToken:apiToken
+                                                                              accountLinked:accountLinked
+                                                                               selectedStore:selectedStore
+                                                                             resumeSessionId:resumeSessionId
+                                                                                 resumeServer:resumeServer];
+    if (self.currentRemainingPlayTimeAvailable) {
+        [streamVC setRemainingPlaytimeHours:self.currentRemainingPlayTimeHours unlimited:self.currentRemainingPlayTimeUnlimited];
+    }
+    self.currentStreamTitle = title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:title.c_str()];
+    self.activeStreamReturnScreen = returnScreen;
+    self.streamDashboardHomeVisible = NO;
+    OPN::DiscordPresence::Shared().UpdateLaunching(title);
+
+    __weak __typeof__(self) weakSelf = self;
+    streamVC.onStreamEnd = ^(BOOL success, const std::string &error, const OPN::SessionHealthReport &report) {
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        std::string errorCopy = error;
+        OPN::SessionHealthReport reportCopy = report;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
+            OPN::RecordSentryCounterMetric("opennow.stream.end.count", 1, @{
+                @"outcome": success ? @"success" : @"failure",
+                @"return_screen": OPNMetricScreenName(returnScreen),
+            });
+            [strongSelf stopStreamDashboardControllerPolling];
+            strongSelf.streamDashboardHomeVisible = NO;
+            strongSelf.streamingController = nil;
+            strongSelf.currentStreamTitle = nil;
+            OPN::DiscordPresence::Shared().Clear();
+            [strongSelf transitionToScreen:returnScreen];
+            if (!success && !errorCopy.empty()) OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Stream ended with error before report: %s", errorCopy.c_str()]);
+            OPN::SessionReportDisplayDecision decision = OPN::SessionHealthReportDisplayDecisionForReport(reportCopy, OPN::LoadSessionReportDisplayMode());
+            OPN::RecordSentryCounterMetric("opennow.stream.report.count", 1, @{
+                @"decision": decision.shouldShow ? @"shown" : @"suppressed",
+                @"reason": [NSString stringWithUTF8String:decision.reason.c_str()] ?: @"unknown",
+            });
+            if (decision.shouldShow) {
+                [strongSelf showSessionReport:reportCopy];
+            } else {
+                OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Session report suppressed score=%d reason=%s", decision.score, decision.reason.c_str()]);
+            }
+        });
+    };
+    streamVC.onDashboardToggleRequested = ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
 
@@ -2144,6 +2231,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     using namespace OPN;
 
     if ([self hasVisibleStreamingController]) {
+        OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"ignored_active_stream"});
         OPN::LogInfo(@"[AppDelegate] Ignoring game launch while stream is active: title=%@, id=%s", OPNAppStringFromStdString(game.title, @""), game.id.c_str());
         return;
     }
@@ -2152,6 +2240,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     NSInteger launchGeneration = ++self.gameLaunchGeneration;
 
     OPN::LogInfo(@"[AppDelegate] Game selected: title=%@, id=%s, uuid=%s, variantIndex=%d", OPNAppStringFromStdString(launchGameInfo.title, @""), launchGameInfo.id.c_str(), launchGameInfo.uuid.c_str(), variantIndex);
+    OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{
+        @"outcome": @"selected",
+        @"return_screen": OPNMetricScreenName(returnScreen),
+        @"variant_selected": @(variantIndex >= 0),
+    });
 
     std::string apiToken = self.currentSession.idToken.empty()
         ? self.currentSession.accessToken : self.currentSession.idToken;
@@ -2218,11 +2311,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                 }
                 if (!ok) {
                     if (OPNSessionProbeAuthenticationError(errorCopy)) {
+                        OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"active_probe_auth_failure"});
                         OPN::LogError(@"[AppDelegate] Active session launch probe authentication failed, aborting launch: %s", errorCopy.c_str());
                         [strongSelf showError:errorCopy canRetry:YES];
                         return;
                     }
                     OPN::LogError(@"[AppDelegate] Active session launch probe failed, continuing launch: %s", errorCopy.c_str());
+                    OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"active_probe_failure_continue"});
                     startRequestedGameCopy();
                     return;
                 }
@@ -2243,6 +2338,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     }
                 }
                 if (foundRequestedGameSession) {
+                    OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"resume_same_game"});
                     std::string resumeAppId = requestedGameSession.appId > 0 ? std::to_string(requestedGameSession.appId) : effectiveAppId;
                     std::string resumeTitle = gameTitle.empty() ? std::string("Current Stream") : gameTitle;
                     [strongSelf startStreamWithTitle:resumeTitle
@@ -2256,11 +2352,13 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     return;
                 }
                 if (!foundActiveSession) {
+                    OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"start_new_no_active_session"});
                     startRequestedGameCopy();
                     return;
                 }
 
                 NSString *sessionTitle = OPNTitleForActiveSessionAppId(activeSession.appId, strongSelf.cachedGameLibrary);
+                OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"active_session_prompt"});
                 NSString *selectedGameTitle = gameTitle.empty() ? @"Selected Game" : [NSString stringWithUTF8String:gameTitle.c_str()];
                 [strongSelf showActiveSessionPromptWithSessionTitle:sessionTitle
                                                   selectedGameTitle:selectedGameTitle
@@ -2313,7 +2411,11 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [strongSelf showCloudmatchServerPickerForGameTitle:pickerGameTitle
                                             apiToken:apiToken
                                           completion:^(BOOL confirmed) {
-            if (!confirmed) return;
+            if (!confirmed) {
+                OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"server_selection_cancelled"});
+                return;
+            }
+            OPN::RecordSentryCounterMetric("opennow.game.launch.count", 1, @{@"outcome": @"server_selection_confirmed"});
             __typeof__(self) completionSelf = weakSelf;
             if (!completionSelf || completionSelf.gameLaunchGeneration != launchGeneration) return;
             continueLaunchAfterServerSelection(accountLinkedForLaunch);
@@ -3130,9 +3232,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         : self.currentSession.idToken;
     SessionManager::Shared().SetAccessToken(apiToken);
     SessionManager::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+    std::string persistedSessionId = SessionManager::Shared().LoadPersistedActiveSessionId();
 
     __weak __typeof__(self) weakSelf = self;
-    SessionManager::Shared().GetActiveSessions([weakSelf, generation, accountIdentifier, apiToken, screen](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
+    SessionManager::Shared().GetActiveSessions([weakSelf, generation, accountIdentifier, apiToken, screen, persistedSessionId](bool ok, const std::vector<ActiveSessionEntry> &sessions, const std::string &error) {
         std::vector<ActiveSessionEntry> sessionsCopy = sessions;
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -3149,11 +3252,26 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
             ActiveSessionEntry activeSession;
             BOOL foundActiveSession = NO;
-            for (const ActiveSessionEntry &session : sessionsCopy) {
-                if ((session.status == 2 || session.status == 3) && !session.sessionId.empty() && !session.serverIp.empty() && session.appId > 0) {
-                    activeSession = session;
-                    foundActiveSession = YES;
-                    break;
+            if (!persistedSessionId.empty()) {
+                for (const ActiveSessionEntry &session : sessionsCopy) {
+                    if (session.sessionId == persistedSessionId && (session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.serverIp.empty() && session.appId > 0) {
+                        activeSession = session;
+                        foundActiveSession = YES;
+                        break;
+                    }
+                }
+                if (!foundActiveSession) {
+                    OPN::LogInfo(@"[AppDelegate] Persisted active sessionId=%s was not returned by active sessions; clearing", persistedSessionId.c_str());
+                    SessionManager::Shared().ClearPersistedActiveSessionId(persistedSessionId);
+                    return;
+                }
+            } else {
+                for (const ActiveSessionEntry &session : sessionsCopy) {
+                    if ((session.status == 1 || session.status == 2 || session.status == 3 || session.status == 6) && !session.sessionId.empty() && !session.serverIp.empty() && session.appId > 0) {
+                        activeSession = session;
+                        foundActiveSession = YES;
+                        break;
+                    }
                 }
             }
             if (!foundActiveSession) return;
@@ -3324,6 +3442,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     [self installLibraryRootIfNeeded];
     AuthScreen previousScreen = self.currentScreen;
+    OPN::RecordSentryCounterMetric("opennow.ui.screen_transition.count", 1, @{
+        @"from": OPNMetricScreenName(previousScreen),
+        @"to": OPNMetricScreenName(screen),
+    });
     NSArray<NSView *> *previousSubviews = [self.contentContainer.subviews copy];
     BOOL animatedMainTransition = (previousScreen == AuthScreen::Settings && screen == AuthScreen::Store) ||
         (OPNAppDelegateScreenSupportsDesktopNavigation(previousScreen) && screen == AuthScreen::Settings);
@@ -3389,12 +3511,14 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
                     __typeof__(self) strongSelf = weakSelf;
                     if (!strongSelf) return;
                     if (success) {
+                        OPN::RecordSentryCounterMetric("opennow.auth.login.count", 1, @{@"outcome": @"success"});
                         strongSelf.currentSession = session;
                         if (strongSelf.pendingCredentials.stayLoggedIn)
                             OPN::AuthService::Shared().SaveSession(session);
                         [strongSelf refreshAccountMenu];
                         [strongSelf transitionToStoreAfterProviderSelectionForSession:session];
                     } else {
+                        OPN::RecordSentryCounterMetric("opennow.auth.login.count", 1, @{@"outcome": @"failure"});
                         [strongSelf showError:error canRetry:YES];
                     }
                 });
@@ -3718,11 +3842,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
 
     NSURL *url = [NSURL URLWithString:avatarURLString];
     if (!url) return;
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    auto trace = OPN::TraceSentryHTTPRequest(request, "Account avatar image");
     __weak __typeof__(self) weakSelf = self;
-    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *, NSError *error) {
+        OPN::SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) return;
         NSImage *image = [[NSImage alloc] initWithData:data];
         if (!image) return;
+        traceGuard.SetSuccess(true);
         dispatch_async(dispatch_get_main_queue(), ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || !strongSelf.rootView) return;

@@ -99,6 +99,23 @@ static NSData *JSONData(NSDictionary *dictionary) {
     return [NSJSONSerialization dataWithJSONObject:dictionary options:0 error:nil];
 }
 
+static NSData *RequestBodyData(NSURLRequest *request) {
+    if (request.HTTPBody) return request.HTTPBody;
+    NSInputStream *stream = request.HTTPBodyStream;
+    if (!stream) return nil;
+
+    NSMutableData *data = [NSMutableData data];
+    uint8_t buffer[4096];
+    [stream open];
+    while (stream.hasBytesAvailable) {
+        NSInteger bytesRead = [stream read:buffer maxLength:sizeof(buffer)];
+        if (bytesRead <= 0) break;
+        [data appendBytes:buffer length:(NSUInteger)bytesRead];
+    }
+    [stream close];
+    return data;
+}
+
 static bool WaitUntil(const std::function<bool()> &predicate, NSTimeInterval timeoutSeconds = 2.0) {
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:timeoutSeconds];
     while (!predicate() && [deadline timeIntervalSinceNow] > 0) {
@@ -325,6 +342,144 @@ TEST_CASE("StreamWebRTCBackendNameDefaultCase") {
     CHECK_EQ(name, "libwebrtc");
 }
 
+TEST_CASE("PollSessionValidatesAndPersistsSessionId") {
+    OPN::SessionManager::Shared().ClearPersistedActiveSessionId();
+    ScopedURLMock mock([](NSURLRequest *request) {
+        std::string path = request.URL.path.UTF8String;
+        CHECK_EQ(path, "/v2/session/requested-session");
+        return MockHTTPResponse{
+            200,
+            JSONData(@{
+                @"session": @{
+                    @"sessionId": @"different-session",
+                    @"status": @2,
+                    @"connectionInfo": @[],
+                },
+            }),
+            nil,
+        };
+    });
+
+    OPN::SessionManager::Shared().SetAccessToken("test-token");
+    OPN::SessionManager::Shared().SetStreamingBaseUrl("https://prod.cloudmatchbeta.nvidiagrid.net");
+
+    bool done = false;
+    bool success = true;
+    std::string error;
+    OPN::SessionManager::Shared().PollSession("requested-session", "", [&](bool ok, const OPN::SessionInfo &, const std::string &err) {
+        success = ok;
+        error = err;
+        done = true;
+    });
+
+    REQUIRE(WaitUntil([&] { return done; }));
+    CHECK(!success);
+    CHECK(error.find("SESSION_ID_MISMATCH") != std::string::npos);
+    CHECK(OPN::SessionManager::Shared().LoadPersistedActiveSessionId().empty());
+
+    OPN::SessionManager::Shared().StorePersistedActiveSessionId("persisted-session");
+    CHECK_EQ(OPN::SessionManager::Shared().LoadPersistedActiveSessionId(), "persisted-session");
+    OPN::SessionManager::Shared().ClearPersistedActiveSessionId();
+    CHECK(OPN::SessionManager::Shared().LoadPersistedActiveSessionId().empty());
+}
+
+TEST_CASE("ClaimSessionUsesVendorManualResumeType") {
+    OPN::SessionManager::Shared().ClearPersistedActiveSessionId();
+    BOOL sawResumePut = NO;
+    NSInteger requestIndex = 0;
+
+    ScopedURLMock mock([&](NSURLRequest *request) {
+        requestIndex++;
+        std::string path = request.URL.path.UTF8String;
+        CHECK_EQ(path, "/v2/session/resume-session");
+
+        NSString *method = request.HTTPMethod ?: @"GET";
+        if ([method isEqualToString:@"PUT"]) {
+            sawResumePut = YES;
+            NSData *body = RequestBodyData(request);
+            REQUIRE(body != nil);
+            NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:body options:0 error:nil];
+            REQUIRE([payload isKindOfClass:NSDictionary.class]);
+            CHECK_EQ([payload[@"action"] intValue], 2);
+            CHECK([payload[@"data"] isEqual:@"MANUAL"]);
+            CHECK([payload[@"sessionRequestData"] isKindOfClass:NSDictionary.class]);
+            return MockHTTPResponse{
+                200,
+                JSONData(@{
+                    @"requestStatus": @{
+                        @"statusCode": @1,
+                        @"statusDescription": @"SUCCESS",
+                    },
+                    @"session": @{
+                        @"sessionId": @"resume-session",
+                    },
+                }),
+                nil,
+            };
+        }
+
+        if (requestIndex == 1) {
+            return MockHTTPResponse{
+                200,
+                JSONData(@{
+                    @"requestStatus": @{
+                        @"statusCode": @1,
+                        @"statusDescription": @"SUCCESS",
+                    },
+                    @"session": @{
+                        @"sessionId": @"resume-session",
+                        @"status": @6,
+                    },
+                }),
+                nil,
+            };
+        }
+
+        return MockHTTPResponse{
+            200,
+            JSONData(@{
+                @"session": @{
+                    @"sessionId": @"resume-session",
+                    @"status": @2,
+                    @"connectionInfo": @[
+                        @{
+                            @"usage": @14,
+                            @"ip": @"prod.cloudmatchbeta.nvidiagrid.net",
+                            @"port": @443,
+                            @"resourcePath": @"/nvst/",
+                        },
+                    ],
+                },
+            }),
+            nil,
+        };
+    });
+
+    OPN::StreamSettings settings;
+    settings.selectedStore = "steam";
+    settings.codec = "H264";
+    settings.colorQuality = "sdr";
+    settings.resolution = "1920x1080";
+    settings.fps = 60;
+    settings.maxBitrateMbps = 50;
+
+    OPN::SessionManager::Shared().SetAccessToken("test-token");
+    OPN::SessionManager::Shared().SetStreamingBaseUrl("https://prod.cloudmatchbeta.nvidiagrid.net");
+
+    bool done = false;
+    bool success = false;
+    OPN::SessionManager::Shared().ClaimSession("resume-session", "prod.cloudmatchbeta.nvidiagrid.net", "123", settings, false,
+        [&](bool ok, const OPN::SessionInfo &, const std::string &) {
+            success = ok;
+            done = true;
+        });
+
+    REQUIRE(WaitUntil([&] { return done; }));
+    CHECK(success);
+    CHECK(sawResumePut);
+    OPN::SessionManager::Shared().ClearPersistedActiveSessionId();
+}
+
 }
 
 namespace streaming_preference_tests {
@@ -538,7 +693,7 @@ TEST_CASE("PrefilterPreferencesReadBundleAndGlobalDefaults") {
     CHECK_EQ(fallback.prefilterDenoise, 7);
 }
 
-TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
+TEST_CASE("UpscalingPreferencesDefaultOnFixed4KTargetAndClampSharpnessDenoise") {
     ScopedStreamIntegerPreference mode(@"OpenNOW.Stream.UpscalingModeIndex");
     ScopedStreamIntegerPreference target(@"OpenNOW.Stream.UpscalingTargetIndex");
     ScopedStreamIntegerPreference sharpness(@"OpenNOW.Stream.UpscalingSharpness");
@@ -553,9 +708,9 @@ TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     CHECK_EQ(defaults.upscalingDenoise, 0);
 
     OPN::SaveStreamUpscalingTargetIndex(0);
-    OPN::StreamPreferenceProfile twoK = OPN::LoadStreamPreferenceProfile();
-    CHECK_EQ(twoK.upscalingTargetHeight, 1440);
-    CHECK_EQ(twoK.upscalingTargetOption.label, "2K");
+    OPN::StreamPreferenceProfile fixed4K = OPN::LoadStreamPreferenceProfile();
+    CHECK_EQ(fixed4K.upscalingTargetHeight, 2160);
+    CHECK_EQ(fixed4K.upscalingTargetOption.label, "4K");
 
     OPN::SaveStreamUpscalingModeIndex(2);
     OPN::StreamPreferenceProfile spatial = OPN::LoadStreamPreferenceProfile();
@@ -579,7 +734,7 @@ TEST_CASE("UpscalingPreferencesDefaultOnAndClampSharpnessDenoise") {
     OPN::StreamPreferenceProfile clamped = OPN::LoadStreamPreferenceProfile();
     CHECK_EQ(clamped.upscalingMode, 4);
     CHECK_EQ(clamped.upscalingModeOption.label, "Temporal");
-    CHECK_EQ(clamped.upscalingTargetHeight, 1440);
+    CHECK_EQ(clamped.upscalingTargetHeight, 2160);
     CHECK_EQ(clamped.upscalingSharpness, 0);
     CHECK_EQ(clamped.upscalingDenoise, 20);
 

@@ -28,6 +28,16 @@ scripts/install-sentry-native.sh
 
 The installer writes the SDK to `third_party/sentry-native/install`.
 
+Sentry metrics are enabled with Sentry Native when Sentry support is available. To send the built-in verification event, structured log, and sample metrics, run:
+
+```sh
+OPN_SENTRY_VERIFY=1 make run
+```
+
+Set `OPN_DISABLE_SENTRY_METRICS=1` to disable metrics without disabling crash reporting or logs.
+
+Runtime metrics cover app lifecycle, auth refresh and login outcomes, screen transitions, HTTP response outcomes, game launch decisions, stream launch duration, stream duration, recovery attempts, remote stop outcomes, and sampled stream quality gauges.
+
 ## Build & Run
 
 ```sh

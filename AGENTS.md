@@ -1,36 +1,35 @@
 ---
-description: Apply these instructions to ensure all code generation and reviews align with strict, language-agnostic production standards.
+description: Language-agnostic production standards for all code generation and reviews.
 applyTo: '**'
 ---
 
 # Operational Protocol
-Before executing any task, you must strictly follow this sequence:
+Execute every task in this order:
 
-**Step 1: Acknowledge.** Explicitly confirm your understanding of and adherence to these universal rules.
-**Step 2: Audit.** Identify and list all files, modules, or components required for the task.
-**Step 3: Blueprint.** Outline a concise, high-level architectural plan of action before writing any code.
-**Step 4: Execution.** Deliver complete, production-ready code. You are strictly forbidden from using snippets, placeholders (e.g., `TODO`, `pass`, `...`), or stubs. 
-**Step 5: Autonomy.** If context, imports, or dependencies are missing, autonomously resolve them by defaulting to the language's standard library or canonical implementation practices.
+1. **Audit** — List all files, modules, and components required.
+2. **Blueprint** — Outline a concise architectural plan before writing code.
+3. **Execution** — Deliver complete, production-ready code. No snippets, placeholders (`TODO`, `pass`, `...`), or stubs.
+4. **Autonomy** — Resolve missing context or dependencies using the standard library or canonical practices.
 
 # Coding Standards
 
-## 1. General Requirements
-* **Self-Documenting Logic:** Do not rely on inline comments to explain behavior. Variables, functions, and architecture must clearly dictate intent.
-* **Hermetic Code:** Every file must be entirely self-contained. Include all necessary imports, headers, and dependencies. The code must compile or execute immediately as-is.
-* **Total Implementation:** Every function, class, and method must contain final, working logic. Mocks and no-ops are strictly prohibited unless explicitly designing a testing suite.
+## General
+- **Self-Documenting:** Names and structure must convey intent. No explanatory inline comments.
+- **Hermetic:** Every file includes all imports and dependencies. Must compile/run as-is.
+- **Complete:** All functions and methods contain final, working logic. No mocks or no-ops unless building a test suite.
 
-## 2. Resource & State Management
-* **Lifecycle Strictness:** Explicitly manage memory, connections, and file handles using the most robust native paradigm available (e.g., RAII, context managers, garbage collection optimization, or strict ownership rules).
-* **Immutability by Default:** Enforce state immutability wherever possible using language-native constraints (e.g., `const`, `readonly`, `final`). Limit mutable state to strictly scoped, necessary components.
+## Resource & State
+- **Lifecycle:** Explicitly manage memory, connections, and handles via the language's native paradigm (RAII, context managers, ownership, etc.).
+- **Immutable by Default:** Use language-native constraints (`const`, `readonly`, `final`). Mutable state must be minimal and scoped.
 
-## 3. Error Handling & Safety
-* **Explicit Propagation:** Handle all edge cases and errors natively. Use idiomatic error flow (e.g., Result/Option types, strictly caught exceptions, or multiple return values).
-* **Zero Panics/Crashes:** Never use forceful unwraps, assertions that crash in production, or unhandled panic equivalents. Failures must be gracefully handled or propagated contextually.
+## Error Handling
+- **Explicit:** Handle all edge cases idiomatically (Result/Option types, caught exceptions, multiple returns).
+- **No Panics:** Never use forceful unwraps or unhandled crash equivalents. Failures must propagate or degrade gracefully.
 
-## 4. Verification & Quality
-* **Strict Typing:** Utilize strict/static typing tools native to the language or ecosystem. Avoid dynamic or "any" types unless categorically required by the architecture.
-* **Zero Warnings:** Code must be formatted and structured to pass the target language’s strictest standard linter and compiler settings without a single warning or error.
+## Quality
+- **Strict Typing:** Use static/strict types throughout. Avoid `any` or dynamic types unless architecturally required.
+- **Zero Warnings:** Code must pass the strictest linter and compiler settings cleanly.
 
 # Commit Standards
-* **Commit Completed Work:** After a task is fully implemented and verified, commit the finished work before considering the task complete, unless explicitly instructed not to commit.
-* **Tagged Commit Messages:** Every commit message must begin with a conventional tag such as `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`. The tag must accurately describe the purpose of the change.
+- Commit all completed work before considering a task done.
+- Prefix every message with a conventional tag: `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`.
