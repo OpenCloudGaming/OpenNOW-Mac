@@ -97,9 +97,11 @@ public:
     uint16_t ProtocolVersion() const { return m_protocolVersion; }
 
     std::vector<uint8_t> EncodeHeartbeat() const;
+    void EncodeHeartbeat(std::vector<uint8_t> &out) const;
     std::vector<uint8_t> EncodeKeyDown(const KeyboardPayload &payload) const;
     std::vector<uint8_t> EncodeKeyUp(const KeyboardPayload &payload) const;
     std::vector<uint8_t> EncodeMouseMove(const MouseMovePayload &payload) const;
+    void EncodeMouseMove(const MouseMovePayload &payload, std::vector<uint8_t> &out) const;
     std::vector<uint8_t> EncodeMouseButtonDown(const MouseButtonPayload &payload) const;
     std::vector<uint8_t> EncodeMouseButtonUp(const MouseButtonPayload &payload) const;
     std::vector<uint8_t> EncodeMouseWheel(const MouseWheelPayload &payload) const;

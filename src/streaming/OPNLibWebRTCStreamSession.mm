@@ -2399,8 +2399,8 @@ void LibWebRTCStreamSession::SendMouseMove(int16_t dx, int16_t dy) {
     payload.dx = dx;
     payload.dy = dy;
     payload.timestampUs = Input::TimestampUs();
-    const std::vector<uint8_t> encoded = m_inputEncoder.EncodeMouseMove(payload);
-    SendInputPartiallyReliable(encoded.data(), encoded.size());
+    m_inputEncoder.EncodeMouseMove(payload, m_mouseMoveScratch);
+    SendInputPartiallyReliable(m_mouseMoveScratch.data(), m_mouseMoveScratch.size());
 }
 
 void LibWebRTCStreamSession::SendMouseButton(uint8_t button, bool down) {
@@ -3324,8 +3324,8 @@ void LibWebRTCStreamSession::StartInputHeartbeat() {
     dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), 2 * NSEC_PER_SEC, 100 * NSEC_PER_MSEC);
     dispatch_source_set_event_handler(timer, ^{
         if (!m_inputReady) return;
-        std::vector<uint8_t> heartbeat = m_inputEncoder.EncodeHeartbeat();
-        SendInput(heartbeat.data(), heartbeat.size());
+        m_inputEncoder.EncodeHeartbeat(m_heartbeatScratch);
+        SendInput(m_heartbeatScratch.data(), m_heartbeatScratch.size());
     });
     dispatch_resume(timer);
 }

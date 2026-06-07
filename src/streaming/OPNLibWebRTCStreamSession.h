@@ -139,6 +139,8 @@ private:
     uint64_t m_lastAdaptiveBitrateChangeMs = 0;
     StreamSettings m_settings;
     Input::Encoder m_inputEncoder;
+    std::vector<uint8_t> m_mouseMoveScratch;
+    std::vector<uint8_t> m_heartbeatScratch;
     std::function<void(const SendAnswerRequest &)> m_onAnswer;
     std::function<void(const IceCandidatePayload &)> m_onIceCandidate;
     StreamStateCallback m_onState;

@@ -181,6 +181,7 @@ static constexpr NSTimeInterval kCatalogCacheFreshSeconds = 15.0 * 60.0;
 static constexpr NSTimeInterval kCatalogDefinitionsFreshSeconds = 24.0 * 60.0 * 60.0;
 static constexpr NSTimeInterval kAccountLinkingRequestTimeoutSeconds = 15.0;
 static constexpr int kAccountLinkingCallbackTimeoutSeconds = 5 * 60;
+static constexpr NSTimeInterval kServerVpcCacheFreshSeconds = 5.0 * 60.0;
 static void GetServerVpcId(const std::string &token,
                            const std::string &providerStreamingBaseUrl,
                            std::function<void(const std::string &vpcId)> completion);
@@ -221,6 +222,13 @@ void GameService::SetStreamingBaseUrl(const std::string &url) {
 
 std::string GameService::ProviderStreamingBaseUrl() const {
     return m_providerStreamingBaseUrl.empty() ? DefaultStreamingBaseUrl() : m_providerStreamingBaseUrl;
+}
+
+void GameService::PrewarmLaunchData() {
+    std::string token = m_accessToken;
+    if (token.empty()) return;
+    std::string providerStreamingBaseUrl = ProviderStreamingBaseUrl();
+    GetServerVpcId(token, providerStreamingBaseUrl, [](const std::string &) {});
 }
 
 static std::string NormalizeStreamingBaseUrl(const std::string &url) {
@@ -2081,6 +2089,46 @@ static void GetServerVpcId(const std::string &token,
                             const std::string &providerStreamingBaseUrl,
                             std::function<void(const std::string &vpcId)> completion) {
     std::string normalized = NormalizeStreamingBaseUrl(providerStreamingBaseUrl);
+    NSString *cacheKey = [NSString stringWithFormat:@"%s|%lu", normalized.c_str(), (unsigned long)std::hash<std::string>{}(token)];
+    static NSMutableDictionary<NSString *, NSDictionary *> *cache = nil;
+    static NSMutableDictionary<NSString *, NSMutableArray *> *pending = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [NSMutableDictionary dictionary];
+        pending = [NSMutableDictionary dictionary];
+    });
+    @synchronized (cache) {
+        NSDictionary *entry = cache[cacheKey];
+        NSString *cachedVpcId = [entry[@"vpc"] isKindOfClass:NSString.class] ? entry[@"vpc"] : nil;
+        NSNumber *timestamp = [entry[@"ts"] isKindOfClass:NSNumber.class] ? entry[@"ts"] : nil;
+        if (cachedVpcId.length > 0 && timestamp && [[NSDate date] timeIntervalSince1970] - timestamp.doubleValue <= kServerVpcCacheFreshSeconds) {
+            completion(cachedVpcId.UTF8String);
+            return;
+        }
+        NSMutableArray *callbacks = pending[cacheKey];
+        if (callbacks) {
+            [callbacks addObject:[NSValue valueWithPointer:new std::function<void(const std::string &)>(std::move(completion))]];
+            return;
+        }
+        pending[cacheKey] = [NSMutableArray arrayWithObject:[NSValue valueWithPointer:new std::function<void(const std::string &)>(std::move(completion))]];
+    }
+    NSString *cacheKeyCopy = [cacheKey copy];
+    auto finish = [cacheKeyCopy](const std::string &vpcId) {
+        NSArray *callbacks = nil;
+        @synchronized (cache) {
+            NSString *vpc = [NSString stringWithUTF8String:vpcId.empty() ? "GFN-PC" : vpcId.c_str()];
+            cache[cacheKeyCopy] = @{@"vpc": vpc, @"ts": @([[NSDate date] timeIntervalSince1970])};
+            callbacks = [pending[cacheKeyCopy] copy];
+            [pending removeObjectForKey:cacheKeyCopy];
+        }
+        for (NSValue *entry in callbacks) {
+            auto *callback = static_cast<std::function<void(const std::string &)> *>(entry.pointerValue);
+            if (callback) {
+                (*callback)(vpcId.empty() ? std::string("GFN-PC") : vpcId);
+                delete callback;
+            }
+        }
+    };
     NSString *urlString = [NSString stringWithFormat:@"%sv2/serverInfo", normalized.c_str()];
     NSURL *url = [NSURL URLWithString:urlString];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
@@ -2098,22 +2146,22 @@ static void GetServerVpcId(const std::string &token,
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         SentryTransactionFinishGuard traceGuard(trace);
         if (error || !data) {
-            completion("GFN-PC");
+            finish("GFN-PC");
             return;
         }
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (http.statusCode != 200) {
-            completion("GFN-PC");
+            finish("GFN-PC");
             return;
         }
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         NSString *serverId = json[@"requestStatus"][@"serverId"];
         if (![serverId isKindOfClass:[NSString class]] || serverId.length == 0) {
-            completion("GFN-PC");
+            finish("GFN-PC");
             return;
         }
         traceGuard.SetSuccess(true);
-        completion([serverId UTF8String]);
+        finish([serverId UTF8String]);
     }] resume];
 }
 

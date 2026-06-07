@@ -65,6 +65,8 @@ OpnImageLoadToken *OpnLoadImageForURLCancellable(NSString *urlString,
 OpnImageLoadToken *OpnLoadImageFromCandidatesCancellable(NSArray<NSString *> *candidates,
                                                           CGFloat maxPixelDimension,
                                                           OpnImageLoadCompletion completion);
+OpnImageLoadToken *OpnPrefetchImageForURL(NSString *urlString, CGFloat maxPixelDimension);
+OpnImageLoadToken *OpnPrefetchImageFromCandidates(NSArray<NSString *> *candidates, CGFloat maxPixelDimension);
 
 NSString *OpnGameIdentityForHero(const OPN::GameInfo &game);
 NSArray<NSString *> *OpnHeroImageCandidatesForGame(const OPN::GameInfo &game);

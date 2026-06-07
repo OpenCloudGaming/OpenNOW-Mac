@@ -187,8 +187,13 @@ void Encoder::SetProtocolVersion(uint16_t version) {
 
 std::vector<uint8_t> Encoder::EncodeHeartbeat() const {
     std::vector<uint8_t> bytes(4, 0);
-    WriteU32LE(bytes, 0, INPUT_HEARTBEAT);
+    EncodeHeartbeat(bytes);
     return bytes;
+}
+
+void Encoder::EncodeHeartbeat(std::vector<uint8_t> &out) const {
+    out.assign(4, 0);
+    WriteU32LE(out, 0, INPUT_HEARTBEAT);
 }
 
 std::vector<uint8_t> Encoder::EncodeKeyDown(const KeyboardPayload &payload) const {
@@ -210,25 +215,30 @@ std::vector<uint8_t> Encoder::EncodeKey(uint32_t type, const KeyboardPayload &pa
 }
 
 std::vector<uint8_t> Encoder::EncodeMouseMove(const MouseMovePayload &payload) const {
+    std::vector<uint8_t> bytes;
+    EncodeMouseMove(payload, bytes);
+    return bytes;
+}
+
+void Encoder::EncodeMouseMove(const MouseMovePayload &payload, std::vector<uint8_t> &out) const {
     if (m_protocolVersion <= 2) {
-        std::vector<uint8_t> bytes(22, 0);
-        WriteU32LE(bytes, 0, INPUT_MOUSE_REL);
-        WriteI16BE(bytes, 4, payload.dx);
-        WriteI16BE(bytes, 6, payload.dy);
-        WriteU64BE(bytes, 14, payload.timestampUs);
-        return bytes;
+        out.assign(22, 0);
+        WriteU32LE(out, 0, INPUT_MOUSE_REL);
+        WriteI16BE(out, 4, payload.dx);
+        WriteI16BE(out, 6, payload.dy);
+        WriteU64BE(out, 14, payload.timestampUs);
+        return;
     }
 
-    std::vector<uint8_t> wrapped(34, 0);
-    wrapped[0] = 0x23;
-    WriteU64BE(wrapped, 1, TimestampUs());
-    wrapped[9] = 0x21;
-    WriteU16BE(wrapped, 10, 22);
-    WriteU32LE(wrapped, 12, INPUT_MOUSE_REL);
-    WriteI16BE(wrapped, 16, payload.dx);
-    WriteI16BE(wrapped, 18, payload.dy);
-    WriteU64BE(wrapped, 26, payload.timestampUs);
-    return wrapped;
+    out.assign(34, 0);
+    out[0] = 0x23;
+    WriteU64BE(out, 1, TimestampUs());
+    out[9] = 0x21;
+    WriteU16BE(out, 10, 22);
+    WriteU32LE(out, 12, INPUT_MOUSE_REL);
+    WriteI16BE(out, 16, payload.dx);
+    WriteI16BE(out, 18, payload.dy);
+    WriteU64BE(out, 26, payload.timestampUs);
 }
 
 std::vector<uint8_t> Encoder::EncodeMouseButtonDown(const MouseButtonPayload &payload) const {

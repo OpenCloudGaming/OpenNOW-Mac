@@ -64,6 +64,7 @@ public:
     void SelectOwnedVariant(const std::string &variantId, OwnershipActionCallback completion);
     void SyncAccountProvider(const std::string &store, OwnershipActionCallback completion);
     void StartAccountLinking(const std::string &store, OwnershipActionCallback completion);
+    void PrewarmLaunchData();
 
     void LaunchGame(const std::string &appId,
                     const std::string &internalTitle,

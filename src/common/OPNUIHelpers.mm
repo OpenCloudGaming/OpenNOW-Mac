@@ -730,11 +730,19 @@ void OpnLoadImageFromCandidates(NSArray<NSString *> *candidates,
 }
 
 OpnImageLoadToken *OpnLoadImageFromCandidatesCancellable(NSArray<NSString *> *candidates,
-                                                         CGFloat maxPixelDimension,
-                                                         OpnImageLoadCompletion completion) {
+                                                          CGFloat maxPixelDimension,
+                                                          OpnImageLoadCompletion completion) {
     OpnImageLoadToken *token = [[OpnImageLoadToken alloc] init];
     OpnLoadImageCandidateAtIndex(candidates, 0, maxPixelDimension, completion, token);
     return token;
+}
+
+OpnImageLoadToken *OpnPrefetchImageForURL(NSString *urlString, CGFloat maxPixelDimension) {
+    return OpnLoadImageForURLCancellable(urlString, maxPixelDimension, ^(NSImage *, NSString *, NSData *) {});
+}
+
+OpnImageLoadToken *OpnPrefetchImageFromCandidates(NSArray<NSString *> *candidates, CGFloat maxPixelDimension) {
+    return OpnLoadImageFromCandidatesCancellable(candidates, maxPixelDimension, ^(NSImage *, NSString *, NSData *) {});
 }
 
 NSString *OpnGameIdentityForHero(const OPN::GameInfo &game) {

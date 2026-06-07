@@ -1982,6 +1982,7 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
 @property (nonatomic, strong) NSMutableArray<OPNStoreRowLayout *> *rowLayouts;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *heroImageLoadTokens;
+@property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *prefetchImageLoadTokens;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
 @property (nonatomic, strong) NSView *desktopHeroContainer;
@@ -2033,6 +2034,9 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation animated:(BOOL)animated;
 - (void)cancelHeroImageLoads;
 - (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token;
+- (void)cancelPrefetchImageLoads;
+- (void)trackPrefetchImageLoadToken:(OpnImageLoadToken *)token;
+- (void)prefetchHeroArtworkCandidates;
 - (void)updateDesktopFeaturedHeroOnly;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (void)scheduleRenderStore;
@@ -2056,6 +2060,7 @@ using namespace OPN;
         _rowCards = [NSMutableArray array];
         _rowLayouts = [NSMutableArray array];
         _heroImageLoadTokens = [NSMutableArray array];
+        _prefetchImageLoadTokens = [NSMutableArray array];
         _desktopFeaturedHeroViews = [NSMutableArray array];
         _desktopFeaturedHeroFrame = NSZeroRect;
         _focusedRowIndex = 0;
@@ -2162,6 +2167,7 @@ using namespace OPN;
     [self.resizeRenderTimer invalidate];
     [self.searchDebounceTimer invalidate];
     [self cancelHeroImageLoads];
+    [self cancelPrefetchImageLoads];
 }
 
 - (void)interfacePreferencesChanged:(NSNotification *)notification {
@@ -2310,6 +2316,7 @@ using namespace OPN;
     self.initialHeroImage = nil;
     self.initialHeroIdentity = nil;
     [self configureHeroRotationTimer];
+    [self prefetchHeroArtworkCandidates];
     [self renderStoreWhenInitialHeroReady];
 }
 
@@ -2322,6 +2329,7 @@ using namespace OPN;
     self.initialHeroImage = nil;
     self.initialHeroIdentity = nil;
     [self configureHeroRotationTimer];
+    [self prefetchHeroArtworkCandidates];
     if (self.hasContent) {
         [self updateDesktopFeaturedHeroOnly];
         return;
@@ -2625,6 +2633,34 @@ using namespace OPN;
     if (!token) return;
     [self.heroImageLoadTokens addObject:token];
     if (self.heroImageLoadTokens.count > 12) [self.heroImageLoadTokens removeObjectsInRange:NSMakeRange(0, self.heroImageLoadTokens.count - 8)];
+}
+
+- (void)cancelPrefetchImageLoads {
+    for (OpnImageLoadToken *token in self.prefetchImageLoadTokens) [token cancel];
+    [self.prefetchImageLoadTokens removeAllObjects];
+}
+
+- (void)trackPrefetchImageLoadToken:(OpnImageLoadToken *)token {
+    if (!token) return;
+    [self.prefetchImageLoadTokens addObject:token];
+    if (self.prefetchImageLoadTokens.count > 36) {
+        NSUInteger removeCount = self.prefetchImageLoadTokens.count - 24;
+        for (NSUInteger index = 0; index < removeCount; index++) [self.prefetchImageLoadTokens[index] cancel];
+        [self.prefetchImageLoadTokens removeObjectsInRange:NSMakeRange(0, removeCount)];
+    }
+}
+
+- (void)prefetchHeroArtworkCandidates {
+    [self cancelPrefetchImageLoads];
+    NSInteger candidateCount = [self heroCandidateCount];
+    for (NSInteger index = 0; index < candidateCount; index++) {
+        const GameInfo &game = _featuredGames[(size_t)index];
+        NSArray<NSString *> *candidates = OpnHeroImageCandidatesForGame(game);
+        if (candidates.count == 0) continue;
+        [self trackPrefetchImageLoadToken:OpnPrefetchImageFromCandidates(candidates, 1600.0)];
+        NSArray<NSString *> *logoCandidates = OPNStoreLogoCandidatesForGame(game);
+        if (logoCandidates.count > 0) [self trackPrefetchImageLoadToken:OpnPrefetchImageFromCandidates(logoCandidates, 720.0)];
+    }
 }
 
 - (void)scheduleAsyncSearchForCurrentQuery {
@@ -3073,9 +3109,16 @@ using namespace OPN;
     }
     CGFloat horizontalBuffer = cardSpan * (CGFloat)kStoreRailImagePreloadCardBuffer;
     NSRect preloadRect = NSInsetRect(visibleRect, -horizontalBuffer, 0.0);
+    NSRect prefetchRect = NSInsetRect(visibleRect, -horizontalBuffer * 2.5, 0.0);
     for (OPNStoreGameTile *card in rowLayout.cards) {
         if (NSIntersectsRect(card.frame, preloadRect)) [card ensureImageLoaded];
-        else [card cancelImageLoad];
+        else {
+            [card cancelImageLoad];
+            if (NSIntersectsRect(card.frame, prefetchRect)) {
+                NSArray<NSString *> *candidates = OPNStoreImageCandidatesForGame(card.game, card.prominent);
+                if (candidates.count > 0) [self trackPrefetchImageLoadToken:OpnPrefetchImageFromCandidates(candidates, 900.0)];
+            }
+        }
     }
 }
 

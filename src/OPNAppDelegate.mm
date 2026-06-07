@@ -3823,8 +3823,10 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     GameService::Shared().FetchProviderInfo(self.currentSession.idpId, [token](bool, const GameProviderInfo &, const GameProviderEndpoint &endpoint, const std::string &) {
         std::string providerBaseUrl = endpoint.streamingServiceUrl.empty() ? GameService::Shared().ProviderStreamingBaseUrl() : endpoint.streamingServiceUrl;
         GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+        GameService::Shared().PrewarmLaunchData();
         FetchStreamRegions(token, providerBaseUrl, [](const std::vector<StreamRegionOption> &) {
             GameService::Shared().SetStreamingBaseUrl(LoadSelectedStreamingBaseUrl());
+            GameService::Shared().PrewarmLaunchData();
             [[NSNotificationCenter defaultCenter] postNotificationName:@"OpenNOW.StreamRegionsUpdated" object:nil];
         });
     });
