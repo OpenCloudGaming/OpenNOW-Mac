@@ -37,6 +37,7 @@ static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.Suppress
 static NSString *const kDirectMouseInputKey = @"OpenNOW.Stream.DirectMouseInput";
 static NSString *const kGameVolumeKey = @"OpenNOW.Stream.GameVolume";
 static NSString *const kMicrophoneVolumeKey = @"OpenNOW.Stream.MicrophoneVolume";
+static NSString *const kMicrophoneShortcutEnabledKey = @"OpenNOW.Stream.MicrophoneShortcutEnabled";
 static NSString *const kMicrophoneModeKey = @"OpenNOW.Stream.MicrophoneMode";
 static NSString *const kMicrophoneDeviceIdKey = @"OpenNOW.Stream.MicrophoneDeviceId";
 static NSString *const kMicrophonePushToTalkKeyCodeKey = @"OpenNOW.Stream.MicrophonePushToTalkKeyCode";
@@ -1707,6 +1708,15 @@ void SaveStreamGameVolume(double volume) {
 
 void SaveStreamMicrophoneVolume(double volume) {
     [NSUserDefaults.standardUserDefaults setDouble:std::max(0.0, std::min(volume, 1.0)) forKey:kMicrophoneVolumeKey];
+}
+
+bool LoadStreamMicrophoneShortcutEnabled() {
+    id value = [NSUserDefaults.standardUserDefaults objectForKey:kMicrophoneShortcutEnabledKey];
+    return [value isKindOfClass:NSNumber.class] ? [(NSNumber *)value boolValue] : true;
+}
+
+void SaveStreamMicrophoneShortcutEnabled(bool enabled) {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kMicrophoneShortcutEnabledKey];
 }
 
 void SaveStreamMicrophoneMode(const std::string &mode) {

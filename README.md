@@ -45,9 +45,17 @@ make
 make run
 ```
 
-Build artifacts are written to `build/OpenNOW`.
+Debug build artifacts are written to `build/debug/OpenNOW`.
 
 `make run` enables `OPN_INFO_LOGS=1` by default so runtime logs are printed in the terminal.
+
+For optimized builds, use:
+
+```sh
+make release
+```
+
+Release artifacts are written to `build/release/OpenNOW`.
 
 ## Clean
 

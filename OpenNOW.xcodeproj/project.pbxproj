@@ -1165,7 +1165,7 @@
 				15F569470662212ABEBAA581 /* Release in XCBuildConfiguration */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		0492478C91E994548D3C8A2B = {
 			isa = XCConfigurationList;
@@ -1174,7 +1174,7 @@
 				8517C37176AB619154079A5B /* Release in XCBuildConfiguration */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		/* End XCConfigurationList section */
 	};
