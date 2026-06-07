@@ -38,6 +38,9 @@ static const CGFloat kStoreRailInertiaMinimumVelocity = 8.0;
 static const CGFloat kStoreRailInertiaResistancePerSecond = 0.035;
 static const NSInteger kStoreRailImagePreloadCardBuffer = 4;
 static const NSTimeInterval kStoreSearchDebounceInterval = 0.18;
+static const NSTimeInterval kStoreHeroBackgroundFadeDuration = 0.34;
+static const NSTimeInterval kStoreHeroLogoFadeDuration = 0.24;
+static const NSTimeInterval kStoreHeroLogoFadeDelay = 0.10;
 
 static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat viewportHeight) {
     CGFloat fallbackHeight = MAX(1.0, width) / kStoreFallbackHeroAspect;
@@ -1021,6 +1024,17 @@ static void OPNStoreHeroBringLogoToFront(NSView *container, NSTextField *titleFa
     if (logoView.superview == container) [container addSubview:logoView positioned:NSWindowAbove relativeTo:nil];
 }
 
+static void OPNStoreConfigureHeroLogoImageView(NSImageView *logoView, CGFloat zPosition) {
+    logoView.imageScaling = NSImageScaleProportionallyDown;
+    logoView.imageAlignment = NSImageAlignLeft;
+    logoView.wantsLayer = YES;
+    logoView.layer.zPosition = zPosition;
+    logoView.layer.shadowColor = OpnColor(OPN::kBlack, 0.90).CGColor;
+    logoView.layer.shadowOpacity = 1.0;
+    logoView.layer.shadowRadius = 18.0;
+    logoView.layer.shadowOffset = CGSizeMake(0.0, -2.0);
+}
+
 static BOOL OPNStoreHeroImageHasVisibleContent(NSImage *image) {
     if (!image || image.size.width <= 0.0 || image.size.height <= 0.0) return NO;
     if (image.size.width < 900.0 || image.size.height < 300.0) return NO;
@@ -1932,8 +1946,10 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
 @property (nonatomic, strong) NSView *desktopHeroContainer;
 @property (nonatomic, strong) OPNHeroArtworkView *desktopHeroArtworkView;
+@property (nonatomic, strong) OPNHeroArtworkView *desktopHeroArtworkTransitionView;
 @property (nonatomic, strong) NSTextField *desktopHeroTitleFallback;
 @property (nonatomic, strong) NSImageView *desktopHeroLogoView;
+@property (nonatomic, strong) NSImageView *desktopHeroLogoTransitionView;
 @property (nonatomic, copy) NSString *desktopHeroIdentity;
 @property (nonatomic, assign) NSInteger desktopHeroGeneration;
 @property (nonatomic, strong) NSImage *initialHeroImage;
@@ -1951,7 +1967,7 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @property (nonatomic, assign) NSInteger initialHeroPreloadGeneration;
 @property (nonatomic, assign) std::string panelsFingerprint;
 @property (nonatomic, assign) OPNStoreControllerFamily buttonHintControllerFamily;
-- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index completion:(void (^)(BOOL loaded))completion;
+- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index animated:(BOOL)animated completion:(void (^)(BOOL loaded))completion;
 - (void)renderStoreWhenInitialHeroReady;
 - (void)scheduleRenderStoreAfterResize;
 - (void)resizeRenderTimerFired:(NSTimer *)timer;
@@ -1969,7 +1985,10 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 - (void)updateSearchPanelFrame;
 - (void)rebuildButtonHintPillForCurrentController;
 - (void)updateDesktopHeroLogoFrame;
-- (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
+- (void)setDesktopHeroArtworkImage:(NSImage *)image animated:(BOOL)animated;
+- (void)setDesktopHeroLogoImage:(NSImage *)image animated:(BOOL)animated;
+- (NSImageView *)newDesktopHeroLogoTransitionViewWithImage:(NSImage *)image frame:(NSRect)frame;
+- (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation animated:(BOOL)animated;
 - (void)cancelHeroImageLoads;
 - (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token;
 - (void)updateDesktopFeaturedHeroOnly;
@@ -2614,8 +2633,10 @@ using namespace OPN;
     [self.desktopFeaturedHeroViews removeAllObjects];
     self.desktopHeroContainer = nil;
     self.desktopHeroArtworkView = nil;
+    self.desktopHeroArtworkTransitionView = nil;
     self.desktopHeroTitleFallback = nil;
     self.desktopHeroLogoView = nil;
+    self.desktopHeroLogoTransitionView = nil;
     self.desktopHeroIdentity = nil;
     self.desktopFeaturedHeroFrame = NSZeroRect;
 
@@ -2728,17 +2749,134 @@ using namespace OPN;
     self.desktopHeroTitleFallback = titleFallback;
 
     NSImageView *logoView = [[NSImageView alloc] initWithFrame:OPNStoreHeroLogoFallbackFrame(container.bounds, OpnFallbackHeroArtworkImage())];
-    logoView.imageScaling = NSImageScaleProportionallyDown;
-    logoView.imageAlignment = NSImageAlignLeft;
     logoView.hidden = YES;
-    logoView.wantsLayer = YES;
-    logoView.layer.zPosition = 1001.0;
-    logoView.layer.shadowColor = OpnColor(OPN::kBlack, 0.90).CGColor;
-    logoView.layer.shadowOpacity = 1.0;
-    logoView.layer.shadowRadius = 18.0;
-    logoView.layer.shadowOffset = CGSizeMake(0.0, -2.0);
+    OPNStoreConfigureHeroLogoImageView(logoView, 1001.0);
     [container addSubview:logoView positioned:NSWindowAbove relativeTo:nil];
     self.desktopHeroLogoView = logoView;
+}
+
+- (void)setDesktopHeroArtworkImage:(NSImage *)image animated:(BOOL)animated {
+    if (!image || !self.desktopHeroContainer || !self.desktopHeroArtworkView) return;
+    if (!animated || !self.desktopHeroArtworkView.image || !self.desktopHeroArtworkView.superview) {
+        [self.desktopHeroArtworkTransitionView removeFromSuperview];
+        self.desktopHeroArtworkTransitionView = nil;
+        self.desktopHeroArtworkView.image = image;
+        self.desktopHeroArtworkView.alphaValue = 1.0;
+        [self updateDesktopHeroLogoFrame];
+        return;
+    }
+    if (self.desktopHeroArtworkView.image == image && !self.desktopHeroArtworkTransitionView) {
+        [self updateDesktopHeroLogoFrame];
+        return;
+    }
+    if (self.desktopHeroArtworkTransitionView.image == image) return;
+
+    [self.desktopHeroArtworkTransitionView removeFromSuperview];
+    OPNHeroArtworkView *transitionView = [[OPNHeroArtworkView alloc] initWithFrame:self.desktopHeroArtworkView.frame];
+    transitionView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    transitionView.image = image;
+    transitionView.alphaValue = 0.0;
+    [self.desktopHeroContainer addSubview:transitionView positioned:NSWindowAbove relativeTo:self.desktopHeroArtworkView];
+    self.desktopHeroArtworkTransitionView = transitionView;
+    OPNStoreHeroBringLogoToFront(self.desktopHeroContainer, self.desktopHeroTitleFallback, self.desktopHeroLogoView);
+    if (self.desktopHeroLogoTransitionView.superview == self.desktopHeroContainer) {
+        [self.desktopHeroContainer addSubview:self.desktopHeroLogoTransitionView positioned:NSWindowAbove relativeTo:nil];
+    }
+
+    __weak __typeof__(self) weakSelf = self;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = kStoreHeroBackgroundFadeDuration;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        transitionView.animator.alphaValue = 1.0;
+    } completionHandler:^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.desktopHeroArtworkTransitionView != transitionView) return;
+        strongSelf.desktopHeroArtworkView.image = image;
+        strongSelf.desktopHeroArtworkView.alphaValue = 1.0;
+        [transitionView removeFromSuperview];
+        strongSelf.desktopHeroArtworkTransitionView = nil;
+        [strongSelf updateDesktopHeroLogoFrame];
+    }];
+}
+
+- (NSImageView *)newDesktopHeroLogoTransitionViewWithImage:(NSImage *)image frame:(NSRect)frame {
+    NSImageView *transitionView = [[NSImageView alloc] initWithFrame:frame];
+    transitionView.image = image;
+    transitionView.alphaValue = 0.0;
+    transitionView.hidden = NO;
+    OPNStoreConfigureHeroLogoImageView(transitionView, 1002.0);
+    return transitionView;
+}
+
+- (void)setDesktopHeroLogoImage:(NSImage *)image animated:(BOOL)animated {
+    if (!self.desktopHeroContainer || !self.desktopHeroLogoView || !self.desktopHeroTitleFallback) return;
+    [self.desktopHeroLogoTransitionView removeFromSuperview];
+    self.desktopHeroLogoTransitionView = nil;
+
+    if (!animated) {
+        self.desktopHeroLogoView.image = image;
+        self.desktopHeroLogoView.frame = image ? OPNStoreHeroLogoFrameForImage(image, self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image) : OPNStoreHeroLogoFallbackFrame(self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
+        self.desktopHeroLogoView.alphaValue = 1.0;
+        self.desktopHeroLogoView.hidden = image == nil;
+        self.desktopHeroTitleFallback.hidden = image != nil;
+        self.desktopHeroTitleFallback.alphaValue = 1.0;
+        OPNStoreHeroBringLogoToFront(self.desktopHeroContainer, self.desktopHeroTitleFallback, self.desktopHeroLogoView);
+        return;
+    }
+
+    if (!image) {
+        NSInteger generation = self.desktopHeroGeneration;
+        self.desktopHeroTitleFallback.alphaValue = 0.0;
+        self.desktopHeroTitleFallback.hidden = NO;
+        __weak __typeof__(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kStoreHeroLogoFadeDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf.desktopHeroContainer || strongSelf.desktopHeroGeneration != generation) return;
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = kStoreHeroLogoFadeDuration;
+                context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+                strongSelf.desktopHeroLogoView.animator.alphaValue = 0.0;
+                strongSelf.desktopHeroTitleFallback.animator.alphaValue = 1.0;
+            } completionHandler:^{
+                if (!strongSelf || strongSelf.desktopHeroGeneration != generation) return;
+                strongSelf.desktopHeroLogoView.image = nil;
+                strongSelf.desktopHeroLogoView.hidden = YES;
+                strongSelf.desktopHeroLogoView.alphaValue = 1.0;
+            }];
+        });
+        return;
+    }
+
+    NSRect logoFrame = OPNStoreHeroLogoFrameForImage(image, self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
+    NSImageView *transitionView = [self newDesktopHeroLogoTransitionViewWithImage:image frame:logoFrame];
+    [self.desktopHeroContainer addSubview:transitionView positioned:NSWindowAbove relativeTo:nil];
+    self.desktopHeroLogoTransitionView = transitionView;
+    OPNStoreHeroBringLogoToFront(self.desktopHeroContainer, self.desktopHeroTitleFallback, self.desktopHeroLogoView);
+    [self.desktopHeroContainer addSubview:transitionView positioned:NSWindowAbove relativeTo:nil];
+
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kStoreHeroLogoFadeDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.desktopHeroLogoTransitionView != transitionView) return;
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = kStoreHeroLogoFadeDuration;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            transitionView.animator.alphaValue = 1.0;
+            strongSelf.desktopHeroLogoView.animator.alphaValue = 0.0;
+            strongSelf.desktopHeroTitleFallback.animator.alphaValue = 0.0;
+        } completionHandler:^{
+            if (!strongSelf || strongSelf.desktopHeroLogoTransitionView != transitionView) return;
+            strongSelf.desktopHeroLogoView.frame = logoFrame;
+            strongSelf.desktopHeroLogoView.image = image;
+            strongSelf.desktopHeroLogoView.hidden = NO;
+            strongSelf.desktopHeroLogoView.alphaValue = 1.0;
+            strongSelf.desktopHeroTitleFallback.hidden = YES;
+            strongSelf.desktopHeroTitleFallback.alphaValue = 1.0;
+            [transitionView removeFromSuperview];
+            strongSelf.desktopHeroLogoTransitionView = nil;
+            OPNStoreHeroBringLogoToFront(strongSelf.desktopHeroContainer, strongSelf.desktopHeroTitleFallback, strongSelf.desktopHeroLogoView);
+        }];
+    });
 }
 
 - (void)updateDesktopHeroElementsForGame:(const GameInfo &)game animated:(BOOL)animated {
@@ -2751,33 +2889,31 @@ using namespace OPN;
 
     self.desktopHeroTitleFallback.stringValue = OPNStoreString(game.title, @"");
     self.desktopHeroTitleFallback.frame = OPNStoreHeroLogoFallbackFrame(self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
-    self.desktopHeroTitleFallback.hidden = NO;
-    self.desktopHeroLogoView.image = nil;
-    self.desktopHeroLogoView.frame = OPNStoreHeroLogoFallbackFrame(self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
-    self.desktopHeroLogoView.hidden = YES;
+    if (!animated) {
+        self.desktopHeroTitleFallback.hidden = NO;
+        self.desktopHeroTitleFallback.alphaValue = 1.0;
+        [self setDesktopHeroLogoImage:nil animated:NO];
+    }
 
     NSArray<NSString *> *heroCandidates = OpnHeroImageCandidatesForGame(game);
     NSImage *cachedImage = ([self.initialHeroIdentity isEqualToString:gameIdentity] && OPNStoreHeroImageHasVisibleContent(self.initialHeroImage))
         ? self.initialHeroImage
         : OpnCachedImageFromCandidates(heroCandidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
-        (void)animated;
-        self.desktopHeroArtworkView.alphaValue = 1.0;
-        self.desktopHeroArtworkView.image = cachedImage;
+        [self setDesktopHeroArtworkImage:cachedImage animated:animated];
         [self updateDesktopHeroLogoFrame];
-    } else {
-        self.desktopHeroArtworkView.alphaValue = 1.0;
-        self.desktopHeroArtworkView.image = OpnFallbackHeroArtworkImage();
+    } else if (!animated) {
+        [self setDesktopHeroArtworkImage:OpnFallbackHeroArtworkImage() animated:NO];
         [self updateDesktopHeroLogoFrame];
     }
 
     __weak __typeof__(self) weakSelf = self;
-    [self loadFeaturedHeroImageForView:self.desktopHeroArtworkView gameIdentity:gameIdentity candidates:heroCandidates index:0 completion:^(BOOL loaded) {
+    [self loadFeaturedHeroImageForView:self.desktopHeroArtworkView gameIdentity:gameIdentity candidates:heroCandidates index:0 animated:animated completion:^(BOOL loaded) {
         (void)loaded;
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || generation != strongSelf.desktopHeroGeneration) return;
     }];
-    [self loadDesktopHeroLogoForGame:game generation:generation];
+    [self loadDesktopHeroLogoForGame:game generation:generation animated:animated];
 }
 
 - (void)updateDesktopHeroFrameForCurrentBounds {
@@ -2787,6 +2923,7 @@ using namespace OPN;
     self.desktopFeaturedHeroFrame = NSMakeRect(NSMinX(self.desktopFeaturedHeroFrame), NSMinY(self.desktopFeaturedHeroFrame), width, height);
     self.desktopHeroContainer.frame = self.desktopFeaturedHeroFrame;
     self.desktopHeroArtworkView.frame = self.desktopHeroContainer.bounds;
+    self.desktopHeroArtworkTransitionView.frame = self.desktopHeroContainer.bounds;
     [self updateDesktopHeroLogoFrame];
 }
 
@@ -2876,18 +3013,21 @@ using namespace OPN;
     } else {
         self.desktopHeroLogoView.frame = OPNStoreHeroLogoFallbackFrame(self.desktopHeroContainer.bounds, artworkImage);
     }
+    if (self.desktopHeroLogoTransitionView.image) {
+        self.desktopHeroLogoTransitionView.frame = OPNStoreHeroLogoFrameForImage(self.desktopHeroLogoTransitionView.image, self.desktopHeroContainer.bounds, artworkImage);
+    }
     OPNStoreHeroBringLogoToFront(self.desktopHeroContainer, self.desktopHeroTitleFallback, self.desktopHeroLogoView);
+    if (self.desktopHeroLogoTransitionView.superview == self.desktopHeroContainer) {
+        [self.desktopHeroContainer addSubview:self.desktopHeroLogoTransitionView positioned:NSWindowAbove relativeTo:nil];
+    }
 }
 
-- (void)loadDesktopHeroLogoForGame:(const GameInfo &)game generation:(NSInteger)generation {
+- (void)loadDesktopHeroLogoForGame:(const GameInfo &)game generation:(NSInteger)generation animated:(BOOL)animated {
     NSArray<NSString *> *candidates = OPNStoreLogoCandidatesForGame(game);
     NSImage *cachedLogo = OpnCachedImageFromCandidates(candidates, 720.0, nil);
     if (cachedLogo) {
         NSImage *visibleLogo = OPNStoreVisibleLogoImage(cachedLogo);
-        self.desktopHeroLogoView.frame = OPNStoreHeroLogoFrameForImage(visibleLogo, self.desktopHeroContainer.bounds, self.desktopHeroArtworkView.image);
-        self.desktopHeroLogoView.image = visibleLogo;
-        self.desktopHeroLogoView.hidden = NO;
-        self.desktopHeroTitleFallback.hidden = YES;
+        [self setDesktopHeroLogoImage:visibleLogo animated:animated];
         return;
     }
 
@@ -2901,21 +3041,23 @@ using namespace OPN;
             return;
         }
         if (!image) {
+            [strongSelf setDesktopHeroLogoImage:nil animated:animated];
             return;
         }
         NSImage *visibleLogo = OPNStoreVisibleLogoImage(image);
-        strongSelf.desktopHeroLogoView.frame = OPNStoreHeroLogoFrameForImage(visibleLogo, strongSelf.desktopHeroContainer.bounds, strongSelf.desktopHeroArtworkView.image);
-        strongSelf.desktopHeroLogoView.image = visibleLogo;
-        strongSelf.desktopHeroLogoView.hidden = NO;
-        strongSelf.desktopHeroTitleFallback.hidden = YES;
+        [strongSelf setDesktopHeroLogoImage:visibleLogo animated:animated];
     });
     [self trackHeroImageLoadToken:token];
 }
 
-- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index completion:(void (^)(BOOL loaded))completion {
+- (void)loadFeaturedHeroImageForView:(OPNHeroArtworkView *)view gameIdentity:(NSString *)gameIdentity candidates:(NSArray<NSString *> *)candidates index:(NSUInteger)index animated:(BOOL)animated completion:(void (^)(BOOL loaded))completion {
     if (!view) return;
     if (index >= candidates.count) {
-        view.image = OpnFallbackHeroArtworkImage();
+        if (view == self.desktopHeroArtworkView) {
+            [self setDesktopHeroArtworkImage:OpnFallbackHeroArtworkImage() animated:animated];
+        } else {
+            view.image = OpnFallbackHeroArtworkImage();
+        }
         view.alphaValue = 1.0;
         if (view == self.desktopHeroArtworkView) [self updateDesktopHeroLogoFrame];
         if (completion) completion(view.image != nil);
@@ -2923,14 +3065,18 @@ using namespace OPN;
     }
     NSString *urlString = candidates[index];
     if (urlString.length == 0) {
-        [self loadFeaturedHeroImageForView:view gameIdentity:gameIdentity candidates:candidates index:index + 1 completion:completion];
+        [self loadFeaturedHeroImageForView:view gameIdentity:gameIdentity candidates:candidates index:index + 1 animated:animated completion:completion];
         return;
     }
 
     NSArray<NSString *> *remainingCandidates = [candidates subarrayWithRange:NSMakeRange(index, candidates.count - index)];
     NSImage *cachedImage = OpnCachedImageFromCandidates(remainingCandidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
-        view.image = cachedImage;
+        if (view == self.desktopHeroArtworkView) {
+            [self setDesktopHeroArtworkImage:cachedImage animated:animated];
+        } else {
+            view.image = cachedImage;
+        }
         view.alphaValue = 1.0;
         if (view == self.desktopHeroArtworkView) {
             CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), NSHeight(self.bounds));
@@ -2961,7 +3107,11 @@ using namespace OPN;
                 remainingLoads--;
                 if (remainingLoads <= 0) {
                     completed = YES;
-                    strongView.image = OpnFallbackHeroArtworkImage();
+                    if (strongView == strongSelf.desktopHeroArtworkView) {
+                        [strongSelf setDesktopHeroArtworkImage:OpnFallbackHeroArtworkImage() animated:animated];
+                    } else {
+                        strongView.image = OpnFallbackHeroArtworkImage();
+                    }
                     strongView.alphaValue = 1.0;
                     if (strongView == strongSelf.desktopHeroArtworkView) [strongSelf updateDesktopHeroLogoFrame];
                     if (completion) completion(strongView.image != nil);
@@ -2969,7 +3119,11 @@ using namespace OPN;
                 return;
             }
             completed = YES;
-            strongView.image = image;
+            if (strongView == strongSelf.desktopHeroArtworkView) {
+                [strongSelf setDesktopHeroArtworkImage:image animated:animated];
+            } else {
+                strongView.image = image;
+            }
             strongView.alphaValue = 1.0;
             if (strongView == strongSelf.desktopHeroArtworkView) {
                 CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(strongSelf.bounds), NSHeight(strongSelf.bounds));
