@@ -1962,66 +1962,15 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     // NVIDIA API, surfaced as "Your NVIDIA session expired." Refreshing here prevents that.
     __weak __typeof__(self) weakSelf = self;
     AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &refreshError) {
-    OPN::RecordSentryCounterMetric("opennow.stream.start.count", 1, @{
-        @"source": resumeSessionId.empty() ? @"new" : @"resume",
-        @"outcome": @"started",
-        @"return_screen": OPNMetricScreenName(returnScreen),
-        @"account_linked": @(accountLinked),
-    });
-
-    self.catalogView = nil;
-    self.storeView = nil;
-    self.settingsView = nil;
-
-    OPNStreamViewController *streamVC = [[OPNStreamViewController alloc] initWithGameTitle:title
-                                                                                      appId:appId
-                                                                                   apiToken:apiToken
-                                                                              accountLinked:accountLinked
-                                                                               selectedStore:selectedStore
-                                                                             resumeSessionId:resumeSessionId
-                                                                                 resumeServer:resumeServer];
-    if (self.currentRemainingPlayTimeAvailable) {
-        [streamVC setRemainingPlaytimeHours:self.currentRemainingPlayTimeHours unlimited:self.currentRemainingPlayTimeUnlimited];
-    }
-    self.currentStreamTitle = title.empty() ? @"Current Stream" : [NSString stringWithUTF8String:title.c_str()];
-    self.activeStreamReturnScreen = returnScreen;
-    self.streamDashboardHomeVisible = NO;
-    OPN::DiscordPresence::Shared().UpdateLaunching(title);
-
-    __weak __typeof__(self) weakSelf = self;
-    streamVC.onStreamEnd = ^(BOOL success, const std::string &error, const OPN::SessionHealthReport &report) {
-        __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        std::string errorCopy = error;
-        OPN::SessionHealthReport reportCopy = report;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
-            OPN::RecordSentryCounterMetric("opennow.stream.end.count", 1, @{
-                @"outcome": success ? @"success" : @"failure",
-                @"return_screen": OPNMetricScreenName(returnScreen),
-            });
-            [strongSelf stopStreamDashboardControllerPolling];
-            strongSelf.streamDashboardHomeVisible = NO;
-            strongSelf.streamingController = nil;
-            strongSelf.currentStreamTitle = nil;
-            OPN::DiscordPresence::Shared().Clear();
-            [strongSelf transitionToScreen:returnScreen];
-            if (!success && !errorCopy.empty()) OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Stream ended with error before report: %s", errorCopy.c_str()]);
-            OPN::SessionReportDisplayDecision decision = OPN::SessionHealthReportDisplayDecisionForReport(reportCopy, OPN::LoadSessionReportDisplayMode());
-            OPN::RecordSentryCounterMetric("opennow.stream.report.count", 1, @{
-                @"decision": decision.shouldShow ? @"shown" : @"suppressed",
-                @"reason": [NSString stringWithUTF8String:decision.reason.c_str()] ?: @"unknown",
-            });
-            if (decision.shouldShow) {
-                [strongSelf showSessionReport:reportCopy];
-            } else {
-                OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Session report suppressed score=%d reason=%s", decision.score, decision.reason.c_str()]);
-            }
-        });
-    };
-    streamVC.onDashboardToggleRequested = ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
+
+        OPN::RecordSentryCounterMetric("opennow.stream.start.count", 1, @{
+            @"source": resumeSessionIdCopy.empty() ? @"new" : @"resume",
+            @"outcome": @"started",
+            @"return_screen": OPNMetricScreenName(returnScreen),
+            @"account_linked": @(accountLinked),
+        });
 
         std::string effectiveToken = apiTokenCopy;
         if (refreshSuccess && fresh.isAuthenticated) {
