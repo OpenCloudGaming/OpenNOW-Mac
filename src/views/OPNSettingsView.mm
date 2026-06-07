@@ -225,6 +225,7 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 @property (nonatomic, assign) BOOL recordingEnhancedVideoEnabled;
 @property (nonatomic, assign) BOOL enableL4S;
 @property (nonatomic, assign) BOOL enableHdr;
+@property (nonatomic, assign) BOOL lowLatencyMode;
 @property (nonatomic, assign) BOOL suppressInputWhenInactive;
 @property (nonatomic, assign) BOOL directMouseInput;
 @property (nonatomic, assign) BOOL audioDeviceListenerInstalled;
@@ -244,6 +245,7 @@ static uint16_t OPNShortcutModifierBitForKeyCode(uint16_t keyCode) {
 - (void)checkForUpdatesClicked:(NSButton *)sender;
 - (void)clearCachesClicked:(NSButton *)sender;
 - (void)recordingEnhancedVideoToggleChanged:(NSButton *)sender;
+- (void)lowLatencyModeToggleChanged:(NSButton *)sender;
 - (void)recordingVideoBitrateSliderChanged:(NSSlider *)sender;
 - (void)recordingAudioBitrateSliderChanged:(NSSlider *)sender;
 @end
@@ -285,6 +287,7 @@ using namespace OPN;
         _recordingEnhancedVideoEnabled = profile.recordingEnhancedVideoEnabled;
         _enableL4S = profile.enableL4S;
         _enableHdr = profile.enableHdr;
+        _lowLatencyMode = profile.lowLatencyMode;
         _suppressInputWhenInactive = profile.suppressInputWhenInactive;
         _directMouseInput = profile.directMouseInput;
         _sectionNames = @[@"Stream", @"Video", @"Audio", @"Input", @"Interface", @"About", @"Thanks"];
@@ -558,7 +561,7 @@ using namespace OPN;
     [region addSubview:hint];
     [self.documentView addSubview:region];
 
-    NSView *network = [self panelWithTitle:@"Network" height:292.0];
+    NSView *network = [self panelWithTitle:@"Network" height:392.0];
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
     [network addSubview:[self rowLabel:@"Profile" y:112.0]];
     [self addOptionGroupTo:network group:9 titles:@[@"Low Latency", @"Quality"] selected:OPNSelectedPerformanceProfile(profile) y:102.0 widths:@[@126.0, @92.0]];
@@ -570,8 +573,26 @@ using namespace OPN;
     profileHint.maximumNumberOfLines = 2;
     [network addSubview:profileHint];
 
-    [network addSubview:[self rowLabel:@"L4S Mode" y:224.0]];
-    NSButton *l4sToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 216.0, controlWidth, 28.0)];
+    [network addSubview:[self rowLabel:@"Low Latency" y:224.0]];
+    NSButton *lowLatencyToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 216.0, controlWidth, 28.0)];
+    lowLatencyToggle.buttonType = NSButtonTypeSwitch;
+    lowLatencyToggle.title = @"Enable Low Latency Mode for new streams";
+    lowLatencyToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
+    lowLatencyToggle.contentTintColor = OpnColor(kBrandGreen);
+    lowLatencyToggle.state = self.lowLatencyMode ? NSControlStateValueOn : NSControlStateValueOff;
+    lowLatencyToggle.target = self;
+    lowLatencyToggle.action = @selector(lowLatencyModeToggleChanged:);
+    [network addSubview:lowLatencyToggle];
+    NSTextField *lowLatencyHint = OpnLabel(@"Reduces startup/input/render latency by preferring cached route data, disabling local enhancement, and minimizing frame buffering.",
+                                           NSMakeRect(controlX, 256.0, controlWidth, 42.0),
+                                           12.0,
+                                           OpnColor(kTextMuted),
+                                           NSFontWeightRegular);
+    lowLatencyHint.maximumNumberOfLines = 2;
+    [network addSubview:lowLatencyHint];
+
+    [network addSubview:[self rowLabel:@"L4S Mode" y:324.0]];
+    NSButton *l4sToggle = [[NSButton alloc] initWithFrame:NSMakeRect(controlX, 316.0, controlWidth, 28.0)];
     l4sToggle.buttonType = NSButtonTypeSwitch;
     l4sToggle.title = @"Enable experimental L4S requests";
     l4sToggle.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
@@ -581,7 +602,7 @@ using namespace OPN;
     l4sToggle.action = @selector(l4sToggleChanged:);
     [network addSubview:l4sToggle];
     NSTextField *l4sHint = OpnLabel(@"May reduce latency on compatible paths, but can destabilize streams on some networks. Leave off unless testing.",
-                                    NSMakeRect(controlX, 256.0, controlWidth, 34.0),
+                                    NSMakeRect(controlX, 356.0, controlWidth, 34.0),
                                     12.0,
                                     OpnColor(kTextMuted),
                                     NSFontWeightRegular);
@@ -1359,6 +1380,7 @@ using namespace OPN;
     self.recordingEnhancedVideoEnabled = profile.recordingEnhancedVideoEnabled;
     self.enableL4S = profile.enableL4S;
     self.enableHdr = profile.enableHdr;
+    self.lowLatencyMode = profile.lowLatencyMode;
     [self rebuildContent];
 }
 
@@ -1417,6 +1439,12 @@ using namespace OPN;
 - (void)hdrToggleChanged:(NSButton *)sender {
     self.enableHdr = sender.state == NSControlStateValueOn;
     OPN::SaveStreamHDREnabled(self.enableHdr);
+    [self rebuildContent];
+}
+
+- (void)lowLatencyModeToggleChanged:(NSButton *)sender {
+    self.lowLatencyMode = sender.state == NSControlStateValueOn;
+    OPN::SaveStreamLowLatencyModeEnabled(self.lowLatencyMode);
     [self rebuildContent];
 }
 

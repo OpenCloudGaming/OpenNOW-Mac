@@ -30,6 +30,15 @@
 
 namespace OPN {
 
+static dispatch_queue_t SignalingWorkQueue() {
+    static dispatch_queue_t queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = dispatch_queue_create("com.opennow.signaling.work", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
 
 
 
@@ -330,7 +339,7 @@ void SignalingClient::RearmReceiveHandler() {
     __block SignalingClient *blockSelf = this;
 
     [task receiveMessageWithCompletionHandler:^(NSURLSessionWebSocketMessage *msg, NSError *err) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(SignalingWorkQueue(), ^{
         if (!blockSelf->IsCurrentGeneration(generation)) return;
 
         if (err) {
@@ -443,7 +452,11 @@ void SignalingClient::HandleMessage(const std::string &text) {
         OPN::LogInfo(@"[Signaling] Offer received, sdp length=%lu, m_onOffer=%p",
               (unsigned long)sdp.length, (void*)&m_onOffer);
         if (sdp && m_onOffer) {
-            m_onOffer([sdp UTF8String]);
+            std::string sdpCopy = [sdp UTF8String] ?: "";
+            SignalingOfferCallback cb = m_onOffer;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                cb(sdpCopy);
+            });
         }
         return;
     }
@@ -466,7 +479,10 @@ void SignalingClient::HandleMessage(const std::string &text) {
               ice.usernameFragment.empty() ? "(none)" : ice.usernameFragment.c_str(),
               ice.candidate.size());
         if (m_onIceCandidate) {
-            m_onIceCandidate(ice);
+            SignalingIceCallback cb = m_onIceCandidate;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                cb(ice);
+            });
         }
         return;
     }

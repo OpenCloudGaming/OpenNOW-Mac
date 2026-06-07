@@ -306,27 +306,35 @@ static BOOL OPNNetworkPreflightWarning(const OPN::StreamNetworkPreflightResult &
                                        int effectiveMaxBitrateMbps,
                                        NSString **messageOut) {
     NSMutableArray<NSString *> *issues = [NSMutableArray array];
+    BOOL hasMeasuredCondition = NO;
     if (preflight.latencyMs >= 150) {
         [issues addObject:[NSString stringWithFormat:@"Latency is very high (%d ms).", preflight.latencyMs]];
+        hasMeasuredCondition = YES;
     } else if (preflight.latencyMs >= 80) {
         [issues addObject:[NSString stringWithFormat:@"Latency is elevated (%d ms).", preflight.latencyMs]];
+        hasMeasuredCondition = YES;
     }
     if (preflight.measuredBandwidthMbps > 0.0 && preflight.measuredBandwidthMbps < requestedMaxBitrateMbps) {
         [issues addObject:[NSString stringWithFormat:@"Measured bandwidth is %.0f Mbps.", preflight.measuredBandwidthMbps]];
+        hasMeasuredCondition = YES;
     }
     if (preflight.packetLossPercent >= 2.0) {
         [issues addObject:[NSString stringWithFormat:@"Packet loss is %.1f%%.", preflight.packetLossPercent]];
+        hasMeasuredCondition = YES;
     }
     if (preflight.jitterMs >= 30) {
         [issues addObject:[NSString stringWithFormat:@"Jitter is %d ms.", preflight.jitterMs]];
+        hasMeasuredCondition = YES;
     }
     if (effectiveMaxBitrateMbps > 0 && requestedMaxBitrateMbps > effectiveMaxBitrateMbps) {
         [issues addObject:[NSString stringWithFormat:@"OpenNOW lowered the stream bitrate from %d Mbps to %d Mbps for this route.", requestedMaxBitrateMbps, effectiveMaxBitrateMbps]];
+        hasMeasuredCondition = YES;
     }
     if (preflight.serverReportedWarning && !preflight.warningMessage.empty()) {
         [issues addObject:OPNStringFromStdString(preflight.warningMessage, @"The network test reported a warning.")];
+        hasMeasuredCondition = YES;
     }
-    if (!preflight.continueRecommended) {
+    if (!preflight.continueRecommended && hasMeasuredCondition) {
         [issues addObject:@"The network test recommends cancelling this launch."];
     }
     if (issues.count == 0) return NO;
@@ -1705,6 +1713,14 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     __weak __typeof__(self) weakSelf = self;
     OPN::SessionManager::Shared().PollSession(currentSession.sessionId, currentSession.serverIp, [weakSelf, currentSession](bool success, const OPN::SessionInfo &info, const std::string &error) {
         OPN::SessionInfo infoCopy = info;
+        if (!infoCopy.sessionId.empty() && infoCopy.sessionId == currentSession.sessionId) {
+            if (infoCopy.serverIp.empty()) infoCopy.serverIp = currentSession.serverIp;
+            if (infoCopy.signalingServer.empty()) infoCopy.signalingServer = currentSession.signalingServer;
+            if (infoCopy.signalingUrl.empty()) infoCopy.signalingUrl = currentSession.signalingUrl;
+            if (infoCopy.streamingBaseUrl.empty()) infoCopy.streamingBaseUrl = currentSession.streamingBaseUrl;
+            if (infoCopy.clientId.empty()) infoCopy.clientId = currentSession.clientId;
+            if (infoCopy.deviceId.empty()) infoCopy.deviceId = currentSession.deviceId;
+        }
         std::string errorCopy = error;
         dispatch_async(dispatch_get_main_queue(), ^{
         __typeof__(self) strongSelf = weakSelf;
@@ -2659,6 +2675,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.prefilterModel = streamProfile.prefilterModel;
     settings.enableL4S = streamProfile.enableL4S;
     settings.enableHdr = streamProfile.enableHdr;
+    settings.lowLatencyMode = streamProfile.lowLatencyMode;
     settings.microphoneMode = streamProfile.microphoneMode;
     settings.microphoneDeviceId = streamProfile.microphoneDeviceId;
     settings.microphonePushToTalkKeyCode = streamProfile.microphonePushToTalkKeyCode;
@@ -2670,12 +2687,18 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     settings.selectedStore = _selectedStore;
     settings.remoteControllersBitmap = OPNConnectedControllerBitmap();
     settings.availableSupportedControllers = OPNAvailableSupportedControllers();
+    if (streamProfile.lowLatencyMode) {
+        settings.prefilterMode = 0;
+        settings.prefilterSharpness = 0;
+        settings.prefilterDenoise = 0;
+        settings.prefilterModel = 0;
+    }
     [self.streamView setVideoAspectRatio:(CGFloat)OPNAspectRatioForResolution(effectiveResolution, streamProfile.AspectRatio())];
-    [self.streamView setVideoUpscalingMode:streamProfile.upscalingMode
-                                 sharpness:streamProfile.upscalingSharpness
-                                   denoise:streamProfile.upscalingDenoise
-                               streamWidth:effectiveResolution.width
-                              streamHeight:effectiveResolution.height];
+    [self.streamView setVideoUpscalingMode:streamProfile.lowLatencyMode ? 0 : streamProfile.upscalingMode
+                                 sharpness:streamProfile.lowLatencyMode ? 0 : streamProfile.upscalingSharpness
+                                  denoise:streamProfile.lowLatencyMode ? 0 : streamProfile.upscalingDenoise
+                              streamWidth:effectiveResolution.width
+                             streamHeight:effectiveResolution.height];
     [self.streamView setSuppressInputWhenWindowInactive:streamProfile.suppressInputWhenInactive ? YES : NO];
     [self.streamView setDirectMouseInputEnabled:streamProfile.directMouseInput ? YES : NO];
     [self.streamView setMaxBitrateMbps:settings.maxBitrateMbps];
@@ -2717,117 +2740,143 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         }
     }
 
-    [self setLaunchStep:0 message:@"Loading stream policy..."];
+    [self setLaunchStep:0 message:@"Preparing stream route..."];
     __weak __typeof__(self) weakSelf = self;
     OPN::StreamSettings requestedSettings = settings;
     _healthReport.SetRequestedSettings(requestedSettings);
     OPN::StreamPreferenceProfile preflightProfile = streamProfile;
     OPN::StreamDeviceCapabilities launchCapabilities = capabilities;
-    OPN::FetchStreamCloudVariables(_apiToken, [weakSelf, requestedSettings, preflightProfile, launchCapabilities, launchGeneration, recoveringLaunch](const OPN::StreamCloudVariables &variables) {
+
+    auto cloudVariables = std::make_shared<OPN::StreamCloudVariables>();
+    auto networkPreflight = std::make_shared<OPN::StreamNetworkPreflightResult>();
+    auto cloudReady = std::make_shared<bool>(false);
+    auto preflightReady = std::make_shared<bool>(false);
+    auto continueWhenReady = std::make_shared<std::function<void()>>();
+    *continueWhenReady = [weakSelf,
+                          cloudVariables,
+                          networkPreflight,
+                          cloudReady,
+                          preflightReady,
+                          requestedSettings,
+                          preflightProfile,
+                          launchCapabilities,
+                          launchGeneration,
+                          recoveringLaunch]() {
+        if (!*cloudReady || !*preflightReady) return;
+        __typeof__(self) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
+
+        const OPN::StreamCloudVariables variables = *cloudVariables;
+        const OPN::StreamNetworkPreflightResult preflightCopy = *networkPreflight;
+        OPN::StreamSettings preflightSettings = OPN::StreamSettingsByApplyingCloudVariables(requestedSettings, variables, launchCapabilities);
+        if (OPNStreamCodecSelectionIsExplicit(preflightProfile)) preflightSettings.codec = requestedSettings.codec;
+        [strongSelf resetQualityGuardrailsForBitrate:preflightSettings.maxBitrateMbps];
+        [strongSelf.streamView setMaxBitrateMbps:preflightSettings.maxBitrateMbps];
+        if (variables.fetched) {
+            OPN::LogInfo(@"[StreamVC] Cloud variables applied codec=%s hdr=%d l4s=%d reflex=%d bitrate=%dMbps prefilter=%d/%d sharp=%d/%d denoise=%d/%d supportedPrefilterModes=%lu allowPrefilter=%d gpu=%s",
+                  preflightSettings.codec.c_str(),
+                  preflightSettings.enableHdr,
+                  preflightSettings.enableL4S,
+                  preflightSettings.enableReflex,
+                  preflightSettings.maxBitrateMbps,
+                  requestedSettings.prefilterMode,
+                  preflightSettings.prefilterMode,
+                  requestedSettings.prefilterSharpness,
+                  preflightSettings.prefilterSharpness,
+                  requestedSettings.prefilterDenoise,
+                  preflightSettings.prefilterDenoise,
+                  (unsigned long)variables.supportedPrefilterModes.size(),
+                  variables.allowPrefilter,
+                  variables.gpuName.c_str());
+        }
+
+        OPN::StreamSettings finalSettings = preflightSettings;
+        finalSettings.networkTestSessionId = preflightCopy.networkTestSessionId;
+        finalSettings.networkType = preflightCopy.networkType;
+        finalSettings.networkLatencyMs = preflightCopy.latencyMs;
+        if (preflightCopy.recommendedMaxBitrateMbps > 0) {
+            finalSettings.maxBitrateMbps = std::min(finalSettings.maxBitrateMbps, preflightCopy.recommendedMaxBitrateMbps);
+        }
+        OPN::LogInfo(@"[StreamVC] Final launch prefilter requested=%d/%d/%d preflight=%d/%d/%d final=%d/%d/%d cloudFetched=%d allowPrefilter=%d",
+              requestedSettings.prefilterMode,
+              requestedSettings.prefilterSharpness,
+              requestedSettings.prefilterDenoise,
+              preflightSettings.prefilterMode,
+              preflightSettings.prefilterSharpness,
+              preflightSettings.prefilterDenoise,
+              finalSettings.prefilterMode,
+              finalSettings.prefilterSharpness,
+              finalSettings.prefilterDenoise,
+              variables.fetched,
+              variables.allowPrefilter);
+        [strongSelf resetQualityGuardrailsForBitrate:finalSettings.maxBitrateMbps];
+        [strongSelf.streamView setMaxBitrateMbps:finalSettings.maxBitrateMbps];
+
+        std::string baseUrl = preflightCopy.streamingBaseUrl.empty() ? OPN::LoadSelectedStreamingBaseUrlForGame(strongSelf->_appId) : preflightCopy.streamingBaseUrl;
+        strongSelf->_healthReport.SetNetworkPreflight(preflightCopy, baseUrl);
+        OPN::LogInfo(@"[StreamVC] Network preflight region=%s type=%s latency=%dms bandwidth=%.0fMbps loss=%.1f jitter=%dms bitrate=%dMbps testId=%s automatic=%d",
+              baseUrl.c_str(),
+              finalSettings.networkType.c_str(),
+              finalSettings.networkLatencyMs,
+              preflightCopy.measuredBandwidthMbps,
+              preflightCopy.packetLossPercent,
+              preflightCopy.jitterMs,
+              finalSettings.maxBitrateMbps,
+              finalSettings.networkTestSessionId.c_str(),
+              preflightCopy.usedAutomaticRegion);
+        void (^continueAfterNetworkWarning)(void) = ^{
+            __typeof__(self) launchSelf = weakSelf;
+            if (!launchSelf || launchSelf->_streamEnded || launchSelf->_launchGeneration != launchGeneration) return;
+            [launchSelf beginSessionAllocationWithSettings:finalSettings
+                                             streamProfile:preflightProfile
+                                          streamingBaseUrl:baseUrl
+                                          launchGeneration:launchGeneration
+                                         recoveringLaunch:recoveringLaunch];
+        };
+        NSString *networkWarning = nil;
+        if (!recoveringLaunch && OPNNetworkPreflightWarning(preflightCopy, preflightSettings.maxBitrateMbps, finalSettings.maxBitrateMbps, &networkWarning)) {
+            strongSelf->_healthReport.RecordEvent("Network warning", [networkWarning UTF8String] ?: "OpenNOW detected poor network conditions", CACurrentMediaTime());
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Network Test Warning";
+            alert.informativeText = networkWarning ?: @"OpenNOW detected poor network conditions. You can continue anyway, but stream quality may be reduced.";
+            [alert addButtonWithTitle:@"Continue Anyway"];
+            [alert addButtonWithTitle:@"Cancel"];
+            [alert beginSheetModalForWindow:strongSelf.view.window completionHandler:^(NSModalResponse returnCode) {
+                if (returnCode == NSAlertFirstButtonReturn) {
+                    continueAfterNetworkWarning();
+                    return;
+                }
+                __typeof__(self) cancelSelf = weakSelf;
+                if (!cancelSelf || cancelSelf->_streamEnded || cancelSelf->_launchGeneration != launchGeneration) return;
+                cancelSelf->_healthReport.RecordEvent("Launch cancelled", "User cancelled after the network warning", CACurrentMediaTime());
+                [cancelSelf endStreamWithSuccess:NO errorMessage:"Launch cancelled after network test warning."];
+            }];
+            return;
+        }
+        continueAfterNetworkWarning();
+    };
+
+    OPN::FetchStreamCloudVariables(_apiToken, [weakSelf, cloudVariables, cloudReady, continueWhenReady, launchGeneration](const OPN::StreamCloudVariables &variables) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __typeof__(self) strongSelf = weakSelf;
             if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
-
-            OPN::StreamSettings preflightSettings = OPN::StreamSettingsByApplyingCloudVariables(requestedSettings, variables, launchCapabilities);
-            if (OPNStreamCodecSelectionIsExplicit(preflightProfile)) preflightSettings.codec = requestedSettings.codec;
-            [strongSelf resetQualityGuardrailsForBitrate:preflightSettings.maxBitrateMbps];
-            [strongSelf.streamView setMaxBitrateMbps:preflightSettings.maxBitrateMbps];
-            if (variables.fetched) {
-                OPN::LogInfo(@"[StreamVC] Cloud variables applied codec=%s hdr=%d l4s=%d reflex=%d bitrate=%dMbps prefilter=%d/%d sharp=%d/%d denoise=%d/%d supportedPrefilterModes=%lu allowPrefilter=%d gpu=%s",
-                      preflightSettings.codec.c_str(),
-                      preflightSettings.enableHdr,
-                      preflightSettings.enableL4S,
-                      preflightSettings.enableReflex,
-                      preflightSettings.maxBitrateMbps,
-                      requestedSettings.prefilterMode,
-                      preflightSettings.prefilterMode,
-                      requestedSettings.prefilterSharpness,
-                      preflightSettings.prefilterSharpness,
-                      requestedSettings.prefilterDenoise,
-                      preflightSettings.prefilterDenoise,
-                      (unsigned long)variables.supportedPrefilterModes.size(),
-                      variables.allowPrefilter,
-                      variables.gpuName.c_str());
-            }
-
-            [strongSelf setLaunchStep:0 message:@"Testing network route..."];
-            OPN::RunStreamNetworkPreflight(strongSelf->_apiToken,
-                                           OPN::GameService::Shared().ProviderStreamingBaseUrl(),
-                                           preflightSettings.maxBitrateMbps,
-                [weakSelf, requestedSettings, preflightSettings, preflightProfile, variables, launchGeneration, recoveringLaunch](const OPN::StreamNetworkPreflightResult &preflight) {
-                    OPN::StreamNetworkPreflightResult preflightCopy = preflight;
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        __typeof__(self) strongSelf = weakSelf;
-                        if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
-
-                        OPN::StreamSettings finalSettings = preflightSettings;
-                        finalSettings.networkTestSessionId = preflightCopy.networkTestSessionId;
-                        finalSettings.networkType = preflightCopy.networkType;
-                        finalSettings.networkLatencyMs = preflightCopy.latencyMs;
-                        if (preflightCopy.recommendedMaxBitrateMbps > 0) {
-                            finalSettings.maxBitrateMbps = std::min(finalSettings.maxBitrateMbps, preflightCopy.recommendedMaxBitrateMbps);
-                        }
-                        OPN::LogInfo(@"[StreamVC] Final launch prefilter requested=%d/%d/%d preflight=%d/%d/%d final=%d/%d/%d cloudFetched=%d allowPrefilter=%d",
-                              requestedSettings.prefilterMode,
-                              requestedSettings.prefilterSharpness,
-                              requestedSettings.prefilterDenoise,
-                              preflightSettings.prefilterMode,
-                              preflightSettings.prefilterSharpness,
-                              preflightSettings.prefilterDenoise,
-                              finalSettings.prefilterMode,
-                              finalSettings.prefilterSharpness,
-                              finalSettings.prefilterDenoise,
-                              variables.fetched,
-                              variables.allowPrefilter);
-                        [strongSelf resetQualityGuardrailsForBitrate:finalSettings.maxBitrateMbps];
-                        [strongSelf.streamView setMaxBitrateMbps:finalSettings.maxBitrateMbps];
-
-                        std::string baseUrl = preflightCopy.streamingBaseUrl.empty() ? OPN::LoadSelectedStreamingBaseUrlForGame(strongSelf->_appId) : preflightCopy.streamingBaseUrl;
-                        strongSelf->_healthReport.SetNetworkPreflight(preflightCopy, baseUrl);
-                        OPN::LogInfo(@"[StreamVC] Network preflight region=%s type=%s latency=%dms bandwidth=%.0fMbps loss=%.1f jitter=%dms bitrate=%dMbps testId=%s automatic=%d",
-                              baseUrl.c_str(),
-                              finalSettings.networkType.c_str(),
-                              finalSettings.networkLatencyMs,
-                              preflightCopy.measuredBandwidthMbps,
-                              preflightCopy.packetLossPercent,
-                              preflightCopy.jitterMs,
-                              finalSettings.maxBitrateMbps,
-                              finalSettings.networkTestSessionId.c_str(),
-                              preflightCopy.usedAutomaticRegion);
-                        void (^continueAfterNetworkWarning)(void) = ^{
-                            __typeof__(self) launchSelf = weakSelf;
-                            if (!launchSelf || launchSelf->_streamEnded || launchSelf->_launchGeneration != launchGeneration) return;
-                            [launchSelf beginSessionAllocationWithSettings:finalSettings
-                                                             streamProfile:preflightProfile
-                                                          streamingBaseUrl:baseUrl
-                                                          launchGeneration:launchGeneration
-                                                          recoveringLaunch:recoveringLaunch];
-                        };
-                        NSString *networkWarning = nil;
-                        if (!recoveringLaunch && OPNNetworkPreflightWarning(preflightCopy, preflightSettings.maxBitrateMbps, finalSettings.maxBitrateMbps, &networkWarning)) {
-                            strongSelf->_healthReport.RecordEvent("Network warning", [networkWarning UTF8String] ?: "OpenNOW detected poor network conditions", CACurrentMediaTime());
-                            NSAlert *alert = [[NSAlert alloc] init];
-                            alert.messageText = @"Network Test Warning";
-                            alert.informativeText = networkWarning ?: @"OpenNOW detected poor network conditions. You can continue anyway, but stream quality may be reduced.";
-                            [alert addButtonWithTitle:@"Continue Anyway"];
-                            [alert addButtonWithTitle:@"Cancel"];
-                            [alert beginSheetModalForWindow:strongSelf.view.window completionHandler:^(NSModalResponse returnCode) {
-                                if (returnCode == NSAlertFirstButtonReturn) {
-                                    continueAfterNetworkWarning();
-                                    return;
-                                }
-                                __typeof__(self) cancelSelf = weakSelf;
-                                if (!cancelSelf || cancelSelf->_streamEnded || cancelSelf->_launchGeneration != launchGeneration) return;
-                                cancelSelf->_healthReport.RecordEvent("Launch cancelled", "User cancelled after the network warning", CACurrentMediaTime());
-                                [cancelSelf endStreamWithSuccess:NO errorMessage:"Launch cancelled after network test warning."];
-                            }];
-                            return;
-                        }
-                        continueAfterNetworkWarning();
-                    });
-                });
+            *cloudVariables = variables;
+            *cloudReady = true;
+            if (*continueWhenReady) (*continueWhenReady)();
         });
     });
+    OPN::RunStreamNetworkPreflight(_apiToken,
+                                   OPN::GameService::Shared().ProviderStreamingBaseUrl(),
+                                   requestedSettings.maxBitrateMbps,
+        [weakSelf, networkPreflight, preflightReady, continueWhenReady, launchGeneration](const OPN::StreamNetworkPreflightResult &preflight) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
+                *networkPreflight = preflight;
+                *preflightReady = true;
+                if (*continueWhenReady) (*continueWhenReady)();
+            });
+        });
 }
 
 - (void)endStreamWithSuccess:(BOOL)success errorMessage:(const std::string &)errorMessage {

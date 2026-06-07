@@ -10,8 +10,10 @@
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonCrypto.h>
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 
 using OPN::ArrayValue;
 using OPN::BoolValue;
@@ -68,6 +70,29 @@ static NSString *StringFromStdString(const std::string &value, NSString *fallbac
     if (value.empty()) return fallback ?: @"";
     NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
     return string ?: (fallback ?: @"");
+}
+
+static bool IsValidSessionIdString(const std::string &sessionId) {
+    if (sessionId.empty()) return false;
+    return std::all_of(sessionId.begin(), sessionId.end(), [](unsigned char ch) {
+        return ch > 0x20 && ch < 0x7f;
+    });
+}
+
+static std::string EscapedLogString(const std::string &value) {
+    if (value.empty()) return "(empty)";
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (ch >= 0x20 && ch < 0x7f) {
+            escaped.push_back(static_cast<char>(ch));
+            continue;
+        }
+        char buffer[5] = {0};
+        std::snprintf(buffer, sizeof(buffer), "\\x%02X", ch);
+        escaped.append(buffer);
+    }
+    return escaped;
 }
 
 static id NetworkTestSessionIdValue(const OPN::StreamSettings &settings) {
@@ -444,19 +469,49 @@ static std::string PollSessionRegionName(const std::string &serverEndpoint) {
     return label.empty() ? "(pending)" : label;
 }
 
+static std::string TrimmedPollField(std::string value) {
+    auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch); });
+    auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
+    if (first >= last) return "";
+    return std::string(first, last);
+}
+
+static std::string PollSessionShortId(const std::string &sessionId) {
+    if (sessionId.empty()) return "(empty)";
+    return sessionId.size() <= 8 ? sessionId : sessionId.substr(0, 8);
+}
+
+static std::string PollSessionStatusName(const OPN::SessionInfo &info) {
+    if (info.status == 6) return "cleanup";
+    if (info.status == 3) return "active";
+    if (info.status == 2) return "ready";
+    if (info.adState.isAdsRequired) return "ads";
+    if (info.queuePosition > 0 || info.progressState == OPN::SessionProgressState::InQueue) return "queue";
+    if (info.progressState == OPN::SessionProgressState::WaitingForStorage) return "storage";
+    if (info.progressState == OPN::SessionProgressState::PreviousSessionCleanup) return "cleanup";
+    if (info.progressState == OPN::SessionProgressState::SettingUp || info.seatSetupStep > 0) return "setup";
+    if (info.status == 1 || info.progressState == OPN::SessionProgressState::Connecting) return "launching";
+    return "status=" + std::to_string(info.status);
+}
+
+static std::string PollSessionGpuLabel(const std::string &gpuType) {
+    if (gpuType.empty()) return "";
+    size_t slash = gpuType.rfind('/');
+    return TrimmedPollField(slash == std::string::npos ? gpuType : gpuType.substr(slash + 1));
+}
+
 static void LogPollSessionSummary(NSInteger httpStatus, const OPN::SessionInfo &info) {
     std::string region = PollSessionRegionName(info.serverIp);
-    OPN::LogInfo(@"[PollSession] HTTP %ld session=%s status=%d queue=%d step=%d region=%s signaling=%s gpu=%s color=%s ads=%s",
-          (long)httpStatus,
-          info.sessionId.empty() ? "(empty)" : info.sessionId.c_str(),
-          info.status,
-          info.queuePosition,
-          info.seatSetupStep,
-          region.c_str(),
-          info.signalingServer.empty() ? "(pending)" : info.signalingServer.c_str(),
-          info.gpuType.empty() ? "(pending)" : info.gpuType.c_str(),
-          info.negotiatedStreamProfile.colorQuality.empty() ? "(pending)" : info.negotiatedStreamProfile.colorQuality.c_str(),
-          info.adState.isAdsRequired ? "required" : "none");
+    std::string summary = "[PollSession] " + PollSessionStatusName(info) + " " + PollSessionShortId(info.sessionId);
+    if (httpStatus != 200) summary += " http=" + std::to_string((long)httpStatus);
+    if (info.queuePosition > 0) summary += " queue=" + std::to_string(info.queuePosition);
+    if (info.seatSetupStep > 0 && info.status != 3) summary += " step=" + std::to_string(info.seatSetupStep);
+    summary += " region=" + region;
+    std::string gpu = PollSessionGpuLabel(info.gpuType);
+    if (!gpu.empty()) summary += " gpu=" + gpu;
+    if (!info.negotiatedStreamProfile.colorQuality.empty()) summary += " color=" + info.negotiatedStreamProfile.colorQuality;
+    if (info.adState.isAdsRequired) summary += " ads=required";
+    OPN::LogInfo(@"%s", summary.c_str());
 }
 
 static void ApplyCommonCloudMatchHeaders(NSMutableURLRequest *req, const std::string &accessToken, const std::string &deviceId, bool includeOrigin) {
@@ -576,7 +631,7 @@ static bool ResolveResponseSessionId(NSString *responseSessionId, const std::str
         return true;
     }
     if (!parsedSessionId.empty() && parsedSessionId != requestedSessionId) {
-        error = "SESSION_ID_MISMATCH: requested " + requestedSessionId + " but response contained " + parsedSessionId;
+        error = "SESSION_ID_MISMATCH: requested " + EscapedLogString(requestedSessionId) + " but response contained " + EscapedLogString(parsedSessionId);
         return false;
     }
     resolvedSessionId = parsedSessionId.empty() ? requestedSessionId : parsedSessionId;
@@ -984,18 +1039,24 @@ void SessionManager::CreateSession(const std::string &appId,
 }
 
 void SessionManager::PollSession(const std::string &sessionId,
-                                  const std::string &serverIp,
-                                  SessionPollCallback completion) {
+                                   const std::string &serverIp,
+                                   SessionPollCallback completion) {
+    const std::string requestedSessionId = sessionId;
+    const std::string requestedServerIp = serverIp;
     if (m_accessToken.empty()) {
         completion(false, SessionInfo{}, "No access token");
         return;
     }
+    if (!IsValidSessionIdString(requestedSessionId)) {
+        completion(false, SessionInfo{}, "Invalid session id for poll: " + EscapedLogString(requestedSessionId));
+        return;
+    }
 
 
-    std::string base = ResolveSessionBaseUrl(m_streamingBaseUrl, serverIp);
+    std::string base = ResolveSessionBaseUrl(m_streamingBaseUrl, requestedServerIp);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s",
                         [NSString stringWithUTF8String:base.c_str()],
-                        sessionId.c_str()];
+                        requestedSessionId.c_str()];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
     [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
@@ -1043,7 +1104,7 @@ void SessionManager::PollSession(const std::string &sessionId,
         SessionInfo info;
         NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
         std::string sessionIdError;
-        if (!ResolveResponseSessionId(sid, sessionId, info.sessionId, sessionIdError)) {
+        if (!ResolveResponseSessionId(sid, requestedSessionId, info.sessionId, sessionIdError)) {
             cb(false, SessionInfo{}, sessionIdError);
             return;
         }
@@ -1358,14 +1419,16 @@ void SessionManager::pollClaimSession(std::string sessionId,
 
     void (^poller)(NSData *, NSError *) = ^(NSData *data, NSError *error) {
         if (error || !data) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), pollBlock);
+            uint64_t delayNs = retryCount <= 12 ? 300 * NSEC_PER_MSEC : (retryCount <= 20 ? 500 * NSEC_PER_MSEC : 1 * NSEC_PER_SEC);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)delayNs), dispatch_get_main_queue(), pollBlock);
             return;
         }
 
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         NSDictionary *session = DictionaryValue(json[@"session"]);
         if (!session) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), pollBlock);
+            uint64_t delayNs = retryCount <= 12 ? 300 * NSEC_PER_MSEC : (retryCount <= 20 ? 500 * NSEC_PER_MSEC : 1 * NSEC_PER_SEC);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)delayNs), dispatch_get_main_queue(), pollBlock);
             return;
         }
 
@@ -1469,7 +1532,8 @@ void SessionManager::pollClaimSession(std::string sessionId,
             completion(true, info, "");
         } else if (status == 1 || status == 6) {
 
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), pollBlock);
+            uint64_t delayNs = retryCount <= 12 ? 300 * NSEC_PER_MSEC : (retryCount <= 20 ? 500 * NSEC_PER_MSEC : 1 * NSEC_PER_SEC);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)delayNs), dispatch_get_main_queue(), pollBlock);
         } else {
 
             completion(false, SessionInfo{}, "Session in terminal error state");

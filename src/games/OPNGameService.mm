@@ -2563,7 +2563,8 @@ static void PollSessionReady(std::string sessionId,
             return;
         }
 
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        uint64_t delayNs = *retries <= 12 ? 300 * NSEC_PER_MSEC : (*retries <= 20 ? 500 * NSEC_PER_MSEC : 1 * NSEC_PER_SEC);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)delayNs), dispatch_get_main_queue(), ^{
             if (*pollBlock) (*pollBlock)();
         });
     };
@@ -2739,41 +2740,6 @@ static std::vector<ActiveSessionEntry> ActiveSessionsFromSessionLimitError(const
     return entries;
 }
 
-static bool IsUnclaimableExistingSessionError(const std::string &error) {
-    return error.find("STALE_ACTIVE_SESSION") != std::string::npos ||
-           error.find("Claim HTTP 400") != std::string::npos ||
-           error.find("\"statusCode\":0") != std::string::npos ||
-           error.find("UNKNOWN 8A8C0000") != std::string::npos;
-}
-
-static void CreateSessionForLaunch(const std::string &appId,
-                                   const std::string &internalTitle,
-                                   const StreamSettings &settings,
-                                   const LaunchProgressCallback &progress,
-                                   const LaunchCallback &completion,
-                                   const std::string &reason) {
-    if (!reason.empty()) {
-        OPN::LogInfo(@"[GameService] Creating fresh session after existing session could not be claimed: %s", reason.c_str());
-        ReportLaunchProgress(progress, "Starting a fresh GeForce NOW session...");
-    }
-
-    SessionManager::Shared().CreateSession(appId, internalTitle, settings,
-        [appId, progress, completion](bool success, const SessionInfo &info, const std::string &error) {
-            if (!success) {
-                DispatchLaunchCompletion(completion, false, SessionInfo{}, "", error);
-                return;
-            }
-            if (IsSessionReadyStatus(info.status) && !info.serverIp.empty()) {
-                ReportLaunchProgress(progress, info);
-                DispatchLaunchCompletion(completion, true, info, "", "");
-                return;
-            }
-            const int appIdNumber = atoi(appId.c_str());
-            ReportLaunchProgress(progress, info);
-            PollSessionReady(info.sessionId, info.serverIp, appIdNumber, progress, completion);
-        });
-}
-
 static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &sessions,
                                   const std::string &appId,
                                   const std::string &internalTitle,
@@ -2785,31 +2751,16 @@ static bool TryUseExistingSession(const std::vector<ActiveSessionEntry> &session
 
     for (const auto &s : sessions) {
         if (s.appId == appIdNum && IsSessionReadyStatus(s.status) && !s.serverIp.empty()) {
-            OPN::LogInfo(@"[GameService] Claiming session %s status=%d", s.sessionId.c_str(), s.status);
-            SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, appId, settings, recoveryMode,
-                [appId, internalTitle, settings, progress, completion](bool success, const SessionInfo &info, const std::string &err) {
-                    if (!success && IsUnclaimableExistingSessionError(err)) {
-                        CreateSessionForLaunch(appId, internalTitle, settings, progress, completion, err);
-                        return;
-                    }
-                    DispatchLaunchCompletion(completion, success, info, "", err);
-                });
+            OPN::LogInfo(@"[GameService] Polling ready session %s status=%d", s.sessionId.c_str(), s.status);
+            PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
     }
 
     for (const auto &s : sessions) {
         if (IsSessionReadyStatus(s.status) && !s.sessionId.empty() && !s.serverIp.empty()) {
-            OPN::LogInfo(@"[GameService] Claiming existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
-            std::string claimAppId = s.appId > 0 ? std::to_string(s.appId) : appId;
-            SessionManager::Shared().ClaimSession(s.sessionId, s.serverIp, claimAppId, settings, recoveryMode,
-                [appId, internalTitle, settings, progress, completion](bool success, const SessionInfo &info, const std::string &err) {
-                    if (!success && IsUnclaimableExistingSessionError(err)) {
-                        CreateSessionForLaunch(appId, internalTitle, settings, progress, completion, err);
-                        return;
-                    }
-                    DispatchLaunchCompletion(completion, success, info, "", err);
-                });
+            OPN::LogInfo(@"[GameService] Polling existing ready session %s for appId=%d instead of creating a second session", s.sessionId.c_str(), s.appId);
+            PollSessionReady(s.sessionId, s.serverIp, appIdNum, progress, completion);
             return true;
         }
     }

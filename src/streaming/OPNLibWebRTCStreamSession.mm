@@ -43,7 +43,9 @@
 namespace OPN {
 
 static constexpr int OPNPartialReliableInputLifetimeMs = 5;
+static constexpr int64_t OPNLibWebRTCDisconnectGraceMs = 3000;
 [[maybe_unused]] static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
+[[maybe_unused]] static constexpr uint64_t OPNLowLatencyInputBacklogLimitBytes = 4 * 1024;
 
 static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector) {
     AudioDeviceID device = kAudioObjectUnknown;
@@ -1202,6 +1204,7 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
 @property(nonatomic, assign) double lastEnhancementFrameTimeMs;
 @property(nonatomic, assign) CFTimeInterval lastDiagnosticsUpdateTime;
 @property(nonatomic, assign) BOOL drawScheduled;
+@property(nonatomic, assign) BOOL drawableSizeDirty;
 @property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
 - (void)updateDrawableSizeForCurrentBackingScale;
 - (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale;
@@ -1249,6 +1252,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         _lastEnhancementFrameTimeMs = -1.0;
         _lastDiagnosticsUpdateTime = 0.0;
         _drawScheduled = NO;
+        _drawableSizeDirty = YES;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.blackColor.CGColor;
 
@@ -1266,7 +1270,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
             metalLayer.presentsWithTransaction = NO;
             metalLayer.allowsNextDrawableTimeout = NO;
             if (@available(macOS 10.13, *)) {
-                metalLayer.maximumDrawableCount = 3;
+                metalLayer.maximumDrawableCount = owner && owner->LowLatencyMode() ? 2 : 3;
             }
         }
         [self addSubview:_metalView];
@@ -1281,11 +1285,13 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
 - (void)layout {
     [super layout];
     self.metalView.frame = self.bounds;
+    self.drawableSizeDirty = YES;
     [self updateDrawableSizeForCurrentBackingScale];
 }
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    self.drawableSizeDirty = YES;
     [self updateDrawableSizeForCurrentBackingScale];
 }
 
@@ -1295,6 +1301,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         self.sourceFrameSize = size;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        self.drawableSizeDirty = YES;
         [self updateDrawableSizeForCurrentBackingScale];
     });
 }
@@ -1324,6 +1331,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         (int)std::llround(currentSize.height) != (int)std::llround(drawableSize.height)) {
         self.metalView.drawableSize = drawableSize;
     }
+    self.drawableSizeDirty = NO;
 }
 
 - (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale {
@@ -1378,7 +1386,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
 
 - (void)drawInMTKView:(MTKView *)view {
     if (view != self.metalView) return;
-    [self updateDrawableSizeForCurrentBackingScale];
+    if (self.drawableSizeDirty) [self updateDrawableSizeForCurrentBackingScale];
 
     RTCVideoFrame *frame = nil;
     uint64_t drawSerial = 0;
@@ -1408,7 +1416,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     int enhancementDenoise = 0;
     int enhancementTargetHeight = 2160;
     if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
-    [self updateDrawableSizeForCurrentBackingScale];
+    if (self.drawableSizeDirty) [self updateDrawableSizeForCurrentBackingScale];
     if (enhancementMode > 0) {
         OPNVideoEnhancementSettings *settings = [[OPNVideoEnhancementSettings alloc] init];
         if (enhancementMode == 4) {
@@ -2072,6 +2080,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 
 void LibWebRTCStreamSession::Stop() {
     if (m_callbackLiveness) m_callbackLiveness->store(false);
+    CancelDisconnectGraceTimer();
     StopAudioDeviceMonitoring();
     StopStatsPolling();
     StopMicrophoneLevelPolling();
@@ -2156,7 +2165,8 @@ void LibWebRTCStreamSession::SendInputPartiallyReliable(const uint8_t *data, siz
 #if defined(OPN_HAVE_LIBWEBRTC)
     OPNLibWebRTCSessionImpl *impl = OPNImplFromOpaque(m_impl);
     if (!impl.partialInputChannel || impl.partialInputChannel.readyState != RTCDataChannelStateOpen || !data || len == 0) return;
-    if (impl.partialInputChannel.bufferedAmount > OPNPartialReliableInputBacklogLimitBytes) return;
+    uint64_t backlogLimit = m_settings.lowLatencyMode ? OPNLowLatencyInputBacklogLimitBytes : OPNPartialReliableInputBacklogLimitBytes;
+    if (impl.partialInputChannel.bufferedAmount > backlogLimit) return;
     NSData *payload = [NSData dataWithBytes:data length:len];
     RTCDataBuffer *buffer = [[RTCDataBuffer alloc] initWithData:payload isBinary:YES];
     [impl.partialInputChannel sendData:buffer];
@@ -2782,6 +2792,7 @@ void LibWebRTCStreamSession::HandleLocalIceCandidate(const IceCandidatePayload &
 
 void LibWebRTCStreamSession::HandleConnectionState(bool connected, const std::string &error) {
     if (connected) {
+        CancelDisconnectGraceTimer();
         {
             std::lock_guard<std::mutex> lock(m_statsMutex);
             m_latestStats.available = true;
@@ -2794,6 +2805,41 @@ void LibWebRTCStreamSession::HandleConnectionState(bool connected, const std::st
     if (m_onState) {
         m_onState(connected, error);
     }
+}
+
+void LibWebRTCStreamSession::StartDisconnectGraceTimer(const std::string &reason) {
+    CancelDisconnectGraceTimer();
+    auto callbackLiveness = m_callbackLiveness;
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    if (!timer) {
+        HandleConnectionState(false, reason);
+        return;
+    }
+
+    void *timerToken = (__bridge_retained void *)timer;
+    m_disconnectGraceTimer = timerToken;
+    std::string reasonCopy = reason;
+    dispatch_source_set_timer(timer,
+                              dispatch_time(DISPATCH_TIME_NOW, OPNLibWebRTCDisconnectGraceMs * NSEC_PER_MSEC),
+                              DISPATCH_TIME_FOREVER,
+                              0);
+    dispatch_source_set_event_handler(timer, ^{
+        if (callbackLiveness && !callbackLiveness->load()) return;
+        if (m_disconnectGraceTimer != timerToken) return;
+        dispatch_source_t firedTimer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
+        m_disconnectGraceTimer = nullptr;
+        dispatch_source_cancel(firedTimer);
+        OPN::LogInfo(@"[LibWebRTC] disconnect grace expired after %lldms: %s", (long long)OPNLibWebRTCDisconnectGraceMs, reasonCopy.c_str());
+        HandleConnectionState(false, reasonCopy);
+    });
+    dispatch_resume(timer);
+}
+
+void LibWebRTCStreamSession::CancelDisconnectGraceTimer() {
+    if (!m_disconnectGraceTimer) return;
+    dispatch_source_t timer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
+    m_disconnectGraceTimer = nullptr;
+    dispatch_source_cancel(timer);
 }
 
 void LibWebRTCStreamSession::HandleStatsReport(void *report) {
@@ -3035,6 +3081,10 @@ int LibWebRTCStreamSession::TargetFps() const {
     return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
 }
 
+bool LibWebRTCStreamSession::LowLatencyMode() const {
+    return m_settings.lowLatencyMode;
+}
+
 void LibWebRTCStreamSession::LocalVideoEnhancement(int &mode, int &sharpness, int &denoise, int &targetHeight) const {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     mode = m_localEnhancementMode;
@@ -3138,8 +3188,12 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
     OPN::LogInfo(@"[LibWebRTC] ICE state=%ld", (long)newState);
     if (!_owner) return;
     if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
+        _owner->CancelDisconnectGraceTimer();
         _owner->HandleConnectionState(true, "");
+    } else if (newState == RTCIceConnectionStateDisconnected) {
+        _owner->StartDisconnectGraceTimer("libwebrtc ICE disconnected");
     } else if (newState == RTCIceConnectionStateFailed || newState == RTCIceConnectionStateClosed) {
+        _owner->CancelDisconnectGraceTimer();
         _owner->HandleConnectionState(false, "libwebrtc ICE failed");
     }
 }
@@ -3174,8 +3228,12 @@ void LibWebRTCStreamSession::StopInputHeartbeat() {
     OPN::LogInfo(@"[LibWebRTC] peer state=%ld", (long)newState);
     if (!_owner) return;
     if (newState == RTCPeerConnectionStateConnected) {
+        _owner->CancelDisconnectGraceTimer();
         _owner->HandleConnectionState(true, "");
+    } else if (newState == RTCPeerConnectionStateDisconnected) {
+        _owner->StartDisconnectGraceTimer("libwebrtc peer connection disconnected");
     } else if (newState == RTCPeerConnectionStateFailed || newState == RTCPeerConnectionStateClosed) {
+        _owner->CancelDisconnectGraceTimer();
         _owner->HandleConnectionState(false, "libwebrtc peer connection failed");
     }
 }
