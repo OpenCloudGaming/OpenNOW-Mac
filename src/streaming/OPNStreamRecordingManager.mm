@@ -307,7 +307,11 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
                 [self finishVideoFrameAppend];
                 return;
             }
-            if (self->_writer && (std::llround(self->_videoSize.width) != std::llround(size.width) || std::llround(self->_videoSize.height) != std::llround(size.height))) {
+            long long writerWidth = std::llround(self->_videoSize.width);
+            long long writerHeight = std::llround(self->_videoSize.height);
+            long long frameWidth = std::llround(size.width);
+            long long frameHeight = std::llround(size.height);
+            if (self->_writer && (writerWidth != frameWidth || writerHeight != frameHeight)) {
                 CVPixelBufferRelease(pixelBuffer);
                 @synchronized (self) {
                     self->_enhancedVideoActive = NO;
@@ -387,7 +391,11 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     NSInteger width = std::max<NSInteger>(2, (NSInteger)std::llround(size.width));
     NSInteger height = std::max<NSInteger>(2, (NSInteger)std::llround(size.height));
     OPN::StreamPreferenceProfile profile = OPN::LoadStreamPreferenceProfile();
-    NSInteger automaticVideoBitrate = std::min<NSInteger>(60000000, std::max<NSInteger>(5000000, width * height * 8));
+    const NSInteger kMinAutomaticVideoBitrate = 5000000;
+    const NSInteger kMaxAutomaticVideoBitrate = 60000000;
+    // Heuristic for resolution-based bitrate estimate before clamping.
+    const NSInteger kTargetBitsPerPixel = 8;
+    NSInteger automaticVideoBitrate = std::min<NSInteger>(kMaxAutomaticVideoBitrate, std::max<NSInteger>(kMinAutomaticVideoBitrate, width * height * kTargetBitsPerPixel));
     NSInteger videoBitrate = profile.recordingVideoBitrateMbps > 0 ? (NSInteger)profile.recordingVideoBitrateMbps * 1000000 : automaticVideoBitrate;
     NSInteger systemAudioBitrate = std::max<NSInteger>(64000, (NSInteger)profile.recordingAudioBitrateKbps * 1000);
     NSInteger microphoneAudioBitrate = std::max<NSInteger>(64000, (systemAudioBitrate * 3) / 5);
