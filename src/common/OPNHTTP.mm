@@ -1,4 +1,5 @@
 #include "OPNHTTP.h"
+#include "OPNSentry.h"
 
 namespace OPN {
 
@@ -19,6 +20,7 @@ NSMutableURLRequest *MakeHTTPRequest(NSString *urlString,
         NSString *value = headers[key];
         if (key.length > 0 && value.length > 0) [request setValue:value forHTTPHeaderField:key];
     }
+    OPN::AddSentryTraceHeaders(request);
     return request;
 }
 

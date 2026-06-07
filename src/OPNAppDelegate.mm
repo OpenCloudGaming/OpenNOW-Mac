@@ -922,6 +922,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     (void)notification;
     using namespace OPN;
 
+    SentryTransaction launchTrace("OpenNOW launch", "app.start");
     NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     [self applyApplicationIconTheme];
 
@@ -1001,6 +1002,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     [self restoreSavedWindowPresentation];
     [self startApplicationUpdateChecks];
     [self startDesktopControllerPolling];
+    launchTrace.SetStatus(true);
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {

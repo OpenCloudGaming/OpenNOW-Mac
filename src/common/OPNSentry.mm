@@ -2,11 +2,14 @@
 
 #import <Foundation/Foundation.h>
 #include <atomic>
+#include <cerrno>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <string>
+#include <utility>
 
 #if defined(OPN_HAVE_SENTRY) && OPN_HAVE_SENTRY
 #include <sentry.h>
@@ -40,8 +43,10 @@ static const char *OPNLogMessageUtf8(NSString *message) {
 namespace {
 
 static constexpr const char *OPNDefaultSentryDsn = "https://26e9dba9cb293d4ca2afceb73dd13b74@o4509317113184256.ingest.us.sentry.io/4511406450868224";
+static constexpr double OPNDefaultSentryTracesSampleRate = 0.2;
 static constexpr const char *OPNSentryLoggerName = "opennow";
 static bool OPNSentryInitialized = false;
+static thread_local sentry_transaction_t *OPNCurrentSentryTransaction = nullptr;
 static std::atomic<bool> OPNSentryStructuredInfoLogFailureReported{false};
 static NSUncaughtExceptionHandler *OPNPreviousUncaughtExceptionHandler = nullptr;
 static std::terminate_handler OPNPreviousTerminateHandler = nullptr;
@@ -166,6 +171,20 @@ static bool OPNSentryEnvironmentFlagEnabled(const char *name) {
     return OPNEnvironmentFlagEnabled(name);
 }
 
+static double OPNSentryTraceSampleRate() {
+    const char *value = std::getenv("OPN_SENTRY_TRACES_SAMPLE_RATE");
+    if (!value || value[0] == '\0') return OPNDefaultSentryTracesSampleRate;
+
+    errno = 0;
+    char *end = nullptr;
+    double sampleRate = std::strtod(value, &end);
+    if (errno != 0 || end == value || (end && end[0] != '\0') || !std::isfinite(sampleRate) || sampleRate < 0.0 || sampleRate > 1.0) {
+        OPN::LogError(@"[Sentry] Invalid OPN_SENTRY_TRACES_SAMPLE_RATE='%s'; using %.2f", value, OPNDefaultSentryTracesSampleRate);
+        return OPNDefaultSentryTracesSampleRate;
+    }
+    return sampleRate;
+}
+
 static bool OPNShouldInitializeSentry() {
     return !OPNSentryEnvironmentFlagEnabled("OPN_DISABLE_SENTRY");
 }
@@ -269,8 +288,94 @@ static void OPNCaptureSentryVerificationMessageIfRequested() {
     sentry_capture_event(sentry_value_new_message_event(SENTRY_LEVEL_INFO, OPNSentryLoggerName, "It works!"));
 }
 
+static sentry_transaction_t *OPNTransactionFromOpaque(void *transaction) {
+    return static_cast<sentry_transaction_t *>(transaction);
+}
+
+static void OPNAddSentryTraceHeader(const char *key, const char *value, void *userdata) {
+    if (!key || !value || !userdata) return;
+    NSMutableURLRequest *request = (__bridge NSMutableURLRequest *)userdata;
+    NSString *headerName = [NSString stringWithUTF8String:key];
+    NSString *headerValue = [NSString stringWithUTF8String:value];
+    if (headerName.length == 0 || headerValue.length == 0) return;
+    if ([request valueForHTTPHeaderField:headerName].length == 0) {
+        [request setValue:headerValue forHTTPHeaderField:headerName];
+    }
+}
+
 }
 #endif
+
+SentryTransaction::SentryTransaction() noexcept
+    : m_transaction(nullptr),
+      m_previousTransaction(nullptr) {}
+
+SentryTransaction::SentryTransaction(const char *name, const char *operation) noexcept
+    : m_transaction(nullptr),
+      m_previousTransaction(nullptr) {
+#if OPN_SENTRY_ENABLED
+    if (!OPNSentryInitialized) return;
+
+    const char *transactionName = name && name[0] != '\0' ? name : "OpenNOW operation";
+    const char *transactionOperation = operation && operation[0] != '\0' ? operation : "task";
+    sentry_transaction_context_t *context = sentry_transaction_context_new(transactionName, transactionOperation);
+    if (!context) return;
+
+    sentry_transaction_t *transaction = sentry_transaction_start(context, sentry_value_new_null());
+    if (!transaction) return;
+
+    m_transaction = transaction;
+    m_previousTransaction = OPNCurrentSentryTransaction;
+    OPNCurrentSentryTransaction = transaction;
+    sentry_set_transaction_object(transaction);
+#else
+    (void)name;
+    (void)operation;
+#endif
+}
+
+SentryTransaction::~SentryTransaction() {
+    Finish();
+}
+
+SentryTransaction::SentryTransaction(SentryTransaction &&other) noexcept
+    : m_transaction(std::exchange(other.m_transaction, nullptr)),
+      m_previousTransaction(std::exchange(other.m_previousTransaction, nullptr)) {}
+
+SentryTransaction &SentryTransaction::operator=(SentryTransaction &&other) noexcept {
+    if (this == &other) return *this;
+    Finish();
+    m_transaction = std::exchange(other.m_transaction, nullptr);
+    m_previousTransaction = std::exchange(other.m_previousTransaction, nullptr);
+    return *this;
+}
+
+bool SentryTransaction::IsActive() const noexcept {
+    return m_transaction != nullptr;
+}
+
+void SentryTransaction::SetStatus(bool success) noexcept {
+#if OPN_SENTRY_ENABLED
+    sentry_transaction_t *transaction = OPNTransactionFromOpaque(m_transaction);
+    if (!transaction) return;
+    sentry_transaction_set_status(transaction, success ? SENTRY_SPAN_STATUS_OK : SENTRY_SPAN_STATUS_INTERNAL_ERROR);
+#else
+    (void)success;
+#endif
+}
+
+void SentryTransaction::Finish() noexcept {
+#if OPN_SENTRY_ENABLED
+    sentry_transaction_t *transaction = OPNTransactionFromOpaque(m_transaction);
+    if (!transaction) return;
+    if (OPNCurrentSentryTransaction == transaction) {
+        OPNCurrentSentryTransaction = OPNTransactionFromOpaque(m_previousTransaction);
+    }
+    m_transaction = nullptr;
+    m_previousTransaction = nullptr;
+    sentry_transaction_finish(transaction);
+#endif
+}
 
 bool ShouldLogInfo() {
     return !OPNEnvironmentFlagEnabled("OPN_DISABLE_INFO_LOGS");
@@ -334,6 +439,15 @@ void CaptureExternalLogLine(NSString *line) {
 #endif
 }
 
+void AddSentryTraceHeaders(NSMutableURLRequest *request) {
+#if OPN_SENTRY_ENABLED
+    if (!request || !OPNSentryInitialized || !OPNCurrentSentryTransaction) return;
+    sentry_transaction_iter_headers(OPNCurrentSentryTransaction, OPNAddSentryTraceHeader, (__bridge void *)request);
+#else
+    (void)request;
+#endif
+}
+
 void InitializeSentry() {
 #if OPN_SENTRY_ENABLED
     if (!OPNShouldInitializeSentry()) return;
@@ -368,6 +482,8 @@ void InitializeSentry() {
 
         sentry_options_set_debug(options, OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_DEBUG") ? 1 : 0);
         sentry_options_set_enable_logs(options, 1);
+        sentry_options_set_traces_sample_rate(options, OPNSentryTraceSampleRate());
+        sentry_options_set_propagate_traceparent(options, 1);
 
         int initResult = sentry_init(options);
         if (initResult != 0) {
