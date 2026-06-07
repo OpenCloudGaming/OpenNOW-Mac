@@ -457,7 +457,6 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 - (CVPixelBufferRef)copyPixelBufferFromVideoFrame:(RTCVideoFrame *)frame {
-#if defined(OPN_HAVE_LIBWEBRTC)
     CVPixelBufferRef output = nil;
     CVPixelBufferPoolRef pool = _pixelBufferAdaptor.pixelBufferPool;
     if (!pool || CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &output) != kCVReturnSuccess || !output) {
@@ -486,10 +485,6 @@ typedef NS_ENUM(NSInteger, OPNRecordingAudioKind) {
     }
     [self copyI420Buffer:i420 toBGRAOutput:output];
     return output;
-#else
-    (void)frame;
-    return nil;
-#endif
 }
 
 - (void)copyI420Buffer:(id)buffer toBGRAOutput:(CVPixelBufferRef)output {
@@ -794,6 +789,8 @@ static CGSize OPNRecordingFrameSize(RTCVideoFrame *frame) {
     if (!sampleBuffer || !CMSampleBufferIsValid(sampleBuffer)) return;
     if (@available(macOS 13.0, *)) {
         if (type == SCStreamOutputTypeScreen) {
+            // Screen/video frames are handled by the dedicated video capture path;
+            // this SCStreamOutput instance is used only for audio sample forwarding.
             return;
         }
         if (type == SCStreamOutputTypeAudio) {
