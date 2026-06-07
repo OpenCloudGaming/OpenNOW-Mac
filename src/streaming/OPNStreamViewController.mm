@@ -124,8 +124,12 @@ static NSString *OPNStringFromStdString(const std::string &value, NSString *fall
 
 static BOOL OPNShouldReportTerminalStreamFailure(NSString *message) {
     if (message.length == 0) return YES;
-    return ![message isEqualToString:@"Session ended due to inactivity."]
-        && ![message isEqualToString:@"Microphone permission denied"];
+    if ([message isEqualToString:@"Session ended due to inactivity."]) return NO;
+    if ([message isEqualToString:@"Microphone permission denied"]) return NO;
+    // AUTH_FAILURE_STATUS from NVIDIA (e.g. 4192C0FF) maps to "Your NVIDIA session expired".
+    // This is an expected user-side condition (expired token); suppress Sentry noise.
+    if ([message containsString:@"NVIDIA session expired"]) return NO;
+    return YES;
 }
 
 static NSString *OPNBoundedStreamFailureMessage(NSString *message) {

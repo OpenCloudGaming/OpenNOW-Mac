@@ -1950,6 +1950,18 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         return;
     }
 
+    // Capture C++ params by value so they are available inside the async refresh block.
+    std::string titleCopy = title;
+    std::string appIdCopy = appId;
+    std::string apiTokenCopy = apiToken;
+    std::string selectedStoreCopy = selectedStore;
+    std::string resumeSessionIdCopy = resumeSessionId;
+    std::string resumeServerCopy = resumeServer;
+
+    // Refresh the GFN JWT before launch. An expired token causes AUTH_FAILURE_STATUS at the
+    // NVIDIA API, surfaced as "Your NVIDIA session expired." Refreshing here prevents that.
+    __weak __typeof__(self) weakSelf = self;
+    AuthService::Shared().RefreshSession(^(bool refreshSuccess, const AuthSession &fresh, const std::string &refreshError) {
     OPN::RecordSentryCounterMetric("opennow.stream.start.count", 1, @{
         @"source": resumeSessionId.empty() ? @"new" : @"resume",
         @"outcome": @"started",
@@ -2009,32 +2021,99 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     };
     streamVC.onDashboardToggleRequested = ^{
         __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf toggleStreamDashboardHome];
-        });
-    };
+        if (!strongSelf || [strongSelf hasVisibleStreamingController]) return;
 
-    NSRect preservedFrame = self.window.frame;
-    BOOL preserveFrame = !OPNWindowIsFullScreen(self.window);
-    [streamVC setInitialViewFrame:self.window.contentView.bounds];
-    streamVC.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    OPNConfigureStreamWindow(self.window);
-    self.window.contentViewController = streamVC;
-    OpnDisableFocusHighlights(streamVC.view);
-    if (preserveFrame) {
-        [self.window setFrame:preservedFrame display:YES animate:NO];
-    }
-    self.streamingController = streamVC;
-    [self.window makeKeyAndOrderFront:nil];
-    if (OpnAutoFullScreenEnabled() && !OPNWindowIsFullScreen(self.window)) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!OPNWindowIsFullScreen(self.window)) {
-                [self.window toggleFullScreen:nil];
+        std::string effectiveToken = apiTokenCopy;
+        if (refreshSuccess && fresh.isAuthenticated) {
+            std::string freshToken = fresh.idToken.empty() ? fresh.accessToken : fresh.idToken;
+            if (!freshToken.empty()) {
+                effectiveToken = freshToken;
+                strongSelf.currentSession = fresh;
+                if (strongSelf.pendingCredentials.stayLoggedIn) AuthService::Shared().SaveSession(fresh);
+                [strongSelf refreshAccountMenu];
+                OPN::LogInfo(@"[AppDelegate] Auth token refreshed successfully before stream launch");
             }
-        });
-    }
-    OPN::LogInfo(@"[AppDelegate] Window setup complete");
+        } else {
+            OPN::LogError(@"[AppDelegate] Auth token refresh failed before stream launch: %s", refreshError.c_str());
+            // If the stored token is also expired, abort and send the user back to sign-in.
+            if (!strongSelf.currentSession.IsAccessTokenValid()) {
+                OPN::LogError(@"[AppDelegate] Session token is expired and refresh failed; redirecting to sign-in");
+                [strongSelf transitionToScreen:AuthScreen::EmailEntry];
+                return;
+            }
+        }
+
+        strongSelf.catalogView = nil;
+        strongSelf.storeView = nil;
+        strongSelf.settingsView = nil;
+
+        OPNStreamViewController *streamVC = [[OPNStreamViewController alloc] initWithGameTitle:titleCopy
+                                                                                          appId:appIdCopy
+                                                                                       apiToken:effectiveToken
+                                                                                  accountLinked:accountLinked
+                                                                                   selectedStore:selectedStoreCopy
+                                                                                 resumeSessionId:resumeSessionIdCopy
+                                                                                     resumeServer:resumeServerCopy];
+        if (strongSelf.currentRemainingPlayTimeAvailable) {
+            [streamVC setRemainingPlaytimeHours:strongSelf.currentRemainingPlayTimeHours unlimited:strongSelf.currentRemainingPlayTimeUnlimited];
+        }
+        strongSelf.currentStreamTitle = titleCopy.empty() ? @"Current Stream" : [NSString stringWithUTF8String:titleCopy.c_str()];
+        strongSelf.activeStreamReturnScreen = returnScreen;
+        strongSelf.streamDashboardHomeVisible = NO;
+        OPN::DiscordPresence::Shared().UpdateLaunching(titleCopy);
+
+        streamVC.onStreamEnd = ^(BOOL success, const std::string &error, const OPN::SessionHealthReport &report) {
+            __typeof__(self) innerSelf = weakSelf;
+            if (!innerSelf) return;
+            std::string errorCopy2 = error;
+            OPN::SessionHealthReport reportCopy = report;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                OPN::LogInfo(@"[AppDelegate] Stream ended, restoring previous screen. Success=%d", success);
+                [innerSelf stopStreamDashboardControllerPolling];
+                innerSelf.streamDashboardHomeVisible = NO;
+                innerSelf.streamingController = nil;
+                innerSelf.currentStreamTitle = nil;
+                OPN::DiscordPresence::Shared().Clear();
+                [innerSelf transitionToScreen:returnScreen];
+                if (!success && !errorCopy2.empty()) OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Stream ended with error before report: %s", errorCopy2.c_str()]);
+                OPN::SessionReportDisplayDecision decision = OPN::SessionHealthReportDisplayDecisionForReport(reportCopy, OPN::LoadSessionReportDisplayMode());
+                if (decision.shouldShow) {
+                    [innerSelf showSessionReport:reportCopy];
+                } else {
+                    OPN::AppendLogEvent([NSString stringWithFormat:@"[AppDelegate] Session report suppressed score=%d reason=%s", decision.score, decision.reason.c_str()]);
+                }
+            });
+        };
+        streamVC.onDashboardToggleRequested = ^{
+            __typeof__(self) innerSelf = weakSelf;
+            if (!innerSelf) return;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [innerSelf toggleStreamDashboardHome];
+            });
+        };
+
+        NSRect preservedFrame = strongSelf.window.frame;
+        BOOL preserveFrame = !OPNWindowIsFullScreen(strongSelf.window);
+        [streamVC setInitialViewFrame:strongSelf.window.contentView.bounds];
+        streamVC.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        OPNConfigureStreamWindow(strongSelf.window);
+        strongSelf.window.contentViewController = streamVC;
+        OpnDisableFocusHighlights(streamVC.view);
+        if (preserveFrame) {
+            [strongSelf.window setFrame:preservedFrame display:YES animate:NO];
+        }
+        strongSelf.streamingController = streamVC;
+        [strongSelf.window makeKeyAndOrderFront:nil];
+        if (OpnAutoFullScreenEnabled() && !OPNWindowIsFullScreen(strongSelf.window)) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __typeof__(self) innerSelf = weakSelf;
+                if (!OPNWindowIsFullScreen(innerSelf.window)) {
+                    [innerSelf.window toggleFullScreen:nil];
+                }
+            });
+        }
+        OPN::LogInfo(@"[AppDelegate] Window setup complete");
+    });
 }
 
 - (void)configureGameServiceTokensForSession:(const OPN::AuthSession &)session {
