@@ -30,21 +30,9 @@
 
 namespace OPN {
 
-static dispatch_queue_t SignalingWorkQueue() {
-    static dispatch_queue_t queue;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.opennow.signaling.work", DISPATCH_QUEUE_SERIAL);
-    });
-    return queue;
-}
-
-
-
-
 static NSURL *BuildSignInUrl(const std::string &signalingServer,
-                              const std::string &sessionId,
-                              const std::string &signalingUrl,
+                               const std::string &sessionId,
+                               const std::string &signalingUrl,
                               const std::string &peerName) {
     NSString *host = [NSString stringWithUTF8String:signalingServer.c_str()];
     NSString *sessionIdObj = [NSString stringWithUTF8String:sessionId.c_str()];
@@ -339,25 +327,25 @@ void SignalingClient::RearmReceiveHandler() {
     __block SignalingClient *blockSelf = this;
 
     [task receiveMessageWithCompletionHandler:^(NSURLSessionWebSocketMessage *msg, NSError *err) {
-        dispatch_async(SignalingWorkQueue(), ^{
-        if (!blockSelf->IsCurrentGeneration(generation)) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!blockSelf->IsCurrentGeneration(generation)) return;
 
-        if (err) {
-            if (IsSocketNotConnectedError(err)) {
-                OPN::LogInfo(@"[Signaling] Receive stopped after socket closed: %@", err.localizedDescription ?: @"unknown error");
-            } else {
-                OPN::LogError(@"[Signaling] Receive error: %@", err);
+            if (err) {
+                if (IsSocketNotConnectedError(err)) {
+                    OPN::LogInfo(@"[Signaling] Receive stopped after socket closed: %@", err.localizedDescription ?: @"unknown error");
+                } else {
+                    OPN::LogError(@"[Signaling] Receive error: %@", err);
+                }
+                return;
             }
-            return;
-        }
 
-        NSString *text = msg.string;
-        if (text) {
-            blockSelf->HandleMessage([text UTF8String]);
-        }
+            NSString *text = msg.string;
+            if (text) {
+                blockSelf->HandleMessage([text UTF8String]);
+            }
 
 
-        blockSelf->RearmReceiveHandler();
+            blockSelf->RearmReceiveHandler();
         });
     }];
 }
