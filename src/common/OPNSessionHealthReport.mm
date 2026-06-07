@@ -64,6 +64,16 @@ static bool EventMatches(const SessionHealthReport &report, const std::string &n
     return false;
 }
 
+static bool HasMeaningfulVideoEnhancementStats(const StreamStats &stats) {
+    if (stats.videoEnhancementConfiguredTier.empty()) return false;
+    if (stats.videoEnhancementConfiguredTier == "pending") return false;
+    return stats.videoEnhancementConfiguredTier != "Off" || stats.videoEnhancementActiveTier != "Native";
+}
+
+static bool HasVideoEnhancementSummary(const SessionHealthStatsSummary &stats) {
+    return !stats.videoEnhancementConfiguredTier.empty();
+}
+
 static void AddDecisionScore(SessionReportDisplayDecision &decision, int points, const std::string &reason) {
     if (points <= 0) return;
     decision.score += points;
@@ -181,6 +191,18 @@ void SessionHealthReportBuilder::AddStatsSample(const StreamStats &stats) {
     if (!stats.resolution.empty()) m_report.stats.resolution = stats.resolution;
     if (!stats.codec.empty()) m_report.stats.codec = stats.codec;
     if (stats.fps > 0) m_report.stats.fps = stats.fps;
+    if (HasMeaningfulVideoEnhancementStats(stats)) {
+        m_report.stats.videoEnhancementConfiguredTier = stats.videoEnhancementConfiguredTier;
+        m_report.stats.videoEnhancementActiveTier = stats.videoEnhancementActiveTier;
+        m_report.stats.videoEnhancementFallbackReason = stats.videoEnhancementFallbackReason;
+        m_report.stats.videoEnhancementSourceResolution = stats.videoEnhancementSourceResolution;
+        m_report.stats.videoEnhancementDrawableResolution = stats.videoEnhancementDrawableResolution;
+        m_report.stats.videoEnhancementDiagnostics = stats.videoEnhancementDiagnostics;
+        if (stats.videoEnhancementFrameTimeMs >= 0.0 && std::isfinite(stats.videoEnhancementFrameTimeMs)) {
+            m_report.stats.videoEnhancementFrameTimeMs = stats.videoEnhancementFrameTimeMs;
+        }
+        m_report.stats.videoEnhancementDroppedFrames = std::max(m_report.stats.videoEnhancementDroppedFrames, stats.videoEnhancementDroppedFrames);
+    }
 }
 
 SessionHealthReport SessionHealthReportBuilder::Finalize(bool success, const std::string &terminalError, double nowSeconds) const {
@@ -246,6 +268,19 @@ std::string SessionHealthReportMarkdown(const SessionHealthReport &report) {
         out << "- Packets lost: " << report.stats.packetsLost << "\n";
     } else {
         out << "- No stream stats were available.\n";
+    }
+
+    out << "\n## Video Enhancement\n";
+    if (HasVideoEnhancementSummary(report.stats)) {
+        out << "- Configured tier: " << MarkdownEscaped(SafeText(report.stats.videoEnhancementConfiguredTier, "Unknown")) << "\n";
+        out << "- Active tier: " << MarkdownEscaped(SafeText(report.stats.videoEnhancementActiveTier, "Unknown")) << "\n";
+        out << "- Resolution: " << SafeText(report.stats.videoEnhancementSourceResolution, "Unknown") << " -> " << SafeText(report.stats.videoEnhancementDrawableResolution, "Unknown") << "\n";
+        out << "- Latest frame time: " << FormatDoubleMetric(report.stats.videoEnhancementFrameTimeMs, " ms") << "\n";
+        out << "- Enhancement dropped frames: " << report.stats.videoEnhancementDroppedFrames << "\n";
+        if (!report.stats.videoEnhancementFallbackReason.empty()) out << "- Fallback reason: " << MarkdownEscaped(report.stats.videoEnhancementFallbackReason) << "\n";
+        if (!report.stats.videoEnhancementDiagnostics.empty()) out << "- Temporal diagnostics: " << MarkdownEscaped(report.stats.videoEnhancementDiagnostics) << "\n";
+    } else {
+        out << "- No video enhancement diagnostics were available.\n";
     }
 
     out << "\n## Timeline\n";

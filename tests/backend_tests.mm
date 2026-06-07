@@ -671,6 +671,7 @@ TEST_CASE("SessionHealthReportAggregatesStatsAndTimeline") {
     first.resolution = "1920x1080";
     first.codec = "H265";
     first.fps = 60;
+    first.videoEnhancementConfiguredTier = "pending";
     builder.AddStatsSample(first);
 
     OPN::StreamStats second = first;
@@ -681,6 +682,13 @@ TEST_CASE("SessionHealthReportAggregatesStatsAndTimeline") {
     second.framesReceived = 240;
     second.framesDropped = 3;
     second.packetsLost = 5;
+    second.videoEnhancementConfiguredTier = "Temporal";
+    second.videoEnhancementActiveTier = "Temporal reconstruction";
+    second.videoEnhancementSourceResolution = "1920x1080";
+    second.videoEnhancementDrawableResolution = "3840x2160";
+    second.videoEnhancementDiagnostics = "motion 1920x1080 half-res; jitter 4-sample; history reused";
+    second.videoEnhancementFrameTimeMs = 4.5;
+    second.videoEnhancementDroppedFrames = 1;
     builder.AddStatsSample(second);
 
     OPN::SessionHealthReport report = builder.Finalize(true, "", 70.0);
@@ -694,6 +702,11 @@ TEST_CASE("SessionHealthReportAggregatesStatsAndTimeline") {
     CHECK(std::fabs(report.stats.averageBitrateMbps - 40.0) < 0.001);
     CHECK(std::fabs(report.stats.maximumPacketLossPercent - 0.4) < 0.001);
     CHECK(report.stats.framesDropped == 3);
+    CHECK(report.stats.videoEnhancementConfiguredTier == "Temporal");
+    CHECK(report.stats.videoEnhancementDiagnostics.find("motion 1920x1080") != std::string::npos);
+    std::string markdown = OPN::SessionHealthReportMarkdown(report);
+    CHECK(markdown.find("## Video Enhancement") != std::string::npos);
+    CHECK(markdown.find("Temporal diagnostics: motion 1920x1080 half-res") != std::string::npos);
     CHECK(report.timeline.size() >= 3);
 }
 

@@ -1385,6 +1385,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
     NSString *enhancementFallbackReason = @"";
     NSString *enhancementSourceResolution = OPNVideoResolutionString(sourceSize);
     NSString *enhancementDrawableResolution = OPNVideoResolutionString(self.metalView.drawableSize);
+    NSString *enhancementDiagnostics = @"";
     double enhancementFrameTimeMs = -1.0;
     int enhancementMode = 0;
     int enhancementSharpness = 0;
@@ -1423,6 +1424,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
             enhancementFallbackReason = result.tierFallbackReason ?: @"";
             enhancementSourceResolution = result.sourceResolution ?: enhancementSourceResolution;
             enhancementDrawableResolution = result.drawableResolution ?: enhancementDrawableResolution;
+            enhancementDiagnostics = result.diagnostics ?: @"";
             enhancementFrameTimeMs = result.frameTimeMs;
             self.enhancementDroppedFrameCount = result.droppedFrames;
             self.lastDrawnFrameSerial = drawSerial;
@@ -1438,6 +1440,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
             enhancementFallbackReason = result.tierFallbackReason.length > 0 ? result.tierFallbackReason : fallback;
             enhancementSourceResolution = result.sourceResolution ?: enhancementSourceResolution;
             enhancementDrawableResolution = result.drawableResolution ?: enhancementDrawableResolution;
+            enhancementDiagnostics = result.diagnostics ?: @"";
             self.enhancementDroppedFrameCount = result.droppedFrames;
         }
         if (self.lastDrawnFrameSerial != drawSerial) {
@@ -1460,6 +1463,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
                                                   OPN::OPNNSStringToString(enhancementFallbackReason),
                                                   OPN::OPNNSStringToString(enhancementSourceResolution),
                                                   OPN::OPNNSStringToString(enhancementDrawableResolution),
+                                                  OPN::OPNNSStringToString(enhancementDiagnostics),
                                                   enhancementFrameTimeMs,
                                                   self.enhancementDroppedFrameCount);
         }
@@ -1491,6 +1495,7 @@ static NSString *OPNVideoResolutionString(CGSize size) {
                                               OPN::OPNNSStringToString(enhancementFallbackReason),
                                               OPN::OPNNSStringToString(enhancementSourceResolution),
                                               OPN::OPNNSStringToString(enhancementDrawableResolution),
+                                              OPN::OPNNSStringToString(enhancementDiagnostics),
                                               enhancementFrameTimeMs,
                                               self.enhancementDroppedFrameCount);
     }
@@ -1838,6 +1843,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.videoEnhancementFallbackReason = "";
         m_latestStats.videoEnhancementSourceResolution = "pending";
         m_latestStats.videoEnhancementDrawableResolution = "pending";
+        m_latestStats.videoEnhancementDiagnostics = "";
         m_latestStats.videoEnhancementFrameTimeMs = -1.0;
         m_latestStats.videoEnhancementDroppedFrames = 0;
         m_statsRequestInFlight = false;
@@ -3041,6 +3047,7 @@ void LibWebRTCStreamSession::SetVideoRenderDiagnostics(const std::string &pixelF
                                                        const std::string &enhancementFallbackReason,
                                                        const std::string &enhancementSourceResolution,
                                                        const std::string &enhancementDrawableResolution,
+                                                       const std::string &enhancementDiagnostics,
                                                        double enhancementFrameTimeMs,
                                                        uint64_t enhancementDroppedFrames) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
@@ -3054,6 +3061,7 @@ void LibWebRTCStreamSession::SetVideoRenderDiagnostics(const std::string &pixelF
     m_latestStats.videoEnhancementFallbackReason = enhancementFallbackReason;
     m_latestStats.videoEnhancementSourceResolution = enhancementSourceResolution;
     m_latestStats.videoEnhancementDrawableResolution = enhancementDrawableResolution;
+    m_latestStats.videoEnhancementDiagnostics = enhancementDiagnostics;
     m_latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs;
     m_latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames;
 }

@@ -36,6 +36,7 @@ typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
 @property(nonatomic, copy) NSString *tierFallbackReason;
 @property(nonatomic, copy) NSString *sourceResolution;
 @property(nonatomic, copy) NSString *drawableResolution;
+@property(nonatomic, copy) NSString *diagnostics;
 @property(nonatomic, assign) double frameTimeMs;
 @property(nonatomic, assign) uint64_t droppedFrames;
 @property(nonatomic, assign) CVPixelBufferRef enhancedPixelBuffer;

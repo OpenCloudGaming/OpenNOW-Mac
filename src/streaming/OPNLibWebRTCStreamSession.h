@@ -75,6 +75,7 @@ public:
                                    const std::string &enhancementFallbackReason,
                                    const std::string &enhancementSourceResolution,
                                    const std::string &enhancementDrawableResolution,
+                                   const std::string &enhancementDiagnostics,
                                    double enhancementFrameTimeMs,
                                    uint64_t enhancementDroppedFrames);
 

@@ -49,6 +49,18 @@ static NSString *OPNVideoPixelFormatName(OSType format) {
     return [NSString stringWithFormat:@"0x%08x", (unsigned int)format];
 }
 
+static void OPNTemporalJitterForFrame(NSUInteger frameIndex, float *x, float *y) {
+    static const float offsets[4][2] = {
+        {-0.25f, -0.25f},
+        { 0.25f, -0.25f},
+        {-0.25f,  0.25f},
+        { 0.25f,  0.25f},
+    };
+    size_t index = (size_t)(frameIndex % 4);
+    *x = offsets[index][0];
+    *y = offsets[index][1];
+}
+
 @interface OPNVideoTextureSource : NSObject
 - (instancetype)initWithDevice:(id<MTLDevice>)device;
 - (id)newTextureFrameForFrame:(RTCVideoFrame *)frame pixelFormat:(NSString **)pixelFormat frameSource:(NSString **)frameSource fallback:(NSString **)fallback;
@@ -373,14 +385,18 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @property(nonatomic, strong) id<MTLRenderPipelineState> temporalPresentPipeline;
 @property(nonatomic, assign) uint64_t droppedFrames;
 @property(nonatomic, assign) BOOL temporalHistoryValid;
+@property(nonatomic, assign) NSUInteger temporalFrameIndex;
+@property(nonatomic, assign) float temporalPreviousJitterX;
+@property(nonatomic, assign) float temporalPreviousJitterY;
 @property(nonatomic, assign) NSUInteger temporalHistoryWidth;
 @property(nonatomic, assign) NSUInteger temporalHistoryHeight;
 @property(nonatomic, assign) NSUInteger temporalSourceWidth;
 @property(nonatomic, assign) NSUInteger temporalSourceHeight;
+@property(nonatomic, assign) NSUInteger temporalHistoryResetCount;
 - (id<MTLTexture>)reusableMetalFXIntermediateTextureWithWidth:(NSUInteger)width height:(NSUInteger)height;
 - (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat label:(NSString *)label;
 - (BOOL)renderTemporalTextureFrame:(OPNVideoTextureFrame *)textureFrame drawable:(id<CAMetalDrawable>)drawable settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result start:(CFTimeInterval)start;
-- (BOOL)encodeTemporalMotionTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
+- (BOOL)encodeTemporalMotionTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture jitterDelta:(const float *)jitterDelta commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
 - (BOOL)encodeTemporalCurrentTexture:(id<MTLTexture>)currentTexture historyTexture:(id<MTLTexture>)historyTexture motionTexture:(id<MTLTexture>)motionTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer settings:(OPNVideoEnhancementSettings *)settings result:(OPNVideoEnhancementResult *)result;
 - (BOOL)encodePresentTexture:(id<MTLTexture>)sourceTexture destinationTexture:(id<MTLTexture>)destinationTexture commandBuffer:(id<MTLCommandBuffer>)commandBuffer result:(OPNVideoEnhancementResult *)result;
 @end
@@ -404,6 +420,10 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         _temporalPresentPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_present_rgb"];
         _droppedFrames = 0;
         _temporalHistoryValid = NO;
+        _temporalFrameIndex = 0;
+        _temporalPreviousJitterX = 0.0f;
+        _temporalPreviousJitterY = 0.0f;
+        _temporalHistoryResetCount = 0;
     }
     return self;
 }
@@ -486,44 +506,62 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "static float opn_luma(float3 color) {\n"
     "    return dot(color, float3(0.2126, 0.7152, 0.0722));\n"
     "}\n"
-    "fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]]) {\n"
+    "static float2 opn_edge_aware_jitter(float2 uv, float2 jitter, float edgeMetric, float4 crop) {\n"
+    "    float jitterStrength = 1.0 - smoothstep(0.045, 0.16, edgeMetric);\n"
+    "    return opn_clamp_crop(uv + jitter * jitterStrength, crop);\n"
+    "}\n"
+    "static float opn_block_luma(texture2d<float> sourceTexture, sampler s, float2 uv, float2 texel) {\n"
+    "    float center = opn_luma(sourceTexture.sample(s, clamp(uv, float2(0.0), float2(1.0))).rgb);\n"
+    "    float horizontal = opn_luma(sourceTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb) + opn_luma(sourceTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb);\n"
+    "    float vertical = opn_luma(sourceTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb) + opn_luma(sourceTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb);\n"
+    "    return (center * 2.0 + horizontal + vertical) / 6.0;\n"
+    "}\n"
+    "fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
-    "    float3 center = opn_rgb_bicubic(sourceTexture, s, uv, crop);\n"
+    "    float2 baseUv = opn_crop_uv(in.texCoord, crop);\n"
     "    float2 texel = max(scale, float2(1.0 / 8192.0));\n"
+    "    float centerLuma = opn_luma(sourceTexture.sample(s, baseUv).rgb);\n"
+    "    float edgeMetric = abs(centerLuma - opn_luma(sourceTexture.sample(s, opn_clamp_crop(baseUv + float2(texel.x, 0.0), crop)).rgb)) + abs(centerLuma - opn_luma(sourceTexture.sample(s, opn_clamp_crop(baseUv + float2(0.0, texel.y), crop)).rgb));\n"
+    "    float2 uv = opn_edge_aware_jitter(baseUv, jitter, edgeMetric, crop);\n"
+    "    float3 center = opn_rgb_bicubic(sourceTexture, s, uv, crop);\n"
     "    float3 blur = (opn_rgb_bicubic(sourceTexture, s, uv + float2(texel.x, 0.0), crop) + opn_rgb_bicubic(sourceTexture, s, uv - float2(texel.x, 0.0), crop) + opn_rgb_bicubic(sourceTexture, s, uv + float2(0.0, texel.y), crop) + opn_rgb_bicubic(sourceTexture, s, uv - float2(0.0, texel.y), crop)) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n"
-    "fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]]) {\n"
+    "fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
-    "    float3 center = opn_nv12_rgb(yTexture, uvTexture, s, uv);\n"
+    "    float2 baseUv = opn_crop_uv(in.texCoord, crop);\n"
     "    float2 texel = max(scale, float2(1.0 / 8192.0));\n"
+    "    float centerLuma = yTexture.sample(s, baseUv).r;\n"
+    "    float edgeMetric = abs(centerLuma - yTexture.sample(s, opn_clamp_crop(baseUv + float2(texel.x, 0.0), crop)).r) + abs(centerLuma - yTexture.sample(s, opn_clamp_crop(baseUv + float2(0.0, texel.y), crop)).r);\n"
+    "    float2 uv = opn_edge_aware_jitter(baseUv, jitter, edgeMetric, crop);\n"
+    "    float3 center = opn_nv12_rgb(yTexture, uvTexture, s, uv);\n"
     "    float3 blur = (opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n"
-    "fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]]) {\n"
+    "fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    float2 uv = opn_crop_uv(in.texCoord, crop);\n"
-    "    float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);\n"
+    "    float2 baseUv = opn_crop_uv(in.texCoord, crop);\n"
     "    float2 texel = max(scale, float2(1.0 / 8192.0));\n"
+    "    float centerLuma = yTexture.sample(s, baseUv).r;\n"
+    "    float edgeMetric = abs(centerLuma - yTexture.sample(s, opn_clamp_crop(baseUv + float2(texel.x, 0.0), crop)).r) + abs(centerLuma - yTexture.sample(s, opn_clamp_crop(baseUv + float2(0.0, texel.y), crop)).r);\n"
+    "    float2 uv = opn_edge_aware_jitter(baseUv, jitter, edgeMetric, crop);\n"
+    "    float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);\n"
     "    float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;\n"
     "    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);\n"
     "}\n"
-    "fragment float4 opn_video_temporal_motion(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant int &hasHistory [[buffer(1)]]) {\n"
+    "fragment float4 opn_video_temporal_motion(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant int &hasHistory [[buffer(1)]], constant float2 &jitterDelta [[buffer(2)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
     "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
     "    if (hasHistory == 0) return float4(0.0, 0.0, 0.0, 1.0);\n"
-    "    float3 current = currentTexture.sample(s, uv).rgb;\n"
-    "    float currentLuma = opn_luma(current);\n"
+    "    float2 blockTexel = texel * 2.0;\n"
+    "    float currentLuma = opn_block_luma(currentTexture, s, uv, blockTexel);\n"
     "    float bestDiff = 1.0;\n"
     "    float bestScore = 1.0;\n"
     "    float2 bestOffset = float2(0.0);\n"
     "    for (int y = -2; y <= 2; ++y) {\n"
     "        for (int x = -2; x <= 2; ++x) {\n"
-    "            float2 offset = float2((float)x, (float)y) * texel * 2.0;\n"
-    "            float3 candidate = historyTexture.sample(s, clamp(uv + offset, float2(0.0), float2(1.0))).rgb;\n"
-    "            float diff = fabs(currentLuma - opn_luma(candidate));\n"
+    "            float2 offset = jitterDelta + float2((float)x, (float)y) * blockTexel;\n"
+    "            float diff = fabs(currentLuma - opn_block_luma(historyTexture, s, uv + offset, blockTexel));\n"
     "            float score = diff + length(float2((float)x, (float)y)) * 0.003;\n"
     "            if (score < bestScore) { bestScore = score; bestDiff = diff; bestOffset = offset; }\n"
     "        }\n"
@@ -545,11 +583,12 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "        float2 rawHistoryUv = uv + motion.xy;\n"
     "        float historyInside = step(0.0, rawHistoryUv.x) * step(rawHistoryUv.x, 1.0) * step(0.0, rawHistoryUv.y) * step(rawHistoryUv.y, 1.0);\n"
     "        float2 historyUv = clamp(rawHistoryUv, float2(0.0), float2(1.0));\n"
-    "        float2 motionRight = motionTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).xy;\n"
-    "        float2 motionLeft = motionTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).xy;\n"
-    "        float2 motionUp = motionTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).xy;\n"
-    "        float2 motionDown = motionTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).xy;\n"
-    "        float motionTexel = max(max(texel.x, texel.y), 1.0 / 8192.0);\n"
+    "        float2 motionTexel2 = max(1.0 / float2((float)motionTexture.get_width(), (float)motionTexture.get_height()), float2(1.0 / 8192.0));\n"
+    "        float2 motionRight = motionTexture.sample(s, clamp(uv + float2(motionTexel2.x, 0.0), float2(0.0), float2(1.0))).xy;\n"
+    "        float2 motionLeft = motionTexture.sample(s, clamp(uv - float2(motionTexel2.x, 0.0), float2(0.0), float2(1.0))).xy;\n"
+    "        float2 motionUp = motionTexture.sample(s, clamp(uv + float2(0.0, motionTexel2.y), float2(0.0), float2(1.0))).xy;\n"
+    "        float2 motionDown = motionTexture.sample(s, clamp(uv - float2(0.0, motionTexel2.y), float2(0.0), float2(1.0))).xy;\n"
+    "        float motionTexel = max(max(motionTexel2.x, motionTexel2.y), 1.0 / 8192.0);\n"
     "        float vectorDisagreement = (length(motion.xy - motionRight) + length(motion.xy - motionLeft) + length(motion.xy - motionUp) + length(motion.xy - motionDown)) / (motionTexel * 4.0);\n"
     "        float vectorCoherence = 1.0 - smoothstep(2.5, 9.0, vectorDisagreement);\n"
     "        float sceneContinuity = 1.0 - smoothstep(0.12, 0.28, motion.w);\n"
@@ -649,6 +688,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     result.tierFallbackReason = @"";
     result.sourceResolution = OPNEnhancementResolutionString(settings.sourceSize);
     result.drawableResolution = OPNEnhancementResolutionString(settings.drawableSize);
+    result.diagnostics = @"";
     result.frameTimeMs = -1.0;
     result.droppedFrames = self.droppedFrames;
     result.enhancedPixelBuffer = nil;
@@ -686,7 +726,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
             result.fallbackReason = @"MetalFX intermediate texture allocation failed";
             return NO;
         }
-        if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:sourceTexture commandBuffer:commandBuffer settings:settings result:result]) {
+        if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:sourceTexture commandBuffer:commandBuffer settings:settings result:result jitter:nullptr]) {
             result.fallbackReason = @"MetalFX RGB conversion failed";
             return NO;
         }
@@ -754,10 +794,12 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 
     NSUInteger width = drawable.texture.width;
     NSUInteger height = drawable.texture.height;
+    NSUInteger motionWidth = std::max<NSUInteger>(1, (width + 1) / 2);
+    NSUInteger motionHeight = std::max<NSUInteger>(1, (height + 1) / 2);
     self.temporalCurrentTexture = [self reusableTemporalTexture:self.temporalCurrentTexture width:width height:height pixelFormat:MTLPixelFormatBGRA8Unorm label:@"OpenNOW temporal current"];
     self.temporalOutputTexture = [self reusableTemporalTexture:self.temporalOutputTexture width:width height:height pixelFormat:MTLPixelFormatBGRA8Unorm label:@"OpenNOW temporal output"];
     self.temporalHistoryTexture = [self reusableTemporalTexture:self.temporalHistoryTexture width:width height:height pixelFormat:MTLPixelFormatBGRA8Unorm label:@"OpenNOW temporal history"];
-    self.temporalMotionTexture = [self reusableTemporalTexture:self.temporalMotionTexture width:width height:height pixelFormat:MTLPixelFormatRGBA16Float label:@"OpenNOW temporal motion"];
+    self.temporalMotionTexture = [self reusableTemporalTexture:self.temporalMotionTexture width:motionWidth height:motionHeight pixelFormat:MTLPixelFormatRGBA16Float label:@"OpenNOW temporal half-res motion"];
     if (!self.temporalCurrentTexture || !self.temporalOutputTexture || !self.temporalHistoryTexture || !self.temporalMotionTexture) {
         result.fallbackReason = @"temporal upscaler could not allocate history textures";
         self.temporalHistoryValid = NO;
@@ -767,19 +809,32 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     id<MTLTexture> primaryTexture = textureFrame.rgbTexture ?: textureFrame.lumaTexture;
     NSUInteger sourceWidth = primaryTexture ? primaryTexture.width : 0;
     NSUInteger sourceHeight = primaryTexture ? primaryTexture.height : 0;
+    float jitterPixelsX = 0.0f;
+    float jitterPixelsY = 0.0f;
+    OPNTemporalJitterForFrame(self.temporalFrameIndex, &jitterPixelsX, &jitterPixelsY);
+    float currentJitter[2] = {sourceWidth > 0 ? jitterPixelsX / (float)sourceWidth : 0.0f,
+                              sourceHeight > 0 ? jitterPixelsY / (float)sourceHeight : 0.0f};
+    float previousJitter[2] = {self.temporalPreviousJitterX, self.temporalPreviousJitterY};
     if (self.temporalHistoryWidth != width || self.temporalHistoryHeight != height || self.temporalSourceWidth != sourceWidth || self.temporalSourceHeight != sourceHeight) {
+        if (self.temporalHistoryWidth > 0 || self.temporalHistoryHeight > 0 || self.temporalSourceWidth > 0 || self.temporalSourceHeight > 0) {
+            self.temporalHistoryResetCount++;
+        }
         self.temporalHistoryValid = NO;
         self.temporalHistoryWidth = width;
         self.temporalHistoryHeight = height;
         self.temporalSourceWidth = sourceWidth;
         self.temporalSourceHeight = sourceHeight;
+        previousJitter[0] = currentJitter[0];
+        previousJitter[1] = currentJitter[1];
     }
+    BOOL hadHistoryBeforeFrame = self.temporalHistoryValid;
+    float jitterDelta[2] = {currentJitter[0] - previousJitter[0], currentJitter[1] - previousJitter[1]};
 
-    if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:self.temporalCurrentTexture commandBuffer:commandBuffer settings:settings result:result]) {
+    if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:self.temporalCurrentTexture commandBuffer:commandBuffer settings:settings result:result jitter:currentJitter]) {
         self.temporalHistoryValid = NO;
         return NO;
     }
-    if (![self encodeTemporalMotionTexture:self.temporalCurrentTexture historyTexture:self.temporalHistoryTexture motionTexture:self.temporalMotionTexture commandBuffer:commandBuffer result:result]) {
+    if (![self encodeTemporalMotionTexture:self.temporalCurrentTexture historyTexture:self.temporalHistoryTexture motionTexture:self.temporalMotionTexture jitterDelta:jitterDelta commandBuffer:commandBuffer result:result]) {
         self.temporalHistoryValid = NO;
         return NO;
     }
@@ -799,9 +854,19 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     self.temporalHistoryTexture = self.temporalOutputTexture;
     self.temporalOutputTexture = previousHistory;
     self.temporalHistoryValid = YES;
+    self.temporalPreviousJitterX = currentJitter[0];
+    self.temporalPreviousJitterY = currentJitter[1];
+    self.temporalFrameIndex = (self.temporalFrameIndex + 1) % 4;
 
     result.renderPath = @"OPNMetalTemporalUpscaler";
     result.activeTier = @"Temporal reconstruction";
+    result.diagnostics = [NSString stringWithFormat:@"motion %dx%d half-res; jitter 4-sample %.2f,%.2f px; history %@; resets %llu; rejection scene/disocclusion/edge-aware",
+                          (int)motionWidth,
+                          (int)motionHeight,
+                          jitterPixelsX,
+                          jitterPixelsY,
+                          hadHistoryBeforeFrame ? @"reused" : @"priming",
+                          (unsigned long long)self.temporalHistoryResetCount];
     result.frameTimeMs = (CACurrentMediaTime() - start) * 1000.0;
     result.droppedFrames = self.droppedFrames;
     if (settings.captureEnhancedPixelBuffer) result.enhancedPixelBuffer = [self newPixelBufferFromTexture:drawable.texture size:settings.drawableSize];
@@ -811,6 +876,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 - (BOOL)encodeTemporalMotionTexture:(id<MTLTexture>)currentTexture
                        historyTexture:(id<MTLTexture>)historyTexture
                          motionTexture:(id<MTLTexture>)motionTexture
+                           jitterDelta:(const float *)jitterDelta
                          commandBuffer:(id<MTLCommandBuffer>)commandBuffer
                                 result:(OPNVideoEnhancementResult *)result {
     if (!currentTexture || !historyTexture || !motionTexture || !commandBuffer || !self.temporalMotionPipeline) {
@@ -835,6 +901,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [encoder setFragmentTexture:historyTexture atIndex:1];
     [encoder setFragmentBytes:texel length:sizeof(texel) atIndex:0];
     [encoder setFragmentBytes:&hasHistory length:sizeof(hasHistory) atIndex:1];
+    [encoder setFragmentBytes:jitterDelta length:sizeof(float) * 2 atIndex:2];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     return YES;
@@ -916,7 +983,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         result.fallbackReason = @"spatial scaler could not create command buffer";
         return NO;
     }
-    if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:drawable.texture commandBuffer:commandBuffer settings:settings result:result]) {
+    if (![self encodeSpatialTextureFrame:textureFrame destinationTexture:drawable.texture commandBuffer:commandBuffer settings:settings result:result jitter:nullptr]) {
         return NO;
     }
     [commandBuffer presentDrawable:drawable];
@@ -935,7 +1002,8 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
                 destinationTexture:(id<MTLTexture>)destinationTexture
                      commandBuffer:(id<MTLCommandBuffer>)commandBuffer
                           settings:(OPNVideoEnhancementSettings *)settings
-                            result:(OPNVideoEnhancementResult *)result {
+                            result:(OPNVideoEnhancementResult *)result
+                            jitter:(const float *)jitter {
     if (!textureFrame || !destinationTexture || !commandBuffer) {
         result.fallbackReason = @"spatial scaler missing target";
         return NO;
@@ -966,6 +1034,8 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     }
     float texel[2] = {primaryTexture.width > 0 ? 1.0f / (float)primaryTexture.width : 0.0f,
                       primaryTexture.height > 0 ? 1.0f / (float)primaryTexture.height : 0.0f};
+    float zeroJitter[2] = {0.0f, 0.0f};
+    const float *activeJitter = jitter ? jitter : zeroJitter;
     float sharpness = std::max(0.0f, std::min(4.0f, (float)settings.sharpness / 10.0f));
     float denoise = std::max(0.0f, std::min(1.0f, ((float)settings.denoise / 10.0f) * 0.65f));
     CGRect cropRect = textureFrame.cropRect;
@@ -993,6 +1063,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     [encoder setFragmentBytes:&sharpness length:sizeof(sharpness) atIndex:1];
     [encoder setFragmentBytes:&denoise length:sizeof(denoise) atIndex:2];
     [encoder setFragmentBytes:crop length:sizeof(crop) atIndex:3];
+    [encoder setFragmentBytes:activeJitter length:sizeof(float) * 2 atIndex:4];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     return YES;

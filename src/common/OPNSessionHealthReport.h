@@ -48,6 +48,14 @@ struct SessionHealthStatsSummary {
     int64_t packetsLost = 0;
     std::string resolution;
     std::string codec;
+    std::string videoEnhancementConfiguredTier;
+    std::string videoEnhancementActiveTier;
+    std::string videoEnhancementFallbackReason;
+    std::string videoEnhancementSourceResolution;
+    std::string videoEnhancementDrawableResolution;
+    std::string videoEnhancementDiagnostics;
+    double videoEnhancementFrameTimeMs = -1.0;
+    uint64_t videoEnhancementDroppedFrames = 0;
     int fps = 0;
 };
 
