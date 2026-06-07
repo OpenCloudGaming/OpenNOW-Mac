@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -212,6 +213,68 @@ static const char *OPNSentryLogReturnName(log_return_value_t value) {
     return "unknown";
 }
 
+static const char *OPNSentryMetricResultName(sentry_metrics_result_t value) {
+    switch (value) {
+        case SENTRY_METRICS_RESULT_SUCCESS: return "success";
+        case SENTRY_METRICS_RESULT_DISCARD: return "discard";
+        case SENTRY_METRICS_RESULT_FAILED: return "failed";
+        case SENTRY_METRICS_RESULT_DISABLED: return "disabled";
+    }
+    return "unknown";
+}
+
+static sentry_value_t OPNSentryMetricAttributeValue(id value) {
+    if ([value isKindOfClass:[NSString class]]) {
+        const char *stringValue = [(NSString *)value UTF8String];
+        return sentry_value_new_attribute(sentry_value_new_string(stringValue ? stringValue : ""), nullptr);
+    }
+
+    if ([value isKindOfClass:[NSNumber class]]) {
+        NSNumber *number = (NSNumber *)value;
+        if (CFGetTypeID((__bridge CFTypeRef)number) == CFBooleanGetTypeID()) {
+            return sentry_value_new_attribute(sentry_value_new_bool(number.boolValue ? 1 : 0), nullptr);
+        }
+        return sentry_value_new_attribute(sentry_value_new_double(number.doubleValue), nullptr);
+    }
+
+    NSString *description = [value description];
+    const char *stringValue = description.UTF8String;
+    return sentry_value_new_attribute(sentry_value_new_string(stringValue ? stringValue : ""), nullptr);
+}
+
+static sentry_value_t OPNSentryMetricAttributes(NSDictionary<NSString *, id> *attributes) {
+    if (attributes.count == 0) return sentry_value_new_null();
+
+    sentry_value_t sentryAttributes = sentry_value_new_object();
+    for (NSString *key in attributes) {
+        if (![key isKindOfClass:[NSString class]] || key.length == 0) continue;
+        id value = attributes[key];
+        if (!value || value == NSNull.null) continue;
+
+        const char *utf8Key = key.UTF8String;
+        if (!utf8Key || utf8Key[0] == '\0') continue;
+        sentry_value_set_by_key(sentryAttributes, utf8Key, OPNSentryMetricAttributeValue(value));
+    }
+
+    return sentryAttributes;
+}
+
+static bool OPNHandleSentryMetricResult(sentry_metrics_result_t result, const char *key) {
+    if (result == SENTRY_METRICS_RESULT_SUCCESS) return true;
+    if (result == SENTRY_METRICS_RESULT_FAILED) {
+        std::fprintf(stderr, "[Sentry] metric '%s' failed to enqueue\n", key ? key : "");
+    }
+    return false;
+}
+
+static void OPNRecordSentryErrorLogMetric(const char *source) {
+    if (!OPNSentryInitialized) return;
+    NSDictionary<NSString *, id> *attributes = @{
+        @"source": source && source[0] != '\0' ? [NSString stringWithUTF8String:source] : @"local",
+    };
+    OPNHandleSentryMetricResult(sentry_metrics_count("opennow.logs.error.count", 1, OPNSentryMetricAttributes(attributes)), "opennow.logs.error.count");
+}
+
 static void OPNCaptureSentryMessage(sentry_level_t level, const char *message) {
     sentry_capture_event(sentry_value_new_message_event(level, OPNSentryLoggerName, message));
 }
@@ -287,6 +350,26 @@ static void OPNInstallUnhandledExceptionHandlers() {
 static void OPNCaptureSentryVerificationMessageIfRequested() {
     if (!OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) return;
     sentry_capture_event(sentry_value_new_message_event(SENTRY_LEVEL_INFO, OPNSentryLoggerName, "It works!"));
+}
+
+static void OPNCaptureSentryVerificationMetricsIfRequested() {
+    if (!OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) return;
+
+    NSDictionary<NSString *, id> *requestAttributes = @{
+        @"endpoint": @"/api/users",
+        @"method": @"POST",
+    };
+    sentry_metrics_result_t counterResult = sentry_metrics_count("button_click", 1, sentry_value_new_null());
+    sentry_metrics_result_t gaugeResult = sentry_metrics_gauge("queue_depth", 42.0, nullptr, sentry_value_new_null());
+    sentry_metrics_result_t distributionResult = sentry_metrics_distribution("response_time", 187.5, SENTRY_UNIT_MILLISECOND, sentry_value_new_null());
+    sentry_metrics_result_t requestCounterResult = sentry_metrics_count("network.request.count", 1, OPNSentryMetricAttributes(requestAttributes));
+
+    std::fprintf(stderr,
+        "[Sentry] verification metrics returned counter=%s gauge=%s distribution=%s request_counter=%s\n",
+        OPNSentryMetricResultName(counterResult),
+        OPNSentryMetricResultName(gaugeResult),
+        OPNSentryMetricResultName(distributionResult),
+        OPNSentryMetricResultName(requestCounterResult));
 }
 
 static sentry_transaction_t *OPNTransactionFromOpaque(void *transaction) {
@@ -522,6 +605,7 @@ void LogError(NSString *format, ...) {
         NSString *sentryMessage = OPNSanitizedSentryMessage(message);
         const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
         OPNSendStructuredErrorLog(sentryUtf8Message);
+        OPNRecordSentryErrorLogMetric("local");
     }
 #endif
 }
@@ -535,6 +619,7 @@ void CaptureExternalLogLine(NSString *line) {
     const char *sentryUtf8Message = OPNLogMessageUtf8(sentryMessage);
     if (OPNExternalLogLineLooksLikeError(sentryMessage)) {
         OPNSendStructuredErrorLog(sentryUtf8Message);
+        OPNRecordSentryErrorLogMetric("external");
     } else {
         OPNSendStructuredInfoLog(sentryUtf8Message);
     }
@@ -549,6 +634,44 @@ void AddSentryTraceHeaders(NSMutableURLRequest *request) {
     sentry_transaction_iter_headers(OPNCurrentSentryTransaction, OPNAddSentryTraceHeader, (__bridge void *)request);
 #else
     (void)request;
+#endif
+}
+
+bool RecordSentryCounterMetric(const char *key, int64_t value, NSDictionary<NSString *, id> *attributes) {
+#if OPN_SENTRY_ENABLED
+    if (!OPNSentryInitialized || !key || key[0] == '\0') return false;
+    return OPNHandleSentryMetricResult(sentry_metrics_count(key, value, OPNSentryMetricAttributes(attributes)), key);
+#else
+    (void)key;
+    (void)value;
+    (void)attributes;
+    return false;
+#endif
+}
+
+bool RecordSentryGaugeMetric(const char *key, double value, const char *unit, NSDictionary<NSString *, id> *attributes) {
+#if OPN_SENTRY_ENABLED
+    if (!OPNSentryInitialized || !key || key[0] == '\0' || !std::isfinite(value)) return false;
+    return OPNHandleSentryMetricResult(sentry_metrics_gauge(key, value, unit, OPNSentryMetricAttributes(attributes)), key);
+#else
+    (void)key;
+    (void)value;
+    (void)unit;
+    (void)attributes;
+    return false;
+#endif
+}
+
+bool RecordSentryDistributionMetric(const char *key, double value, const char *unit, NSDictionary<NSString *, id> *attributes) {
+#if OPN_SENTRY_ENABLED
+    if (!OPNSentryInitialized || !key || key[0] == '\0' || !std::isfinite(value)) return false;
+    return OPNHandleSentryMetricResult(sentry_metrics_distribution(key, value, unit, OPNSentryMetricAttributes(attributes)), key);
+#else
+    (void)key;
+    (void)value;
+    (void)unit;
+    (void)attributes;
+    return false;
 #endif
 }
 
@@ -586,6 +709,7 @@ void InitializeSentry() {
 
         sentry_options_set_debug(options, OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_DEBUG") ? 1 : 0);
         sentry_options_set_enable_logs(options, 1);
+        sentry_options_set_enable_metrics(options, OPNSentryEnvironmentFlagEnabled("OPN_DISABLE_SENTRY_METRICS") ? 0 : 1);
         sentry_options_set_traces_sample_rate(options, OPNSentryTraceSampleRate());
         sentry_options_set_propagate_traceparent(options, 1);
 
@@ -596,7 +720,9 @@ void InitializeSentry() {
         }
         OPNSentryInitialized = true;
         OPNInstallUnhandledExceptionHandlers();
+        OPNHandleSentryMetricResult(sentry_metrics_count("opennow.app.lifecycle.count", 1, OPNSentryMetricAttributes(@{@"phase": @"start"})), "opennow.app.lifecycle.count");
         OPNCaptureSentryVerificationMessageIfRequested();
+        OPNCaptureSentryVerificationMetricsIfRequested();
         if (OPNSentryEnvironmentFlagEnabled("OPN_SENTRY_VERIFY")) {
             log_return_value_t result = sentry_log_info("%s", "OpenNOW Sentry structured logs are enabled");
             std::fprintf(stderr, "[Sentry] verification log returned %s\n", OPNSentryLogReturnName(result));
@@ -609,6 +735,7 @@ void InitializeSentry() {
 void CloseSentry() {
 #if OPN_SENTRY_ENABLED
     if (!OPNSentryInitialized) return;
+    OPNHandleSentryMetricResult(sentry_metrics_count("opennow.app.lifecycle.count", 1, OPNSentryMetricAttributes(@{@"phase": @"close"})), "opennow.app.lifecycle.count");
     OPNSentryInitialized = false;
     int closeResult = sentry_close();
     if (closeResult != 0) {

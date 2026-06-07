@@ -1,6 +1,7 @@
 #pragma once
 
 #import <Foundation/Foundation.h>
+#include <cstdint>
 #include <memory>
 
 namespace OPN {
@@ -57,5 +58,8 @@ void LogInfo(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 void LogError(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 void CaptureExternalLogLine(NSString *line);
 void AddSentryTraceHeaders(NSMutableURLRequest *request);
+bool RecordSentryCounterMetric(const char *key, int64_t value, NSDictionary<NSString *, id> *attributes = nil);
+bool RecordSentryGaugeMetric(const char *key, double value, const char *unit = nullptr, NSDictionary<NSString *, id> *attributes = nil);
+bool RecordSentryDistributionMetric(const char *key, double value, const char *unit = nullptr, NSDictionary<NSString *, id> *attributes = nil);
 
 }

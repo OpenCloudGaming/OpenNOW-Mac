@@ -133,6 +133,22 @@ static NSString *OPNBoundedStreamFailureMessage(NSString *message) {
     return [[message substringToIndex:700] stringByAppendingString:@"..."];
 }
 
+static NSDictionary<NSString *, id> *OPNStreamMetricAttributes(NSString *outcome,
+                                                                BOOL recovering,
+                                                                const std::string &backend,
+                                                                const std::string &codec,
+                                                                const std::string &resolution,
+                                                                int fps) {
+    return @{
+        @"outcome": outcome.length > 0 ? outcome : @"unknown",
+        @"recovery": @(recovering),
+        @"backend": OPNStringFromStdString(backend, @"unknown"),
+        @"codec": OPNStringFromStdString(codec, @"unknown"),
+        @"resolution": OPNStringFromStdString(resolution, @"unknown"),
+        @"fps": @(fps),
+    };
+}
+
 static NSString *OPNStreamFailureReportMessage(NSString *message) {
     if (message.length == 0) return @"Stream failed";
     NSRange jsonRange = [message rangeOfString:@"{"];
@@ -901,6 +917,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     CFTimeInterval _lastStreamActivityTime;
     CFTimeInterval _lastIdleDeviceInputTime;
     CFTimeInterval _launchFlowStartTime;
+    CFTimeInterval _connectedStartTime;
+    CFTimeInterval _lastMetricsSampleTime;
     CFTimeInterval _lastQualityGuardrailChangeTime;
     NSInteger _qualityDegradedSampleCount;
     BOOL _qualityWarningShown;
@@ -968,6 +986,8 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _lastStreamActivityTime = 0;
         _lastIdleDeviceInputTime = 0;
         _launchFlowStartTime = 0;
+        _connectedStartTime = 0;
+        _lastMetricsSampleTime = 0;
         _lastQualityGuardrailChangeTime = 0;
         _qualityDegradedSampleCount = 0;
         _qualityWarningShown = NO;
@@ -1233,6 +1253,15 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)finishLaunchMeasurementWithSuccess:(BOOL)success reason:(NSString *)reason {
     NSString *safeReason = reason.length > 0 ? reason : @"unknown";
+    CFTimeInterval elapsedMs = self.launchSignpostActive ? (CACurrentMediaTime() - self.launchStartTime) * 1000.0 : 0.0;
+    if (elapsedMs > 0.0) {
+        OPN::RecordSentryDistributionMetric("opennow.stream.launch.duration", elapsedMs, "millisecond", @{
+            @"outcome": success ? @"success" : @"failure",
+            @"reason": safeReason,
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"recovery": @(_recovering),
+        });
+    }
     if (_streamLaunchTrace && ![safeReason isEqualToString:@"stale-resume"]) {
         _streamLaunchTrace->SetData("reason", safeReason.UTF8String ?: "unknown");
         _streamLaunchTrace->SetStatus(success);
@@ -1241,7 +1270,6 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }
     if (!self.launchSignpostActive) return;
     self.launchSignpostActive = NO;
-    CFTimeInterval elapsedMs = (CACurrentMediaTime() - self.launchStartTime) * 1000.0;
     os_signpost_interval_end(OPNStreamPerformanceLog(),
                              self.launchSignpostId,
                              "StreamLaunch",
@@ -1539,6 +1567,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _runtimeMaxBitrateMbps = reducedBitrate;
         _lastQualityGuardrailChangeTime = now;
         _qualityDegradedSampleCount = 0;
+        OPN::RecordSentryCounterMetric("opennow.stream.quality_guardrail.count", 1, @{
+            @"action": @"bitrate_reduced",
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"new_bitrate_mbps": @(reducedBitrate),
+        });
         [self.streamView setMaxBitrateMbps:reducedBitrate];
         if (_session) _session->SetMaxBitrateMbps(reducedBitrate);
         NSString *detail = [NSString stringWithFormat:@"%@ · capped at %d Mbps", signalText, reducedBitrate];
@@ -1550,6 +1583,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (!_qualityWarningShown) {
         _qualityWarningShown = YES;
+        OPN::RecordSentryCounterMetric("opennow.stream.quality_guardrail.count", 1, @{
+            @"action": @"warning",
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+        });
         NSString *detail = [NSString stringWithFormat:@"%@ · consider 30 FPS or H264 if this continues", signalText];
         [self showQualityGuardrailToastWithTitle:@"Stream quality is unstable" detail:detail warning:YES];
         _healthReport.RecordEvent("Quality warning", [detail UTF8String] ?: "", CACurrentMediaTime());
@@ -1574,6 +1611,21 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
     }
     _healthReport.AddStatsSample(stats);
     [self evaluateQualityGuardrailsWithStats:stats];
+    CFTimeInterval now = CACurrentMediaTime();
+    if (stats.available && _connectedOnce && now - _lastMetricsSampleTime >= 10.0) {
+        _lastMetricsSampleTime = now;
+        NSDictionary<NSString *, id> *attributes = @{
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"codec": OPNStringFromStdString(stats.codec, @"unknown"),
+            @"resolution": OPNStringFromStdString(stats.resolution, @"unknown"),
+        };
+        OPN::RecordSentryGaugeMetric("opennow.stream.latency", stats.latencyMs, "millisecond", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.jitter", stats.jitterMs, "millisecond", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.packet_loss", stats.packetLossPercent, "percent", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.bitrate", stats.inboundBitrateMbps, "megabit/second", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.render_fps", stats.renderFps, "frame/second", attributes);
+        OPN::RecordSentryGaugeMetric("opennow.stream.frames_dropped", (double)stats.framesDropped, "frame", attributes);
+    }
     if (!self.statsOverlay) return;
 
     NSInteger latencyMs = stats.latencyMs >= 0 ? (NSInteger)std::llround(stats.latencyMs) : -1;
@@ -1860,8 +1912,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                                               sessionInfo.serverIp,
                                               [sessionInfo](bool ok, const std::string &error) {
         if (ok) {
+            OPN::RecordSentryCounterMetric("opennow.stream.remote_stop.count", 1, @{@"outcome": @"success"});
             OPN::LogInfo(@"[StreamVC] Remote session stop succeeded sessionId=%s", sessionInfo.sessionId.c_str());
         } else {
+            OPN::RecordSentryCounterMetric("opennow.stream.remote_stop.count", 1, @{@"outcome": @"failure"});
             OPN::LogError(@"[StreamVC] Remote session stop failed sessionId=%s error=%s",
                   sessionInfo.sessionId.c_str(),
                   error.empty() ? "unknown" : error.c_str());
@@ -1947,6 +2001,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 - (void)endStreamFromInactivityTimeout {
     if (_streamEnded) return;
     OPN::LogInfo(@"[StreamVC] Stream ended due to user inactivity");
+    OPN::RecordSentryCounterMetric("opennow.stream.end_reason.count", 1, @{@"reason": @"inactivity"});
     OPN::AppendLogEvent(@"[StreamVC] Stream ended due to user inactivity");
     _healthReport.RecordEvent("Inactivity timeout", "Session ended because no user activity was detected", CACurrentMediaTime());
     [self requestRemoteStopForActiveSession];
@@ -1955,6 +2010,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
 - (void)endStreamFromUserQuit {
     if (_streamEnded) return;
+    OPN::RecordSentryCounterMetric("opennow.stream.end_reason.count", 1, @{@"reason": @"user_quit"});
     _healthReport.RecordEvent("User quit", "Stream ended from the quit confirmation", CACurrentMediaTime());
     [self requestRemoteStopForActiveSession];
     [self endStreamWithSuccess:YES errorMessage:""];
@@ -1973,6 +2029,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded) return;
     _streamEnded = YES;
+    OPN::RecordSentryCounterMetric("opennow.stream.end_reason.count", 1, @{@"reason": @"application_terminate"});
     OPN::LogInfo(@"[StreamVC] Application terminating; preserving remote session for resume");
     [self finishLaunchMeasurementWithSuccess:YES reason:@"application terminating"];
     [self cleanup];
@@ -2052,6 +2109,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     _recoveryAttempt++;
     _recovering = YES;
+    OPN::RecordSentryCounterMetric("opennow.stream.recovery.count", 1, @{
+        @"outcome": @"started",
+        @"attempt": @(_recoveryAttempt),
+        @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+    });
     _stableResetGeneration++;
     NSUInteger recoveryGeneration = ++_launchGeneration;
     NSTimeInterval delay = OPNRecoveryDelayForAttempt(_recoveryAttempt);
@@ -2174,8 +2236,11 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                 if (!s2 || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
                 if (connected) {
                     [s2 cancelRemoteIceGraceTimer];
+                    BOOL recoveredLaunch = s2->_recovering;
                     s2->_connectedOnce = YES;
+                    s2->_connectedStartTime = CACurrentMediaTime();
                     s2->_recovering = NO;
+                    OPN::RecordSentryCounterMetric("opennow.stream.connection.count", 1, OPNStreamMetricAttributes(@"connected", recoveredLaunch, s2->_webRTCBackendName, negotiatedSettings.codec, negotiatedSettings.resolution, negotiatedSettings.fps));
                     [s2 beginLatencyActivity];
                     [s2 setLaunchStep:6 message:@"Connected!"];
                     s2->_healthReport.MarkConnected(CACurrentMediaTime());
@@ -2506,6 +2571,10 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         _healthReport.MarkPhase("Recovery Prepare", CACurrentMediaTime());
     }
     _launchFlowStartTime = CACurrentMediaTime();
+    OPN::RecordSentryCounterMetric("opennow.stream.launch.count", 1, @{
+        @"outcome": recoveringLaunch ? @"recovery_started" : @"started",
+        @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+    });
     OPN::LogInfo(@"[StreamVC] Starting stream launch flow for game: %@ (appId=%s, recovery=%d attempt=%ld/%ld)",
           OPNStringFromStdString(_gameTitle, @""),
           _appId.c_str(),
@@ -2606,6 +2675,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
         AVAuthorizationStatus microphoneStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
         if (microphoneStatus == AVAuthorizationStatusDenied || microphoneStatus == AVAuthorizationStatusRestricted) {
             OPN::LogError(@"[StreamVC] Microphone permission denied or restricted; cannot start mic-enabled stream");
+            OPN::RecordSentryCounterMetric("opennow.stream.launch.count", 1, @{@"outcome": @"microphone_permission_denied"});
             [self setStatus:@"Microphone permission is disabled. Enable it in macOS Settings > Privacy & Security > Microphone."];
             [self endStreamWithSuccess:NO errorMessage:"Microphone permission denied"];
             return;
@@ -2622,6 +2692,7 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
                     if (strongSelf->_launchGeneration != permissionGeneration) return;
                     if (!granted) {
                         OPN::LogError(@"[StreamVC] macOS microphone permission request denied");
+                        OPN::RecordSentryCounterMetric("opennow.stream.launch.count", 1, @{@"outcome": @"microphone_permission_denied"});
                         [strongSelf setStatus:@"Microphone permission was denied. Enable it in macOS Settings > Privacy & Security > Microphone."];
                         [strongSelf endStreamWithSuccess:NO errorMessage:"Microphone permission denied"];
                         return;
@@ -2761,6 +2832,19 @@ static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) 
 
     if (_streamEnded) return;
     _streamEnded = YES;
+    if (_connectedStartTime > 0.0) {
+        CFTimeInterval streamDurationMs = MAX(0.0, (CACurrentMediaTime() - _connectedStartTime) * 1000.0);
+        OPN::RecordSentryDistributionMetric("opennow.stream.duration", streamDurationMs, "millisecond", @{
+            @"outcome": success ? @"success" : @"failure",
+            @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+            @"connected_once": @(_connectedOnce),
+        });
+    }
+    OPN::RecordSentryCounterMetric("opennow.stream.connection.count", 1, @{
+        @"outcome": success ? @"ended" : @"failed",
+        @"backend": OPNStringFromStdString(_webRTCBackendName, @"unknown"),
+        @"connected_once": @(_connectedOnce),
+    });
     std::string displayError = success ? std::string() : OPN::UserFacingGFNErrorMessage(errorMessage, _gameTitle);
     if (_session) {
         _session->RequestStats();
