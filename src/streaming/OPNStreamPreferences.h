@@ -137,6 +137,7 @@ struct StreamPreferenceProfile {
     bool recordingEnhancedVideoEnabled = true;
     bool enableL4S = false;
     bool enableHdr = false;
+    bool lowLatencyMode = false;
     bool enablePowerSaver = false;
     bool suppressInputWhenInactive = true;
     bool directMouseInput = true;
@@ -243,6 +244,7 @@ void SaveStreamRecordingAudioBitrateKbps(int bitrateKbps);
 void SaveStreamRecordingEnhancedVideoEnabled(bool enabled);
 void SaveStreamL4SEnabled(bool enabled);
 void SaveStreamHDREnabled(bool enabled);
+void SaveStreamLowLatencyModeEnabled(bool enabled);
 void SaveStreamPowerSaverEnabled(bool enabled);
 void SaveStreamSuppressInputWhenInactive(bool enabled);
 void SaveStreamDirectMouseInputEnabled(bool enabled);

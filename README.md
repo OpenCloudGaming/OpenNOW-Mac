@@ -35,6 +35,7 @@ OPN_SENTRY_VERIFY=1 make run
 ```
 
 Set `OPN_DISABLE_SENTRY_METRICS=1` to disable metrics without disabling crash reporting or logs.
+Set `OPN_SENTRY_INFO_LOGS=1` to forward verbose info-level runtime logs to Sentry structured logs.
 
 Runtime metrics cover app lifecycle, auth refresh and login outcomes, screen transitions, HTTP response outcomes, game launch decisions, stream launch duration, stream duration, recovery attempts, remote stop outcomes, and sampled stream quality gauges.
 

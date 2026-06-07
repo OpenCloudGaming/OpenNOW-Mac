@@ -32,6 +32,7 @@ static NSString *const kRecordingVideoBitrateMbpsKey = @"OpenNOW.Stream.Recordin
 static NSString *const kRecordingAudioBitrateKbpsKey = @"OpenNOW.Stream.RecordingAudioBitrateKbps";
 static NSString *const kRecordingEnhancedVideoEnabledKey = @"OpenNOW.Stream.RecordingEnhancedVideoEnabled";
 static NSString *const kL4SEnabledKey = @"OpenNOW.Stream.L4SEnabled";
+static NSString *const kLowLatencyModeEnabledKey = @"OpenNOW.Stream.LowLatencyModeEnabled";
 static NSString *const kPowerSaverEnabledKey = @"OpenNOW.Stream.PowerSaverEnabled";
 static NSString *const kSuppressInputWhenInactiveKey = @"OpenNOW.Stream.SuppressInputWhenInactive";
 static NSString *const kDirectMouseInputKey = @"OpenNOW.Stream.DirectMouseInput";
@@ -624,6 +625,7 @@ StreamPreferenceProfile LoadStreamPreferenceProfile() {
 
     profile.enableL4S = [NSUserDefaults.standardUserDefaults boolForKey:kL4SEnabledKey];
     profile.enableHdr = [NSUserDefaults.standardUserDefaults boolForKey:kHDREnabledKey];
+    profile.lowLatencyMode = [NSUserDefaults.standardUserDefaults boolForKey:kLowLatencyModeEnabledKey];
     profile.enablePowerSaver = [NSUserDefaults.standardUserDefaults boolForKey:kPowerSaverEnabledKey];
     id suppressInputValue = [NSUserDefaults.standardUserDefaults objectForKey:kSuppressInputWhenInactiveKey];
     profile.suppressInputWhenInactive = [suppressInputValue isKindOfClass:NSNumber.class] ? [(NSNumber *)suppressInputValue boolValue] : true;
@@ -766,6 +768,7 @@ static StreamPreferenceProfile StreamPreferenceProfileFromDictionary(NSDictionar
     profile.recordingEnhancedVideoEnabled = DictionaryBool(dictionary, kRecordingEnhancedVideoEnabledKey, true);
     profile.enableL4S = DictionaryBool(dictionary, kL4SEnabledKey, false);
     profile.enableHdr = DictionaryBool(dictionary, kHDREnabledKey, false);
+    profile.lowLatencyMode = DictionaryBool(dictionary, kLowLatencyModeEnabledKey, false);
     profile.enablePowerSaver = DictionaryBool(dictionary, kPowerSaverEnabledKey, false);
     profile.suppressInputWhenInactive = DictionaryBool(dictionary, kSuppressInputWhenInactiveKey, true);
     profile.directMouseInput = DictionaryBool(dictionary, kDirectMouseInputKey, true);
@@ -813,6 +816,7 @@ static NSDictionary *DictionaryFromStreamPreferenceProfile(const StreamPreferenc
         kRecordingEnhancedVideoEnabledKey: @(profile.recordingEnhancedVideoEnabled),
         kL4SEnabledKey: @(profile.enableL4S),
         kHDREnabledKey: @(profile.enableHdr),
+        kLowLatencyModeEnabledKey: @(profile.lowLatencyMode),
         kPowerSaverEnabledKey: @(profile.enablePowerSaver),
         kSuppressInputWhenInactiveKey: @(profile.suppressInputWhenInactive),
         kDirectMouseInputKey: @(profile.directMouseInput),
@@ -1566,6 +1570,35 @@ void RunStreamNetworkPreflight(const std::string &token,
 
     std::string tokenCopy = token;
     std::string selectedRegionUrl = LoadSelectedStreamRegionUrl();
+    std::vector<StreamRegionOption> cachedRegions = LoadCachedStreamRegions();
+    const StreamRegionOption *cachedChoice = nullptr;
+    if (!selectedRegionUrl.empty()) {
+        std::string normalizedSelected = NormalizedBaseUrl(selectedRegionUrl);
+        auto selected = std::find_if(cachedRegions.begin(), cachedRegions.end(), [&normalizedSelected](const StreamRegionOption &region) {
+            return !region.url.empty() && NormalizedBaseUrl(region.url) == normalizedSelected;
+        });
+        if (selected != cachedRegions.end()) cachedChoice = &(*selected);
+    }
+    if (!cachedChoice) {
+        auto measured = std::find_if(cachedRegions.begin(), cachedRegions.end(), [](const StreamRegionOption &region) {
+            return !region.url.empty() && region.latencyMs >= 0;
+        });
+        if (measured != cachedRegions.end()) cachedChoice = &(*measured);
+    }
+    if (cachedChoice && !cachedChoice->url.empty()) {
+        StreamNetworkPreflightResult cached = initial;
+        cached.streamingBaseUrl = NormalizedBaseUrl(cachedChoice->url);
+        cached.latencyMs = cachedChoice->latencyMs;
+        cached.usedAutomaticRegion = selectedRegionUrl.empty();
+        cached.recommendedMaxBitrateMbps = RecommendedStreamBitrateForNetwork(requestedMaxBitrateMbps,
+                                                                              cached.latencyMs,
+                                                                              cached.measuredBandwidthMbps,
+                                                                              cached.packetLossPercent,
+                                                                              cached.jitterMs);
+        CreateNetworkTestSession(cached, tokenCopy, requestedMaxBitrateMbps, completion);
+        FetchStreamRegions(tokenCopy, providerStreamingBaseUrl, [](const std::vector<StreamRegionOption> &) {});
+        return;
+    }
     FetchStreamRegions(tokenCopy, providerStreamingBaseUrl, [initial, tokenCopy, selectedRegionUrl, requestedMaxBitrateMbps, completion](const std::vector<StreamRegionOption> &regions) mutable {
         StreamNetworkPreflightResult result = initial;
         const StreamRegionOption *chosen = nullptr;
@@ -1688,6 +1721,10 @@ void SaveStreamL4SEnabled(bool enabled) {
 
 void SaveStreamHDREnabled(bool enabled) {
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kHDREnabledKey];
+}
+
+void SaveStreamLowLatencyModeEnabled(bool enabled) {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:kLowLatencyModeEnabledKey];
 }
 
 void SaveStreamPowerSaverEnabled(bool enabled) {

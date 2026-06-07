@@ -163,13 +163,13 @@ static NSString *OPNFormatSidebarPlaytimeSeconds(NSTimeInterval seconds) {
         _gameVolume = profile.gameVolume;
         _microphoneVolumeLevel = profile.microphoneVolume;
         _maxBitrateMbps = profile.maxBitrateMbps;
-        _videoUpscalingMode = profile.upscalingMode;
+        _videoUpscalingMode = profile.lowLatencyMode ? 0 : profile.upscalingMode;
         _videoUpscalingTargetHeight = profile.upscalingTargetHeight;
         _videoUpscalingSharpness = profile.upscalingSharpness;
         _videoUpscalingDenoise = profile.upscalingDenoise;
         _videoStreamWidth = profile.resolution.width;
         _videoStreamHeight = profile.resolution.height;
-        _recordingEnhancedVideoEnabled = profile.recordingEnhancedVideoEnabled ? YES : NO;
+        _recordingEnhancedVideoEnabled = profile.lowLatencyMode ? NO : (profile.recordingEnhancedVideoEnabled ? YES : NO);
         _remainingPlaytimeBaseSeconds = 0.0;
         _remainingPlaytimeStartTime = 0.0;
         _remainingPlaytimeUnlimited = NO;
