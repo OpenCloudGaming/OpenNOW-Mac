@@ -356,13 +356,18 @@ static void OpnAppendHeroImageType(NSMutableArray<NSString *> *urls, const OPN::
     NSRectFill(self.bounds);
     if (!self.image || self.image.size.width <= 0.0 || self.image.size.height <= 0.0) return;
 
-    CGFloat imageAspect = self.image.size.width / self.image.size.height;
-    NSRect target = NSMakeRect(NSMinX(self.bounds), NSMinY(self.bounds), NSWidth(self.bounds), floor(NSWidth(self.bounds) / imageAspect));
+    CGFloat scale = MAX(NSWidth(self.bounds) / self.image.size.width, NSHeight(self.bounds) / self.image.size.height);
+    CGFloat targetWidth = floor(self.image.size.width * scale);
+    CGFloat drawnHeight = floor(self.image.size.height * scale);
+    NSRect target = NSMakeRect(floor(NSMidX(self.bounds) - targetWidth * 0.5),
+                               floor(NSMidY(self.bounds) - drawnHeight * 0.5),
+                               targetWidth,
+                               drawnHeight);
 
     [self.image drawInRect:target fromRect:NSMakeRect(0.0, 0.0, self.image.size.width, self.image.size.height) operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
 
-    CGFloat targetHeight = MAX(1.0, NSHeight(self.bounds));
-    NSInteger steps = MAX((NSInteger)1, (NSInteger)ceil(targetHeight / 2.0));
+    CGFloat gradientHeight = MAX(1.0, NSHeight(self.bounds));
+    NSInteger steps = MAX((NSInteger)1, (NSInteger)ceil(gradientHeight / 2.0));
     for (NSInteger step = 0; step < steps; step++) {
         CGFloat progress = steps <= 1 ? 1.0 : (CGFloat)step / (CGFloat)(steps - 1);
         CGFloat alpha = 1.00 * pow(progress, 0.5);

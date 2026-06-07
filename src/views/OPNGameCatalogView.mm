@@ -16,7 +16,7 @@
 static const CGFloat kStoreTopInset = 0.0;
 static const CGFloat kStoreNavigationClearance = 0.0;
 static const CGFloat kStoreHeroHeightRatio = 0.3229;
-static const CGFloat kStoreRowHeight = 348.0;
+static const CGFloat kStoreRowHeight = 282.0;
 static const CGFloat kStoreCardSpacing = 18.0;
 static const CGFloat kStoreTileWidth = 268.0;
 static const CGFloat kStoreTileHeight = 151.0;
@@ -24,13 +24,14 @@ static const CGFloat kStoreHeroMinContentInset = 30.0;
 static const CGFloat kStoreHeroMaxContentInset = 106.0;
 static const CGFloat kStoreHeroContentInsetRatio = 0.055;
 static const CGFloat kStoreFallbackHeroAspect = 1.0 / kStoreHeroHeightRatio;
-static const CGFloat kStoreHeroMaxHeight = 520.0;
+static const CGFloat kStoreHeroMaxHeight = 820.0;
+static const CGFloat kStoreHeroMaxViewportRatio = 0.62;
 static const CGFloat kStoreHeroLogoMaxWidth = 520.0;
 static const CGFloat kStoreHeroLogoMaxHeight = 180.0;
-static const CGFloat kStoreHeroFirstRowSpacing = 85.0;
+static const CGFloat kStoreHeroFirstRowSpacing = 64.0;
 static const CGFloat kStoreButtonHintPillHeight = 40.0;
 static const CGFloat kStoreButtonHintPillBottomInset = 18.0;
-static const CGFloat kStoreTopFoldNextRowInset = 0.0;
+static const CGFloat kStoreTopFoldNextRowInset = -100.0;
 static const CGFloat kStoreSearchPanelMinWidth = 300.0;
 static const CGFloat kStoreSearchPanelMaxWidth = 420.0;
 static const CGFloat kStoreRailInertiaMinimumVelocity = 8.0;
@@ -38,10 +39,10 @@ static const CGFloat kStoreRailInertiaResistancePerSecond = 0.035;
 static const NSInteger kStoreRailImagePreloadCardBuffer = 4;
 static const NSTimeInterval kStoreSearchDebounceInterval = 0.18;
 
-static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat aspect) {
-    CGFloat safeAspect = aspect > 0.0 ? aspect : kStoreFallbackHeroAspect;
-    CGFloat aspectHeight = MAX(1.0, width) / MAX(1.0, safeAspect);
-    return floor(MIN(kStoreHeroMaxHeight, aspectHeight));
+static CGFloat OPNStoreHeroHeightForWidth(CGFloat width, CGFloat viewportHeight) {
+    CGFloat fallbackHeight = MAX(1.0, width) / kStoreFallbackHeroAspect;
+    CGFloat viewportHeightLimit = viewportHeight > 0.0 ? viewportHeight * kStoreHeroMaxViewportRatio : fallbackHeight;
+    return floor(MIN(kStoreHeroMaxHeight, viewportHeightLimit));
 }
 
 static CGFloat OPNStoreNextRowYAfterRow(CGFloat rowY, NSInteger rowIndex, BOOL hasHero, CGFloat viewportHeight) {
@@ -1927,7 +1928,6 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<OPNStoreGameTile *> *> *rowCards;
 @property (nonatomic, strong) NSMutableArray<OPNStoreRowLayout *> *rowLayouts;
 @property (nonatomic, strong) NSMutableArray<OpnImageLoadToken *> *heroImageLoadTokens;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *heroAspectByIdentity;
 @property (nonatomic, strong) NSTimer *heroRotationTimer;
 @property (nonatomic, strong) NSMutableArray<NSView *> *desktopFeaturedHeroViews;
 @property (nonatomic, strong) NSView *desktopHeroContainer;
@@ -1972,7 +1972,6 @@ static NSString *OPNStoreAvailabilityTitle(const OPN::GameInfo &game, int varian
 - (void)loadDesktopHeroLogoForGame:(const OPN::GameInfo &)game generation:(NSInteger)generation;
 - (void)cancelHeroImageLoads;
 - (void)trackHeroImageLoadToken:(OpnImageLoadToken *)token;
-- (CGFloat)heroAspectForGame:(const OPN::GameInfo &)game;
 - (void)updateDesktopFeaturedHeroOnly;
 - (void)addEmptyStoreStateWithY:(CGFloat)y contentX:(CGFloat)contentX width:(CGFloat)width;
 - (void)scheduleRenderStore;
@@ -1996,7 +1995,6 @@ using namespace OPN;
         _rowCards = [NSMutableArray array];
         _rowLayouts = [NSMutableArray array];
         _heroImageLoadTokens = [NSMutableArray array];
-        _heroAspectByIdentity = [NSMutableDictionary dictionary];
         _desktopFeaturedHeroViews = [NSMutableArray array];
         _desktopFeaturedHeroFrame = NSZeroRect;
         _focusedRowIndex = 0;
@@ -2506,9 +2504,6 @@ using namespace OPN;
             } else {
                 completed = YES;
                 strongSelf.initialHeroImage = image;
-                if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
-                    strongSelf.heroAspectByIdentity[gameIdentity] = @(image.size.width / image.size.height);
-                }
             }
             strongSelf.initialHeroIdentity = gameIdentity;
             strongSelf.initialHeroReady = YES;
@@ -2600,11 +2595,6 @@ using namespace OPN;
     [self scheduleAsyncSearchForCurrentQuery];
 }
 
-- (CGFloat)heroAspectForGame:(const GameInfo &)game {
-    NSNumber *aspect = self.heroAspectByIdentity[OpnGameIdentityForHero(game)];
-    return aspect.doubleValue > 0.0 ? aspect.doubleValue : kStoreFallbackHeroAspect;
-}
-
 - (void)refreshLibrarySelections {
     for (NSMutableArray<OPNStoreGameTile *> *row in self.rowCards) {
         for (OPNStoreGameTile *card in row) {
@@ -2639,7 +2629,7 @@ using namespace OPN;
 
     CGFloat heroHeight = 0.0;
     if (heroGame) {
-        heroHeight = OPNStoreHeroHeightForWidth(viewportWidth, [self heroAspectForGame:*heroGame]);
+        heroHeight = OPNStoreHeroHeightForWidth(viewportWidth, NSHeight(self.bounds));
         [self addDesktopHeroStageForGame:*heroGame y:y contentX:0.0 width:viewportWidth height:heroHeight];
     }
 
@@ -2771,9 +2761,6 @@ using namespace OPN;
         ? self.initialHeroImage
         : OpnCachedImageFromCandidates(heroCandidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
-        if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
-            self.heroAspectByIdentity[gameIdentity] = @(cachedImage.size.width / cachedImage.size.height);
-        }
         (void)animated;
         self.desktopHeroArtworkView.alphaValue = 1.0;
         self.desktopHeroArtworkView.image = cachedImage;
@@ -2796,9 +2783,7 @@ using namespace OPN;
 - (void)updateDesktopHeroFrameForCurrentBounds {
     if (!self.desktopHeroContainer || !self.desktopHeroArtworkView || NSIsEmptyRect(self.desktopFeaturedHeroFrame)) return;
     CGFloat width = MAX(1.0, NSWidth(self.bounds));
-    NSImage *image = self.desktopHeroArtworkView.image;
-    CGFloat aspect = (image.size.width > 0.0 && image.size.height > 0.0) ? image.size.width / image.size.height : kStoreFallbackHeroAspect;
-    CGFloat height = OPNStoreHeroHeightForWidth(width, aspect);
+    CGFloat height = OPNStoreHeroHeightForWidth(width, NSHeight(self.bounds));
     self.desktopFeaturedHeroFrame = NSMakeRect(NSMinX(self.desktopFeaturedHeroFrame), NSMinY(self.desktopFeaturedHeroFrame), width, height);
     self.desktopHeroContainer.frame = self.desktopFeaturedHeroFrame;
     self.desktopHeroArtworkView.frame = self.desktopHeroContainer.bounds;
@@ -2945,13 +2930,10 @@ using namespace OPN;
     NSArray<NSString *> *remainingCandidates = [candidates subarrayWithRange:NSMakeRange(index, candidates.count - index)];
     NSImage *cachedImage = OpnCachedImageFromCandidates(remainingCandidates, 1600.0, nil);
     if (OPNStoreHeroImageHasVisibleContent(cachedImage)) {
-        if (cachedImage.size.width > 0.0 && cachedImage.size.height > 0.0 && gameIdentity.length > 0) {
-            self.heroAspectByIdentity[gameIdentity] = @(cachedImage.size.width / cachedImage.size.height);
-        }
         view.image = cachedImage;
         view.alphaValue = 1.0;
         if (view == self.desktopHeroArtworkView) {
-            CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), cachedImage.size.width / cachedImage.size.height);
+            CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), NSHeight(self.bounds));
             if (std::fabs(expectedHeroHeight - NSHeight(self.desktopFeaturedHeroFrame)) > 1.0) {
                 [self scheduleRenderStore];
                 if (completion) completion(YES);
@@ -2987,14 +2969,10 @@ using namespace OPN;
                 return;
             }
             completed = YES;
-            if (image.size.width > 0.0 && image.size.height > 0.0 && gameIdentity.length > 0) {
-                CGFloat aspect = image.size.width / image.size.height;
-                strongSelf.heroAspectByIdentity[gameIdentity] = @(aspect);
-            }
             strongView.image = image;
             strongView.alphaValue = 1.0;
             if (strongView == strongSelf.desktopHeroArtworkView) {
-                CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(strongSelf.bounds), image.size.width / image.size.height);
+                CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(strongSelf.bounds), NSHeight(strongSelf.bounds));
                 if (std::fabs(expectedHeroHeight - NSHeight(strongSelf.desktopFeaturedHeroFrame)) > 1.0) {
                     [strongSelf scheduleRenderStore];
                     if (completion) completion(YES);
@@ -3018,7 +2996,7 @@ using namespace OPN;
         [self renderStore];
         return;
     }
-    CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), [self heroAspectForGame:*heroGame]);
+    CGFloat expectedHeroHeight = OPNStoreHeroHeightForWidth(NSWidth(self.bounds), NSHeight(self.bounds));
     if (std::fabs(expectedHeroHeight - NSHeight(self.desktopFeaturedHeroFrame)) > 1.0) {
         [self renderStore];
         return;
