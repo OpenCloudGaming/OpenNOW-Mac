@@ -54,13 +54,17 @@ static NSString *OPNVideoPixelFormatName(OSType format) {
 }
 
 static void OPNTemporalJitterForFrame(NSUInteger frameIndex, float *x, float *y) {
-    static const float offsets[4][2] = {
-        {-0.25f, -0.25f},
-        { 0.25f, -0.25f},
-        {-0.25f,  0.25f},
-        { 0.25f,  0.25f},
+    static const float offsets[8][2] = {
+        {-0.375f, -0.125f},
+        { 0.125f,  0.375f},
+        {-0.125f, -0.375f},
+        { 0.375f,  0.125f},
+        {-0.3125f,  0.3125f},
+        { 0.1875f, -0.1875f},
+        {-0.1875f,  0.1875f},
+        { 0.3125f, -0.3125f},
     };
-    size_t index = (size_t)(frameIndex % 4);
+    size_t index = (size_t)(frameIndex % 8);
     *x = offsets[index][0];
     *y = offsets[index][1];
 }
@@ -439,6 +443,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 
 @implementation OPNVideoEnhancementRenderer {
     CVPixelBufferPoolRef _enhancedCapturePool;
+    CVMetalTextureCacheRef _enhancedCaptureTextureCache;
     NSMutableArray *_completedEnhancedPixelBuffers;
 }
 
@@ -449,6 +454,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         _commandQueue = commandQueue;
         _ciContext = device ? [CIContext contextWithMTLDevice:device options:@{kCIContextWorkingColorSpace: [NSNull null]}] : nil;
         _outputColorSpace = CGColorSpaceCreateDeviceRGB();
+        if (device) CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &_enhancedCaptureTextureCache);
         _textureSource = [[OPNVideoTextureSource alloc] initWithDevice:device];
         _metalFXUpscaler = [[OPNMetalFXUpscaler alloc] initWithDevice:device];
         _spatialRGBPipeline = [self newSpatialPipelineWithDevice:device fragmentFunction:@"opn_video_spatial_rgb"];
@@ -479,6 +485,11 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     if (_enhancedCapturePool) {
         CVPixelBufferPoolRelease(_enhancedCapturePool);
         _enhancedCapturePool = nil;
+    }
+    if (_enhancedCaptureTextureCache) {
+        CVMetalTextureCacheFlush(_enhancedCaptureTextureCache, 0);
+        CFRelease(_enhancedCaptureTextureCache);
+        _enhancedCaptureTextureCache = nil;
     }
     [self clearCompletedEnhancedPixelBuffers];
 }
@@ -636,12 +647,33 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
     "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
     "    float3 current = currentTexture.sample(s, uv).rgb;\n"
-    "    float3 blur = (currentTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb + currentTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb + currentTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb + currentTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb) * 0.25;\n"
+    "    float2 uvL = clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0));\n"
+    "    float2 uvR = clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0));\n"
+    "    float2 uvU = clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0));\n"
+    "    float2 uvD = clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0));\n"
+    "    float3 left = currentTexture.sample(s, uvL).rgb;\n"
+    "    float3 right = currentTexture.sample(s, uvR).rgb;\n"
+    "    float3 up = currentTexture.sample(s, uvU).rgb;\n"
+    "    float3 down = currentTexture.sample(s, uvD).rgb;\n"
+    "    float3 upLeft = currentTexture.sample(s, clamp(uv + float2(-texel.x, texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 upRight = currentTexture.sample(s, clamp(uv + float2(texel.x, texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 downLeft = currentTexture.sample(s, clamp(uv + float2(-texel.x, -texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 downRight = currentTexture.sample(s, clamp(uv + float2(texel.x, -texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 blur = (left + right + up + down) * 0.25;\n"
+    "    float3 minColor = min(min(min(min(current, left), min(right, up)), min(down, upLeft)), min(min(upRight, downLeft), downRight));\n"
+    "    float3 maxColor = max(max(max(max(current, left), max(right, up)), max(down, upLeft)), max(max(upRight, downLeft), downRight));\n"
+    "    float3 mean = (current + left + right + up + down + upLeft + upRight + downLeft + downRight) * (1.0 / 9.0);\n"
+    "    float3 moment = (current * current + left * left + right * right + up * up + down * down + upLeft * upLeft + upRight * upRight + downLeft * downLeft + downRight * downRight) * (1.0 / 9.0);\n"
+    "    float3 sigma = sqrt(max(moment - mean * mean, float3(0.0)));\n"
+    "    float3 clipMin = minColor - sigma * 0.75 - float3(0.004);\n"
+    "    float3 clipMax = maxColor + sigma * 0.75 + float3(0.004);\n"
     "    float3 history = current;\n"
     "    float historyDiff = 1.0;\n"
+    "    float clipDistance = 1.0;\n"
     "    float motionConfidence = 0.0;\n"
+    "    float currentLuma = opn_luma(current);\n"
+    "    float edgeStrength = smoothstep(0.014, 0.20, length(current - blur));\n"
     "    if (hasHistory != 0) {\n"
-    "        float currentLuma = opn_luma(current);\n"
     "        float4 motion = motionTexture.sample(s, uv);\n"
     "        float2 rawHistoryUv = uv + motion.xy;\n"
     "        float historyInside = step(0.0, rawHistoryUv.x) * step(rawHistoryUv.x, 1.0) * step(0.0, rawHistoryUv.y) * step(rawHistoryUv.y, 1.0);\n"
@@ -653,8 +685,8 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "        float2 motionDown = motionTexture.sample(s, clamp(uv - float2(0.0, motionTexel2.y), float2(0.0), float2(1.0))).xy;\n"
     "        float motionTexel = max(max(motionTexel2.x, motionTexel2.y), 1.0 / 8192.0);\n"
     "        float vectorDisagreement = (length(motion.xy - motionRight) + length(motion.xy - motionLeft) + length(motion.xy - motionUp) + length(motion.xy - motionDown)) / (motionTexel * 4.0);\n"
-    "        float vectorCoherence = 1.0 - smoothstep(2.5, 9.0, vectorDisagreement);\n"
-    "        float sceneContinuity = 1.0 - smoothstep(0.12, 0.28, motion.w);\n"
+    "        float vectorCoherence = 1.0 - smoothstep(2.25, 8.0, vectorDisagreement);\n"
+    "        float sceneContinuity = 1.0 - smoothstep(0.105, 0.255, motion.w);\n"
     "        motionConfidence = clamp(motion.z, 0.0, 1.0) * historyInside * vectorCoherence * sceneContinuity;\n"
     "        history = historyTexture.sample(s, historyUv).rgb;\n"
     "        historyDiff = fabs(currentLuma - opn_luma(history));\n"
@@ -666,19 +698,38 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     "        diff = fabs(currentLuma - opn_luma(candidate)); if (diff < historyDiff) { historyDiff = diff; history = candidate; }\n"
     "        candidate = historyTexture.sample(s, clamp(historyUv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
     "        diff = fabs(currentLuma - opn_luma(candidate)); if (diff < historyDiff) { historyDiff = diff; history = candidate; }\n"
+    "        float3 clippedHistory = clamp(history, clipMin, clipMax);\n"
+    "        clipDistance = length(history - clippedHistory);\n"
+    "        history = clippedHistory;\n"
+    "        historyDiff = fabs(currentLuma - opn_luma(history));\n"
     "    }\n"
-    "    float stability = motionConfidence * (1.0 - smoothstep(0.018, 0.145, historyDiff));\n"
-    "    float disocclusionRisk = smoothstep(0.05, 0.18, length(current - blur)) * (1.0 - motionConfidence);\n"
-    "    stability *= 1.0 - disocclusionRisk;\n"
-    "    float temporalMix = hasHistory != 0 ? clamp(historyWeight * stability, 0.0, 0.82) : 0.0;\n"
+    "    float lumaStability = 1.0 - smoothstep(0.016, 0.125, historyDiff);\n"
+    "    float clipStability = 1.0 - smoothstep(0.018, 0.155, clipDistance);\n"
+    "    float disocclusionRisk = smoothstep(0.045, 0.17, length(current - blur)) * (1.0 - motionConfidence);\n"
+    "    float stability = motionConfidence * lumaStability * clipStability * (1.0 - disocclusionRisk) * mix(1.0, 0.68, edgeStrength);\n"
+    "    float temporalMix = hasHistory != 0 ? clamp(historyWeight * stability, 0.0, 0.86) : 0.0;\n"
     "    float3 reconstructed = mix(current, history, temporalMix);\n"
-    "    float edgeStrength = smoothstep(0.015, 0.22, length(current - blur));\n"
-    "    reconstructed += (current - blur) * sharpness * edgeStrength * (1.0 - temporalMix * 0.45);\n"
+    "    reconstructed += (current - blur) * sharpness * edgeStrength * (1.0 - temporalMix * 0.52);\n"
     "    return float4(clamp(reconstructed, float3(0.0), float3(1.0)), 1.0);\n"
     "}\n"
     "fragment float4 opn_video_present_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]]) {\n"
     "    constexpr sampler s(address::clamp_to_edge, filter::linear);\n"
-    "    return float4(sourceTexture.sample(s, clamp(in.texCoord, float2(0.0), float2(1.0))).rgb, 1.0);\n"
+    "    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));\n"
+    "    float2 texel = max(1.0 / float2((float)sourceTexture.get_width(), (float)sourceTexture.get_height()), float2(1.0 / 8192.0));\n"
+    "    float3 center = sourceTexture.sample(s, uv).rgb;\n"
+    "    float3 left = sourceTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 right = sourceTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 up = sourceTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "    float3 down = sourceTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;\n"
+    "    float centerLuma = opn_luma(center);\n"
+    "    float horizontalContrast = abs(opn_luma(left) - centerLuma) + abs(opn_luma(right) - centerLuma);\n"
+    "    float verticalContrast = abs(opn_luma(up) - centerLuma) + abs(opn_luma(down) - centerLuma);\n"
+    "    float edgeAmount = smoothstep(0.04, 0.22, max(horizontalContrast, verticalContrast));\n"
+    "    float3 tangent = horizontalContrast > verticalContrast ? (up + down) * 0.5 : (left + right) * 0.5;\n"
+    "    float3 resolved = mix(center, tangent, edgeAmount * 0.20);\n"
+    "    float3 minColor = min(min(center, left), min(right, min(up, down)));\n"
+    "    float3 maxColor = max(max(center, left), max(right, max(up, down)));\n"
+    "    return float4(clamp(resolved, minColor, maxColor), 1.0);\n"
     "}\n";
 
     NSError *libraryError = nil;
@@ -935,12 +986,12 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     self.temporalHistoryValid = YES;
     self.temporalPreviousJitterX = currentJitter[0];
     self.temporalPreviousJitterY = currentJitter[1];
-    self.temporalFrameIndex = (self.temporalFrameIndex + 1) % 4;
+    self.temporalFrameIndex = (self.temporalFrameIndex + 1) % 8;
 
     result.renderPath = @"OPNMetalTemporalUpscaler";
     result.activeTier = @"Temporal reconstruction";
     if (settings.emitDiagnostics) {
-        result.diagnostics = [NSString stringWithFormat:@"motion %dx%d half-res; jitter 4-sample %.2f,%.2f px; history %@; resets %llu; rejection scene/disocclusion/edge-aware",
+        result.diagnostics = [NSString stringWithFormat:@"motion %dx%d half-res; jitter 8-sample %.2f,%.2f px; history %@; resets %llu; AA history clip/adaptive edge resolve",
                               (int)motionWidth,
                               (int)motionHeight,
                               jitterPixelsX,
@@ -1340,15 +1391,38 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 }
 
 - (void)enqueueEnhancedPixelBufferCaptureFromTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer {
-    if (!texture || !commandBuffer || !self.device) return;
+    if (!texture || !commandBuffer || !self.device || !_enhancedCaptureTextureCache) return;
     const NSUInteger width = texture.width;
     const NSUInteger height = texture.height;
-    const NSUInteger sourceBytesPerRow = width * 4;
+    if (width < 2 || height < 2 || texture.pixelFormat != MTLPixelFormatBGRA8Unorm) return;
     CVPixelBufferRef pixelBuffer = [self newPooledEnhancedPixelBufferWithWidth:width height:height];
     if (!pixelBuffer) return;
-    id<MTLBuffer> sourceBuffer = [self.device newBufferWithLength:sourceBytesPerRow * height options:MTLResourceStorageModeShared];
+
+    CVMetalTextureRef captureTexture = nil;
+    CVReturn textureStatus = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+                                                                       _enhancedCaptureTextureCache,
+                                                                       pixelBuffer,
+                                                                       nil,
+                                                                       MTLPixelFormatBGRA8Unorm,
+                                                                       width,
+                                                                       height,
+                                                                       0,
+                                                                       &captureTexture);
+    if (textureStatus != kCVReturnSuccess || !captureTexture) {
+        CVPixelBufferRelease(pixelBuffer);
+        return;
+    }
+
+    id<MTLTexture> destinationTexture = CVMetalTextureGetTexture(captureTexture);
+    if (!destinationTexture) {
+        CFRelease(captureTexture);
+        CVPixelBufferRelease(pixelBuffer);
+        return;
+    }
+
     id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
-    if (!sourceBuffer || !blitEncoder) {
+    if (!blitEncoder) {
+        CFRelease(captureTexture);
         CVPixelBufferRelease(pixelBuffer);
         return;
     }
@@ -1357,26 +1431,19 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
                      sourceLevel:0
                     sourceOrigin:MTLOriginMake(0, 0, 0)
                       sourceSize:MTLSizeMake(width, height, 1)
-                        toBuffer:sourceBuffer
-               destinationOffset:0
-          destinationBytesPerRow:sourceBytesPerRow
-        destinationBytesPerImage:sourceBytesPerRow * height];
+                        toTexture:destinationTexture
+                 destinationSlice:0
+                 destinationLevel:0
+                destinationOrigin:MTLOriginMake(0, 0, 0)];
     [blitEncoder endEncoding];
 
     NSMutableArray *completedBuffers = _completedEnhancedPixelBuffers;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
+        CFRelease(captureTexture);
         if (completedCommandBuffer.status == MTLCommandBufferStatusError) {
             CVPixelBufferRelease(pixelBuffer);
             return;
         }
-        CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-        uint8_t *destination = (uint8_t *)CVPixelBufferGetBaseAddress(pixelBuffer);
-        const size_t destinationBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-        const uint8_t *source = (const uint8_t *)sourceBuffer.contents;
-        for (size_t y = 0; y < height; y++) {
-            std::memcpy(destination + y * destinationBytesPerRow, source + y * sourceBytesPerRow, sourceBytesPerRow);
-        }
-        CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
         @synchronized (completedBuffers) {
             [completedBuffers addObject:[NSValue valueWithPointer:pixelBuffer]];
             while (completedBuffers.count > 3) {

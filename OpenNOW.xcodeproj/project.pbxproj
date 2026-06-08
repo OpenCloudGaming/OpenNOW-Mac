@@ -18,6 +18,11 @@
 			isa = PBXBuildFile;
 			fileRef = C57CC078C7AB06099DEBAD97;
 		};
+		C00000000000000000000030 /* OPNAppDelegateDesktop.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000041 /* OPNAppDelegateDesktop.mm */; };
+		C00000000000000000000031 /* OPNAppDelegateStreaming.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000042 /* OPNAppDelegateStreaming.mm */; };
+		C00000000000000000000032 /* OPNAppDelegateGameLaunch.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000043 /* OPNAppDelegateGameLaunch.mm */; };
+		C00000000000000000000033 /* OPNAppDelegateNavigation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000044 /* OPNAppDelegateNavigation.mm */; };
+		C00000000000000000000034 /* OPNAppDelegateCatalog.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000045 /* OPNAppDelegateCatalog.mm */; };
 		3BC225D2A5926453B554382C /* OPNUIHelpers.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 957905FB492F42AD9B576509;
@@ -34,6 +39,17 @@
 			isa = PBXBuildFile;
 			fileRef = AD0614C0EE6F7B83442E87EC;
 		};
+		D00000000000000000000030 /* OPNGameCatalogLayoutSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000040 /* OPNGameCatalogLayoutSupport.mm */; };
+		D00000000000000000000031 /* OPNGameCatalogSearchSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000041 /* OPNGameCatalogSearchSupport.mm */; };
+		D00000000000000000000032 /* OPNGameCatalogArtworkSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000042 /* OPNGameCatalogArtworkSupport.mm */; };
+		D00000000000000000000033 /* OPNGameCatalogMetadataSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000043 /* OPNGameCatalogMetadataSupport.mm */; };
+		D00000000000000000000034 /* OPNStoreGameTile.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000044 /* OPNStoreGameTile.mm */; };
+		D00000000000000000000035 /* OPNGameCatalogView+ControllerHints.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000045 /* OPNGameCatalogView+ControllerHints.mm */; };
+		D00000000000000000000036 /* OPNGameCatalogView+Data.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000046 /* OPNGameCatalogView+Data.mm */; };
+		D00000000000000000000037 /* OPNGameCatalogView+Search.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000047 /* OPNGameCatalogView+Search.mm */; };
+		D00000000000000000000038 /* OPNGameCatalogView+Hero.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000048 /* OPNGameCatalogView+Hero.mm */; };
+		D00000000000000000000039 /* OPNGameCatalogView+Rendering.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000049 /* OPNGameCatalogView+Rendering.mm */; };
+		D0000000000000000000003A /* OPNGameCatalogView+Input.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004A /* OPNGameCatalogView+Input.mm */; };
 		10C4D542D668FF3D8F86E08F /* OPNLoadingView.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 2A4752FFB2BED66E22198CE4;
@@ -338,6 +354,12 @@
 			path = src/OPNAppDelegate.mm;
 			sourceTree = "<group>";
 		};
+		C00000000000000000000040 /* OPNAppDelegatePrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNAppDelegatePrivate.h; path = src/AppDelegate/OPNAppDelegatePrivate.h; sourceTree = "<group>"; };
+		C00000000000000000000041 /* OPNAppDelegateDesktop.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateDesktop.mm; path = src/AppDelegate/OPNAppDelegateDesktop.mm; sourceTree = "<group>"; };
+		C00000000000000000000042 /* OPNAppDelegateStreaming.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateStreaming.mm; path = src/AppDelegate/OPNAppDelegateStreaming.mm; sourceTree = "<group>"; };
+		C00000000000000000000043 /* OPNAppDelegateGameLaunch.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateGameLaunch.mm; path = src/AppDelegate/OPNAppDelegateGameLaunch.mm; sourceTree = "<group>"; };
+		C00000000000000000000044 /* OPNAppDelegateNavigation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateNavigation.mm; path = src/AppDelegate/OPNAppDelegateNavigation.mm; sourceTree = "<group>"; };
+		C00000000000000000000045 /* OPNAppDelegateCatalog.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateCatalog.mm; path = src/AppDelegate/OPNAppDelegateCatalog.mm; sourceTree = "<group>"; };
 		951FB9BE73006134ABABC74A /* OPNAuthService.h in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.c.h;
@@ -492,6 +514,18 @@
 			path = src/views/OPNGameCatalogView.mm;
 			sourceTree = "<group>";
 		};
+		D00000000000000000000040 /* OPNGameCatalogLayoutSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogLayoutSupport.mm; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.mm; sourceTree = "<group>"; };
+		D00000000000000000000041 /* OPNGameCatalogSearchSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogSearchSupport.mm; path = src/views/GameCatalog/OPNGameCatalogSearchSupport.mm; sourceTree = "<group>"; };
+		D00000000000000000000042 /* OPNGameCatalogArtworkSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogArtworkSupport.mm; path = src/views/GameCatalog/OPNGameCatalogArtworkSupport.mm; sourceTree = "<group>"; };
+		D00000000000000000000043 /* OPNGameCatalogMetadataSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogMetadataSupport.mm; path = src/views/GameCatalog/OPNGameCatalogMetadataSupport.mm; sourceTree = "<group>"; };
+		D00000000000000000000044 /* OPNStoreGameTile.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStoreGameTile.mm; path = src/views/GameCatalog/OPNStoreGameTile.mm; sourceTree = "<group>"; };
+		D00000000000000000000045 /* OPNGameCatalogView+ControllerHints.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+ControllerHints.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+ControllerHints.mm"; sourceTree = "<group>"; };
+		D00000000000000000000046 /* OPNGameCatalogView+Data.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Data.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Data.mm"; sourceTree = "<group>"; };
+		D00000000000000000000047 /* OPNGameCatalogView+Search.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Search.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Search.mm"; sourceTree = "<group>"; };
+		D00000000000000000000048 /* OPNGameCatalogView+Hero.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Hero.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Hero.mm"; sourceTree = "<group>"; };
+		D00000000000000000000049 /* OPNGameCatalogView+Rendering.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Rendering.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Rendering.mm"; sourceTree = "<group>"; };
+		D0000000000000000000004A /* OPNGameCatalogView+Input.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Input.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Input.mm"; sourceTree = "<group>"; };
+		D0000000000000000000004B /* OPNGameCatalogPrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGameCatalogPrivate.h; path = src/views/GameCatalog/OPNGameCatalogPrivate.h; sourceTree = "<group>"; };
 		9E892E276EC44E0E7363DAC5 /* OPNGameDataCache.h in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.c.h;
@@ -871,6 +905,19 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		C00000000000000000000050 /* AppDelegate in PBXGroup */ = {
+			isa = PBXGroup;
+			children = (
+				C00000000000000000000045 /* OPNAppDelegateCatalog.mm */,
+				C00000000000000000000041 /* OPNAppDelegateDesktop.mm */,
+				C00000000000000000000043 /* OPNAppDelegateGameLaunch.mm */,
+				C00000000000000000000044 /* OPNAppDelegateNavigation.mm */,
+				C00000000000000000000040 /* OPNAppDelegatePrivate.h */,
+				C00000000000000000000042 /* OPNAppDelegateStreaming.mm */,
+			);
+			name = AppDelegate;
+			sourceTree = "<group>";
+		};
 		F515E1DCA81C9F38EDA5851E /* auth in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
@@ -927,6 +974,25 @@
 			name = games;
 			sourceTree = "<group>";
 		};
+		D00000000000000000000050 /* GameCatalog in PBXGroup */ = {
+			isa = PBXGroup;
+			children = (
+				D00000000000000000000042 /* OPNGameCatalogArtworkSupport.mm */,
+				D00000000000000000000043 /* OPNGameCatalogMetadataSupport.mm */,
+				D00000000000000000000040 /* OPNGameCatalogLayoutSupport.mm */,
+				D0000000000000000000004B /* OPNGameCatalogPrivate.h */,
+				D00000000000000000000041 /* OPNGameCatalogSearchSupport.mm */,
+				D00000000000000000000045 /* OPNGameCatalogView+ControllerHints.mm */,
+				D00000000000000000000046 /* OPNGameCatalogView+Data.mm */,
+				D00000000000000000000048 /* OPNGameCatalogView+Hero.mm */,
+				D0000000000000000000004A /* OPNGameCatalogView+Input.mm */,
+				D00000000000000000000049 /* OPNGameCatalogView+Rendering.mm */,
+				D00000000000000000000047 /* OPNGameCatalogView+Search.mm */,
+				D00000000000000000000044 /* OPNStoreGameTile.mm */,
+			);
+			name = GameCatalog;
+			sourceTree = "<group>";
+		};
 		10C7B3F3A6E6F504ED29F4C7 /* shaders in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
@@ -938,6 +1004,7 @@
 		09E51D173F1A00C061B7641B /* src in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
+				C00000000000000000000050 /* AppDelegate in PBXGroup */,
 				F515E1DCA81C9F38EDA5851E /* auth in PBXGroup */,
 				258D3F331162A2E4DD8D0A15 /* common in PBXGroup */,
 				4A2AEEDD7ECFD3B280FE224B /* games in PBXGroup */,
@@ -989,6 +1056,7 @@
 		92DF8FC120985BDB402B5489 /* views in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
+				D00000000000000000000050 /* GameCatalog in PBXGroup */,
 				A76F537775672462DD3C2CF3 /* OPNAuthenticatingView.mm in PBXFileReference */,
 				D5D7BE933494E3A3A79ACEDF /* OPNBackdropView.mm in PBXFileReference */,
 				5BE24C8D582444F1B0E20505 /* OPNCarouselFocusLayout.mm in PBXFileReference */,
@@ -1075,6 +1143,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				975E499367537ADBB119AF68 /* OPNAppDelegate.mm in PBXBuildFile */,
+				C00000000000000000000030 /* OPNAppDelegateDesktop.mm in PBXBuildFile */,
+				C00000000000000000000031 /* OPNAppDelegateStreaming.mm in PBXBuildFile */,
+				C00000000000000000000032 /* OPNAppDelegateGameLaunch.mm in PBXBuildFile */,
+				C00000000000000000000033 /* OPNAppDelegateNavigation.mm in PBXBuildFile */,
+				C00000000000000000000034 /* OPNAppDelegateCatalog.mm in PBXBuildFile */,
 				16BED31EA37540021A105CB0 /* main.mm in PBXBuildFile */,
 				2E862E99AE9887559AA3725C /* OPNAuthService.mm in PBXBuildFile */,
 				AA00D44A34917D19AEDAD1A1 /* OPNCoreAnimationCoordinator.mm in PBXBuildFile */,
@@ -1113,6 +1186,17 @@
 				FF9C21C3A9D9EDC4DCB29F3D /* OPNErrorView.mm in PBXBuildFile */,
 				A1607B65917D0849841E2E29 /* OPNGameCardView.mm in PBXBuildFile */,
 				E61312258EEB2041AA067B25 /* OPNGameCatalogView.mm in PBXBuildFile */,
+				D00000000000000000000030 /* OPNGameCatalogLayoutSupport.mm in PBXBuildFile */,
+				D00000000000000000000031 /* OPNGameCatalogSearchSupport.mm in PBXBuildFile */,
+				D00000000000000000000032 /* OPNGameCatalogArtworkSupport.mm in PBXBuildFile */,
+				D00000000000000000000033 /* OPNGameCatalogMetadataSupport.mm in PBXBuildFile */,
+				D00000000000000000000034 /* OPNStoreGameTile.mm in PBXBuildFile */,
+				D00000000000000000000035 /* OPNGameCatalogView+ControllerHints.mm in PBXBuildFile */,
+				D00000000000000000000036 /* OPNGameCatalogView+Data.mm in PBXBuildFile */,
+				D00000000000000000000037 /* OPNGameCatalogView+Search.mm in PBXBuildFile */,
+				D00000000000000000000038 /* OPNGameCatalogView+Hero.mm in PBXBuildFile */,
+				D00000000000000000000039 /* OPNGameCatalogView+Rendering.mm in PBXBuildFile */,
+				D0000000000000000000003A /* OPNGameCatalogView+Input.mm in PBXBuildFile */,
 				10C4D542D668FF3D8F86E08F /* OPNLoadingView.mm in PBXBuildFile */,
 				CD04F899B27FABB06F2EEB35 /* OPNSettingsView.mm in PBXBuildFile */,
 				A00000000000000000000028 /* OPNSessionReportView.mm in PBXBuildFile */,
