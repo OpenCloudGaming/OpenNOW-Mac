@@ -16,54 +16,52 @@ OpenNOW is a native macOS cloud gaming client built with AppKit, Objective-C++, 
 
 - macOS with AppKit/Cocoa support
 - `clang++` with C++20 and Objective-C ARC support
-- `cmake` for building Sentry Native
-- Apple Command Line Tools or Xcode toolchain
+- Xcode 16 or newer
 - `WebRTC.framework` or `WebRTC.xcframework` in `third_party/webrtc-official`
 
-## Optional Sentry Support
+## Sentry Support
 
-Install Sentry Native before building if you want crash reporting enabled:
+OpenNOW uses the Apple Sentry SDK through Swift Package Manager in `OpenNOW.xcodeproj`:
 
-```sh
-scripts/install-sentry-native.sh
+```url
+https://github.com/getsentry/sentry-cocoa.git
 ```
 
-The installer writes the SDK to `third_party/sentry-native/install`.
-
-Sentry metrics are enabled with Sentry Native when Sentry support is available. To send the built-in verification event, structured log, and sample metrics, run:
+The project requires Sentry Cocoa `9.16.1` or newer and enables UI Profiling with trace lifecycle. To send the built-in verification event, run the app from Xcode with:
 
 ```sh
-OPN_SENTRY_VERIFY=1 make run
+OPN_SENTRY_VERIFY=1
 ```
 
-Set `OPN_DISABLE_SENTRY_METRICS=1` to disable metrics without disabling crash reporting or logs.
 Set `OPN_SENTRY_INFO_LOGS=1` to forward verbose info-level runtime logs to Sentry structured logs.
+Set `OPN_SENTRY_TRACES_SAMPLE_RATE` and `OPN_SENTRY_PROFILE_SESSION_SAMPLE_RATE` to tune trace and profile sampling.
 
-Runtime metrics cover app lifecycle, auth refresh and login outcomes, screen transitions, HTTP response outcomes, game launch decisions, stream launch duration, stream duration, recovery attempts, remote stop outcomes, and sampled stream quality gauges.
-
-## Build & Run
+## Build And Run
 
 ```sh
-make
-make run
+xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug build
 ```
 
-Debug build artifacts are written to `build/debug/OpenNOW`.
+Debug build artifacts are written under Xcode DerivedData.
 
-`make run` enables `OPN_INFO_LOGS=1` by default so runtime logs are printed in the terminal.
+For day-to-day development, open `OpenNOW.xcodeproj` in Xcode and run the `OpenNOW` target.
 
 For optimized builds, use:
 
 ```sh
-make release
+xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Release build
 ```
 
-Release artifacts are written to `build/release/OpenNOW`.
+Release app bundles are written under Xcode DerivedData. To produce zip and DMG artifacts, run:
+
+```sh
+scripts/release-mac.sh
+```
 
 ## Clean
 
 ```sh
-make clean
+xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW clean
 ```
 
 ## Contributing

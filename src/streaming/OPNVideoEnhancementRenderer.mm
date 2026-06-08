@@ -16,9 +16,12 @@
 #include <cstring>
 
 #if defined(OPN_HAVE_LIBWEBRTC)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wincomplete-umbrella"
 #import <WebRTC/WebRTC.h>
 #import <WebRTC/RTCCVPixelBuffer.h>
 #import <WebRTC/RTCVideoFrame.h>
+#pragma clang diagnostic pop
 #endif
 
 @implementation OPNVideoEnhancementSettings

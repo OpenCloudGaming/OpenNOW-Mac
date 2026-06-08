@@ -26,9 +26,12 @@
 #include <objc/message.h>
 
 #if defined(OPN_HAVE_LIBWEBRTC)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wincomplete-umbrella"
 #import <WebRTC/WebRTC.h>
 #import <WebRTC/RTCAudioDevice.h>
 #import <WebRTC/RTCCVPixelBuffer.h>
+#pragma clang diagnostic pop
 #import <MetalKit/MetalKit.h>
 #endif
 

@@ -85,34 +85,20 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${RELEASE_VERSION}" OpenNOW-Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${RELEASE_BUILD}" OpenNOW-Info.plist
 
-      - name: Build release binary
+      - name: Build release app
         shell: bash
-        run: make clean release ARCHFLAGS="-arch arm64"
+        run: |
+          set -euo pipefail
+          xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Release -derivedDataPath build/DerivedData -destination 'platform=macOS,arch=arm64' build
 
       - name: Package app bundle
         shell: bash
         run: |
           set -euo pipefail
           app_path="dist/OpenNOW.app"
+          built_app="build/DerivedData/Build/Products/Release/OpenNOW.app"
           rm -rf dist
-          mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Frameworks" "${app_path}/Contents/Resources"
-          cp OpenNOW-Info.plist "${app_path}/Contents/Info.plist"
-          cp build/release/OpenNOW "${app_path}/Contents/MacOS/OpenNOW"
-          cp assets/logo.png "${app_path}/Contents/Resources/logo.png"
-          cp assets/logo-mac.png "${app_path}/Contents/Resources/logo-mac.png"
-          cp assets/logo-mac-Black.png "${app_path}/Contents/Resources/logo-mac-Black.png"
-          cp assets/OpenNOW.icns "${app_path}/Contents/Resources/OpenNOW.icns"
-          cp assets/OpenNOW-SkyBlue.icns "${app_path}/Contents/Resources/OpenNOW-SkyBlue.icns"
-          cp assets/OpenNOW-Black.icns "${app_path}/Contents/Resources/OpenNOW-Black.icns"
-          chmod +x "${app_path}/Contents/MacOS/OpenNOW"
-          if [[ -d third_party/webrtc-official/WebRTC.framework ]]; then
-            cp -R third_party/webrtc-official/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
-          elif [[ -d third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework ]]; then
-            cp -R third_party/webrtc-official/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework "${app_path}/Contents/Frameworks/WebRTC.framework"
-          fi
-          if [[ -f third_party/sentry-native/install/lib/libsentry.dylib ]]; then
-            cp third_party/sentry-native/install/lib/libsentry.dylib "${app_path}/Contents/Frameworks/libsentry.dylib"
-          fi
+          cp -R "${built_app}" "${app_path}"
           codesign --force --deep --sign - "${app_path}"
           python3 - "${app_path}/Contents" <<'PY'
           from pathlib import Path

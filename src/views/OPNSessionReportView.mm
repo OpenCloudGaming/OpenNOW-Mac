@@ -2,6 +2,7 @@
 #import "../common/OPNColorTokens.h"
 #import "../common/OPNLogCapture.h"
 #import "../common/OPNUIHelpers.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <cmath>
 #include <string>
@@ -194,7 +195,8 @@ using namespace OPN;
 - (void)saveReportClicked {
     NSSavePanel *panel = [NSSavePanel savePanel];
     panel.nameFieldStringValue = @"OpenNOW-Session-Report.md";
-    panel.allowedFileTypes = @[@"md"];
+    UTType *markdownType = [UTType typeWithFilenameExtension:@"md"];
+    panel.allowedContentTypes = markdownType ? @[markdownType] : @[UTTypePlainText];
     panel.canCreateDirectories = YES;
     __weak __typeof__(self) weakSelf = self;
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {

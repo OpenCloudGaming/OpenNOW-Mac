@@ -206,6 +206,11 @@
 		A00000000000000000000009 /* OPNGitHubUpdater.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000017; };
 		A00000000000000000000010 /* OPNDeviceIdentity.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000019; };
 		A00000000000000000000011 /* AudioUnit.framework in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000021; };
+		A00000000000000000000012 /* Sentry in PBXBuildFile */ = {isa = PBXBuildFile; productRef = A00000000000000000000013 /* Sentry */; };
+		A00000000000000000000022 /* OPNDiscordPresence.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000022; };
+		A00000000000000000000024 /* OPNSessionHealthReport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000024; };
+		A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000026; };
+		A00000000000000000000028 /* OPNSessionReportView.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000028; };
 		/* End PBXBuildFile section */
 		/* Begin PBXCopyFilesBuildPhase section */
 		6F087D5B3D8849F29E9D0C67 /* Embed Frameworks */ = {
@@ -808,12 +813,21 @@
 		B00000000000000000000018 /* OPNGitHubUpdater.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGitHubUpdater.h; path = src/common/OPNGitHubUpdater.h; sourceTree = "<group>"; };
 		B00000000000000000000019 /* OPNDeviceIdentity.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNDeviceIdentity.mm; path = src/common/OPNDeviceIdentity.mm; sourceTree = "<group>"; };
 		B00000000000000000000020 /* OPNDeviceIdentity.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNDeviceIdentity.h; path = src/common/OPNDeviceIdentity.h; sourceTree = "<group>"; };
+		B00000000000000000000022 /* OPNDiscordPresence.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNDiscordPresence.mm; path = src/common/OPNDiscordPresence.mm; sourceTree = "<group>"; };
+		B00000000000000000000023 /* OPNDiscordPresence.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNDiscordPresence.h; path = src/common/OPNDiscordPresence.h; sourceTree = "<group>"; };
+		B00000000000000000000024 /* OPNSessionHealthReport.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionHealthReport.mm; path = src/common/OPNSessionHealthReport.mm; sourceTree = "<group>"; };
+		B00000000000000000000025 /* OPNSessionHealthReport.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionHealthReport.h; path = src/common/OPNSessionHealthReport.h; sourceTree = "<group>"; };
+		B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNVideoEnhancementRenderer.mm; path = src/streaming/OPNVideoEnhancementRenderer.mm; sourceTree = "<group>"; };
+		B00000000000000000000027 /* OPNVideoEnhancementRenderer.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNVideoEnhancementRenderer.h; path = src/streaming/OPNVideoEnhancementRenderer.h; sourceTree = "<group>"; };
+		B00000000000000000000028 /* OPNSessionReportView.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionReportView.mm; path = src/views/OPNSessionReportView.mm; sourceTree = "<group>"; };
+		B00000000000000000000029 /* OPNSessionReportView.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionReportView.h; path = src/views/OPNSessionReportView.h; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 		/* Begin PBXFrameworksBuildPhase section */
 		63FC9122778042047BE28757 = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000012 /* Sentry in PBXBuildFile */,
 				E57A113BFF3CA1175BCB810D /* WebRTC.framework in PBXBuildFile */,
 				4EB63AD5790216383B1EAEE0 /* Cocoa.framework in PBXBuildFile */,
 				7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in PBXBuildFile */,
@@ -871,6 +885,7 @@
 			children = (
 				E3E0EB2F1F5D6430392E191A /* OPNCoreAnimationCoordinator.mm in PBXFileReference */,
 				B00000000000000000000019 /* OPNDeviceIdentity.mm in PBXFileReference */,
+				B00000000000000000000022 /* OPNDiscordPresence.mm in PBXFileReference */,
 				B00000000000000000000013 /* OPNGameRemediation.mm in PBXFileReference */,
 				B00000000000000000000009 /* OPNGFNError.mm in PBXFileReference */,
 				B00000000000000000000017 /* OPNGitHubUpdater.mm in PBXFileReference */,
@@ -878,12 +893,14 @@
 				B00000000000000000000015 /* OPNLocale.mm in PBXFileReference */,
 				5BA7735A625E53A85F9EFB77 /* OPNLogCapture.mm in PBXFileReference */,
 				B00000000000000000000011 /* OPNProtocolDebug.mm in PBXFileReference */,
+				B00000000000000000000024 /* OPNSessionHealthReport.mm in PBXFileReference */,
 				4C3E83E448564D2B9FBD3A11 /* OPNSentry.mm in PBXFileReference */,
 				957905FB492F42AD9B576509 /* OPNUIHelpers.mm in PBXFileReference */,
 				F541DAC381C7EE67D4F5FDFE /* OPNAuthTypes.h in PBXFileReference */,
 				27524879C46BFC320035B795 /* OPNColorTokens.h in PBXFileReference */,
 				B27906E956075948351DE070 /* OPNCoreAnimationCoordinator.h in PBXFileReference */,
 				B00000000000000000000020 /* OPNDeviceIdentity.h in PBXFileReference */,
+				B00000000000000000000023 /* OPNDiscordPresence.h in PBXFileReference */,
 				B00000000000000000000014 /* OPNGameRemediation.h in PBXFileReference */,
 				474A30A992EC925A5C8EAC23 /* OPNGameTypes.h in PBXFileReference */,
 				B00000000000000000000010 /* OPNGFNError.h in PBXFileReference */,
@@ -892,6 +909,7 @@
 				B00000000000000000000016 /* OPNLocale.h in PBXFileReference */,
 				26EE21E75DE52A5E70D12537 /* OPNLogCapture.h in PBXFileReference */,
 				B00000000000000000000012 /* OPNProtocolDebug.h in PBXFileReference */,
+				B00000000000000000000025 /* OPNSessionHealthReport.h in PBXFileReference */,
 				4C3E83E448564D2B9FBD3A12 /* OPNSentry.h in PBXFileReference */,
 				8CC322B1C896AA0557952728 /* OPNUIHelpers.h in PBXFileReference */,
 			);
@@ -947,6 +965,7 @@
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.mm in PBXFileReference */,
 				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.mm in PBXFileReference */,
 				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
+				B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */,
 				B00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXFileReference */,
 				F06A283F5317315F846CC92D /* OPNInputProtocol.h in PBXFileReference */,
 				1B53A5DD6FD53397C292235E /* OPNLibWebRTCStreamSession.h in PBXFileReference */,
@@ -961,6 +980,7 @@
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
 				B161D5A795AB0D394456EE9F /* OPNStreamView.h in PBXFileReference */,
 				D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */,
+				B00000000000000000000027 /* OPNVideoEnhancementRenderer.h in PBXFileReference */,
 				B00000000000000000000002 /* OPNWebRTCDataChannelUtils.h in PBXFileReference */,
 			);
 			name = streaming;
@@ -979,6 +999,7 @@
 				AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.mm in PBXFileReference */,
 				2A4752FFB2BED66E22198CE4 /* OPNLoadingView.mm in PBXFileReference */,
 				240E6A8BBC2CC765479CEF3D /* OPNSettingsView.mm in PBXFileReference */,
+				B00000000000000000000028 /* OPNSessionReportView.mm in PBXFileReference */,
 				DB79E5FA853AC3173A1B8C79 /* OPNAuthenticatingView.h in PBXFileReference */,
 				09C065FAD2707F6C9B38E11F /* OPNBackdropView.h in PBXFileReference */,
 				80FD49B2D2C3C194CC9FFA6E /* OPNCarouselFocusLayout.h in PBXFileReference */,
@@ -989,6 +1010,7 @@
 				1E004EA1147EA6B071E2D813 /* OPNGameCatalogView.h in PBXFileReference */,
 				D9F6C4A4AB9594825BB35CDD /* OPNLoadingView.h in PBXFileReference */,
 				0C4B00965C712B3B067ECA6F /* OPNSettingsView.h in PBXFileReference */,
+				B00000000000000000000029 /* OPNSessionReportView.h in PBXFileReference */,
 			);
 			name = views;
 			sourceTree = "<group>";
@@ -1007,6 +1029,9 @@
 			buildRules = ();
 			dependencies = ();
 			name = OpenNOW;
+			packageProductDependencies = (
+				A00000000000000000000013 /* Sentry */,
+			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295;
 			productType = com.apple.product-type.application;
@@ -1025,6 +1050,9 @@
 				Base,
 			);
 			mainGroup = F3C5A43586F71EF5B9F29AFA;
+			packageReferences = (
+				A00000000000000000000014 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			productRefGroup = 5BB0AC794547B308C15C38CA;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1056,6 +1084,7 @@
 				574995CC8CFCD58D8AAF6483 /* OPNGameDataCache.mm in PBXBuildFile */,
 				3B509C71FF2A9B53EA88B9CA /* OPNGameService.mm in PBXBuildFile */,
 				A00000000000000000000010 /* OPNDeviceIdentity.mm in PBXBuildFile */,
+				A00000000000000000000022 /* OPNDiscordPresence.mm in PBXBuildFile */,
 				A00000000000000000000007 /* OPNGameRemediation.mm in PBXBuildFile */,
 				A00000000000000000000005 /* OPNGFNError.mm in PBXBuildFile */,
 				A00000000000000000000009 /* OPNGitHubUpdater.mm in PBXBuildFile */,
@@ -1064,6 +1093,7 @@
 				01962D846ADB16CBCA18D4C3 /* OPNLibWebRTCStreamSession.mm in PBXBuildFile */,
 				A00000000000000000000008 /* OPNLocale.mm in PBXBuildFile */,
 				A00000000000000000000003 /* OPNSessionAdPresentation.mm in PBXBuildFile */,
+				A00000000000000000000024 /* OPNSessionHealthReport.mm in PBXBuildFile */,
 				33078ABB312F4AD2D88BE57B /* OPNSessionManager.mm in PBXBuildFile */,
 				A00000000000000000000002 /* OPNSessionParsing.mm in PBXBuildFile */,
 				A214A1D8E1EF4F47A57F7515 /* OPNSignalingClient.mm in PBXBuildFile */,
@@ -1073,6 +1103,7 @@
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.mm in PBXBuildFile */,
 				FE6A155D74A6768A507DF3AB /* OPNStreamView.mm in PBXBuildFile */,
 				B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */,
+				A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */,
 				A00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXBuildFile */,
 				C174D57D164809AC11FF73C7 /* OPNAuthenticatingView.mm in PBXBuildFile */,
 				96B438E76F776D852AC56D8F /* OPNBackdropView.mm in PBXBuildFile */,
@@ -1084,6 +1115,7 @@
 				E61312258EEB2041AA067B25 /* OPNGameCatalogView.mm in PBXBuildFile */,
 				10C4D542D668FF3D8F86E08F /* OPNLoadingView.mm in PBXBuildFile */,
 				CD04F899B27FABB06F2EEB35 /* OPNSettingsView.mm in PBXBuildFile */,
+				A00000000000000000000028 /* OPNSessionReportView.mm in PBXBuildFile */,
 				20E194CFFBA3687D0A48D383 /* OPNPremiumBackdrop.metal in PBXBuildFile */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1100,27 +1132,27 @@
 		};
 		7848EBDA9E7CD840A379FE54 /* Debug in XCBuildConfiguration */ = {
 			isa = XCBuildConfiguration;
-			buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = "5"; GCC_PREPROCESSOR_DEFINITIONS = (
+			buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_CXX_MODULES = YES; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = "5"; GCC_PREPROCESSOR_DEFINITIONS = (
 				"$(inherited)",
-				"OPN_HAVE_SENTRY=1",
-				"OPN_SENTRY_INSTALL_PREFIX=\\\"$(PROJECT_DIR)/third_party/sentry-native/install\\\"",
 			); GENERATE_INFOPLIST_FILE = NO; HEADER_SEARCH_PATHS = (
 				"$(inherited)",
-				third_party/sentry-native/install/include,
 			); INFOPLIST_FILE = OpenNOW-Info.plist; INFOPLIST_KEY_CFBundleDisplayName = OpenNOW; INFOPLIST_KEY_NSHighResolutionCapable = YES; LD_RUNPATH_SEARCH_PATHS = (
 				"@executable_path/../Frameworks",
 				"$(inherited)",
-				"$(PROJECT_DIR)/third_party/sentry-native/install/lib",
 			); LIBRARY_SEARCH_PATHS = (
 				"$(inherited)",
-				third_party/sentry-native/install/lib,
 			); MARKETING_VERSION = "0.1.3"; PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow; PRODUCT_NAME = "$(TARGET_NAME)"; FRAMEWORK_SEARCH_PATHS = (
 				"$(inherited)",
 				third_party/webrtc-official,
 			); OTHER_LDFLAGS = (
-				"-lsentry",
 				"-Wl,-rpath,third_party/webrtc-official",
-			); OTHER_CFLAGS = "-DOPN_HAVE_LIBWEBRTC=1"; };
+			); OTHER_CFLAGS = (
+				"-DOPN_HAVE_LIBWEBRTC=1",
+				"-Wno-incomplete-umbrella",
+			); OTHER_CPLUSPLUSFLAGS = (
+				"$(inherited)",
+				"-fcxx-modules",
+			); };
 			name = Debug;
 		};
 		15F569470662212ABEBAA581 /* Release in XCBuildConfiguration */ = {
@@ -1133,27 +1165,27 @@
 		};
 		8517C37176AB619154079A5B /* Release in XCBuildConfiguration */ = {
 			isa = XCBuildConfiguration;
-			buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = "5"; GCC_PREPROCESSOR_DEFINITIONS = (
+			buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_CXX_MODULES = YES; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = "5"; GCC_PREPROCESSOR_DEFINITIONS = (
 				"$(inherited)",
-				"OPN_HAVE_SENTRY=1",
-				"OPN_SENTRY_INSTALL_PREFIX=\\\"$(PROJECT_DIR)/third_party/sentry-native/install\\\"",
 			); GENERATE_INFOPLIST_FILE = NO; HEADER_SEARCH_PATHS = (
 				"$(inherited)",
-				third_party/sentry-native/install/include,
 			); INFOPLIST_FILE = OpenNOW-Info.plist; INFOPLIST_KEY_CFBundleDisplayName = OpenNOW; INFOPLIST_KEY_NSHighResolutionCapable = YES; LD_RUNPATH_SEARCH_PATHS = (
 				"@executable_path/../Frameworks",
 				"$(inherited)",
-				"$(PROJECT_DIR)/third_party/sentry-native/install/lib",
 			); LIBRARY_SEARCH_PATHS = (
 				"$(inherited)",
-				third_party/sentry-native/install/lib,
 			); MARKETING_VERSION = "0.1.3"; PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow; PRODUCT_NAME = "$(TARGET_NAME)"; FRAMEWORK_SEARCH_PATHS = (
 				"$(inherited)",
 				third_party/webrtc-official,
 			); OTHER_LDFLAGS = (
-				"-lsentry",
 				"-Wl,-rpath,third_party/webrtc-official",
-			); OTHER_CFLAGS = "-DOPN_HAVE_LIBWEBRTC=1"; };
+			); OTHER_CFLAGS = (
+				"-DOPN_HAVE_LIBWEBRTC=1",
+				"-Wno-incomplete-umbrella",
+			); OTHER_CPLUSPLUSFLAGS = (
+				"$(inherited)",
+				"-fcxx-modules",
+			); };
 			name = Release;
 		};
 		/* End XCBuildConfiguration section */
@@ -1177,6 +1209,23 @@
 			defaultConfigurationName = Debug;
 		};
 		/* End XCConfigurationList section */
+		/* Begin XCRemoteSwiftPackageReference section */
+		A00000000000000000000014 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.16.1;
+			};
+		};
+		/* End XCRemoteSwiftPackageReference section */
+		/* Begin XCSwiftPackageProductDependency section */
+		A00000000000000000000013 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000014 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5E5B09E6B59FF29FFCDE1423;
 }

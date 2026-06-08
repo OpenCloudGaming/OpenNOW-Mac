@@ -247,6 +247,12 @@ struct OPNSyncObservation {
 - (void)applicationUpdateCheckTimerFired:(NSTimer *)timer;
 - (void)checkForApplicationUpdates;
 - (void)checkForApplicationUpdatesShowingCurrentStatus:(BOOL)showCurrentStatus;
+- (void)installMainMenu;
+- (void)showSettingsFromMenu:(id)sender;
+- (void)refreshLibraryFromMenu:(id)sender;
+- (void)checkForUpdatesFromMenu:(id)sender;
+- (void)openAccountManagementFromMenu:(id)sender;
+- (void)openOpenNOWWebsiteFromMenu:(id)sender;
 - (void)startDesktopControllerPolling;
 - (void)stopDesktopControllerPolling;
 - (void)pollDesktopController:(NSTimer *)timer;
@@ -436,6 +442,26 @@ static BOOL OPNStringLooksLikeEmail(NSString *value) {
     NSRange atRange = [trimmed rangeOfString:@"@"];
     if (atRange.location == NSNotFound || atRange.location == 0 || NSMaxRange(atRange) >= trimmed.length) return NO;
     return [[trimmed substringFromIndex:NSMaxRange(atRange)] containsString:@"."];
+}
+
+static NSMenuItem *OPNMenuItem(NSString *title, SEL action, NSString *keyEquivalent, id target) {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:keyEquivalent ?: @""];
+    item.target = target;
+    return item;
+}
+
+static NSMenuItem *OPNMenuItemWithModifier(NSString *title, SEL action, NSString *keyEquivalent, NSEventModifierFlags modifiers, id target) {
+    NSMenuItem *item = OPNMenuItem(title, action, keyEquivalent, target);
+    item.keyEquivalentModifierMask = modifiers;
+    return item;
+}
+
+static void OPNOpenExternalURLString(NSString *urlString) {
+    NSURL *url = [NSURL URLWithString:urlString ?: @""];
+    if (!url || url.scheme.length == 0 || url.host.length == 0 || ![NSWorkspace.sharedWorkspace openURL:url]) {
+        OPN::LogError(@"[AppDelegate] Failed to open URL: %@", urlString ?: @"");
+        NSBeep();
+    }
 }
 
 static NSString *OPNDisplayNameFromUserInfo(NSDictionary *info) {
@@ -938,6 +964,7 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
     OPN::RecordSentryCounterMetric("opennow.app.launch.count", 1, nil);
     SentryTransaction launchTrace("OpenNOW launch", "app.start");
     NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    [self installMainMenu];
     [self applyApplicationIconTheme];
 
     NSRect frame = NSMakeRect(0, 0, kWindowWidth, kWindowHeight);
@@ -1044,6 +1071,128 @@ static std::string OPNGameLibraryFingerprint(const std::vector<OPN::GameInfo> &g
         [self.streamingController shutdownForApplicationTermination];
         self.streamingController = nil;
     }
+}
+
+- (void)installMainMenu {
+    NSString *appName = NSProcessInfo.processInfo.processName.length > 0 ? NSProcessInfo.processInfo.processName : @"OpenNOW";
+
+    NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
+
+    NSMenuItem *appMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:appMenuItem];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:appName];
+    appMenuItem.submenu = appMenu;
+    [appMenu addItem:OPNMenuItem([@"About " stringByAppendingString:appName], @selector(orderFrontStandardAboutPanel:), @"", NSApp)];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItem:OPNMenuItem(@"Settings...", @selector(showSettingsFromMenu:), @",", self)];
+    [appMenu addItem:OPNMenuItem(@"Check for Updates...", @selector(checkForUpdatesFromMenu:), @"", self)];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    NSMenu *servicesMenu = [[NSMenu alloc] initWithTitle:@"Services"];
+    NSMenuItem *servicesItem = OPNMenuItem(@"Services", nil, @"", nil);
+    servicesItem.submenu = servicesMenu;
+    [appMenu addItem:servicesItem];
+    NSApp.servicesMenu = servicesMenu;
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItem:OPNMenuItem([@"Hide " stringByAppendingString:appName], @selector(hide:), @"h", NSApp)];
+    [appMenu addItem:OPNMenuItemWithModifier(@"Hide Others", @selector(hideOtherApplications:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagOption, NSApp)];
+    [appMenu addItem:OPNMenuItem(@"Show All", @selector(unhideAllApplications:), @"", NSApp)];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItem:OPNMenuItem([@"Quit " stringByAppendingString:appName], @selector(terminate:), @"q", NSApp)];
+
+    NSMenuItem *fileMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:fileMenuItem];
+    NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+    fileMenuItem.submenu = fileMenu;
+    [fileMenu addItem:OPNMenuItem(@"Refresh Library", @selector(refreshLibraryFromMenu:), @"r", self)];
+    [fileMenu addItem:NSMenuItem.separatorItem];
+    [fileMenu addItem:OPNMenuItem(@"Close Window", @selector(performClose:), @"w", nil)];
+
+    NSMenuItem *editMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:editMenuItem];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    editMenuItem.submenu = editMenu;
+    [editMenu addItem:OPNMenuItem(@"Undo", NSSelectorFromString(@"undo:"), @"z", nil)];
+    [editMenu addItem:OPNMenuItemWithModifier(@"Redo", NSSelectorFromString(@"redo:"), @"Z", NSEventModifierFlagCommand | NSEventModifierFlagShift, nil)];
+    [editMenu addItem:NSMenuItem.separatorItem];
+    [editMenu addItem:OPNMenuItem(@"Cut", @selector(cut:), @"x", nil)];
+    [editMenu addItem:OPNMenuItem(@"Copy", @selector(copy:), @"c", nil)];
+    [editMenu addItem:OPNMenuItem(@"Paste", @selector(paste:), @"v", nil)];
+    [editMenu addItem:OPNMenuItem(@"Delete", @selector(delete:), @"", nil)];
+    [editMenu addItem:OPNMenuItem(@"Select All", @selector(selectAll:), @"a", nil)];
+
+    NSMenuItem *viewMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:viewMenuItem];
+    NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+    viewMenuItem.submenu = viewMenu;
+    [viewMenu addItem:OPNMenuItemWithModifier(@"Enter Full Screen", @selector(toggleFullScreen:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagControl, nil)];
+
+    NSMenuItem *accountMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:accountMenuItem];
+    NSMenu *accountMenu = [[NSMenu alloc] initWithTitle:@"Account"];
+    accountMenuItem.submenu = accountMenu;
+    [accountMenu addItem:OPNMenuItem(@"Manage NVIDIA Account...", @selector(openAccountManagementFromMenu:), @"", self)];
+
+    NSMenuItem *windowMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:windowMenuItem];
+    NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
+    windowMenuItem.submenu = windowMenu;
+    [windowMenu addItem:OPNMenuItem(@"Minimize", @selector(performMiniaturize:), @"m", nil)];
+    [windowMenu addItem:OPNMenuItem(@"Zoom", @selector(performZoom:), @"", nil)];
+    [windowMenu addItem:NSMenuItem.separatorItem];
+    [windowMenu addItem:OPNMenuItem(@"Bring All to Front", @selector(arrangeInFront:), @"", NSApp)];
+    NSApp.windowsMenu = windowMenu;
+
+    NSMenuItem *helpMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:helpMenuItem];
+    NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+    helpMenuItem.submenu = helpMenu;
+    [helpMenu addItem:OPNMenuItem(@"OpenNOW Help", @selector(openOpenNOWWebsiteFromMenu:), @"?", self)];
+    NSApp.helpMenu = helpMenu;
+
+    NSApp.mainMenu = mainMenu;
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem.action == @selector(showSettingsFromMenu:)) {
+        return OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen) && ![self hasVisibleStreamingController];
+    }
+    if (menuItem.action == @selector(refreshLibraryFromMenu:)) {
+        return self.currentSession.isAuthenticated && !self.gameLibraryRefreshInFlight && ![self hasVisibleStreamingController];
+    }
+    if (menuItem.action == @selector(checkForUpdatesFromMenu:)) {
+        return !self.updateCheckInFlight;
+    }
+    return YES;
+}
+
+- (void)showSettingsFromMenu:(id)sender {
+    (void)sender;
+    if (OPNAppDelegateScreenSupportsDesktopNavigation(self.currentScreen) && ![self hasVisibleStreamingController]) {
+        [self transitionToScreen:OPN::AuthScreen::Settings];
+    }
+}
+
+- (void)refreshLibraryFromMenu:(id)sender {
+    (void)sender;
+    if (!self.currentSession.isAuthenticated || self.gameLibraryRefreshInFlight || [self hasVisibleStreamingController]) return;
+    [self refreshGameLibraryInBackground];
+    [self refreshFeaturedGamesForCatalogWithRetry:YES];
+    [self refreshActiveSessionsForCatalog];
+}
+
+- (void)checkForUpdatesFromMenu:(id)sender {
+    (void)sender;
+    [self checkForApplicationUpdatesShowingCurrentStatus:YES];
+}
+
+- (void)openAccountManagementFromMenu:(id)sender {
+    (void)sender;
+    OPNOpenExternalURLString(OPNAccountManagementURLString);
+}
+
+- (void)openOpenNOWWebsiteFromMenu:(id)sender {
+    (void)sender;
+    OPNOpenExternalURLString(@"https://github.com/OpenCloudGaming/OpenNOW-Mac");
 }
 
 - (void)restoreSavedWindowPresentation {

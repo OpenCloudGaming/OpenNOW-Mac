@@ -12,6 +12,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <unordered_map>
 
 static const CGFloat kStoreTopInset = 0.0;
 static const CGFloat kStoreNavigationClearance = 0.0;

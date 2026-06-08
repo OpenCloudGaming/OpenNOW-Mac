@@ -84,7 +84,7 @@ Use sanitized protocol capture only for parity validation. Payloads are redacted
 1. Run OpenNOW with protocol capture enabled:
 
    ```sh
-   OPN_PROTOCOL_DEBUG=1 OPN_PROTOCOL_CAPTURE_DIR="$TMPDIR/OpenNOWProtocol" make run
+   OPN_PROTOCOL_DEBUG=1 OPN_PROTOCOL_CAPTURE_DIR="$TMPDIR/OpenNOWProtocol"
    ```
 
 2. Launch or resume a session through the target flow.
