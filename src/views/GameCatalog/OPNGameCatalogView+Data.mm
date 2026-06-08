@@ -104,14 +104,21 @@ using namespace OPN;
     _libraryGames = games;
     _ownedLibraryGames = games;
     self.hasLibraryState = YES;
-    BOOL changedPanelMetadata = [self mergeKnownStoreMetadataIntoPanels];
+    [self mergeKnownStoreMetadataIntoPanels];
     _searchLibrarySnapshot = std::make_shared<const std::vector<GameInfo>>(_ownedLibraryGames);
     _searchPanelsSnapshot = std::make_shared<const std::vector<PanelResult>>(_panels);
-    if (OPNStoreSearchNormalizedString(self.searchQuery).length > 0) [self scheduleAsyncSearchForCurrentQuery];
+    BOOL hasSearchQuery = OPNStoreSearchNormalizedString(self.searchQuery).length > 0;
+    if (hasSearchQuery) {
+        [self scheduleAsyncSearchForCurrentQuery];
+        if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) [self refreshLibrarySelections];
+        return;
+    }
     if (self.rowCards.count > 0 || self.desktopFeaturedHeroViews.count > 0) {
         [self refreshLibrarySelections];
-        if (changedPanelMetadata) [self scheduleRenderStore];
+        [self scheduleRenderStore];
     } else if (!_panels.empty()) {
+        [self renderStoreWhenInitialHeroReady];
+    } else if (!OPNCatalogSingleLibrarySectionForGames(_ownedLibraryGames).games.empty()) {
         [self renderStoreWhenInitialHeroReady];
     }
 }

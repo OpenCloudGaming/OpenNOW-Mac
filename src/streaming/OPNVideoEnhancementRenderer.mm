@@ -404,6 +404,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @property(nonatomic, strong) OPNVideoTextureSource *textureSource;
 @property(nonatomic, strong) OPNMetalFXUpscaler *metalFXUpscaler;
 @property(nonatomic, strong) id<MTLTexture> metalFXIntermediateTexture;
+@property(nonatomic, strong) id<MTLTexture> metalFXOutputTexture;
 @property(nonatomic, strong) id<MTLTexture> temporalCurrentTexture;
 @property(nonatomic, strong) id<MTLTexture> temporalHistoryTexture;
 @property(nonatomic, strong) id<MTLTexture> temporalOutputTexture;
@@ -430,6 +431,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
 @property(nonatomic, assign) NSUInteger enhancedCaptureWidth;
 @property(nonatomic, assign) NSUInteger enhancedCaptureHeight;
 - (id<MTLTexture>)reusableMetalFXIntermediateTextureWithWidth:(NSUInteger)width height:(NSUInteger)height;
+- (id<MTLTexture>)reusableMetalFXOutputTextureWithWidth:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat;
 - (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat label:(NSString *)label;
 - (CVPixelBufferRef)consumeCompletedEnhancedPixelBuffer CF_RETURNS_RETAINED;
 - (void)clearCompletedEnhancedPixelBuffers;
@@ -836,10 +838,15 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
                           settings:(OPNVideoEnhancementSettings *)settings
                             result:(OPNVideoEnhancementResult *)result
                              start:(CFTimeInterval)start {
-    if (![self isMetalFXAvailable]) return NO;
+    if (![self isMetalFXAvailable] || !self.temporalPresentPipeline) return NO;
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
     if (!commandBuffer) {
         result.fallbackReason = @"MetalFX could not create command buffer";
+        return NO;
+    }
+    id<MTLTexture> outputTexture = [self reusableMetalFXOutputTextureWithWidth:drawable.texture.width height:drawable.texture.height pixelFormat:drawable.texture.pixelFormat];
+    if (!outputTexture) {
+        result.fallbackReason = @"MetalFX output texture allocation failed";
         return NO;
     }
     id<MTLTexture> sourceTexture = nil;
@@ -863,8 +870,12 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
         }
     }
     NSString *metalFXFallback = @"";
-    if (![self.metalFXUpscaler encodeTexture:sourceTexture toTexture:drawable.texture commandBuffer:commandBuffer fallback:&metalFXFallback]) {
+    if (![self.metalFXUpscaler encodeTexture:sourceTexture toTexture:outputTexture commandBuffer:commandBuffer fallback:&metalFXFallback]) {
         result.fallbackReason = metalFXFallback.length > 0 ? metalFXFallback : @"MetalFX encode failed";
+        return NO;
+    }
+    if (![self encodePresentTexture:outputTexture destinationTexture:drawable.texture commandBuffer:commandBuffer result:result]) {
+        if (result.fallbackReason.length == 0) result.fallbackReason = @"MetalFX present failed";
         return NO;
     }
     if (settings.captureEnhancedPixelBuffer) [self enqueueEnhancedPixelBufferCaptureFromTexture:drawable.texture commandBuffer:commandBuffer];
@@ -894,6 +905,26 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     self.metalFXIntermediateTexture = [self.device newTextureWithDescriptor:descriptor];
     self.metalFXIntermediateTexture.label = @"OpenNOW MetalFX conversion intermediate";
     return self.metalFXIntermediateTexture;
+}
+
+- (id<MTLTexture>)reusableMetalFXOutputTextureWithWidth:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat {
+    if (!self.device || width == 0 || height == 0 || pixelFormat == MTLPixelFormatInvalid) return nil;
+    if (self.metalFXOutputTexture &&
+        self.metalFXOutputTexture.width == width &&
+        self.metalFXOutputTexture.height == height &&
+        self.metalFXOutputTexture.pixelFormat == pixelFormat &&
+        self.metalFXOutputTexture.storageMode == MTLStorageModePrivate) {
+        return self.metalFXOutputTexture;
+    }
+    MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixelFormat
+                                                                                           width:width
+                                                                                          height:height
+                                                                                       mipmapped:NO];
+    descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+    descriptor.storageMode = MTLStorageModePrivate;
+    self.metalFXOutputTexture = [self.device newTextureWithDescriptor:descriptor];
+    self.metalFXOutputTexture.label = @"OpenNOW MetalFX private output";
+    return self.metalFXOutputTexture;
 }
 
 - (id<MTLTexture>)reusableTemporalTexture:(id<MTLTexture>)texture width:(NSUInteger)width height:(NSUInteger)height pixelFormat:(MTLPixelFormat)pixelFormat label:(NSString *)label {
