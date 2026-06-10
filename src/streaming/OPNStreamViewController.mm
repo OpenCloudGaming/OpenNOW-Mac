@@ -1,4 +1,6 @@
 #import "OPNStreamViewController.h"
+#import "OpenNOW-Swift.h"
+
 #include "OPNStreamPreferences.h"
 #include "OPNSessionManager.h"
 #import <QuartzCore/QuartzCore.h>
@@ -8,128 +10,6 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <os/signpost.h>
 
-@class OPNSessionReportPayload;
-@class OPNStreamRecordingManager;
-
-@interface OPNStreamStatsSnapshot : NSObject
-@property(nonatomic, readonly) BOOL available;
-@property(nonatomic, readonly) double latencyMs;
-@property(nonatomic, readonly) double jitterMs;
-@property(nonatomic, readonly) double inboundBitrateMbps;
-@property(nonatomic, readonly) double packetLossPercent;
-@property(nonatomic, readonly) double decodeTimeMs;
-@property(nonatomic, readonly) double renderFps;
-@property(nonatomic, readonly) unsigned long long framesReceived;
-@property(nonatomic, readonly) unsigned long long framesDropped;
-@property(nonatomic, readonly) long long packetsLost;
-@property(nonatomic, readonly) NSInteger fps;
-@property(nonatomic, readonly) NSString *resolution;
-@property(nonatomic, readonly) NSString *codec;
-@property(nonatomic, readonly) NSString *videoEnhancementActiveTier;
-@property(nonatomic, readonly) NSString *videoEnhancementConfiguredTier;
-@property(nonatomic, readonly) NSString *videoEnhancementSourceResolution;
-@property(nonatomic, readonly) NSString *videoEnhancementDrawableResolution;
-@property(nonatomic, readonly) NSString *videoEnhancementFallbackReason;
-@property(nonatomic, readonly) NSString *videoEnhancementDiagnostics;
-@property(nonatomic, readonly) double videoEnhancementFrameTimeMs;
-@property(nonatomic, readonly) unsigned long long videoEnhancementDroppedFrames;
-@end
-
-@interface OPNStreamSessionHandle : NSObject
-@property(nonatomic, readonly, getter=isValid) BOOL valid;
-@property(nonatomic, readonly, getter=isInputReady) BOOL inputReady;
-@property(nonatomic, readonly) void *rawSession;
-+ (BOOL)isBackendAvailable;
-+ (NSUInteger)maxGamepadControllers;
-+ (NSString *)iceUfragFromOfferSdp:(NSString *)offerSdp;
-- (instancetype)init;
-- (void)stop;
-- (void)setNativeWindow:(void *)nativeWindow;
-- (void)setMaxBitrateMbps:(NSInteger)mbps;
-- (void)addRemoteIceCandidatePayload:(NSDictionary *)payload;
-- (OPNStreamStatsSnapshot *)latestStatsSnapshot;
-@end
-
-typedef void (^OPNStreamViewVoidHandler)(void);
-typedef void (^OPNStreamViewSidebarVisibilityHandler)(BOOL visible);
-
-@interface OPNStreamView : NSView
-- (void)setMicrophoneMode:(NSString *)mode pushToTalkKeyCode:(uint16_t)keyCode modifierMask:(uint16_t)modifierMask;
-- (void)setStreamActive:(BOOL)active;
-- (void)setMaxBitrateMbps:(NSInteger)mbps;
-- (BOOL)toggleMicrophoneEnabledShortcut;
-- (BOOL)toggleRecordingShortcut;
-- (void)toggleSidebarHUD;
-- (void)setRecordingGameTitle:(NSString *)gameTitle;
-- (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited;
-- (void)startRemainingPlaytimeCountdown;
-- (void)stopRecordingIfNeeded;
-- (void)setSuppressInputWhenWindowInactive:(BOOL)suppress;
-- (void)setStreamInputSuppressed:(BOOL)suppressed;
-- (void)setDirectMouseInputEnabled:(BOOL)enabled;
-- (void)attachToPipeline:(void *)pipeline;
-- (void)detachFromPipeline;
-- (void)handleKeyEvent:(NSEvent *)event;
-- (void)handleMouseEvent:(NSEvent *)event;
-- (NSView *)nativeVideoView;
-- (void)setVideoAspectRatio:(CGFloat)aspectRatio;
-- (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness denoise:(NSInteger)denoise streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight;
-- (void)takeFocus;
-- (void)releasePointerLock;
-- (BOOL)isSidebarHUDVisible;
-- (void)clearStreamCallbacks;
-@property (nonatomic, readonly) OPNStreamRecordingManager *recordingManager;
-@property (nonatomic, copy) OPNStreamViewVoidHandler onUserActivity;
-@property (nonatomic, copy) OPNStreamViewVoidHandler onDashboardToggleRequested;
-@property (nonatomic, copy) OPNStreamViewSidebarVisibilityHandler onSidebarHUDVisibilityChanged;
-@end
-
-@interface OPNLoadingView : NSView
-@property (nonatomic, copy) NSString *message;
-@property (nonatomic, copy) NSArray<NSString *> *steps;
-@property (nonatomic, assign) NSInteger currentStepIndex;
-@property (nonatomic, assign) NSInteger queuePosition;
-@property (nonatomic, strong, readonly) NSTextField *messageLabel;
-@property (nonatomic, copy) void (^adPlaybackEventHandler)(NSString *adId, NSString *action, NSInteger watchedTimeInMs, NSInteger pausedTimeInMs, NSString *cancelReason);
-- (instancetype)initWithFrame:(NSRect)frame message:(NSString *)message;
-- (void)setSteps:(NSArray<NSString *> *)steps currentStepIndex:(NSInteger)currentStepIndex;
-- (void)advanceToStep:(NSInteger)stepIndex message:(NSString *)message;
-- (void)updateQueuePosition:(NSInteger)queuePosition;
-- (void)updateAdPresentationWithVisible:(BOOL)visible chipText:(NSString *)chipText title:(NSString *)title message:(NSString *)message adId:(NSString *)adId mediaUrl:(NSString *)mediaUrl durationMs:(NSInteger)durationMs;
-- (void)clearAdPresentation;
-- (void)startAnimating;
-- (void)stopAnimating;
-@end
-
-@interface OPNSessionHealthReportBuilder : NSObject
-- (void)resetWithGameTitle:(NSString *)gameTitle appId:(NSString *)appId backend:(NSString *)backend now:(double)now;
-- (void)markPhase:(NSString *)phase now:(double)now;
-- (void)setRequestedResolution:(NSString *)resolution fps:(NSInteger)fps codec:(NSString *)codec bitrateMbps:(NSInteger)bitrateMbps;
-- (void)setFinalResolution:(NSString *)resolution fps:(NSInteger)fps codec:(NSString *)codec bitrateMbps:(NSInteger)bitrateMbps;
-- (void)setNetworkStreamingBaseUrl:(NSString *)streamingBaseUrl networkType:(NSString *)networkType latencyMs:(NSInteger)latencyMs measuredBandwidthMbps:(double)measuredBandwidthMbps packetLossPercent:(double)packetLossPercent jitterMs:(NSInteger)jitterMs usedAutomaticRegion:(BOOL)usedAutomaticRegion region:(NSString *)region;
-- (void)setSessionZone:(NSString *)zone gpuType:(NSString *)gpuType negotiatedResolution:(NSString *)negotiatedResolution negotiatedFps:(NSInteger)negotiatedFps negotiatedCodec:(NSString *)negotiatedCodec;
-- (void)markConnected:(double)now;
-- (void)recordEventWithTitle:(NSString *)title detail:(NSString *)detail now:(double)now;
-- (void)addStatsSnapshot:(OPNStreamStatsSnapshot *)snapshot;
-- (OPNSessionReportPayload *)finalizeWithSuccess:(BOOL)success terminalError:(NSString *)terminalError now:(double)now;
-@end
-
-@interface OPNDiscordPresence : NSObject
-+ (void)updatePlayingWithGameTitle:(NSString *)gameTitle resolution:(NSString *)resolution fps:(NSInteger)fps bitrateMbps:(NSInteger)bitrateMbps codec:(NSString *)codec;
-@end
-
-@interface OPNLogCapture : NSObject
-+ (void)appendEvent:(NSString *)message;
-+ (void)copyCapturedLogToClipboard:(NSString *)reason;
-@end
-
-@interface OPNSentryTransactionBridge : NSObject
-+ (instancetype)transactionWithName:(NSString *)name operation:(NSString *)operation;
-- (void)setTag:(NSString *)key value:(NSString *)value;
-- (void)setData:(NSString *)key value:(NSString *)value;
-- (void)setStatus:(BOOL)success;
-- (void)finish;
-@end
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -187,27 +67,6 @@ void OPNStartStreamSession(OPN::IStreamSession *session,
                            OPNStreamSessionLocalIceCandidateHandler localIceCandidateHandler,
                            OPNStreamSessionStateHandler stateHandler);
 
-@interface OPNWebSocketSignalingClient : NSObject
-- (instancetype)initWithSignalingServer:(NSString *)signalingServer sessionId:(NSString *)sessionId signalingUrl:(NSString *)signalingUrl;
-@property(nonatomic, copy, nullable) void (^onOffer)(NSString *sdp);
-@property(nonatomic, copy, nullable) void (^onIceCandidate)(NSDictionary *candidate);
-@property(nonatomic, copy, nullable) void (^onClosed)(BOOL clean, NSString *reason);
-- (void)setPeerResolution:(NSString *)resolution;
-- (void)connect:(void (^)(BOOL success, NSString *error))completion;
-- (void)disconnect;
-- (void)sendAnswerSdp:(NSString *)sdp nvstSdp:(NSString *)nvstSdp;
-- (void)sendIceCandidate:(NSDictionary *)candidate;
-@end
-
-@interface OPNLocale : NSObject
-+ (NSString *)currentGFNLocale;
-@end
-
-@interface OPNGFNError : NSObject
-+ (NSString *)userFacingMessageForErrorMessage:(NSString *)errorMessage gameTitle:(NSString *)gameTitle;
-+ (NSString *)userFacingMessageForErrorMessage:(NSString *)errorMessage gameTitle:(NSString *)gameTitle sessionWasConnected:(BOOL)sessionWasConnected;
-@end
-
 static constexpr NSInteger OPNMaxAutomaticRecoveryAttempts = 2;
 static constexpr NSTimeInterval OPNStableRecoveryResetInterval = 15.0;
 static constexpr NSTimeInterval OPNSignalingRemoteIceGraceInterval = 5.0;
@@ -223,10 +82,6 @@ static constexpr int OPNStreamMinimumGuardrailBitrateMbps = 15;
 
 static bool OPNStreamSessionReadyStatus(int status) {
     return status == 2 || status == 3;
-}
-
-static bool OPNStreamSessionLimitExceededError(const std::string &error) {
-    return error.find("SESSION_LIMIT") != std::string::npos || error.find("\"statusCode\":11") != std::string::npos;
 }
 
 static bool OPNStreamSessionAuthenticationError(const std::string &error) {
@@ -285,16 +140,6 @@ static void OPNStreamReportLaunchProgress(const std::function<void(const std::st
     OPN::SessionInfo sessionCopy = session;
     dispatch_async(dispatch_get_main_queue(), ^{
         progressCopy(message, sessionCopy);
-    });
-}
-
-static void OPNStreamReportLaunchProgress(const std::function<void(const std::string &, const OPN::SessionInfo &)> &progress,
-                                          const std::string &message) {
-    if (!progress) return;
-    auto progressCopy = progress;
-    std::string messageCopy = message;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        progressCopy(messageCopy, OPN::SessionInfo{});
     });
 }
 
@@ -381,27 +226,6 @@ static void OPNStreamCreateOrReuseSession(const std::string &appId,
         });
     });
 }
-
-@interface OPNQuitGameOverlayView : NSView
-@property (nonatomic, copy) void (^onCancel)(void);
-@property (nonatomic, copy) void (^onQuit)(void);
-@end
-
-@interface OPNShortcutLegendView : NSView
-@end
-
-@interface OPNStatsOverlayView : NSView
-- (NSSize)preferredSizeForMaxWidth:(CGFloat)maxWidth;
-- (void)updateLatencyMs:(NSInteger)latencyMs
-            bitrateMbps:(double)bitrateMbps
-            packetsLost:(int64_t)packetsLost
-             resolution:(NSString *)resolution
-                    fps:(NSInteger)fps
-              renderFps:(double)renderFps
-                  codec:(NSString *)codec
-            enhancement:(NSString *)enhancement
-        framesDropped:(uint64_t)framesDropped;
-@end
 
 @interface OPNStreamViewController ()
 @property (nonatomic, strong) OPNStreamView *streamView;
@@ -1282,7 +1106,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 	        return (NSEvent *)nil;
 	    }
 	    if (OPNIsCommandMEvent(event)) {
-	        [strongSelf.streamView toggleMicrophoneEnabledShortcut];
+        (void)[strongSelf.streamView toggleMicrophoneEnabledShortcut];
 	        return (NSEvent *)nil;
 	    }
 	    if (OPNIsCommandGEvent(event)) {
@@ -1290,7 +1114,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 	        return (NSEvent *)nil;
 	    }
 	    if (OPNIsCommandREvent(event)) {
-	        [strongSelf.streamView toggleRecordingShortcut];
+        (void)[strongSelf.streamView toggleRecordingShortcut];
 	        return (NSEvent *)nil;
 	    }
 	    if (OPNIsCommandHEvent(event)) {
@@ -1960,7 +1784,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 }
 
 - (void)sendRandomIdleDeviceInputIfNeededAtTime:(CFTimeInterval)now {
-    if (!_session.inputReady) return;
+    if (!_session.isInputReady) return;
     if (now - _lastStreamActivityTime < OPNStreamIdleDeviceInputInterval) return;
     if (_lastIdleDeviceInputTime > 0 && now - _lastIdleDeviceInputTime < OPNStreamIdleDeviceInputInterval) return;
 
@@ -1982,7 +1806,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     __weak __typeof__(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(OPNStreamIdleDeviceInputReturnDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         __typeof__(self) strongSelf = weakSelf;
-        if (!strongSelf || strongSelf->_streamEnded || !strongSelf->_session.inputReady) return;
+        if (!strongSelf || strongSelf->_streamEnded || !strongSelf->_session.isInputReady) return;
         OPNSendStreamSessionMouseMove(static_cast<OPN::IStreamSession *>(strongSelf->_session.rawSession), (int16_t)-dx, (int16_t)-dy);
         OPNLogInfo(@"[StreamVC] Sent idle device input return dx=%d dy=%d", (int16_t)-dx, (int16_t)-dy);
     });
@@ -2198,7 +2022,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     _signaling.onOffer = ^(NSString *sdpText) {
         __typeof__(self) s = weakSelf;
         if (!s || s->_streamEnded || s->_launchGeneration != launchGeneration) return;
-        if (!s->_session.valid) {
+        if (!s->_session.isValid) {
             [s endStreamWithSuccess:NO errorMessage:"libwebrtc stream session is unavailable"];
             return;
         }
@@ -2225,7 +2049,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
                                   nvstSdp:nvstSdp ?: @""];
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) s3 = weakSelf;
-                if (!s3 || !s3->_session.valid || s3->_streamEnded || s3->_launchGeneration != launchGeneration) return;
+                if (!s3 || !s3->_session.isValid || s3->_streamEnded || s3->_launchGeneration != launchGeneration) return;
                 OPNInjectManualStreamSessionIceCandidate(static_cast<OPN::IStreamSession *>(s3->_session.rawSession), activeSessionInfo, offerSdpCopy, serverIceUfrag);
             });
         }, ^(NSDictionary *candidate) {
@@ -2292,7 +2116,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 
         s->_signaling.onIceCandidate = ^(NSDictionary *payload) {
             __typeof__(self) s2 = weakSelf;
-            if (!s2 || !s2->_session.valid || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
+            if (!s2 || !s2->_session.isValid || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
             s2->_remoteIceReceived = YES;
             [s2 cancelRemoteIceGraceTimer];
             [s2->_session addRemoteIceCandidatePayload:payload];
@@ -2597,7 +2421,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     [self ensureLoadingViewWithMessage:launchMessage];
     [self setLaunchStep:0 message:launchMessage];
 
-    if (!_session.valid) {
+    if (!_session.isValid) {
         std::string error = "libwebrtc stream session is unavailable";
         [self setStatus:@"libwebrtc is unavailable in this build."];
         [self endStreamWithSuccess:NO errorMessage:error];

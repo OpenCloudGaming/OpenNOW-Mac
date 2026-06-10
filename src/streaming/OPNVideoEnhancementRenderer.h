@@ -7,6 +7,8 @@
 
 @class MTKView;
 @class RTCVideoFrame;
+@class OPNVideoEnhancementSettings;
+@class OPNVideoEnhancementResult;
 
 typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
     OPNVideoEnhancementTierOff = 0,
@@ -15,6 +17,7 @@ typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
     OPNVideoEnhancementTierTemporal = 3,
 };
 
+#if !defined(OPENNOW_SWIFT_H)
 @interface OPNVideoEnhancementSettings : NSObject
 @property(nonatomic, assign) OPNVideoEnhancementTier configuredTier;
 @property(nonatomic, assign) NSInteger sharpness;
@@ -43,6 +46,7 @@ typedef NS_ENUM(NSInteger, OPNVideoEnhancementTier) {
 @property(nonatomic, assign) uint64_t droppedFrames;
 @property(nonatomic, assign) CVPixelBufferRef enhancedPixelBuffer;
 @end
+#endif
 
 @interface OPNVideoEnhancementRenderer : NSObject
 - (instancetype)initWithDevice:(id<MTLDevice>)device commandQueue:(id<MTLCommandQueue>)commandQueue;

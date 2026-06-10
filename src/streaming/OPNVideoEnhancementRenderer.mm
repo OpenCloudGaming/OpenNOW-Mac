@@ -1,3 +1,5 @@
+#import "OpenNOW-Swift.h"
+
 #include "OPNVideoEnhancementRenderer.h"
 
 #import <CoreImage/CoreImage.h>
@@ -63,34 +65,13 @@ static void OPNTemporalJitterForFrame(NSUInteger frameIndex, float *x, float *y)
     *y = offsets[index][1];
 }
 
-@interface OPNVideoTextureSource : NSObject
-- (instancetype)initWithDevice:(id<MTLDevice>)device;
-- (id)newTextureFrameForFrame:(RTCVideoFrame *)frame pixelFormat:(NSString **)pixelFormat frameSource:(NSString **)frameSource fallback:(NSString **)fallback;
-@end
+static const NSInteger OPNVideoTextureFrameKindRGB = 0;
+static const NSInteger OPNVideoTextureFrameKindNV12 = 1;
+static const NSInteger OPNVideoTextureFrameKindI420 = 2;
 
-typedef NS_ENUM(NSInteger, OPNVideoTextureFrameKind) {
-    OPNVideoTextureFrameKindRGB = 0,
-    OPNVideoTextureFrameKindNV12 = 1,
-    OPNVideoTextureFrameKindI420 = 2,
-};
-
-typedef NS_ENUM(NSInteger, OPNVideoRenderTier) {
-    OPNVideoRenderTierSpatial = 1,
-    OPNVideoRenderTierMetalFX = 2,
-    OPNVideoRenderTierTemporal = 3,
-};
-
-@interface OPNVideoTextureFrame : NSObject
-@property(nonatomic, assign) OPNVideoTextureFrameKind kind;
-@property(nonatomic, strong) id<MTLTexture> rgbTexture;
-@property(nonatomic, strong) id<MTLTexture> lumaTexture;
-@property(nonatomic, strong) id<MTLTexture> chromaTexture;
-@property(nonatomic, strong) id<MTLTexture> chromaUTexture;
-@property(nonatomic, strong) id<MTLTexture> chromaVTexture;
-@property(nonatomic, assign) CGRect cropRect;
-@property(nonatomic, assign) NSUInteger contentWidth;
-@property(nonatomic, assign) NSUInteger contentHeight;
-@end
+static const NSInteger OPNVideoRenderTierSpatial = 1;
+static const NSInteger OPNVideoRenderTierMetalFX = 2;
+static const NSInteger OPNVideoRenderTierTemporal = 3;
 
 static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame) {
     if (!textureFrame) return YES;
@@ -98,15 +79,6 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     return crop.origin.x <= 0.0001 && crop.origin.y <= 0.0001 &&
         crop.size.width >= 0.9999 && crop.size.height >= 0.9999;
 }
-
-@interface OPNMetalFXUpscaler : NSObject
-- (instancetype)initWithDevice:(id<MTLDevice>)device;
-- (BOOL)isAvailable;
-- (BOOL)encodeTexture:(id<MTLTexture>)sourceTexture
-            toTexture:(id<MTLTexture>)destinationTexture
-        commandBuffer:(id<MTLCommandBuffer>)commandBuffer
-              fallback:(NSString **)fallback;
-@end
 
 @interface OPNVideoEnhancementRenderer ()
 @property(nonatomic, strong) id<MTLDevice> device;
@@ -490,7 +462,7 @@ static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame)
     result.pixelFormat = pixelFormat;
     result.frameSource = frameSource;
 
-    OPNVideoRenderTier requestedTier = OPNVideoRenderTierSpatial;
+    NSInteger requestedTier = OPNVideoRenderTierSpatial;
     if (settings.configuredTier == OPNVideoEnhancementTierTemporal) {
         requestedTier = OPNVideoRenderTierTemporal;
     } else if (settings.configuredTier == OPNVideoEnhancementTierMetalFX) {

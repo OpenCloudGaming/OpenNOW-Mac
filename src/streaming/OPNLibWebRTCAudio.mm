@@ -1,4 +1,7 @@
+#import "OpenNOW-Swift.h"
+
 #include "OPNLibWebRTCStreamSession.h"
+
 #include "OPNLibWebRTCSessionImpl.h"
 #include "OPNCoreAudioRTCDevice.h"
 
@@ -16,11 +19,6 @@
 #include <cctype>
 #include <cstdlib>
 #include <objc/message.h>
-
-@interface OPNAudioDeviceMonitorContext : NSObject
-@property(nonatomic, assign) void *owner;
-@property(nonatomic, assign, getter=isActive) BOOL active;
-@end
 
 namespace OPN {
 
@@ -270,7 +268,7 @@ void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
 
     OPNAudioDeviceMonitorContext *context = [[OPNAudioDeviceMonitorContext alloc] init];
     context.owner = this;
-    context.active = YES;
+    context.isActive = YES;
     m_audioDeviceMonitorContext = (__bridge_retained void *)context;
 
     AudioObjectPropertyAddress devicesAddress = {
@@ -329,7 +327,7 @@ void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
     };
 
     OPNAudioDeviceMonitorContext *context = (__bridge OPNAudioDeviceMonitorContext *)m_audioDeviceMonitorContext;
-    context.active = NO;
+    context.isActive = NO;
     context.owner = nullptr;
 
     AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &devicesAddress, OPNAudioDevicesChanged, m_audioDeviceMonitorContext);

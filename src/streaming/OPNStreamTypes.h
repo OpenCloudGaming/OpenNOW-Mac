@@ -8,7 +8,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-#ifndef OPN_SENTRY_OBJC_DECLARATIONS
+#if !defined(OPN_SENTRY_OBJC_DECLARATIONS) && !defined(OPENNOW_SWIFT_H)
 #define OPN_SENTRY_OBJC_DECLARATIONS
 @interface OPNSentryTransaction : NSObject
 - (void)setStatus:(BOOL)success;
