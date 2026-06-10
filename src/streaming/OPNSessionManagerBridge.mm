@@ -1,4 +1,4 @@
-#include "OPNSessionManagerBridge.h"
+#include "OPNSessionManager.h"
 
 namespace OPN {
 
