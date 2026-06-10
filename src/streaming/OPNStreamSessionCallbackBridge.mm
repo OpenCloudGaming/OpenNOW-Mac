@@ -1,11 +1,10 @@
 #include "OPNStreamSessionCallbackBridge.h"
 
 #import <Cocoa/Cocoa.h>
+#import <AudioToolbox/AudioToolbox.h>
 
 #include "OPNStreamSession.h"
 #include "OPNStreamSessionInputBridge.h"
-#include "OPNStreamRecordingManager.h"
-
 #include <string>
 
 typedef BOOL (^OPNStreamInputReadyProvider)(void);
@@ -29,6 +28,12 @@ typedef void (^OPNStreamGamepadStateHandler)(uint16_t controllerId,
                                              uint16_t bitmap,
                                              uint64_t timestampUs);
 typedef void (^OPNStreamVideoEnhancementHandler)(NSInteger mode, NSInteger sharpness, NSInteger denoise, NSInteger targetHeight);
+
+@class OPNStreamRecordingManager;
+
+@interface OPNStreamRecordingManager : NSObject
+- (void)appendWebRTCAudioBufferList:(const AudioBufferList *)audioBufferList frameCount:(UInt32)frameCount sampleRate:(double)sampleRate channels:(UInt32)channels;
+@end
 
 @interface OPNStreamView : NSView
 @property (nonatomic, copy) OPNStreamInputReadyProvider streamInputReadyProvider;
