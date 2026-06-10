@@ -1,5 +1,4 @@
 #import "OPNStreamViewController.h"
-#import "OPNStreamView.h"
 #import "OPNStreamSessionHandle.h"
 #include "OPNStreamSessionHandle+Private.h"
 #include "OPNStreamPreferences.h"
@@ -13,6 +12,39 @@
 
 @class OPNSessionReportPayload;
 @class OPNStreamStatsSnapshot;
+
+typedef void (^OPNStreamViewVoidHandler)(void);
+typedef void (^OPNStreamViewSidebarVisibilityHandler)(BOOL visible);
+
+@interface OPNStreamView : NSView
+- (void)setMicrophoneMode:(NSString *)mode pushToTalkKeyCode:(uint16_t)keyCode modifierMask:(uint16_t)modifierMask;
+- (void)setStreamActive:(BOOL)active;
+- (void)setMaxBitrateMbps:(NSInteger)mbps;
+- (BOOL)toggleMicrophoneEnabledShortcut;
+- (BOOL)toggleRecordingShortcut;
+- (void)toggleSidebarHUD;
+- (void)setRecordingGameTitle:(NSString *)gameTitle;
+- (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited;
+- (void)startRemainingPlaytimeCountdown;
+- (void)stopRecordingIfNeeded;
+- (void)setSuppressInputWhenWindowInactive:(BOOL)suppress;
+- (void)setStreamInputSuppressed:(BOOL)suppressed;
+- (void)setDirectMouseInputEnabled:(BOOL)enabled;
+- (void)attachToPipeline:(void *)pipeline;
+- (void)detachFromPipeline;
+- (void)handleKeyEvent:(NSEvent *)event;
+- (void)handleMouseEvent:(NSEvent *)event;
+- (NSView *)nativeVideoView;
+- (void)setVideoAspectRatio:(CGFloat)aspectRatio;
+- (void)setVideoUpscalingMode:(NSInteger)mode sharpness:(NSInteger)sharpness denoise:(NSInteger)denoise streamWidth:(NSInteger)streamWidth streamHeight:(NSInteger)streamHeight;
+- (void)takeFocus;
+- (void)releasePointerLock;
+- (BOOL)isSidebarHUDVisible;
+- (void)clearStreamCallbacks;
+@property (nonatomic, copy) OPNStreamViewVoidHandler onUserActivity;
+@property (nonatomic, copy) OPNStreamViewVoidHandler onDashboardToggleRequested;
+@property (nonatomic, copy) OPNStreamViewSidebarVisibilityHandler onSidebarHUDVisibilityChanged;
+@end
 
 @interface OPNLoadingView : NSView
 @property (nonatomic, copy) NSString *message;

@@ -44,7 +44,7 @@
 			fileRef = F326430DE067F6EC2D2435E0;
 		};
 		E00000000000000000000036 /* OPNAuthenticatingView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000037; };
-		FE6A155D74A6768A507DF3AB /* OPNStreamView.m in PBXBuildFile */ = {
+		FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 24D4F5F148ABE96F6C8D54D7;
 		};
@@ -431,18 +431,11 @@
 			path = src/streaming/OPNStreamTypes.h;
 			sourceTree = "<group>";
 		};
-		B161D5A795AB0D394456EE9F /* OPNStreamView.h in PBXFileReference */ = {
+		24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */ = {
 			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStreamView.h;
-			path = src/streaming/OPNStreamView.h;
-			sourceTree = "<group>";
-		};
-		24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.m in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.objc;
-			name = OPNStreamView.m;
-			path = src/streaming/OPNStreamView.m;
+			lastKnownFileType = sourcecode.swift;
+			name = OPNStreamView.swift;
+			path = src/streaming/OPNStreamView.swift;
 			sourceTree = "<group>";
 		};
 		D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */ = {
@@ -730,7 +723,7 @@
 				9C912AAA99573BD7E06A7277 /* OPNSessionManager.mm in PBXFileReference */,
 				F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */,
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.mm in PBXFileReference */,
-				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.m in PBXFileReference */,
+				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */,
 				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
 				B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */,
 				B00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXFileReference */,
@@ -756,7 +749,6 @@
 				9EA7774A3F17C84ABA66DE4E /* OPNStreamSession.h in PBXFileReference */,
 				F00000000000000000000040 /* OPNStreamStats.h */,
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
-				B161D5A795AB0D394456EE9F /* OPNStreamView.h in PBXFileReference */,
 				D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */,
 				B00000000000000000000027 /* OPNVideoEnhancementRenderer.h in PBXFileReference */,
 				B00000000000000000000002 /* OPNWebRTCDataChannelUtils.h in PBXFileReference */,
@@ -892,7 +884,7 @@
 				E00000000000000000000033 /* OPNSessionReportPayload.swift in PBXBuildFile */,
 				6AD819D53010E3BBC30EF1FA /* OPNStreamPreferences.mm in PBXBuildFile */,
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.mm in PBXBuildFile */,
-				FE6A155D74A6768A507DF3AB /* OPNStreamView.m in PBXBuildFile */,
+				FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in PBXBuildFile */,
 				B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */,
 				A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */,
 				E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */,

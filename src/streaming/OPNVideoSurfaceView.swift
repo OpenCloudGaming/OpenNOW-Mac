@@ -1,5 +1,7 @@
 import AppKit
 
+import AppKit
+
 @objc(OPNVideoSurfaceView)
 final class OPNVideoSurfaceView: NSView {
     override init(frame frameRect: NSRect) {
