@@ -17,6 +17,143 @@ private func overlayLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, 
     return label
 }
 
+private func styleOverlayButton(_ button: NSButton, background: NSColor, textColor: NSColor) {
+    button.bezelStyle = .regularSquare
+    button.isBordered = false
+    button.wantsLayer = true
+    button.layer?.cornerRadius = 10
+    button.layer?.backgroundColor = background.cgColor
+    button.attributedTitle = NSAttributedString(
+        string: button.title,
+        attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: textColor,
+        ]
+    )
+}
+
+typealias OverlayAction = @convention(block) () -> Void
+
+@objc(OPNQuitGameOverlayView)
+final class OPNQuitGameOverlayView: NSView {
+    @objc var onCancel: OverlayAction?
+    @objc var onQuit: OverlayAction?
+
+    private var cardFrame = NSRect.zero
+    private let brandLabel = overlayLabel("OpenNOW", size: 13, weight: .semibold, color: overlayColor(0.72, 0.74, 0.78, 1), alignment: .left)
+    private let eyebrowLabel = overlayLabel("Command-Q", size: 12, weight: .medium, color: overlayColor(0.48, 0.50, 0.56, 1), alignment: .left)
+    private let titleLabel = overlayLabel("End stream?", size: 24, weight: .semibold, color: overlayColor(0.96, 0.96, 0.98, 1), alignment: .left)
+    private let messageLabel = overlayLabel(
+        "Your stream will close and you will return to the library. Unsaved in-game progress may be lost.",
+        size: 13,
+        weight: .regular,
+        color: overlayColor(0.66, 0.68, 0.73, 1),
+        alignment: .left
+    )
+    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
+    private let quitButton = NSButton(title: "End Stream", target: nil, action: nil)
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        autoresizingMask = [.width, .height]
+        messageLabel.maximumNumberOfLines = 2
+
+        cancelButton.target = self
+        cancelButton.action = #selector(cancelPressed(_:))
+        styleOverlayButton(cancelButton, background: overlayColor(0.20, 0.21, 0.24, 0.95), textColor: overlayColor(0.88, 0.89, 0.92, 1))
+        cancelButton.layer?.borderWidth = 1
+        cancelButton.layer?.borderColor = overlayColor(1, 1, 1, 0.10).cgColor
+
+        quitButton.target = self
+        quitButton.action = #selector(quitPressed(_:))
+        styleOverlayButton(quitButton, background: overlayColor(0, 0.48, 1, 1), textColor: .white)
+        quitButton.layer?.shadowColor = overlayColor(0, 0, 0, 1).cgColor
+        quitButton.layer?.shadowOpacity = 0.20
+        quitButton.layer?.shadowRadius = 12
+        quitButton.layer?.shadowOffset = CGSize(width: 0, height: -3)
+
+        [brandLabel, eyebrowLabel, titleLabel, messageLabel, cancelButton, quitButton].forEach(addSubview)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.makeFirstResponder(self)
+    }
+
+    override func layout() {
+        super.layout()
+        let cardWidth = min(460, max(320, bounds.width - 80))
+        let cardHeight: CGFloat = 236
+        cardFrame = NSRect(
+            x: floor((bounds.width - cardWidth) / 2),
+            y: floor((bounds.height - cardHeight) / 2),
+            width: cardWidth,
+            height: cardHeight
+        )
+        let x = cardFrame.minX
+        let top = cardFrame.maxY
+        let padding: CGFloat = 28
+        brandLabel.frame = NSRect(x: x + padding, y: top - 43, width: 140, height: 18)
+        eyebrowLabel.frame = NSRect(x: cardFrame.maxX - padding - 82, y: top - 43, width: 82, height: 18)
+        titleLabel.frame = NSRect(x: x + padding, y: top - 88, width: cardWidth - padding * 2, height: 30)
+        messageLabel.frame = NSRect(x: x + padding, y: top - 134, width: cardWidth - padding * 2, height: 42)
+
+        let buttonWidth: CGFloat = 124
+        let buttonY = cardFrame.minY + 26
+        quitButton.frame = NSRect(x: cardFrame.maxX - padding - buttonWidth, y: buttonY, width: buttonWidth, height: 42)
+        cancelButton.frame = NSRect(x: quitButton.frame.minX - 12 - buttonWidth, y: buttonY, width: buttonWidth, height: 42)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        overlayColor(0, 0, 0, 0.52).setFill()
+        bounds.fill()
+
+        NSGradient(starting: overlayColor(0.12, 0.13, 0.16, 0.58), ending: overlayColor(0.04, 0.05, 0.06, 0.84))?.draw(in: bounds, angle: 90)
+
+        let outer = NSBezierPath(roundedRect: cardFrame, xRadius: 22, yRadius: 22)
+        overlayColor(1, 1, 1, 0.12).setFill()
+        outer.fill()
+
+        let inner = NSBezierPath(roundedRect: cardFrame.insetBy(dx: 1, dy: 1), xRadius: 21, yRadius: 21)
+        NSGradient(starting: overlayColor(0.15, 0.16, 0.18, 0.96), ending: overlayColor(0.10, 0.11, 0.13, 0.96))?.draw(in: inner, angle: 90)
+
+        let divider = NSRect(x: cardFrame.minX + 28, y: cardFrame.minY + 78, width: cardFrame.width - 56, height: 1)
+        overlayColor(1, 1, 1, 0.08).setFill()
+        divider.fill()
+    }
+
+    @objc private func cancelPressed(_ sender: Any) {
+        onCancel?()
+    }
+
+    @objc private func quitPressed(_ sender: Any) {
+        onQuit?()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let commandQ = event.modifierFlags.contains(.command) && key == "q"
+        if event.keyCode == 53 {
+            onCancel?()
+            return
+        }
+        if event.keyCode == 36 || commandQ {
+            onQuit?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
 @objc(OPNShortcutLegendView)
 final class OPNShortcutLegendView: NSView {
     private let titleLabel = overlayLabel(
