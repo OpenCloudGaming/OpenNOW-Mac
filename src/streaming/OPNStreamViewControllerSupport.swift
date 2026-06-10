@@ -136,6 +136,32 @@ final class OPNStreamViewControllerSupport: NSObject {
         return NSSize(width: screen.frame.width * scale, height: screen.frame.height * scale)
     }
 
+    @objc static func streamErrorIsRecoverable(_ error: String?) -> Bool {
+        guard let error, !error.isEmpty else { return false }
+        let lower = error.lowercased()
+        if lower.contains("invalid game id") { return false }
+        if lower.contains("terminal error state") { return false }
+        if lower.contains("401") || lower.contains("unauthorized") { return false }
+        return lower.contains("connection") ||
+            lower.contains("webrtc") ||
+            lower.contains("ice") ||
+            lower.contains("signaling") ||
+            lower.contains("timeout") ||
+            lower.contains("stream connection lost")
+    }
+
+    @objc static func resumeErrorShouldCreateFreshSession(_ error: String?) -> Bool {
+        guard let error else { return false }
+        return error.contains("STALE_ACTIVE_SESSION") ||
+            error.contains("Claim HTTP 400") ||
+            error.contains("\"statusCode\":0") ||
+            error.contains("8A8C0000")
+    }
+
+    @objc static func recoveryDelay(forAttempt attempt: Int) -> TimeInterval {
+        attempt <= 0 ? 0 : 3
+    }
+
     private static func nonEmpty(_ value: String?, fallback: String) -> String {
         guard let value, !value.isEmpty else { return fallback }
         return value

@@ -462,40 +462,6 @@ static OPN::StreamSettings OPNSettingsWithNegotiatedProfile(OPN::StreamSettings 
     return settings;
 }
 
-static std::string OPNLowercaseCopy(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    return value;
-}
-
-static BOOL OPNStreamErrorIsRecoverable(const std::string &error) {
-    if (error.empty()) return NO;
-    std::string lower = OPNLowercaseCopy(error);
-    if (lower.find("invalid game id") != std::string::npos) return NO;
-    if (lower.find("terminal error state") != std::string::npos) return NO;
-    if (lower.find("401") != std::string::npos || lower.find("unauthorized") != std::string::npos) return NO;
-
-    return lower.find("connection") != std::string::npos ||
-           lower.find("webrtc") != std::string::npos ||
-           lower.find("ice") != std::string::npos ||
-           lower.find("signaling") != std::string::npos ||
-           lower.find("timeout") != std::string::npos ||
-           lower.find("stream connection lost") != std::string::npos;
-}
-
-static BOOL OPNResumeErrorShouldCreateFreshSession(const std::string &error) {
-    return error.find("STALE_ACTIVE_SESSION") != std::string::npos ||
-           error.find("Claim HTTP 400") != std::string::npos ||
-           error.find("\"statusCode\":0") != std::string::npos ||
-           error.find("8A8C0000") != std::string::npos;
-}
-
-static NSTimeInterval OPNRecoveryDelayForAttempt(NSInteger attempt) {
-    static const NSTimeInterval delays[] = {0.0, 3.0};
-    if (attempt <= 0) return delays[0];
-    NSInteger index = MIN(attempt - 1, (NSInteger)(sizeof(delays) / sizeof(delays[0])) - 1);
-    return delays[index];
-}
-
 #define OPNQuitColor(r, g, b, a) ([OPNStreamViewControllerSupport quitColorWithRed:(r) green:(g) blue:(b) alpha:(a)])
 
 static constexpr CGFloat OPNStatsOverlayMinWidth = 320.0;
@@ -1769,7 +1735,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 }
 
 - (BOOL)beginAutomaticRecoveryForError:(const std::string &)error {
-    if (_streamEnded || !OPNStreamErrorIsRecoverable(error)) return NO;
+    if (_streamEnded || ![OPNStreamViewControllerSupport streamErrorIsRecoverable:OPNStringFromStdString(error, @"")]) return NO;
     if (!_connectedOnce) {
         OPNLogInfo(@"[StreamVC] Skipping automatic recovery before confirmed stream connection: %s", error.c_str());
         return NO;
@@ -1789,7 +1755,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     });
     _stableResetGeneration++;
     NSUInteger recoveryGeneration = ++_launchGeneration;
-    NSTimeInterval delay = OPNRecoveryDelayForAttempt(_recoveryAttempt);
+    NSTimeInterval delay = [OPNStreamViewControllerSupport recoveryDelayForAttempt:_recoveryAttempt];
     NSString *message = [NSString stringWithFormat:@"Connection interrupted. Reconnecting (%ld/%ld)...",
                          (long)_recoveryAttempt,
                          (long)OPNMaxAutomaticRecoveryAttempts];
@@ -2095,7 +2061,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
                 if (!strongSelf || strongSelf->_streamEnded || strongSelf->_launchGeneration != launchGeneration) return;
                 OPNLogInfo(@"[StreamVC] Active session claim result: success=%d", success);
                 if (!success) {
-                    if (OPNResumeErrorShouldCreateFreshSession(error)) {
+                    if ([OPNStreamViewControllerSupport resumeErrorShouldCreateFreshSession:OPNStringFromStdString(error, @"")]) {
                         OPNLogInfo(@"[StreamVC] Active session could not be claimed; creating a fresh session instead: %s", error.c_str());
                         strongSelf->_resumeExistingSession = NO;
                         strongSelf->_resumeSessionId = @"";
@@ -2146,7 +2112,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
                                         __typeof__(self) claimSelf = weakSelf;
                                         if (!claimSelf || claimSelf->_streamEnded || claimSelf->_launchGeneration != launchGeneration) return;
                                         if (!retrySuccess) {
-                                            if (OPNResumeErrorShouldCreateFreshSession(retryError)) {
+                                            if ([OPNStreamViewControllerSupport resumeErrorShouldCreateFreshSession:OPNStringFromStdString(retryError, @"")]) {
                                                 OPNLogInfo(@"[StreamVC] Re-resolved active session could not be claimed; creating a fresh session instead: %s", retryError.c_str());
                                                 claimSelf->_resumeExistingSession = NO;
                                                 claimSelf->_resumeSessionId = @"";
