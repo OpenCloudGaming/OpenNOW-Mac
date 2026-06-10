@@ -85,7 +85,7 @@
 		E00000000000000000000079 /* OPNLibWebRTCAudio.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007A; };
 		E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007C; };
 		E0000000000000000000007D /* OPNLibWebRTCNegotiation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007E; };
-		E0000000000000000000007F /* OPNStreamSessionHandle.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080; };
+		E0000000000000000000007F /* OPNStreamSessionHandle.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080; };
 		E00000000000000000000082 /* OPNSessionManagerBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000083; };
 		E00000000000000000000088 /* OPNStreamStatsSnapshot.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000089; };
 		4EB63AD5790216383B1EAEE0 /* Cocoa.framework in PBXBuildFile */ = {
@@ -356,8 +356,7 @@
 		E0000000000000000000007A /* OPNLibWebRTCAudio.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCAudio.mm; path = src/streaming/OPNLibWebRTCAudio.mm; sourceTree = "<group>"; };
 		E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCSessionSurface.mm; path = src/streaming/OPNLibWebRTCSessionSurface.mm; sourceTree = "<group>"; };
 		E0000000000000000000007E /* OPNLibWebRTCNegotiation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCNegotiation.mm; path = src/streaming/OPNLibWebRTCNegotiation.mm; sourceTree = "<group>"; };
-		E00000000000000000000080 /* OPNStreamSessionHandle.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionHandle.mm; path = src/streaming/OPNStreamSessionHandle.mm; sourceTree = "<group>"; };
-		E00000000000000000000081 /* OPNStreamSessionHandle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionHandle.h; path = src/streaming/OPNStreamSessionHandle.h; sourceTree = "<group>"; };
+		E00000000000000000000080 /* OPNStreamSessionHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandle.swift; path = src/streaming/OPNStreamSessionHandle.swift; sourceTree = "<group>"; };
 		E00000000000000000000083 /* OPNSessionManagerBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionManagerBridge.mm; path = src/streaming/OPNSessionManagerBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000084 /* OPNSessionManagerBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionManagerBridge.h; path = src/streaming/OPNSessionManagerBridge.h; sourceTree = "<group>"; };
 		E00000000000000000000089 /* OPNStreamStatsSnapshot.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamStatsSnapshot.mm; path = src/streaming/OPNStreamStatsSnapshot.mm; sourceTree = "<group>"; };
@@ -705,7 +704,7 @@
 				E0000000000000000000007A /* OPNLibWebRTCAudio.mm */,
 				E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */,
 				E0000000000000000000007E /* OPNLibWebRTCNegotiation.mm */,
-				E00000000000000000000080 /* OPNStreamSessionHandle.mm */,
+				E00000000000000000000080 /* OPNStreamSessionHandle.swift */,
 				E00000000000000000000083 /* OPNSessionManagerBridge.mm */,
 				E00000000000000000000089 /* OPNStreamStatsSnapshot.mm */,
 				10F67006C07BB7D2BC133943 /* OPNLibWebRTCStreamSession.mm in PBXFileReference */,
@@ -726,7 +725,6 @@
 				E0000000000000000000006E /* OPNMetalVideoView.h */,
 				E00000000000000000000071 /* OPNCoreAudioRTCDevice.h */,
 				E00000000000000000000074 /* OPNLibWebRTCSessionImpl.h */,
-				E00000000000000000000081 /* OPNStreamSessionHandle.h */,
 				E00000000000000000000084 /* OPNSessionManagerBridge.h */,
 				E0000000000000000000008A /* OPNStreamStatsSnapshot.h */,
 				E0000000000000000000008B /* OPNStreamStatsSnapshot+Private.h */,
@@ -860,7 +858,7 @@
 				E00000000000000000000079 /* OPNLibWebRTCAudio.mm in PBXBuildFile */,
 				E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */,
 				E0000000000000000000007D /* OPNLibWebRTCNegotiation.mm in PBXBuildFile */,
-				E0000000000000000000007F /* OPNStreamSessionHandle.mm in PBXBuildFile */,
+				E0000000000000000000007F /* OPNStreamSessionHandle.swift in PBXBuildFile */,
 				E00000000000000000000082 /* OPNSessionManagerBridge.mm in PBXBuildFile */,
 				E00000000000000000000088 /* OPNStreamStatsSnapshot.mm in PBXBuildFile */,
 				01962D846ADB16CBCA18D4C3 /* OPNLibWebRTCStreamSession.mm in PBXBuildFile */,

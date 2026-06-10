@@ -1,6 +1,8 @@
 #import "OPNStreamViewController.h"
-#import "OPNStreamSessionHandle.h"
-#include "OPNStreamSessionHandle+Private.h"
+#include "OPNStreamSessionCallbackBridge.h"
+#include "OPNStreamSessionInputBridge.h"
+#include "OPNStreamSessionLaunchBridge.h"
+#import "OPNStreamStatsSnapshot.h"
 #include "OPNStreamPreferences.h"
 #include "OPNSessionManagerBridge.h"
 #import <QuartzCore/QuartzCore.h>
@@ -13,6 +15,21 @@
 @class OPNSessionReportPayload;
 @class OPNStreamStatsSnapshot;
 @class OPNStreamRecordingManager;
+
+@interface OPNStreamSessionHandle : NSObject
+@property(nonatomic, readonly, getter=isValid) BOOL valid;
+@property(nonatomic, readonly, getter=isInputReady) BOOL inputReady;
+@property(nonatomic, readonly) void *rawSession;
++ (BOOL)isBackendAvailable;
++ (NSUInteger)maxGamepadControllers;
++ (NSString *)iceUfragFromOfferSdp:(NSString *)offerSdp;
+- (instancetype)init;
+- (void)stop;
+- (void)setNativeWindow:(void *)nativeWindow;
+- (void)setMaxBitrateMbps:(NSInteger)mbps;
+- (void)addRemoteIceCandidatePayload:(NSDictionary *)payload;
+- (OPNStreamStatsSnapshot *)latestStatsSnapshot;
+@end
 
 typedef void (^OPNStreamViewVoidHandler)(void);
 typedef void (^OPNStreamViewSidebarVisibilityHandler)(BOOL visible);
@@ -1258,11 +1275,11 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 
 - (void)clearCurrentSessionCallbacks {
     [self.streamView clearStreamCallbacks];
-    [_session clearCallbacks];
+    OPNClearStreamSessionCallbacks(static_cast<OPN::IStreamSession *>(_session.rawSession));
 }
 
 - (void)configureStreamViewSessionCallbacks {
-    [_session configureCallbacksWithStreamView:self.streamView recordingManager:self.streamView.recordingManager];
+    OPNConfigureStreamViewSessionCallbacks(static_cast<OPN::IStreamSession *>(_session.rawSession), self.streamView, self.streamView.recordingManager);
 }
 
 - (void)refreshStreamViewLayoutForCurrentContainer {
@@ -2196,7 +2213,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     uint32_t index = arc4random_uniform((uint32_t)(sizeof(deltas) / sizeof(deltas[0])));
     int16_t dx = deltas[index][0];
     int16_t dy = deltas[index][1];
-    [_session sendMouseMoveWithDeltaX:dx deltaY:dy];
+    OPNSendStreamSessionMouseMove(static_cast<OPN::IStreamSession *>(_session.rawSession), dx, dy);
     CFTimeInterval idleDuration = now - _lastStreamActivityTime;
     _lastStreamActivityTime = now;
     _lastIdleDeviceInputTime = now;
@@ -2206,7 +2223,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(OPNStreamIdleDeviceInputReturnDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         __typeof__(self) strongSelf = weakSelf;
         if (!strongSelf || strongSelf->_streamEnded || !strongSelf->_session.inputReady) return;
-        [strongSelf->_session sendMouseMoveWithDeltaX:(int16_t)-dx deltaY:(int16_t)-dy];
+        OPNSendStreamSessionMouseMove(static_cast<OPN::IStreamSession *>(strongSelf->_session.rawSession), (int16_t)-dx, (int16_t)-dy);
         OPNLogInfo(@"[StreamVC] Sent idle device input return dx=%d dy=%d", (int16_t)-dx, (int16_t)-dy);
     });
 }
@@ -2435,10 +2452,11 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
         [s->_session setNativeWindow:(__bridge void *)[s.streamView nativeVideoView]];
 
         [s setLaunchStep:5 message:@"Starting video pipeline..."];
-        [s->_session startWithSessionInfo:activeSessionInfo
-                                 offerSdp:sdpText
-                                 settings:negotiatedSettings
-                            answerHandler:^(NSString *answerSdp, NSString *nvstSdp) {
+        OPNStartStreamSession(static_cast<OPN::IStreamSession *>(s->_session.rawSession),
+                              activeSessionInfo,
+                              sdpText,
+                              negotiatedSettings,
+                              ^(NSString *answerSdp, NSString *nvstSdp) {
             __typeof__(self) s2 = weakSelf;
             if (!s2 || !s2->_signaling || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
             OPNLogInfo(@"[StreamVC] Sending WebRTC answer (sdp=%lu, nvstSdp=%lu)",
@@ -2448,13 +2466,13 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
             dispatch_async(dispatch_get_main_queue(), ^{
                 __typeof__(self) s3 = weakSelf;
                 if (!s3 || !s3->_session.valid || s3->_streamEnded || s3->_launchGeneration != launchGeneration) return;
-                [s3->_session injectManualIceCandidateWithSessionInfo:activeSessionInfo offerSdp:offerSdpCopy serverIceUfrag:serverIceUfrag];
+                OPNInjectManualStreamSessionIceCandidate(static_cast<OPN::IStreamSession *>(s3->_session.rawSession), activeSessionInfo, offerSdpCopy, serverIceUfrag);
             });
-        } localIceCandidateHandler:^(NSDictionary *candidate) {
+        }, ^(NSDictionary *candidate) {
             __typeof__(self) s2 = weakSelf;
             if (!s2 || !s2->_signaling || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
             [s2->_signaling sendIceCandidate:candidate ?: @{}];
-        } stateHandler:^(BOOL connected, NSString *streamErrorText) {
+        }, ^(BOOL connected, NSString *streamErrorText) {
             __typeof__(self) s2 = weakSelf;
             if (!s2 || s2->_streamEnded || s2->_launchGeneration != launchGeneration) return;
             NSString *streamErrorCopy = [streamErrorText copy] ?: @"";
@@ -2510,7 +2528,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
                     }
                 }
             });
-        }];
+        });
 
         s->_signaling.onIceCandidate = ^(NSDictionary *payload) {
             __typeof__(self) s2 = weakSelf;

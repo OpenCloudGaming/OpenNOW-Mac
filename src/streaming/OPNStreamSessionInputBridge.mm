@@ -2,6 +2,59 @@
 
 #include "OPNStreamSession.h"
 #include "OPNStreamTypes.h"
+#include "OPNLibWebRTCStreamSession.h"
+#include "OPNStreamSessionLaunchBridge.h"
+#include "OPNStreamStatsSnapshot+Private.h"
+
+static OPN::IStreamSession *OPNRawStreamSession(void *session) {
+    return static_cast<OPN::IStreamSession *>(session);
+}
+
+extern "C" BOOL OPNStreamSessionHandleBackendAvailable(void) {
+    return OPN::LibWebRTCStreamSession::IsAvailable() ? YES : NO;
+}
+
+extern "C" NSUInteger OPNStreamSessionHandleMaxGamepadControllers(void) {
+    return OPNStreamSessionMaxGamepadControllers();
+}
+
+extern "C" NSString *OPNStreamSessionHandleIceUfragFromOfferSdp(NSString *offerSdp) {
+    return OPNStreamSessionIceUfragFromOffer(offerSdp);
+}
+
+extern "C" void *OPNStreamSessionHandleCreateRawSession(void) {
+    if (!OPN::LibWebRTCStreamSession::IsAvailable()) return nullptr;
+    return new OPN::LibWebRTCStreamSession();
+}
+
+extern "C" void OPNStreamSessionHandleReleaseRawSession(void *session) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (!rawSession) return;
+    rawSession->Stop();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        delete rawSession;
+    });
+}
+
+extern "C" BOOL OPNStreamSessionHandleInputReady(void *session) {
+    return OPNStreamSessionInputReady(OPNRawStreamSession(session)) ? YES : NO;
+}
+
+extern "C" void OPNStreamSessionHandleSetNativeWindow(void *session, void *nativeWindow) {
+    OPNSetStreamSessionNativeWindow(OPNRawStreamSession(session), nativeWindow);
+}
+
+extern "C" void OPNStreamSessionHandleSetMaxBitrateMbps(void *session, NSInteger mbps) {
+    OPNSetStreamSessionMaxBitrateMbps(OPNRawStreamSession(session), (int)mbps);
+}
+
+extern "C" void OPNStreamSessionHandleAddRemoteIceCandidatePayload(void *session, NSDictionary *payload) {
+    OPNAddStreamSessionRemoteIceCandidateFromDictionary(OPNRawStreamSession(session), payload);
+}
+
+extern "C" OPNStreamStatsSnapshot *OPNStreamSessionHandleLatestStatsSnapshot(void *session) {
+    return [[OPNStreamStatsSnapshot alloc] initWithStreamStats:OPNRequestLatestStreamSessionStats(OPNRawStreamSession(session))];
+}
 
 NSUInteger OPNStreamSessionMaxGamepadControllers(void) {
     return (NSUInteger)OPN::Input::GAMEPAD_MAX_CONTROLLERS;
