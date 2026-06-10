@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreVideo
 import Foundation
+import Metal
 
 @objc(OPNVideoEnhancementSettings)
 final class OPNVideoEnhancementSettings: NSObject {
@@ -31,4 +32,17 @@ final class OPNVideoEnhancementResult: NSObject {
     @objc var frameTimeMs = 0.0
     @objc var droppedFrames: UInt64 = 0
     @objc var enhancedPixelBuffer: CVPixelBuffer?
+}
+
+@objc(OPNVideoTextureFrame)
+final class OPNVideoTextureFrame: NSObject {
+    @objc var kind = 0
+    @objc var rgbTexture: (any MTLTexture)?
+    @objc var lumaTexture: (any MTLTexture)?
+    @objc var chromaTexture: (any MTLTexture)?
+    @objc var chromaUTexture: (any MTLTexture)?
+    @objc var chromaVTexture: (any MTLTexture)?
+    @objc var cropRect: CGRect = .zero
+    @objc var contentWidth: UInt = 0
+    @objc var contentHeight: UInt = 0
 }

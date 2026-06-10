@@ -92,9 +92,6 @@ typedef NS_ENUM(NSInteger, OPNVideoRenderTier) {
 @property(nonatomic, assign) NSUInteger contentHeight;
 @end
 
-@implementation OPNVideoTextureFrame
-@end
-
 static BOOL OPNVideoTextureFrameUsesFullCrop(OPNVideoTextureFrame *textureFrame) {
     if (!textureFrame) return YES;
     CGRect crop = textureFrame.cropRect;
