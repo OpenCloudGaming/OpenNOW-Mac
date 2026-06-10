@@ -4,15 +4,30 @@
 #include "OPNStreamSessionCallbackBridge.h"
 #include "OPNStreamSessionInputBridge.h"
 #include "OPNStreamSessionLaunchBridge.h"
-#include "OPNStreamSessionLifecycleBridge.h"
 #include "OPNStreamStatsSnapshot+Private.h"
+#include "OPNLibWebRTCStreamSession.h"
+
+static OPN::IStreamSession *OPNCreateStreamSession(void) {
+    if (OPN::LibWebRTCStreamSession::IsAvailable()) {
+        return new OPN::LibWebRTCStreamSession();
+    }
+    return nullptr;
+}
+
+static void OPNReleaseStreamSessionAfterCallbacks(OPN::IStreamSession *session) {
+    if (!session) return;
+    session->Stop();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        delete session;
+    });
+}
 
 @implementation OPNStreamSessionHandle {
     OPN::IStreamSession *_session;
 }
 
 + (BOOL)isBackendAvailable {
-    return OPNStreamSessionBackendAvailable() ? YES : NO;
+    return OPN::LibWebRTCStreamSession::IsAvailable() ? YES : NO;
 }
 
 + (NSUInteger)maxGamepadControllers {

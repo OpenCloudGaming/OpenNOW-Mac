@@ -73,7 +73,6 @@
 		E00000000000000000000044 /* OPNStreamSessionInputBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000045; };
 		E00000000000000000000047 /* OPNStreamSessionCallbackBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000048; };
 		E00000000000000000000050 /* OPNStreamSessionLaunchBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000051; };
-		E00000000000000000000053 /* OPNStreamSessionLifecycleBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000054; };
 		E00000000000000000000060 /* OPNNvstSdpBuilder.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000061; };
 		E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000064; };
 		E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000067; };
@@ -517,8 +516,6 @@
 		E00000000000000000000049 /* OPNStreamSessionCallbackBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionCallbackBridge.h; path = src/streaming/OPNStreamSessionCallbackBridge.h; sourceTree = "<group>"; };
 		E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLaunchBridge.mm; path = src/streaming/OPNStreamSessionLaunchBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000052 /* OPNStreamSessionLaunchBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionLaunchBridge.h; path = src/streaming/OPNStreamSessionLaunchBridge.h; sourceTree = "<group>"; };
-		E00000000000000000000054 /* OPNStreamSessionLifecycleBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLifecycleBridge.mm; path = src/streaming/OPNStreamSessionLifecycleBridge.mm; sourceTree = "<group>"; };
-		E00000000000000000000055 /* OPNStreamSessionLifecycleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionLifecycleBridge.h; path = src/streaming/OPNStreamSessionLifecycleBridge.h; sourceTree = "<group>"; };
 		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
 		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
 		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
@@ -696,7 +693,6 @@
 				E00000000000000000000045 /* OPNStreamSessionInputBridge.mm */,
 				E00000000000000000000048 /* OPNStreamSessionCallbackBridge.mm */,
 				E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */,
-				E00000000000000000000054 /* OPNStreamSessionLifecycleBridge.mm */,
 				E00000000000000000000061 /* OPNNvstSdpBuilder.mm */,
 				E00000000000000000000064 /* OPNWebRTCSdpUtils.mm */,
 				E00000000000000000000067 /* OPNWebRTCCodecSupport.mm */,
@@ -723,7 +719,6 @@
 				E00000000000000000000046 /* OPNStreamSessionInputBridge.h */,
 				E00000000000000000000049 /* OPNStreamSessionCallbackBridge.h */,
 				E00000000000000000000052 /* OPNStreamSessionLaunchBridge.h */,
-				E00000000000000000000055 /* OPNStreamSessionLifecycleBridge.h */,
 				E00000000000000000000062 /* OPNNvstSdpBuilder.h */,
 				E00000000000000000000065 /* OPNWebRTCSdpUtils.h */,
 				E00000000000000000000068 /* OPNWebRTCCodecSupport.h */,
@@ -853,7 +848,6 @@
 				E00000000000000000000044 /* OPNStreamSessionInputBridge.mm in PBXBuildFile */,
 				E00000000000000000000047 /* OPNStreamSessionCallbackBridge.mm in PBXBuildFile */,
 				E00000000000000000000050 /* OPNStreamSessionLaunchBridge.mm in PBXBuildFile */,
-				E00000000000000000000053 /* OPNStreamSessionLifecycleBridge.mm in PBXBuildFile */,
 				E00000000000000000000060 /* OPNNvstSdpBuilder.mm in PBXBuildFile */,
 				E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */,
 				E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */,
