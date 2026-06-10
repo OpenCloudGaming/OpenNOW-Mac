@@ -4,6 +4,7 @@
 
 #include "OPNStreamSession.h"
 #include "OPNStreamSessionInputBridge.h"
+#include "OPNStreamRecordingManager.h"
 
 #include <string>
 
@@ -43,11 +44,11 @@ typedef void (^OPNStreamVideoEnhancementHandler)(NSInteger mode, NSInteger sharp
 @property (nonatomic, copy) OPNStreamMouseButtonHandler streamMouseButtonHandler;
 @property (nonatomic, copy) OPNStreamMouseWheelHandler streamMouseWheelHandler;
 @property (nonatomic, copy) OPNStreamGamepadStateHandler streamGamepadStateHandler;
+@property (nonatomic, readonly) OPNStreamRecordingManager *recordingManager;
 - (void)clearStreamCallbacks;
 - (void)receiveMicrophoneLevel:(double)level;
 - (void)receiveVideoFrame:(void *)frame;
 - (void)receiveEnhancedVideoFrame:(void *)pixelBuffer;
-- (void)receiveGameAudioFrame:(const void *)audioBufferList frameCount:(uint32_t)frameCount sampleRate:(double)sampleRate channels:(uint32_t)channels;
 - (void)receiveClipboardText:(NSString *)text;
 @end
 
@@ -137,8 +138,8 @@ void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session, OPNStr
     });
     session->OnGameAudioFrame([weakView](const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
         OPNStreamView *view = weakView;
-        if (!view) return;
-        [view receiveGameAudioFrame:audioBufferList frameCount:frameCount sampleRate:sampleRate channels:channels];
+        if (!view || !audioBufferList) return;
+        [view.recordingManager appendWebRTCAudioBufferList:static_cast<const AudioBufferList *>(audioBufferList) frameCount:frameCount sampleRate:sampleRate channels:channels];
     });
     session->OnClipboardText([weakView](const std::string &text) {
         std::string textCopy = text;

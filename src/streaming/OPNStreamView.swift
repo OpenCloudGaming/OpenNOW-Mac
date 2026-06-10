@@ -119,7 +119,7 @@ final class OPNStreamView: NSView {
     private var microphoneMeterTrack: NSView?
     private var microphoneMeterFill: CALayer?
     private var recordingButton: NSButton?
-    private let recordingManager = OPNStreamRecordingManager()
+    let recordingManager = OPNStreamRecordingManager()
     private var recordingGameTitle = "Stream"
     private var videoAspectRatio: CGFloat = 16.0 / 9.0
 
@@ -216,10 +216,6 @@ final class OPNStreamView: NSView {
     func receiveEnhancedVideoFrame(_ pixelBuffer: UnsafeMutableRawPointer?) {
         guard let pixelBuffer else { return }
         recordingManager.appendEnhancedPixelBuffer(pixelBuffer.assumingMemoryBound(to: CVPixelBuffer.self).pointee)
-    }
-    func receiveGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
-        guard let audioBufferList else { return }
-        recordingManager.appendWebRTCAudioBufferList(audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, sampleRate: sampleRate, channels: channels)
     }
     func receiveClipboardText(_ text: String) {
         guard !text.isEmpty else { return }
