@@ -70,7 +70,6 @@
 		};
 		E0000000000000000000003C /* main.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003D; };
 		E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AB; };
-		E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000064; };
 		E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000067; };
 		E0000000000000000000006C /* OPNMetalVideoView.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000006D; };
 		E000000000000000000000B2 /* OPNCoreAudioRTCDevice.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B3; };
@@ -330,8 +329,6 @@
 			path = src/streaming/OPNLibWebRTCStreamSession.mm;
 			sourceTree = "<group>";
 		};
-		E00000000000000000000064 /* OPNWebRTCSdpUtils.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCSdpUtils.mm; path = src/streaming/OPNWebRTCSdpUtils.mm; sourceTree = "<group>"; };
-		E00000000000000000000065 /* OPNWebRTCSdpUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCSdpUtils.h; path = src/streaming/OPNWebRTCSdpUtils.h; sourceTree = "<group>"; };
 		E00000000000000000000067 /* OPNWebRTCCodecSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCCodecSupport.mm; path = src/streaming/OPNWebRTCCodecSupport.mm; sourceTree = "<group>"; };
 		E00000000000000000000068 /* OPNWebRTCCodecSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCCodecSupport.h; path = src/streaming/OPNWebRTCCodecSupport.h; sourceTree = "<group>"; };
 		E0000000000000000000006D /* OPNMetalVideoView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNMetalVideoView.mm; path = src/streaming/OPNMetalVideoView.mm; sourceTree = "<group>"; };
@@ -654,7 +651,6 @@
 				E00000000000000000000027 /* OPNStreamPreferences.swift */,
 				E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */,
 				E000000000000000000000AB /* OPNInputProtocol.swift */,
-				E00000000000000000000064 /* OPNWebRTCSdpUtils.mm */,
 				E00000000000000000000067 /* OPNWebRTCCodecSupport.mm */,
 				E0000000000000000000006D /* OPNMetalVideoView.mm */,
 				E000000000000000000000B3 /* OPNCoreAudioRTCDevice.swift */,
@@ -676,7 +672,6 @@
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift in PBXFileReference */,
 				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */,
 				E000000000000000000000B1 /* OPNStreamViewController.swift */,
-				E00000000000000000000065 /* OPNWebRTCSdpUtils.h */,
 				E00000000000000000000068 /* OPNWebRTCCodecSupport.h */,
 				E0000000000000000000006E /* OPNMetalVideoView.h */,
 				E00000000000000000000074 /* OPNLibWebRTCSessionImpl.h */,
@@ -792,7 +787,6 @@
 				E00000000000000000000042 /* OPNGitHubUpdater.swift in PBXBuildFile */,
 				E0000000000000000000003E /* OPNHTTP.swift in PBXBuildFile */,
 				E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */,
-				E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */,
 				E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */,
 				E0000000000000000000006C /* OPNMetalVideoView.mm in PBXBuildFile */,
 				E000000000000000000000B2 /* OPNCoreAudioRTCDevice.swift in PBXBuildFile */,

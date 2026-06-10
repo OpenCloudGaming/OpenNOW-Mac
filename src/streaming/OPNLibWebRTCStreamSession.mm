@@ -2,7 +2,6 @@
 
 #include "OPNLibWebRTCStreamSession.h"
 
-#include "OPNWebRTCSdpUtils.h"
 
 #import <Foundation/Foundation.h>
 

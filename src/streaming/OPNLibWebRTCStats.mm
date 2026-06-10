@@ -1,6 +1,5 @@
 #include "OPNLibWebRTCStreamSession.h"
 #include "OPNLibWebRTCSessionImpl.h"
-#include "OPNWebRTCSdpUtils.h"
 
 #import <Foundation/Foundation.h>
 
@@ -21,6 +20,8 @@
 #include <unordered_map>
 
 namespace OPN {
+
+std::string OPNNormalizeStatsCodecName(const std::string &codecId);
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 static OPNLibWebRTCSessionImpl *OPNImplFromOpaque(void *opaque) {

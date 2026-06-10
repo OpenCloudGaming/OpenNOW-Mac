@@ -1,6 +1,5 @@
 #include "OPNWebRTCCodecSupport.h"
 #include "OPNStreamTypes.h"
-#include "OPNWebRTCSdpUtils.h"
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #pragma clang diagnostic push
@@ -11,6 +10,9 @@
 #include <algorithm>
 
 namespace OPN {
+
+bool OPNIsSupportedCodecPreference(const std::string &codec);
+
 namespace {
 
 bool OPNCodecCapabilityMatches(RTCRtpCodecCapability *codec, const std::string &normalizedCodec) {
