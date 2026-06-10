@@ -319,28 +319,8 @@ struct OPNDisplayStreamProfile {
     std::string resolution = "1920x1080";
 };
 
-static NSSize CurrentDisplayPixelSize(NSWindow *window) {
-    NSScreen *screen = window.screen ?: NSScreen.mainScreen;
-    if (!screen) {
-        return NSMakeSize(1920.0, 1080.0);
-    }
-
-    NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
-    if ([screenNumber isKindOfClass:[NSNumber class]]) {
-        CGDirectDisplayID displayId = (CGDirectDisplayID)screenNumber.unsignedIntValue;
-        size_t pixelWidth = CGDisplayPixelsWide(displayId);
-        size_t pixelHeight = CGDisplayPixelsHigh(displayId);
-        if (pixelWidth > 0 && pixelHeight > 0) {
-            return NSMakeSize((CGFloat)pixelWidth, (CGFloat)pixelHeight);
-        }
-    }
-
-    CGFloat scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1.0;
-    return NSMakeSize(NSWidth(screen.frame) * scale, NSHeight(screen.frame) * scale);
-}
-
 static OPNDisplayStreamProfile ResolveDisplayStreamProfile(NSWindow *window) {
-    NSSize displayPixels = CurrentDisplayPixelSize(window);
+    NSSize displayPixels = [OPNStreamViewControllerSupport currentDisplayPixelSizeForWindow:window];
     int displayWidth = std::max(640, (int)std::llround(displayPixels.width));
     int displayHeight = std::max(360, (int)std::llround(displayPixels.height));
     displayWidth -= displayWidth % 2;

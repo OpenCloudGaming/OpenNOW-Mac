@@ -120,6 +120,22 @@ final class OPNStreamViewControllerSupport: NSObject {
         return label
     }
 
+    @objc(currentDisplayPixelSizeForWindow:)
+    static func currentDisplayPixelSize(for window: NSWindow?) -> NSSize {
+        let screen = window?.screen ?? NSScreen.main
+        guard let screen else { return NSSize(width: 1920, height: 1080) }
+        if let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            let displayId = CGDirectDisplayID(screenNumber.uint32Value)
+            let pixelWidth = CGDisplayPixelsWide(displayId)
+            let pixelHeight = CGDisplayPixelsHigh(displayId)
+            if pixelWidth > 0, pixelHeight > 0 {
+                return NSSize(width: CGFloat(pixelWidth), height: CGFloat(pixelHeight))
+            }
+        }
+        let scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1
+        return NSSize(width: screen.frame.width * scale, height: screen.frame.height * scale)
+    }
+
     private static func nonEmpty(_ value: String?, fallback: String) -> String {
         guard let value, !value.isEmpty else { return fallback }
         return value
