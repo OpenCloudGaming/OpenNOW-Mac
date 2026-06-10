@@ -1,5 +1,6 @@
 #include "OPNLibWebRTCStreamSession.h"
 #include "OPNLibWebRTCSessionImpl.h"
+#include "OPNCoreAudioRTCDevice.h"
 
 #import <CoreAudio/CoreAudio.h>
 #import <Foundation/Foundation.h>

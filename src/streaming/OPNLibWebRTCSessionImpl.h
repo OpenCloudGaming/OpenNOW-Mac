@@ -1,12 +1,12 @@
 #pragma once
 
-#include "OPNCoreAudioRTCDevice.h"
-
 #if defined(OPN_HAVE_LIBWEBRTC)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wincomplete-umbrella"
 #import <WebRTC/WebRTC.h>
 #pragma clang diagnostic pop
+
+@class OPNCoreAudioRTCDevice;
 
 @interface OPNLibWebRTCSessionImpl : NSObject <RTCPeerConnectionDelegate, RTCDataChannelDelegate>
 - (instancetype)initWithOwner:(void *)owner;

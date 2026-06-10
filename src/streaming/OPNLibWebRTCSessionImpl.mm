@@ -1,5 +1,6 @@
 #include "OPNLibWebRTCSessionImpl.h"
 
+#include "OPNCoreAudioRTCDevice.h"
 #include "OPNLibWebRTCStreamSession.h"
 
 #include "OPNMetalVideoView.h"
