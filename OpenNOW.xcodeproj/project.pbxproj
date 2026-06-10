@@ -168,6 +168,7 @@
 		E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000012; };
 		E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000013; };
 		E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008B; };
+		E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008D; };
 		E00000000000000000000004 /* OPNVideoSurfaceView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000014; };
 		E00000000000000000000005 /* OPNBackdropView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000015; };
 		E00000000000000000000006 /* OPNCarouselFocusLayout.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000016; };
@@ -354,6 +355,7 @@
 		E00000000000000000000083 /* OPNSessionManagerBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionManagerBridge.mm; path = src/streaming/OPNSessionManagerBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamStatsSnapshot.swift; path = src/streaming/OPNStreamStatsSnapshot.swift; sourceTree = "<group>"; };
 		E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewControllerOverlays.swift; path = src/streaming/OPNStreamViewControllerOverlays.swift; sourceTree = "<group>"; };
+		E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAudioDeviceMonitorContext.swift; path = src/streaming/OPNAudioDeviceMonitorContext.swift; sourceTree = "<group>"; };
 		E0000000000000000000009A /* OPNLogCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLogCapture.swift; path = src/common/OPNLogCapture.swift; sourceTree = "<group>"; };
 		56C01BA183847B38981C01FD /* OPNPremiumBackdrop.metal in PBXFileReference */ = {
 			isa = PBXFileReference;
@@ -693,6 +695,7 @@
 				E00000000000000000000083 /* OPNSessionManagerBridge.mm */,
 				E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */,
 				E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */,
+				E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */,
 				10F67006C07BB7D2BC133943 /* OPNLibWebRTCStreamSession.mm in PBXFileReference */,
 				9C912AAA99573BD7E06A7277 /* OPNSessionManager.mm in PBXFileReference */,
 				F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */,
@@ -847,6 +850,7 @@
 				A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */,
 				E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */,
 				E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in PBXBuildFile */,
+				E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in PBXBuildFile */,
 				E00000000000000000000004 /* OPNVideoSurfaceView.swift in PBXBuildFile */,
 				C00000000000000000000047 /* OPNActiveSessionService.swift in PBXBuildFile */,
 				E00000000000000000000026 /* OPNStreamPreferences.swift in PBXBuildFile */,
