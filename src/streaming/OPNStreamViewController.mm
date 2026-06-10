@@ -828,6 +828,24 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
     }];
 }
 
+static constexpr CGFloat OPNStatsOverlayMinWidth = 320.0;
+static constexpr CGFloat OPNStatsOverlayMaxWidth = 620.0;
+static constexpr CGFloat OPNStatsOverlayMinHeight = 22.0;
+
+static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color, NSTextAlignment alignment) {
+    NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    label.stringValue = text ?: @"";
+    label.font = [NSFont systemFontOfSize:size weight:weight];
+    label.textColor = color;
+    label.alignment = alignment;
+    label.drawsBackground = NO;
+    label.bordered = NO;
+    label.editable = NO;
+    label.selectable = NO;
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    return label;
+}
+
 @implementation OPNQuitGameOverlayView {
     NSRect _cardFrame;
     NSTextField *_brandLabel;
@@ -960,123 +978,6 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
         return;
     }
     [super keyDown:event];
-}
-
-@end
-
-@implementation OPNStatsOverlayView {
-    NSTextField *_statsLineLabel;
-}
-
-static constexpr CGFloat OPNStatsOverlayMinWidth = 320.0;
-static constexpr CGFloat OPNStatsOverlayMaxWidth = 620.0;
-static constexpr CGFloat OPNStatsOverlayHorizontalPadding = 8.0;
-static constexpr CGFloat OPNStatsOverlayVerticalPadding = 4.0;
-static constexpr CGFloat OPNStatsOverlayMinHeight = 22.0;
-
-static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color, NSTextAlignment alignment) {
-    NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    label.stringValue = text ?: @"";
-    label.font = [NSFont systemFontOfSize:size weight:weight];
-    label.textColor = color;
-    label.alignment = alignment;
-    label.drawsBackground = NO;
-    label.bordered = NO;
-    label.editable = NO;
-    label.selectable = NO;
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    return label;
-}
-
-static NSAttributedString *OPNStatsOutlinedLine(NSString *text) {
-    NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-    style.alignment = NSTextAlignmentLeft;
-    style.lineBreakMode = NSLineBreakByCharWrapping;
-    return [[NSAttributedString alloc] initWithString:text ?: @""
-                                            attributes:@{
-        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:10.0 weight:NSFontWeightMedium],
-        NSForegroundColorAttributeName: OPNQuitColor(1.0, 0.86, 0.18, 1.0),
-        NSStrokeColorAttributeName: OPNQuitColor(0.0, 0.0, 0.0, 1.0),
-        NSStrokeWidthAttributeName: @-2.8,
-        NSParagraphStyleAttributeName: style,
-    }];
-}
-
-- (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.wantsLayer = YES;
-        self.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
-
-        _statsLineLabel = OPNStatsText(@"", 10.0, NSFontWeightMedium, NSColor.clearColor, NSTextAlignmentLeft);
-        _statsLineLabel.lineBreakMode = NSLineBreakByCharWrapping;
-        _statsLineLabel.maximumNumberOfLines = 0;
-        _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(@"Stats: measuring");
-        [self addSubview:_statsLineLabel];
-    }
-    return self;
-}
-
-- (BOOL)isFlipped { return YES; }
-
-- (NSView *)hitTest:(NSPoint)point {
-    (void)point;
-    return nil;
-}
-
-- (void)layout {
-    [super layout];
-    _statsLineLabel.frame = NSInsetRect(self.bounds, OPNStatsOverlayHorizontalPadding, OPNStatsOverlayVerticalPadding);
-}
-
-- (NSSize)preferredSizeForMaxWidth:(CGFloat)maxWidth {
-    CGFloat availableMaxWidth = MAX(1.0, maxWidth - OPNStatsOverlayHorizontalPadding * 2.0);
-    NSAttributedString *text = _statsLineLabel.attributedStringValue.length > 0
-        ? _statsLineLabel.attributedStringValue
-        : OPNStatsOutlinedLine(@"Stats: measuring");
-    NSRect textBounds = [text boundingRectWithSize:NSMakeSize(availableMaxWidth, CGFLOAT_MAX)
-                                          options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading];
-    CGFloat contentWidth = ceil(NSWidth(textBounds));
-    CGFloat contentHeight = ceil(NSHeight(textBounds));
-    CGFloat width = MIN(maxWidth, MAX(OPNStatsOverlayMinWidth, contentWidth + OPNStatsOverlayHorizontalPadding * 2.0));
-    CGFloat height = MAX(OPNStatsOverlayMinHeight, contentHeight + OPNStatsOverlayVerticalPadding * 2.0);
-    return NSMakeSize(width, height);
-}
-
-- (void)updateLatencyMs:(NSInteger)latencyMs
-            bitrateMbps:(double)bitrateMbps
-            packetsLost:(int64_t)packetsLost
-             resolution:(NSString *)resolution
-                    fps:(NSInteger)fps
-              renderFps:(double)renderFps
-                  codec:(NSString *)codec
-            enhancement:(NSString *)enhancement
-             framesDropped:(uint64_t)framesDropped {
-    NSString *latencyText = latencyMs >= 0 ? [NSString stringWithFormat:@"%ld ms", (long)latencyMs] : @"measuring";
-    NSString *bitrateText = bitrateMbps >= 0.0 ? [NSString stringWithFormat:@"%.1f Mbps", bitrateMbps] : @"--";
-
-    NSString *streamText = @"--";
-    if (resolution.length > 0 && fps > 0) {
-        streamText = [NSString stringWithFormat:@"%@@%ld", resolution, (long)fps];
-    } else if (resolution.length > 0) {
-        streamText = resolution;
-    }
-    if (codec.length > 0) {
-        streamText = [NSString stringWithFormat:@"%@/%@", streamText, codec];
-    }
-    NSString *renderText = renderFps >= 0.0 ? [NSString stringWithFormat:@"%.0f fps", renderFps] : @"-- fps";
-    NSString *enhancementText = enhancement.length > 0 ? enhancement : @"enh --";
-    NSString *dropText = framesDropped > 0 ? [NSString stringWithFormat:@"drop %llu", (unsigned long long)framesDropped] : @"drop 0";
-    NSString *lossText = packetsLost > 0 ? [NSString stringWithFormat:@"loss %lld", (long long)packetsLost] : @"loss 0";
-    NSString *statsText = [NSString stringWithFormat:@"%@ | %@ | %@ | %@ | %@ | %@ | %@",
-                           latencyText,
-                           bitrateText,
-                           streamText,
-                           renderText,
-                           enhancementText,
-                           dropText,
-                           lossText];
-    _statsLineLabel.attributedStringValue = OPNStatsOutlinedLine(statsText);
 }
 
 @end
