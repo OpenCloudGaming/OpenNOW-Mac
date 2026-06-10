@@ -12,6 +12,6 @@ class LibWebRTCStreamSession;
 }
 
 @interface OPNMetalVideoView : NSView <RTCVideoRenderer>
-- (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner;
+- (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(void *)owner;
 @end
 #endif

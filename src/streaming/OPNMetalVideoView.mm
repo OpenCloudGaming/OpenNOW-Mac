@@ -50,7 +50,7 @@ static std::string OPNNSStringToString(NSString *value) {
 @property(nonatomic, strong) OPNVideoEnhancementResult *enhancementResult;
 @property(nonatomic, assign) NSInteger enhancementOverBudgetCount;
 @property(nonatomic, assign) NSInteger adaptiveEnhancementPenalty;
-@property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+@property(nonatomic, assign) void *owner;
 - (void)updateDrawableSizeForCurrentBackingScale;
 - (CGSize)enhancementDrawableSizeForBoundsSize:(CGSize)boundsSize scale:(CGFloat)scale;
 - (void)scheduleDraw;
@@ -83,9 +83,13 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     return [renderer isMetalFXAvailable] ? OPNVideoEnhancementTierMetalFX : OPNVideoEnhancementTierSpatial;
 }
 
+static OPN::LibWebRTCStreamSession *OPNMetalVideoViewOwner(OPNMetalVideoView *view) {
+    return view.owner ? static_cast<OPN::LibWebRTCStreamSession *>(view.owner) : nullptr;
+}
+
 @implementation OPNMetalVideoView
 
-- (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(OPN::LibWebRTCStreamSession *)owner {
+- (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(void *)owner {
     self = [super initWithFrame:frame];
     if (self) {
         _owner = owner;
@@ -117,7 +121,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
             metalLayer.presentsWithTransaction = NO;
             metalLayer.allowsNextDrawableTimeout = NO;
             if (@available(macOS 10.13, *)) {
-                metalLayer.maximumDrawableCount = owner && owner->LowLatencyMode() ? 2 : 3;
+                OPN::LibWebRTCStreamSession *typedOwner = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+                metalLayer.maximumDrawableCount = typedOwner && typedOwner->LowLatencyMode() ? 2 : 3;
             }
         }
         [self addSubview:_metalView];
@@ -171,7 +176,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
     int enhancementTargetHeight = 2160;
-    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
+    OPN::LibWebRTCStreamSession *owner = OPNMetalVideoViewOwner(self);
+    if (owner) owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
     if (enhancementMode > 0) {
         drawableSize = [self enhancementDrawableSizeForBoundsSize:boundsSize scale:scale];
     }
@@ -192,7 +198,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
     int enhancementTargetHeight = 2160;
-    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
+    OPN::LibWebRTCStreamSession *owner = OPNMetalVideoViewOwner(self);
+    if (owner) owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
     CGFloat targetHeightPixels = (CGFloat)std::max(1440, std::min(enhancementTargetHeight, 2160));
     if (enhancementMode == 1 && OPNMetalDeviceIsAppleM1Class(self.metalView.device)) {
         targetHeightPixels = std::min<CGFloat>(targetHeightPixels, 1440.0);
@@ -204,8 +211,9 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
 }
 
 - (void)renderFrame:(RTCVideoFrame *)frame {
-    if (frame && self.owner) {
-        self.owner->HandleVideoFrame((__bridge void *)frame);
+    OPN::LibWebRTCStreamSession *owner = OPNMetalVideoViewOwner(self);
+    if (frame && owner) {
+        owner->HandleVideoFrame((__bridge void *)frame);
     }
     if (!frame) return;
     @synchronized (self) {
@@ -258,7 +266,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     int enhancementSharpness = 0;
     int enhancementDenoise = 0;
     int enhancementTargetHeight = 2160;
-    if (self.owner) self.owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
+    OPN::LibWebRTCStreamSession *owner = OPNMetalVideoViewOwner(self);
+    if (owner) owner->LocalVideoEnhancement(enhancementMode, enhancementSharpness, enhancementDenoise, enhancementTargetHeight);
     if (self.adaptiveEnhancementPenalty > 0) {
         if (enhancementMode == 4) enhancementMode = [self.enhancementRenderer isMetalFXAvailable] ? 3 : 2;
         else if (enhancementMode == 3 && ![self.enhancementRenderer isMetalFXAvailable]) enhancementMode = 2;
@@ -281,7 +290,7 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
         settings.sourceSize = sourceSize;
         settings.drawableSize = self.metalView.drawableSize;
         settings.targetFrameTimeMs = 1000.0 / (double)std::max(1, self.targetFps);
-        settings.captureEnhancedPixelBuffer = self.owner ? self.owner->WantsEnhancedVideoFrames() : NO;
+        settings.captureEnhancedPixelBuffer = owner ? owner->WantsEnhancedVideoFrames() : NO;
         settings.lowCostSpatial = self.adaptiveEnhancementPenalty > 0;
         CFTimeInterval diagnosticsNow = CACurrentMediaTime();
         settings.emitDiagnostics = self.lastDiagnosticsUpdateTime <= 0.0 || diagnosticsNow - self.lastDiagnosticsUpdateTime >= 1.0;
@@ -311,8 +320,8 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
                 self.enhancementOverBudgetCount = 0;
                 if (self.adaptiveEnhancementPenalty > 0) self.adaptiveEnhancementPenalty--;
             }
-            if (result.enhancedPixelBuffer && self.owner) {
-                self.owner->HandleEnhancedVideoFrame(result.enhancedPixelBuffer);
+            if (result.enhancedPixelBuffer && owner) {
+                owner->HandleEnhancedVideoFrame(result.enhancedPixelBuffer);
                 CVPixelBufferRelease(result.enhancedPixelBuffer);
                 result.enhancedPixelBuffer = nil;
             }
@@ -334,21 +343,21 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     if (self.lastDrawnFrameSerial == drawSerial) {
         self.lastEnhancementFrameTimeMs = enhancementFrameTimeMs;
         CFTimeInterval now = CACurrentMediaTime();
-        if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
+        if (owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
             self.lastDiagnosticsUpdateTime = now;
-            self.owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
-                                                  OPN::OPNNSStringToString(renderMode),
-                                                  OPN::OPNNSStringToString(frameSource),
-                                                  OPN::OPNNSStringToString(renderPath),
-                                                  OPN::OPNNSStringToString(fallback),
-                                                  OPN::OPNNSStringToString(enhancementConfiguredTier),
-                                                  OPN::OPNNSStringToString(enhancementActiveTier),
-                                                  OPN::OPNNSStringToString(enhancementFallbackReason),
-                                                  OPN::OPNNSStringToString(enhancementSourceResolution),
-                                                  OPN::OPNNSStringToString(enhancementDrawableResolution),
-                                                  OPN::OPNNSStringToString(enhancementDiagnostics),
-                                                  enhancementFrameTimeMs,
-                                                  self.enhancementDroppedFrameCount);
+            owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
+                                             OPN::OPNNSStringToString(renderMode),
+                                             OPN::OPNNSStringToString(frameSource),
+                                             OPN::OPNNSStringToString(renderPath),
+                                             OPN::OPNNSStringToString(fallback),
+                                             OPN::OPNNSStringToString(enhancementConfiguredTier),
+                                             OPN::OPNNSStringToString(enhancementActiveTier),
+                                             OPN::OPNNSStringToString(enhancementFallbackReason),
+                                             OPN::OPNNSStringToString(enhancementSourceResolution),
+                                             OPN::OPNNSStringToString(enhancementDrawableResolution),
+                                             OPN::OPNNSStringToString(enhancementDiagnostics),
+                                             enhancementFrameTimeMs,
+                                             self.enhancementDroppedFrameCount);
         }
         return;
     }
@@ -366,21 +375,21 @@ static OPNVideoEnhancementTier OPNAutomaticEnhancementTier(OPNVideoEnhancementRe
     }
     self.lastEnhancementFrameTimeMs = enhancementFrameTimeMs;
     CFTimeInterval now = CACurrentMediaTime();
-    if (self.owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
+    if (owner && (self.lastDiagnosticsUpdateTime <= 0.0 || now - self.lastDiagnosticsUpdateTime >= 1.0 || fallback.length > 0)) {
         self.lastDiagnosticsUpdateTime = now;
-        self.owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
-                                              OPN::OPNNSStringToString(renderMode),
-                                              OPN::OPNNSStringToString(frameSource),
-                                              OPN::OPNNSStringToString(renderPath),
-                                              OPN::OPNNSStringToString(fallback),
-                                              OPN::OPNNSStringToString(enhancementConfiguredTier),
-                                              OPN::OPNNSStringToString(enhancementActiveTier),
-                                              OPN::OPNNSStringToString(enhancementFallbackReason),
-                                              OPN::OPNNSStringToString(enhancementSourceResolution),
-                                              OPN::OPNNSStringToString(enhancementDrawableResolution),
-                                              OPN::OPNNSStringToString(enhancementDiagnostics),
-                                              enhancementFrameTimeMs,
-                                              self.enhancementDroppedFrameCount);
+        owner->SetVideoRenderDiagnostics(OPN::OPNNSStringToString(pixelFormat),
+                                         OPN::OPNNSStringToString(renderMode),
+                                         OPN::OPNNSStringToString(frameSource),
+                                         OPN::OPNNSStringToString(renderPath),
+                                         OPN::OPNNSStringToString(fallback),
+                                         OPN::OPNNSStringToString(enhancementConfiguredTier),
+                                         OPN::OPNNSStringToString(enhancementActiveTier),
+                                         OPN::OPNNSStringToString(enhancementFallbackReason),
+                                         OPN::OPNNSStringToString(enhancementSourceResolution),
+                                         OPN::OPNNSStringToString(enhancementDrawableResolution),
+                                         OPN::OPNNSStringToString(enhancementDiagnostics),
+                                         enhancementFrameTimeMs,
+                                         self.enhancementDroppedFrameCount);
     }
 }
 
