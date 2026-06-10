@@ -387,6 +387,67 @@ extern "C" void OPNMetalVideoViewOwnerSetVideoRenderDiagnostics(void *owner,
                                        enhancementDroppedFrames);
 }
 
+extern "C" void OPNLibWebRTCSessionOwnerCancelDisconnectGraceTimer(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->CancelDisconnectGraceTimer();
+}
+
+extern "C" void OPNLibWebRTCSessionOwnerStartDisconnectGraceTimer(void *owner, NSString *reason) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->StartDisconnectGraceTimer(std::string(reason.UTF8String ?: ""));
+}
+
+extern "C" void OPNLibWebRTCSessionOwnerHandleConnectionState(void *owner, BOOL connected, NSString *error) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->HandleConnectionState(connected ? true : false, std::string(error.UTF8String ?: ""));
+}
+
+extern "C" void OPNLibWebRTCSessionOwnerHandleLocalIceCandidate(void *owner, NSString *candidate, NSString *sdpMid, int sdpMLineIndex) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (!session) return;
+    OPN::IceCandidatePayload payload;
+    payload.candidate = candidate.UTF8String ?: "";
+    payload.sdpMid = sdpMid.UTF8String ?: "";
+    payload.sdpMLineIndex = sdpMLineIndex;
+    session->HandleLocalIceCandidate(payload);
+}
+
+extern "C" void *OPNLibWebRTCSessionOwnerNativeWindowHandle(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    return session ? session->NativeWindowHandle() : nullptr;
+}
+
+extern "C" int OPNLibWebRTCSessionOwnerTargetFps(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    return session ? session->TargetFps() : 60;
+}
+
+extern "C" double OPNLibWebRTCSessionOwnerGameVolume(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    return session ? session->GameVolume() : 1.0;
+}
+
+extern "C" void OPNLibWebRTCSessionOwnerSetVideoRendererState(void *owner, NSString *sink, NSString *pipelineMode) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->SetVideoRendererState(std::string(sink.UTF8String ?: ""), std::string(pipelineMode.UTF8String ?: ""));
+}
+
+extern "C" void OPNLibWebRTCSessionOwnerHandleDataChannelState(void *owner, NSString *label, BOOL open) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->HandleDataChannelState(std::string(label.UTF8String ?: ""), open ? true : false);
+}
+
+extern "C" BOOL OPNLibWebRTCSessionOwnerInputReady(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    return session && session->InputReady() ? YES : NO;
+}
+
+extern "C" void OPNLibWebRTCSessionOwnerHandleDataChannelMessage(void *owner, NSString *label, NSData *data) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (!session || !data) return;
+    session->HandleDataChannelMessage(std::string(label.UTF8String ?: ""), static_cast<const uint8_t *>(data.bytes), data.length);
+}
+
 extern "C" BOOL OPNStreamSessionHandleBackendAvailable(void) {
     return OPN::LibWebRTCStreamSession::IsAvailable() ? YES : NO;
 }
@@ -563,7 +624,6 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
 }
 
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNLibWebRTCSessionImpl.h"
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #pragma clang diagnostic push
@@ -575,6 +635,22 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
 @interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
 @property(nonatomic, assign) void *owner;
 - (void)handleDefaultDeviceChange;
+@end
+
+@interface OPNLibWebRTCSessionImpl : NSObject <RTCPeerConnectionDelegate, RTCDataChannelDelegate>
+- (instancetype)initWithOwner:(void *)owner;
+@property(nonatomic, assign) void *owner;
+@property(nonatomic, strong) RTCPeerConnectionFactory *factory;
+@property(nonatomic, strong) OPNCoreAudioRTCDevice *audioDevice;
+@property(nonatomic, strong) RTCPeerConnection *peerConnection;
+@property(nonatomic, strong) RTCDataChannel *reliableInputChannel;
+@property(nonatomic, strong) RTCDataChannel *partialInputChannel;
+@property(nonatomic, strong) RTCVideoTrack *remoteVideoTrack;
+@property(nonatomic, strong) NSView *remoteVideoView;
+@property(nonatomic, strong) id<RTCVideoRenderer> remoteVideoRenderer;
+@property(nonatomic, strong) RTCAudioTrack *remoteAudioTrack;
+@property(nonatomic, strong) RTCAudioTrack *localMicrophoneTrack;
+@property(nonatomic, strong) RTCRtpSender *localMicrophoneSender;
 @end
 
 @interface OPNWebRTCCodecSupport : NSObject

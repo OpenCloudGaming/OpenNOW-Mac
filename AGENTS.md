@@ -18,6 +18,7 @@ Execute every task in this order:
 - **Self-Documenting:** Names and structure must convey intent. No explanatory inline comments.
 - **Hermetic:** Every file includes all imports and dependencies. Must compile/run as-is.
 - **Complete:** All functions and methods contain final, working logic. No mocks or no-ops unless building a test suite.
+- **No Folded Code:** Folding code is strictly forbidden.
 
 ## Migration & Conversion
 - **No Stubs:** Never use stubs when migrating or converting code.

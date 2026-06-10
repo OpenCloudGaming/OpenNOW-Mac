@@ -1,6 +1,4 @@
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNLibWebRTCSessionImpl.h"
-
 #import <Foundation/Foundation.h>
 
 #if defined(OPN_HAVE_LIBWEBRTC)
@@ -8,6 +6,10 @@
 #pragma clang diagnostic ignored "-Wincomplete-umbrella"
 #import <WebRTC/WebRTC.h>
 #pragma clang diagnostic pop
+
+@interface OPNLibWebRTCSessionImpl : NSObject
+@property(nonatomic, strong) RTCPeerConnection *peerConnection;
+@end
 #endif
 
 #include <algorithm>
