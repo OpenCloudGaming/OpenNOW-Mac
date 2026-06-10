@@ -24,9 +24,6 @@
 #pragma clang diagnostic pop
 #endif
 
-@implementation OPNVideoEnhancementResult
-@end
-
 static NSString *OPNEnhancementResolutionString(CGSize size) {
     int width = (int)std::llround(std::max<CGFloat>(0.0, size.width));
     int height = (int)std::llround(std::max<CGFloat>(0.0, size.height));

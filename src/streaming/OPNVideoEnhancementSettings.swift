@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreVideo
 import Foundation
 
 @objc(OPNVideoEnhancementSettings)
@@ -12,4 +13,22 @@ final class OPNVideoEnhancementSettings: NSObject {
     @objc var captureEnhancedPixelBuffer = false
     @objc var lowCostSpatial = false
     @objc var emitDiagnostics = false
+}
+
+@objc(OPNVideoEnhancementResult)
+final class OPNVideoEnhancementResult: NSObject {
+    @objc var pixelFormat = ""
+    @objc var renderMode = ""
+    @objc var frameSource = ""
+    @objc var renderPath = ""
+    @objc var fallbackReason = ""
+    @objc var configuredTier = ""
+    @objc var activeTier = ""
+    @objc var tierFallbackReason = ""
+    @objc var sourceResolution = ""
+    @objc var drawableResolution = ""
+    @objc var diagnostics = ""
+    @objc var frameTimeMs = 0.0
+    @objc var droppedFrames: UInt64 = 0
+    @objc var enhancedPixelBuffer: CVPixelBuffer?
 }
