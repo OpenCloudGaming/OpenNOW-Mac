@@ -1,6 +1,5 @@
 #include "OPNLibWebRTCStreamSession.h"
 #include "OPNLibWebRTCSessionImpl.h"
-#include "OPNWebRTCDataChannelUtils.h"
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #pragma clang diagnostic push
@@ -39,6 +38,28 @@ static constexpr uint32_t OPNInputUtf8Text = 23;
 static constexpr int OPNPartialReliableInputLifetimeMs = 5;
 [[maybe_unused]] static constexpr uint64_t OPNPartialReliableInputBacklogLimitBytes = 16 * 1024;
 [[maybe_unused]] static constexpr uint64_t OPNLowLatencyInputBacklogLimitBytes = 4 * 1024;
+
+static uint32_t OPNReadU32LE(const uint8_t *data) {
+    return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
+static std::string OPNValidUtf8StringFromBytes(const uint8_t *data, size_t len) {
+    if (!data || len == 0) return "";
+    NSString *string = [[NSString alloc] initWithBytes:data length:len encoding:NSUTF8StringEncoding];
+    return string.length > 0 ? std::string(string.UTF8String ?: "") : std::string();
+}
+
+static std::string OPNClipboardTextFromJsonData(NSData *data) {
+    if (!data) return "";
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSDictionary *dict = [json isKindOfClass:NSDictionary.class] ? (NSDictionary *)json : nil;
+    if (!dict) return "";
+    for (NSString *key in @[@"clipboard", @"text", @"content", @"payload"]) {
+        NSString *value = [dict[key] isKindOfClass:NSString.class] ? dict[key] : nil;
+        if (value.length > 0) return std::string(value.UTF8String ?: "");
+    }
+    return "";
+}
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 static OPNLibWebRTCSessionImpl *OPNImplFromOpaque(void *opaque) {
