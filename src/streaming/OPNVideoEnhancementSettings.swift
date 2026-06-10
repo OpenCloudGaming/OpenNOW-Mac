@@ -2,6 +2,9 @@ import CoreGraphics
 import CoreVideo
 import Foundation
 import Metal
+#if canImport(MetalFX)
+import MetalFX
+#endif
 
 @objc(OPNVideoEnhancementSettings)
 final class OPNVideoEnhancementSettings: NSObject {
@@ -45,4 +48,83 @@ final class OPNVideoTextureFrame: NSObject {
     @objc var cropRect: CGRect = .zero
     @objc var contentWidth: UInt = 0
     @objc var contentHeight: UInt = 0
+}
+
+@objc(OPNMetalFXUpscaler)
+final class OPNMetalFXUpscaler: NSObject {
+    private let device: (any MTLDevice)?
+    private var spatialScaler: AnyObject?
+    private var inputWidth = 0
+    private var inputHeight = 0
+    private var outputWidth = 0
+    private var outputHeight = 0
+
+    @objc init(device: (any MTLDevice)?) {
+        self.device = device
+        super.init()
+    }
+
+    @objc var isAvailable: Bool {
+#if canImport(MetalFX)
+        guard let device, NSClassFromString("MTLFXSpatialScalerDescriptor") != nil else { return false }
+        if #available(macOS 13.0, *) {
+            return MTLFXSpatialScalerDescriptor.supportsDevice(device)
+        }
+        return false
+#else
+        return false
+#endif
+    }
+
+    @objc(encodeTexture:toTexture:commandBuffer:fallback:)
+    func encodeTexture(
+        _ sourceTexture: (any MTLTexture)?,
+        toTexture destinationTexture: (any MTLTexture)?,
+        commandBuffer: (any MTLCommandBuffer)?,
+        fallback: AutoreleasingUnsafeMutablePointer<NSString?>?
+    ) -> Bool {
+#if canImport(MetalFX)
+        guard isAvailable, let device, let sourceTexture, let destinationTexture, let commandBuffer else {
+            fallback?.pointee = "MetalFX unavailable"
+            return false
+        }
+        if #available(macOS 13.0, *) {
+            let dimensionsChanged = spatialScaler == nil ||
+                inputWidth != sourceTexture.width ||
+                inputHeight != sourceTexture.height ||
+                outputWidth != destinationTexture.width ||
+                outputHeight != destinationTexture.height
+            if dimensionsChanged {
+                let descriptor = MTLFXSpatialScalerDescriptor()
+                descriptor.colorTextureFormat = sourceTexture.pixelFormat
+                descriptor.outputTextureFormat = destinationTexture.pixelFormat
+                descriptor.inputWidth = sourceTexture.width
+                descriptor.inputHeight = sourceTexture.height
+                descriptor.outputWidth = destinationTexture.width
+                descriptor.outputHeight = destinationTexture.height
+                descriptor.colorProcessingMode = .perceptual
+                spatialScaler = descriptor.makeSpatialScaler(device: device) as AnyObject?
+                inputWidth = sourceTexture.width
+                inputHeight = sourceTexture.height
+                outputWidth = destinationTexture.width
+                outputHeight = destinationTexture.height
+            }
+            guard let scaler = spatialScaler as? MTLFXSpatialScaler else {
+                fallback?.pointee = "MetalFX scaler creation failed"
+                return false
+            }
+            scaler.colorTexture = sourceTexture
+            scaler.outputTexture = destinationTexture
+            scaler.inputContentWidth = sourceTexture.width
+            scaler.inputContentHeight = sourceTexture.height
+            scaler.encode(commandBuffer: commandBuffer)
+            return true
+        }
+        fallback?.pointee = "MetalFX requires macOS 13"
+        return false
+#else
+        fallback?.pointee = "MetalFX headers unavailable"
+        return false
+#endif
+    }
 }
