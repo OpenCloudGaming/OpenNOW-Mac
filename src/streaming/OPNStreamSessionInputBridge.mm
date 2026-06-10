@@ -4,7 +4,36 @@
 #include "OPNStreamTypes.h"
 #include "OPNLibWebRTCStreamSession.h"
 #include "OPNStreamSessionLaunchBridge.h"
-#include "OPNStreamStatsSnapshot+Private.h"
+
+@interface OPNStreamStatsSnapshot : NSObject
+- (instancetype)initWithAvailable:(BOOL)available
+                        latencyMs:(double)latencyMs
+                         jitterMs:(double)jitterMs
+               inboundBitrateMbps:(double)inboundBitrateMbps
+                packetLossPercent:(double)packetLossPercent
+                     decodeTimeMs:(double)decodeTimeMs
+                        renderFps:(double)renderFps
+                   framesReceived:(uint64_t)framesReceived
+                    framesDropped:(uint64_t)framesDropped
+                      packetsLost:(int64_t)packetsLost
+                              fps:(NSInteger)fps
+                       resolution:(NSString *)resolution
+                            codec:(NSString *)codec
+       videoEnhancementActiveTier:(NSString *)videoEnhancementActiveTier
+   videoEnhancementConfiguredTier:(NSString *)videoEnhancementConfiguredTier
+ videoEnhancementSourceResolution:(NSString *)videoEnhancementSourceResolution
+videoEnhancementDrawableResolution:(NSString *)videoEnhancementDrawableResolution
+   videoEnhancementFallbackReason:(NSString *)videoEnhancementFallbackReason
+      videoEnhancementDiagnostics:(NSString *)videoEnhancementDiagnostics
+      videoEnhancementFrameTimeMs:(double)videoEnhancementFrameTimeMs
+    videoEnhancementDroppedFrames:(uint64_t)videoEnhancementDroppedFrames;
+@end
+
+static NSString *OPNStreamStatsSnapshotString(const std::string &value) {
+    if (value.empty()) return @"";
+    NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    return string ?: @"";
+}
 
 static OPN::IStreamSession *OPNRawStreamSession(void *session) {
     return static_cast<OPN::IStreamSession *>(session);
@@ -53,7 +82,28 @@ extern "C" void OPNStreamSessionHandleAddRemoteIceCandidatePayload(void *session
 }
 
 extern "C" OPNStreamStatsSnapshot *OPNStreamSessionHandleLatestStatsSnapshot(void *session) {
-    return [[OPNStreamStatsSnapshot alloc] initWithStreamStats:OPNRequestLatestStreamSessionStats(OPNRawStreamSession(session))];
+    OPN::StreamStats stats = OPNRequestLatestStreamSessionStats(OPNRawStreamSession(session));
+    return [[OPNStreamStatsSnapshot alloc] initWithAvailable:stats.available ? YES : NO
+                                                  latencyMs:stats.latencyMs
+                                                   jitterMs:stats.jitterMs
+                                         inboundBitrateMbps:stats.inboundBitrateMbps
+                                          packetLossPercent:stats.packetLossPercent
+                                               decodeTimeMs:stats.decodeTimeMs
+                                                  renderFps:stats.renderFps
+                                             framesReceived:stats.framesReceived
+                                              framesDropped:stats.framesDropped
+                                                packetsLost:stats.packetsLost
+                                                        fps:stats.fps
+                                                 resolution:OPNStreamStatsSnapshotString(stats.resolution)
+                                                      codec:OPNStreamStatsSnapshotString(stats.codec)
+                                 videoEnhancementActiveTier:OPNStreamStatsSnapshotString(stats.videoEnhancementActiveTier)
+                             videoEnhancementConfiguredTier:OPNStreamStatsSnapshotString(stats.videoEnhancementConfiguredTier)
+                           videoEnhancementSourceResolution:OPNStreamStatsSnapshotString(stats.videoEnhancementSourceResolution)
+                         videoEnhancementDrawableResolution:OPNStreamStatsSnapshotString(stats.videoEnhancementDrawableResolution)
+                             videoEnhancementFallbackReason:OPNStreamStatsSnapshotString(stats.videoEnhancementFallbackReason)
+                                videoEnhancementDiagnostics:OPNStreamStatsSnapshotString(stats.videoEnhancementDiagnostics)
+                                videoEnhancementFrameTimeMs:stats.videoEnhancementFrameTimeMs
+                              videoEnhancementDroppedFrames:stats.videoEnhancementDroppedFrames];
 }
 
 NSUInteger OPNStreamSessionMaxGamepadControllers(void) {
