@@ -34,11 +34,11 @@ private func OPNStreamSessionLaunchBridgeStart(_ session: UnsafeMutableRawPointe
 @_silgen_name("OPNStreamSessionLaunchBridgeInjectManualIceCandidate")
 private func OPNStreamSessionLaunchBridgeInjectManualIceCandidate(_ session: UnsafeMutableRawPointer?, _ sessionInfo: NSDictionary, _ offerSdp: NSString, _ serverIceUfrag: NSString)
 
-@_silgen_name("OPNStreamSessionCallbackBridgeClear")
-private func OPNStreamSessionCallbackBridgeClear(_ session: UnsafeMutableRawPointer?)
+@_silgen_name("OPNStreamSessionClearCallbacks")
+private func OPNStreamSessionClearCallbacks(_ session: UnsafeMutableRawPointer?)
 
-@_silgen_name("OPNStreamSessionCallbackBridgeConfigure")
-private func OPNStreamSessionCallbackBridgeConfigure(_ session: UnsafeMutableRawPointer?, _ streamView: OPNStreamView?, _ recordingManager: OPNStreamRecordingManager?)
+@_silgen_name("OPNStreamSessionConfigureViewCallbacks")
+private func OPNStreamSessionConfigureViewCallbacks(_ session: UnsafeMutableRawPointer?, _ streamView: OPNStreamView?, _ recordingManager: OPNStreamRecordingManager?)
 
 @_silgen_name("OPNStreamSessionHandleSendMouseMove")
 private func OPNStreamSessionHandleSendMouseMove(_ session: UnsafeMutableRawPointer?, _ dx: Int16, _ dy: Int16)
@@ -410,12 +410,12 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func configureStreamViewSessionCallbacks() {
-        OPNStreamSessionCallbackBridgeConfigure(session.rawSession, streamView, streamView?.recordingManager)
+        OPNStreamSessionConfigureViewCallbacks(session.rawSession, streamView, streamView?.recordingManager)
     }
 
     private func clearCurrentSessionCallbacks() {
         streamView?.clearStreamCallbacks()
-        OPNStreamSessionCallbackBridgeClear(session.rawSession)
+        OPNStreamSessionClearCallbacks(session.rawSession)
     }
 
     private func ensureLoadingView(message: String) {
