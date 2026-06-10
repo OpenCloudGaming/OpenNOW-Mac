@@ -7,10 +7,6 @@
 #import <WebRTC/WebRTC.h>
 #pragma clang diagnostic pop
 
-namespace OPN {
-class LibWebRTCStreamSession;
-}
-
 @interface OPNMetalVideoView : NSView <RTCVideoRenderer>
 - (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(void *)owner;
 @end
