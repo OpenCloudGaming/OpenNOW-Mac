@@ -2,8 +2,6 @@
 
 #include "OPNLibWebRTCStreamSession.h"
 
-#include "OPNMetalVideoView.h"
-
 #if defined(OPN_HAVE_LIBWEBRTC)
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -12,6 +10,10 @@
 @interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
 @property(nonatomic, assign) void *owner;
 - (void)handleDefaultDeviceChange;
+@end
+
+@interface OPNMetalVideoView : NSView <RTCVideoRenderer>
+- (instancetype)initWithFrame:(NSRect)frame targetFps:(int)targetFps owner:(void *)owner;
 @end
 
 namespace OPN {

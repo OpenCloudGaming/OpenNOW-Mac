@@ -3,6 +3,7 @@
 #include "OPNLibWebRTCStreamSession.h"
 
 
+#import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
 
 #include <cctype>
@@ -312,6 +313,78 @@ static void OPNStartStreamSession(OPN::IStreamSession *session,
         if (!stateHandlerCopy) return;
         stateHandlerCopy(connected ? YES : NO, OPNStreamSessionStringFromStdString(streamError));
     });
+}
+
+extern "C" BOOL OPNMetalVideoViewOwnerLowLatencyMode(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    return session && session->LowLatencyMode() ? YES : NO;
+}
+
+extern "C" void OPNMetalVideoViewOwnerLocalVideoEnhancement(void *owner, int *mode, int *sharpness, int *denoise, int *targetHeight) {
+    if (mode) *mode = 0;
+    if (sharpness) *sharpness = 0;
+    if (denoise) *denoise = 0;
+    if (targetHeight) *targetHeight = 2160;
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (!session) return;
+    int localMode = 0;
+    int localSharpness = 0;
+    int localDenoise = 0;
+    int localTargetHeight = 2160;
+    session->LocalVideoEnhancement(localMode, localSharpness, localDenoise, localTargetHeight);
+    if (mode) *mode = localMode;
+    if (sharpness) *sharpness = localSharpness;
+    if (denoise) *denoise = localDenoise;
+    if (targetHeight) *targetHeight = localTargetHeight;
+}
+
+extern "C" void OPNMetalVideoViewOwnerHandleVideoFrame(void *owner, void *frame) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session && frame) session->HandleVideoFrame(frame);
+}
+
+extern "C" BOOL OPNMetalVideoViewOwnerWantsEnhancedVideoFrames(void *owner) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    return session && session->WantsEnhancedVideoFrames() ? YES : NO;
+}
+
+extern "C" void OPNMetalVideoViewOwnerHandleEnhancedVideoFrame(void *owner, CVPixelBufferRef pixelBuffer) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session && pixelBuffer) session->HandleEnhancedVideoFrame(pixelBuffer);
+}
+
+extern "C" void OPNMetalVideoViewOwnerSetVideoRenderDiagnostics(void *owner,
+                                                                 NSString *pixelFormat,
+                                                                 NSString *renderMode,
+                                                                 NSString *frameSource,
+                                                                 NSString *renderPath,
+                                                                 NSString *fallback,
+                                                                 NSString *enhancementConfiguredTier,
+                                                                 NSString *enhancementActiveTier,
+                                                                 NSString *enhancementFallbackReason,
+                                                                 NSString *enhancementSourceResolution,
+                                                                 NSString *enhancementDrawableResolution,
+                                                                 NSString *enhancementDiagnostics,
+                                                                 double enhancementFrameTimeMs,
+                                                                 uint64_t enhancementDroppedFrames) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (!session) return;
+    auto stringValue = [](NSString *value) -> std::string {
+        return value ? std::string(value.UTF8String ?: "") : std::string();
+    };
+    session->SetVideoRenderDiagnostics(stringValue(pixelFormat),
+                                       stringValue(renderMode),
+                                       stringValue(frameSource),
+                                       stringValue(renderPath),
+                                       stringValue(fallback),
+                                       stringValue(enhancementConfiguredTier),
+                                       stringValue(enhancementActiveTier),
+                                       stringValue(enhancementFallbackReason),
+                                       stringValue(enhancementSourceResolution),
+                                       stringValue(enhancementDrawableResolution),
+                                       stringValue(enhancementDiagnostics),
+                                       enhancementFrameTimeMs,
+                                       enhancementDroppedFrames);
 }
 
 extern "C" BOOL OPNStreamSessionHandleBackendAvailable(void) {
