@@ -1,7 +1,9 @@
 import AppKit
+import AppKit
 import Foundation
 
 @objc(OPNStreamViewControllerSupport)
+@MainActor
 final class OPNStreamViewControllerSupport: NSObject {
     @objc static func shouldReportTerminalStreamFailure(_ message: String?) -> Bool {
         guard let message, !message.isEmpty else { return true }
@@ -96,6 +98,26 @@ final class OPNStreamViewControllerSupport: NSObject {
 
     @objc static func isCommandKEvent(_ event: NSEvent?) -> Bool {
         isCommandEvent(event, key: "k")
+    }
+
+    @objc(quitColorWithRed:green:blue:alpha:)
+    static func quitColor(red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) -> NSColor {
+        NSColor(calibratedRed: red, green: green, blue: blue, alpha: alpha)
+    }
+
+    @objc(statsTextWithText:size:weight:color:alignment:)
+    static func statsText(text: String?, size: CGFloat, weight: CGFloat, color: NSColor?, alignment: NSTextAlignment) -> NSTextField {
+        let label = NSTextField(frame: .zero)
+        label.stringValue = text ?? ""
+        label.font = NSFont.systemFont(ofSize: size, weight: NSFont.Weight(rawValue: weight))
+        label.textColor = color
+        label.alignment = alignment
+        label.drawsBackground = false
+        label.isBordered = false
+        label.isEditable = false
+        label.isSelectable = false
+        label.lineBreakMode = .byTruncatingTail
+        return label
     }
 
     private static func nonEmpty(_ value: String?, fallback: String) -> String {

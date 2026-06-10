@@ -516,27 +516,13 @@ static NSTimeInterval OPNRecoveryDelayForAttempt(NSInteger attempt) {
     return delays[index];
 }
 
-static NSColor *OPNQuitColor(CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
-    return [NSColor colorWithCalibratedRed:r green:g blue:b alpha:a];
-}
+#define OPNQuitColor(r, g, b, a) ([OPNStreamViewControllerSupport quitColorWithRed:(r) green:(g) blue:(b) alpha:(a)])
 
 static constexpr CGFloat OPNStatsOverlayMinWidth = 320.0;
 static constexpr CGFloat OPNStatsOverlayMaxWidth = 620.0;
 static constexpr CGFloat OPNStatsOverlayMinHeight = 22.0;
 
-static NSTextField *OPNStatsText(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color, NSTextAlignment alignment) {
-    NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    label.stringValue = text ?: @"";
-    label.font = [NSFont systemFontOfSize:size weight:weight];
-    label.textColor = color;
-    label.alignment = alignment;
-    label.drawsBackground = NO;
-    label.bordered = NO;
-    label.editable = NO;
-    label.selectable = NO;
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    return label;
-}
+#define OPNStatsText(textValue, fontSize, fontWeight, textColor, textAlignment) ([OPNStreamViewControllerSupport statsTextWithText:(textValue) size:(fontSize) weight:(fontWeight) color:(textColor) alignment:(textAlignment)])
 
 static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::SessionAdState &adState) {
     if (!adState.isAdsRequired) {
