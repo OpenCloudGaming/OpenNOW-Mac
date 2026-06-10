@@ -491,7 +491,6 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
 
 #include "OPNLibWebRTCStreamSession.h"
 #include "OPNLibWebRTCSessionImpl.h"
-#include "OPNWebRTCCodecSupport.h"
 
 #if defined(OPN_HAVE_LIBWEBRTC)
 #pragma clang diagnostic push
@@ -503,6 +502,12 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
 @interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
 @property(nonatomic, assign) void *owner;
 - (void)handleDefaultDeviceChange;
+@end
+
+@interface OPNWebRTCCodecSupport : NSObject
++ (BOOL)supportsCodecWithFactory:(RTCPeerConnectionFactory *)factory normalizedCodec:(NSString *)normalizedCodec;
++ (NSDictionary *)h265ReceiverSupportWithFactory:(RTCPeerConnectionFactory *)factory;
++ (BOOL)applyVideoCodecPreferenceWithFactory:(RTCPeerConnectionFactory *)factory peerConnection:(RTCPeerConnection *)peerConnection normalizedCodec:(NSString *)normalizedCodec;
 @end
 #endif
 
@@ -1446,12 +1451,17 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
               mediaIp.empty() ? "unknown" : mediaIp.c_str());
     }
     std::string requestedCodec = OPNNormalizeCodec(settings.codec);
-    bool requestedCodecSupported = OPNLibWebRTCSupportsCodec(impl.factory, requestedCodec);
+    NSString *requestedCodecString = [NSString stringWithUTF8String:requestedCodec.c_str()] ?: @"";
+    bool requestedCodecSupported = [OPNWebRTCCodecSupport supportsCodecWithFactory:impl.factory normalizedCodec:requestedCodecString] ? true : false;
     if (requestedCodec == "H265" && requestedCodecSupported && OPNEnvFlagEnabled("OPN_ENABLE_LIBWEBRTC_H265_OFFER_REWRITE", true)) {
         int maxMainLevelId = 0;
         int maxMain10LevelId = 0;
         bool supportsHighTier = false;
-        if (OPNLibWebRTCH265ReceiverSupport(impl.factory, maxMainLevelId, maxMain10LevelId, supportsHighTier)) {
+        NSDictionary *h265Support = [OPNWebRTCCodecSupport h265ReceiverSupportWithFactory:impl.factory];
+        if ([h265Support[@"supported"] boolValue]) {
+            maxMainLevelId = [h265Support[@"maxMainLevelId"] intValue];
+            maxMain10LevelId = [h265Support[@"maxMain10LevelId"] intValue];
+            supportsHighTier = [h265Support[@"supportsHighTier"] boolValue] ? true : false;
             processedOfferSdp = OPNRewriteH265OfferForReceiver(processedOfferSdp, maxMainLevelId, maxMain10LevelId, supportsHighTier);
         }
     } else if (requestedCodec == "H265" && requestedCodecSupported) {
@@ -1479,7 +1489,8 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
 
         std::string answerCodecPreference = OPNNormalizeCodec(this->m_settings.codec);
         if (OPNIsSupportedCodecPreference(answerCodecPreference)) {
-            if (!OPNApplyVideoCodecPreference(strongImpl.factory, strongImpl.peerConnection, answerCodecPreference)) {
+            NSString *answerCodecPreferenceString = [NSString stringWithUTF8String:answerCodecPreference.c_str()] ?: @"";
+            if (![OPNWebRTCCodecSupport applyVideoCodecPreferenceWithFactory:strongImpl.factory peerConnection:strongImpl.peerConnection normalizedCodec:answerCodecPreferenceString]) {
                 OPNLogInfo(@"[LibWebRTC] No video transceiver accepted %s codec preference before answer", answerCodecPreference.c_str());
             }
         }
