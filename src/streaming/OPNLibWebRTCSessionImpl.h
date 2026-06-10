@@ -11,7 +11,7 @@
 
 @interface OPNLibWebRTCSessionImpl : NSObject <RTCPeerConnectionDelegate, RTCDataChannelDelegate>
 - (instancetype)initWithOwner:(OPN::LibWebRTCStreamSession *)owner;
-@property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+@property(nonatomic, assign) void *owner;
 @property(nonatomic, strong) RTCPeerConnectionFactory *factory;
 @property(nonatomic, strong) OPNCoreAudioRTCDevice *audioDevice;
 @property(nonatomic, strong) RTCPeerConnection *peerConnection;

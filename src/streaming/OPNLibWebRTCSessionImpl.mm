@@ -12,6 +12,10 @@ static std::string OPNNSStringToString(NSString *value) {
 }
 }
 
+static OPN::LibWebRTCStreamSession *OPNSessionImplOwner(OPNLibWebRTCSessionImpl *impl) {
+    return impl.owner ? static_cast<OPN::LibWebRTCStreamSession *>(impl.owner) : nullptr;
+}
+
 @implementation OPNLibWebRTCSessionImpl
 
 - (instancetype)initWithOwner:(OPN::LibWebRTCStreamSession *)owner {
@@ -47,8 +51,8 @@ static std::string OPNNSStringToString(NSString *value) {
     __weak OPNLibWebRTCSessionImpl *weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         OPNLibWebRTCSessionImpl *strongSelf = weakSelf;
-        if (!strongSelf.owner) return;
-        OPN::LibWebRTCStreamSession *owner = strongSelf.owner;
+        OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(strongSelf);
+        if (!owner) return;
         if (newState == RTCIceConnectionStateConnected || newState == RTCIceConnectionStateCompleted) {
             owner->CancelDisconnectGraceTimer();
             owner->HandleConnectionState(true, "");
@@ -68,12 +72,13 @@ static std::string OPNNSStringToString(NSString *value) {
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didGenerateIceCandidate:(RTCIceCandidate *)candidate {
     (void)peerConnection;
-    if (!_owner || !candidate) return;
+    OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(self);
+    if (!owner || !candidate) return;
     OPN::IceCandidatePayload payload;
     payload.candidate = OPN::OPNNSStringToString(candidate.sdp);
     payload.sdpMid = OPN::OPNNSStringToString(candidate.sdpMid);
     payload.sdpMLineIndex = candidate.sdpMLineIndex;
-    _owner->HandleLocalIceCandidate(payload);
+    owner->HandleLocalIceCandidate(payload);
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didRemoveIceCandidates:(NSArray<RTCIceCandidate *> *)candidates {
@@ -92,8 +97,8 @@ static std::string OPNNSStringToString(NSString *value) {
     __weak OPNLibWebRTCSessionImpl *weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         OPNLibWebRTCSessionImpl *strongSelf = weakSelf;
-        if (!strongSelf.owner) return;
-        OPN::LibWebRTCStreamSession *owner = strongSelf.owner;
+        OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(strongSelf);
+        if (!owner) return;
         if (newState == RTCPeerConnectionStateConnected) {
             owner->CancelDisconnectGraceTimer();
             owner->HandleConnectionState(true, "");
@@ -113,8 +118,9 @@ static std::string OPNNSStringToString(NSString *value) {
         OPNLogInfo(@"[LibWebRTC] remote video receiver added: %@", rtpReceiver.track.trackId);
         RTCVideoTrack *videoTrack = (RTCVideoTrack *)rtpReceiver.track;
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (!_owner) return;
-            NSView *parentView = (__bridge NSView *)_owner->NativeWindowHandle();
+            OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(self);
+            if (!owner) return;
+            NSView *parentView = (__bridge NSView *)owner->NativeWindowHandle();
             if (!parentView) {
                 OPNLogError(@"[LibWebRTC] Cannot attach remote video: native view is missing");
                 return;
@@ -130,11 +136,11 @@ static std::string OPNNSStringToString(NSString *value) {
             [self.remoteVideoView removeFromSuperview];
 
             OPNMetalVideoView *metalView = [[OPNMetalVideoView alloc] initWithFrame:parentView.bounds
-                                                                          targetFps:_owner->TargetFps()
-                                                                              owner:_owner];
+                                                                          targetFps:owner->TargetFps()
+                                                                              owner:owner];
             NSView *videoView = metalView;
             id<RTCVideoRenderer> videoRenderer = metalView;
-            _owner->SetVideoRendererState("OPNMetalVideoView", "libwebrtc Metal display");
+            owner->SetVideoRendererState("OPNMetalVideoView", "libwebrtc Metal display");
             videoView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             videoView.wantsLayer = YES;
             videoView.layer.backgroundColor = NSColor.blackColor.CGColor;
@@ -144,27 +150,30 @@ static std::string OPNNSStringToString(NSString *value) {
             self.remoteVideoTrack = videoTrack;
             self.remoteVideoView = videoView;
             self.remoteVideoRenderer = videoRenderer;
-            OPNLogInfo(@"[LibWebRTC] Remote video renderer attached to native view=%p metal=1 targetFps=%d", (__bridge void *)parentView, _owner->TargetFps());
+            OPNLogInfo(@"[LibWebRTC] Remote video renderer attached to native view=%p metal=1 targetFps=%d", (__bridge void *)parentView, owner->TargetFps());
         });
     } else if ([rtpReceiver.track.kind isEqualToString:kRTCMediaStreamTrackKindAudio]) {
         RTCAudioTrack *audioTrack = (RTCAudioTrack *)rtpReceiver.track;
         audioTrack.isEnabled = YES;
-        audioTrack.source.volume = _owner ? _owner->GameVolume() : 1.0;
+        OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(self);
+        audioTrack.source.volume = owner ? owner->GameVolume() : 1.0;
         self.remoteAudioTrack = audioTrack;
         OPNLogInfo(@"[LibWebRTC] remote audio track enabled: %@ volume=%.2f", audioTrack.trackId, audioTrack.source.volume);
     }
 }
 
 - (void)dataChannelDidChangeState:(RTCDataChannel *)dataChannel {
-    if (!_owner || !dataChannel) return;
+    OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(self);
+    if (!owner || !dataChannel) return;
     const bool open = dataChannel.readyState == RTCDataChannelStateOpen;
-    _owner->HandleDataChannelState(OPN::OPNNSStringToString(dataChannel.label), open);
-    OPNLogInfo(@"[LibWebRTC] data channel %@ state=%ld inputReady=%d", dataChannel.label, (long)dataChannel.readyState, _owner->InputReady());
+    owner->HandleDataChannelState(OPN::OPNNSStringToString(dataChannel.label), open);
+    OPNLogInfo(@"[LibWebRTC] data channel %@ state=%ld inputReady=%d", dataChannel.label, (long)dataChannel.readyState, owner->InputReady());
 }
 
 - (void)dataChannel:(RTCDataChannel *)dataChannel didReceiveMessageWithBuffer:(RTCDataBuffer *)buffer {
-    if (!_owner || !dataChannel || !buffer) return;
-    _owner->HandleDataChannelMessage(OPN::OPNNSStringToString(dataChannel.label), static_cast<const uint8_t *>(buffer.data.bytes), buffer.data.length);
+    OPN::LibWebRTCStreamSession *owner = OPNSessionImplOwner(self);
+    if (!owner || !dataChannel || !buffer) return;
+    owner->HandleDataChannelMessage(OPN::OPNNSStringToString(dataChannel.label), static_cast<const uint8_t *>(buffer.data.bytes), buffer.data.length);
 }
 
 @end
