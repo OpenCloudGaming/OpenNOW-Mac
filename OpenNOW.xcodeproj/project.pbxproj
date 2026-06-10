@@ -78,7 +78,6 @@
 		E00000000000000000000077 /* OPNLibWebRTCStats.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000078; };
 		E00000000000000000000079 /* OPNLibWebRTCAudio.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007A; };
 		E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007C; };
-		E0000000000000000000007D /* OPNLibWebRTCNegotiation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007E; };
 		E0000000000000000000007F /* OPNStreamSessionHandle.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080; };
 		E00000000000000000000082 /* OPNSessionManagerBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000083; };
 		E00000000000000000000088 /* OPNStreamStatsSnapshot.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000089; };
@@ -340,7 +339,6 @@
 		E00000000000000000000078 /* OPNLibWebRTCStats.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCStats.mm; path = src/streaming/OPNLibWebRTCStats.mm; sourceTree = "<group>"; };
 		E0000000000000000000007A /* OPNLibWebRTCAudio.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCAudio.mm; path = src/streaming/OPNLibWebRTCAudio.mm; sourceTree = "<group>"; };
 		E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCSessionSurface.mm; path = src/streaming/OPNLibWebRTCSessionSurface.mm; sourceTree = "<group>"; };
-		E0000000000000000000007E /* OPNLibWebRTCNegotiation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCNegotiation.mm; path = src/streaming/OPNLibWebRTCNegotiation.mm; sourceTree = "<group>"; };
 		E00000000000000000000080 /* OPNStreamSessionHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandle.swift; path = src/streaming/OPNStreamSessionHandle.swift; sourceTree = "<group>"; };
 		E00000000000000000000083 /* OPNSessionManagerBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionManagerBridge.mm; path = src/streaming/OPNSessionManagerBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamStatsSnapshot.swift; path = src/streaming/OPNStreamStatsSnapshot.swift; sourceTree = "<group>"; };
@@ -659,7 +657,6 @@
 				E00000000000000000000078 /* OPNLibWebRTCStats.mm */,
 				E0000000000000000000007A /* OPNLibWebRTCAudio.mm */,
 				E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */,
-				E0000000000000000000007E /* OPNLibWebRTCNegotiation.mm */,
 				E00000000000000000000080 /* OPNStreamSessionHandle.swift */,
 				E00000000000000000000083 /* OPNSessionManagerBridge.mm */,
 				E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */,
@@ -795,7 +792,6 @@
 				E00000000000000000000077 /* OPNLibWebRTCStats.mm in PBXBuildFile */,
 				E00000000000000000000079 /* OPNLibWebRTCAudio.mm in PBXBuildFile */,
 				E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */,
-				E0000000000000000000007D /* OPNLibWebRTCNegotiation.mm in PBXBuildFile */,
 				E0000000000000000000007F /* OPNStreamSessionHandle.swift in PBXBuildFile */,
 				E00000000000000000000082 /* OPNSessionManagerBridge.mm in PBXBuildFile */,
 				E00000000000000000000088 /* OPNStreamStatsSnapshot.swift in PBXBuildFile */,
