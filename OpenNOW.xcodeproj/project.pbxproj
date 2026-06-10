@@ -500,9 +500,7 @@
 		E00000000000000000000045 /* OPNStreamSessionInputBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionInputBridge.mm; path = src/streaming/OPNStreamSessionInputBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000046 /* OPNStreamSessionInputBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionInputBridge.h; path = src/streaming/OPNStreamSessionInputBridge.h; sourceTree = "<group>"; };
 		E00000000000000000000048 /* OPNStreamSessionCallbackBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionCallbackBridge.mm; path = src/streaming/OPNStreamSessionCallbackBridge.mm; sourceTree = "<group>"; };
-		E00000000000000000000049 /* OPNStreamSessionCallbackBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionCallbackBridge.h; path = src/streaming/OPNStreamSessionCallbackBridge.h; sourceTree = "<group>"; };
 		E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLaunchBridge.mm; path = src/streaming/OPNStreamSessionLaunchBridge.mm; sourceTree = "<group>"; };
-		E00000000000000000000052 /* OPNStreamSessionLaunchBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionLaunchBridge.h; path = src/streaming/OPNStreamSessionLaunchBridge.h; sourceTree = "<group>"; };
 		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
 		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
 		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
@@ -701,8 +699,6 @@
 				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
 				B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */,
 				E00000000000000000000046 /* OPNStreamSessionInputBridge.h */,
-				E00000000000000000000049 /* OPNStreamSessionCallbackBridge.h */,
-				E00000000000000000000052 /* OPNStreamSessionLaunchBridge.h */,
 				E00000000000000000000065 /* OPNWebRTCSdpUtils.h */,
 				E00000000000000000000068 /* OPNWebRTCCodecSupport.h */,
 				E0000000000000000000006E /* OPNMetalVideoView.h */,

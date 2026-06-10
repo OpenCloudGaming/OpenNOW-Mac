@@ -1,7 +1,5 @@
 #import "OPNStreamViewController.h"
-#include "OPNStreamSessionCallbackBridge.h"
 #include "OPNStreamSessionInputBridge.h"
-#include "OPNStreamSessionLaunchBridge.h"
 #include "OPNStreamPreferences.h"
 #include "OPNSessionManager.h"
 #import <QuartzCore/QuartzCore.h>
@@ -139,6 +137,7 @@ typedef void (^OPNStreamViewSidebarVisibilityHandler)(BOOL visible);
 #include <cctype>
 
 namespace OPN {
+class IStreamSession;
 void OPNSetSessionManagerAccessToken(const std::string &token);
 void OPNSetSessionManagerStreamingBaseUrl(const std::string &url);
 void OPNReportSessionAd(const SessionInfo &session,
@@ -166,6 +165,27 @@ void OPNCreateSession(const std::string &appId,
                       const StreamSettings &settings,
                       SessionCreateCallback completion);
 }
+
+void OPNClearStreamSessionCallbacks(OPN::IStreamSession *session);
+void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session,
+                                            OPNStreamView *streamView,
+                                            OPNStreamRecordingManager *recordingManager);
+
+typedef void (^OPNStreamSessionAnswerHandler)(NSString *sdp, NSString *nvstSdp);
+typedef void (^OPNStreamSessionLocalIceCandidateHandler)(NSDictionary *candidate);
+typedef void (^OPNStreamSessionStateHandler)(BOOL connected, NSString *errorMessage);
+
+void OPNInjectManualStreamSessionIceCandidate(OPN::IStreamSession *session,
+                                              const OPN::SessionInfo &sessionInfo,
+                                              NSString *offerSdp,
+                                              NSString *serverIceUfrag);
+void OPNStartStreamSession(OPN::IStreamSession *session,
+                           const OPN::SessionInfo &sessionInfo,
+                           NSString *offerSdp,
+                           const OPN::StreamSettings &settings,
+                           OPNStreamSessionAnswerHandler answerHandler,
+                           OPNStreamSessionLocalIceCandidateHandler localIceCandidateHandler,
+                           OPNStreamSessionStateHandler stateHandler);
 
 @interface OPNWebSocketSignalingClient : NSObject
 - (instancetype)initWithSignalingServer:(NSString *)signalingServer sessionId:(NSString *)sessionId signalingUrl:(NSString *)signalingUrl;

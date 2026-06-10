@@ -3,7 +3,8 @@
 #include "OPNStreamSession.h"
 #include "OPNStreamTypes.h"
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNStreamSessionLaunchBridge.h"
+
+NSString *OPNStreamSessionIceUfragFromOffer(NSString *offerSdp);
 
 @interface OPNStreamStatsSnapshot : NSObject
 - (instancetype)initWithAvailable:(BOOL)available

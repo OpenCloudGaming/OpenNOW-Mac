@@ -1,5 +1,4 @@
-#include "OPNStreamSessionLaunchBridge.h"
-
+#import <Foundation/Foundation.h>
 #include "OPNStreamSession.h"
 #include "OPNStreamTypes.h"
 
@@ -8,6 +7,10 @@
 #include <cstring>
 #include <sstream>
 #include <vector>
+
+typedef void (^OPNStreamSessionAnswerHandler)(NSString *sdp, NSString *nvstSdp);
+typedef void (^OPNStreamSessionLocalIceCandidateHandler)(NSDictionary *candidate);
+typedef void (^OPNStreamSessionStateHandler)(BOOL connected, NSString *errorMessage);
 
 static NSString *OPNLaunchBridgeStringFromStdString(const std::string &value) {
     if (value.empty()) return @"";
