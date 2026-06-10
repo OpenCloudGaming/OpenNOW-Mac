@@ -6,6 +6,12 @@
 
 #import <Foundation/Foundation.h>
 
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <sstream>
+#include <vector>
+
 @interface OPNInputProtocolEncoder : NSObject
 - (instancetype)init;
 @end
@@ -22,7 +28,9 @@ bool LibWebRTCStreamSession::IsAvailable() {
 
 }
 
-NSString *OPNStreamSessionIceUfragFromOffer(NSString *offerSdp);
+typedef void (^OPNStreamSessionAnswerHandler)(NSString *sdp, NSString *nvstSdp);
+typedef void (^OPNStreamSessionLocalIceCandidateHandler)(NSDictionary *candidate);
+typedef void (^OPNStreamSessionStateHandler)(BOOL connected, NSString *errorMessage);
 
 static OPN::IStreamSession *OPNRawStreamSession(void *session) {
     return static_cast<OPN::IStreamSession *>(session);
@@ -58,6 +66,255 @@ videoEnhancementDrawableResolution:(NSString *)videoEnhancementDrawableResolutio
     videoEnhancementDroppedFrames:(uint64_t)videoEnhancementDroppedFrames;
 @end
 
+static std::string OPNStreamSessionStdString(id value) {
+    if ([value isKindOfClass:[NSString class]]) return ((NSString *)value).UTF8String ?: "";
+    if ([value isKindOfClass:[NSNumber class]]) return ((NSNumber *)value).stringValue.UTF8String ?: "";
+    return "";
+}
+
+static int OPNStreamSessionInt(id value, int fallback = 0) {
+    return [value respondsToSelector:@selector(intValue)] ? [value intValue] : fallback;
+}
+
+static double OPNStreamSessionDouble(id value, double fallback = 0.0) {
+    return [value respondsToSelector:@selector(doubleValue)] ? [value doubleValue] : fallback;
+}
+
+static bool OPNStreamSessionBool(id value, bool fallback = false) {
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
+}
+
+static NSString *OPNStreamSessionStringFromStdString(const std::string &value) {
+    if (value.empty()) return @"";
+    NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
+    return string ?: @"";
+}
+
+static NSDictionary *OPNStreamSessionIceCandidateDictionary(const OPN::IceCandidatePayload &candidate) {
+    return @{
+        @"candidate": OPNStreamSessionStringFromStdString(candidate.candidate),
+        @"sdpMid": OPNStreamSessionStringFromStdString(candidate.sdpMid),
+        @"sdpMLineIndex": @(candidate.sdpMLineIndex),
+        @"usernameFragment": OPNStreamSessionStringFromStdString(candidate.usernameFragment),
+    };
+}
+
+static OPN::SessionInfo OPNStreamSessionInfoFromDictionary(NSDictionary *dictionary) {
+    OPN::SessionInfo info;
+    if (![dictionary isKindOfClass:[NSDictionary class]]) return info;
+    info.sessionId = OPNStreamSessionStdString(dictionary[@"sessionId"]);
+    info.status = OPNStreamSessionInt(dictionary[@"status"]);
+    info.queuePosition = OPNStreamSessionInt(dictionary[@"queuePosition"]);
+    info.seatSetupStep = OPNStreamSessionInt(dictionary[@"seatSetupStep"]);
+    info.progressState = (OPN::SessionProgressState)OPNStreamSessionInt(dictionary[@"progressState"]);
+    info.zone = OPNStreamSessionStdString(dictionary[@"zone"]);
+    info.streamingBaseUrl = OPNStreamSessionStdString(dictionary[@"streamingBaseUrl"]);
+    info.serverIp = OPNStreamSessionStdString(dictionary[@"serverIp"]);
+    info.signalingServer = OPNStreamSessionStdString(dictionary[@"signalingServer"]);
+    info.signalingUrl = OPNStreamSessionStdString(dictionary[@"signalingUrl"]);
+    info.gpuType = OPNStreamSessionStdString(dictionary[@"gpuType"]);
+    NSDictionary *media = [dictionary[@"mediaConnectionInfo"] isKindOfClass:[NSDictionary class]] ? dictionary[@"mediaConnectionInfo"] : nil;
+    info.mediaConnectionInfo.ip = OPNStreamSessionStdString(media[@"ip"]);
+    info.mediaConnectionInfo.port = OPNStreamSessionInt(media[@"port"]);
+    NSDictionary *profile = [dictionary[@"negotiatedStreamProfile"] isKindOfClass:[NSDictionary class]] ? dictionary[@"negotiatedStreamProfile"] : nil;
+    info.negotiatedStreamProfile.resolution = OPNStreamSessionStdString(profile[@"resolution"]);
+    info.negotiatedStreamProfile.fps = OPNStreamSessionInt(profile[@"fps"]);
+    info.negotiatedStreamProfile.codec = OPNStreamSessionStdString(profile[@"codec"]);
+    info.negotiatedStreamProfile.colorQuality = OPNStreamSessionStdString(profile[@"colorQuality"]);
+    info.negotiatedStreamProfile.prefilterMode = OPNStreamSessionInt(profile[@"prefilterMode"], -1);
+    info.negotiatedStreamProfile.prefilterSharpness = OPNStreamSessionInt(profile[@"prefilterSharpness"], -1);
+    info.negotiatedStreamProfile.prefilterDenoise = OPNStreamSessionInt(profile[@"prefilterDenoise"], -1);
+    info.negotiatedStreamProfile.prefilterModel = OPNStreamSessionInt(profile[@"prefilterModel"], -1);
+    return info;
+}
+
+static OPN::StreamSettings OPNStreamSettingsFromDictionary(NSDictionary *dictionary) {
+    OPN::StreamSettings settings;
+    if (![dictionary isKindOfClass:[NSDictionary class]]) return settings;
+    settings.resolution = OPNStreamSessionStdString(dictionary[@"resolution"]);
+    settings.fps = OPNStreamSessionInt(dictionary[@"fps"], settings.fps);
+    settings.codec = OPNStreamSessionStdString(dictionary[@"codec"]);
+    settings.colorQuality = OPNStreamSessionStdString(dictionary[@"colorQuality"]);
+    settings.maxBitrateMbps = OPNStreamSessionInt(dictionary[@"maxBitrateMbps"], settings.maxBitrateMbps);
+    settings.prefilterMode = OPNStreamSessionInt(dictionary[@"prefilterMode"]);
+    settings.prefilterSharpness = OPNStreamSessionInt(dictionary[@"prefilterSharpness"]);
+    settings.prefilterDenoise = OPNStreamSessionInt(dictionary[@"prefilterDenoise"]);
+    settings.prefilterModel = OPNStreamSessionInt(dictionary[@"prefilterModel"]);
+    settings.enableL4S = OPNStreamSessionBool(dictionary[@"enableL4S"]);
+    settings.enableReflex = OPNStreamSessionBool(dictionary[@"enableReflex"], true);
+    settings.lowLatencyMode = OPNStreamSessionBool(dictionary[@"lowLatencyMode"]);
+    settings.enableHdr = OPNStreamSessionBool(dictionary[@"enableHdr"]);
+    settings.microphoneMode = OPNStreamSessionStdString(dictionary[@"microphoneMode"]);
+    settings.microphoneDeviceId = OPNStreamSessionStdString(dictionary[@"microphoneDeviceId"]);
+    settings.microphonePushToTalkKeyCode = OPNStreamSessionInt(dictionary[@"microphonePushToTalkKeyCode"], 9);
+    settings.microphonePushToTalkModifierMask = OPNStreamSessionInt(dictionary[@"microphonePushToTalkModifierMask"]);
+    settings.gameVolume = OPNStreamSessionDouble(dictionary[@"gameVolume"], 1.0);
+    settings.microphoneVolume = OPNStreamSessionDouble(dictionary[@"microphoneVolume"], 1.0);
+    settings.gameLanguage = OPNStreamSessionStdString(dictionary[@"gameLanguage"]);
+    settings.accountLinked = OPNStreamSessionBool(dictionary[@"accountLinked"], true);
+    settings.selectedStore = OPNStreamSessionStdString(dictionary[@"selectedStore"]);
+    settings.networkTestSessionId = OPNStreamSessionStdString(dictionary[@"networkTestSessionId"]);
+    settings.networkType = OPNStreamSessionStdString(dictionary[@"networkType"]);
+    settings.networkLatencyMs = OPNStreamSessionInt(dictionary[@"networkLatencyMs"], -1);
+    settings.remoteControllersBitmap = (uint32_t)OPNStreamSessionInt(dictionary[@"remoteControllersBitmap"]);
+    NSArray *controllers = [dictionary[@"availableSupportedControllers"] isKindOfClass:[NSArray class]] ? dictionary[@"availableSupportedControllers"] : nil;
+    for (id controller in controllers) settings.availableSupportedControllers.push_back(OPNStreamSessionStdString(controller));
+    return settings;
+}
+
+static bool OPNStreamSessionIsDottedIp(const std::string &value) {
+    int dots = 0;
+    int digits = 0;
+    if (value.empty()) return false;
+    for (char c : value) {
+        if (c == '.') {
+            if (digits == 0) return false;
+            dots++;
+            digits = 0;
+        } else if (std::isdigit((unsigned char)c)) {
+            digits++;
+            if (digits > 3) return false;
+        } else {
+            return false;
+        }
+    }
+    return dots == 3 && digits > 0;
+}
+
+static std::string OPNStreamSessionExtractPublicIp(const std::string &hostOrIp) {
+    if (OPNStreamSessionIsDottedIp(hostOrIp)) return hostOrIp;
+    std::string firstLabel = hostOrIp.substr(0, hostOrIp.find('.'));
+    std::vector<std::string> parts;
+    std::stringstream ss(firstLabel);
+    std::string part;
+    while (std::getline(ss, part, '-')) {
+        if (part.empty()) return "";
+        for (char c : part) {
+            if (!std::isdigit((unsigned char)c)) return "";
+        }
+        parts.push_back(part);
+    }
+    if (parts.size() != 4) return "";
+    return parts[0] + "." + parts[1] + "." + parts[2] + "." + parts[3];
+}
+
+static std::string OPNStreamSessionExtractIceUfragFromOffer(const std::string &sdp) {
+    std::stringstream ss(sdp);
+    std::string line;
+    while (std::getline(ss, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const char *prefix = "a=ice-ufrag:";
+        if (line.rfind(prefix, 0) == 0) {
+            return line.substr(strlen(prefix));
+        }
+    }
+    return "";
+}
+
+struct OPNStreamSessionIceMediaTarget {
+    std::string sdpMid;
+    int sdpMLineIndex = 0;
+};
+
+static OPNStreamSessionIceMediaTarget OPNStreamSessionExtractVideoIceTargetFromOffer(const std::string &sdp) {
+    OPNStreamSessionIceMediaTarget target;
+    std::stringstream ss(sdp);
+    std::string line;
+    bool inVideoSection = false;
+    int mediaIndex = -1;
+    while (std::getline(ss, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("m=", 0) == 0) {
+            mediaIndex++;
+            inVideoSection = line.rfind("m=video ", 0) == 0;
+            if (inVideoSection) {
+                target.sdpMLineIndex = mediaIndex;
+                target.sdpMid = std::to_string(mediaIndex);
+            }
+            continue;
+        }
+        if (inVideoSection && line.rfind("a=mid:", 0) == 0) {
+            target.sdpMid = line.substr(strlen("a=mid:"));
+            break;
+        }
+    }
+    return target;
+}
+
+static void OPNInjectManualStreamSessionIceCandidate(OPN::IStreamSession *session,
+                                                     const OPN::SessionInfo &sessionInfo,
+                                                     NSString *offerSdp,
+                                                     NSString *serverIceUfrag) {
+    if (!session) return;
+    std::string offerSdpString = offerSdp.UTF8String ?: "";
+    std::string serverIceUfragString = serverIceUfrag.UTF8String ?: "";
+    const char *manualIce = getenv("OPN_INJECT_MANUAL_ICE");
+    if (manualIce && strcmp(manualIce, "0") == 0) {
+        OPNLogInfo(@"[StreamVC] Manual ICE candidate injection disabled by OPN_INJECT_MANUAL_ICE=0");
+        return;
+    }
+    const bool offerHasPlaceholders = offerSdpString.find("0.0.0.0") != std::string::npos;
+    const bool forceManualIce = manualIce && strcmp(manualIce, "1") == 0;
+    if (!offerHasPlaceholders && !forceManualIce) return;
+
+    std::string ip = OPNStreamSessionExtractPublicIp(sessionInfo.mediaConnectionInfo.ip);
+    int port = sessionInfo.mediaConnectionInfo.port;
+    if (ip.empty() || port <= 0) {
+        OPNLogInfo(@"[StreamVC] No valid mediaConnectionInfo for manual ICE candidate (ip=%s, port=%d)", sessionInfo.mediaConnectionInfo.ip.c_str(), port);
+        return;
+    }
+
+    OPNStreamSessionIceMediaTarget target = OPNStreamSessionExtractVideoIceTargetFromOffer(offerSdpString);
+    OPN::IceCandidatePayload payload;
+    payload.candidate = "candidate:1 1 udp 2130706431 " + ip + " " + std::to_string(port) + " typ host";
+    payload.sdpMid = target.sdpMid;
+    payload.sdpMLineIndex = target.sdpMLineIndex;
+    payload.usernameFragment = serverIceUfragString;
+    OPNLogInfo(@"[StreamVC] Injecting fallback ICE candidate: %s:%d (sdpMid=%s mline=%d ufrag=%s placeholders=%d forced=%d)",
+          ip.c_str(),
+          port,
+          payload.sdpMid.empty() ? "(none)" : payload.sdpMid.c_str(),
+          payload.sdpMLineIndex,
+          serverIceUfragString.empty() ? "(none)" : serverIceUfragString.c_str(),
+          offerHasPlaceholders ? 1 : 0,
+          forceManualIce ? 1 : 0);
+    session->AddRemoteIceCandidate(payload);
+}
+
+static void OPNStartStreamSession(OPN::IStreamSession *session,
+                                  const OPN::SessionInfo &sessionInfo,
+                                  NSString *offerSdp,
+                                  const OPN::StreamSettings &settings,
+                                  OPNStreamSessionAnswerHandler answerHandler,
+                                  OPNStreamSessionLocalIceCandidateHandler localIceCandidateHandler,
+                                  OPNStreamSessionStateHandler stateHandler) {
+    if (!session) {
+        if (stateHandler) stateHandler(NO, @"libwebrtc stream session is unavailable");
+        return;
+    }
+
+    OPNStreamSessionAnswerHandler answerHandlerCopy = [answerHandler copy];
+    OPNStreamSessionLocalIceCandidateHandler localIceCandidateHandlerCopy = [localIceCandidateHandler copy];
+    OPNStreamSessionStateHandler stateHandlerCopy = [stateHandler copy];
+    std::string offerSdpString = offerSdp.UTF8String ?: "";
+
+    session->OnAnswerReady([answerHandlerCopy](const OPN::SendAnswerRequest &answer) {
+        if (!answerHandlerCopy) return;
+        answerHandlerCopy(OPNStreamSessionStringFromStdString(answer.sdp),
+                          OPNStreamSessionStringFromStdString(answer.nvstSdp));
+    });
+
+    session->OnIceCandidateReady([localIceCandidateHandlerCopy](const OPN::IceCandidatePayload &candidate) {
+        if (!localIceCandidateHandlerCopy) return;
+        localIceCandidateHandlerCopy(OPNStreamSessionIceCandidateDictionary(candidate));
+    });
+
+    session->Start(sessionInfo, offerSdpString, settings, [stateHandlerCopy](bool connected, const std::string &streamError) {
+        if (!stateHandlerCopy) return;
+        stateHandlerCopy(connected ? YES : NO, OPNStreamSessionStringFromStdString(streamError));
+    });
+}
+
 extern "C" BOOL OPNStreamSessionHandleBackendAvailable(void) {
     return OPN::LibWebRTCStreamSession::IsAvailable() ? YES : NO;
 }
@@ -67,7 +324,27 @@ extern "C" NSUInteger OPNStreamSessionHandleMaxGamepadControllers(void) {
 }
 
 extern "C" NSString *OPNStreamSessionHandleIceUfragFromOfferSdp(NSString *offerSdp) {
-    return OPNStreamSessionIceUfragFromOffer(offerSdp);
+    return OPNStreamSessionStringFromStdString(OPNStreamSessionExtractIceUfragFromOffer(offerSdp.UTF8String ?: ""));
+}
+
+extern "C" void OPNStreamSessionInjectManualIceCandidate(void *session,
+                                                          NSDictionary *sessionInfo,
+                                                          NSString *offerSdp,
+                                                          NSString *serverIceUfrag) {
+    OPN::SessionInfo info = OPNStreamSessionInfoFromDictionary(sessionInfo);
+    OPNInjectManualStreamSessionIceCandidate(OPNRawStreamSession(session), info, offerSdp, serverIceUfrag);
+}
+
+extern "C" void OPNStreamSessionStart(void *session,
+                                       NSDictionary *sessionInfo,
+                                       NSString *offerSdp,
+                                       NSDictionary *settings,
+                                       OPNStreamSessionAnswerHandler answerHandler,
+                                       OPNStreamSessionLocalIceCandidateHandler localIceCandidateHandler,
+                                       OPNStreamSessionStateHandler stateHandler) {
+    OPN::SessionInfo info = OPNStreamSessionInfoFromDictionary(sessionInfo);
+    OPN::StreamSettings streamSettings = OPNStreamSettingsFromDictionary(settings);
+    OPNStartStreamSession(OPNRawStreamSession(session), info, offerSdp, streamSettings, answerHandler, localIceCandidateHandler, stateHandler);
 }
 
 extern "C" void *OPNStreamSessionHandleCreateRawSession(void) {

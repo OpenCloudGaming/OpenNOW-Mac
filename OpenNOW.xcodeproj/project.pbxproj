@@ -70,7 +70,6 @@
 		};
 		E0000000000000000000003C /* main.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003D; };
 		E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AB; };
-		E00000000000000000000050 /* OPNStreamSessionLaunchBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000051; };
 		E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000064; };
 		E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000067; };
 		E0000000000000000000006C /* OPNMetalVideoView.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000006D; };
@@ -481,7 +480,6 @@
 		E00000000000000000000098 /* OPNDiscordPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDiscordPresence.swift; path = src/common/OPNDiscordPresence.swift; sourceTree = "<group>"; };
 		E0000000000000000000005A /* OPNSentryTransactionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentryTransactionBridge.swift; path = src/common/OPNSentryTransactionBridge.swift; sourceTree = "<group>"; };
 		B00000000000000000000024 /* OPNSessionHealthReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionHealthReport.swift; path = src/common/OPNSessionHealthReport.swift; sourceTree = "<group>"; };
-		E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLaunchBridge.mm; path = src/streaming/OPNStreamSessionLaunchBridge.mm; sourceTree = "<group>"; };
 		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
 		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
 		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
@@ -656,7 +654,6 @@
 				E00000000000000000000027 /* OPNStreamPreferences.swift */,
 				E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */,
 				E000000000000000000000AB /* OPNInputProtocol.swift */,
-				E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */,
 				E00000000000000000000064 /* OPNWebRTCSdpUtils.mm */,
 				E00000000000000000000067 /* OPNWebRTCCodecSupport.mm */,
 				E0000000000000000000006D /* OPNMetalVideoView.mm */,
@@ -795,7 +792,6 @@
 				E00000000000000000000042 /* OPNGitHubUpdater.swift in PBXBuildFile */,
 				E0000000000000000000003E /* OPNHTTP.swift in PBXBuildFile */,
 				E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */,
-				E00000000000000000000050 /* OPNStreamSessionLaunchBridge.mm in PBXBuildFile */,
 				E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */,
 				E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */,
 				E0000000000000000000006C /* OPNMetalVideoView.mm in PBXBuildFile */,

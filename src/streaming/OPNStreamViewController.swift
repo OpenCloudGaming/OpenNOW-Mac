@@ -28,11 +28,11 @@ private func OPNSessionManagerBridgeClaimSession(_ sessionId: NSString, _ server
 @_silgen_name("OPNSessionManagerBridgeStopSession")
 private func OPNSessionManagerBridgeStopSession(_ sessionId: NSString, _ serverIp: NSString, _ completion: @escaping OPNSessionBridgeStopCompletion)
 
-@_silgen_name("OPNStreamSessionLaunchBridgeStart")
-private func OPNStreamSessionLaunchBridgeStart(_ session: UnsafeMutableRawPointer?, _ sessionInfo: NSDictionary, _ offerSdp: NSString, _ settings: NSDictionary, _ answerHandler: @escaping OPNStreamSessionAnswerHandler, _ localIceCandidateHandler: @escaping OPNStreamSessionLocalIceCandidateHandler, _ stateHandler: @escaping OPNStreamSessionStateHandler)
+@_silgen_name("OPNStreamSessionStart")
+private func OPNStreamSessionStart(_ session: UnsafeMutableRawPointer?, _ sessionInfo: NSDictionary, _ offerSdp: NSString, _ settings: NSDictionary, _ answerHandler: @escaping OPNStreamSessionAnswerHandler, _ localIceCandidateHandler: @escaping OPNStreamSessionLocalIceCandidateHandler, _ stateHandler: @escaping OPNStreamSessionStateHandler)
 
-@_silgen_name("OPNStreamSessionLaunchBridgeInjectManualIceCandidate")
-private func OPNStreamSessionLaunchBridgeInjectManualIceCandidate(_ session: UnsafeMutableRawPointer?, _ sessionInfo: NSDictionary, _ offerSdp: NSString, _ serverIceUfrag: NSString)
+@_silgen_name("OPNStreamSessionInjectManualIceCandidate")
+private func OPNStreamSessionInjectManualIceCandidate(_ session: UnsafeMutableRawPointer?, _ sessionInfo: NSDictionary, _ offerSdp: NSString, _ serverIceUfrag: NSString)
 
 @_silgen_name("OPNStreamSessionClearCallbacks")
 private func OPNStreamSessionClearCallbacks(_ session: UnsafeMutableRawPointer?)
@@ -313,14 +313,14 @@ final class OPNStreamViewController: NSViewController {
             guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
             self.session.setNativeWindow(Unmanaged.passUnretained(self.streamView?.nativeVideoView() ?? self.view).toOpaque())
             let serverIceUfrag = OPNStreamSessionHandle.iceUfrag(fromOfferSdp: offer)
-            OPNStreamSessionLaunchBridgeStart(self.session.rawSession, sessionInfo, offer as NSString, settings as NSDictionary, { [weak self] sdp, nvstSdp in
+            OPNStreamSessionStart(self.session.rawSession, sessionInfo, offer as NSString, settings as NSDictionary, { [weak self] sdp, nvstSdp in
                 DispatchQueue.main.async { self?.signaling?.sendAnswerSdp(sdp as String, nvstSdp: nvstSdp as String) }
             }, { [weak self] candidate in
                 DispatchQueue.main.async { self?.signaling?.sendIceCandidate(candidate) }
             }, { [weak self] connected, error in
                 DispatchQueue.main.async { self?.handleConnectionState(connected: connected, error: error as String, generation: generation, settings: settings) }
             })
-            OPNStreamSessionLaunchBridgeInjectManualIceCandidate(self.session.rawSession, sessionInfo, offer as NSString, serverIceUfrag as NSString)
+            OPNStreamSessionInjectManualIceCandidate(self.session.rawSession, sessionInfo, offer as NSString, serverIceUfrag as NSString)
         }
         signaling.onIceCandidate = { [weak self] candidate in self?.session.addRemoteIceCandidatePayload(candidate as? [AnyHashable: Any] ?? [:]) }
         signaling.onClosed = { [weak self] clean, reason in
