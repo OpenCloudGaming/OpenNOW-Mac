@@ -7,10 +7,6 @@
 #import <WebRTC/RTCAudioDevice.h>
 #pragma clang diagnostic pop
 
-namespace OPN {
-class LibWebRTCStreamSession;
-}
-
 @interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
 @property(nonatomic, assign) void *owner;
 - (void)handleDefaultDeviceChange;

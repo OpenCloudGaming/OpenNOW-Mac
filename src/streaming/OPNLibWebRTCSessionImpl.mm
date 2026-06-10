@@ -1,5 +1,7 @@
 #include "OPNLibWebRTCSessionImpl.h"
 
+#include "OPNLibWebRTCStreamSession.h"
+
 #include "OPNMetalVideoView.h"
 
 #if defined(OPN_HAVE_LIBWEBRTC)
@@ -18,7 +20,7 @@ static OPN::LibWebRTCStreamSession *OPNSessionImplOwner(OPNLibWebRTCSessionImpl 
 
 @implementation OPNLibWebRTCSessionImpl
 
-- (instancetype)initWithOwner:(OPN::LibWebRTCStreamSession *)owner {
+- (instancetype)initWithOwner:(void *)owner {
     self = [super init];
     if (self) {
         _owner = owner;

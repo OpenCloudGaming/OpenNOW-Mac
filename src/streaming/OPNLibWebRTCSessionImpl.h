@@ -1,6 +1,5 @@
 #pragma once
 
-#include "OPNLibWebRTCStreamSession.h"
 #include "OPNCoreAudioRTCDevice.h"
 
 #if defined(OPN_HAVE_LIBWEBRTC)
@@ -10,7 +9,7 @@
 #pragma clang diagnostic pop
 
 @interface OPNLibWebRTCSessionImpl : NSObject <RTCPeerConnectionDelegate, RTCDataChannelDelegate>
-- (instancetype)initWithOwner:(OPN::LibWebRTCStreamSession *)owner;
+- (instancetype)initWithOwner:(void *)owner;
 @property(nonatomic, assign) void *owner;
 @property(nonatomic, strong) RTCPeerConnectionFactory *factory;
 @property(nonatomic, strong) OPNCoreAudioRTCDevice *audioDevice;
