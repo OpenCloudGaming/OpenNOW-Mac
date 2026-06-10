@@ -2,8 +2,20 @@
 #import <AudioToolbox/AudioToolbox.h>
 
 #include "OPNStreamSession.h"
-#include "OPNStreamSessionInputBridge.h"
 #include <string>
+
+void OPNSendStreamSessionGamepadState(OPN::IStreamSession *session,
+                                      uint16_t controllerId,
+                                      uint16_t buttons,
+                                      uint8_t leftTrigger,
+                                      uint8_t rightTrigger,
+                                      int16_t leftStickX,
+                                      int16_t leftStickY,
+                                      int16_t rightStickX,
+                                      int16_t rightStickY,
+                                      bool connected,
+                                      uint16_t bitmap,
+                                      uint64_t timestampUs);
 
 typedef BOOL (^OPNStreamInputReadyProvider)(void);
 typedef void (^OPNStreamBooleanHandler)(BOOL enabled);

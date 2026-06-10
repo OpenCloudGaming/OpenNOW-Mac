@@ -1,5 +1,4 @@
 #import "OPNStreamViewController.h"
-#include "OPNStreamSessionInputBridge.h"
 #include "OPNStreamPreferences.h"
 #include "OPNSessionManager.h"
 #import <QuartzCore/QuartzCore.h>
@@ -170,6 +169,7 @@ void OPNClearStreamSessionCallbacks(OPN::IStreamSession *session);
 void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session,
                                             OPNStreamView *streamView,
                                             OPNStreamRecordingManager *recordingManager);
+void OPNSendStreamSessionMouseMove(OPN::IStreamSession *session, int16_t dx, int16_t dy);
 
 typedef void (^OPNStreamSessionAnswerHandler)(NSString *sdp, NSString *nvstSdp);
 typedef void (^OPNStreamSessionLocalIceCandidateHandler)(NSDictionary *candidate);
