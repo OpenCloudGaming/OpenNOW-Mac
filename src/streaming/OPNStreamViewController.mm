@@ -311,65 +311,6 @@ static std::string OPNUserFacingGFNErrorMessageForTitle(const std::string &error
     return OPNUserFacingGFNErrorMessage(errorMessage, OPNStdStringFromNSString(gameTitle), sessionWasConnected);
 }
 
-static BOOL OPNShouldReportTerminalStreamFailure(NSString *message) {
-    if (message.length == 0) return YES;
-    if ([message isEqualToString:@"Session ended due to inactivity."]) return NO;
-    if ([message isEqualToString:@"Microphone permission denied"]) return NO;
-    // AUTH_FAILURE_STATUS from NVIDIA (e.g. 4192C0FF) maps to "Your NVIDIA session expired".
-    // This is an expected user-side condition (expired token); suppress Sentry noise.
-    if ([message containsString:@"NVIDIA session expired"]) return NO;
-    return YES;
-}
-
-static NSString *OPNBoundedStreamFailureMessage(NSString *message) {
-    if (message.length <= 700) return message;
-    return [[message substringToIndex:700] stringByAppendingString:@"..."];
-}
-
-static NSDictionary<NSString *, id> *OPNStreamMetricAttributes(NSString *outcome,
-                                                                BOOL recovering,
-                                                                NSString *backend,
-                                                                NSString *codec,
-                                                                NSString *resolution,
-                                                                int fps) {
-    return @{
-        @"outcome": outcome.length > 0 ? outcome : @"unknown",
-        @"recovery": @(recovering),
-        @"backend": backend.length > 0 ? backend : @"unknown",
-        @"codec": codec.length > 0 ? codec : @"unknown",
-        @"resolution": resolution.length > 0 ? resolution : @"unknown",
-        @"fps": @(fps),
-    };
-}
-
-static NSString *OPNStreamFailureReportMessage(NSString *message) {
-    if (message.length == 0) return @"Stream failed";
-    NSRange jsonRange = [message rangeOfString:@"{"];
-    if (jsonRange.location == NSNotFound) return OPNBoundedStreamFailureMessage(message);
-
-    NSString *prefix = [[message substringToIndex:jsonRange.location] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    NSString *jsonText = [message substringFromIndex:jsonRange.location];
-    NSData *jsonData = [jsonText dataUsingEncoding:NSUTF8StringEncoding];
-    NSDictionary *json = jsonData ? [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil] : nil;
-    if (![json isKindOfClass:[NSDictionary class]]) return OPNBoundedStreamFailureMessage(message);
-
-    NSDictionary *requestStatus = [json[@"requestStatus"] isKindOfClass:[NSDictionary class]] ? json[@"requestStatus"] : nil;
-    NSNumber *statusCode = [requestStatus[@"statusCode"] isKindOfClass:[NSNumber class]] ? requestStatus[@"statusCode"] : nil;
-    NSString *statusDescription = [requestStatus[@"statusDescription"] isKindOfClass:[NSString class]] ? requestStatus[@"statusDescription"] : nil;
-    NSString *requestId = [requestStatus[@"requestId"] isKindOfClass:[NSString class]] ? requestStatus[@"requestId"] : nil;
-    NSString *serverId = [requestStatus[@"serverId"] isKindOfClass:[NSString class]] ? requestStatus[@"serverId"] : nil;
-    NSArray *otherSessions = [json[@"otherUserSessions"] isKindOfClass:[NSArray class]] ? json[@"otherUserSessions"] : nil;
-
-    NSMutableArray<NSString *> *parts = [NSMutableArray array];
-    if (prefix.length > 0) [parts addObject:prefix];
-    if (statusCode) [parts addObject:[NSString stringWithFormat:@"statusCode=%ld", (long)statusCode.integerValue]];
-    if (statusDescription.length > 0) [parts addObject:[NSString stringWithFormat:@"description=%@", statusDescription]];
-    if (serverId.length > 0) [parts addObject:[NSString stringWithFormat:@"serverId=%@", serverId]];
-    if (requestId.length > 0) [parts addObject:[NSString stringWithFormat:@"requestId=%@", requestId]];
-    if (otherSessions) [parts addObject:[NSString stringWithFormat:@"otherSessions=%lu", (unsigned long)otherSessions.count]];
-    return parts.count > 0 ? [parts componentsJoinedByString:@" "] : OPNBoundedStreamFailureMessage(message);
-}
-
 struct OPNDisplayStreamProfile {
     int displayWidth = 1920;
     int displayHeight = 1080;
@@ -2068,7 +2009,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
                     s2->_connectedOnce = YES;
                     s2->_connectedStartTime = CACurrentMediaTime();
                     s2->_recovering = NO;
-                    OPNRecordSentryCounterMetric("opennow.stream.connection.count", 1, OPNStreamMetricAttributes(@"connected", recoveredLaunch, s2->_webRTCBackendName, OPNStringFromStdString(negotiatedSettings.codec, @""), OPNStringFromStdString(negotiatedSettings.resolution, @""), negotiatedSettings.fps));
+                    OPNRecordSentryCounterMetric("opennow.stream.connection.count", 1, [OPNStreamViewControllerSupport streamMetricAttributesWithOutcome:@"connected" recovering:recoveredLaunch backend:s2->_webRTCBackendName codec:OPNStringFromStdString(negotiatedSettings.codec, @"") resolution:OPNStringFromStdString(negotiatedSettings.resolution, @"") fps:negotiatedSettings.fps]);
                     [s2 beginLatencyActivity];
                     [s2 setLaunchStep:6 message:@"Connected!"];
                     [s2->_healthReport markConnected:CACurrentMediaTime()];
@@ -2735,9 +2676,9 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
     if (!success) {
         NSString *message = reason.length > 0 ? reason : @"Stream failed";
         [OPNLogCapture appendEvent:[NSString stringWithFormat:@"[StreamVC] Stream ending with error: %@", message]];
-        if (OPNShouldReportTerminalStreamFailure(message)) {
+        if ([OPNStreamViewControllerSupport shouldReportTerminalStreamFailure:message]) {
             NSString *phase = _connectedOnce ? @"runtime" : (_resumeExistingSession ? @"resume" : @"launch");
-            NSString *reportMessage = OPNStreamFailureReportMessage(message);
+            NSString *reportMessage = [OPNStreamViewControllerSupport streamFailureReportMessage:message];
             OPNLogError(@"[StreamVC] Terminal stream failure phase=%@ connected=%d recovery=%d appId=%s sessionId=%s server=%s error=%@",
                           phase,
                           _connectedOnce,
