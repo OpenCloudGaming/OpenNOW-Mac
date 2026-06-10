@@ -5,6 +5,7 @@
 #include "OPNStreamStats.h"
 
 @class OPNStreamView;
+@class OPNStreamRecordingManager;
 
 namespace OPN {
 class IStreamSession;
@@ -14,7 +15,7 @@ class IStreamSession;
 @property(nonatomic, readonly) OPN::IStreamSession *rawSession;
 
 - (void)clearCallbacks;
-- (void)configureCallbacksWithStreamView:(OPNStreamView *)streamView;
+- (void)configureCallbacksWithStreamView:(OPNStreamView *)streamView recordingManager:(OPNStreamRecordingManager *)recordingManager;
 - (OPN::StreamStats)requestLatestStats;
 - (void)sendMouseMoveWithDeltaX:(int16_t)dx deltaY:(int16_t)dy;
 - (void)startWithSessionInfo:(const OPN::SessionInfo &)sessionInfo

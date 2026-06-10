@@ -44,7 +44,6 @@ typedef void (^OPNStreamVideoEnhancementHandler)(NSInteger mode, NSInteger sharp
 @property (nonatomic, copy) OPNStreamMouseButtonHandler streamMouseButtonHandler;
 @property (nonatomic, copy) OPNStreamMouseWheelHandler streamMouseWheelHandler;
 @property (nonatomic, copy) OPNStreamGamepadStateHandler streamGamepadStateHandler;
-@property (nonatomic, readonly) OPNStreamRecordingManager *recordingManager;
 - (void)clearStreamCallbacks;
 - (void)receiveMicrophoneLevel:(double)level;
 - (void)receiveVideoFrame:(void *)frame;
@@ -61,7 +60,7 @@ void OPNClearStreamSessionCallbacks(OPN::IStreamSession *session) {
     session->OnClipboardText(OPN::ClipboardTextCallback{});
 }
 
-void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session, OPNStreamView *streamView) {
+void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session, OPNStreamView *streamView, OPNStreamRecordingManager *recordingManager) {
     if (!streamView) return;
     [streamView clearStreamCallbacks];
     if (!session) return;
@@ -136,10 +135,10 @@ void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session, OPNStr
         if (!view) return;
         [view receiveEnhancedVideoFrame:pixelBuffer];
     });
-    session->OnGameAudioFrame([weakView](const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
+    session->OnGameAudioFrame([weakView, recordingManager](const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
         OPNStreamView *view = weakView;
         if (!view || !audioBufferList) return;
-        [view.recordingManager appendWebRTCAudioBufferList:static_cast<const AudioBufferList *>(audioBufferList) frameCount:frameCount sampleRate:sampleRate channels:channels];
+        [recordingManager appendWebRTCAudioBufferList:static_cast<const AudioBufferList *>(audioBufferList) frameCount:frameCount sampleRate:sampleRate channels:channels];
     });
     session->OnClipboardText([weakView](const std::string &text) {
         std::string textCopy = text;

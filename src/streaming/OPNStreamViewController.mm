@@ -12,6 +12,7 @@
 
 @class OPNSessionReportPayload;
 @class OPNStreamStatsSnapshot;
+@class OPNStreamRecordingManager;
 
 typedef void (^OPNStreamViewVoidHandler)(void);
 typedef void (^OPNStreamViewSidebarVisibilityHandler)(BOOL visible);
@@ -41,6 +42,7 @@ typedef void (^OPNStreamViewSidebarVisibilityHandler)(BOOL visible);
 - (void)releasePointerLock;
 - (BOOL)isSidebarHUDVisible;
 - (void)clearStreamCallbacks;
+@property (nonatomic, readonly) OPNStreamRecordingManager *recordingManager;
 @property (nonatomic, copy) OPNStreamViewVoidHandler onUserActivity;
 @property (nonatomic, copy) OPNStreamViewVoidHandler onDashboardToggleRequested;
 @property (nonatomic, copy) OPNStreamViewSidebarVisibilityHandler onSidebarHUDVisibilityChanged;
@@ -1260,7 +1262,7 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 }
 
 - (void)configureStreamViewSessionCallbacks {
-    [_session configureCallbacksWithStreamView:self.streamView];
+    [_session configureCallbacksWithStreamView:self.streamView recordingManager:self.streamView.recordingManager];
 }
 
 - (void)refreshStreamViewLayoutForCurrentContainer {

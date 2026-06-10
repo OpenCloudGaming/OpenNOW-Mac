@@ -119,7 +119,7 @@ final class OPNStreamView: NSView {
     private var microphoneMeterTrack: NSView?
     private var microphoneMeterFill: CALayer?
     private var recordingButton: NSButton?
-    let recordingManager = OPNStreamRecordingManager()
+    private(set) var recordingManager = OPNStreamRecordingManager()
     private var recordingGameTitle = "Stream"
     private var videoAspectRatio: CGFloat = 16.0 / 9.0
 

@@ -74,8 +74,8 @@
     OPNClearStreamSessionCallbacks(_session);
 }
 
-- (void)configureCallbacksWithStreamView:(OPNStreamView *)streamView {
-    OPNConfigureStreamViewSessionCallbacks(_session, streamView);
+- (void)configureCallbacksWithStreamView:(OPNStreamView *)streamView recordingManager:(OPNStreamRecordingManager *)recordingManager {
+    OPNConfigureStreamViewSessionCallbacks(_session, streamView, recordingManager);
 }
 
 - (OPN::StreamStats)requestLatestStats {
