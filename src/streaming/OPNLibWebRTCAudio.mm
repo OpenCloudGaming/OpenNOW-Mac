@@ -3,7 +3,6 @@
 #include "OPNLibWebRTCStreamSession.h"
 
 #include "OPNLibWebRTCSessionImpl.h"
-#include "OPNCoreAudioRTCDevice.h"
 
 #import <CoreAudio/CoreAudio.h>
 #import <Foundation/Foundation.h>
@@ -12,7 +11,9 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wincomplete-umbrella"
 #import <WebRTC/WebRTC.h>
+#import <WebRTC/RTCAudioDevice.h>
 #pragma clang diagnostic pop
+
 #endif
 
 #include <algorithm>
@@ -25,6 +26,61 @@ namespace OPN {
 #if defined(OPN_HAVE_LIBWEBRTC)
 static OPNLibWebRTCSessionImpl *OPNImplFromOpaque(void *opaque) {
     return (__bridge OPNLibWebRTCSessionImpl *)opaque;
+}
+
+extern "C" void OPNCoreAudioRTCDeviceHandleGameAudioFrame(void *owner,
+                                                            const void *audioBufferList,
+                                                            uint32_t frameCount,
+                                                            double sampleRate,
+                                                            uint32_t channels) {
+    if (!owner || !audioBufferList) return;
+    static_cast<OPN::LibWebRTCStreamSession *>(owner)->HandleGameAudioFrame(audioBufferList, frameCount, sampleRate, channels);
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredInputSampleRate(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredInputSampleRate : 0.0;
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredOutputSampleRate(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredOutputSampleRate : 0.0;
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredInputIOBufferDuration(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredInputIOBufferDuration : 0.0;
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredOutputIOBufferDuration(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredOutputIOBufferDuration : 0.0;
+}
+
+extern "C" void OPNCoreAudioRTCDeviceDelegateNotifyDeviceChange(id<RTCAudioDeviceDelegate> delegate) {
+    if (!delegate) return;
+    [delegate dispatchAsync:^{
+        [delegate notifyAudioOutputInterrupted];
+        [delegate notifyAudioInputInterrupted];
+        [delegate notifyAudioOutputParametersChange];
+        [delegate notifyAudioInputParametersChange];
+    }];
+}
+
+extern "C" OSStatus OPNCoreAudioRTCDeviceDelegateGetPlayoutData(id<RTCAudioDeviceDelegate> delegate,
+                                                                  AudioUnitRenderActionFlags *actionFlags,
+                                                                  const AudioTimeStamp *timestamp,
+                                                                  NSInteger busNumber,
+                                                                  UInt32 frameCount,
+                                                                  AudioBufferList *audioBufferList) {
+    if (!delegate || !delegate.getPlayoutData) return noErr;
+    return delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, audioBufferList);
+}
+
+extern "C" OSStatus OPNCoreAudioRTCDeviceDelegateDeliverRecordedData(id<RTCAudioDeviceDelegate> delegate,
+                                                                       AudioUnitRenderActionFlags *actionFlags,
+                                                                       const AudioTimeStamp *timestamp,
+                                                                       NSInteger busNumber,
+                                                                       UInt32 frameCount,
+                                                                       AudioBufferList *audioBufferList) {
+    if (!delegate || !delegate.deliverRecordedData) return noErr;
+    return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, audioBufferList, nullptr, nil);
 }
 #endif
 

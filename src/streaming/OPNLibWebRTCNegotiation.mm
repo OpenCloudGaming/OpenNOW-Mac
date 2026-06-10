@@ -1,5 +1,4 @@
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNCoreAudioRTCDevice.h"
 #include "OPNLibWebRTCSessionImpl.h"
 #include "OPNWebRTCCodecSupport.h"
 #include "OPNWebRTCSdpUtils.h"
@@ -12,6 +11,11 @@
 #import <WebRTC/WebRTC.h>
 #import <WebRTC/RTCAudioDevice.h>
 #pragma clang diagnostic pop
+
+@interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
+@property(nonatomic, assign) void *owner;
+- (void)handleDefaultDeviceChange;
+@end
 #endif
 
 #include <algorithm>

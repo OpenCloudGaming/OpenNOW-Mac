@@ -1,6 +1,5 @@
 #include "OPNLibWebRTCSessionImpl.h"
 
-#include "OPNCoreAudioRTCDevice.h"
 #include "OPNLibWebRTCStreamSession.h"
 
 #include "OPNMetalVideoView.h"
@@ -8,6 +7,12 @@
 #if defined(OPN_HAVE_LIBWEBRTC)
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <WebRTC/RTCAudioDevice.h>
+
+@interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
+@property(nonatomic, assign) void *owner;
+- (void)handleDefaultDeviceChange;
+@end
 
 namespace OPN {
 static std::string OPNNSStringToString(NSString *value) {
