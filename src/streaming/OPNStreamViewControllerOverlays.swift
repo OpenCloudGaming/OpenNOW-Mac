@@ -1,9 +1,13 @@
 import AppKit
 
+import AppKit
+
+@MainActor
 private func overlayColor(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat) -> NSColor {
     NSColor(calibratedRed: red, green: green, blue: blue, alpha: alpha)
 }
 
+@MainActor
 private func overlayLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, alignment: NSTextAlignment) -> NSTextField {
     let label = NSTextField(frame: .zero)
     label.stringValue = text
@@ -17,6 +21,7 @@ private func overlayLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, 
     return label
 }
 
+@MainActor
 private func styleOverlayButton(_ button: NSButton, background: NSColor, textColor: NSColor) {
     button.bezelStyle = .regularSquare
     button.isBordered = false

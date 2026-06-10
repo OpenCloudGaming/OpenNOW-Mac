@@ -119,10 +119,7 @@
 			isa = PBXBuildFile;
 			fileRef = 10F67006C07BB7D2BC133943;
 		};
-		B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 18F773BA2EBBE6A891CF0545;
-		};
+		E000000000000000000000B0 /* OPNStreamViewController.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B1; };
 		D4D1FDD046EF74604BF789F3 /* GameController.framework in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 0B6DBC7A2FACE85A3A7C62CF;
@@ -424,20 +421,7 @@
 			path = src/streaming/OPNStreamView.swift;
 			sourceTree = "<group>";
 		};
-		D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStreamViewController.h;
-			path = src/streaming/OPNStreamViewController.h;
-			sourceTree = "<group>";
-		};
-		18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNStreamViewController.mm;
-			path = src/streaming/OPNStreamViewController.mm;
-			sourceTree = "<group>";
-		};
+		E000000000000000000000B1 /* OPNStreamViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewController.swift; path = src/streaming/OPNStreamViewController.swift; sourceTree = "<group>"; };
 		957905FB492F42AD9B576509 /* OPNUIHelpers.swift in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -701,7 +685,7 @@
 				F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */,
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift in PBXFileReference */,
 				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */,
-				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
+				E000000000000000000000B1 /* OPNStreamViewController.swift */,
 				E00000000000000000000065 /* OPNWebRTCSdpUtils.h */,
 				E00000000000000000000068 /* OPNWebRTCCodecSupport.h */,
 				E0000000000000000000006E /* OPNMetalVideoView.h */,
@@ -713,7 +697,6 @@
 				9EA7774A3F17C84ABA66DE4E /* OPNStreamSession.h in PBXFileReference */,
 				F00000000000000000000040 /* OPNStreamStats.h */,
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
-				D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */,
 			);
 			name = streaming;
 			sourceTree = "<group>";
@@ -844,7 +827,7 @@
 				6AD819D53010E3BBC30EF1FA /* OPNStreamPreferences.mm in PBXBuildFile */,
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.swift in PBXBuildFile */,
 				FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in PBXBuildFile */,
-				B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */,
+				E000000000000000000000B0 /* OPNStreamViewController.swift in PBXBuildFile */,
 				E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */,
 				E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in PBXBuildFile */,
 				E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in PBXBuildFile */,

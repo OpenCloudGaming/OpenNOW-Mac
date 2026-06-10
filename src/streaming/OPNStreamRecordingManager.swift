@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AppKit
 import CoreImage
 @preconcurrency import CoreMedia
 @preconcurrency import CoreVideo
