@@ -12,7 +12,7 @@ class LibWebRTCStreamSession;
 }
 
 @interface OPNCoreAudioRTCDevice : NSObject <RTCAudioDevice>
-@property(nonatomic, assign) OPN::LibWebRTCStreamSession *owner;
+@property(nonatomic, assign) void *owner;
 - (void)handleDefaultDeviceChange;
 @end
 #endif

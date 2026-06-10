@@ -24,6 +24,10 @@ static AudioDeviceID OPNDefaultAudioDevice(AudioObjectPropertySelector selector)
 }
 }
 
+static OPN::LibWebRTCStreamSession *OPNCoreAudioDeviceOwner(OPNCoreAudioRTCDevice *device) {
+    return device.owner ? static_cast<OPN::LibWebRTCStreamSession *>(device.owner) : nullptr;
+}
+
 #if defined(OPN_HAVE_LIBWEBRTC)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wincomplete-umbrella"
@@ -205,11 +209,12 @@ static OSStatus OPNCoreAudioRecordingCallback(void *refCon,
     }
     OSStatus status = delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, outputData);
     if (status != noErr) [self clearAudioBufferList:outputData];
-    if (status == noErr && self.owner && outputData) {
-        self.owner->HandleGameAudioFrame(outputData,
-                                         frameCount,
-                                         self.deviceOutputSampleRate,
-                                         (uint32_t)self.outputNumberOfChannels);
+    OPN::LibWebRTCStreamSession *owner = OPNCoreAudioDeviceOwner(self);
+    if (status == noErr && owner && outputData) {
+        owner->HandleGameAudioFrame(outputData,
+                                    frameCount,
+                                    self.deviceOutputSampleRate,
+                                    (uint32_t)self.outputNumberOfChannels);
     }
     return status;
 }
