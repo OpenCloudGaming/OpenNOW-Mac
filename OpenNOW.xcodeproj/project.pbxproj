@@ -162,7 +162,6 @@
 		E00000000000000000000099 /* OPNDiscordPresence.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000098; };
 		E00000000000000000000059 /* OPNSentryTransactionBridge.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000005A; };
 		A00000000000000000000024 /* OPNSessionHealthReport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000024; };
-		A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000026; };
 		E0000000000000000000003A /* OPNSessionReportView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003B; };
 		E00000000000000000000001 /* OPNAppDelegate.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000011; };
 		E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000012; };
@@ -501,8 +500,6 @@
 		E00000000000000000000098 /* OPNDiscordPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDiscordPresence.swift; path = src/common/OPNDiscordPresence.swift; sourceTree = "<group>"; };
 		E0000000000000000000005A /* OPNSentryTransactionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentryTransactionBridge.swift; path = src/common/OPNSentryTransactionBridge.swift; sourceTree = "<group>"; };
 		B00000000000000000000024 /* OPNSessionHealthReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionHealthReport.swift; path = src/common/OPNSessionHealthReport.swift; sourceTree = "<group>"; };
-		B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNVideoEnhancementRenderer.mm; path = src/streaming/OPNVideoEnhancementRenderer.mm; sourceTree = "<group>"; };
-		B00000000000000000000027 /* OPNVideoEnhancementRenderer.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNVideoEnhancementRenderer.h; path = src/streaming/OPNVideoEnhancementRenderer.h; sourceTree = "<group>"; };
 		E00000000000000000000045 /* OPNStreamSessionInputBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionInputBridge.mm; path = src/streaming/OPNStreamSessionInputBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000048 /* OPNStreamSessionCallbackBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionCallbackBridge.mm; path = src/streaming/OPNStreamSessionCallbackBridge.mm; sourceTree = "<group>"; };
 		E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLaunchBridge.mm; path = src/streaming/OPNStreamSessionLaunchBridge.mm; sourceTree = "<group>"; };
@@ -705,7 +702,6 @@
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift in PBXFileReference */,
 				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */,
 				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
-				B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */,
 				E00000000000000000000065 /* OPNWebRTCSdpUtils.h */,
 				E00000000000000000000068 /* OPNWebRTCCodecSupport.h */,
 				E0000000000000000000006E /* OPNMetalVideoView.h */,
@@ -718,7 +714,6 @@
 				F00000000000000000000040 /* OPNStreamStats.h */,
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
 				D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */,
-				B00000000000000000000027 /* OPNVideoEnhancementRenderer.h in PBXFileReference */,
 			);
 			name = streaming;
 			sourceTree = "<group>";
@@ -850,7 +845,6 @@
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.swift in PBXBuildFile */,
 				FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in PBXBuildFile */,
 				B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */,
-				A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */,
 				E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */,
 				E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in PBXBuildFile */,
 				E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in PBXBuildFile */,

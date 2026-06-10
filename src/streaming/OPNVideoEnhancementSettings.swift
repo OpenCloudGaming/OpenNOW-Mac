@@ -1,11 +1,21 @@
 import CoreGraphics
+import CoreImage
 import CoreVideo
 import Foundation
 import Metal
+import MetalKit
+import QuartzCore
 import WebRTC
 #if canImport(MetalFX)
 import MetalFX
 #endif
+
+@objc enum OPNVideoEnhancementTier: Int {
+    case off = 0
+    case spatial = 1
+    case metalFX = 2
+    case temporal = 3
+}
 
 @objc(OPNVideoEnhancementSettings)
 final class OPNVideoEnhancementSettings: NSObject {
@@ -308,5 +318,276 @@ final class OPNMetalFXUpscaler: NSObject {
         fallback?.pointee = "MetalFX headers unavailable"
         return false
 #endif
+    }
+}
+
+@objc(OPNVideoEnhancementRenderer)
+@MainActor
+final class OPNVideoEnhancementRenderer: NSObject {
+    private let device: (any MTLDevice)?
+    private let commandQueue: (any MTLCommandQueue)?
+    private let ciContext: CIContext?
+    private let outputColorSpace = CGColorSpaceCreateDeviceRGB()
+    private let metalFXUpscaler: OPNMetalFXUpscaler
+    private var droppedFrames: UInt64 = 0
+
+    @objc init(device: (any MTLDevice)?, commandQueue: (any MTLCommandQueue)?) {
+        self.device = device
+        self.commandQueue = commandQueue
+        self.ciContext = device.map { CIContext(mtlDevice: $0, options: [.workingColorSpace: NSNull()]) }
+        self.metalFXUpscaler = OPNMetalFXUpscaler(device: device)
+        super.init()
+    }
+
+    @objc var isMetalFXAvailable: Bool {
+        metalFXUpscaler.isAvailable
+    }
+
+    @objc var isTemporalAvailable: Bool {
+        device != nil && commandQueue != nil && ciContext != nil
+    }
+
+    @objc(renderFrame:toView:settings:result:)
+    func renderFrame(
+        _ frame: RTCVideoFrame?,
+        to view: MTKView?,
+        settings: OPNVideoEnhancementSettings?,
+        result: OPNVideoEnhancementResult?
+    ) -> Bool {
+        let start = CACurrentMediaTime()
+        populateResult(result, settings: settings)
+        guard let frame, let view, let settings, let result, settings.configuredTier != .off else {
+            result?.fallbackReason = "enhancement disabled"
+            result?.enhancedPixelBuffer = nil
+            return false
+        }
+        guard let drawable = view.currentDrawable, let commandQueue, let ciContext else {
+            result.fallbackReason = "enhancement renderer got empty drawable"
+            recordDrop(in: result)
+            return false
+        }
+        guard settings.drawableSize.width > 0, settings.drawableSize.height > 0 else {
+            result.fallbackReason = "enhancement renderer got empty drawable"
+            recordDrop(in: result)
+            return false
+        }
+        guard let source = image(for: frame, result: result) else {
+            result.fallbackReason = result.fallbackReason.isEmpty ? "video frame conversion failed" : result.fallbackReason
+            recordDrop(in: result)
+            return false
+        }
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            result.fallbackReason = "Core Image command buffer unavailable"
+            recordDrop(in: result)
+            return false
+        }
+
+        let drawableBounds = CGRect(x: 0, y: 0, width: drawable.texture.width, height: drawable.texture.height)
+        let filtered = enhancedImage(source, settings: settings)
+        ciContext.render(filtered, to: drawable.texture, commandBuffer: commandBuffer, bounds: drawableBounds, colorSpace: outputColorSpace)
+        if settings.captureEnhancedPixelBuffer {
+            result.enhancedPixelBuffer = newEnhancedPixelBuffer(from: filtered, width: drawable.texture.width, height: drawable.texture.height, context: ciContext)
+        }
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+
+        result.renderPath = "OPNVideoEnhancementRendererSwift"
+        result.renderMode = renderMode(for: settings.configuredTier)
+        result.activeTier = activeTierName(for: settings.configuredTier)
+        result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
+        result.droppedFrames = droppedFrames
+        result.diagnostics = "Swift Core Image renderer"
+        return true
+    }
+
+    private func populateResult(_ result: OPNVideoEnhancementResult?, settings: OPNVideoEnhancementSettings?) {
+        guard let result else { return }
+        result.pixelFormat = "unknown"
+        result.renderMode = "CoreImage"
+        result.frameSource = "unknown"
+        result.renderPath = ""
+        result.fallbackReason = ""
+        result.configuredTier = settings.map { tierName(for: $0.configuredTier) } ?? "Off"
+        result.activeTier = "Off"
+        result.tierFallbackReason = ""
+        result.sourceResolution = settings.map { resolutionString($0.sourceSize) } ?? "unknown"
+        result.drawableResolution = settings.map { resolutionString($0.drawableSize) } ?? "unknown"
+        result.diagnostics = ""
+        result.frameTimeMs = 0
+        result.droppedFrames = droppedFrames
+        result.enhancedPixelBuffer = nil
+    }
+
+    private func image(for frame: RTCVideoFrame, result: OPNVideoEnhancementResult) -> CIImage? {
+        let buffer = frame.buffer
+        if let cvBuffer = buffer as? RTCCVPixelBuffer {
+            let pixelBuffer = cvBuffer.pixelBuffer
+            result.frameSource = "CVPixelBuffer"
+            result.pixelFormat = pixelFormatName(CVPixelBufferGetPixelFormatType(pixelBuffer))
+            var image = CIImage(cvPixelBuffer: pixelBuffer)
+            if cvBuffer.requiresCropping(), cvBuffer.cropWidth > 0, cvBuffer.cropHeight > 0 {
+                let crop = CGRect(x: CGFloat(cvBuffer.cropX), y: CGFloat(cvBuffer.cropY), width: CGFloat(cvBuffer.cropWidth), height: CGFloat(cvBuffer.cropHeight))
+                image = image.cropped(to: crop)
+            }
+            return image
+        }
+
+        let i420Frame = frame.newI420()
+        guard let i420 = i420Frame.buffer as? RTCI420Buffer,
+              let pixelBuffer = newBGRAFramebuffer(from: i420) else {
+            result.frameSource = Self.frameBufferClassName(buffer) as String
+            result.pixelFormat = "I420"
+            result.fallbackReason = "I420 frame conversion failed"
+            return nil
+        }
+        result.frameSource = Self.frameBufferClassName(buffer) as String
+        result.pixelFormat = "I420"
+        return CIImage(cvPixelBuffer: pixelBuffer)
+    }
+
+    private func enhancedImage(_ image: CIImage, settings: OPNVideoEnhancementSettings) -> CIImage {
+        let target = CGRect(origin: .zero, size: settings.drawableSize)
+        let sourceExtent = image.extent
+        guard sourceExtent.width > 0, sourceExtent.height > 0, target.width > 0, target.height > 0 else { return image }
+        let scaleX = target.width / sourceExtent.width
+        let scaleY = target.height / sourceExtent.height
+        var output = image.transformed(by: CGAffineTransform(translationX: -sourceExtent.origin.x, y: -sourceExtent.origin.y).scaledBy(x: scaleX, y: scaleY))
+        if settings.denoise > 0, let filter = CIFilter(name: "CINoiseReduction") {
+            filter.setValue(output, forKey: kCIInputImageKey)
+            filter.setValue(Double(settings.denoise) / 100.0, forKey: "inputNoiseLevel")
+            filter.setValue(0.40, forKey: "inputSharpness")
+            output = filter.outputImage ?? output
+        }
+        if settings.sharpness > 0, let filter = CIFilter(name: "CISharpenLuminance") {
+            filter.setValue(output, forKey: kCIInputImageKey)
+            filter.setValue(Double(settings.sharpness) / 50.0, forKey: kCIInputSharpnessKey)
+            output = filter.outputImage ?? output
+        }
+        return output.cropped(to: target)
+    }
+
+    private func newEnhancedPixelBuffer(from image: CIImage, width: Int, height: Int, context: CIContext) -> CVPixelBuffer? {
+        guard width > 0, height > 0 else { return nil }
+        let attributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        ]
+        var pixelBuffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+              let pixelBuffer else { return nil }
+        context.render(image, to: pixelBuffer, bounds: CGRect(x: 0, y: 0, width: width, height: height), colorSpace: outputColorSpace)
+        return pixelBuffer
+    }
+
+    private func newBGRAFramebuffer(from i420: RTCI420Buffer) -> CVPixelBuffer? {
+        let width = Int(i420.width)
+        let height = Int(i420.height)
+        guard width > 0, height > 0 else { return nil }
+        let dataY = i420.dataY
+        let dataU = i420.dataU
+        let dataV = i420.dataV
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+              let pixelBuffer else { return nil }
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+        let dst = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let dstStride = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let strideY = Int(i420.strideY)
+        let strideU = Int(i420.strideU)
+        let strideV = Int(i420.strideV)
+        for y in 0..<height {
+            let row = dst.advanced(by: y * dstStride)
+            let yRow = dataY.advanced(by: y * strideY)
+            let uRow = dataU.advanced(by: (y / 2) * strideU)
+            let vRow = dataV.advanced(by: (y / 2) * strideV)
+            for x in 0..<width {
+                let yy = Int(yRow[x])
+                let uu = Int(uRow[x / 2]) - 128
+                let vv = Int(vRow[x / 2]) - 128
+                let r = clamp8(yy + ((1436 * vv) >> 10))
+                let g = clamp8(yy - ((352 * uu + 731 * vv) >> 10))
+                let b = clamp8(yy + ((1815 * uu) >> 10))
+                let offset = x * 4
+                row[offset] = b
+                row[offset + 1] = g
+                row[offset + 2] = r
+                row[offset + 3] = 255
+            }
+        }
+        return pixelBuffer
+    }
+
+    private func recordDrop(in result: OPNVideoEnhancementResult) {
+        droppedFrames += 1
+        result.droppedFrames = droppedFrames
+        result.activeTier = "Off"
+        result.frameTimeMs = 0
+    }
+
+    private func resolutionString(_ size: CGSize) -> String {
+        let width = Int(max(0, size.width).rounded())
+        let height = Int(max(0, size.height).rounded())
+        return width > 0 && height > 0 ? "\(width)x\(height)" : "unknown"
+    }
+
+    private func tierName(for tier: OPNVideoEnhancementTier) -> String {
+        switch tier {
+        case .spatial: return "Spatial"
+        case .metalFX: return "MetalFX"
+        case .temporal: return "Temporal"
+        case .off: return "Off"
+        @unknown default: return "Off"
+        }
+    }
+
+    private func activeTierName(for tier: OPNVideoEnhancementTier) -> String {
+        switch tier {
+        case .spatial: return "Spatial"
+        case .metalFX: return isMetalFXAvailable ? "MetalFX Spatial" : "Spatial"
+        case .temporal: return "Temporal"
+        case .off: return "Off"
+        @unknown default: return "Off"
+        }
+    }
+
+    private func renderMode(for tier: OPNVideoEnhancementTier) -> String {
+        switch tier {
+        case .metalFX: return isMetalFXAvailable ? "MetalFX" : "CoreImage"
+        case .temporal: return "Temporal CoreImage"
+        case .spatial: return "CoreImage"
+        case .off: return "Off"
+        @unknown default: return "CoreImage"
+        }
+    }
+
+    private func pixelFormatName(_ format: OSType) -> String {
+        if format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange { return "420v/NV12" }
+        if format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange { return "420f/NV12" }
+        if format == kCVPixelFormatType_32BGRA { return "BGRA" }
+        if format == kCVPixelFormatType_32ARGB { return "ARGB" }
+        return String(format: "0x%08x", format)
+    }
+
+    private func clamp8(_ value: Int) -> UInt8 {
+        UInt8(max(0, min(255, value)))
+    }
+
+    private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
+        NSStringFromClass(type(of: buffer) as AnyClass) as NSString
     }
 }

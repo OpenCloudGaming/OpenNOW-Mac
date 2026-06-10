@@ -1,6 +1,7 @@
 #include "OPNMetalVideoView.h"
+#import "OpenNOW-Swift.h"
+
 #include "OPNLibWebRTCStreamSession.h"
-#include "OPNVideoEnhancementRenderer.h"
 
 #import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
