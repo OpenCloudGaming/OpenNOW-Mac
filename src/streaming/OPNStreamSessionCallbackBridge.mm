@@ -165,3 +165,15 @@ void OPNConfigureStreamViewSessionCallbacks(OPN::IStreamSession *session, OPNStr
         });
     });
 }
+
+static OPN::IStreamSession *OPNCallbackBridgeRawSession(void *session) {
+    return static_cast<OPN::IStreamSession *>(session);
+}
+
+extern "C" void OPNStreamSessionCallbackBridgeClear(void *session) {
+    OPNClearStreamSessionCallbacks(OPNCallbackBridgeRawSession(session));
+}
+
+extern "C" void OPNStreamSessionCallbackBridgeConfigure(void *session, OPNStreamView *streamView, OPNStreamRecordingManager *recordingManager) {
+    OPNConfigureStreamViewSessionCallbacks(OPNCallbackBridgeRawSession(session), streamView, recordingManager);
+}

@@ -12,6 +12,24 @@ typedef void (^OPNStreamSessionAnswerHandler)(NSString *sdp, NSString *nvstSdp);
 typedef void (^OPNStreamSessionLocalIceCandidateHandler)(NSDictionary *candidate);
 typedef void (^OPNStreamSessionStateHandler)(BOOL connected, NSString *errorMessage);
 
+static std::string OPNLaunchBridgeStdString(id value) {
+    if ([value isKindOfClass:[NSString class]]) return ((NSString *)value).UTF8String ?: "";
+    if ([value isKindOfClass:[NSNumber class]]) return ((NSNumber *)value).stringValue.UTF8String ?: "";
+    return "";
+}
+
+static int OPNLaunchBridgeInt(id value, int fallback = 0) {
+    return [value respondsToSelector:@selector(intValue)] ? [value intValue] : fallback;
+}
+
+static double OPNLaunchBridgeDouble(id value, double fallback = 0.0) {
+    return [value respondsToSelector:@selector(doubleValue)] ? [value doubleValue] : fallback;
+}
+
+static bool OPNLaunchBridgeBool(id value, bool fallback = false) {
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
+}
+
 static NSString *OPNLaunchBridgeStringFromStdString(const std::string &value) {
     if (value.empty()) return @"";
     NSString *string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
@@ -25,6 +43,69 @@ static NSDictionary *OPNLaunchBridgeIceCandidateDictionary(const OPN::IceCandida
         @"sdpMLineIndex": @(candidate.sdpMLineIndex),
         @"usernameFragment": OPNLaunchBridgeStringFromStdString(candidate.usernameFragment),
     };
+}
+
+static OPN::SessionInfo OPNLaunchBridgeSessionInfo(NSDictionary *dictionary) {
+    OPN::SessionInfo info;
+    if (![dictionary isKindOfClass:[NSDictionary class]]) return info;
+    info.sessionId = OPNLaunchBridgeStdString(dictionary[@"sessionId"]);
+    info.status = OPNLaunchBridgeInt(dictionary[@"status"]);
+    info.queuePosition = OPNLaunchBridgeInt(dictionary[@"queuePosition"]);
+    info.seatSetupStep = OPNLaunchBridgeInt(dictionary[@"seatSetupStep"]);
+    info.progressState = (OPN::SessionProgressState)OPNLaunchBridgeInt(dictionary[@"progressState"]);
+    info.zone = OPNLaunchBridgeStdString(dictionary[@"zone"]);
+    info.streamingBaseUrl = OPNLaunchBridgeStdString(dictionary[@"streamingBaseUrl"]);
+    info.serverIp = OPNLaunchBridgeStdString(dictionary[@"serverIp"]);
+    info.signalingServer = OPNLaunchBridgeStdString(dictionary[@"signalingServer"]);
+    info.signalingUrl = OPNLaunchBridgeStdString(dictionary[@"signalingUrl"]);
+    info.gpuType = OPNLaunchBridgeStdString(dictionary[@"gpuType"]);
+    NSDictionary *media = [dictionary[@"mediaConnectionInfo"] isKindOfClass:[NSDictionary class]] ? dictionary[@"mediaConnectionInfo"] : nil;
+    info.mediaConnectionInfo.ip = OPNLaunchBridgeStdString(media[@"ip"]);
+    info.mediaConnectionInfo.port = OPNLaunchBridgeInt(media[@"port"]);
+    NSDictionary *profile = [dictionary[@"negotiatedStreamProfile"] isKindOfClass:[NSDictionary class]] ? dictionary[@"negotiatedStreamProfile"] : nil;
+    info.negotiatedStreamProfile.resolution = OPNLaunchBridgeStdString(profile[@"resolution"]);
+    info.negotiatedStreamProfile.fps = OPNLaunchBridgeInt(profile[@"fps"]);
+    info.negotiatedStreamProfile.codec = OPNLaunchBridgeStdString(profile[@"codec"]);
+    info.negotiatedStreamProfile.colorQuality = OPNLaunchBridgeStdString(profile[@"colorQuality"]);
+    info.negotiatedStreamProfile.prefilterMode = OPNLaunchBridgeInt(profile[@"prefilterMode"], -1);
+    info.negotiatedStreamProfile.prefilterSharpness = OPNLaunchBridgeInt(profile[@"prefilterSharpness"], -1);
+    info.negotiatedStreamProfile.prefilterDenoise = OPNLaunchBridgeInt(profile[@"prefilterDenoise"], -1);
+    info.negotiatedStreamProfile.prefilterModel = OPNLaunchBridgeInt(profile[@"prefilterModel"], -1);
+    return info;
+}
+
+static OPN::StreamSettings OPNLaunchBridgeStreamSettings(NSDictionary *dictionary) {
+    OPN::StreamSettings settings;
+    if (![dictionary isKindOfClass:[NSDictionary class]]) return settings;
+    settings.resolution = OPNLaunchBridgeStdString(dictionary[@"resolution"]);
+    settings.fps = OPNLaunchBridgeInt(dictionary[@"fps"], settings.fps);
+    settings.codec = OPNLaunchBridgeStdString(dictionary[@"codec"]);
+    settings.colorQuality = OPNLaunchBridgeStdString(dictionary[@"colorQuality"]);
+    settings.maxBitrateMbps = OPNLaunchBridgeInt(dictionary[@"maxBitrateMbps"], settings.maxBitrateMbps);
+    settings.prefilterMode = OPNLaunchBridgeInt(dictionary[@"prefilterMode"]);
+    settings.prefilterSharpness = OPNLaunchBridgeInt(dictionary[@"prefilterSharpness"]);
+    settings.prefilterDenoise = OPNLaunchBridgeInt(dictionary[@"prefilterDenoise"]);
+    settings.prefilterModel = OPNLaunchBridgeInt(dictionary[@"prefilterModel"]);
+    settings.enableL4S = OPNLaunchBridgeBool(dictionary[@"enableL4S"]);
+    settings.enableReflex = OPNLaunchBridgeBool(dictionary[@"enableReflex"], true);
+    settings.lowLatencyMode = OPNLaunchBridgeBool(dictionary[@"lowLatencyMode"]);
+    settings.enableHdr = OPNLaunchBridgeBool(dictionary[@"enableHdr"]);
+    settings.microphoneMode = OPNLaunchBridgeStdString(dictionary[@"microphoneMode"]);
+    settings.microphoneDeviceId = OPNLaunchBridgeStdString(dictionary[@"microphoneDeviceId"]);
+    settings.microphonePushToTalkKeyCode = OPNLaunchBridgeInt(dictionary[@"microphonePushToTalkKeyCode"], 9);
+    settings.microphonePushToTalkModifierMask = OPNLaunchBridgeInt(dictionary[@"microphonePushToTalkModifierMask"]);
+    settings.gameVolume = OPNLaunchBridgeDouble(dictionary[@"gameVolume"], 1.0);
+    settings.microphoneVolume = OPNLaunchBridgeDouble(dictionary[@"microphoneVolume"], 1.0);
+    settings.gameLanguage = OPNLaunchBridgeStdString(dictionary[@"gameLanguage"]);
+    settings.accountLinked = OPNLaunchBridgeBool(dictionary[@"accountLinked"], true);
+    settings.selectedStore = OPNLaunchBridgeStdString(dictionary[@"selectedStore"]);
+    settings.networkTestSessionId = OPNLaunchBridgeStdString(dictionary[@"networkTestSessionId"]);
+    settings.networkType = OPNLaunchBridgeStdString(dictionary[@"networkType"]);
+    settings.networkLatencyMs = OPNLaunchBridgeInt(dictionary[@"networkLatencyMs"], -1);
+    settings.remoteControllersBitmap = (uint32_t)OPNLaunchBridgeInt(dictionary[@"remoteControllersBitmap"]);
+    NSArray *controllers = [dictionary[@"availableSupportedControllers"] isKindOfClass:[NSArray class]] ? dictionary[@"availableSupportedControllers"] : nil;
+    for (id controller in controllers) settings.availableSupportedControllers.push_back(OPNLaunchBridgeStdString(controller));
+    return settings;
 }
 
 static bool OPNLaunchBridgeIsDottedIp(const std::string &value) {
@@ -183,4 +264,28 @@ void OPNStartStreamSession(OPN::IStreamSession *session,
         if (!stateHandlerCopy) return;
         stateHandlerCopy(connected ? YES : NO, OPNLaunchBridgeStringFromStdString(streamError));
     });
+}
+
+static OPN::IStreamSession *OPNLaunchBridgeRawSession(void *session) {
+    return static_cast<OPN::IStreamSession *>(session);
+}
+
+extern "C" void OPNStreamSessionLaunchBridgeInjectManualIceCandidate(void *session,
+                                                                      NSDictionary *sessionInfo,
+                                                                      NSString *offerSdp,
+                                                                      NSString *serverIceUfrag) {
+    OPN::SessionInfo info = OPNLaunchBridgeSessionInfo(sessionInfo);
+    OPNInjectManualStreamSessionIceCandidate(OPNLaunchBridgeRawSession(session), info, offerSdp, serverIceUfrag);
+}
+
+extern "C" void OPNStreamSessionLaunchBridgeStart(void *session,
+                                                   NSDictionary *sessionInfo,
+                                                   NSString *offerSdp,
+                                                   NSDictionary *settings,
+                                                   OPNStreamSessionAnswerHandler answerHandler,
+                                                   OPNStreamSessionLocalIceCandidateHandler localIceCandidateHandler,
+                                                   OPNStreamSessionStateHandler stateHandler) {
+    OPN::SessionInfo info = OPNLaunchBridgeSessionInfo(sessionInfo);
+    OPN::StreamSettings streamSettings = OPNLaunchBridgeStreamSettings(settings);
+    OPNStartStreamSession(OPNLaunchBridgeRawSession(session), info, offerSdp, streamSettings, answerHandler, localIceCandidateHandler, stateHandler);
 }

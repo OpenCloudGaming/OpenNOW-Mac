@@ -126,8 +126,12 @@ extern "C" OPNStreamStatsSnapshot *OPNStreamSessionHandleLatestStatsSnapshot(voi
                          videoEnhancementDrawableResolution:OPNStreamStatsSnapshotString(stats.videoEnhancementDrawableResolution)
                              videoEnhancementFallbackReason:OPNStreamStatsSnapshotString(stats.videoEnhancementFallbackReason)
                                 videoEnhancementDiagnostics:OPNStreamStatsSnapshotString(stats.videoEnhancementDiagnostics)
-                                videoEnhancementFrameTimeMs:stats.videoEnhancementFrameTimeMs
-                              videoEnhancementDroppedFrames:stats.videoEnhancementDroppedFrames];
+                                                      videoEnhancementFrameTimeMs:stats.videoEnhancementFrameTimeMs
+                                                      videoEnhancementDroppedFrames:stats.videoEnhancementDroppedFrames];
+}
+
+extern "C" void OPNStreamSessionHandleSendMouseMove(void *session, int16_t dx, int16_t dy) {
+    OPNSendStreamSessionMouseMove(OPNRawStreamSession(session), dx, dy);
 }
 
 NSUInteger OPNStreamSessionMaxGamepadControllers(void) {
