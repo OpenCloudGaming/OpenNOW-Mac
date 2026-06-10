@@ -24,6 +24,7 @@ Execute every task in this order:
 - **In-Place Conversion:** Always convert the existing implementation in place.
 - **Remove Legacy Files:** Delete the old `.mm` and `.h` files after migration or conversion.
 - **Trace Blockers:** Always trace and convert or migrate blockers during migration or conversion.
+- **Migrate Blockers:** Always migrate blockers instead of bypassing, stubbing, or deferring them.
 
 ## Resource & State
 - **Lifecycle:** Explicitly manage memory, connections, and handles via the language's native paradigm (RAII, context managers, ownership, etc.).
