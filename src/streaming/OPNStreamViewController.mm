@@ -964,57 +964,6 @@ static void OPNStyleQuitButton(NSButton *button, NSColor *background, NSColor *t
 
 @end
 
-@implementation OPNShortcutLegendView {
-    NSTextField *_titleLabel;
-    NSArray<NSTextField *> *_shortcutLabels;
-    NSArray<NSTextField *> *_descriptionLabels;
-}
-
-- (instancetype)initWithFrame:(NSRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.wantsLayer = YES;
-        self.layer.cornerRadius = 18.0;
-        self.layer.backgroundColor = OPNQuitColor(0.03, 0.035, 0.045, 0.90).CGColor;
-        self.layer.borderWidth = 1.0;
-        self.layer.borderColor = OPNQuitColor(1.0, 1.0, 1.0, 0.12).CGColor;
-
-        _titleLabel = OPNQuitLabel(@"Shortcuts", 18.0, NSFontWeightSemibold, OPNQuitColor(0.96, 0.97, 0.99, 1.0), NSTextAlignmentLeft);
-        [self addSubview:_titleLabel];
-
-        NSArray<NSString *> *shortcuts = @[@"Hold Options", @"Command-H", @"Command-G", @"Command-R", @"Command-N", @"Command-M", @"Command-K", @"Command-L", @"Command-Q", @"Hold Esc"];
-        NSArray<NSString *> *descriptions = @[@"Home dashboard", @"Toggle this legend", @"Audio HUD", @"Record stream", @"Stats HUD", @"Toggle microphone", @"Anti-AFK", @"Copy logs", @"Quit stream", @"Release pointer"];
-        NSMutableArray<NSTextField *> *shortcutLabels = [NSMutableArray arrayWithCapacity:shortcuts.count];
-        NSMutableArray<NSTextField *> *descriptionLabels = [NSMutableArray arrayWithCapacity:descriptions.count];
-        for (NSUInteger i = 0; i < shortcuts.count; i++) {
-            NSTextField *shortcut = OPNQuitLabel(shortcuts[i], 12.0, NSFontWeightSemibold, OPNQuitColor(0.75, 0.92, 0.86, 1.0), NSTextAlignmentLeft);
-            NSTextField *description = OPNQuitLabel(descriptions[i], 12.0, NSFontWeightRegular, OPNQuitColor(0.74, 0.76, 0.80, 1.0), NSTextAlignmentRight);
-            [shortcutLabels addObject:shortcut];
-            [descriptionLabels addObject:description];
-            [self addSubview:shortcut];
-            [self addSubview:description];
-        }
-        _shortcutLabels = shortcutLabels;
-        _descriptionLabels = descriptionLabels;
-    }
-    return self;
-}
-
-- (void)layout {
-    [super layout];
-    CGFloat padding = 20.0;
-    CGFloat width = NSWidth(self.bounds);
-    CGFloat top = NSHeight(self.bounds);
-    _titleLabel.frame = NSMakeRect(padding, top - 42.0, width - padding * 2.0, 22.0);
-    for (NSUInteger i = 0; i < _shortcutLabels.count; i++) {
-        CGFloat y = top - 78.0 - (CGFloat)i * 28.0;
-        _shortcutLabels[i].frame = NSMakeRect(padding, y, 112.0, 18.0);
-        _descriptionLabels[i].frame = NSMakeRect(132.0, y, width - 132.0 - padding, 18.0);
-    }
-}
-
-@end
-
 @implementation OPNStatsOverlayView {
     NSTextField *_statsLineLabel;
 }
