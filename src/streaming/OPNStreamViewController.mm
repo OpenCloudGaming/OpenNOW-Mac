@@ -482,54 +482,6 @@ static OPN::StreamSettings OPNSettingsWithNegotiatedProfile(OPN::StreamSettings 
     return settings;
 }
 
-static BOOL OPNIsCommandQEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"q"];
-}
-
-static BOOL OPNIsCommandNEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"n"];
-}
-
-static BOOL OPNIsCommandMEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"m"];
-}
-
-static BOOL OPNIsCommandGEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"g"];
-}
-
-static BOOL OPNIsCommandREvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"r"];
-}
-
-static BOOL OPNIsCommandHEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"h"];
-}
-
-static BOOL OPNIsCommandLEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"l"];
-}
-
-static BOOL OPNIsCommandKEvent(NSEvent *event) {
-    if (!event || event.type != NSEventTypeKeyDown) return NO;
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString ?: @"";
-    return (event.modifierFlags & NSEventModifierFlagCommand) && [key isEqualToString:@"k"];
-}
-
 static std::string OPNLowercaseCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     return value;
@@ -1038,35 +990,35 @@ static void OPNUpdateLoadingViewAdState(OPNLoadingView *loadingView, const OPN::
 	    __typeof__(self) strongSelf = weakSelf;
 	    if (!strongSelf || strongSelf->_streamEnded) return event;
 	    if (!strongSelf.view.window || event.window != strongSelf.view.window) return event;
-	    if (OPNIsCommandQEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandQEvent:event]) {
 	        [strongSelf requestQuitGameConfirmation];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandNEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandNEvent:event]) {
 	        [strongSelf toggleStatsOverlay];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandMEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandMEvent:event]) {
         (void)[strongSelf.streamView toggleMicrophoneEnabledShortcut];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandGEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandGEvent:event]) {
 	        [strongSelf.streamView toggleSidebarHUD];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandREvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandREvent:event]) {
         (void)[strongSelf.streamView toggleRecordingShortcut];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandHEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandHEvent:event]) {
 	        [strongSelf toggleShortcutLegendOverlay];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandLEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandLEvent:event]) {
 	        [strongSelf copyCurrentLogToClipboardFromShortcut];
 	        return (NSEvent *)nil;
 	    }
-	    if (OPNIsCommandKEvent(event)) {
+	    if ([OPNStreamViewControllerSupport isCommandKEvent:event]) {
 	        [strongSelf toggleIdleDeviceInputMode];
 	        return (NSEvent *)nil;
 	    }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @objc(OPNStreamViewControllerSupport)
@@ -65,8 +66,46 @@ final class OPNStreamViewControllerSupport: NSObject {
         return parts.isEmpty ? boundedStreamFailureMessage(message) : parts.joined(separator: " ")
     }
 
+    @objc static func isCommandQEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "q")
+    }
+
+    @objc static func isCommandNEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "n")
+    }
+
+    @objc static func isCommandMEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "m")
+    }
+
+    @objc static func isCommandGEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "g")
+    }
+
+    @objc static func isCommandREvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "r")
+    }
+
+    @objc static func isCommandHEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "h")
+    }
+
+    @objc static func isCommandLEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "l")
+    }
+
+    @objc static func isCommandKEvent(_ event: NSEvent?) -> Bool {
+        isCommandEvent(event, key: "k")
+    }
+
     private static func nonEmpty(_ value: String?, fallback: String) -> String {
         guard let value, !value.isEmpty else { return fallback }
         return value
+    }
+
+    private static func isCommandEvent(_ event: NSEvent?, key: String) -> Bool {
+        guard let event, event.type == .keyDown else { return false }
+        let eventKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        return event.modifierFlags.contains(.command) && eventKey == key
     }
 }
