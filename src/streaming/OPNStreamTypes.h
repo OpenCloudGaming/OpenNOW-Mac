@@ -1,9 +1,58 @@
 #pragma once
 
+#import <Foundation/Foundation.h>
 #include <string>
 #include <vector>
 #include <functional>
 #include <cstdint>
+
+NS_ASSUME_NONNULL_BEGIN
+
+#ifndef OPN_SENTRY_OBJC_DECLARATIONS
+#define OPN_SENTRY_OBJC_DECLARATIONS
+@interface OPNSentryTransaction : NSObject
+- (void)setStatus:(BOOL)success;
+- (void)finish;
+@end
+
+@interface OPNSentry : NSObject
++ (void)logInfoMessage:(NSString *)message;
++ (void)logErrorMessage:(NSString *)message;
++ (nullable OPNSentryTransaction *)startTransactionWithName:(NSString *)name operation:(NSString *)operation makeCurrent:(BOOL)makeCurrent;
++ (nullable OPNSentryTransaction *)traceHTTPRequest:(NSMutableURLRequest *)request name:(NSString *)name;
++ (BOOL)recordCounterMetricWithKey:(NSString *)key value:(int64_t)value attributes:(nullable NSDictionary<NSString *, id> *)attributes;
++ (BOOL)recordGaugeMetricWithKey:(NSString *)key value:(double)value unit:(nullable NSString *)unit attributes:(nullable NSDictionary<NSString *, id> *)attributes;
++ (BOOL)recordDistributionMetricWithKey:(NSString *)key value:(double)value unit:(nullable NSString *)unit attributes:(nullable NSDictionary<NSString *, id> *)attributes;
+@end
+#endif
+
+#ifndef OPN_SENTRY_LOG_MACROS
+#define OPN_SENTRY_LOG_MACROS
+#define OPNLogInfo(...) [OPNSentry logInfoMessage:[NSString stringWithFormat:__VA_ARGS__]]
+#define OPNLogError(...) [OPNSentry logErrorMessage:[NSString stringWithFormat:__VA_ARGS__]]
+#endif
+
+#ifndef OPN_SENTRY_METRIC_HELPERS
+#define OPN_SENTRY_METRIC_HELPERS
+static inline NSString *OPNSentryMetricKey(const char *value) {
+    if (!value || value[0] == '\0') return @"";
+    return [NSString stringWithUTF8String:value] ?: @"";
+}
+
+static inline bool OPNRecordSentryCounterMetric(const char *key, int64_t value, NSDictionary<NSString *, id> * _Nullable attributes) {
+    return [OPNSentry recordCounterMetricWithKey:OPNSentryMetricKey(key) value:value attributes:attributes] ? true : false;
+}
+
+static inline bool OPNRecordSentryGaugeMetric(const char *key, double value, const char *unit, NSDictionary<NSString *, id> * _Nullable attributes) {
+    return [OPNSentry recordGaugeMetricWithKey:OPNSentryMetricKey(key) value:value unit:OPNSentryMetricKey(unit) attributes:attributes] ? true : false;
+}
+
+static inline bool OPNRecordSentryDistributionMetric(const char *key, double value, const char *unit, NSDictionary<NSString *, id> * _Nullable attributes) {
+    return [OPNSentry recordDistributionMetricWithKey:OPNSentryMetricKey(key) value:value unit:OPNSentryMetricKey(unit) attributes:attributes] ? true : false;
+}
+#endif
+
+NS_ASSUME_NONNULL_END
 
 namespace OPN {
 
@@ -122,6 +171,16 @@ struct SessionInfo {
     bool remainingPlaytimeUnlimited = false;
     std::string clientId;
     std::string deviceId;
+};
+
+struct ActiveSessionEntry {
+    std::string sessionId;
+    int appId = 0;
+    int status = 0;
+    std::string serverIp;
+    std::string gpuType;
+    std::string streamingBaseUrl;
+    std::string signalingUrl;
 };
 
 struct IceCandidatePayload {

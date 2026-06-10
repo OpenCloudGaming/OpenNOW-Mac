@@ -6,10 +6,11 @@ applyTo: '**'
 # Operational Protocol
 Execute every task in this order:
 
-1. **Audit** — List all files, modules, and components required.
+1. **Audit** — List all files, modules, and components required. (Graphify)
 2. **Blueprint** — Outline a concise architectural plan before writing code.
 3. **Execution** — Deliver complete, production-ready code. No snippets, placeholders (`TODO`, `pass`, `...`), or stubs.
 4. **Autonomy** — Resolve missing context or dependencies using the standard library or canonical practices.
+5. **Graphify** - Update Graphify (graphify update <path>)
 
 # Coding Standards
 
@@ -17,6 +18,12 @@ Execute every task in this order:
 - **Self-Documenting:** Names and structure must convey intent. No explanatory inline comments.
 - **Hermetic:** Every file includes all imports and dependencies. Must compile/run as-is.
 - **Complete:** All functions and methods contain final, working logic. No mocks or no-ops unless building a test suite.
+
+## Migration & Conversion
+- **No Stubs:** Never use stubs when migrating or converting code.
+- **In-Place Conversion:** Always convert the existing implementation in place.
+- **Remove Legacy Files:** Delete the old `.mm` and `.h` files after migration or conversion.
+- **Trace Blockers:** Always trace and convert or migrate blockers during migration or conversion.
 
 ## Resource & State
 - **Lifecycle:** Explicitly manage memory, connections, and handles via the language's native paradigm (RAII, context managers, ownership, etc.).

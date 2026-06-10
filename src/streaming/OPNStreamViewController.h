@@ -1,24 +1,25 @@
-#include "OPNStreamTypes.h"
-#include "common/OPNSessionHealthReport.h"
 #import <Cocoa/Cocoa.h>
+#import <Cocoa/Cocoa.h>
+
+@class OPNSessionReportPayload;
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface OPNStreamViewController : NSViewController
 
-- (instancetype)initWithGameTitle:(const std::string &)title
-                             appId:(const std::string &)appId
-                          apiToken:(const std::string &)token
-                     accountLinked:(bool)accountLinked
-                      selectedStore:(const std::string &)selectedStore;
+- (instancetype)initWithGameTitle:(NSString *)title
+                             appId:(NSString *)appId
+                          apiToken:(NSString *)token
+                     accountLinked:(BOOL)accountLinked
+                      selectedStore:(NSString *)selectedStore;
 
-- (instancetype)initWithGameTitle:(const std::string &)title
-                             appId:(const std::string &)appId
-                          apiToken:(const std::string &)token
-                     accountLinked:(bool)accountLinked
-                     selectedStore:(const std::string &)selectedStore
-                   resumeSessionId:(const std::string &)resumeSessionId
-                       resumeServer:(const std::string &)resumeServer;
+- (instancetype)initWithGameTitle:(NSString *)title
+                             appId:(NSString *)appId
+                          apiToken:(NSString *)token
+                     accountLinked:(BOOL)accountLinked
+                     selectedStore:(NSString *)selectedStore
+                   resumeSessionId:(NSString *)resumeSessionId
+                       resumeServer:(NSString *)resumeServer;
 
 - (void)setInitialViewFrame:(NSRect)frame;
 - (void)setRemainingPlaytimeHours:(double)hours unlimited:(BOOL)unlimited;
@@ -26,7 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setStreamInputSuppressed:(BOOL)suppressed;
 
 @property(nonatomic, copy) void (^onStreamEnd)
-    (BOOL success, const std::string &errorMessage, const OPN::SessionHealthReport &report);
+    (BOOL success, NSString *errorMessage, OPNSessionReportPayload *report);
 @property(nonatomic, copy) void (^onDashboardToggleRequested)(void);
 
 - (void)requestQuitGameConfirmation;

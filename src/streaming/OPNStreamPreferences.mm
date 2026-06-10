@@ -1,7 +1,4 @@
 #include "OPNStreamPreferences.h"
-#include "common/OPNDeviceIdentity.h"
-#include "common/OPNProtocolDebug.h"
-#include "common/OPNSentry.h"
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
@@ -12,6 +9,15 @@
 #include <ifaddrs.h>
 #include <memory>
 #include <net/if.h>
+
+@interface OPNDeviceIdentity : NSObject
++ (NSString *)stableCloudmatchDeviceId;
+@end
+
+@interface OPNProtocolDebug : NSObject
++ (void)logJSONObjectWithLabel:(nullable NSString *)label object:(nullable id)object;
++ (void)logJSONDataWithLabel:(nullable NSString *)label data:(nullable NSData *)data;
+@end
 
 namespace OPN {
 
@@ -1019,7 +1025,7 @@ static NSMutableURLRequest *ServerInfoRequest(const std::string &baseUrl, const 
     [request setValue:@"WEBRTC" forHTTPHeaderField:@"nv-client-streamer"];
     [request setValue:@"WINDOWS" forHTTPHeaderField:@"nv-device-os"];
     [request setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
-    [request setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
+    [request setValue:[OPNDeviceIdentity stableCloudmatchDeviceId] forHTTPHeaderField:@"x-device-id"];
     if (!token.empty()) {
         NSString *tokenString = [NSString stringWithUTF8String:token.c_str()];
         if (tokenString.length > 0) {
@@ -1363,15 +1369,14 @@ void FetchStreamCloudVariables(const std::string &token,
     request.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
     request.timeoutInterval = 4.0;
     ApplyCloudmatchHeaders(request, token);
-    auto trace = TraceSentryHTTPRequest(request, "Cloud variables");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:request name:@"Cloud variables"];
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
         StreamCloudVariables result = cached;
         NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
-            traceGuard.SetSuccess(true);
-            LogProtocolJSONData(@"cloudvariables/v3 response", data);
+            [trace setStatus:YES];
+            [OPNProtocolDebug logJSONDataWithLabel:@"cloudvariables/v3 response" data:data];
             NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
             if (json.length > 0) {
                 std::string raw([json UTF8String]);
@@ -1381,7 +1386,10 @@ void FetchStreamCloudVariables(const std::string &token,
                     SaveCachedStreamCloudVariables(result, raw);
                 }
             }
+        } else {
+            [trace setStatus:NO];
         }
+        [trace finish];
         dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
     }] resume];
 }
@@ -1404,7 +1412,7 @@ static NSString *NetworkTestSessionIdFromJSON(id json) {
 static NSDictionary *NetworkTestRequestBody(const StreamNetworkPreflightResult &preflight,
                                            int requestedMaxBitrateMbps) {
     NSString *networkType = [NSString stringWithUTF8String:preflight.networkType.c_str()] ?: @"Unknown";
-    NSString *deviceId = [NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] ?: @"";
+    NSString *deviceId = [OPNDeviceIdentity stableCloudmatchDeviceId] ?: @"";
     NSMutableDictionary *requestData = [@{
         @"clientIdentification": @"GFN-PC",
         @"clientVersion": @"30.0",
@@ -1437,21 +1445,23 @@ static void CreateNetworkTestSession(StreamNetworkPreflightResult preflight,
     ApplyCloudmatchHeaders(request, token);
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     NSDictionary *body = NetworkTestRequestBody(preflight, requestedMaxBitrateMbps);
-    LogProtocolJSONObject(@"nettestsession request", body);
+    [OPNProtocolDebug logJSONObjectWithLabel:@"nettestsession request" object:body];
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     request.HTTPBody = bodyData ?: [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
-    auto trace = TraceSentryHTTPRequest(request, "Network test session");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:request name:@"Network test session"];
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
         StreamNetworkPreflightResult result = preflight;
         NSHTTPURLResponse *http = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         if (!error && data && http.statusCode >= 200 && http.statusCode < 300) {
-            traceGuard.SetSuccess(true);
-            LogProtocolJSONData(@"nettestsession response", data);
+            [trace setStatus:YES];
+            [OPNProtocolDebug logJSONDataWithLabel:@"nettestsession response" data:data];
             NSString *jsonText = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
             if (jsonText.length > 0) result = StreamNetworkPreflightResultFromJSONString([jsonText UTF8String], result, requestedMaxBitrateMbps);
+        } else {
+            [trace setStatus:NO];
         }
+        [trace finish];
         dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
     }] resume];
 }
@@ -1472,17 +1482,19 @@ static void MeasureRegionLatency(std::shared_ptr<std::vector<StreamRegionOption>
 
     NSDate *start = [NSDate date];
     NSMutableURLRequest *request = ServerInfoRequest((*regions)[index].url, token);
-    auto trace = TraceSentryHTTPRequest(request, "Region latency probe");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:request name:@"Region latency probe"];
     NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
         int updatedBestLatencyMs = bestLatencyMs;
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (!error && http.statusCode >= 200 && http.statusCode < 500) {
-            traceGuard.SetSuccess(true);
+            [trace setStatus:YES];
             int measuredLatencyMs = (int)std::llround([[NSDate date] timeIntervalSinceDate:start] * 1000.0);
             updatedBestLatencyMs = updatedBestLatencyMs < 0 ? measuredLatencyMs : std::min(updatedBestLatencyMs, measuredLatencyMs);
             (*regions)[index].latencyMs = updatedBestLatencyMs;
+        } else {
+            [trace setStatus:NO];
         }
+        [trace finish];
 
         if (updatedBestLatencyMs >= 0 && attempt + 1 < kRegionLatencyProbeCount) {
             MeasureRegionLatency(regions, index, token, session, attempt + 1, updatedBestLatencyMs, group);
@@ -1526,11 +1538,12 @@ void FetchStreamRegions(const std::string &token,
     std::string baseUrl = providerStreamingBaseUrl.empty() ? kDefaultStreamingBaseUrl : providerStreamingBaseUrl;
     std::string tokenCopy = token;
     NSMutableURLRequest *request = ServerInfoRequest(baseUrl, tokenCopy);
-    auto trace = TraceSentryHTTPRequest(request, "Stream regions");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:request name:@"Stream regions"];
     [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (error || !data || http.statusCode != 200) {
+            [trace setStatus:NO];
+            [trace finish];
             std::vector<StreamRegionOption> cached = LoadCachedStreamRegions();
             dispatch_async(dispatch_get_main_queue(), ^{ completion(cached); });
             return;
@@ -1551,10 +1564,13 @@ void FetchStreamRegions(const std::string &token,
             regions->push_back(region);
         }
         if (regions->empty()) {
+            [trace setStatus:NO];
+            [trace finish];
             dispatch_async(dispatch_get_main_queue(), ^{ completion(LoadCachedStreamRegions()); });
             return;
         }
-        traceGuard.SetSuccess(true);
+        [trace setStatus:YES];
+        [trace finish];
         MeasureRegions(regions, tokenCopy, completion);
     }] resume];
 }

@@ -1,7 +1,8 @@
 #pragma once
 
 #include "OPNStreamSession.h"
-#include "OPNInputProtocol.h"
+#include "OPNStreamStats.h"
+#include "OPNStreamTypes.h"
 #include <memory>
 #include <mutex>
 #include <string>
@@ -138,9 +139,7 @@ private:
     int m_adaptiveRecoveryScore = 0;
     uint64_t m_lastAdaptiveBitrateChangeMs = 0;
     StreamSettings m_settings;
-    Input::Encoder m_inputEncoder;
-    std::vector<uint8_t> m_mouseMoveScratch;
-    std::vector<uint8_t> m_heartbeatScratch;
+    void *m_inputEncoder = nullptr;
     std::function<void(const SendAnswerRequest &)> m_onAnswer;
     std::function<void(const IceCandidatePayload &)> m_onIceCandidate;
     StreamStateCallback m_onState;

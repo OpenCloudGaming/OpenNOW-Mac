@@ -1,10 +1,5 @@
 
 #include "OPNSessionManager.h"
-#include "common/OPNSentry.h"
-#include "common/OPNLocale.h"
-#include "common/OPNDeviceIdentity.h"
-#include "common/OPNProtocolDebug.h"
-#include "OPNSessionParsing.h"
 #include "OPNStreamTypes.h"
 #include "OPNStreamPreferences.h"
 #import <Foundation/Foundation.h>
@@ -14,19 +9,115 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <mutex>
+#include <unordered_map>
 
-using OPN::ArrayValue;
-using OPN::BoolValue;
-using OPN::DictionaryValue;
-using OPN::PositiveIntValue;
-using OPN::StringValue;
+@class OPNParsedNegotiatedStreamProfile;
+@class OPNParsedSessionProgress;
+@class OPNParsedSessionAdState;
+
+@interface OPNLocale : NSObject
++ (NSString *)currentGFNLocale;
+@end
+
+@interface OPNDeviceIdentity : NSObject
++ (NSString *)stableCloudmatchDeviceId;
+@end
+
+@interface OPNProtocolDebug : NSObject
++ (void)logJSONObjectWithLabel:(nullable NSString *)label object:(nullable id)object;
++ (void)logJSONDataWithLabel:(nullable NSString *)label data:(nullable NSData *)data;
+@end
+
+@interface OPNSessionJSONParser : NSObject
++ (OPNParsedNegotiatedStreamProfile *)parseNegotiatedStreamProfileFromSession:(NSDictionary *)session;
++ (OPNParsedSessionProgress *)parseSessionProgressFromSession:(NSDictionary *)session;
++ (OPNParsedSessionAdState *)parseSessionAdStateFromSession:(NSDictionary *)session;
+@end
+
+@interface OPNParsedNegotiatedStreamProfile : NSObject
+@property(nonatomic, readonly) NSString *resolution;
+@property(nonatomic, readonly) NSInteger fps;
+@property(nonatomic, readonly) NSString *codec;
+@property(nonatomic, readonly) NSString *colorQuality;
+@property(nonatomic, readonly) NSInteger bitDepth;
+@property(nonatomic, readonly) NSInteger chromaFormat;
+@property(nonatomic, readonly) NSInteger prefilterMode;
+@property(nonatomic, readonly) NSInteger prefilterSharpness;
+@property(nonatomic, readonly) NSInteger prefilterDenoise;
+@property(nonatomic, readonly) NSInteger prefilterModel;
+@end
+
+@interface OPNParsedSessionProgress : NSObject
+@property(nonatomic, readonly) NSInteger queuePosition;
+@property(nonatomic, readonly) NSInteger seatSetupStep;
+@property(nonatomic, readonly) NSInteger progressState;
+@property(nonatomic, readonly) double remainingPlaytimeHours;
+@property(nonatomic, readonly) BOOL remainingPlaytimeAvailable;
+@end
+
+@interface OPNParsedSessionAdMediaFile : NSObject
+@property(nonatomic, readonly) NSString *mediaFileUrl;
+@property(nonatomic, readonly) NSString *encodingProfile;
+@end
+
+@interface OPNParsedSessionAd : NSObject
+@property(nonatomic, readonly) NSString *adId;
+@property(nonatomic, readonly) NSInteger adState;
+@property(nonatomic, readonly) NSString *adUrl;
+@property(nonatomic, readonly) NSString *mediaUrl;
+@property(nonatomic, readonly) NSArray<OPNParsedSessionAdMediaFile *> *adMediaFiles;
+@property(nonatomic, readonly) NSString *clickThroughUrl;
+@property(nonatomic, readonly) NSInteger adLengthInSeconds;
+@property(nonatomic, readonly) NSInteger durationMs;
+@property(nonatomic, readonly) NSString *title;
+@property(nonatomic, readonly) NSString *adDescription;
+@end
+
+@interface OPNParsedSessionAdState : NSObject
+@property(nonatomic, readonly) BOOL isAdsRequired;
+@property(nonatomic, readonly) BOOL sessionAdsRequired;
+@property(nonatomic, readonly) BOOL isQueuePaused;
+@property(nonatomic, readonly) BOOL serverSentEmptyAds;
+@property(nonatomic, readonly) NSInteger gracePeriodSeconds;
+@property(nonatomic, readonly) NSString *message;
+@property(nonatomic, readonly) NSArray<OPNParsedSessionAd *> *sessionAds;
+@end
+
+namespace OPN {
+
+struct SessionManagerStorage {
+    std::string accessToken;
+    std::string streamingBaseUrl;
+    std::mutex adStateMutex;
+    std::unordered_map<std::string, SessionAdState> adStatesBySessionId;
+};
+
+}
 
 static NSString *kNvClientId = @"ec7e38d4-03af-4b58-b131-cfb0495903ab";
 static NSString *kNvClientVersion = @"2.0.80.173";
 static NSString *kPersistedActiveSessionIdKey = @"OpenNOW.Stream.ActiveSessionId";
 
+static NSArray *ArrayValue(id value) {
+    return [value isKindOfClass:[NSArray class]] ? (NSArray *)value : @[];
+}
+
+static NSDictionary *DictionaryValue(id value) {
+    return [value isKindOfClass:[NSDictionary class]] ? (NSDictionary *)value : nil;
+}
+
+static NSString *StringValue(id value) {
+    return [value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0 ? (NSString *)value : nil;
+}
+
 static NSString *GetUserAgent() {
     return @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173";
+}
+
+static std::string StableCloudmatchDeviceIdString() {
+    NSString *deviceId = [OPNDeviceIdentity stableCloudmatchDeviceId];
+    return deviceId.UTF8String ?: "";
 }
 
 
@@ -125,76 +216,11 @@ static int IntValue(id value, int fallback = 0) {
     return fallback;
 }
 
-static NSNumber *NumberValue(id value) {
-    if ([value isKindOfClass:[NSNumber class]]) return (NSNumber *)value;
-    if ([value isKindOfClass:[NSString class]]) {
-        NSString *text = [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (text.length == 0) return nil;
-        static NSNumberFormatter *formatter = nil;
-        static dispatch_once_t onceToken;
-        dispatch_once(&onceToken, ^{
-            formatter = [[NSNumberFormatter alloc] init];
-            formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-            formatter.numberStyle = NSNumberFormatterDecimalStyle;
-        });
-        return [formatter numberFromString:text];
-    }
-    return nil;
-}
-
-static NSNumber *NestedNumberValue(NSDictionary *dictionary, NSArray<NSString *> *keys) {
-    for (NSString *key in keys) {
-        NSNumber *number = NumberValue(dictionary[key]);
-        if (number) return number;
-    }
-    return nil;
-}
-
 static void ParseRemainingPlaytime(NSDictionary *session, OPN::SessionInfo &info) {
-    if (!session) return;
-    NSArray<NSDictionary *> *containers = @[
-        session,
-        DictionaryValue(session[@"sessionProgress"]) ?: @{},
-        DictionaryValue(session[@"progressInfo"]) ?: @{},
-        DictionaryValue(session[@"sessionControlInfo"]) ?: @{},
-    ];
-
-    NSNumber *minutes = nil;
-    NSNumber *seconds = nil;
-    NSNumber *milliseconds = nil;
-    for (NSDictionary *container in containers) {
-        minutes = NestedNumberValue(container, @[@"remainingTimeInMinutes", @"remainingSessionTimeInMinutes", @"sessionTimeRemainingInMinutes", @"timeRemainingInMinutes"]);
-        if (minutes) break;
-        seconds = NestedNumberValue(container, @[@"remainingTimeInSeconds", @"remainingSessionTimeInSeconds", @"sessionTimeRemainingInSeconds", @"timeRemainingInSeconds", @"remainingTime", @"timeRemaining"]);
-        if (seconds) break;
-        milliseconds = NestedNumberValue(container, @[@"remainingTimeInMs", @"remainingTimeInMilliseconds", @"remainingSessionTimeInMs", @"sessionTimeRemainingInMs"]);
-        if (milliseconds) break;
-    }
-
-    if (minutes) {
-        info.remainingPlaytimeHours = MAX(0.0, minutes.doubleValue / 60.0);
+    OPNParsedSessionProgress *parsed = [OPNSessionJSONParser parseSessionProgressFromSession:session];
+    if (parsed.remainingPlaytimeAvailable) {
+        info.remainingPlaytimeHours = parsed.remainingPlaytimeHours;
         info.remainingPlaytimeAvailable = true;
-    } else if (seconds) {
-        info.remainingPlaytimeHours = MAX(0.0, seconds.doubleValue / 3600.0);
-        info.remainingPlaytimeAvailable = true;
-    } else if (milliseconds) {
-        info.remainingPlaytimeHours = MAX(0.0, milliseconds.doubleValue / 3600000.0);
-        info.remainingPlaytimeAvailable = true;
-    }
-}
-
-static OPN::SessionProgressState ProgressStateForSeatSetupStep(int seatSetupStep, int queuePosition) {
-    switch (seatSetupStep) {
-        case 0:
-            return queuePosition > 0 ? OPN::SessionProgressState::InQueue : OPN::SessionProgressState::Connecting;
-        case 1:
-            return OPN::SessionProgressState::InQueue;
-        case 5:
-            return OPN::SessionProgressState::PreviousSessionCleanup;
-        case 6:
-            return OPN::SessionProgressState::WaitingForStorage;
-        default:
-            return OPN::SessionProgressState::SettingUp;
     }
 }
 
@@ -292,161 +318,61 @@ static NSDictionary *RequestedStreamingFeatures(const OPN::StreamSettings &setti
     };
 }
 
-static std::string ColorQualityFromFeatures(int bitDepth, int chromaFormat) {
-    const bool tenBit = bitDepth >= 10;
-    const bool fourFourFour = chromaFormat == 2;
-    if (tenBit && fourFourFour) return "10bit_444";
-    if (tenBit) return "10bit_420";
-    if (fourFourFour) return "8bit_444";
-    return "8bit_420";
-}
-
 static void ParseStreamProfile(NSDictionary *session, OPN::NegotiatedStreamProfile &profile) {
-    NSDictionary *negotiated = DictionaryValue(session[@"negotiatedStreamProfile"]);
-    if (negotiated) {
-        NSString *res = [negotiated[@"resolution"] isKindOfClass:[NSString class]] ? negotiated[@"resolution"] : nil;
-        if (res) profile.resolution = [res UTF8String];
-        NSString *codec = [negotiated[@"codec"] isKindOfClass:[NSString class]] ? negotiated[@"codec"] : nil;
-        if (codec) profile.codec = [codec UTF8String];
-        NSNumber *fpsNum = [negotiated[@"fps"] isKindOfClass:[NSNumber class]] ? negotiated[@"fps"] : nil;
-        if (fpsNum) profile.fps = [fpsNum intValue];
-    }
-
-    NSDictionary *features = DictionaryValue(session[@"finalizedStreamingFeatures"]);
-    if (!features) return;
-
-    NSNumber *bitDepth = [features[@"bitDepth"] isKindOfClass:[NSNumber class]] ? features[@"bitDepth"] : nil;
-    NSNumber *chromaFormat = [features[@"chromaFormat"] isKindOfClass:[NSNumber class]] ? features[@"chromaFormat"] : nil;
-    if (bitDepth) profile.bitDepth = [bitDepth intValue];
-    if (chromaFormat) profile.chromaFormat = [chromaFormat intValue];
+    OPNParsedNegotiatedStreamProfile *parsed = [OPNSessionJSONParser parseNegotiatedStreamProfileFromSession:session];
+    profile.resolution = parsed.resolution.UTF8String ?: "";
+    profile.codec = parsed.codec.UTF8String ?: "";
+    profile.fps = (int)parsed.fps;
+    profile.bitDepth = (int)parsed.bitDepth;
+    profile.chromaFormat = (int)parsed.chromaFormat;
+    profile.colorQuality = parsed.colorQuality.UTF8String ?: "";
+    profile.prefilterMode = (int)parsed.prefilterMode;
+    profile.prefilterSharpness = (int)parsed.prefilterSharpness;
+    profile.prefilterDenoise = (int)parsed.prefilterDenoise;
+    profile.prefilterModel = (int)parsed.prefilterModel;
     if (profile.bitDepth >= 0 || profile.chromaFormat >= 0) {
-        profile.colorQuality = ColorQualityFromFeatures(profile.bitDepth, profile.chromaFormat);
-        OPN::LogInfo(@"[SessionManager] Finalized stream features bitDepth=%d chromaFormat=%d color=%s",
+        OPNLogInfo(@"[SessionManager] Finalized stream features bitDepth=%d chromaFormat=%d color=%s",
               profile.bitDepth,
               profile.chromaFormat,
               profile.colorQuality.c_str());
     }
-
-    NSNumber *prefilterMode = [features[@"prefilterMode"] isKindOfClass:[NSNumber class]] ? features[@"prefilterMode"] : nil;
-    NSNumber *prefilterSharpness = [features[@"prefilterSharpness"] isKindOfClass:[NSNumber class]] ? features[@"prefilterSharpness"] : nil;
-    NSNumber *prefilterDenoise = [features[@"prefilterNoiseReduction"] isKindOfClass:[NSNumber class]] ? features[@"prefilterNoiseReduction"] : nil;
-    NSNumber *prefilterModel = [features[@"prefilterModel"] isKindOfClass:[NSNumber class]] ? features[@"prefilterModel"] : nil;
-    if (prefilterMode) profile.prefilterMode = std::max(0, std::min([prefilterMode intValue], 2));
-    if (prefilterSharpness) profile.prefilterSharpness = std::max(0, std::min([prefilterSharpness intValue], 10));
-    if (prefilterDenoise) profile.prefilterDenoise = std::max(0, std::min([prefilterDenoise intValue], 10));
-    if (prefilterModel) profile.prefilterModel = std::max(0, [prefilterModel intValue]);
 }
 
 static void ParseQueueProgress(NSDictionary *session, OPN::SessionInfo &info) {
-    int queuePosition = PositiveIntValue(session[@"queuePosition"]);
-    NSDictionary *seatSetupInfo = DictionaryValue(session[@"seatSetupInfo"]);
-    if (queuePosition == 0 && seatSetupInfo) queuePosition = PositiveIntValue(seatSetupInfo[@"queuePosition"]);
-    NSDictionary *sessionProgress = DictionaryValue(session[@"sessionProgress"]);
-    if (queuePosition == 0 && sessionProgress) queuePosition = PositiveIntValue(sessionProgress[@"queuePosition"]);
-    NSDictionary *progressInfo = DictionaryValue(session[@"progressInfo"]);
-    if (queuePosition == 0 && progressInfo) queuePosition = PositiveIntValue(progressInfo[@"queuePosition"]);
-    info.queuePosition = queuePosition;
-
-    if (seatSetupInfo) {
-        info.seatSetupStep = IntValue(seatSetupInfo[@"seatSetupStep"]);
-    }
-    if (info.seatSetupStep == 0 && sessionProgress) {
-        info.seatSetupStep = IntValue(sessionProgress[@"seatSetupStep"]);
-    }
-    if (info.seatSetupStep == 0 && progressInfo) {
-        info.seatSetupStep = IntValue(progressInfo[@"seatSetupStep"]);
-    }
-    info.progressState = ProgressStateForSeatSetupStep(info.seatSetupStep, info.queuePosition);
-}
-
-static int AdMediaProfileRank(const std::string &profile) {
-    if (profile == "mp4deinterlaced720p") return 0;
-    if (profile == "hlsadaptive") return 1;
-    if (profile == "webm") return 2;
-    return 100;
-}
-
-static bool IsTerminalAdState(int adState) {
-    return adState == 5 || adState == 6;
-}
-
-static OPN::SessionAdInfo ParseSessionAd(NSDictionary *ad, NSUInteger index) {
-    OPN::SessionAdInfo out;
-    NSString *adId = StringValue(ad[@"adId"]);
-    out.adId = adId ? adId.UTF8String : ("ad-" + std::to_string((unsigned long)index + 1));
-    out.adState = [ad[@"adState"] isKindOfClass:[NSNumber class]] ? [ad[@"adState"] intValue] : -1;
-    if (NSString *value = StringValue(ad[@"adUrl"])) out.adUrl = value.UTF8String;
-    if (NSString *value = StringValue(ad[@"mediaUrl"])) out.mediaUrl = value.UTF8String;
-    if (out.mediaUrl.empty()) {
-        if (NSString *value = StringValue(ad[@"videoUrl"])) out.mediaUrl = value.UTF8String;
-    }
-    if (out.mediaUrl.empty()) {
-        if (NSString *value = StringValue(ad[@"url"])) out.mediaUrl = value.UTF8String;
-    }
-    if (NSString *value = StringValue(ad[@"clickThroughUrl"])) out.clickThroughUrl = value.UTF8String;
-    if (NSString *value = StringValue(ad[@"title"])) out.title = value.UTF8String;
-    if (NSString *value = StringValue(ad[@"description"])) out.description = value.UTF8String;
-    out.adLengthInSeconds = PositiveIntValue(ad[@"adLengthInSeconds"]);
-    out.durationMs = out.adLengthInSeconds > 0 ? out.adLengthInSeconds * 1000 : PositiveIntValue(ad[@"durationMs"]);
-    if (out.durationMs == 0) out.durationMs = PositiveIntValue(ad[@"durationInMs"]);
-
-    for (NSDictionary *file in ArrayValue(ad[@"adMediaFiles"])) {
-        if (![file isKindOfClass:[NSDictionary class]]) continue;
-        OPN::SessionAdMediaFile media;
-        if (NSString *value = StringValue(file[@"mediaFileUrl"])) media.mediaFileUrl = value.UTF8String;
-        if (NSString *value = StringValue(file[@"encodingProfile"])) media.encodingProfile = value.UTF8String;
-        if (!media.mediaFileUrl.empty() || !media.encodingProfile.empty()) {
-            out.adMediaFiles.push_back(media);
-        }
-    }
-    std::sort(out.adMediaFiles.begin(), out.adMediaFiles.end(), [](const OPN::SessionAdMediaFile &left, const OPN::SessionAdMediaFile &right) {
-        return AdMediaProfileRank(left.encodingProfile) < AdMediaProfileRank(right.encodingProfile);
-    });
-    if (out.mediaUrl.empty()) {
-        for (const OPN::SessionAdMediaFile &file : out.adMediaFiles) {
-            if (!file.mediaFileUrl.empty()) {
-                out.mediaUrl = file.mediaFileUrl;
-                break;
-            }
-        }
-    }
-    if (out.mediaUrl.empty() && !out.adUrl.empty()) out.mediaUrl = out.adUrl;
-    return out;
+    OPNParsedSessionProgress *parsed = [OPNSessionJSONParser parseSessionProgressFromSession:session];
+    info.queuePosition = (int)parsed.queuePosition;
+    info.seatSetupStep = (int)parsed.seatSetupStep;
+    info.progressState = static_cast<OPN::SessionProgressState>(parsed.progressState);
 }
 
 static void ParseSessionAds(NSDictionary *session, OPN::SessionAdState &adState) {
-    NSDictionary *progress = DictionaryValue(session[@"sessionProgress"]);
-    NSDictionary *progressInfo = DictionaryValue(session[@"progressInfo"]);
-    bool required = BoolValue(session[@"sessionAdsRequired"], false) ||
-                    BoolValue(session[@"isAdsRequired"], false) ||
-                    BoolValue(progress[@"isAdsRequired"], false) ||
-                    BoolValue(progressInfo[@"isAdsRequired"], false);
-    NSArray *ads = ArrayValue(session[@"sessionAds"]);
-    adState.sessionAdsRequired = required;
-    adState.serverSentEmptyAds = session[@"sessionAds"] == nil || [session[@"sessionAds"] isKindOfClass:[NSNull class]];
+    OPNParsedSessionAdState *parsed = [OPNSessionJSONParser parseSessionAdStateFromSession:session];
+    adState.isAdsRequired = parsed.isAdsRequired;
+    adState.sessionAdsRequired = parsed.sessionAdsRequired;
+    adState.isQueuePaused = parsed.isQueuePaused;
+    adState.serverSentEmptyAds = parsed.serverSentEmptyAds;
+    adState.gracePeriodSeconds = (int)parsed.gracePeriodSeconds;
+    adState.message = parsed.message.UTF8String ?: "";
     adState.sessionAds.clear();
-
-    NSUInteger index = 0;
-    for (NSDictionary *ad in ads) {
-        if (![ad isKindOfClass:[NSDictionary class]]) continue;
-        OPN::SessionAdInfo parsed = ParseSessionAd(ad, index++);
-        if (IsTerminalAdState(parsed.adState)) continue;
-        if (!parsed.adId.empty() || !parsed.mediaUrl.empty() || !parsed.title.empty() || !parsed.description.empty()) {
-            adState.sessionAds.push_back(parsed);
+    for (OPNParsedSessionAd *ad in parsed.sessionAds) {
+        OPN::SessionAdInfo out;
+        out.adId = ad.adId.UTF8String ?: "";
+        out.adState = (int)ad.adState;
+        out.adUrl = ad.adUrl.UTF8String ?: "";
+        out.mediaUrl = ad.mediaUrl.UTF8String ?: "";
+        out.clickThroughUrl = ad.clickThroughUrl.UTF8String ?: "";
+        out.adLengthInSeconds = (int)ad.adLengthInSeconds;
+        out.durationMs = (int)ad.durationMs;
+        out.title = ad.title.UTF8String ?: "";
+        out.description = ad.adDescription.UTF8String ?: "";
+        for (OPNParsedSessionAdMediaFile *file in ad.adMediaFiles) {
+            OPN::SessionAdMediaFile media;
+            media.mediaFileUrl = file.mediaFileUrl.UTF8String ?: "";
+            media.encodingProfile = file.encodingProfile.UTF8String ?: "";
+            out.adMediaFiles.push_back(media);
         }
+        adState.sessionAds.push_back(out);
     }
-
-    NSDictionary *opportunity = DictionaryValue(session[@"opportunity"]);
-    if (opportunity) {
-        adState.isQueuePaused = BoolValue(opportunity[@"queuePaused"], adState.isQueuePaused);
-        adState.gracePeriodSeconds = PositiveIntValue(opportunity[@"gracePeriodSeconds"]);
-        NSString *message = StringValue(opportunity[@"message"]) ?: StringValue(opportunity[@"description"]);
-        if (message) adState.message = message.UTF8String;
-        NSString *state = StringValue(opportunity[@"state"]);
-        if (state && [[state lowercaseString] isEqualToString:@"graceperiodstart"]) adState.isQueuePaused = true;
-    }
-
-    adState.isAdsRequired = required || !adState.sessionAds.empty() || adState.isQueuePaused;
 }
 
 static void MergeSessionAdState(OPN::SessionAdState &target, const OPN::SessionAdState &previous) {
@@ -511,7 +437,7 @@ static void LogPollSessionSummary(NSInteger httpStatus, const OPN::SessionInfo &
     if (!gpu.empty()) summary += " gpu=" + gpu;
     if (!info.negotiatedStreamProfile.colorQuality.empty()) summary += " color=" + info.negotiatedStreamProfile.colorQuality;
     if (info.adState.isAdsRequired) summary += " ads=required";
-    OPN::LogInfo(@"%s", summary.c_str());
+    OPNLogInfo(@"%s", summary.c_str());
 }
 
 static void ApplyCommonCloudMatchHeaders(NSMutableURLRequest *req, const std::string &accessToken, const std::string &deviceId, bool includeOrigin) {
@@ -687,7 +613,7 @@ static void StorePersistedActiveSessionIdValue(const std::string &sessionId) {
     if (existing == sessionId) return;
     [NSUserDefaults.standardUserDefaults setObject:StringFromStdString(sessionId) forKey:kPersistedActiveSessionIdKey];
     [NSUserDefaults.standardUserDefaults synchronize];
-    OPN::LogInfo(@"[SessionManager] Persisted active sessionId=%s", sessionId.c_str());
+    OPNLogInfo(@"[SessionManager] Persisted active sessionId=%s", sessionId.c_str());
 }
 
 static void ClearPersistedActiveSessionIdValue(const std::string &sessionId) {
@@ -696,7 +622,7 @@ static void ClearPersistedActiveSessionIdValue(const std::string &sessionId) {
     if (!sessionId.empty() && existing != sessionId) return;
     [NSUserDefaults.standardUserDefaults removeObjectForKey:kPersistedActiveSessionIdKey];
     [NSUserDefaults.standardUserDefaults synchronize];
-    OPN::LogInfo(@"[SessionManager] Cleared persisted active sessionId=%s", existing.c_str());
+    OPNLogInfo(@"[SessionManager] Cleared persisted active sessionId=%s", existing.c_str());
 }
 
 namespace OPN {
@@ -706,12 +632,17 @@ SessionManager &SessionManager::Shared() {
     return instance;
 }
 
+SessionManager::SessionManager()
+    : m_storage(std::make_unique<SessionManagerStorage>()) {}
+
+SessionManager::~SessionManager() = default;
+
 void SessionManager::SetAccessToken(const std::string &token) {
-    m_accessToken = token;
+    m_storage->accessToken = token;
 }
 
 void SessionManager::SetStreamingBaseUrl(const std::string &url) {
-    m_streamingBaseUrl = ResolveSessionBaseUrl(url, "");
+    m_storage->streamingBaseUrl = ResolveSessionBaseUrl(url, "");
 }
 
 std::string SessionManager::LoadPersistedActiveSessionId() const {
@@ -728,19 +659,19 @@ void SessionManager::StorePersistedActiveSessionId(const std::string &sessionId)
 
 void SessionManager::MergeAndStoreAdState(SessionInfo &info) {
     if (info.sessionId.empty()) return;
-    std::lock_guard<std::mutex> lock(m_adStateMutex);
-    auto existing = m_adStatesBySessionId.find(info.sessionId);
-    if (existing != m_adStatesBySessionId.end()) {
+    std::lock_guard<std::mutex> lock(m_storage->adStateMutex);
+    auto existing = m_storage->adStatesBySessionId.find(info.sessionId);
+    if (existing != m_storage->adStatesBySessionId.end()) {
         MergeSessionAdState(info.adState, existing->second);
     }
-    m_adStatesBySessionId[info.sessionId] = info.adState;
+    m_storage->adStatesBySessionId[info.sessionId] = info.adState;
 }
 
 void SessionManager::CreateSession(const std::string &appId,
                                     const std::string &internalTitle,
                                     const StreamSettings &settings,
                                     SessionCreateCallback completion) {
-    if (m_accessToken.empty()) {
+    if (m_storage->accessToken.empty()) {
         completion(false, SessionInfo{}, "No access token");
         return;
     }
@@ -751,12 +682,12 @@ void SessionManager::CreateSession(const std::string &appId,
     std::string internalTitleCopy = internalTitle;
     StreamSettings settingsCopy = settings;
 
-    std::string baseUrl = m_streamingBaseUrl.empty()
+    std::string baseUrl = m_storage->streamingBaseUrl.empty()
         ? "https://prod.cloudmatchbeta.nvidiagrid.net"
-        : m_streamingBaseUrl;
+        : m_storage->streamingBaseUrl;
 
     std::string clientId = RandomUUID();
-    std::string deviceId = StableCloudmatchDeviceId();
+    std::string deviceId = StableCloudmatchDeviceIdString();
 
     StreamDeviceCapabilities displayCapabilities = LoadStreamDeviceCapabilities();
     std::string requestedCodec = settingsCopy.codec;
@@ -766,7 +697,7 @@ void SessionManager::CreateSession(const std::string &appId,
 
     NSInteger timezoneOffset = -[[NSTimeZone localTimeZone] secondsFromGMT] * 1000;
 
-    OPN::LogInfo(@"[SessionManager] CreateSession called with appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s",
+    OPNLogInfo(@"[SessionManager] CreateSession called with appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s",
           appIdCopy.c_str(),
           settingsCopy.codec.c_str(),
           settingsCopy.colorQuality.c_str(),
@@ -774,7 +705,7 @@ void SessionManager::CreateSession(const std::string &appId,
           settingsCopy.enableL4S ? "on" : "off");
 
     NSString *appIdStr = StringFromStdString(appIdCopy);
-    OPN::LogInfo(@"[SessionManager] appIdStr=%@", appIdStr);
+    OPNLogInfo(@"[SessionManager] appIdStr=%@", appIdStr);
 
     NSString *internalTitleStr = StringFromStdString(internalTitleCopy);
     NSString *deviceIdStr = StringFromStdString(deviceId);
@@ -829,7 +760,7 @@ void SessionManager::CreateSession(const std::string &appId,
     };
 
     NSString *layout = StringFromStdString(settingsCopy.keyboardLayout, @"us");
-    NSString *lang = StringFromStdString(settingsCopy.gameLanguage, [NSString stringWithUTF8String:OPN::CurrentGFNLocale().c_str()]);
+    NSString *lang = StringFromStdString(settingsCopy.gameLanguage, [OPNLocale currentGFNLocale]);
     NSString *baseUrlString = StringFromStdString(baseUrl);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session?keyboardLayout=%@&languageCode=%@",
                         baseUrlString, layout, lang];
@@ -841,7 +772,7 @@ void SessionManager::CreateSession(const std::string &appId,
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
     [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
+    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_storage->accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [req setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
     [req setValue:@"NATIVE" forHTTPHeaderField:@"nv-client-type"];
@@ -858,23 +789,27 @@ void SessionManager::CreateSession(const std::string &appId,
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     NSString *bodyStr = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
     if (VerboseSessionHttpLoggingEnabled()) {
-        OPN::LogInfo(@"[SessionManager] HTTP Body: %@", bodyStr);
+        OPNLogInfo(@"[SessionManager] HTTP Body: %@", bodyStr);
     }
-    LogProtocolJSONObject(@"session create request", body);
+    [OPNProtocolDebug logJSONObjectWithLabel:@"session create request" object:body];
     req.HTTPBody = bodyData;
 
     SessionCreateCallback cb = completion;
     NSString *baseUrlStr = baseUrlString;
-    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch create session");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:req name:@"Cloudmatch create session"];
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
+        void (^finishTrace)(BOOL) = ^(BOOL success) {
+            [trace setStatus:success];
+            [trace finish];
+        };
         if (error || !data) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[error localizedDescription] UTF8String]);
             return;
         }
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
-        LogProtocolJSONData(@"session create response", data);
+        [OPNProtocolDebug logJSONDataWithLabel:@"session create response" data:data];
         if (http.statusCode != 200) {
             NSString *responseBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
             NSString *originalErrorString = [NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, responseBody];
@@ -884,12 +819,12 @@ void SessionManager::CreateSession(const std::string &appId,
                 std::vector<ActiveSessionEntry> sessions = ActiveSessionEntriesFromArray(ArrayValue(errorJson[@"otherUserSessions"]), baseUrl);
                 ActiveSessionEntry selectedSession;
                 if (SelectSessionLimitReuseEntry(sessions, appIdCopy.empty() ? 0 : atoi(appIdCopy.c_str()), selectedSession)) {
-                    OPN::LogInfo(@"[SessionManager] Reusing embedded active session after session limit sessionId=%s appId=%d status=%d server=%s",
+                    OPNLogInfo(@"[SessionManager] Reusing embedded active session after session limit sessionId=%s appId=%d status=%d server=%s",
                                  selectedSession.sessionId.c_str(),
                                  selectedSession.appId,
                                  selectedSession.status,
                                  selectedSession.serverIp.c_str());
-                    traceGuard.SetSuccess(true);
+                    finishTrace(YES);
                     SessionCreateCallback reuseCompletion = [cb](bool reuseSuccess, const SessionInfo &reuseInfo, const std::string &reuseError) {
                         cb(reuseSuccess, reuseInfo, reuseError);
                     };
@@ -902,17 +837,19 @@ void SessionManager::CreateSession(const std::string &appId,
                     return;
                 }
             }
+            finishTrace(NO);
             cb(false, SessionInfo{}, originalError);
             return;
         }
 
         NSString *createBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if (VerboseSessionHttpLoggingEnabled()) {
-            OPN::LogInfo(@"[SessionManager] CreateSession response: %@", createBody);
+            OPNLogInfo(@"[SessionManager] CreateSession response: %@", createBody);
         }
 
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         if (!json) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, "Failed to parse session response");
             return;
         }
@@ -921,12 +858,14 @@ void SessionManager::CreateSession(const std::string &appId,
         NSNumber *statusCode = reqStatus[@"statusCode"];
         if (!statusCode || statusCode.integerValue != 1) {
             NSString *desc = reqStatus[@"statusDescription"] ?: @"unknown";
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"API error %@: %@", statusCode, desc] UTF8String]);
             return;
         }
 
         NSDictionary *session = DictionaryValue(json[@"session"]);
         if (!session) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, "No session in response");
             return;
         }
@@ -1027,13 +966,13 @@ void SessionManager::CreateSession(const std::string &appId,
         NSString *ctrlIp = [ctrlInfo[@"ip"] isKindOfClass:[NSString class]] ? ctrlInfo[@"ip"] : nil;
         if (ctrlIp.length > 0 && info.serverIp.empty()) {
             info.serverIp = [ctrlIp UTF8String];
-            OPN::LogInfo(@"[SessionManager] Using sessionControlInfo zone: %s", info.serverIp.c_str());
+            OPNLogInfo(@"[SessionManager] Using sessionControlInfo zone: %s", info.serverIp.c_str());
         }
 
         info.clientId = clientId;
         info.deviceId = deviceId;
 
-        traceGuard.SetSuccess(true);
+        finishTrace(YES);
         cb(true, info, "");
     }] resume];
 }
@@ -1043,7 +982,7 @@ void SessionManager::PollSession(const std::string &sessionId,
                                    SessionPollCallback completion) {
     const std::string requestedSessionId = sessionId;
     const std::string requestedServerIp = serverIp;
-    if (m_accessToken.empty()) {
+    if (m_storage->accessToken.empty()) {
         completion(false, SessionInfo{}, "No access token");
         return;
     }
@@ -1053,13 +992,13 @@ void SessionManager::PollSession(const std::string &sessionId,
     }
 
 
-    std::string base = ResolveSessionBaseUrl(m_streamingBaseUrl, requestedServerIp);
+    std::string base = ResolveSessionBaseUrl(m_storage->streamingBaseUrl, requestedServerIp);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s",
                         [NSString stringWithUTF8String:base.c_str()],
                         requestedSessionId.c_str()];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
+    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_storage->accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [req setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
     [req setValue:@"NATIVE" forHTTPHeaderField:@"nv-client-type"];
@@ -1070,33 +1009,40 @@ void SessionManager::PollSession(const std::string &sessionId,
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-make"];
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-model"];
     [req setValue:@"CHROME" forHTTPHeaderField:@"nv-browser-type"];
-    [req setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
+    [req setValue:[OPNDeviceIdentity stableCloudmatchDeviceId] forHTTPHeaderField:@"x-device-id"];
 
     SessionPollCallback cb = completion;
-    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch poll session");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:req name:@"Cloudmatch poll session"];
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
+        void (^finishTrace)(BOOL) = ^(BOOL success) {
+            [trace setStatus:success];
+            [trace finish];
+        };
         if (error || !data) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[error localizedDescription] UTF8String]);
             return;
         }
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         NSString *rawBody = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if (VerboseSessionHttpLoggingEnabled()) {
-            OPN::LogInfo(@"[PollSession] Raw response: HTTP %ld body=%@", (long)http.statusCode, rawBody);
+            OPNLogInfo(@"[PollSession] Raw response: HTTP %ld body=%@", (long)http.statusCode, rawBody);
         }
         if (http.statusCode != 200) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, rawBody] UTF8String]);
             return;
         }
 
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         if (!json) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Failed to parse poll response: %@", rawBody] UTF8String]);
             return;
         }
         NSDictionary *session = DictionaryValue(json[@"session"]);
         if (!session) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, "No session in poll response");
             return;
         }
@@ -1105,6 +1051,7 @@ void SessionManager::PollSession(const std::string &sessionId,
         NSString *sid = [session[@"sessionId"] isKindOfClass:[NSString class]] ? session[@"sessionId"] : nil;
         std::string sessionIdError;
         if (!ResolveResponseSessionId(sid, requestedSessionId, info.sessionId, sessionIdError)) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, sessionIdError);
             return;
         }
@@ -1214,7 +1161,7 @@ void SessionManager::PollSession(const std::string &sessionId,
 
         LogPollSessionSummary(http.statusCode, info);
 
-        traceGuard.SetSuccess(true);
+        finishTrace(YES);
         cb(true, info, "");
     }] resume];
 }
@@ -1222,34 +1169,39 @@ void SessionManager::PollSession(const std::string &sessionId,
 void SessionManager::StopSession(const std::string &sessionId,
                                  const std::string &serverIp,
                                  std::function<void(bool, const std::string &)> completion) {
-    if (m_accessToken.empty()) {
+    if (m_storage->accessToken.empty()) {
         completion(false, "No access token");
         return;
     }
 
     ClearPersistedActiveSessionIdValue(sessionId);
 
-    std::string base = ResolveSessionBaseUrl(m_streamingBaseUrl, serverIp);
+    std::string base = ResolveSessionBaseUrl(m_storage->streamingBaseUrl, serverIp);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s",
                         StringFromStdString(base), sessionId.c_str()];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"DELETE";
-    ApplyCommonCloudMatchHeaders(req, m_accessToken, StableCloudmatchDeviceId(), true);
-    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch stop session");
+    ApplyCommonCloudMatchHeaders(req, m_storage->accessToken, StableCloudmatchDeviceIdString(), true);
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:req name:@"Cloudmatch stop session"];
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
+        void (^finishTrace)(BOOL) = ^(BOOL success) {
+            [trace setStatus:success];
+            [trace finish];
+        };
         if (error || !data) {
+            finishTrace(NO);
             completion(false, [[error localizedDescription] UTF8String]);
             return;
         }
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (http.statusCode != 200) {
             NSString *bodyStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            finishTrace(NO);
             completion(false, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, bodyStr] UTF8String]);
             return;
         }
-        traceGuard.SetSuccess(true);
+        finishTrace(YES);
         completion(true, "");
     }] resume];
 }
@@ -1261,7 +1213,7 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
                                      int pausedTimeInMs,
                                      const std::string &cancelReason,
                                      std::function<void(bool, const SessionInfo &, const std::string &)> completion) {
-    if (m_accessToken.empty()) {
+    if (m_storage->accessToken.empty()) {
         completion(false, SessionInfo{}, "No access token");
         return;
     }
@@ -1271,13 +1223,13 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
         return;
     }
 
-    std::string base = ResolveSessionBaseUrl(session.streamingBaseUrl.empty() ? m_streamingBaseUrl : session.streamingBaseUrl, session.serverIp);
+    std::string base = ResolveSessionBaseUrl(session.streamingBaseUrl.empty() ? m_storage->streamingBaseUrl : session.streamingBaseUrl, session.serverIp);
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s",
                         [NSString stringWithUTF8String:base.c_str()],
                         session.sessionId.c_str()];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"PUT";
-    ApplyCommonCloudMatchHeaders(req, m_accessToken, session.deviceId.empty() ? StableCloudmatchDeviceId() : session.deviceId, true);
+    ApplyCommonCloudMatchHeaders(req, m_storage->accessToken, session.deviceId.empty() ? StableCloudmatchDeviceIdString() : session.deviceId, true);
 
     NSMutableDictionary *adUpdate = [@{
         @"adId": [NSString stringWithUTF8String:adId.c_str()],
@@ -1302,16 +1254,21 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
 
     auto cb = completion;
     SessionInfo sessionCopy = session;
-    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch report session ad");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:req name:@"Cloudmatch report session ad"];
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
+        void (^finishTrace)(BOOL) = ^(BOOL success) {
+            [trace setStatus:success];
+            [trace finish];
+        };
         if (error || !data) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, error ? [[error localizedDescription] UTF8String] : "No ad update response");
             return;
         }
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         NSString *bodyStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if (http.statusCode != 200) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"HTTP %ld: %@", (long)http.statusCode, bodyStr] UTF8String]);
             return;
         }
@@ -1319,6 +1276,7 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
         NSDictionary *requestStatus = DictionaryValue(json[@"requestStatus"]);
         NSNumber *statusCode = [requestStatus[@"statusCode"] isKindOfClass:[NSNumber class]] ? requestStatus[@"statusCode"] : nil;
         if (!json || !statusCode || statusCode.integerValue != 1) {
+            finishTrace(NO);
             cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Ad update API error: %@", bodyStr] UTF8String]);
             return;
         }
@@ -1332,25 +1290,25 @@ void SessionManager::ReportSessionAd(const SessionInfo &session,
             ParseSessionAds(sessionJson, updated.adState);
             this->MergeAndStoreAdState(updated);
         }
-        traceGuard.SetSuccess(true);
+        finishTrace(YES);
         cb(true, updated, "");
     }] resume];
 }
 
 void SessionManager::GetActiveSessions(std::function<void(bool, const std::vector<ActiveSessionEntry> &, const std::string &)> completion) {
-    if (m_accessToken.empty()) {
+    if (m_storage->accessToken.empty()) {
         completion(false, {}, "No access token");
         return;
     }
 
-    std::string base = m_streamingBaseUrl.empty()
+    std::string base = m_storage->streamingBaseUrl.empty()
         ? "https://prod.cloudmatchbeta.nvidiagrid.net"
-        : m_streamingBaseUrl;
+        : m_storage->streamingBaseUrl;
 
     NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session", [NSString stringWithUTF8String:base.c_str()]];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
+    [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_storage->accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
     [req setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
     [req setValue:@"NATIVE" forHTTPHeaderField:@"nv-client-type"];
     [req setValue:kNvClientVersion forHTTPHeaderField:@"nv-client-version"];
@@ -1360,24 +1318,30 @@ void SessionManager::GetActiveSessions(std::function<void(bool, const std::vecto
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-make"];
     [req setValue:@"UNKNOWN" forHTTPHeaderField:@"nv-device-model"];
     [req setValue:@"CHROME" forHTTPHeaderField:@"nv-browser-type"];
-    [req setValue:[NSString stringWithUTF8String:StableCloudmatchDeviceId().c_str()] forHTTPHeaderField:@"x-device-id"];
+    [req setValue:[OPNDeviceIdentity stableCloudmatchDeviceId] forHTTPHeaderField:@"x-device-id"];
 
     auto cb = completion;
-    auto trace = TraceSentryHTTPRequest(req, "Cloudmatch active sessions");
+    OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:req name:@"Cloudmatch active sessions"];
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        SentryTransactionFinishGuard traceGuard(trace);
+        void (^finishTrace)(BOOL) = ^(BOOL success) {
+            [trace setStatus:success];
+            [trace finish];
+        };
         if (error || !data) {
+            finishTrace(NO);
             cb(false, {}, [[error localizedDescription] UTF8String]);
             return;
         }
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (http.statusCode != 200) {
+            finishTrace(NO);
             cb(false, {}, [[NSString stringWithFormat:@"HTTP %ld", (long)http.statusCode] UTF8String]);
             return;
         }
 
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         if (!json) {
+            finishTrace(NO);
             cb(false, {}, "Failed to parse sessions response");
             return;
         }
@@ -1385,20 +1349,21 @@ void SessionManager::GetActiveSessions(std::function<void(bool, const std::vecto
         NSDictionary *reqStatus = DictionaryValue(json[@"requestStatus"]);
         NSNumber *sc = reqStatus[@"statusCode"];
         if (!sc || sc.integerValue != 1) {
+            finishTrace(NO);
             cb(false, {}, "API error from sessions endpoint");
             return;
         }
 
         NSArray *sessions = ArrayValue(json[@"sessions"]);
         if (![sessions isKindOfClass:[NSArray class]]) {
-            traceGuard.SetSuccess(true);
+            finishTrace(YES);
             cb(true, {}, "");
             return;
         }
 
         std::vector<ActiveSessionEntry> result = ActiveSessionEntriesFromArray(sessions, base);
 
-        traceGuard.SetSuccess(true);
+        finishTrace(YES);
         cb(true, result, "");
     }] resume];
 }
@@ -1413,7 +1378,7 @@ void SessionManager::pollClaimSession(std::string sessionId,
     const int maxRetries = 60;
 
 
-    NSString *baseUrl = [NSString stringWithUTF8String:ResolveSessionBaseUrl(m_streamingBaseUrl, serverIp).c_str()];
+    NSString *baseUrl = [NSString stringWithUTF8String:ResolveSessionBaseUrl(m_storage->streamingBaseUrl, serverIp).c_str()];
 
     __block void (^pollBlock)(void);
 
@@ -1550,7 +1515,7 @@ void SessionManager::pollClaimSession(std::string sessionId,
         NSString *urlStr = [NSString stringWithFormat:@"%@/v2/session/%s", baseUrl, sessionId.c_str()];
         NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
         [req setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-        [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
+        [req setValue:[NSString stringWithFormat:@"GFNJWT %s", m_storage->accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
         [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
         [req setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
         [req setValue:@"NATIVE" forHTTPHeaderField:@"nv-client-type"];
@@ -1559,12 +1524,12 @@ void SessionManager::pollClaimSession(std::string sessionId,
         [req setValue:@"MACOS" forHTTPHeaderField:@"nv-device-os"];
         [req setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
         [req setValue:[NSString stringWithUTF8String:deviceId.c_str()] forHTTPHeaderField:@"x-device-id"];
-        auto trace = TraceSentryHTTPRequest(req, "Cloudmatch poll claim session");
+        OPNSentryTransaction *trace = [OPNSentry traceHTTPRequest:req name:@"Cloudmatch poll claim session"];
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            SentryTransactionFinishGuard traceGuard(trace);
             (void)response;
-            if (!error && data) traceGuard.SetSuccess(true);
+            [trace setStatus:!error && data];
+            [trace finish];
             poller(data, error);
         }] resume];
     };
@@ -1578,19 +1543,19 @@ void SessionManager::ClaimSession(const std::string &sessionId,
                                     const StreamSettings &settings,
                                     bool recoveryMode,
                                     SessionCreateCallback completion) {
-    if (m_accessToken.empty()) {
+    if (m_storage->accessToken.empty()) {
         completion(false, SessionInfo{}, "No access token");
         return;
     }
 
-    std::string deviceId = StableCloudmatchDeviceId();
+    std::string deviceId = StableCloudmatchDeviceIdString();
     std::string clientId = RandomUUID();
 
 
     NSString *sid = StringFromStdString(sessionId);
     NSString *sip = StringFromStdString(serverIp);
 
-    OPN::LogInfo(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
+    OPNLogInfo(@"[ClaimSession] Starting claim sessionId=%@ serverIp=%@ appId=%s codec=%s color=%s bitrate=%dMbps l4s=%s recovery=%d",
           sid,
           sip,
           appId.c_str(),
@@ -1654,24 +1619,24 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     };
 
     NSString *layout = StringFromStdString(settings.keyboardLayout, @"us");
-    NSString *lang = StringFromStdString(settings.gameLanguage, [NSString stringWithUTF8String:OPN::CurrentGFNLocale().c_str()]);
+    NSString *lang = StringFromStdString(settings.gameLanguage, [OPNLocale currentGFNLocale]);
 
     NSString *claimUrl = [NSString stringWithFormat:@"https://%@/v2/session/%@?keyboardLayout=%@&languageCode=%@",
                           sip, sid, layout, lang];
 
     if (sip.length == 0) {
-        OPN::LogError(@"[ClaimSession] ERROR: serverIp is empty, cannot construct URL");
+        OPNLogError(@"[ClaimSession] ERROR: serverIp is empty, cannot construct URL");
         completion(false, SessionInfo{}, "No server IP for claim");
         return;
     }
 
     __block int preClaimStatus = 0;
     NSString *validationUrlStr = [NSString stringWithFormat:@"https://%@/v2/session/%@", sip, sid];
-    OPN::LogInfo(@"[ClaimSession] Validation GET %@", validationUrlStr);
+    OPNLogInfo(@"[ClaimSession] Validation GET %@", validationUrlStr);
 
     NSURL *validationURL = [NSURL URLWithString:validationUrlStr];
     if (!validationURL) {
-        OPN::LogError(@"[ClaimSession] ERROR: invalid validation URL: %@", validationUrlStr);
+        OPNLogError(@"[ClaimSession] ERROR: invalid validation URL: %@", validationUrlStr);
         completion(false, SessionInfo{}, "Invalid validation URL");
         return;
     }
@@ -1679,7 +1644,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     NSMutableURLRequest *validationReq = [NSMutableURLRequest requestWithURL:validationURL];
     validationReq.timeoutInterval = 30;
     [validationReq setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-    [validationReq setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
+    [validationReq setValue:[NSString stringWithFormat:@"GFNJWT %s", m_storage->accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
     [validationReq setValue:kNvClientId forHTTPHeaderField:@"nv-client-id"];
     [validationReq setValue:@"NATIVE" forHTTPHeaderField:@"nv-client-type"];
     [validationReq setValue:kNvClientVersion forHTTPHeaderField:@"nv-client-version"];
@@ -1689,30 +1654,36 @@ void SessionManager::ClaimSession(const std::string &sessionId,
     [validationReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
 
     SessionCreateCallback cb = completion;
-    auto validationTrace = TraceSentryHTTPRequest(validationReq, "Cloudmatch validate session claim");
+    OPNSentryTransaction *validationTrace = [OPNSentry traceHTTPRequest:validationReq name:@"Cloudmatch validate session claim"];
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:validationReq completionHandler:^(NSData *vData, NSURLResponse *vResp, NSError *vErr) {
-        SentryTransactionFinishGuard validationTraceGuard(validationTrace);
+        void (^finishValidationTrace)(BOOL) = ^(BOOL success) {
+            [validationTrace setStatus:success];
+            [validationTrace finish];
+        };
         NSHTTPURLResponse *validationHttp = (NSHTTPURLResponse *)vResp;
         if (vErr) {
-            OPN::LogError(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
+            OPNLogError(@"[ClaimSession] Validation request failed: %@", vErr.localizedDescription);
+            finishValidationTrace(NO);
         } else if (vData) {
             NSDictionary *vJson = [NSJSONSerialization JSONObjectWithData:vData options:0 error:nil];
             NSDictionary *vSession = DictionaryValue(vJson[@"session"]);
             if (vSession) {
                 preClaimStatus = [vSession[@"status"] intValue];
-                OPN::LogInfo(@"[ClaimSession] Pre-claim validation status=%d", preClaimStatus);
+                OPNLogInfo(@"[ClaimSession] Pre-claim validation status=%d", preClaimStatus);
             }
             NSDictionary *vReqStatus = DictionaryValue(vJson[@"requestStatus"]);
             NSNumber *vStatusCode = [vReqStatus[@"statusCode"] isKindOfClass:[NSNumber class]] ? vReqStatus[@"statusCode"] : nil;
             if (validationHttp.statusCode >= 400 || (vStatusCode && vStatusCode.integerValue != 1 && preClaimStatus == 0)) {
                 NSString *validationBody = [[NSString alloc] initWithData:vData encoding:NSUTF8StringEncoding] ?: @"";
+                finishValidationTrace(NO);
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"STALE_ACTIVE_SESSION: validation HTTP %ld: %@", (long)validationHttp.statusCode, validationBody] UTF8String]);
                 return;
             }
-            validationTraceGuard.SetSuccess(true);
+            finishValidationTrace(YES);
         } else {
-            OPN::LogError(@"[ClaimSession] Validation request returned no data and no error");
+            OPNLogError(@"[ClaimSession] Validation request returned no data and no error");
+            finishValidationTrace(NO);
         }
 
         if (preClaimStatus == 1) {
@@ -1721,13 +1692,13 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         }
 
         if (IsReadyActiveSessionStatus(preClaimStatus)) {
-            OPN::LogInfo(@"[ClaimSession] Ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
+            OPNLogInfo(@"[ClaimSession] Ready session status=%d; skipping redundant RESUME PUT", preClaimStatus);
             this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
             return;
         }
 
-        OPN::LogInfo(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
-        LogProtocolJSONObject(@"session claim request", payload);
+        OPNLogInfo(@"[ClaimSession] Sending RESUME PUT to %@", claimUrl);
+        [OPNProtocolDebug logJSONObjectWithLabel:@"session claim request" object:payload];
         NSURL *claimURL = [NSURL URLWithString:claimUrl];
         if (!claimURL) {
             cb(false, SessionInfo{}, "Invalid claim URL");
@@ -1737,7 +1708,7 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         claimReq.timeoutInterval = 15;
         claimReq.HTTPMethod = @"PUT";
         [claimReq setValue:GetUserAgent() forHTTPHeaderField:@"User-Agent"];
-        [claimReq setValue:[NSString stringWithFormat:@"GFNJWT %s", m_accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
+        [claimReq setValue:[NSString stringWithFormat:@"GFNJWT %s", m_storage->accessToken.c_str()] forHTTPHeaderField:@"Authorization"];
         [claimReq setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
         [claimReq setValue:@"https://play.geforcenow.com" forHTTPHeaderField:@"Origin"];
         [claimReq setValue:@"https://play.geforcenow.com/" forHTTPHeaderField:@"Referer"];
@@ -1749,34 +1720,40 @@ void SessionManager::ClaimSession(const std::string &sessionId,
         [claimReq setValue:@"DESKTOP" forHTTPHeaderField:@"nv-device-type"];
         [claimReq setValue:deviceIdString forHTTPHeaderField:@"x-device-id"];
         claimReq.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
-        auto claimTrace = TraceSentryHTTPRequest(claimReq, "Cloudmatch claim session");
+        OPNSentryTransaction *claimTrace = [OPNSentry traceHTTPRequest:claimReq name:@"Cloudmatch claim session"];
 
         [[[NSURLSession sharedSession] dataTaskWithRequest:claimReq completionHandler:^(NSData *cData, NSURLResponse *cResp, NSError *cErr) {
-            SentryTransactionFinishGuard claimTraceGuard(claimTrace);
+            void (^finishClaimTrace)(BOOL) = ^(BOOL success) {
+                [claimTrace setStatus:success];
+                [claimTrace finish];
+            };
             if (cErr || !cData) {
                 NSString *errDesc = cErr ? [cErr localizedDescription] : @"No data";
-                OPN::LogError(@"[ClaimSession] PUT failed: %@", errDesc);
+                OPNLogError(@"[ClaimSession] PUT failed: %@", errDesc);
+                finishClaimTrace(NO);
                 cb(false, SessionInfo{}, [errDesc UTF8String]);
                 return;
             }
             NSHTTPURLResponse *cHttp = (NSHTTPURLResponse *)cResp;
-            LogProtocolJSONData(@"session claim response", cData);
+            [OPNProtocolDebug logJSONDataWithLabel:@"session claim response" data:cData];
             NSString *cBody = [[NSString alloc] initWithData:cData encoding:NSUTF8StringEncoding];
             if (VerboseSessionHttpLoggingEnabled()) {
-                OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);
+                OPNLogInfo(@"[ClaimSession] PUT response HTTP %ld body=%@", (long)cHttp.statusCode, cBody);
             } else {
-                OPN::LogInfo(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
+                OPNLogInfo(@"[ClaimSession] PUT response HTTP %ld", (long)cHttp.statusCode);
             }
             if (cHttp.statusCode != 200) {
                 if ([cBody rangeOfString:@"SESSION_NOT_PAUSED"].location != NSNotFound || [cBody rangeOfString:@"\"statusCode\":34"].location != NSNotFound) {
-                    OPN::LogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    OPNLogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    finishClaimTrace(NO);
                     this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
                     return;
                 }
+                finishClaimTrace(NO);
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim HTTP %ld: %@", (long)cHttp.statusCode, cBody] UTF8String]);
                 return;
             }
-            claimTraceGuard.SetSuccess(true);
+            finishClaimTrace(YES);
 
             NSDictionary *cJson = [NSJSONSerialization JSONObjectWithData:cData options:0 error:nil];
             NSDictionary *cReqStatus = DictionaryValue(cJson[@"requestStatus"]);
@@ -1784,11 +1761,11 @@ void SessionManager::ClaimSession(const std::string &sessionId,
             if (!cSc || cSc.integerValue != 1) {
                 NSString *desc = cReqStatus[@"statusDescription"] ?: @"unknown";
                 if ([desc rangeOfString:@"SESSION_NOT_PAUSED"].location != NSNotFound || cSc.integerValue == 34) {
-                    OPN::LogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
+                    OPNLogInfo(@"[ClaimSession] Session is not paused; polling current active session instead of issuing another launch");
                     this->pollClaimSession([sid UTF8String], [sip UTF8String], deviceId, clientId, NegotiatedStreamProfile{}, cb);
                     return;
                 }
-                OPN::LogError(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
+                OPNLogError(@"[ClaimSession] PUT API error: %@: %@", cSc, desc);
                 cb(false, SessionInfo{}, [[NSString stringWithFormat:@"Claim API error %@: %@", cSc, desc] UTF8String]);
                 return;
             }

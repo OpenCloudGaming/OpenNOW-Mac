@@ -6,70 +6,35 @@
 	objectVersion = 56;
 	objects = {
 		/* Begin PBXBuildFile section */
-		AA00D44A34917D19AEDAD1A1 /* OPNCoreAnimationCoordinator.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = E3E0EB2F1F5D6430392E191A;
-		};
-		7F6DB1C410B60A80B1874565 /* OPNEmailEntryView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 3261121E15C07D0F5DD55294;
-		};
-		975E499367537ADBB119AF68 /* OPNAppDelegate.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = C57CC078C7AB06099DEBAD97;
-		};
-		C00000000000000000000030 /* OPNAppDelegateDesktop.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000041 /* OPNAppDelegateDesktop.mm */; };
-		C00000000000000000000031 /* OPNAppDelegateStreaming.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000042 /* OPNAppDelegateStreaming.mm */; };
-		C00000000000000000000032 /* OPNAppDelegateGameLaunch.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000043 /* OPNAppDelegateGameLaunch.mm */; };
-		C00000000000000000000033 /* OPNAppDelegateNavigation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000044 /* OPNAppDelegateNavigation.mm */; };
-		C00000000000000000000034 /* OPNAppDelegateCatalog.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000045 /* OPNAppDelegateCatalog.mm */; };
-		3BC225D2A5926453B554382C /* OPNUIHelpers.mm in PBXBuildFile */ = {
+		C00000000000000000000030 /* OPNAppDelegateDesktop.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000041 /* OPNAppDelegateDesktop.swift */; };
+		C00000000000000000000031 /* OPNAppDelegateStreaming.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000042 /* OPNAppDelegateStreaming.swift */; };
+		C00000000000000000000047 /* OPNActiveSessionService.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000048 /* OPNActiveSessionService.swift */; };
+		C00000000000000000000032 /* OPNAppDelegateGameLaunch.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000043 /* OPNAppDelegateGameLaunch.swift */; };
+		C00000000000000000000033 /* OPNAppDelegateNavigation.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000044 /* OPNAppDelegateNavigation.swift */; };
+		C00000000000000000000034 /* OPNAppDelegateCatalog.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000045 /* OPNAppDelegateCatalog.swift */; };
+		C00000000000000000000035 /* OPNAppDelegateSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = C00000000000000000000046 /* OPNAppDelegateSupport.swift */; };
+		3BC225D2A5926453B554382C /* OPNUIHelpers.swift in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 957905FB492F42AD9B576509;
 		};
-		916F79FB2547CA9622C74129 /* OPNCarouselFocusLayout.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 5BE24C8D582444F1B0E20505;
-		};
-		7B2A61D34F4E41BDB9A9D103 /* OPNCloudmatchServerPickerView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 7B2A61D24F4E41BDB9A9D102;
-		};
-		E61312258EEB2041AA067B25 /* OPNGameCatalogView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = AD0614C0EE6F7B83442E87EC;
-		};
-		D00000000000000000000030 /* OPNGameCatalogLayoutSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000040 /* OPNGameCatalogLayoutSupport.mm */; };
-		D00000000000000000000031 /* OPNGameCatalogSearchSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000041 /* OPNGameCatalogSearchSupport.mm */; };
-		D00000000000000000000032 /* OPNGameCatalogArtworkSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000042 /* OPNGameCatalogArtworkSupport.mm */; };
-		D00000000000000000000033 /* OPNGameCatalogMetadataSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000043 /* OPNGameCatalogMetadataSupport.mm */; };
-		D00000000000000000000034 /* OPNStoreGameTile.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000044 /* OPNStoreGameTile.mm */; };
-		D00000000000000000000035 /* OPNGameCatalogView+ControllerHints.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000045 /* OPNGameCatalogView+ControllerHints.mm */; };
-		D00000000000000000000036 /* OPNGameCatalogView+Data.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000046 /* OPNGameCatalogView+Data.mm */; };
-		D00000000000000000000037 /* OPNGameCatalogView+Search.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000047 /* OPNGameCatalogView+Search.mm */; };
-		D00000000000000000000038 /* OPNGameCatalogView+Hero.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000048 /* OPNGameCatalogView+Hero.mm */; };
-		D00000000000000000000039 /* OPNGameCatalogView+Rendering.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000049 /* OPNGameCatalogView+Rendering.mm */; };
-		D0000000000000000000003A /* OPNGameCatalogView+Input.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004A /* OPNGameCatalogView+Input.mm */; };
-		10C4D542D668FF3D8F86E08F /* OPNLoadingView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 2A4752FFB2BED66E22198CE4;
-		};
+		E00000000000000000000038 /* OPNCloudmatchServerPickerView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000039; };
+		E61312258EEB2041AA067B25 /* OPNGameCatalogView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift in PBXFileReference */; };
+		E61312258EEB2041AA067B26 /* OPNGameCatalogModelSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift in PBXFileReference */; };
+		D0000000000000000000003C /* OPNGameCatalogLayoutSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */; };
+		D0000000000000000000003B /* OPNGameCatalogSearchSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */; };
+		D00000000000000000000032 /* OPNGameCatalogArtworkSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */; };
+		D00000000000000000000033 /* OPNGameCatalogMetadataSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */; };
+		D00000000000000000000034 /* OPNStoreGameTile.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000044 /* OPNStoreGameTile.swift */; };
+		D00000000000000000000036 /* OPNGameCatalogView+Data.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000046 /* OPNGameCatalogView+Data.swift */; };
+		D00000000000000000000037 /* OPNGameCatalogView+Search.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000047 /* OPNGameCatalogView+Search.swift */; };
+		D00000000000000000000038 /* OPNGameCatalogView+Hero.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000048 /* OPNGameCatalogView+Hero.swift */; };
+		D00000000000000000000039 /* OPNGameCatalogView+Rendering.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = D00000000000000000000049 /* OPNGameCatalogView+Rendering.swift */; };
 		13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 3030D7D1FFA6262DEDB1FB76;
 		};
-		A214A1D8E1EF4F47A57F7515 /* OPNSignalingClient.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 86748D9DBD028C6C0D398138;
-		};
-		FFF8E7B3034DB91B70B547BD /* OPNStreamBackend.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 5658CA205DC5850D583D3256;
-		};
-		FF9C21C3A9D9EDC4DCB29F3D /* OPNErrorView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 86D84DF80E9DF4678C23A701;
-		};
+		E00000000000000000000030 /* OPNWebSocketSignalingClient.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000031; };
+		E00000000000000000000033 /* OPNSessionReportPayload.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000034; };
 		33078ABB312F4AD2D88BE57B /* OPNSessionManager.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 9C912AAA99573BD7E06A7277;
@@ -78,21 +43,10 @@
 			isa = PBXBuildFile;
 			fileRef = F326430DE067F6EC2D2435E0;
 		};
-		C174D57D164809AC11FF73C7 /* OPNAuthenticatingView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = A76F537775672462DD3C2CF3;
-		};
-		2E862E99AE9887559AA3725C /* OPNAuthService.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 5D30F02C98B697F3AB67CD3F;
-		};
-		FE6A155D74A6768A507DF3AB /* OPNStreamView.mm in PBXBuildFile */ = {
+		E00000000000000000000036 /* OPNAuthenticatingView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000037; };
+		FE6A155D74A6768A507DF3AB /* OPNStreamView.m in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 24D4F5F148ABE96F6C8D54D7;
-		};
-		A1607B65917D0849841E2E29 /* OPNGameCardView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = C4A5535762AEAD53315C41B6;
 		};
 		56330183F7065F54C2D88C7F /* ApplicationServices.framework in PBXBuildFile */ = {
 			isa = PBXBuildFile;
@@ -114,22 +68,27 @@
 			isa = PBXBuildFile;
 			fileRef = 7B2A61D54F4E41BDB9A9D105;
 		};
-		16BED31EA37540021A105CB0 /* main.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 5F31E8D7F60DEC8D0A3ABC0E;
-		};
-		574995CC8CFCD58D8AAF6483 /* OPNGameDataCache.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 97CBF30544877EE26EF13668;
-		};
-		96B438E76F776D852AC56D8F /* OPNBackdropView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = D5D7BE933494E3A3A79ACEDF;
-		};
-		C7EFD908C9250BA32B7E8B1C /* OPNInputProtocol.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 64F15129224BCD7D6307E131;
-		};
+		E0000000000000000000003C /* main.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003D; };
+		E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AB; };
+		E00000000000000000000044 /* OPNStreamSessionInputBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000045; };
+		E00000000000000000000047 /* OPNStreamSessionCallbackBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000048; };
+		E00000000000000000000050 /* OPNStreamSessionLaunchBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000051; };
+		E00000000000000000000053 /* OPNStreamSessionLifecycleBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000054; };
+		E00000000000000000000060 /* OPNNvstSdpBuilder.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000061; };
+		E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000064; };
+		E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000067; };
+		E00000000000000000000069 /* OPNWebRTCStatsHelpers.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000006A; };
+		E0000000000000000000006C /* OPNMetalVideoView.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000006D; };
+		E0000000000000000000006F /* OPNCoreAudioRTCDevice.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000070; };
+		E00000000000000000000072 /* OPNLibWebRTCSessionImpl.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000073; };
+		E00000000000000000000075 /* OPNLibWebRTCInput.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000076; };
+		E00000000000000000000077 /* OPNLibWebRTCStats.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000078; };
+		E00000000000000000000079 /* OPNLibWebRTCAudio.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007A; };
+		E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007C; };
+		E0000000000000000000007D /* OPNLibWebRTCNegotiation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007E; };
+		E0000000000000000000007F /* OPNStreamSessionHandle.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080; };
+		E00000000000000000000082 /* OPNSessionManagerBridge.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000083; };
+		E00000000000000000000088 /* OPNStreamStatsSnapshot.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000089; };
 		4EB63AD5790216383B1EAEE0 /* Cocoa.framework in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 2725E7B4151D930B8EEC76B0;
@@ -154,25 +113,14 @@
 			isa = PBXBuildFile;
 			fileRef = 56C01BA183847B38981C01FD;
 		};
-		1085D0B151BE241A64FA137B /* OPNLogCapture.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 5BA7735A625E53A85F9EFB77;
-		};
-		4C3E83E448564D2B9FBD3A10 /* OPNSentry.mm in PBXBuildFile */ = {
+		E0000000000000000000009B /* OPNLogCapture.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000009A; };
+		4C3E83E448564D2B9FBD3A10 /* OPNSentry.swift in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 4C3E83E448564D2B9FBD3A11;
 		};
 		01962D846ADB16CBCA18D4C3 /* OPNLibWebRTCStreamSession.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
 			fileRef = 10F67006C07BB7D2BC133943;
-		};
-		3B509C71FF2A9B53EA88B9CA /* OPNGameService.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 3669B673D7A6B91530EB637E;
-		};
-		CD04F899B27FABB06F2EEB35 /* OPNSettingsView.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = 240E6A8BBC2CC765479CEF3D;
 		};
 		B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */ = {
 			isa = PBXBuildFile;
@@ -212,21 +160,36 @@
 			settings = {ATTRIBUTES = (CodeSignOnCopy, ); };
 		};
 		A00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001; };
-		A00000000000000000000002 /* OPNSessionParsing.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003; };
-		A00000000000000000000003 /* OPNSessionAdPresentation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005; };
-		A00000000000000000000004 /* OPNHTTP.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007; };
-		A00000000000000000000005 /* OPNGFNError.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009; };
-		A00000000000000000000006 /* OPNProtocolDebug.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011; };
-		A00000000000000000000007 /* OPNGameRemediation.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013; };
-		A00000000000000000000008 /* OPNLocale.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000015; };
-		A00000000000000000000009 /* OPNGitHubUpdater.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000017; };
-		A00000000000000000000010 /* OPNDeviceIdentity.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000019; };
+		E0000000000000000000003E /* OPNHTTP.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003F; };
+		E00000000000000000000042 /* OPNGitHubUpdater.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000043; };
 		A00000000000000000000011 /* AudioUnit.framework in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000021; };
-		A00000000000000000000012 /* Sentry in PBXBuildFile */ = {isa = PBXBuildFile; productRef = A00000000000000000000013 /* Sentry */; };
-		A00000000000000000000022 /* OPNDiscordPresence.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000022; };
-		A00000000000000000000024 /* OPNSessionHealthReport.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000024; };
+		E00000000000000000000099 /* OPNDiscordPresence.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000098; };
+		E00000000000000000000059 /* OPNSentryTransactionBridge.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000005A; };
+		A00000000000000000000024 /* OPNSessionHealthReport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000024; };
 		A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000026; };
-		A00000000000000000000028 /* OPNSessionReportView.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = B00000000000000000000028; };
+		E0000000000000000000003A /* OPNSessionReportView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003B; };
+		E00000000000000000000001 /* OPNAppDelegate.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000011; };
+		E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000012; };
+		E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000013; };
+		E00000000000000000000004 /* OPNVideoSurfaceView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000014; };
+		E00000000000000000000005 /* OPNBackdropView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000015; };
+		E00000000000000000000006 /* OPNCarouselFocusLayout.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000016; };
+		E00000000000000000000007 /* OPNErrorView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000017; };
+		E00000000000000000000008 /* OPNViewSwiftSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000018; };
+		E00000000000000000000009 /* OPNModels.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000019; };
+		E0000000000000000000000A /* OPNDeviceIdentity.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001A; };
+		E0000000000000000000000B /* OPNGameDataCache.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001B; };
+		E0000000000000000000000C /* OPNAuthService.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001C; };
+		E0000000000000000000000D /* OPNGameService.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001D; };
+		E0000000000000000000000F /* OPNLocale.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001F; };
+		E00000000000000000000020 /* OPNGameRemediation.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000021; };
+		E00000000000000000000022 /* OPNGFNError.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000023; };
+		E00000000000000000000024 /* OPNProtocolDebug.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000025; };
+		E00000000000000000000026 /* OPNStreamPreferences.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000027; };
+		E00000000000000000000028 /* OPNSettingsView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000029; };
+		E0000000000000000000002A /* OPNGameCardView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002B; };
+		E0000000000000000000002C /* OPNLoadingView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002D; };
+		E0000000000000000000002E /* OPNEmailEntryView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002F; };
 		/* End PBXBuildFile section */
 		/* Begin PBXCopyFilesBuildPhase section */
 		6F087D5B3D8849F29E9D0C67 /* Embed Frameworks */ = {
@@ -340,241 +303,27 @@
 			path = System/Library/Frameworks/MetalKit.framework;
 			sourceTree = SDKROOT;
 		};
-		59735451AE0726FCF81ADF62 /* OPNAppDelegate.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNAppDelegate.h;
-			path = src/OPNAppDelegate.h;
-			sourceTree = "<group>";
-		};
-		C57CC078C7AB06099DEBAD97 /* OPNAppDelegate.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNAppDelegate.mm;
-			path = src/OPNAppDelegate.mm;
-			sourceTree = "<group>";
-		};
-		C00000000000000000000040 /* OPNAppDelegatePrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNAppDelegatePrivate.h; path = src/AppDelegate/OPNAppDelegatePrivate.h; sourceTree = "<group>"; };
-		C00000000000000000000041 /* OPNAppDelegateDesktop.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateDesktop.mm; path = src/AppDelegate/OPNAppDelegateDesktop.mm; sourceTree = "<group>"; };
-		C00000000000000000000042 /* OPNAppDelegateStreaming.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateStreaming.mm; path = src/AppDelegate/OPNAppDelegateStreaming.mm; sourceTree = "<group>"; };
-		C00000000000000000000043 /* OPNAppDelegateGameLaunch.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateGameLaunch.mm; path = src/AppDelegate/OPNAppDelegateGameLaunch.mm; sourceTree = "<group>"; };
-		C00000000000000000000044 /* OPNAppDelegateNavigation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateNavigation.mm; path = src/AppDelegate/OPNAppDelegateNavigation.mm; sourceTree = "<group>"; };
-		C00000000000000000000045 /* OPNAppDelegateCatalog.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNAppDelegateCatalog.mm; path = src/AppDelegate/OPNAppDelegateCatalog.mm; sourceTree = "<group>"; };
-		951FB9BE73006134ABABC74A /* OPNAuthService.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNAuthService.h;
-			path = src/auth/OPNAuthService.h;
-			sourceTree = "<group>";
-		};
-		5D30F02C98B697F3AB67CD3F /* OPNAuthService.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNAuthService.mm;
-			path = src/auth/OPNAuthService.mm;
-			sourceTree = "<group>";
-		};
-		F541DAC381C7EE67D4F5FDFE /* OPNAuthTypes.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNAuthTypes.h;
-			path = src/common/OPNAuthTypes.h;
-			sourceTree = "<group>";
-		};
-		DB79E5FA853AC3173A1B8C79 /* OPNAuthenticatingView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNAuthenticatingView.h;
-			path = src/views/OPNAuthenticatingView.h;
-			sourceTree = "<group>";
-		};
-		A76F537775672462DD3C2CF3 /* OPNAuthenticatingView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNAuthenticatingView.mm;
-			path = src/views/OPNAuthenticatingView.mm;
-			sourceTree = "<group>";
-		};
-		09C065FAD2707F6C9B38E11F /* OPNBackdropView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNBackdropView.h;
-			path = src/views/OPNBackdropView.h;
-			sourceTree = "<group>";
-		};
-		D5D7BE933494E3A3A79ACEDF /* OPNBackdropView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNBackdropView.mm;
-			path = src/views/OPNBackdropView.mm;
-			sourceTree = "<group>";
-		};
-		80FD49B2D2C3C194CC9FFA6E /* OPNCarouselFocusLayout.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNCarouselFocusLayout.h;
-			path = src/views/OPNCarouselFocusLayout.h;
-			sourceTree = "<group>";
-		};
-		5BE24C8D582444F1B0E20505 /* OPNCarouselFocusLayout.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNCarouselFocusLayout.mm;
-			path = src/views/OPNCarouselFocusLayout.mm;
-			sourceTree = "<group>";
-		};
-		7B2A61D14F4E41BDB9A9D101 /* OPNCloudmatchServerPickerView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNCloudmatchServerPickerView.h;
-			path = src/views/OPNCloudmatchServerPickerView.h;
-			sourceTree = "<group>";
-		};
-		7B2A61D24F4E41BDB9A9D102 /* OPNCloudmatchServerPickerView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNCloudmatchServerPickerView.mm;
-			path = src/views/OPNCloudmatchServerPickerView.mm;
-			sourceTree = "<group>";
-		};
-		27524879C46BFC320035B795 /* OPNColorTokens.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNColorTokens.h;
-			path = src/common/OPNColorTokens.h;
-			sourceTree = "<group>";
-		};
-		B27906E956075948351DE070 /* OPNCoreAnimationCoordinator.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNCoreAnimationCoordinator.h;
-			path = src/common/OPNCoreAnimationCoordinator.h;
-			sourceTree = "<group>";
-		};
-		E3E0EB2F1F5D6430392E191A /* OPNCoreAnimationCoordinator.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNCoreAnimationCoordinator.mm;
-			path = src/common/OPNCoreAnimationCoordinator.mm;
-			sourceTree = "<group>";
-		};
-		74DD1974B9762CA9B6D258FB /* OPNEmailEntryView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNEmailEntryView.h;
-			path = src/views/OPNEmailEntryView.h;
-			sourceTree = "<group>";
-		};
-		3261121E15C07D0F5DD55294 /* OPNEmailEntryView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNEmailEntryView.mm;
-			path = src/views/OPNEmailEntryView.mm;
-			sourceTree = "<group>";
-		};
-		78EEB4B1D71B9405A8290251 /* OPNErrorView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNErrorView.h;
-			path = src/views/OPNErrorView.h;
-			sourceTree = "<group>";
-		};
-		86D84DF80E9DF4678C23A701 /* OPNErrorView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNErrorView.mm;
-			path = src/views/OPNErrorView.mm;
-			sourceTree = "<group>";
-		};
-		05E53718D481ADCC9644DD45 /* OPNGameCardView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNGameCardView.h;
-			path = src/views/OPNGameCardView.h;
-			sourceTree = "<group>";
-		};
-		C4A5535762AEAD53315C41B6 /* OPNGameCardView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNGameCardView.mm;
-			path = src/views/OPNGameCardView.mm;
-			sourceTree = "<group>";
-		};
-		1E004EA1147EA6B071E2D813 /* OPNGameCatalogView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNGameCatalogView.h;
-			path = src/views/OPNGameCatalogView.h;
-			sourceTree = "<group>";
-		};
-		AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNGameCatalogView.mm;
-			path = src/views/OPNGameCatalogView.mm;
-			sourceTree = "<group>";
-		};
-		D00000000000000000000040 /* OPNGameCatalogLayoutSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogLayoutSupport.mm; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.mm; sourceTree = "<group>"; };
-		D00000000000000000000041 /* OPNGameCatalogSearchSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogSearchSupport.mm; path = src/views/GameCatalog/OPNGameCatalogSearchSupport.mm; sourceTree = "<group>"; };
-		D00000000000000000000042 /* OPNGameCatalogArtworkSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogArtworkSupport.mm; path = src/views/GameCatalog/OPNGameCatalogArtworkSupport.mm; sourceTree = "<group>"; };
-		D00000000000000000000043 /* OPNGameCatalogMetadataSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameCatalogMetadataSupport.mm; path = src/views/GameCatalog/OPNGameCatalogMetadataSupport.mm; sourceTree = "<group>"; };
-		D00000000000000000000044 /* OPNStoreGameTile.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStoreGameTile.mm; path = src/views/GameCatalog/OPNStoreGameTile.mm; sourceTree = "<group>"; };
-		D00000000000000000000045 /* OPNGameCatalogView+ControllerHints.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+ControllerHints.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+ControllerHints.mm"; sourceTree = "<group>"; };
-		D00000000000000000000046 /* OPNGameCatalogView+Data.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Data.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Data.mm"; sourceTree = "<group>"; };
-		D00000000000000000000047 /* OPNGameCatalogView+Search.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Search.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Search.mm"; sourceTree = "<group>"; };
-		D00000000000000000000048 /* OPNGameCatalogView+Hero.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Hero.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Hero.mm"; sourceTree = "<group>"; };
-		D00000000000000000000049 /* OPNGameCatalogView+Rendering.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Rendering.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Rendering.mm"; sourceTree = "<group>"; };
-		D0000000000000000000004A /* OPNGameCatalogView+Input.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = "OPNGameCatalogView+Input.mm"; path = "src/views/GameCatalog/OPNGameCatalogView+Input.mm"; sourceTree = "<group>"; };
-		D0000000000000000000004B /* OPNGameCatalogPrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGameCatalogPrivate.h; path = src/views/GameCatalog/OPNGameCatalogPrivate.h; sourceTree = "<group>"; };
-		9E892E276EC44E0E7363DAC5 /* OPNGameDataCache.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNGameDataCache.h;
-			path = src/games/OPNGameDataCache.h;
-			sourceTree = "<group>";
-		};
-		97CBF30544877EE26EF13668 /* OPNGameDataCache.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNGameDataCache.mm;
-			path = src/games/OPNGameDataCache.mm;
-			sourceTree = "<group>";
-		};
-		0D17C1B8FC8C5C04721A95E4 /* OPNGameService.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNGameService.h;
-			path = src/games/OPNGameService.h;
-			sourceTree = "<group>";
-		};
-		3669B673D7A6B91530EB637E /* OPNGameService.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNGameService.mm;
-			path = src/games/OPNGameService.mm;
-			sourceTree = "<group>";
-		};
-		474A30A992EC925A5C8EAC23 /* OPNGameTypes.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNGameTypes.h;
-			path = src/common/OPNGameTypes.h;
-			sourceTree = "<group>";
-		};
-		F06A283F5317315F846CC92D /* OPNInputProtocol.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNInputProtocol.h;
-			path = src/streaming/OPNInputProtocol.h;
-			sourceTree = "<group>";
-		};
-		64F15129224BCD7D6307E131 /* OPNInputProtocol.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNInputProtocol.mm;
-			path = src/streaming/OPNInputProtocol.mm;
-			sourceTree = "<group>";
-		};
+		C00000000000000000000041 /* OPNAppDelegateDesktop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateDesktop.swift; path = src/AppDelegate/OPNAppDelegateDesktop.swift; sourceTree = "<group>"; };
+		C00000000000000000000042 /* OPNAppDelegateStreaming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateStreaming.swift; path = src/AppDelegate/OPNAppDelegateStreaming.swift; sourceTree = "<group>"; };
+		C00000000000000000000048 /* OPNActiveSessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNActiveSessionService.swift; path = src/streaming/OPNActiveSessionService.swift; sourceTree = "<group>"; };
+		C00000000000000000000043 /* OPNAppDelegateGameLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateGameLaunch.swift; path = src/AppDelegate/OPNAppDelegateGameLaunch.swift; sourceTree = "<group>"; };
+		C00000000000000000000044 /* OPNAppDelegateNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateNavigation.swift; path = src/AppDelegate/OPNAppDelegateNavigation.swift; sourceTree = "<group>"; };
+		C00000000000000000000045 /* OPNAppDelegateCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateCatalog.swift; path = src/AppDelegate/OPNAppDelegateCatalog.swift; sourceTree = "<group>"; };
+		C00000000000000000000046 /* OPNAppDelegateSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateSupport.swift; path = src/AppDelegate/OPNAppDelegateSupport.swift; sourceTree = "<group>"; };
+		E00000000000000000000037 /* OPNAuthenticatingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthenticatingView.swift; path = src/views/OPNAuthenticatingView.swift; sourceTree = "<group>"; };
+		E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCloudmatchServerPickerView.swift; path = src/views/OPNCloudmatchServerPickerView.swift; sourceTree = "<group>"; };
+		AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogView.swift; path = src/views/OPNGameCatalogView.swift; sourceTree = "<group>"; };
+		AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogModelSupport.swift; path = src/views/GameCatalog/OPNGameCatalogModelSupport.swift; sourceTree = "<group>"; };
+		D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogLayoutSupport.swift; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.swift; sourceTree = "<group>"; };
+		D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogSearchSupport.swift; path = src/views/GameCatalog/OPNGameCatalogSearchSupport.swift; sourceTree = "<group>"; };
+		D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogArtworkSupport.swift; path = src/views/GameCatalog/OPNGameCatalogArtworkSupport.swift; sourceTree = "<group>"; };
+		D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogMetadataSupport.swift; path = src/views/GameCatalog/OPNGameCatalogMetadataSupport.swift; sourceTree = "<group>"; };
+		D00000000000000000000044 /* OPNStoreGameTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStoreGameTile.swift; path = src/views/GameCatalog/OPNStoreGameTile.swift; sourceTree = "<group>"; };
+		D00000000000000000000046 /* OPNGameCatalogView+Data.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "OPNGameCatalogView+Data.swift"; path = "src/views/GameCatalog/OPNGameCatalogView+Data.swift"; sourceTree = "<group>"; };
+		D00000000000000000000047 /* OPNGameCatalogView+Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "OPNGameCatalogView+Search.swift"; path = "src/views/GameCatalog/OPNGameCatalogView+Search.swift"; sourceTree = "<group>"; };
+		D00000000000000000000048 /* OPNGameCatalogView+Hero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "OPNGameCatalogView+Hero.swift"; path = "src/views/GameCatalog/OPNGameCatalogView+Hero.swift"; sourceTree = "<group>"; };
+		D00000000000000000000049 /* OPNGameCatalogView+Rendering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "OPNGameCatalogView+Rendering.swift"; path = "src/views/GameCatalog/OPNGameCatalogView+Rendering.swift"; sourceTree = "<group>"; };
+		E000000000000000000000AB /* OPNInputProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNInputProtocol.swift; path = src/streaming/OPNInputProtocol.swift; sourceTree = "<group>"; };
 		1B53A5DD6FD53397C292235E /* OPNLibWebRTCStreamSession.h in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.c.h;
@@ -589,34 +338,33 @@
 			path = src/streaming/OPNLibWebRTCStreamSession.mm;
 			sourceTree = "<group>";
 		};
-		D9F6C4A4AB9594825BB35CDD /* OPNLoadingView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNLoadingView.h;
-			path = src/views/OPNLoadingView.h;
-			sourceTree = "<group>";
-		};
-		2A4752FFB2BED66E22198CE4 /* OPNLoadingView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNLoadingView.mm;
-			path = src/views/OPNLoadingView.mm;
-			sourceTree = "<group>";
-		};
-		26EE21E75DE52A5E70D12537 /* OPNLogCapture.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNLogCapture.h;
-			path = src/common/OPNLogCapture.h;
-			sourceTree = "<group>";
-		};
-		5BA7735A625E53A85F9EFB77 /* OPNLogCapture.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNLogCapture.mm;
-			path = src/common/OPNLogCapture.mm;
-			sourceTree = "<group>";
-		};
+		E00000000000000000000061 /* OPNNvstSdpBuilder.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNNvstSdpBuilder.mm; path = src/streaming/OPNNvstSdpBuilder.mm; sourceTree = "<group>"; };
+		E00000000000000000000062 /* OPNNvstSdpBuilder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNNvstSdpBuilder.h; path = src/streaming/OPNNvstSdpBuilder.h; sourceTree = "<group>"; };
+		E00000000000000000000064 /* OPNWebRTCSdpUtils.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCSdpUtils.mm; path = src/streaming/OPNWebRTCSdpUtils.mm; sourceTree = "<group>"; };
+		E00000000000000000000065 /* OPNWebRTCSdpUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCSdpUtils.h; path = src/streaming/OPNWebRTCSdpUtils.h; sourceTree = "<group>"; };
+		E00000000000000000000067 /* OPNWebRTCCodecSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCCodecSupport.mm; path = src/streaming/OPNWebRTCCodecSupport.mm; sourceTree = "<group>"; };
+		E00000000000000000000068 /* OPNWebRTCCodecSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCCodecSupport.h; path = src/streaming/OPNWebRTCCodecSupport.h; sourceTree = "<group>"; };
+		E0000000000000000000006A /* OPNWebRTCStatsHelpers.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCStatsHelpers.mm; path = src/streaming/OPNWebRTCStatsHelpers.mm; sourceTree = "<group>"; };
+		E0000000000000000000006B /* OPNWebRTCStatsHelpers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCStatsHelpers.h; path = src/streaming/OPNWebRTCStatsHelpers.h; sourceTree = "<group>"; };
+		E0000000000000000000006D /* OPNMetalVideoView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNMetalVideoView.mm; path = src/streaming/OPNMetalVideoView.mm; sourceTree = "<group>"; };
+		E0000000000000000000006E /* OPNMetalVideoView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNMetalVideoView.h; path = src/streaming/OPNMetalVideoView.h; sourceTree = "<group>"; };
+		E00000000000000000000070 /* OPNCoreAudioRTCDevice.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNCoreAudioRTCDevice.mm; path = src/streaming/OPNCoreAudioRTCDevice.mm; sourceTree = "<group>"; };
+		E00000000000000000000071 /* OPNCoreAudioRTCDevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNCoreAudioRTCDevice.h; path = src/streaming/OPNCoreAudioRTCDevice.h; sourceTree = "<group>"; };
+		E00000000000000000000073 /* OPNLibWebRTCSessionImpl.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCSessionImpl.mm; path = src/streaming/OPNLibWebRTCSessionImpl.mm; sourceTree = "<group>"; };
+		E00000000000000000000074 /* OPNLibWebRTCSessionImpl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNLibWebRTCSessionImpl.h; path = src/streaming/OPNLibWebRTCSessionImpl.h; sourceTree = "<group>"; };
+		E00000000000000000000076 /* OPNLibWebRTCInput.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCInput.mm; path = src/streaming/OPNLibWebRTCInput.mm; sourceTree = "<group>"; };
+		E00000000000000000000078 /* OPNLibWebRTCStats.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCStats.mm; path = src/streaming/OPNLibWebRTCStats.mm; sourceTree = "<group>"; };
+		E0000000000000000000007A /* OPNLibWebRTCAudio.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCAudio.mm; path = src/streaming/OPNLibWebRTCAudio.mm; sourceTree = "<group>"; };
+		E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCSessionSurface.mm; path = src/streaming/OPNLibWebRTCSessionSurface.mm; sourceTree = "<group>"; };
+		E0000000000000000000007E /* OPNLibWebRTCNegotiation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCNegotiation.mm; path = src/streaming/OPNLibWebRTCNegotiation.mm; sourceTree = "<group>"; };
+		E00000000000000000000080 /* OPNStreamSessionHandle.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionHandle.mm; path = src/streaming/OPNStreamSessionHandle.mm; sourceTree = "<group>"; };
+		E00000000000000000000081 /* OPNStreamSessionHandle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionHandle.h; path = src/streaming/OPNStreamSessionHandle.h; sourceTree = "<group>"; };
+		E00000000000000000000083 /* OPNSessionManagerBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionManagerBridge.mm; path = src/streaming/OPNSessionManagerBridge.mm; sourceTree = "<group>"; };
+		E00000000000000000000084 /* OPNSessionManagerBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionManagerBridge.h; path = src/streaming/OPNSessionManagerBridge.h; sourceTree = "<group>"; };
+		E00000000000000000000089 /* OPNStreamStatsSnapshot.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamStatsSnapshot.mm; path = src/streaming/OPNStreamStatsSnapshot.mm; sourceTree = "<group>"; };
+		E0000000000000000000008A /* OPNStreamStatsSnapshot.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamStatsSnapshot.h; path = src/streaming/OPNStreamStatsSnapshot.h; sourceTree = "<group>"; };
+		E0000000000000000000008B /* OPNStreamStatsSnapshot+Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "OPNStreamStatsSnapshot+Private.h"; path = "src/streaming/OPNStreamStatsSnapshot+Private.h"; sourceTree = "<group>"; };
+		E0000000000000000000009A /* OPNLogCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLogCapture.swift; path = src/common/OPNLogCapture.swift; sourceTree = "<group>"; };
 		56C01BA183847B38981C01FD /* OPNPremiumBackdrop.metal in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.metal;
@@ -638,48 +386,8 @@
 			path = src/streaming/OPNSessionManager.mm;
 			sourceTree = "<group>";
 		};
-		0C4B00965C712B3B067ECA6F /* OPNSettingsView.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNSettingsView.h;
-			path = src/views/OPNSettingsView.h;
-			sourceTree = "<group>";
-		};
-		240E6A8BBC2CC765479CEF3D /* OPNSettingsView.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNSettingsView.mm;
-			path = src/views/OPNSettingsView.mm;
-			sourceTree = "<group>";
-		};
-		7D3F57F9384D6014B5AA8B92 /* OPNSignalingClient.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNSignalingClient.h;
-			path = src/streaming/OPNSignalingClient.h;
-			sourceTree = "<group>";
-		};
-		86748D9DBD028C6C0D398138 /* OPNSignalingClient.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNSignalingClient.mm;
-			path = src/streaming/OPNSignalingClient.mm;
-			sourceTree = "<group>";
-		};
-		D1280850F847EF1ED1508ACA /* OPNStreamBackend.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStreamBackend.h;
-			path = src/streaming/OPNStreamBackend.h;
-			sourceTree = "<group>";
-		};
-		5658CA205DC5850D583D3256 /* OPNStreamBackend.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNStreamBackend.mm;
-			path = src/streaming/OPNStreamBackend.mm;
-			sourceTree = "<group>";
-		};
+		E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNWebSocketSignalingClient.swift; path = src/streaming/OPNWebSocketSignalingClient.swift; sourceTree = "<group>"; };
+		E00000000000000000000034 /* OPNSessionReportPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportPayload.swift; path = src/common/OPNSessionReportPayload.swift; sourceTree = "<group>"; };
 		B9C13F571A43AE48E93CFB8B /* OPNStreamPreferences.h in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.c.h;
@@ -715,6 +423,7 @@
 			path = src/streaming/OPNStreamSession.h;
 			sourceTree = "<group>";
 		};
+		F00000000000000000000040 /* OPNStreamStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamStats.h; path = src/streaming/OPNStreamStats.h; sourceTree = "<group>"; };
 		BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.c.h;
@@ -729,11 +438,11 @@
 			path = src/streaming/OPNStreamView.h;
 			sourceTree = "<group>";
 		};
-		24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.mm in PBXFileReference */ = {
+		24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.m in PBXFileReference */ = {
 			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNStreamView.mm;
-			path = src/streaming/OPNStreamView.mm;
+			lastKnownFileType = sourcecode.c.objc;
+			name = OPNStreamView.m;
+			path = src/streaming/OPNStreamView.m;
 			sourceTree = "<group>";
 		};
 		D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */ = {
@@ -750,18 +459,11 @@
 			path = src/streaming/OPNStreamViewController.mm;
 			sourceTree = "<group>";
 		};
-		8CC322B1C896AA0557952728 /* OPNUIHelpers.h in PBXFileReference */ = {
+		957905FB492F42AD9B576509 /* OPNUIHelpers.swift in PBXFileReference */ = {
 			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNUIHelpers.h;
-			path = src/common/OPNUIHelpers.h;
-			sourceTree = "<group>";
-		};
-		957905FB492F42AD9B576509 /* OPNUIHelpers.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNUIHelpers.mm;
-			path = src/common/OPNUIHelpers.mm;
+			lastKnownFileType = sourcecode.swift;
+			name = OPNUIHelpers.swift;
+			path = src/common/OPNUIHelpers.swift;
 			sourceTree = "<group>";
 		};
 		F7F59E351286CF299470CD20 /* OpenGL.framework in PBXFileReference */ = {
@@ -806,62 +508,60 @@
 			path = third_party/webrtc-official/WebRTC.framework;
 			sourceTree = "<group>";
 		};
-		5F31E8D7F60DEC8D0A3ABC0E /* main.mm in PBXFileReference */ = {
+		E0000000000000000000003D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = main.swift; path = src/main.swift; sourceTree = "<group>"; };
+		4C3E83E448564D2B9FBD3A11 /* OPNSentry.swift in PBXFileReference */ = {
 			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = main.mm;
-			path = src/main.mm;
-			sourceTree = "<group>";
-		};
-		4C3E83E448564D2B9FBD3A11 /* OPNSentry.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNSentry.mm;
-			path = src/common/OPNSentry.mm;
-			sourceTree = "<group>";
-		};
-		4C3E83E448564D2B9FBD3A12 /* OPNSentry.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNSentry.h;
-			path = src/common/OPNSentry.h;
+			lastKnownFileType = sourcecode.swift;
+			name = OPNSentry.swift;
+			path = src/common/OPNSentry.swift;
 			sourceTree = "<group>";
 		};
 		B00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNWebRTCDataChannelUtils.mm; path = src/streaming/OPNWebRTCDataChannelUtils.mm; sourceTree = "<group>"; };
 		B00000000000000000000002 /* OPNWebRTCDataChannelUtils.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNWebRTCDataChannelUtils.h; path = src/streaming/OPNWebRTCDataChannelUtils.h; sourceTree = "<group>"; };
-		B00000000000000000000003 /* OPNSessionParsing.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionParsing.mm; path = src/streaming/OPNSessionParsing.mm; sourceTree = "<group>"; };
-		B00000000000000000000004 /* OPNSessionParsing.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionParsing.h; path = src/streaming/OPNSessionParsing.h; sourceTree = "<group>"; };
-		B00000000000000000000005 /* OPNSessionAdPresentation.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionAdPresentation.mm; path = src/streaming/OPNSessionAdPresentation.mm; sourceTree = "<group>"; };
-		B00000000000000000000006 /* OPNSessionAdPresentation.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionAdPresentation.h; path = src/streaming/OPNSessionAdPresentation.h; sourceTree = "<group>"; };
-		B00000000000000000000007 /* OPNHTTP.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNHTTP.mm; path = src/common/OPNHTTP.mm; sourceTree = "<group>"; };
-		B00000000000000000000008 /* OPNHTTP.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNHTTP.h; path = src/common/OPNHTTP.h; sourceTree = "<group>"; };
-		B00000000000000000000009 /* OPNGFNError.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGFNError.mm; path = src/common/OPNGFNError.mm; sourceTree = "<group>"; };
-		B00000000000000000000010 /* OPNGFNError.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGFNError.h; path = src/common/OPNGFNError.h; sourceTree = "<group>"; };
-		B00000000000000000000011 /* OPNProtocolDebug.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNProtocolDebug.mm; path = src/common/OPNProtocolDebug.mm; sourceTree = "<group>"; };
-		B00000000000000000000012 /* OPNProtocolDebug.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNProtocolDebug.h; path = src/common/OPNProtocolDebug.h; sourceTree = "<group>"; };
-		B00000000000000000000013 /* OPNGameRemediation.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGameRemediation.mm; path = src/common/OPNGameRemediation.mm; sourceTree = "<group>"; };
-		B00000000000000000000014 /* OPNGameRemediation.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGameRemediation.h; path = src/common/OPNGameRemediation.h; sourceTree = "<group>"; };
-		B00000000000000000000015 /* OPNLocale.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLocale.mm; path = src/common/OPNLocale.mm; sourceTree = "<group>"; };
-		B00000000000000000000016 /* OPNLocale.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNLocale.h; path = src/common/OPNLocale.h; sourceTree = "<group>"; };
-		B00000000000000000000017 /* OPNGitHubUpdater.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNGitHubUpdater.mm; path = src/common/OPNGitHubUpdater.mm; sourceTree = "<group>"; };
-		B00000000000000000000018 /* OPNGitHubUpdater.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNGitHubUpdater.h; path = src/common/OPNGitHubUpdater.h; sourceTree = "<group>"; };
-		B00000000000000000000019 /* OPNDeviceIdentity.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNDeviceIdentity.mm; path = src/common/OPNDeviceIdentity.mm; sourceTree = "<group>"; };
-		B00000000000000000000020 /* OPNDeviceIdentity.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNDeviceIdentity.h; path = src/common/OPNDeviceIdentity.h; sourceTree = "<group>"; };
-		B00000000000000000000022 /* OPNDiscordPresence.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNDiscordPresence.mm; path = src/common/OPNDiscordPresence.mm; sourceTree = "<group>"; };
-		B00000000000000000000023 /* OPNDiscordPresence.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNDiscordPresence.h; path = src/common/OPNDiscordPresence.h; sourceTree = "<group>"; };
-		B00000000000000000000024 /* OPNSessionHealthReport.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionHealthReport.mm; path = src/common/OPNSessionHealthReport.mm; sourceTree = "<group>"; };
-		B00000000000000000000025 /* OPNSessionHealthReport.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionHealthReport.h; path = src/common/OPNSessionHealthReport.h; sourceTree = "<group>"; };
+		E0000000000000000000003F /* OPNHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNHTTP.swift; path = src/common/OPNHTTP.swift; sourceTree = "<group>"; };
+		E00000000000000000000043 /* OPNGitHubUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGitHubUpdater.swift; path = src/common/OPNGitHubUpdater.swift; sourceTree = "<group>"; };
+		E00000000000000000000098 /* OPNDiscordPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDiscordPresence.swift; path = src/common/OPNDiscordPresence.swift; sourceTree = "<group>"; };
+		E0000000000000000000005A /* OPNSentryTransactionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentryTransactionBridge.swift; path = src/common/OPNSentryTransactionBridge.swift; sourceTree = "<group>"; };
+		B00000000000000000000024 /* OPNSessionHealthReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionHealthReport.swift; path = src/common/OPNSessionHealthReport.swift; sourceTree = "<group>"; };
 		B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNVideoEnhancementRenderer.mm; path = src/streaming/OPNVideoEnhancementRenderer.mm; sourceTree = "<group>"; };
 		B00000000000000000000027 /* OPNVideoEnhancementRenderer.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNVideoEnhancementRenderer.h; path = src/streaming/OPNVideoEnhancementRenderer.h; sourceTree = "<group>"; };
-		B00000000000000000000028 /* OPNSessionReportView.mm in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNSessionReportView.mm; path = src/views/OPNSessionReportView.mm; sourceTree = "<group>"; };
-		B00000000000000000000029 /* OPNSessionReportView.h in PBXFileReference */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNSessionReportView.h; path = src/views/OPNSessionReportView.h; sourceTree = "<group>"; };
+		E00000000000000000000045 /* OPNStreamSessionInputBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionInputBridge.mm; path = src/streaming/OPNStreamSessionInputBridge.mm; sourceTree = "<group>"; };
+		E00000000000000000000046 /* OPNStreamSessionInputBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionInputBridge.h; path = src/streaming/OPNStreamSessionInputBridge.h; sourceTree = "<group>"; };
+		E00000000000000000000048 /* OPNStreamSessionCallbackBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionCallbackBridge.mm; path = src/streaming/OPNStreamSessionCallbackBridge.mm; sourceTree = "<group>"; };
+		E00000000000000000000049 /* OPNStreamSessionCallbackBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionCallbackBridge.h; path = src/streaming/OPNStreamSessionCallbackBridge.h; sourceTree = "<group>"; };
+		E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLaunchBridge.mm; path = src/streaming/OPNStreamSessionLaunchBridge.mm; sourceTree = "<group>"; };
+		E00000000000000000000052 /* OPNStreamSessionLaunchBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionLaunchBridge.h; path = src/streaming/OPNStreamSessionLaunchBridge.h; sourceTree = "<group>"; };
+		E00000000000000000000054 /* OPNStreamSessionLifecycleBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNStreamSessionLifecycleBridge.mm; path = src/streaming/OPNStreamSessionLifecycleBridge.mm; sourceTree = "<group>"; };
+		E00000000000000000000055 /* OPNStreamSessionLifecycleBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamSessionLifecycleBridge.h; path = src/streaming/OPNStreamSessionLifecycleBridge.h; sourceTree = "<group>"; };
+		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
+		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
+		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
+		E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoEnhancementSettings.swift; path = src/streaming/OPNVideoEnhancementSettings.swift; sourceTree = "<group>"; };
+		E00000000000000000000014 /* OPNVideoSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoSurfaceView.swift; path = src/streaming/OPNVideoSurfaceView.swift; sourceTree = "<group>"; };
+		E00000000000000000000015 /* OPNBackdropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNBackdropView.swift; path = src/views/OPNBackdropView.swift; sourceTree = "<group>"; };
+		E00000000000000000000016 /* OPNCarouselFocusLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCarouselFocusLayout.swift; path = src/views/OPNCarouselFocusLayout.swift; sourceTree = "<group>"; };
+		E00000000000000000000017 /* OPNErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNErrorView.swift; path = src/views/OPNErrorView.swift; sourceTree = "<group>"; };
+		E00000000000000000000018 /* OPNViewSwiftSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNViewSwiftSupport.swift; path = src/views/OPNViewSwiftSupport.swift; sourceTree = "<group>"; };
+		E00000000000000000000019 /* OPNModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNModels.swift; path = src/common/OPNModels.swift; sourceTree = "<group>"; };
+		E0000000000000000000001A /* OPNDeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDeviceIdentity.swift; path = src/common/OPNDeviceIdentity.swift; sourceTree = "<group>"; };
+		E0000000000000000000001B /* OPNGameDataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameDataCache.swift; path = src/games/OPNGameDataCache.swift; sourceTree = "<group>"; };
+		E0000000000000000000001C /* OPNAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthService.swift; path = src/auth/OPNAuthService.swift; sourceTree = "<group>"; };
+		E0000000000000000000001D /* OPNGameService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameService.swift; path = src/games/OPNGameService.swift; sourceTree = "<group>"; };
+		E0000000000000000000001F /* OPNLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLocale.swift; path = src/common/OPNLocale.swift; sourceTree = "<group>"; };
+		E00000000000000000000021 /* OPNGameRemediation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameRemediation.swift; path = src/common/OPNGameRemediation.swift; sourceTree = "<group>"; };
+		E00000000000000000000023 /* OPNGFNError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGFNError.swift; path = src/common/OPNGFNError.swift; sourceTree = "<group>"; };
+		E00000000000000000000025 /* OPNProtocolDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNProtocolDebug.swift; path = src/common/OPNProtocolDebug.swift; sourceTree = "<group>"; };
+		E00000000000000000000027 /* OPNStreamPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamPreferences.swift; path = src/streaming/OPNStreamPreferences.swift; sourceTree = "<group>"; };
+		E00000000000000000000029 /* OPNSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSettingsView.swift; path = src/views/OPNSettingsView.swift; sourceTree = "<group>"; };
+		E0000000000000000000002B /* OPNGameCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCardView.swift; path = src/views/OPNGameCardView.swift; sourceTree = "<group>"; };
+		E0000000000000000000002D /* OPNLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLoadingView.swift; path = src/views/OPNLoadingView.swift; sourceTree = "<group>"; };
+		E0000000000000000000002F /* OPNEmailEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNEmailEntryView.swift; path = src/views/OPNEmailEntryView.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 		/* Begin PBXFrameworksBuildPhase section */
 		63FC9122778042047BE28757 = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A00000000000000000000012 /* Sentry in PBXBuildFile */,
 				E57A113BFF3CA1175BCB810D /* WebRTC.framework in PBXBuildFile */,
 				4EB63AD5790216383B1EAEE0 /* Cocoa.framework in PBXBuildFile */,
 				7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in PBXBuildFile */,
@@ -908,12 +608,12 @@
 		C00000000000000000000050 /* AppDelegate in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
-				C00000000000000000000045 /* OPNAppDelegateCatalog.mm */,
-				C00000000000000000000041 /* OPNAppDelegateDesktop.mm */,
-				C00000000000000000000043 /* OPNAppDelegateGameLaunch.mm */,
-				C00000000000000000000044 /* OPNAppDelegateNavigation.mm */,
-				C00000000000000000000040 /* OPNAppDelegatePrivate.h */,
-				C00000000000000000000042 /* OPNAppDelegateStreaming.mm */,
+				C00000000000000000000045 /* OPNAppDelegateCatalog.swift */,
+				C00000000000000000000041 /* OPNAppDelegateDesktop.swift */,
+				C00000000000000000000043 /* OPNAppDelegateGameLaunch.swift */,
+				C00000000000000000000044 /* OPNAppDelegateNavigation.swift */,
+				C00000000000000000000046 /* OPNAppDelegateSupport.swift */,
+				C00000000000000000000042 /* OPNAppDelegateStreaming.swift */,
 			);
 			name = AppDelegate;
 			sourceTree = "<group>";
@@ -921,8 +621,7 @@
 		F515E1DCA81C9F38EDA5851E /* auth in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
-				5D30F02C98B697F3AB67CD3F /* OPNAuthService.mm in PBXFileReference */,
-				951FB9BE73006134ABABC74A /* OPNAuthService.h in PBXFileReference */,
+				E0000000000000000000001C /* OPNAuthService.swift */,
 			);
 			name = auth;
 			sourceTree = "<group>";
@@ -930,35 +629,22 @@
 		258D3F331162A2E4DD8D0A15 /* common in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
-				E3E0EB2F1F5D6430392E191A /* OPNCoreAnimationCoordinator.mm in PBXFileReference */,
-				B00000000000000000000019 /* OPNDeviceIdentity.mm in PBXFileReference */,
-				B00000000000000000000022 /* OPNDiscordPresence.mm in PBXFileReference */,
-				B00000000000000000000013 /* OPNGameRemediation.mm in PBXFileReference */,
-				B00000000000000000000009 /* OPNGFNError.mm in PBXFileReference */,
-				B00000000000000000000017 /* OPNGitHubUpdater.mm in PBXFileReference */,
-				B00000000000000000000007 /* OPNHTTP.mm in PBXFileReference */,
-				B00000000000000000000015 /* OPNLocale.mm in PBXFileReference */,
-				5BA7735A625E53A85F9EFB77 /* OPNLogCapture.mm in PBXFileReference */,
-				B00000000000000000000011 /* OPNProtocolDebug.mm in PBXFileReference */,
-				B00000000000000000000024 /* OPNSessionHealthReport.mm in PBXFileReference */,
-				4C3E83E448564D2B9FBD3A11 /* OPNSentry.mm in PBXFileReference */,
-				957905FB492F42AD9B576509 /* OPNUIHelpers.mm in PBXFileReference */,
-				F541DAC381C7EE67D4F5FDFE /* OPNAuthTypes.h in PBXFileReference */,
-				27524879C46BFC320035B795 /* OPNColorTokens.h in PBXFileReference */,
-				B27906E956075948351DE070 /* OPNCoreAnimationCoordinator.h in PBXFileReference */,
-				B00000000000000000000020 /* OPNDeviceIdentity.h in PBXFileReference */,
-				B00000000000000000000023 /* OPNDiscordPresence.h in PBXFileReference */,
-				B00000000000000000000014 /* OPNGameRemediation.h in PBXFileReference */,
-				474A30A992EC925A5C8EAC23 /* OPNGameTypes.h in PBXFileReference */,
-				B00000000000000000000010 /* OPNGFNError.h in PBXFileReference */,
-				B00000000000000000000018 /* OPNGitHubUpdater.h in PBXFileReference */,
-				B00000000000000000000008 /* OPNHTTP.h in PBXFileReference */,
-				B00000000000000000000016 /* OPNLocale.h in PBXFileReference */,
-				26EE21E75DE52A5E70D12537 /* OPNLogCapture.h in PBXFileReference */,
-				B00000000000000000000012 /* OPNProtocolDebug.h in PBXFileReference */,
-				B00000000000000000000025 /* OPNSessionHealthReport.h in PBXFileReference */,
-				4C3E83E448564D2B9FBD3A12 /* OPNSentry.h in PBXFileReference */,
-				8CC322B1C896AA0557952728 /* OPNUIHelpers.h in PBXFileReference */,
+				E00000000000000000000019 /* OPNModels.swift */,
+				E0000000000000000000001A /* OPNDeviceIdentity.swift */,
+				E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */,
+				E0000000000000000000001F /* OPNLocale.swift */,
+				E00000000000000000000021 /* OPNGameRemediation.swift */,
+				E00000000000000000000023 /* OPNGFNError.swift */,
+				E0000000000000000000003F /* OPNHTTP.swift */,
+				E00000000000000000000025 /* OPNProtocolDebug.swift */,
+				E00000000000000000000098 /* OPNDiscordPresence.swift */,
+				E00000000000000000000043 /* OPNGitHubUpdater.swift */,
+				E0000000000000000000009A /* OPNLogCapture.swift */,
+				B00000000000000000000024 /* OPNSessionHealthReport.swift */,
+				E00000000000000000000034 /* OPNSessionReportPayload.swift */,
+				4C3E83E448564D2B9FBD3A11 /* OPNSentry.swift in PBXFileReference */,
+				E0000000000000000000005A /* OPNSentryTransactionBridge.swift */,
+				957905FB492F42AD9B576509 /* OPNUIHelpers.swift in PBXFileReference */,
 			);
 			name = common;
 			sourceTree = "<group>";
@@ -966,10 +652,8 @@
 		4A2AEEDD7ECFD3B280FE224B /* games in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
-				97CBF30544877EE26EF13668 /* OPNGameDataCache.mm in PBXFileReference */,
-				3669B673D7A6B91530EB637E /* OPNGameService.mm in PBXFileReference */,
-				9E892E276EC44E0E7363DAC5 /* OPNGameDataCache.h in PBXFileReference */,
-				0D17C1B8FC8C5C04721A95E4 /* OPNGameService.h in PBXFileReference */,
+				E0000000000000000000001B /* OPNGameDataCache.swift */,
+				E0000000000000000000001D /* OPNGameService.swift */,
 			);
 			name = games;
 			sourceTree = "<group>";
@@ -977,18 +661,15 @@
 		D00000000000000000000050 /* GameCatalog in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
-				D00000000000000000000042 /* OPNGameCatalogArtworkSupport.mm */,
-				D00000000000000000000043 /* OPNGameCatalogMetadataSupport.mm */,
-				D00000000000000000000040 /* OPNGameCatalogLayoutSupport.mm */,
-				D0000000000000000000004B /* OPNGameCatalogPrivate.h */,
-				D00000000000000000000041 /* OPNGameCatalogSearchSupport.mm */,
-				D00000000000000000000045 /* OPNGameCatalogView+ControllerHints.mm */,
-				D00000000000000000000046 /* OPNGameCatalogView+Data.mm */,
-				D00000000000000000000048 /* OPNGameCatalogView+Hero.mm */,
-				D0000000000000000000004A /* OPNGameCatalogView+Input.mm */,
-				D00000000000000000000049 /* OPNGameCatalogView+Rendering.mm */,
-				D00000000000000000000047 /* OPNGameCatalogView+Search.mm */,
-				D00000000000000000000044 /* OPNStoreGameTile.mm */,
+				D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */,
+				D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */,
+				D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */,
+				D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */,
+				D00000000000000000000046 /* OPNGameCatalogView+Data.swift */,
+				D00000000000000000000048 /* OPNGameCatalogView+Hero.swift */,
+				D00000000000000000000049 /* OPNGameCatalogView+Rendering.swift */,
+				D00000000000000000000047 /* OPNGameCatalogView+Search.swift */,
+				D00000000000000000000044 /* OPNStoreGameTile.swift */,
 			);
 			name = GameCatalog;
 			sourceTree = "<group>";
@@ -1004,6 +685,7 @@
 		09E51D173F1A00C061B7641B /* src in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
+				E00000000000000000000011 /* OPNAppDelegate.swift */,
 				C00000000000000000000050 /* AppDelegate in PBXGroup */,
 				F515E1DCA81C9F38EDA5851E /* auth in PBXGroup */,
 				258D3F331162A2E4DD8D0A15 /* common in PBXGroup */,
@@ -1011,9 +693,7 @@
 				10C7B3F3A6E6F504ED29F4C7 /* shaders in PBXGroup */,
 				258FB9F9F30FA962CED75214 /* streaming in PBXGroup */,
 				92DF8FC120985BDB402B5489 /* views in PBXGroup */,
-				C57CC078C7AB06099DEBAD97 /* OPNAppDelegate.mm in PBXFileReference */,
-				5F31E8D7F60DEC8D0A3ABC0E /* main.mm in PBXFileReference */,
-				59735451AE0726FCF81ADF62 /* OPNAppDelegate.h in PBXFileReference */,
+				E0000000000000000000003D /* main.swift */,
 			);
 			name = src;
 			sourceTree = "<group>";
@@ -1021,29 +701,60 @@
 		258FB9F9F30FA962CED75214 /* streaming in PBXGroup */ = {
 			isa = PBXGroup;
 			children = (
-				64F15129224BCD7D6307E131 /* OPNInputProtocol.mm in PBXFileReference */,
+				E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */,
+				E00000000000000000000014 /* OPNVideoSurfaceView.swift */,
+				C00000000000000000000048 /* OPNActiveSessionService.swift */,
+				E00000000000000000000027 /* OPNStreamPreferences.swift */,
+				E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */,
+				E000000000000000000000AB /* OPNInputProtocol.swift */,
+				E00000000000000000000045 /* OPNStreamSessionInputBridge.mm */,
+				E00000000000000000000048 /* OPNStreamSessionCallbackBridge.mm */,
+				E00000000000000000000051 /* OPNStreamSessionLaunchBridge.mm */,
+				E00000000000000000000054 /* OPNStreamSessionLifecycleBridge.mm */,
+				E00000000000000000000061 /* OPNNvstSdpBuilder.mm */,
+				E00000000000000000000064 /* OPNWebRTCSdpUtils.mm */,
+				E00000000000000000000067 /* OPNWebRTCCodecSupport.mm */,
+				E0000000000000000000006A /* OPNWebRTCStatsHelpers.mm */,
+				E0000000000000000000006D /* OPNMetalVideoView.mm */,
+				E00000000000000000000070 /* OPNCoreAudioRTCDevice.mm */,
+				E00000000000000000000073 /* OPNLibWebRTCSessionImpl.mm */,
+				E00000000000000000000076 /* OPNLibWebRTCInput.mm */,
+				E00000000000000000000078 /* OPNLibWebRTCStats.mm */,
+				E0000000000000000000007A /* OPNLibWebRTCAudio.mm */,
+				E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */,
+				E0000000000000000000007E /* OPNLibWebRTCNegotiation.mm */,
+				E00000000000000000000080 /* OPNStreamSessionHandle.mm */,
+				E00000000000000000000083 /* OPNSessionManagerBridge.mm */,
+				E00000000000000000000089 /* OPNStreamStatsSnapshot.mm */,
 				10F67006C07BB7D2BC133943 /* OPNLibWebRTCStreamSession.mm in PBXFileReference */,
-				B00000000000000000000005 /* OPNSessionAdPresentation.mm in PBXFileReference */,
 				9C912AAA99573BD7E06A7277 /* OPNSessionManager.mm in PBXFileReference */,
-				B00000000000000000000003 /* OPNSessionParsing.mm in PBXFileReference */,
-				86748D9DBD028C6C0D398138 /* OPNSignalingClient.mm in PBXFileReference */,
-				5658CA205DC5850D583D3256 /* OPNStreamBackend.mm in PBXFileReference */,
 				F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */,
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.mm in PBXFileReference */,
-				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.mm in PBXFileReference */,
+				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.m in PBXFileReference */,
 				18F773BA2EBBE6A891CF0545 /* OPNStreamViewController.mm in PBXFileReference */,
 				B00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXFileReference */,
 				B00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXFileReference */,
-				F06A283F5317315F846CC92D /* OPNInputProtocol.h in PBXFileReference */,
+				E00000000000000000000046 /* OPNStreamSessionInputBridge.h */,
+				E00000000000000000000049 /* OPNStreamSessionCallbackBridge.h */,
+				E00000000000000000000052 /* OPNStreamSessionLaunchBridge.h */,
+				E00000000000000000000055 /* OPNStreamSessionLifecycleBridge.h */,
+				E00000000000000000000062 /* OPNNvstSdpBuilder.h */,
+				E00000000000000000000065 /* OPNWebRTCSdpUtils.h */,
+				E00000000000000000000068 /* OPNWebRTCCodecSupport.h */,
+				E0000000000000000000006B /* OPNWebRTCStatsHelpers.h */,
+				E0000000000000000000006E /* OPNMetalVideoView.h */,
+				E00000000000000000000071 /* OPNCoreAudioRTCDevice.h */,
+				E00000000000000000000074 /* OPNLibWebRTCSessionImpl.h */,
+				E00000000000000000000081 /* OPNStreamSessionHandle.h */,
+				E00000000000000000000084 /* OPNSessionManagerBridge.h */,
+				E0000000000000000000008A /* OPNStreamStatsSnapshot.h */,
+				E0000000000000000000008B /* OPNStreamStatsSnapshot+Private.h */,
 				1B53A5DD6FD53397C292235E /* OPNLibWebRTCStreamSession.h in PBXFileReference */,
-				B00000000000000000000006 /* OPNSessionAdPresentation.h in PBXFileReference */,
 				D677A6C2D6C1F5ADA85447E5 /* OPNSessionManager.h in PBXFileReference */,
-				B00000000000000000000004 /* OPNSessionParsing.h in PBXFileReference */,
-				7D3F57F9384D6014B5AA8B92 /* OPNSignalingClient.h in PBXFileReference */,
-				D1280850F847EF1ED1508ACA /* OPNStreamBackend.h in PBXFileReference */,
 				B9C13F571A43AE48E93CFB8B /* OPNStreamPreferences.h in PBXFileReference */,
 				4F638D1DE998EECD6C188E73 /* OPNStreamRecordingManager.h in PBXFileReference */,
 				9EA7774A3F17C84ABA66DE4E /* OPNStreamSession.h in PBXFileReference */,
+				F00000000000000000000040 /* OPNStreamStats.h */,
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
 				B161D5A795AB0D394456EE9F /* OPNStreamView.h in PBXFileReference */,
 				D625560EF57F5C8C36B61C98 /* OPNStreamViewController.h in PBXFileReference */,
@@ -1057,28 +768,19 @@
 			isa = PBXGroup;
 			children = (
 				D00000000000000000000050 /* GameCatalog in PBXGroup */,
-				A76F537775672462DD3C2CF3 /* OPNAuthenticatingView.mm in PBXFileReference */,
-				D5D7BE933494E3A3A79ACEDF /* OPNBackdropView.mm in PBXFileReference */,
-				5BE24C8D582444F1B0E20505 /* OPNCarouselFocusLayout.mm in PBXFileReference */,
-				7B2A61D24F4E41BDB9A9D102 /* OPNCloudmatchServerPickerView.mm in PBXFileReference */,
-				3261121E15C07D0F5DD55294 /* OPNEmailEntryView.mm in PBXFileReference */,
-				86D84DF80E9DF4678C23A701 /* OPNErrorView.mm in PBXFileReference */,
-				C4A5535762AEAD53315C41B6 /* OPNGameCardView.mm in PBXFileReference */,
-				AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.mm in PBXFileReference */,
-				2A4752FFB2BED66E22198CE4 /* OPNLoadingView.mm in PBXFileReference */,
-				240E6A8BBC2CC765479CEF3D /* OPNSettingsView.mm in PBXFileReference */,
-				B00000000000000000000028 /* OPNSessionReportView.mm in PBXFileReference */,
-				DB79E5FA853AC3173A1B8C79 /* OPNAuthenticatingView.h in PBXFileReference */,
-				09C065FAD2707F6C9B38E11F /* OPNBackdropView.h in PBXFileReference */,
-				80FD49B2D2C3C194CC9FFA6E /* OPNCarouselFocusLayout.h in PBXFileReference */,
-				7B2A61D14F4E41BDB9A9D101 /* OPNCloudmatchServerPickerView.h in PBXFileReference */,
-				74DD1974B9762CA9B6D258FB /* OPNEmailEntryView.h in PBXFileReference */,
-				78EEB4B1D71B9405A8290251 /* OPNErrorView.h in PBXFileReference */,
-				05E53718D481ADCC9644DD45 /* OPNGameCardView.h in PBXFileReference */,
-				1E004EA1147EA6B071E2D813 /* OPNGameCatalogView.h in PBXFileReference */,
-				D9F6C4A4AB9594825BB35CDD /* OPNLoadingView.h in PBXFileReference */,
-				0C4B00965C712B3B067ECA6F /* OPNSettingsView.h in PBXFileReference */,
-				B00000000000000000000029 /* OPNSessionReportView.h in PBXFileReference */,
+				E00000000000000000000015 /* OPNBackdropView.swift */,
+				E00000000000000000000016 /* OPNCarouselFocusLayout.swift */,
+				E00000000000000000000017 /* OPNErrorView.swift */,
+				E00000000000000000000037 /* OPNAuthenticatingView.swift */,
+				E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */,
+				E00000000000000000000029 /* OPNSettingsView.swift */,
+				E00000000000000000000018 /* OPNViewSwiftSupport.swift */,
+				E0000000000000000000002F /* OPNEmailEntryView.swift */,
+				E0000000000000000000002B /* OPNGameCardView.swift */,
+				AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift in PBXFileReference */,
+				AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift in PBXFileReference */,
+				E0000000000000000000002D /* OPNLoadingView.swift */,
+				E0000000000000000000003B /* OPNSessionReportView.swift */,
 			);
 			name = views;
 			sourceTree = "<group>";
@@ -1097,9 +799,7 @@
 			buildRules = ();
 			dependencies = ();
 			name = OpenNOW;
-			packageProductDependencies = (
-				A00000000000000000000013 /* Sentry */,
-			);
+			packageProductDependencies = ();
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295;
 			productType = com.apple.product-type.application;
@@ -1118,9 +818,7 @@
 				Base,
 			);
 			mainGroup = F3C5A43586F71EF5B9F29AFA;
-			packageReferences = (
-				A00000000000000000000014 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
-			);
+			packageReferences = ();
 			productRefGroup = 5BB0AC794547B308C15C38CA;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1142,64 +840,88 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				975E499367537ADBB119AF68 /* OPNAppDelegate.mm in PBXBuildFile */,
-				C00000000000000000000030 /* OPNAppDelegateDesktop.mm in PBXBuildFile */,
-				C00000000000000000000031 /* OPNAppDelegateStreaming.mm in PBXBuildFile */,
-				C00000000000000000000032 /* OPNAppDelegateGameLaunch.mm in PBXBuildFile */,
-				C00000000000000000000033 /* OPNAppDelegateNavigation.mm in PBXBuildFile */,
-				C00000000000000000000034 /* OPNAppDelegateCatalog.mm in PBXBuildFile */,
-				16BED31EA37540021A105CB0 /* main.mm in PBXBuildFile */,
-				2E862E99AE9887559AA3725C /* OPNAuthService.mm in PBXBuildFile */,
-				AA00D44A34917D19AEDAD1A1 /* OPNCoreAnimationCoordinator.mm in PBXBuildFile */,
-				1085D0B151BE241A64FA137B /* OPNLogCapture.mm in PBXBuildFile */,
-				4C3E83E448564D2B9FBD3A10 /* OPNSentry.mm in PBXBuildFile */,
-				3BC225D2A5926453B554382C /* OPNUIHelpers.mm in PBXBuildFile */,
-				574995CC8CFCD58D8AAF6483 /* OPNGameDataCache.mm in PBXBuildFile */,
-				3B509C71FF2A9B53EA88B9CA /* OPNGameService.mm in PBXBuildFile */,
-				A00000000000000000000010 /* OPNDeviceIdentity.mm in PBXBuildFile */,
-				A00000000000000000000022 /* OPNDiscordPresence.mm in PBXBuildFile */,
-				A00000000000000000000007 /* OPNGameRemediation.mm in PBXBuildFile */,
-				A00000000000000000000005 /* OPNGFNError.mm in PBXBuildFile */,
-				A00000000000000000000009 /* OPNGitHubUpdater.mm in PBXBuildFile */,
-				A00000000000000000000004 /* OPNHTTP.mm in PBXBuildFile */,
-				C7EFD908C9250BA32B7E8B1C /* OPNInputProtocol.mm in PBXBuildFile */,
+				E00000000000000000000001 /* OPNAppDelegate.swift in PBXBuildFile */,
+				C00000000000000000000030 /* OPNAppDelegateDesktop.swift in PBXBuildFile */,
+				C00000000000000000000031 /* OPNAppDelegateStreaming.swift in PBXBuildFile */,
+				C00000000000000000000032 /* OPNAppDelegateGameLaunch.swift in PBXBuildFile */,
+				C00000000000000000000033 /* OPNAppDelegateNavigation.swift in PBXBuildFile */,
+				C00000000000000000000034 /* OPNAppDelegateCatalog.swift in PBXBuildFile */,
+				C00000000000000000000035 /* OPNAppDelegateSupport.swift in PBXBuildFile */,
+				E0000000000000000000003C /* main.swift in PBXBuildFile */,
+				E0000000000000000000000C /* OPNAuthService.swift in PBXBuildFile */,
+				E00000000000000000000009 /* OPNModels.swift in PBXBuildFile */,
+				E0000000000000000000000A /* OPNDeviceIdentity.swift in PBXBuildFile */,
+				E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in PBXBuildFile */,
+				E0000000000000000000000F /* OPNLocale.swift in PBXBuildFile */,
+				E00000000000000000000020 /* OPNGameRemediation.swift in PBXBuildFile */,
+				E00000000000000000000022 /* OPNGFNError.swift in PBXBuildFile */,
+				E00000000000000000000024 /* OPNProtocolDebug.swift in PBXBuildFile */,
+				E0000000000000000000009B /* OPNLogCapture.swift in PBXBuildFile */,
+				4C3E83E448564D2B9FBD3A10 /* OPNSentry.swift in PBXBuildFile */,
+				3BC225D2A5926453B554382C /* OPNUIHelpers.swift in PBXBuildFile */,
+				E0000000000000000000000B /* OPNGameDataCache.swift in PBXBuildFile */,
+				E0000000000000000000000D /* OPNGameService.swift in PBXBuildFile */,
+				E00000000000000000000099 /* OPNDiscordPresence.swift in PBXBuildFile */,
+				E00000000000000000000059 /* OPNSentryTransactionBridge.swift in PBXBuildFile */,
+				E00000000000000000000042 /* OPNGitHubUpdater.swift in PBXBuildFile */,
+				E0000000000000000000003E /* OPNHTTP.swift in PBXBuildFile */,
+				E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */,
+				E00000000000000000000044 /* OPNStreamSessionInputBridge.mm in PBXBuildFile */,
+				E00000000000000000000047 /* OPNStreamSessionCallbackBridge.mm in PBXBuildFile */,
+				E00000000000000000000050 /* OPNStreamSessionLaunchBridge.mm in PBXBuildFile */,
+				E00000000000000000000053 /* OPNStreamSessionLifecycleBridge.mm in PBXBuildFile */,
+				E00000000000000000000060 /* OPNNvstSdpBuilder.mm in PBXBuildFile */,
+				E00000000000000000000063 /* OPNWebRTCSdpUtils.mm in PBXBuildFile */,
+				E00000000000000000000066 /* OPNWebRTCCodecSupport.mm in PBXBuildFile */,
+				E00000000000000000000069 /* OPNWebRTCStatsHelpers.mm in PBXBuildFile */,
+				E0000000000000000000006C /* OPNMetalVideoView.mm in PBXBuildFile */,
+				E0000000000000000000006F /* OPNCoreAudioRTCDevice.mm in PBXBuildFile */,
+				E00000000000000000000072 /* OPNLibWebRTCSessionImpl.mm in PBXBuildFile */,
+				E00000000000000000000075 /* OPNLibWebRTCInput.mm in PBXBuildFile */,
+				E00000000000000000000077 /* OPNLibWebRTCStats.mm in PBXBuildFile */,
+				E00000000000000000000079 /* OPNLibWebRTCAudio.mm in PBXBuildFile */,
+				E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */,
+				E0000000000000000000007D /* OPNLibWebRTCNegotiation.mm in PBXBuildFile */,
+				E0000000000000000000007F /* OPNStreamSessionHandle.mm in PBXBuildFile */,
+				E00000000000000000000082 /* OPNSessionManagerBridge.mm in PBXBuildFile */,
+				E00000000000000000000088 /* OPNStreamStatsSnapshot.mm in PBXBuildFile */,
 				01962D846ADB16CBCA18D4C3 /* OPNLibWebRTCStreamSession.mm in PBXBuildFile */,
-				A00000000000000000000008 /* OPNLocale.mm in PBXBuildFile */,
-				A00000000000000000000003 /* OPNSessionAdPresentation.mm in PBXBuildFile */,
-				A00000000000000000000024 /* OPNSessionHealthReport.mm in PBXBuildFile */,
+				A00000000000000000000024 /* OPNSessionHealthReport.swift in PBXBuildFile */,
 				33078ABB312F4AD2D88BE57B /* OPNSessionManager.mm in PBXBuildFile */,
-				A00000000000000000000002 /* OPNSessionParsing.mm in PBXBuildFile */,
-				A214A1D8E1EF4F47A57F7515 /* OPNSignalingClient.mm in PBXBuildFile */,
-				A00000000000000000000006 /* OPNProtocolDebug.mm in PBXBuildFile */,
-				FFF8E7B3034DB91B70B547BD /* OPNStreamBackend.mm in PBXBuildFile */,
+				E00000000000000000000030 /* OPNWebSocketSignalingClient.swift in PBXBuildFile */,
+				E00000000000000000000033 /* OPNSessionReportPayload.swift in PBXBuildFile */,
 				6AD819D53010E3BBC30EF1FA /* OPNStreamPreferences.mm in PBXBuildFile */,
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.mm in PBXBuildFile */,
-				FE6A155D74A6768A507DF3AB /* OPNStreamView.mm in PBXBuildFile */,
+				FE6A155D74A6768A507DF3AB /* OPNStreamView.m in PBXBuildFile */,
 				B7A5D83CDE90AD71AD004AF7 /* OPNStreamViewController.mm in PBXBuildFile */,
 				A00000000000000000000026 /* OPNVideoEnhancementRenderer.mm in PBXBuildFile */,
+				E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in PBXBuildFile */,
+				E00000000000000000000004 /* OPNVideoSurfaceView.swift in PBXBuildFile */,
+				C00000000000000000000047 /* OPNActiveSessionService.swift in PBXBuildFile */,
+				E00000000000000000000026 /* OPNStreamPreferences.swift in PBXBuildFile */,
 				A00000000000000000000001 /* OPNWebRTCDataChannelUtils.mm in PBXBuildFile */,
-				C174D57D164809AC11FF73C7 /* OPNAuthenticatingView.mm in PBXBuildFile */,
-				96B438E76F776D852AC56D8F /* OPNBackdropView.mm in PBXBuildFile */,
-				916F79FB2547CA9622C74129 /* OPNCarouselFocusLayout.mm in PBXBuildFile */,
-				7B2A61D34F4E41BDB9A9D103 /* OPNCloudmatchServerPickerView.mm in PBXBuildFile */,
-				7F6DB1C410B60A80B1874565 /* OPNEmailEntryView.mm in PBXBuildFile */,
-				FF9C21C3A9D9EDC4DCB29F3D /* OPNErrorView.mm in PBXBuildFile */,
-				A1607B65917D0849841E2E29 /* OPNGameCardView.mm in PBXBuildFile */,
-				E61312258EEB2041AA067B25 /* OPNGameCatalogView.mm in PBXBuildFile */,
-				D00000000000000000000030 /* OPNGameCatalogLayoutSupport.mm in PBXBuildFile */,
-				D00000000000000000000031 /* OPNGameCatalogSearchSupport.mm in PBXBuildFile */,
-				D00000000000000000000032 /* OPNGameCatalogArtworkSupport.mm in PBXBuildFile */,
-				D00000000000000000000033 /* OPNGameCatalogMetadataSupport.mm in PBXBuildFile */,
-				D00000000000000000000034 /* OPNStoreGameTile.mm in PBXBuildFile */,
-				D00000000000000000000035 /* OPNGameCatalogView+ControllerHints.mm in PBXBuildFile */,
-				D00000000000000000000036 /* OPNGameCatalogView+Data.mm in PBXBuildFile */,
-				D00000000000000000000037 /* OPNGameCatalogView+Search.mm in PBXBuildFile */,
-				D00000000000000000000038 /* OPNGameCatalogView+Hero.mm in PBXBuildFile */,
-				D00000000000000000000039 /* OPNGameCatalogView+Rendering.mm in PBXBuildFile */,
-				D0000000000000000000003A /* OPNGameCatalogView+Input.mm in PBXBuildFile */,
-				10C4D542D668FF3D8F86E08F /* OPNLoadingView.mm in PBXBuildFile */,
-				CD04F899B27FABB06F2EEB35 /* OPNSettingsView.mm in PBXBuildFile */,
-				A00000000000000000000028 /* OPNSessionReportView.mm in PBXBuildFile */,
+				E00000000000000000000036 /* OPNAuthenticatingView.swift in PBXBuildFile */,
+				E00000000000000000000005 /* OPNBackdropView.swift in PBXBuildFile */,
+				E00000000000000000000006 /* OPNCarouselFocusLayout.swift in PBXBuildFile */,
+				E00000000000000000000038 /* OPNCloudmatchServerPickerView.swift in PBXBuildFile */,
+				E0000000000000000000002E /* OPNEmailEntryView.swift in PBXBuildFile */,
+				E00000000000000000000007 /* OPNErrorView.swift in PBXBuildFile */,
+				E00000000000000000000008 /* OPNViewSwiftSupport.swift in PBXBuildFile */,
+				E0000000000000000000002A /* OPNGameCardView.swift in PBXBuildFile */,
+				E61312258EEB2041AA067B25 /* OPNGameCatalogView.swift in PBXBuildFile */,
+				E61312258EEB2041AA067B26 /* OPNGameCatalogModelSupport.swift in PBXBuildFile */,
+				D0000000000000000000003C /* OPNGameCatalogLayoutSupport.swift in PBXBuildFile */,
+				D0000000000000000000003B /* OPNGameCatalogSearchSupport.swift in PBXBuildFile */,
+				D00000000000000000000032 /* OPNGameCatalogArtworkSupport.swift in PBXBuildFile */,
+				D00000000000000000000033 /* OPNGameCatalogMetadataSupport.swift in PBXBuildFile */,
+				D00000000000000000000034 /* OPNStoreGameTile.swift in PBXBuildFile */,
+				D00000000000000000000036 /* OPNGameCatalogView+Data.swift in PBXBuildFile */,
+				D00000000000000000000037 /* OPNGameCatalogView+Search.swift in PBXBuildFile */,
+				D00000000000000000000038 /* OPNGameCatalogView+Hero.swift in PBXBuildFile */,
+				D00000000000000000000039 /* OPNGameCatalogView+Rendering.swift in PBXBuildFile */,
+				E0000000000000000000002C /* OPNLoadingView.swift in PBXBuildFile */,
+				E00000000000000000000028 /* OPNSettingsView.swift in PBXBuildFile */,
+				E0000000000000000000003A /* OPNSessionReportView.swift in PBXBuildFile */,
 				20E194CFFBA3687D0A48D383 /* OPNPremiumBackdrop.metal in PBXBuildFile */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1236,7 +958,7 @@
 			); OTHER_CPLUSPLUSFLAGS = (
 				"$(inherited)",
 				"-fcxx-modules",
-			); };
+			); SWIFT_OBJC_BRIDGING_HEADER = "OpenNOW-Bridging-Header.h"; SWIFT_VERSION = 6.0; };
 			name = Debug;
 		};
 		15F569470662212ABEBAA581 /* Release in XCBuildConfiguration */ = {
@@ -1269,7 +991,7 @@
 			); OTHER_CPLUSPLUSFLAGS = (
 				"$(inherited)",
 				"-fcxx-modules",
-			); };
+			); SWIFT_OBJC_BRIDGING_HEADER = "OpenNOW-Bridging-Header.h"; SWIFT_VERSION = 6.0; };
 			name = Release;
 		};
 		/* End XCBuildConfiguration section */
@@ -1293,23 +1015,6 @@
 			defaultConfigurationName = Debug;
 		};
 		/* End XCConfigurationList section */
-		/* Begin XCRemoteSwiftPackageReference section */
-		A00000000000000000000014 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.16.1;
-			};
-		};
-		/* End XCRemoteSwiftPackageReference section */
-		/* Begin XCSwiftPackageProductDependency section */
-		A00000000000000000000013 /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000014 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
-		/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5E5B09E6B59FF29FFCDE1423;
 }

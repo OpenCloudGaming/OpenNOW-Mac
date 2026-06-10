@@ -1,13 +1,14 @@
 #pragma once
 
 #include "OPNStreamTypes.h"
-#include "common/OPNGameTypes.h"
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
-#include <mutex>
-#include <unordered_map>
 
 namespace OPN {
+
+struct SessionManagerStorage;
 
 class SessionManager {
 public:
@@ -53,7 +54,11 @@ public:
     std::string GetStreamingBaseUrl() const;
 
 private:
-    SessionManager() = default;
+    SessionManager();
+    ~SessionManager();
+
+    SessionManager(const SessionManager &) = delete;
+    SessionManager &operator=(const SessionManager &) = delete;
 
     void pollClaimSession(std::string sessionId,
                              std::string serverIp,
@@ -63,10 +68,7 @@ private:
                              SessionCreateCallback completion);
     void MergeAndStoreAdState(SessionInfo &info);
 
-    std::string m_accessToken;
-    std::string m_streamingBaseUrl;
-    std::mutex m_adStateMutex;
-    std::unordered_map<std::string, SessionAdState> m_adStatesBySessionId;
+    std::unique_ptr<SessionManagerStorage> m_storage;
 };
 
 }

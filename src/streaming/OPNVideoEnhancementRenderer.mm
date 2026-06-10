@@ -24,9 +24,6 @@
 #pragma clang diagnostic pop
 #endif
 
-@implementation OPNVideoEnhancementSettings
-@end
-
 @implementation OPNVideoEnhancementResult
 @end
 
