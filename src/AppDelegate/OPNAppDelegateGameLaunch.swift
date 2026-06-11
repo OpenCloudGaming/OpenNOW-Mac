@@ -195,6 +195,17 @@ private func opnGameLaunchHasAppId(_ game: OPNCatalogGameObject, appId: Int) -> 
     return game.id == appIdString || game.launchAppId == appIdString || game.variants.contains { $0.id == appIdString }
 }
 
+private func opnGameLaunchTitleForActiveSession(appId: Int, games: [OPNCatalogGameObject]) -> String {
+    guard appId > 0 else { return "Current Stream" }
+    let appIdString = String(appId)
+    for game in games {
+        if game.id == appIdString || game.launchAppId == appIdString || game.variants.contains(where: { $0.id == appIdString }) {
+            return game.title.isEmpty ? "Current Stream" : game.title
+        }
+    }
+    return "Current Stream"
+}
+
 private func opnGameLaunchStoreDisplayName(_ store: String) -> String {
     OPNGameRemediationBridge.gameStoreDisplayName(store)
 }
@@ -471,8 +482,10 @@ extension NSObject {
                     return
                 }
                 _ = OPNSentry.recordCounterMetric(key: "opennow.game.launch.count", value: 1, attributes: ["outcome": "active_session_prompt"])
-                self.showActiveSessionPrompt(sessionTitle: "Current Stream", selectedGameTitle: game.title.isEmpty ? "Selected Game" : game.title) {
-                    opnGameLaunchStartStream(self, title: "Current Stream", appId: activeSession.appId > 0 ? String(activeSession.appId) : appId, apiToken: apiToken, accountLinked: true, selectedStore: "", returnScreen: returnScreen, resumeSessionId: activeSession.sessionId, resumeServer: activeSession.serverIp)
+                let cachedGames = opnGameLaunchGet(self, "cachedGameLibraryObjects", as: [OPNCatalogGameObject].self) ?? []
+                let sessionTitle = opnGameLaunchTitleForActiveSession(appId: activeSession.appId, games: cachedGames)
+                self.showActiveSessionPrompt(sessionTitle: sessionTitle, selectedGameTitle: game.title.isEmpty ? "Selected Game" : game.title) {
+                    opnGameLaunchStartStream(self, title: sessionTitle.isEmpty ? "Current Stream" : sessionTitle, appId: activeSession.appId > 0 ? String(activeSession.appId) : appId, apiToken: apiToken, accountLinked: true, selectedStore: "", returnScreen: returnScreen, resumeSessionId: activeSession.sessionId, resumeServer: activeSession.serverIp)
                 } deleteHandler: {
                     self.showAuthenticating(message: "Deleting existing session...")
                     OPNActiveSessionService.stopSession(accessToken: apiToken, sessionId: activeSession.sessionId, serverIp: activeSession.serverIp) { stopOK, stopError in
