@@ -305,6 +305,26 @@ final class OPNLoadingView: NSView {
         }
     }
 
+    @objc(updateAdState:)
+    func updateAdState(_ adState: NSDictionary) {
+        let isRequired = bool(adState["isAdsRequired"]) || bool(adState["sessionAdsRequired"]) || bool(adState["isQueuePaused"])
+        guard isRequired else {
+            clearAdPresentation()
+            return
+        }
+        let ads = adState["sessionAds"] as? [NSDictionary] ?? []
+        let ad = ads.first ?? [:]
+        updateAdPresentation(
+            visible: true,
+            chipText: bool(adState["isQueuePaused"]) ? "Queue Paused" : "Sponsored Break",
+            title: string(ad["title"], fallback: "Watch to continue"),
+            message: string(adState["message"], fallback: "Your launch will resume automatically after the ad."),
+            adId: string(ad["adId"], fallback: "ad"),
+            mediaUrl: string(ad["mediaUrl"]),
+            durationMs: int(ad["durationMs"], fallback: max(1, int(ad["adLengthInSeconds"])) * 1000)
+        )
+    }
+
     @objc func stopAnimating() {
         sweepLayer.removeAllAnimations()
         orbitLayer.removeAllAnimations()
@@ -522,6 +542,25 @@ final class OPNLoadingView: NSView {
         }
         guard let adStartedAt else { return 0 }
         return max(0, Int((-adStartedAt.timeIntervalSinceNow * 1000.0).rounded()))
+    }
+
+    private func bool(_ value: Any?) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        return false
+    }
+
+    private func int(_ value: Any?, fallback: Int = 0) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) ?? fallback }
+        return fallback
+    }
+
+    private func string(_ value: Any?, fallback: String = "") -> String {
+        if let value = value as? String { return value }
+        if let value = value as? NSNumber { return value.stringValue }
+        return fallback
     }
 
     private func reportAdAction(_ action: String, cancelReason: String) {

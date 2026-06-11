@@ -58,11 +58,32 @@ final class OPNEmailEntryView: NSView {
         }
     }
 
+    @objc(setLoginProviders:selectedProviderIdpId:)
+    func setLoginProviders(_ providers: NSArray, selectedProviderIdpId selectedId: NSString) {
+        var ids: [String] = []
+        var labels: [String] = []
+        for provider in providers {
+            let object = provider as AnyObject
+            let id = (object.value(forKey: "idpId") as? String) ?? (object.value(forKey: "id") as? String) ?? ""
+            guard !id.isEmpty else { continue }
+            let code = ((object.value(forKey: "providerCode") as? String) ?? (object.value(forKey: "code") as? String) ?? "").uppercased()
+            let name = (object.value(forKey: "providerName") as? String) ?? (object.value(forKey: "name") as? String) ?? ""
+            ids.append(id)
+            labels.append(code == "BPC" ? "bro.game" : (name.isEmpty ? "NVIDIA" : name))
+        }
+        setProviderItems(ids: ids, labels: labels, selectedId: selectedId as String)
+    }
+
     @objc func selectedProviderIdentifier() -> String {
         let index = providerPopup.indexOfSelectedItem
         guard index >= 0 && index < providerIds.count else { return "DEFAULT" }
         let id = providerIds[index]
         return id.isEmpty ? "DEFAULT" : id
+    }
+
+    @objc(selectedProviderIdpId)
+    func selectedProviderIdpId() -> String {
+        selectedProviderIdentifier()
     }
 
     private func buildUI() {
