@@ -41,6 +41,20 @@
 - (void)stop;
 @end
 
+@interface OPNLibWebRTCAudio : NSObject
+- (instancetype)initWithOwner:(void *)owner;
+- (void)setMicrophoneEnabled:(BOOL)enabled sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)setGameVolume:(double)volume sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)setMicrophoneVolume:(double)volume sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)refreshAudioDevicesWithSessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)startAudioDeviceMonitoring;
+- (void)stopAudioDeviceMonitoring;
+- (void)handleAudioDeviceChangeWithSessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)startMicrophoneLevelPollingWithSessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl statsQueue:(dispatch_queue_t)statsQueue;
+- (void)stopMicrophoneLevelPolling;
+@property(nonatomic, readonly) double gameVolume;
+@end
+
 namespace OPN {
 
 bool LibWebRTCStreamSession::IsAvailable() {
@@ -629,6 +643,8 @@ LibWebRTCStreamSession::LibWebRTCStreamSession() {
     m_statsQueue = (__bridge_retained void *)statsQueue;
     OPNLibWebRTCInput *inputController = [[OPNLibWebRTCInput alloc] initWithOwner:this];
     m_inputController = (__bridge_retained void *)inputController;
+    OPNLibWebRTCAudio *audioController = [[OPNLibWebRTCAudio alloc] initWithOwner:this];
+    m_audioController = (__bridge_retained void *)audioController;
     m_callbackLiveness = std::make_shared<std::atomic_bool>(true);
 }
 
@@ -643,6 +659,12 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
         OPNLibWebRTCInput *inputController = (__bridge_transfer OPNLibWebRTCInput *)m_inputController;
         [inputController stop];
         m_inputController = nullptr;
+    }
+    if (m_audioController) {
+        OPNLibWebRTCAudio *audioController = (__bridge_transfer OPNLibWebRTCAudio *)m_audioController;
+        [audioController stopAudioDeviceMonitoring];
+        [audioController stopMicrophoneLevelPolling];
+        m_audioController = nullptr;
     }
 }
 
@@ -1448,6 +1470,10 @@ static OPNLibWebRTCInput *OPNInputController(void *opaque) {
     return (__bridge OPNLibWebRTCInput *)opaque;
 }
 
+static OPNLibWebRTCAudio *OPNAudioController(void *opaque) {
+    return (__bridge OPNLibWebRTCAudio *)opaque;
+}
+
 void LibWebRTCStreamSession::SendInput(const uint8_t *data, size_t len) {
     if (!data || len == 0) return;
     NSData *payload = [NSData dataWithBytes:data length:len];
@@ -1520,6 +1546,119 @@ void LibWebRTCStreamSession::HandleClipboardText(const std::string &text) {
 extern "C" void OPNLibWebRTCInputOwnerHandleClipboardText(void *owner, NSString *text) {
     OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
     if (session) session->HandleClipboardText(OPNNSStringToString(text));
+}
+
+void LibWebRTCStreamSession::SetMicrophoneEnabled(bool enabled) {
+    m_microphoneEnabled = enabled;
+    [OPNAudioController(m_audioController) setMicrophoneEnabled:enabled ? YES : NO sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SetGameVolume(double volume) {
+    m_gameVolume = std::max(0.0, std::min(volume, 1.0));
+    [OPNAudioController(m_audioController) setGameVolume:m_gameVolume sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SetMicrophoneVolume(double volume) {
+    m_microphoneVolumeLevel = std::max(0.0, std::min(volume, 1.0));
+    [OPNAudioController(m_audioController) setMicrophoneVolume:m_microphoneVolumeLevel sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::RefreshAudioDevices() {
+    [OPNAudioController(m_audioController) refreshAudioDevicesWithSessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::StartAudioDeviceMonitoring() {
+    [OPNAudioController(m_audioController) startAudioDeviceMonitoring];
+}
+
+void LibWebRTCStreamSession::StopAudioDeviceMonitoring() {
+    [OPNAudioController(m_audioController) stopAudioDeviceMonitoring];
+}
+
+void LibWebRTCStreamSession::HandleAudioDeviceChange() {
+    [OPNAudioController(m_audioController) handleAudioDeviceChangeWithSessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::StartMicrophoneLevelPolling() {
+    dispatch_queue_t statsQueue = m_statsQueue ? (__bridge dispatch_queue_t)m_statsQueue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    [OPNAudioController(m_audioController) startMicrophoneLevelPollingWithSessionImpl:OPNImplFromOpaque(m_impl) statsQueue:statsQueue];
+}
+
+void LibWebRTCStreamSession::StopMicrophoneLevelPolling() {
+    [OPNAudioController(m_audioController) stopMicrophoneLevelPolling];
+}
+
+double LibWebRTCStreamSession::GameVolume() const {
+    return OPNAudioController(m_audioController).gameVolume;
+}
+
+void LibWebRTCStreamSession::HandleMicrophoneLevel(double level) {
+    if (m_onMicrophoneLevel) m_onMicrophoneLevel(level);
+}
+
+extern "C" void OPNLibWebRTCAudioOwnerHandleMicrophoneLevel(void *owner, double level) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->HandleMicrophoneLevel(level);
+}
+
+extern "C" void OPNLibWebRTCAudioOwnerHandleConnectionState(void *owner, BOOL connected, NSString *error) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->HandleConnectionState(connected ? true : false, OPNNSStringToString(error));
+}
+
+extern "C" void OPNCoreAudioRTCDeviceHandleGameAudioFrame(void *owner,
+                                                            const void *audioBufferList,
+                                                            uint32_t frameCount,
+                                                            double sampleRate,
+                                                            uint32_t channels) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session && audioBufferList) session->HandleGameAudioFrame(audioBufferList, frameCount, sampleRate, channels);
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredInputSampleRate(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredInputSampleRate : 0.0;
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredOutputSampleRate(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredOutputSampleRate : 0.0;
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredInputIOBufferDuration(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredInputIOBufferDuration : 0.0;
+}
+
+extern "C" double OPNCoreAudioRTCDeviceDelegatePreferredOutputIOBufferDuration(id<RTCAudioDeviceDelegate> delegate) {
+    return delegate ? delegate.preferredOutputIOBufferDuration : 0.0;
+}
+
+extern "C" void OPNCoreAudioRTCDeviceDelegateNotifyDeviceChange(id<RTCAudioDeviceDelegate> delegate) {
+    if (!delegate) return;
+    [delegate dispatchAsync:^{
+        [delegate notifyAudioOutputInterrupted];
+        [delegate notifyAudioInputInterrupted];
+        [delegate notifyAudioOutputParametersChange];
+        [delegate notifyAudioInputParametersChange];
+    }];
+}
+
+extern "C" OSStatus OPNCoreAudioRTCDeviceDelegateGetPlayoutData(id<RTCAudioDeviceDelegate> delegate,
+                                                                  AudioUnitRenderActionFlags *actionFlags,
+                                                                  const AudioTimeStamp *timestamp,
+                                                                  NSInteger busNumber,
+                                                                  UInt32 frameCount,
+                                                                  AudioBufferList *audioBufferList) {
+    if (!delegate || !delegate.getPlayoutData) return noErr;
+    return delegate.getPlayoutData(actionFlags, timestamp, busNumber, frameCount, audioBufferList);
+}
+
+extern "C" OSStatus OPNCoreAudioRTCDeviceDelegateDeliverRecordedData(id<RTCAudioDeviceDelegate> delegate,
+                                                                       AudioUnitRenderActionFlags *actionFlags,
+                                                                       const AudioTimeStamp *timestamp,
+                                                                       NSInteger busNumber,
+                                                                       UInt32 frameCount,
+                                                                       AudioBufferList *audioBufferList) {
+    if (!delegate || !delegate.deliverRecordedData) return noErr;
+    return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, audioBufferList, nullptr, nil);
 }
 
 #if defined(OPN_HAVE_LIBWEBRTC)

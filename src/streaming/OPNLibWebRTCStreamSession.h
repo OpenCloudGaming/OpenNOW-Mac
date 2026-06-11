@@ -60,6 +60,7 @@ public:
     void HandleDataChannelState(const std::string &label, bool open);
     void HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len);
     void HandleClipboardText(const std::string &text);
+    void HandleMicrophoneLevel(double level);
     void HandleAudioDeviceChange();
     void HandleVideoFrame(void *frame);
     void HandleEnhancedVideoFrame(void *pixelBuffer);
@@ -86,7 +87,6 @@ public:
 
 private:
     void HandleStatsReport(void *report);
-    void HandleMicrophoneLevelReport(void *report);
     void StartStatsPolling();
     void StopStatsPolling();
     void StartMicrophoneLevelPolling();
@@ -101,17 +101,10 @@ private:
     void *m_disconnectGraceTimer = nullptr;
     void *m_statsTimer = nullptr;
     void *m_statsQueue = nullptr;
-    void *m_microphoneLevelTimer = nullptr;
-    void *m_audioDeviceMonitorContext = nullptr;
+    void *m_audioController = nullptr;
     std::shared_ptr<std::atomic_bool> m_callbackLiveness;
-    std::atomic<bool> m_audioDeviceMonitoringActive{false};
     bool m_statsRequestInFlight = false;
-    bool m_microphoneLevelRequestInFlight = false;
     bool m_microphoneEnabled = false;
-    uint64_t m_audioDeviceChangeGeneration = 0;
-    int m_audioDeviceUnavailableRetryCount = 0;
-    uint32_t m_defaultInputDevice = 0;
-    uint32_t m_defaultOutputDevice = 0;
     double m_gameVolume = 1.0;
     double m_microphoneVolumeLevel = 1.0;
     StreamStats m_latestStats;

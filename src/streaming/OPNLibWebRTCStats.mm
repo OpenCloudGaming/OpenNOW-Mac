@@ -40,28 +40,6 @@ static NSString *OPNRTCStatsStringForKey(NSDictionary<NSString *, NSObject *> *v
     return [value isKindOfClass:NSString.class] ? (NSString *)value : nil;
 }
 
-static bool OPNRTCStatsIsAudio(RTCStatistics *stat) {
-    NSString *mediaType = OPNRTCStatsStringForKey(stat.values, @"mediaType");
-    NSString *kind = OPNRTCStatsStringForKey(stat.values, @"kind");
-    NSString *trackKind = OPNRTCStatsStringForKey(stat.values, @"trackKind");
-    if ([mediaType isEqualToString:@"audio"] || [kind isEqualToString:@"audio"] || [trackKind isEqualToString:@"audio"]) return true;
-    NSString *idString = [stat.id lowercaseString];
-    return [idString containsString:@"audio"] || [idString containsString:@"mic"];
-}
-
-static double OPNMicrophoneLevelFromStatsReport(RTCStatisticsReport *report) {
-    double bestLevel = -1.0;
-    for (RTCStatistics *stat in report.statistics.allValues) {
-        if (!OPNRTCStatsIsAudio(stat)) continue;
-        NSNumber *audioLevel = OPNRTCStatsNumberForKey(stat.values, @"audioLevel");
-        if (!audioLevel) audioLevel = OPNRTCStatsNumberForKey(stat.values, @"totalAudioEnergy");
-        if (!audioLevel) continue;
-        double level = audioLevel.doubleValue;
-        if (level > 1.0) level = sqrt(level);
-        bestLevel = std::max(bestLevel, std::max(0.0, std::min(level, 1.0)));
-    }
-    return bestLevel;
-}
 #endif
 
 static std::string OPNNSStringToString(NSString *value) {
@@ -292,19 +270,6 @@ void LibWebRTCStreamSession::HandleStatsReport(void *report) {
         m_statsRequestInFlight = false;
     }
     UpdateAdaptiveBitrate(parsed);
-#else
-    (void)report;
-#endif
-}
-
-void LibWebRTCStreamSession::HandleMicrophoneLevelReport(void *report) {
-#if defined(OPN_HAVE_LIBWEBRTC)
-    RTCStatisticsReport *statsReport = (__bridge RTCStatisticsReport *)report;
-    double level = statsReport ? OPNMicrophoneLevelFromStatsReport(statsReport) : -1.0;
-    m_microphoneLevelRequestInFlight = false;
-    if (level >= 0.0 && m_onMicrophoneLevel) {
-        m_onMicrophoneLevel(level * m_microphoneVolumeLevel);
-    }
 #else
     (void)report;
 #endif
