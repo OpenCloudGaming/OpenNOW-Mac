@@ -123,6 +123,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            guard self.webSocketTask === webSocketTask else { return }
             self.didOpen = true
             self.sendPeerInfo()
             self.setupHeartbeat()
@@ -136,6 +137,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         guard let error else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            guard self.webSocketTask === task else { return }
             if self.didOpen {
                 let nsError = error as NSError
                 if self.isSocketNotConnectedError(nsError) {
@@ -159,6 +161,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            guard self.webSocketTask === webSocketTask else { return }
             NSLog("[Signaling] WebSocket closed: code=%ld, reason=%@", closeCode.rawValue, reasonText)
             self.clearHeartbeat()
             self.webSocketTask = nil

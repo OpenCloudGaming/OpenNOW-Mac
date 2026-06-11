@@ -3,6 +3,7 @@ import CoreVideo
 import Foundation
 import Metal
 import MetalKit
+import ObjectiveC
 import QuartzCore
 @preconcurrency import WebRTC
 
@@ -12,6 +13,31 @@ import QuartzCore
 
     @objc(drawFrame:)
     func drawFrame(_ frame: RTCVideoFrame)
+}
+
+private final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
+    private let renderer: NSObject
+    private let addDestinationSelector = NSSelectorFromString("addRenderingDestination:")
+    private let drawFrameSelector = NSSelectorFromString("drawFrame:")
+
+    init?(_ renderer: NSObject) {
+        guard renderer.responds(to: addDestinationSelector), renderer.responds(to: drawFrameSelector) else { return nil }
+        self.renderer = renderer
+    }
+
+    func addRenderingDestination(_ view: MTKView) -> Bool {
+        typealias AddRenderingDestination = @convention(c) (AnyObject, Selector, AnyObject) -> Bool
+        let implementation = renderer.method(for: addDestinationSelector)
+        let call = unsafeBitCast(implementation, to: AddRenderingDestination.self)
+        return call(renderer, addDestinationSelector, view)
+    }
+
+    func drawFrame(_ frame: RTCVideoFrame) {
+        typealias DrawFrame = @convention(c) (AnyObject, Selector, AnyObject) -> Void
+        let implementation = renderer.method(for: drawFrameSelector)
+        let call = unsafeBitCast(implementation, to: DrawFrame.self)
+        call(renderer, drawFrameSelector, frame)
+    }
 }
 
 @objc(OPNMetalVideoView)
@@ -295,8 +321,8 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             fallback = "\(className) unavailable"
             return nil
         }
-        guard let renderer = rendererClass.init() as? OPNRTCMetalRenderer else {
-            fallback = "\(className) does not conform to renderer protocol"
+        guard let renderer = OPNObjCMetalRenderer(rendererClass.init()) else {
+            fallback = "\(className) does not expose renderer selectors"
             return nil
         }
         guard renderer.addRenderingDestination(metalView) else {

@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import AVFoundation
 import Foundation
 import GameController
 import QuartzCore
@@ -140,6 +141,15 @@ final class OPNStreamViewController: NSViewController {
         streamView.autoresizingMask = [.width, .height]
         streamView.onUserActivity = { [weak self] in self?.recordStreamUserActivity() }
         streamView.onDashboardToggleRequested = { [weak self] in self?.onDashboardToggleRequested?() }
+        streamView.onSidebarHUDVisibilityChanged = { [weak self] visible in
+            guard let self, self.connectedOnce, !self.streamEnded else { return }
+            if visible {
+                self.refreshDisplayedPlaytimeFromSessionPoll()
+                self.startPlaytimeRefreshTimer()
+            } else {
+                self.stopPlaytimeRefreshTimer()
+            }
+        }
         self.view = streamView
         self.streamView = streamView
         configureStreamViewSessionCallbacks()
@@ -173,17 +183,26 @@ final class OPNStreamViewController: NSViewController {
     }
 
     func requestQuitGameConfirmation() {
-        guard quitOverlay == nil, !streamEnded else { return }
+        guard !streamEnded else { return }
+        streamView?.releasePointerLock()
+        if let quitOverlay {
+            view.window?.makeFirstResponder(quitOverlay)
+            return
+        }
         let overlay = OPNQuitGameOverlayView(frame: view.bounds)
         overlay.autoresizingMask = [.width, .height]
         overlay.onCancel = { [weak self] in self?.dismissQuitGameOverlayAndRefocus(true) }
         overlay.onQuit = { [weak self] in self?.endStreamFromUserQuit() }
         quitOverlay = overlay
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
+        view.window?.makeFirstResponder(overlay)
     }
 
     func shutdownForApplicationTermination() {
-        if !streamEnded { endStream(success: true, errorMessage: "") }
+        guard !streamEnded else { return }
+        streamEnded = true
+        cleanup()
+        onStreamEnd?(true, "", healthReport.finalize(success: true, terminalError: "", now: CACurrentMediaTime()))
     }
 
     private func startStreamLaunchFlow() {
@@ -206,6 +225,7 @@ final class OPNStreamViewController: NSViewController {
         healthReportStarted = true
 
         let settings = streamSettingsDictionary()
+        guard ensureMicrophonePermissionIfNeeded(settings: settings, generation: generation) else { return }
         OPNSessionManager.shared.setAccessToken(apiToken)
         let selectedStreamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
         launchStreamingBaseUrl = selectedStreamingBaseUrl
@@ -213,19 +233,23 @@ final class OPNStreamViewController: NSViewController {
 
         let settingsBox = OPNStreamSendableValue(settings)
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"], fallback: 50)
-        OPNStreamPreferences.fetchCloudVariables(token: apiToken) { [weak self] _ in
+        OPNStreamPreferences.fetchCloudVariables(token: apiToken) { [weak self] cloudVariables in
             guard let self else { return }
             OPNStreamPreferences.runNetworkPreflight(token: self.apiToken, providerStreamingBaseUrl: selectedStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps) { [weak self] preflight in
                 DispatchQueue.main.async {
                     guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
-                    var launchSettings = settingsBox.value
+                    var launchSettings = self.settingsByApplyingCloudVariables(settingsBox.value, variables: cloudVariables)
                     launchSettings["networkTestSessionId"] = preflight.networkTestSessionId
                     launchSettings["networkType"] = preflight.networkType
                     launchSettings["networkLatencyMs"] = preflight.latencyMs >= 0 ? String(preflight.latencyMs) : "Unknown"
+                    if preflight.recommendedMaxBitrateMbps > 0 {
+                        launchSettings["maxBitrateMbps"] = min(self.int(launchSettings["maxBitrateMbps"]), preflight.recommendedMaxBitrateMbps)
+                    }
                     if !preflight.streamingBaseUrl.isEmpty {
                         self.launchStreamingBaseUrl = preflight.streamingBaseUrl
                         OPNSessionManager.shared.setStreamingBaseUrl(preflight.streamingBaseUrl)
                     }
+                    guard self.confirmNetworkPreflightIfNeeded(preflight) else { return }
                     self.apply(settings: launchSettings)
                     if self.resumeExistingSession {
                         self.claimSession(settings: launchSettings, generation: generation)
@@ -295,11 +319,58 @@ final class OPNStreamViewController: NSViewController {
                     self.resumeSessionId = ""
                     self.resumeServer = ""
                     self.launchFreshSession(settings: settings, generation: generation)
+                } else if self.resumeErrorShouldReResolveActiveSession(error) {
+                    self.reResolveAndClaimActiveSession(settings: settings, generation: generation)
                 } else {
                     self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error, gameTitle: self.gameTitle))
                 }
             }
         }
+    }
+
+    private func reResolveAndClaimActiveSession(settings: [String: Any], generation: UInt) {
+        setStatus("Resuming current active session...")
+        let requestedSessionId = resumeSessionId
+        OPNSessionManager.shared.getActiveSessions { [weak self] success, sessions, error in
+            DispatchQueue.main.async {
+                guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                guard success else {
+                    self.endStream(success: false, errorMessage: error.isEmpty ? "Unable to resolve active session" : error)
+                    return
+                }
+                guard let selectedSession = sessions.first(where: { self.string($0["sessionId"]) == requestedSessionId && !self.string($0["serverIp"]).isEmpty }) else {
+                    self.endStream(success: false, errorMessage: "Requested session is no longer available to resume")
+                    return
+                }
+                self.resumeServer = self.string(selectedSession["serverIp"])
+                let selectedAppId = self.int(selectedSession["appId"]) > 0 ? String(self.int(selectedSession["appId"])) : self.appId
+                OPNSessionManager.shared.claimSession(sessionId: requestedSessionId, serverIp: self.resumeServer, appId: selectedAppId, settings: settings, recoveryMode: true) { [weak self] retrySuccess, retryInfo, retryError in
+                    DispatchQueue.main.async {
+                        guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                        if !retrySuccess {
+                            if OPNStreamViewControllerSupport.resumeErrorShouldCreateFreshSession(retryError) {
+                                self.resumeExistingSession = false
+                                self.resumeSessionId = ""
+                                self.resumeServer = ""
+                                self.launchFreshSession(settings: settings, generation: generation)
+                                return
+                            }
+                            self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: retryError, gameTitle: self.gameTitle))
+                            return
+                        }
+                        guard self.string(retryInfo["sessionId"]) == requestedSessionId else {
+                            self.endStream(success: false, errorMessage: "Resume returned a different session id")
+                            return
+                        }
+                        self.connect(sessionInfo: retryInfo as NSDictionary, settings: settings, generation: generation)
+                    }
+                }
+            }
+        }
+    }
+
+    private func resumeErrorShouldReResolveActiveSession(_ error: String) -> Bool {
+        error.contains("SESSION_NOT_PAUSED") || error.contains("\"statusCode\":34")
     }
 
     private func waitForReadySession(_ sessionInfo: NSDictionary, settings: [String: Any], generation: UInt, attempt: Int = 0) {
@@ -390,6 +461,7 @@ final class OPNStreamViewController: NSViewController {
             streamView?.startRemainingPlaytimeCountdown()
             streamView?.takeFocus()
             healthReport.markConnected(now: CACurrentMediaTime())
+            OPNDiscordPresence.updatePlaying(gameTitle: gameTitle, resolution: settings["resolution"] as? String ?? "", fps: int(settings["fps"]), bitrateMbps: int(settings["maxBitrateMbps"]), codec: settings["codec"] as? String ?? "")
             showConnectedToast(resolution: settings["resolution"] as? String ?? "", fps: int(settings["fps"]), bitrateMbps: int(settings["maxBitrateMbps"]), codec: settings["codec"] as? String ?? "")
             startStatsRefreshTimer()
             startInactivityTimer()
@@ -441,12 +513,46 @@ final class OPNStreamViewController: NSViewController {
             "microphonePushToTalkModifierMask": profile.microphonePushToTalkModifierMask,
             "gameVolume": profile.gameVolume,
             "microphoneVolume": profile.microphoneVolume,
+            "upscalingMode": profile.lowLatencyMode ? 0 : profile.upscalingMode,
+            "upscalingSharpness": profile.upscalingSharpness,
+            "upscalingDenoise": profile.upscalingDenoise,
+            "upscalingTargetHeight": profile.upscalingTargetHeight,
+            "suppressInputWhenInactive": profile.suppressInputWhenInactive,
+            "directMouseInput": profile.directMouseInput,
             "gameLanguage": OPNLocale.currentGFNLocale(),
             "accountLinked": accountLinked,
             "selectedStore": selectedStore,
             "remoteControllersBitmap": connectedControllerBitmap(),
             "availableSupportedControllers": [],
         ]
+    }
+
+    private func ensureMicrophonePermissionIfNeeded(settings: [String: Any], generation: UInt) -> Bool {
+        guard string(settings["microphoneMode"]) != "disabled" else { return true }
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return true
+        case .denied, .restricted:
+            setStatus("Microphone permission is disabled. Enable it in macOS Settings > Privacy & Security > Microphone.")
+            endStream(success: false, errorMessage: "Microphone permission denied")
+            return false
+        case .notDetermined:
+            setStatus("Requesting microphone permission...")
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                    if granted {
+                        self.startStreamLaunchFlow()
+                    } else {
+                        self.setStatus("Microphone permission was denied. Enable it in macOS Settings > Privacy & Security > Microphone.")
+                        self.endStream(success: false, errorMessage: "Microphone permission denied")
+                    }
+                }
+            }
+            return false
+        @unknown default:
+            return true
+        }
     }
 
     private func apply(settings: [String: Any]) {
@@ -457,6 +563,53 @@ final class OPNStreamViewController: NSViewController {
         streamView?.setVideoAspectRatio(height > 0 ? CGFloat(width) / CGFloat(height) : 16.0 / 9.0)
         streamView?.setMaxBitrateMbps(int(settings["maxBitrateMbps"]))
         streamView?.setMicrophoneMode(settings["microphoneMode"] as? String ?? "disabled", pushToTalkKeyCode: UInt16(int(settings["microphonePushToTalkKeyCode"])), modifierMask: UInt16(int(settings["microphonePushToTalkModifierMask"])))
+        streamView?.setVideoUpscalingMode(int(settings["upscalingMode"]), sharpness: int(settings["upscalingSharpness"]), denoise: int(settings["upscalingDenoise"]), streamWidth: width, streamHeight: height)
+        streamView?.setSuppressInputWhenWindowInactive(bool(settings["suppressInputWhenInactive"]))
+        streamView?.setDirectMouseInputEnabled(bool(settings["directMouseInput"], fallback: true))
+    }
+
+    private func settingsByApplyingCloudVariables(_ settings: [String: Any], variables: OPNStreamCloudVariables) -> [String: Any] {
+        let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        var typed = OPNStreamSettings()
+        typed.resolution = string(settings["resolution"], fallback: typed.resolution)
+        typed.fps = int(settings["fps"], fallback: typed.fps)
+        typed.codec = string(settings["codec"], fallback: typed.codec)
+        typed.colorQuality = string(settings["colorQuality"], fallback: typed.colorQuality)
+        typed.maxBitrateMbps = int(settings["maxBitrateMbps"], fallback: typed.maxBitrateMbps)
+        typed.prefilterMode = int(settings["prefilterMode"])
+        typed.prefilterSharpness = int(settings["prefilterSharpness"])
+        typed.prefilterDenoise = int(settings["prefilterDenoise"])
+        typed.prefilterModel = int(settings["prefilterModel"])
+        typed.enableL4S = bool(settings["enableL4S"])
+        typed.enableHdr = bool(settings["enableHdr"])
+        typed.enableReflex = bool(settings["enableReflex"], fallback: true)
+        let applied = OPNStreamPreferences.settingsByApplyingCloudVariables(typed, variables: variables, capabilities: capabilities)
+        var result = settings
+        result["resolution"] = applied.resolution
+        result["fps"] = applied.fps
+        result["codec"] = applied.codec
+        result["colorQuality"] = applied.colorQuality
+        result["maxBitrateMbps"] = applied.maxBitrateMbps
+        result["prefilterMode"] = applied.prefilterMode
+        result["prefilterSharpness"] = applied.prefilterSharpness
+        result["prefilterDenoise"] = applied.prefilterDenoise
+        result["prefilterModel"] = applied.prefilterModel
+        result["enableL4S"] = applied.enableL4S
+        result["enableHdr"] = applied.enableHdr
+        result["enableReflex"] = applied.enableReflex
+        return result
+    }
+
+    private func confirmNetworkPreflightIfNeeded(_ preflight: OPNStreamNetworkPreflightResult) -> Bool {
+        guard preflight.serverReportedWarning || !preflight.continueRecommended else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Network conditions may affect streaming"
+        alert.informativeText = preflight.warningMessage.isEmpty ? "OpenNOW detected poor network conditions for this route." : preflight.warningMessage
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { return true }
+        endStream(success: false, errorMessage: "Network preflight cancelled")
+        return false
     }
 
     private func configureStreamViewSessionCallbacks() {
@@ -570,6 +723,10 @@ final class OPNStreamViewController: NSViewController {
             if OPNStreamViewControllerSupport.isCommandQEvent(event) { self.requestQuitGameConfirmation(); return nil }
             if OPNStreamViewControllerSupport.isCommandNEvent(event) { self.toggleStatsOverlay(); return nil }
             if OPNStreamViewControllerSupport.isCommandHEvent(event) { self.toggleShortcutLegendOverlay(); return nil }
+            if OPNStreamViewControllerSupport.isCommandMEvent(event) { _ = self.streamView?.toggleMicrophoneEnabledShortcut(); return nil }
+            if OPNStreamViewControllerSupport.isCommandGEvent(event) { self.streamView?.toggleSidebarHUD(); return nil }
+            if OPNStreamViewControllerSupport.isCommandREvent(event) { _ = self.streamView?.toggleRecordingShortcut(); return nil }
+            if OPNStreamViewControllerSupport.isCommandLEvent(event) { OPNLogCapture.copyCapturedLogToClipboard("Stream diagnostics copied from Command-L"); return nil }
             if OPNStreamViewControllerSupport.isCommandKEvent(event) { self.toggleIdleDeviceInputMode(); return nil }
             return event
         }
@@ -581,7 +738,7 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func toggleStatsOverlay() {
-        if let statsOverlay { statsOverlay.removeFromSuperview(); self.statsOverlay = nil; stopStatsRefreshTimer(); return }
+        if let statsOverlay { statsOverlay.removeFromSuperview(); self.statsOverlay = nil; if !connectedOnce { stopStatsRefreshTimer() }; return }
         let overlay = OPNStatsOverlayView(frame: statsOverlayFrame())
         statsOverlay = overlay
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
@@ -644,14 +801,35 @@ final class OPNStreamViewController: NSViewController {
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
     }
 
-    private func shortcutLegendFrame() -> NSRect { NSRect(x: max(24, view.bounds.width - 384), y: 24, width: 360, height: 164) }
+    private func shortcutLegendFrame() -> NSRect { NSRect(x: max(24, view.bounds.width - 384), y: max(24, (view.bounds.height - 338) / 2), width: 360, height: 338) }
 
     private func dismissQuitGameOverlayAndRefocus(_ refocus: Bool) { quitOverlay?.removeFromSuperview(); quitOverlay = nil; if refocus { streamView?.takeFocus() } }
     private func recordStreamUserActivity() { lastStreamActivityTime = CACurrentMediaTime() }
     private func startInactivityTimer() { lastStreamActivityTime = CACurrentMediaTime(); inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in Task { @MainActor [weak self] in self?.checkInactivity() } } }
     private func stopInactivityTimer() { inactivityTimer?.invalidate(); inactivityTimer = nil }
-    private func checkInactivity() { if connectedOnce, CACurrentMediaTime() - lastStreamActivityTime > 600 { requestRemoteStopForActiveSession(); endStream(success: false, errorMessage: "Session ended due to inactivity.") } }
-    private func toggleIdleDeviceInputMode() { idleDeviceInputEnabled.toggle() }
+    private func checkInactivity() {
+        guard connectedOnce, !recovering else { return }
+        let now = CACurrentMediaTime()
+        if lastStreamActivityTime <= 0 { lastStreamActivityTime = now }
+        if idleDeviceInputEnabled {
+            sendRandomIdleDeviceInputIfNeeded(at: now)
+            return
+        }
+        if now - lastStreamActivityTime > 600 { requestRemoteStopForActiveSession(); endStream(success: false, errorMessage: "Session ended due to inactivity.") }
+    }
+    private func toggleIdleDeviceInputMode() { idleDeviceInputEnabled.toggle(); showConnectedToast(resolution: idleDeviceInputEnabled ? "Anti-AFK enabled" : "Anti-AFK disabled", fps: 0, bitrateMbps: 0, codec: "") }
+    private func sendRandomIdleDeviceInputIfNeeded(at now: CFTimeInterval) {
+        guard session.isInputReady, now - lastStreamActivityTime >= 240, now - lastIdleDeviceInputTime >= 240 else { return }
+        let deltas: [(Int16, Int16)] = [(8, 0), (-8, 0), (0, 8), (0, -8)]
+        let delta = deltas[Int.random(in: 0..<deltas.count)]
+        lastIdleDeviceInputTime = now
+        lastStreamActivityTime = now
+        session.sendMouseMove(dx: delta.0, dy: delta.1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, !self.streamEnded, self.session.isInputReady else { return }
+            self.session.sendMouseMove(dx: -delta.0, dy: -delta.1)
+        }
+    }
     private func endStreamFromUserQuit() { requestRemoteStopForActiveSession(); endStream(success: true, errorMessage: "") }
 
     private func requestRemoteStopForActiveSession() {
@@ -667,6 +845,7 @@ final class OPNStreamViewController: NSViewController {
             streamEnded = false
             recovering = true
             recoveryAttempt += 1
+            launchGeneration += 1
             resetTransportForRecovery()
             DispatchQueue.main.asyncAfter(deadline: .now() + OPNStreamViewControllerSupport.recoveryDelay(forAttempt: recoveryAttempt)) { [weak self] in self?.startStreamLaunchFlow() }
             return
@@ -685,6 +864,33 @@ final class OPNStreamViewController: NSViewController {
         streamView?.setStreamActive(false)
     }
 
+    private func startPlaytimeRefreshTimer() {
+        guard playtimeRefreshTimer == nil else { return }
+        playtimeRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshDisplayedPlaytimeFromSessionPoll() }
+        }
+    }
+
+    private func stopPlaytimeRefreshTimer() {
+        playtimeRefreshTimer?.invalidate()
+        playtimeRefreshTimer = nil
+    }
+
+    private func refreshDisplayedPlaytimeFromSessionPoll() {
+        guard connectedOnce, !streamEnded, hasActiveSessionInfo else { return }
+        let sessionId = string(activeSessionInfo["sessionId"])
+        let serverIp = string(activeSessionInfo["serverIp"])
+        guard !sessionId.isEmpty else { return }
+        OPNSessionManager.shared.pollSession(sessionId: sessionId, serverIp: serverIp) { [weak self] success, info, _ in
+            DispatchQueue.main.async {
+                guard let self, success, !self.streamEnded else { return }
+                self.updateActiveSessionInfo(info as NSDictionary)
+                let hours = (info["remainingPlaytimeHours"] as? NSNumber)?.doubleValue ?? Double(self.string(info["remainingPlaytimeHours"])) ?? 0
+                self.setRemainingPlaytimeHours(hours, unlimited: self.bool(info["remainingPlaytimeUnlimited"]))
+            }
+        }
+    }
+
     private func cleanup() {
         removeQuitShortcutMonitor()
         stopStatsRefreshTimer(); stopInactivityTimer(); playtimeRefreshTimer?.invalidate(); playtimeRefreshTimer = nil
@@ -696,7 +902,6 @@ final class OPNStreamViewController: NSViewController {
         quitOverlay?.removeFromSuperview(); quitOverlay = nil
         statsOverlay?.removeFromSuperview(); statsOverlay = nil
         shortcutLegendOverlay?.removeFromSuperview(); shortcutLegendOverlay = nil
-        if hasActiveSessionInfo { requestRemoteStopForActiveSession() }
         session.stop()
     }
 

@@ -25,6 +25,7 @@ enum OPNActiveSessionService {
     private static let persistedSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
+    private static let gfnUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
     static func loadPersistedActiveSessionId() -> String {
         UserDefaults.standard.string(forKey: persistedSessionIdKey) ?? ""
@@ -104,6 +105,9 @@ enum OPNActiveSessionService {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue(userAgent(), forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
         request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(nvClientId, forHTTPHeaderField: "nv-client-id")
         request.setValue("NATIVE", forHTTPHeaderField: "nv-client-type")
@@ -175,14 +179,11 @@ enum OPNActiveSessionService {
     private static func isUsableEndpointHost(_ host: String) -> Bool {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        return !trimmed.contains("/")
+        return !trimmed.contains("/") && !trimmed.hasPrefix(".")
     }
 
     private static func userAgent() -> String {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let version = info["CFBundleShortVersionString"] as? String ?? "0.0.0"
-        let build = info["CFBundleVersion"] as? String ?? "0"
-        return "OpenNOW/\(version).\(build)"
+        gfnUserAgent
     }
 
     private static func string(_ value: Any?) -> String {

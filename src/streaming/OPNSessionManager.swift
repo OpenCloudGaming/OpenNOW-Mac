@@ -686,8 +686,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func iceServers(from session: [String: Any]) -> [[String: Any]] {
         array(session["iceServers"]).compactMap { item -> [String: Any]? in
             guard let dictionary = item as? [String: Any] else { return nil }
-            let urls = stringArray(dictionary["urls"])
-            guard !urls.isEmpty else { return nil }
+            let urls = array(dictionary["urls"]).compactMap { $0 as? String }
             var server: [String: Any] = ["urls": urls]
             let username = string(dictionary["username"])
             let credential = string(dictionary["credential"])

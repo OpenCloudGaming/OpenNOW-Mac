@@ -54,6 +54,11 @@ final class OPNStreamSessionHandle: NSObject {
         session?.setMaxBitrateMbps(mbps)
     }
 
+    @objc(sendMouseMoveWithDx:dy:)
+    func sendMouseMove(dx: Int16, dy: Int16) {
+        session?.sendMouseMove(dx: dx, dy: dy)
+    }
+
     @objc func addRemoteIceCandidatePayload(_ payload: [AnyHashable: Any]) {
         session?.addRemoteIceCandidatePayload(payload)
     }

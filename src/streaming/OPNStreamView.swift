@@ -215,7 +215,7 @@ final class OPNStreamView: NSView {
     func receiveVideoFrame(_ frame: UnsafeMutableRawPointer?) { recordingManager.appendWebRTCVideoFrame(frame) }
     func receiveEnhancedVideoFrame(_ pixelBuffer: UnsafeMutableRawPointer?) {
         guard let pixelBuffer else { return }
-        recordingManager.appendEnhancedPixelBuffer(pixelBuffer.assumingMemoryBound(to: CVPixelBuffer.self).pointee)
+        recordingManager.appendEnhancedPixelBuffer(Unmanaged<CVPixelBuffer>.fromOpaque(pixelBuffer).takeUnretainedValue())
     }
     func receiveClipboardText(_ text: String) {
         guard !text.isEmpty else { return }

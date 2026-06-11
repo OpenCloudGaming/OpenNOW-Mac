@@ -152,7 +152,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                     self.handleConnectionState(false, error: "createAnswer failed: \(answerError?.localizedDescription ?? "unknown")")
                     return
                 }
-                let answerSdp = answer.sdp
+                let answerSdp = alignH265AnswerFmtpToOffer(answer.sdp, offerSdp: offerSdp)
                 logVideoSdpSummary("answer-video", answerSdp)
                 guard videoSdpHasMediaCodec(answerSdp) else {
                     self.handleConnectionState(false, error: "createAnswer produced no negotiated video media codec")
@@ -187,7 +187,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             if let track = impl.remoteVideoTrack, let renderer = impl.remoteVideoRenderer { track.remove(renderer) }
             impl.remoteAudioTrack?.isEnabled = false
             impl.localMicrophoneTrack?.isEnabled = false
-            DispatchQueue.main.sync { impl.remoteVideoView?.removeFromSuperview() }
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { impl.remoteVideoView?.removeFromSuperview() }
+            } else {
+                DispatchQueue.main.sync { impl.remoteVideoView?.removeFromSuperview() }
+            }
             impl.reliableInputChannel?.close()
             impl.partialInputChannel?.close()
             impl.peerConnection?.close()
@@ -688,8 +692,121 @@ private func extractIceCredentials(from sdp: String) -> OPNIceCredentials {
 
 private func extractIceUfrag(from sdp: String) -> String { extractIceCredentials(from: sdp).ufrag }
 
+private func alignH265AnswerFmtpToOffer(_ answerSdp: String, offerSdp: String) -> String {
+    let answerPayloads = videoPayloads(forCodec: "H265", in: answerSdp)
+    guard !answerPayloads.isEmpty else { return answerSdp }
+    let offerPayloads = videoPayloads(forCodec: "H265", in: offerSdp)
+    let offerFmtp = videoFmtpByPayload(in: offerSdp)
+    var lines = sdpLines(answerSdp)
+    var inVideo = false
+    var changed = false
+    for index in lines.indices {
+        let line = lines[index]
+        if line.hasPrefix("m=") {
+            inVideo = line.hasPrefix("m=video")
+            continue
+        }
+        guard inVideo, line.hasPrefix("a=fmtp:"), let payload = payloadType(line, prefix: "a=fmtp:"), answerPayloads.contains(payload), offerPayloads.contains(payload), let offerParameters = offerFmtp[payload] else { continue }
+        var answerParameters = fmtpParameters(fmtpText(line))
+        let offered = fmtpParameters(offerParameters)
+        var lineChanged = false
+        if parameterValue(answerParameters, "profile-id").isEmpty, let value = parameterValue(offered, "profile-id").nilIfEmpty { answerParameters = setParameter(answerParameters, key: "profile-id", value: value); lineChanged = true }
+        if parameterValue(answerParameters, "tier-flag").isEmpty, let value = parameterValue(offered, "tier-flag").nilIfEmpty { answerParameters = setParameter(answerParameters, key: "tier-flag", value: value); lineChanged = true }
+        let answerLevel = Int(parameterValue(answerParameters, "level-id")) ?? -1
+        let offerLevelText = parameterValue(offered, "level-id")
+        let offerLevel = Int(offerLevelText) ?? -1
+        if !offerLevelText.isEmpty, parameterValue(answerParameters, "level-id").isEmpty || (answerLevel >= 0 && offerLevel > answerLevel) {
+            answerParameters = setParameter(answerParameters, key: "level-id", value: offerLevelText)
+            lineChanged = true
+        }
+        guard lineChanged else { continue }
+        lines[index] = "a=fmtp:\(payload) " + answerParameters.map { $0.value.isEmpty ? $0.key : "\($0.key)=\($0.value)" }.joined(separator: ";")
+        changed = true
+    }
+    return changed ? joinSdpLinesLike(lines, original: answerSdp) : answerSdp
+}
+
+private func videoPayloads(forCodec codec: String, in sdp: String) -> Set<Int> {
+    var payloads = Set<Int>()
+    var inVideo = false
+    for line in sdpLines(sdp) {
+        if line.hasPrefix("m=") { inVideo = line.hasPrefix("m=video"); continue }
+        guard inVideo, line.hasPrefix("a=rtpmap:"), let payload = payloadType(line, prefix: "a=rtpmap:") else { continue }
+        let upper = line.uppercased()
+        if codec == "H265", upper.contains(" H265/") || upper.contains(" HEVC/") { payloads.insert(payload) }
+    }
+    return payloads
+}
+
+private func videoFmtpByPayload(in sdp: String) -> [Int: String] {
+    var result: [Int: String] = [:]
+    var inVideo = false
+    for line in sdpLines(sdp) {
+        if line.hasPrefix("m=") { inVideo = line.hasPrefix("m=video"); continue }
+        guard inVideo, line.hasPrefix("a=fmtp:"), let payload = payloadType(line, prefix: "a=fmtp:") else { continue }
+        result[payload] = fmtpText(line)
+    }
+    return result
+}
+
+private func payloadType(_ line: String, prefix: String) -> Int? {
+    guard line.hasPrefix(prefix) else { return nil }
+    let text = String(line.dropFirst(prefix.count))
+    let token = text.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == ":" }).first.map(String.init) ?? ""
+    return Int(token)
+}
+
+private func fmtpText(_ line: String) -> String {
+    guard let range = line.rangeOfCharacter(from: .whitespaces) else { return "" }
+    return String(line[range.upperBound...])
+}
+
+private func fmtpParameters(_ text: String) -> [(key: String, value: String)] {
+    text.split(separator: ";").compactMap { item in
+        let token = item.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return nil }
+        let parts = token.split(separator: "=", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        return (key: parts[0].lowercased(), value: parts.count > 1 ? parts[1] : "")
+    }
+}
+
+private func parameterValue(_ parameters: [(key: String, value: String)], _ key: String) -> String {
+    parameters.first { $0.key == key.lowercased() }?.value ?? ""
+}
+
+private func setParameter(_ parameters: [(key: String, value: String)], key: String, value: String) -> [(key: String, value: String)] {
+    var result = parameters
+    if let index = result.firstIndex(where: { $0.key == key.lowercased() }) { result[index].value = value }
+    else { result.append((key: key.lowercased(), value: value)) }
+    return result
+}
+
+private func sdpLines(_ sdp: String) -> [String] {
+    sdp.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\r")) }
+}
+
+private func joinSdpLinesLike(_ lines: [String], original: String) -> String {
+    let newline = original.contains("\r\n") ? "\r\n" : "\n"
+    var text = lines.joined(separator: newline)
+    if original.hasSuffix("\n"), !text.hasSuffix(newline) { text += newline }
+    return text
+}
+
 private func videoSdpHasMediaCodec(_ sdp: String) -> Bool {
-    sdp.components(separatedBy: .newlines).contains { $0.hasPrefix("m=video ") && !$0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(" 0") }
+    var inVideo = false
+    for line in sdp.components(separatedBy: .newlines) {
+        if line.hasPrefix("m=video") {
+            inVideo = true
+            continue
+        }
+        if line.hasPrefix("m="), inVideo { break }
+        guard inVideo, line.hasPrefix("a=rtpmap:") else { continue }
+        let upper = line.uppercased()
+        if upper.contains(" H264/") || upper.contains(" H265/") || upper.contains(" HEVC/") || upper.contains(" AV1/") || upper.contains(" VP8/") || upper.contains(" VP9/") {
+            return true
+        }
+    }
+    return false
 }
 
 private func logVideoSdpSummary(_ label: String, _ sdp: String) {
@@ -734,6 +851,10 @@ private func int64(_ value: Any?) -> Int64 { if let value = value as? Int64 { re
 private func uint64(_ value: Any?) -> UInt64 { if let value = value as? UInt64 { return value }; if let value = value as? NSNumber { return value.uint64Value }; if let value = value as? String { return UInt64(value) ?? 0 }; return 0 }
 private func double(_ value: Any?, fallback: Double = 0) -> Double { if let value = value as? Double { return value }; if let value = value as? NSNumber { return value.doubleValue }; if let value = value as? String { return Double(value) ?? fallback }; return fallback }
 private func bool(_ value: Any?) -> Bool { if let value = value as? Bool { return value }; if let value = value as? NSNumber { return value.boolValue }; if let value = value as? String { return (value as NSString).boolValue }; return false }
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
 
 private extension NSLock {
     func withLock<T>(_ body: () -> T) -> T { lock(); defer { unlock() }; return body() }
