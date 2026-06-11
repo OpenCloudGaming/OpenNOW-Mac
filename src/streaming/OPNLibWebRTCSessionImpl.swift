@@ -6,6 +6,7 @@ import QuartzCore
 final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDataChannelDelegate, @unchecked Sendable {
     weak var owner: OPNLibWebRTCStreamSession?
     @objc var factory: RTCPeerConnectionFactory?
+    @objc var audioDevice: OPNCoreAudioRTCDevice?
     @objc var peerConnection: RTCPeerConnection?
     @objc var reliableInputChannel: RTCDataChannel?
     @objc var partialInputChannel: RTCDataChannel?

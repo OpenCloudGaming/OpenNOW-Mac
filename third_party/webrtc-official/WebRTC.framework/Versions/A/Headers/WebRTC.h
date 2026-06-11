@@ -10,6 +10,7 @@
 
 #import <WebRTC/RTCAudioSource.h>
 #import <WebRTC/RTCAudioTrack.h>
+#import <WebRTC/RTCAudioDevice.h>
 #import <WebRTC/RTCCertificate.h>
 #import <WebRTC/RTCConfiguration.h>
 #import <WebRTC/RTCCryptoOptions.h>

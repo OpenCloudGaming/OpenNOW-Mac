@@ -102,7 +102,16 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let impl = OPNLibWebRTCSessionImpl(owner: self)
         let encoderFactory = RTCDefaultVideoEncoderFactory()
         let decoderFactory = RTCDefaultVideoDecoderFactory()
-        impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
+        let audioDevice = OPNCoreAudioRTCDevice(owner: self)
+        impl.audioDevice = audioDevice
+        impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)
+        if impl.factory == nil {
+            NSLog("[LibWebRTC] CoreAudio RTC device factory failed; falling back to default WebRTC audio device")
+            impl.audioDevice = nil
+            impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
+        } else {
+            NSLog("[LibWebRTC] CoreAudio RTC audio device enabled")
+        }
         guard let factory = impl.factory else {
             handleConnectionState(false, error: "failed to create libwebrtc factory")
             return
@@ -225,6 +234,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             impl.reliableInputChannel?.close()
             impl.partialInputChannel?.close()
             impl.peerConnection?.close()
+            _ = impl.audioDevice?.terminateDevice()
+            impl.audioDevice = nil
         }
         impl = nil
     }
