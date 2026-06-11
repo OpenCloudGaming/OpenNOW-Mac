@@ -41,6 +41,7 @@ final class OPNStreamViewController: NSViewController {
     private var statsRefreshTimer: Timer?
     private var inactivityTimer: Timer?
     private var playtimeRefreshTimer: Timer?
+    private var playtimeRefreshInFlight = false
     private var signaling: OPNWebSocketSignalingClient?
     private var session = OPNStreamSessionHandle()
     private var initialViewFrame = NSRect(x: 0, y: 0, width: 1, height: 1)
@@ -859,6 +860,7 @@ final class OPNStreamViewController: NSViewController {
             return
         }
         let displayError = success ? "" : errorMessage
+        healthReport.addStatsSnapshot(session.latestStatsSnapshot())
         let report = healthReport.finalize(success: success, terminalError: displayError, now: CACurrentMediaTime())
         cleanup()
         onStreamEnd?(success, displayError, report)
@@ -885,23 +887,45 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func refreshDisplayedPlaytimeFromSessionPoll() {
-        guard connectedOnce, !streamEnded, hasActiveSessionInfo else { return }
+        guard connectedOnce, !streamEnded, !playtimeRefreshInFlight, hasActiveSessionInfo else { return }
         let sessionId = string(activeSessionInfo["sessionId"])
         let serverIp = string(activeSessionInfo["serverIp"])
         guard !sessionId.isEmpty else { return }
+        let currentSession = activeSessionInfo
+        playtimeRefreshInFlight = true
         OPNSessionManager.shared.pollSession(sessionId: sessionId, serverIp: serverIp) { [weak self] success, info, _ in
             DispatchQueue.main.async {
-                guard let self, success, !self.streamEnded else { return }
-                self.updateActiveSessionInfo(info as NSDictionary)
-                let hours = (info["remainingPlaytimeHours"] as? NSNumber)?.doubleValue ?? Double(self.string(info["remainingPlaytimeHours"])) ?? 0
-                self.setRemainingPlaytimeHours(hours, unlimited: self.bool(info["remainingPlaytimeUnlimited"]))
+                guard let self else { return }
+                self.playtimeRefreshInFlight = false
+                guard success, !self.streamEnded else { return }
+                let refreshedSessionId = self.string(info["sessionId"])
+                guard refreshedSessionId.isEmpty || refreshedSessionId == sessionId else { return }
+                var mergedInfo = info
+                if !refreshedSessionId.isEmpty {
+                    for key in ["serverIp", "signalingServer", "signalingUrl", "streamingBaseUrl", "clientId", "deviceId"] where self.string(mergedInfo[key]).isEmpty {
+                        mergedInfo[key] = currentSession[key]
+                    }
+                    self.updateActiveSessionInfo(mergedInfo as NSDictionary)
+                }
+                guard self.bool(mergedInfo["remainingPlaytimeAvailable"]) else { return }
+                let hours = (mergedInfo["remainingPlaytimeHours"] as? NSNumber)?.doubleValue ?? Double(self.string(mergedInfo["remainingPlaytimeHours"])) ?? 0
+                self.setRemainingPlaytimeHours(hours, unlimited: self.bool(mergedInfo["remainingPlaytimeUnlimited"]))
+                self.streamView?.startRemainingPlaytimeCountdown()
             }
         }
     }
 
     private func cleanup() {
+        launchGeneration += 1
+        stableResetGeneration += 1
+        recovering = false
+        idleDeviceInputEnabled = false
+        healthReportStarted = false
+        streamLaunchTrace?.setStatus(connectedOnce)
+        streamLaunchTrace?.finish()
+        streamLaunchTrace = nil
         removeQuitShortcutMonitor()
-        stopStatsRefreshTimer(); stopInactivityTimer(); playtimeRefreshTimer?.invalidate(); playtimeRefreshTimer = nil
+        stopStatsRefreshTimer(); stopInactivityTimer(); playtimeRefreshTimer?.invalidate(); playtimeRefreshTimer = nil; playtimeRefreshInFlight = false
         cancelRemoteIceGraceTimer(); recoveryResetTimer?.invalidate(); recoveryResetTimer = nil
         signaling?.disconnect(); signaling = nil
         clearCurrentSessionCallbacks()
@@ -923,6 +947,6 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func int(_ value: Any?, fallback: Int = 0) -> Int { if let value = value as? Int { return value }; if let value = value as? NSNumber { return value.intValue }; if let value = value as? String { return Int(value) ?? fallback }; return fallback }
-    private func bool(_ value: Any?, fallback: Bool = false) -> Bool { if let value = value as? Bool { return value }; if let value = value as? NSNumber { return value.boolValue }; return fallback }
+    private func bool(_ value: Any?, fallback: Bool = false) -> Bool { if let value = value as? Bool { return value }; if let value = value as? NSNumber { return value.boolValue }; if let value = value as? String { return (value as NSString).boolValue }; return fallback }
     private func string(_ value: Any?, fallback: String = "") -> String { if let value = value as? String { return value }; if let value = value as? NSNumber { return value.stringValue }; return fallback }
 }
