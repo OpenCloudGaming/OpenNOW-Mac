@@ -29,6 +29,6 @@ enum OPNLibWebRTCSessionSurface {
             recordingManager?.appendWebRTCAudioBufferList(audioBufferList?.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         session.onClipboardText = { text in NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
-        session.onMicrophoneLevel = { _ in }
+        session.onMicrophoneLevel = { [weak streamView] level in streamView?.receiveMicrophoneLevel(level) }
     }
 }
