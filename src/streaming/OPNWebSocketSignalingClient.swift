@@ -221,7 +221,10 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         items.append(URLQueryItem(name: "version", value: "2"))
         items.append(URLQueryItem(name: "peer_role", value: "1"))
         items.append(URLQueryItem(name: "pairing_id", value: sessionId))
-        if reconnect { items.append(URLQueryItem(name: "reconnect", value: "1")) }
+        if reconnect {
+            items.append(URLQueryItem(name: "reconnect", value: "1"))
+            if remotePeerId > 0 { items.append(URLQueryItem(name: "to", value: String(remotePeerId))) }
+        }
         components.queryItems = items
         return components.url
     }
