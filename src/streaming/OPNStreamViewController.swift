@@ -4,29 +4,9 @@ import Foundation
 import GameController
 import QuartzCore
 
-private typealias OPNSessionBridgeCompletion = @convention(block) (Bool, NSDictionary, NSString) -> Void
-private typealias OPNSessionBridgeStopCompletion = @convention(block) (Bool, NSString) -> Void
 private typealias OPNStreamSessionAnswerHandler = @convention(block) (NSString, NSString) -> Void
 private typealias OPNStreamSessionLocalIceCandidateHandler = @convention(block) (NSDictionary) -> Void
 private typealias OPNStreamSessionStateHandler = @convention(block) (Bool, NSString) -> Void
-
-@_silgen_name("OPNSessionManagerBridgeSetAccessToken")
-private func OPNSessionManagerBridgeSetAccessToken(_ token: NSString)
-
-@_silgen_name("OPNSessionManagerBridgeSetStreamingBaseUrl")
-private func OPNSessionManagerBridgeSetStreamingBaseUrl(_ url: NSString)
-
-@_silgen_name("OPNSessionManagerBridgeCreateSession")
-private func OPNSessionManagerBridgeCreateSession(_ appId: NSString, _ internalTitle: NSString, _ settings: NSDictionary, _ completion: @escaping OPNSessionBridgeCompletion)
-
-@_silgen_name("OPNSessionManagerBridgePollSession")
-private func OPNSessionManagerBridgePollSession(_ sessionId: NSString, _ serverIp: NSString, _ completion: @escaping OPNSessionBridgeCompletion)
-
-@_silgen_name("OPNSessionManagerBridgeClaimSession")
-private func OPNSessionManagerBridgeClaimSession(_ sessionId: NSString, _ serverIp: NSString, _ appId: NSString, _ settings: NSDictionary, _ recoveryMode: Bool, _ completion: @escaping OPNSessionBridgeCompletion)
-
-@_silgen_name("OPNSessionManagerBridgeStopSession")
-private func OPNSessionManagerBridgeStopSession(_ sessionId: NSString, _ serverIp: NSString, _ completion: @escaping OPNSessionBridgeStopCompletion)
 
 @_silgen_name("OPNStreamSessionStart")
 private func OPNStreamSessionStart(_ session: UnsafeMutableRawPointer?, _ sessionInfo: NSDictionary, _ offerSdp: NSString, _ settings: NSDictionary, _ answerHandler: @escaping OPNStreamSessionAnswerHandler, _ localIceCandidateHandler: @escaping OPNStreamSessionLocalIceCandidateHandler, _ stateHandler: @escaping OPNStreamSessionStateHandler)
@@ -229,8 +209,8 @@ final class OPNStreamViewController: NSViewController {
 
         let settings = streamSettingsDictionary()
         apply(settings: settings)
-        OPNSessionManagerBridgeSetAccessToken(apiToken as NSString)
-        OPNSessionManagerBridgeSetStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId) as NSString)
+        OPNSessionManager.shared.setAccessToken(apiToken)
+        OPNSessionManager.shared.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId))
 
         if resumeExistingSession {
             claimSession(settings: settings, generation: generation)
@@ -241,13 +221,13 @@ final class OPNStreamViewController: NSViewController {
 
     private func createSession(settings: [String: Any], generation: UInt) {
         setStatus("Allocating cloud session...")
-        OPNSessionManagerBridgeCreateSession(appId as NSString, (gameTitle.isEmpty ? "OpenNOW" : gameTitle) as NSString, settings as NSDictionary) { [weak self] success, sessionInfo, error in
+        OPNSessionManager.shared.createSession(appId: appId, internalTitle: gameTitle.isEmpty ? "OpenNOW" : gameTitle, settings: settings) { [weak self] success, sessionInfo, error in
             DispatchQueue.main.async {
                 guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                 if success {
                     self.waitForReadySession(sessionInfo as NSDictionary, settings: settings, generation: generation)
                 } else {
-                    self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error as String, gameTitle: self.gameTitle))
+                    self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error, gameTitle: self.gameTitle))
                 }
             }
         }
@@ -255,18 +235,18 @@ final class OPNStreamViewController: NSViewController {
 
     private func claimSession(settings: [String: Any], generation: UInt) {
         setStatus("Resuming session...")
-        OPNSessionManagerBridgeClaimSession(resumeSessionId as NSString, resumeServer as NSString, appId as NSString, settings as NSDictionary, recovering) { [weak self] success, sessionInfo, error in
+        OPNSessionManager.shared.claimSession(sessionId: resumeSessionId, serverIp: resumeServer, appId: appId, settings: settings, recoveryMode: recovering) { [weak self] success, sessionInfo, error in
             DispatchQueue.main.async {
                 guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                 if success {
                     self.connect(sessionInfo: sessionInfo as NSDictionary, settings: settings, generation: generation)
-                } else if OPNStreamViewControllerSupport.resumeErrorShouldCreateFreshSession(error as String) {
+                } else if OPNStreamViewControllerSupport.resumeErrorShouldCreateFreshSession(error) {
                     self.resumeExistingSession = false
                     self.resumeSessionId = ""
                     self.resumeServer = ""
                     self.createSession(settings: settings, generation: generation)
                 } else {
-                    self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error as String, gameTitle: self.gameTitle))
+                    self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error, gameTitle: self.gameTitle))
                 }
             }
         }
@@ -288,13 +268,13 @@ final class OPNStreamViewController: NSViewController {
         let delay = attempt < 12 ? 0.3 : (attempt < 20 ? 0.5 : 1.0)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
-            OPNSessionManagerBridgePollSession(string(sessionInfo["sessionId"]) as NSString, serverIp as NSString) { [weak self] success, polledSession, error in
+            OPNSessionManager.shared.pollSession(sessionId: string(sessionInfo["sessionId"]), serverIp: serverIp) { [weak self] success, polledSession, error in
                 DispatchQueue.main.async {
                     guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                     if success {
-                        self.waitForReadySession(polledSession, settings: settings, generation: generation, attempt: attempt + 1)
+                        self.waitForReadySession(polledSession as NSDictionary, settings: settings, generation: generation, attempt: attempt + 1)
                     } else {
-                        self.endStream(success: false, errorMessage: error as String)
+                        self.endStream(success: false, errorMessage: error)
                     }
                 }
             }
@@ -548,7 +528,7 @@ final class OPNStreamViewController: NSViewController {
     private func requestRemoteStopForActiveSession() {
         guard hasActiveSessionInfo, !remoteStopRequested else { return }
         remoteStopRequested = true
-        OPNSessionManagerBridgeStopSession(string(activeSessionInfo["sessionId"]) as NSString, string(activeSessionInfo["serverIp"]) as NSString) { _, _ in }
+        OPNSessionManager.shared.stopSession(sessionId: string(activeSessionInfo["sessionId"]), serverIp: string(activeSessionInfo["serverIp"])) { _, _ in }
     }
 
     private func endStream(success: Bool, errorMessage: String) {
