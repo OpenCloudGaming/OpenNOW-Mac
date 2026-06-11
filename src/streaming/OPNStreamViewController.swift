@@ -514,8 +514,8 @@ final class OPNStreamViewController: NSViewController {
             "gameVolume": profile.gameVolume,
             "microphoneVolume": profile.microphoneVolume,
             "upscalingMode": profile.lowLatencyMode ? 0 : profile.upscalingMode,
-            "upscalingSharpness": profile.upscalingSharpness,
-            "upscalingDenoise": profile.upscalingDenoise,
+            "upscalingSharpness": profile.lowLatencyMode ? 0 : profile.upscalingSharpness,
+            "upscalingDenoise": profile.lowLatencyMode ? 0 : profile.upscalingDenoise,
             "upscalingTargetHeight": profile.upscalingTargetHeight,
             "suppressInputWhenInactive": profile.suppressInputWhenInactive,
             "directMouseInput": profile.directMouseInput,
@@ -679,8 +679,15 @@ final class OPNStreamViewController: NSViewController {
             let value = string(profile[key])
             if !value.isEmpty { result[key] = value }
         }
-        for key in ["fps", "prefilterMode", "prefilterSharpness", "prefilterDenoise", "prefilterModel"] where profile[key] != nil {
-            result[key] = int(profile[key])
+        let fps = int(profile["fps"])
+        if fps > 0 {
+            result["fps"] = fps
+        }
+        for key in ["prefilterMode", "prefilterSharpness", "prefilterDenoise", "prefilterModel"] {
+            let value = int(profile[key], fallback: -1)
+            if value >= 0 {
+                result[key] = value
+            }
         }
         return result
     }
