@@ -47,9 +47,14 @@ final class OPNStreamViewController: NSViewController {
     private var streamStarted = false
     private var streamEnded = false
     private var connectedOnce = false
+    private var remoteIceReceived = false
     private var recovering = false
     private var recoveryAttempt = 0
     private var launchGeneration: UInt = 0
+    private var launchStreamingBaseUrl = ""
+    private var stableResetGeneration: UInt = 0
+    private var remoteIceGraceTimer: Timer?
+    private var recoveryResetTimer: Timer?
     private var connectedToast: NSView?
     private var activeSessionInfo: [String: Any] = [:]
     private var hasActiveSessionInfo = false
@@ -203,6 +208,7 @@ final class OPNStreamViewController: NSViewController {
         let settings = streamSettingsDictionary()
         OPNSessionManager.shared.setAccessToken(apiToken)
         let selectedStreamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
+        launchStreamingBaseUrl = selectedStreamingBaseUrl
         OPNSessionManager.shared.setStreamingBaseUrl(selectedStreamingBaseUrl)
 
         let settingsBox = OPNStreamSendableValue(settings)
@@ -217,17 +223,45 @@ final class OPNStreamViewController: NSViewController {
                     launchSettings["networkType"] = preflight.networkType
                     launchSettings["networkLatencyMs"] = preflight.latencyMs >= 0 ? String(preflight.latencyMs) : "Unknown"
                     if !preflight.streamingBaseUrl.isEmpty {
+                        self.launchStreamingBaseUrl = preflight.streamingBaseUrl
                         OPNSessionManager.shared.setStreamingBaseUrl(preflight.streamingBaseUrl)
                     }
                     self.apply(settings: launchSettings)
                     if self.resumeExistingSession {
                         self.claimSession(settings: launchSettings, generation: generation)
                     } else {
-                        self.createSession(settings: launchSettings, generation: generation)
+                        self.launchFreshSession(settings: launchSettings, generation: generation)
                     }
                 }
             }
         }
+    }
+
+    private func launchFreshSession(settings: [String: Any], generation: UInt) {
+        setStatus("Allocating cloud session...")
+        let settingsBox = OPNStreamSendableValue(settings)
+        OPNGameService.shared.setAccessToken(apiToken)
+        let streamingBaseUrl = launchStreamingBaseUrl.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId) : launchStreamingBaseUrl
+        OPNGameService.shared.setStreamingBaseUrl(streamingBaseUrl)
+        OPNGameService.shared.launchGame(appId: appId, internalTitle: gameTitle.isEmpty ? "OpenNOW" : gameTitle, settings: settings, recoveryMode: recovering, progress: { [weak self] message, session in
+            let sessionBox = OPNStreamSendableValue(session)
+            DispatchQueue.main.async { [sessionBox] in
+                guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                let progressSession = sessionBox.value
+                self.setStatus(message.isEmpty ? self.progressMessage(for: progressSession as NSDictionary) : message)
+                if !self.string(progressSession["sessionId"]).isEmpty { self.updateLaunchAdState(progressSession as NSDictionary) }
+            }
+        }, completion: { [weak self] success, sessionInfo, _, error in
+            let sessionBox = OPNStreamSendableValue(sessionInfo)
+            DispatchQueue.main.async { [sessionBox, settingsBox] in
+                guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                if success {
+                    self.connect(sessionInfo: sessionBox.value as NSDictionary, settings: settingsBox.value, generation: generation)
+                } else {
+                    self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error, gameTitle: self.gameTitle))
+                }
+            }
+        })
     }
 
     private func createSession(settings: [String: Any], generation: UInt) {
@@ -260,7 +294,7 @@ final class OPNStreamViewController: NSViewController {
                     self.resumeExistingSession = false
                     self.resumeSessionId = ""
                     self.resumeServer = ""
-                    self.createSession(settings: settings, generation: generation)
+                    self.launchFreshSession(settings: settings, generation: generation)
                 } else {
                     self.endStream(success: false, errorMessage: OPNGFNError.userFacingMessage(errorMessage: error, gameTitle: self.gameTitle))
                 }
@@ -315,6 +349,8 @@ final class OPNStreamViewController: NSViewController {
             guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
             self.session.setNativeWindow(Unmanaged.passUnretained(self.streamView?.nativeVideoView() ?? self.view).toOpaque())
             let serverIceUfrag = OPNStreamSessionHandle.iceUfrag(fromOfferSdp: offer)
+            self.remoteIceReceived = false
+            self.startRemoteIceGraceTimer(generation: generation)
             self.session.start(sessionInfo: sessionInfo, offerSdp: offer, settings: negotiatedSettings as NSDictionary, answerHandler: { [weak self] sdp, nvstSdp in
                 DispatchQueue.main.async { self?.signaling?.sendAnswerSdp(sdp as String, nvstSdp: nvstSdp as String) }
             }, localIceCandidateHandler: { [weak self] candidate in
@@ -324,10 +360,15 @@ final class OPNStreamViewController: NSViewController {
             })
             self.session.injectManualIceCandidate(sessionInfo: sessionInfo, offerSdp: offer, serverIceUfrag: serverIceUfrag)
         }
-        signaling.onIceCandidate = { [weak self] candidate in self?.session.addRemoteIceCandidatePayload(candidate as? [AnyHashable: Any] ?? [:]) }
+        signaling.onIceCandidate = { [weak self] candidate in
+            guard let self else { return }
+            self.remoteIceReceived = true
+            self.cancelRemoteIceGraceTimer()
+            self.session.addRemoteIceCandidatePayload(candidate as? [AnyHashable: Any] ?? [:])
+        }
         signaling.onClosed = { [weak self] clean, reason in
             guard let self, !self.streamEnded, self.launchGeneration == generation else { return }
-            if clean { return }
+            if clean, self.connectedOnce { return }
             self.endStream(success: false, errorMessage: reason.isEmpty ? "Signaling connection closed" : reason)
         }
         signaling.connect { [weak self] success, error in
@@ -339,6 +380,7 @@ final class OPNStreamViewController: NSViewController {
     private func handleConnectionState(connected: Bool, error: String, generation: UInt, settings: [String: Any]) {
         guard launchGeneration == generation, !streamEnded else { return }
         if connected {
+            cancelRemoteIceGraceTimer()
             connectedOnce = true
             recovering = false
             loadingView?.stopAnimating()
@@ -351,6 +393,7 @@ final class OPNStreamViewController: NSViewController {
             showConnectedToast(resolution: settings["resolution"] as? String ?? "", fps: int(settings["fps"]), bitrateMbps: int(settings["maxBitrateMbps"]), codec: settings["codec"] as? String ?? "")
             startStatsRefreshTimer()
             startInactivityTimer()
+            scheduleRecoveryAttemptReset(generation: generation)
         } else {
             if error.isEmpty {
                 endStream(success: true, errorMessage: "")
@@ -565,6 +608,35 @@ final class OPNStreamViewController: NSViewController {
 
     private func stopStatsRefreshTimer() { statsRefreshTimer?.invalidate(); statsRefreshTimer = nil }
 
+    private func startRemoteIceGraceTimer(generation: UInt) {
+        cancelRemoteIceGraceTimer()
+        guard recovering, connectedOnce, !streamEnded else { return }
+        remoteIceGraceTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.launchGeneration == generation, !self.streamEnded, !self.remoteIceReceived else { return }
+                self.remoteIceGraceTimer = nil
+                self.endStream(success: false, errorMessage: "No remote ICE received after offer")
+            }
+        }
+    }
+
+    private func cancelRemoteIceGraceTimer() {
+        remoteIceGraceTimer?.invalidate()
+        remoteIceGraceTimer = nil
+    }
+
+    private func scheduleRecoveryAttemptReset(generation: UInt) {
+        stableResetGeneration += 1
+        let resetGeneration = stableResetGeneration
+        recoveryResetTimer?.invalidate()
+        recoveryResetTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.stableResetGeneration == resetGeneration, self.launchGeneration == generation, !self.streamEnded, !self.recovering, self.connectedOnce else { return }
+                self.recoveryAttempt = 0
+            }
+        }
+    }
+
     private func toggleShortcutLegendOverlay() {
         if let shortcutLegendOverlay { shortcutLegendOverlay.removeFromSuperview(); self.shortcutLegendOverlay = nil; return }
         let overlay = OPNShortcutLegendView(frame: shortcutLegendFrame())
@@ -616,6 +688,7 @@ final class OPNStreamViewController: NSViewController {
     private func cleanup() {
         removeQuitShortcutMonitor()
         stopStatsRefreshTimer(); stopInactivityTimer(); playtimeRefreshTimer?.invalidate(); playtimeRefreshTimer = nil
+        cancelRemoteIceGraceTimer(); recoveryResetTimer?.invalidate(); recoveryResetTimer = nil
         signaling?.disconnect(); signaling = nil
         clearCurrentSessionCallbacks()
         streamView?.stopRecordingIfNeeded(); streamView?.detachFromPipeline(); streamView?.releasePointerLock()

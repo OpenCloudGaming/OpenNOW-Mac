@@ -684,59 +684,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     private func iceServers(from session: [String: Any]) -> [[String: Any]] {
-        let candidates = [
-            session["iceServers"],
-            session["ice_servers"],
-            session["iceServerList"],
-            session["iceServerInfo"],
-            (session["sessionControlInfo"] as? [String: Any])?["iceServers"],
-            (session["sessionControlInfo"] as? [String: Any])?["ice_servers"],
-            (session["sessionControlInfo"] as? [String: Any])?["iceServerList"],
-            (session["sessionControlInfo"] as? [String: Any])?["iceServerInfo"],
-        ]
-        for candidate in candidates {
-            let servers = normalizedIceServers(candidate)
-            if !servers.isEmpty { return servers }
-        }
-        let nestedServers = recursivelyFindIceServers(in: session)
-        if !nestedServers.isEmpty { return nestedServers }
-        return defaultIceServers()
-    }
-
-    private func defaultIceServers() -> [[String: Any]] {
-        [
-            ["urls": ["stun:s1.stun.gamestream.nvidia.com:19308"]],
-            ["urls": ["stun:stun.gamestream.nvidia.com:19302"]],
-        ]
-    }
-
-    private func recursivelyFindIceServers(in value: Any?) -> [[String: Any]] {
-        let servers = normalizedIceServers(value)
-        if !servers.isEmpty { return servers }
-        if let dictionary = value as? [String: Any] {
-            for nestedValue in dictionary.values {
-                let servers = recursivelyFindIceServers(in: nestedValue)
-                if !servers.isEmpty { return servers }
-            }
-        }
-        for item in array(value) {
-            let servers = recursivelyFindIceServers(in: item)
-            if !servers.isEmpty { return servers }
-        }
-        return []
-    }
-
-    private func normalizedIceServers(_ value: Any?) -> [[String: Any]] {
-        let items: [Any]
-        if let array = value as? [Any] { items = array }
-        else if let dictionary = value as? [String: Any] { items = [dictionary] }
-        else { return [] }
-        return items.compactMap { item -> [String: Any]? in
+        array(session["iceServers"]).compactMap { item -> [String: Any]? in
             guard let dictionary = item as? [String: Any] else { return nil }
-            var urls = stringArray(dictionary["urls"])
-            if urls.isEmpty { urls = stringArray(dictionary["url"]) }
-            if urls.isEmpty { urls = stringArray(dictionary["uri"]) }
-            urls = urls.filter { $0.hasPrefix("stun:") || $0.hasPrefix("turn:") || $0.hasPrefix("turns:") }
+            let urls = stringArray(dictionary["urls"])
             guard !urls.isEmpty else { return nil }
             var server: [String: Any] = ["urls": urls]
             let username = string(dictionary["username"])
