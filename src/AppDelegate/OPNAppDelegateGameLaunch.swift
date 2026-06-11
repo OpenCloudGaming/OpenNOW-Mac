@@ -195,7 +195,7 @@ private func opnGameLaunchHasAppId(_ game: OPNCatalogGameObject, appId: Int) -> 
     return game.id == appIdString || game.launchAppId == appIdString || game.variants.contains { $0.id == appIdString }
 }
 
-private func opnGameLaunchTitleForActiveSession(appId: Int, games: [OPNCatalogGameObject]) -> String {
+func opnGameLaunchTitleForActiveSession(appId: Int, games: [OPNCatalogGameObject]) -> String {
     guard appId > 0 else { return "Current Stream" }
     let appIdString = String(appId)
     for game in games {

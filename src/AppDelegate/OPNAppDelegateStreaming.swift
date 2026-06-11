@@ -386,7 +386,8 @@ extension NSObject {
                     if activeSession == nil { OPNActiveSessionService.clearPersistedActiveSessionId(persistedSessionId); return }
                 }
                 guard let activeSession else { return }
-                let title = "Current Stream"
+                let cachedGames = opnGet(self, "cachedGameLibraryObjects", as: [OPNCatalogGameObject].self) ?? []
+                let title = opnGameLaunchTitleForActiveSession(appId: activeSession.appId, games: cachedGames)
                 self.startStream(title: title.isEmpty ? "Current Stream" : title, appId: String(activeSession.appId), apiToken: apiToken, accountLinked: true, selectedStore: "", returnScreen: screen, resumeSessionId: activeSession.sessionId, resumeServer: activeSession.serverIp)
                 OPNSentry.logInfoMessage("[AppDelegate] Silently resuming active session \(activeSession.sessionId) for appId=\(activeSession.appId)")
             }
