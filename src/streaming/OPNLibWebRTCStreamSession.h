@@ -1,19 +1,44 @@
 #pragma once
 
-#include "OPNStreamSession.h"
 #include "OPNStreamStats.h"
 #include "OPNStreamTypes.h"
 #include <memory>
 #include <mutex>
 #include <string>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 
 namespace OPN {
 
-class LibWebRTCStreamSession final : public IStreamSession {
+namespace Input {
+constexpr int GAMEPAD_MAX_CONTROLLERS = 4;
+
+struct GamepadState {
+    uint16_t controllerId = 0;
+    uint16_t buttons = 0;
+    uint8_t leftTrigger = 0;
+    uint8_t rightTrigger = 0;
+    int16_t leftStickX = 0;
+    int16_t leftStickY = 0;
+    int16_t rightStickX = 0;
+    int16_t rightStickY = 0;
+    bool connected = false;
+    uint64_t timestampUs = 0;
+};
+}
+
+using StreamStateCallback = std::function<void(bool connected, const std::string &error)>;
+using MicrophoneLevelCallback = std::function<void(double level)>;
+using VideoFrameCallback = std::function<void(void *frame)>;
+using GameAudioFrameCallback = std::function<void(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels)>;
+using ClipboardTextCallback = std::function<void(const std::string &text)>;
+
+class LibWebRTCStreamSession final {
 public:
     LibWebRTCStreamSession();
-    ~LibWebRTCStreamSession() override;
+    ~LibWebRTCStreamSession();
 
     static bool IsAvailable();
     static std::string AvailabilityDescription();
@@ -21,37 +46,37 @@ public:
     void Start(const SessionInfo &session,
                const std::string &offerSdp,
                const StreamSettings &settings,
-               StreamStateCallback onState) override;
-    void Stop() override;
-    void AddRemoteIceCandidate(const IceCandidatePayload &candidate) override;
-    void OnAnswerReady(std::function<void(const SendAnswerRequest &)> cb) override;
-    void OnIceCandidateReady(std::function<void(const IceCandidatePayload &)> cb) override;
-    void SendInput(const uint8_t *data, size_t len) override;
-    void SendInputPartiallyReliable(const uint8_t *data, size_t len) override;
-    void CreateInputChannel() override;
-    bool InputReady() const override;
-    void SendKeyEvent(uint16_t keycode, uint16_t scancode, uint16_t modifiers, bool down) override;
-    void SendMouseMove(int16_t dx, int16_t dy) override;
-    void SendMouseButton(uint8_t button, bool down) override;
-    void SendMouseWheel(int16_t delta) override;
-    void SendGamepadState(const Input::GamepadState &state, uint16_t bitmap) override;
-    void SendUtf8Text(const std::string &text) override;
-    void SetMicrophoneEnabled(bool enabled) override;
-    void SetGameVolume(double volume) override;
-    void SetMicrophoneVolume(double volume) override;
-    void SetMaxBitrateMbps(int mbps) override;
-    void SetLocalVideoEnhancement(int mode, int sharpness, int denoise, int targetHeight) override;
-    void SetEnhancedVideoFrameCaptureEnabled(bool enabled) override;
-    void OnMicrophoneLevel(MicrophoneLevelCallback cb) override;
-    void OnVideoFrame(VideoFrameCallback cb) override;
-    void OnEnhancedVideoFrame(VideoFrameCallback cb) override;
-    void OnGameAudioFrame(GameAudioFrameCallback cb) override;
-    void OnClipboardText(ClipboardTextCallback cb) override;
-    void RefreshAudioDevices() override;
-    void RequestStats() override;
-    StreamStats GetLatestStats() const override;
-    void *NativeWindowHandle() const override;
-    void SetNativeWindow(void *wnd) override;
+               StreamStateCallback onState);
+    void Stop();
+    void AddRemoteIceCandidate(const IceCandidatePayload &candidate);
+    void OnAnswerReady(std::function<void(const SendAnswerRequest &)> cb);
+    void OnIceCandidateReady(std::function<void(const IceCandidatePayload &)> cb);
+    void SendInput(const uint8_t *data, size_t len);
+    void SendInputPartiallyReliable(const uint8_t *data, size_t len);
+    void CreateInputChannel();
+    bool InputReady() const;
+    void SendKeyEvent(uint16_t keycode, uint16_t scancode, uint16_t modifiers, bool down);
+    void SendMouseMove(int16_t dx, int16_t dy);
+    void SendMouseButton(uint8_t button, bool down);
+    void SendMouseWheel(int16_t delta);
+    void SendGamepadState(const Input::GamepadState &state, uint16_t bitmap);
+    void SendUtf8Text(const std::string &text);
+    void SetMicrophoneEnabled(bool enabled);
+    void SetGameVolume(double volume);
+    void SetMicrophoneVolume(double volume);
+    void SetMaxBitrateMbps(int mbps);
+    void SetLocalVideoEnhancement(int mode, int sharpness, int denoise, int targetHeight);
+    void SetEnhancedVideoFrameCaptureEnabled(bool enabled);
+    void OnMicrophoneLevel(MicrophoneLevelCallback cb);
+    void OnVideoFrame(VideoFrameCallback cb);
+    void OnEnhancedVideoFrame(VideoFrameCallback cb);
+    void OnGameAudioFrame(GameAudioFrameCallback cb);
+    void OnClipboardText(ClipboardTextCallback cb);
+    void RefreshAudioDevices();
+    void RequestStats();
+    StreamStats GetLatestStats() const;
+    void *NativeWindowHandle() const;
+    void SetNativeWindow(void *wnd);
 
     void HandleLocalIceCandidate(const IceCandidatePayload &candidate);
     void HandleConnectionState(bool connected, const std::string &error);

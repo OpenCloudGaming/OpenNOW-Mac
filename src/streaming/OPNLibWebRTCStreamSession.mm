@@ -94,8 +94,8 @@ typedef void (^OPNStreamSessionAnswerHandler)(NSString *sdp, NSString *nvstSdp);
 typedef void (^OPNStreamSessionLocalIceCandidateHandler)(NSDictionary *candidate);
 typedef void (^OPNStreamSessionStateHandler)(BOOL connected, NSString *errorMessage);
 
-static OPN::IStreamSession *OPNRawStreamSession(void *session) {
-    return static_cast<OPN::IStreamSession *>(session);
+static OPN::LibWebRTCStreamSession *OPNRawStreamSession(void *session) {
+    return static_cast<OPN::LibWebRTCStreamSession *>(session);
 }
 
 static NSString *OPNStreamStatsSnapshotString(const std::string &value) {
@@ -303,7 +303,7 @@ static OPNStreamSessionIceMediaTarget OPNStreamSessionExtractVideoIceTargetFromO
     return target;
 }
 
-static void OPNInjectManualStreamSessionIceCandidate(OPN::IStreamSession *session,
+static void OPNInjectManualStreamSessionIceCandidate(OPN::LibWebRTCStreamSession *session,
                                                      const OPN::SessionInfo &sessionInfo,
                                                      NSString *offerSdp,
                                                      NSString *serverIceUfrag) {
@@ -343,7 +343,7 @@ static void OPNInjectManualStreamSessionIceCandidate(OPN::IStreamSession *sessio
     session->AddRemoteIceCandidate(payload);
 }
 
-static void OPNStartStreamSession(OPN::IStreamSession *session,
+static void OPNStartStreamSession(OPN::LibWebRTCStreamSession *session,
                                   const OPN::SessionInfo &sessionInfo,
                                   NSString *offerSdp,
                                   const OPN::StreamSettings &settings,
@@ -548,7 +548,7 @@ extern "C" void *OPNStreamSessionHandleCreateRawSession(void) {
 }
 
 extern "C" void OPNStreamSessionHandleReleaseRawSession(void *session) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     rawSession->Stop();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -557,73 +557,73 @@ extern "C" void OPNStreamSessionHandleReleaseRawSession(void *session) {
 }
 
 extern "C" BOOL OPNStreamSessionHandleInputReady(void *session) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     return rawSession && rawSession->InputReady() ? YES : NO;
 }
 
 extern "C" void OPNStreamSessionHandleSetNativeWindow(void *session, void *nativeWindow) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     rawSession->SetNativeWindow(nativeWindow);
 }
 
 extern "C" BOOL OPNStreamSessionNativeInputReady(void *session) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     return rawSession && rawSession->InputReady() ? YES : NO;
 }
 
 extern "C" void OPNStreamSessionNativeSetMicrophoneEnabled(void *session, BOOL enabled) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SetMicrophoneEnabled(enabled ? true : false);
 }
 
 extern "C" void OPNStreamSessionNativeSetGameVolume(void *session, double volume) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SetGameVolume(volume);
 }
 
 extern "C" void OPNStreamSessionNativeSetMicrophoneVolume(void *session, double volume) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SetMicrophoneVolume(volume);
 }
 
 extern "C" void OPNStreamSessionNativeSetMaxBitrate(void *session, NSInteger mbps) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SetMaxBitrateMbps((int)mbps);
 }
 
 extern "C" void OPNStreamSessionNativeSetEnhancedVideoCaptureEnabled(void *session, BOOL enabled) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SetEnhancedVideoFrameCaptureEnabled(enabled ? true : false);
 }
 
 extern "C" void OPNStreamSessionNativeSetVideoEnhancement(void *session, NSInteger mode, NSInteger sharpness, NSInteger denoise, NSInteger targetHeight) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SetLocalVideoEnhancement((int)mode, (int)sharpness, (int)denoise, (int)targetHeight);
 }
 
 extern "C" void OPNStreamSessionNativeSendUtf8Text(void *session, NSString *text) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SendUtf8Text(std::string(text.UTF8String ?: ""));
 }
 
 extern "C" void OPNStreamSessionNativeSendKeyEvent(void *session, uint16_t keycode, uint16_t scancode, uint16_t modifiers, BOOL down) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SendKeyEvent(keycode, scancode, modifiers, down ? true : false);
 }
 
 extern "C" void OPNStreamSessionNativeSendMouseMove(void *session, int16_t dx, int16_t dy) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SendMouseMove(dx, dy);
 }
 
 extern "C" void OPNStreamSessionNativeSendMouseButton(void *session, uint8_t button, BOOL down) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SendMouseButton(button, down ? true : false);
 }
 
 extern "C" void OPNStreamSessionNativeSendMouseWheel(void *session, int16_t delta) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (rawSession) rawSession->SendMouseWheel(delta);
 }
 
@@ -639,7 +639,7 @@ extern "C" void OPNStreamSessionNativeSendGamepadState(void *session,
                                                        BOOL connected,
                                                        uint16_t bitmap,
                                                        uint64_t timestampUs) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     OPN::Input::GamepadState state;
     state.controllerId = controllerId;
@@ -655,7 +655,7 @@ extern "C" void OPNStreamSessionNativeSendGamepadState(void *session,
     rawSession->SendGamepadState(state, bitmap);
 }
 
-static void OPNClearStreamSessionCallbacks(OPN::IStreamSession *session) {
+static void OPNClearStreamSessionCallbacks(OPN::LibWebRTCStreamSession *session) {
     if (!session) return;
     session->OnVideoFrame(OPN::VideoFrameCallback{});
     session->OnEnhancedVideoFrame(OPN::VideoFrameCallback{});
@@ -669,7 +669,7 @@ extern "C" void OPNStreamSessionClearNativeCallbacks(void *session) {
 }
 
 extern "C" void OPNStreamSessionConfigureNativeViewCallbacks(void *session, OPNStreamView *streamView, OPNStreamRecordingManager *recordingManager) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession || !streamView) return;
     __weak OPNStreamView *weakView = streamView;
     rawSession->OnMicrophoneLevel([weakView](double level) {
@@ -703,13 +703,13 @@ extern "C" void OPNStreamSessionConfigureNativeViewCallbacks(void *session, OPNS
 }
 
 extern "C" void OPNStreamSessionHandleSetMaxBitrateMbps(void *session, NSInteger mbps) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     rawSession->SetMaxBitrateMbps((int)mbps);
 }
 
 extern "C" void OPNStreamSessionHandleAddRemoteIceCandidatePayload(void *session, NSDictionary *payload) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     OPN::IceCandidatePayload candidate;
     NSString *candidateText = [payload[@"candidate"] isKindOfClass:[NSString class]] ? payload[@"candidate"] : @"";
@@ -724,7 +724,7 @@ extern "C" void OPNStreamSessionHandleAddRemoteIceCandidatePayload(void *session
 }
 
 extern "C" OPNStreamStatsSnapshot *OPNStreamSessionHandleLatestStatsSnapshot(void *session) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     OPN::StreamStats stats;
     if (rawSession) {
         rawSession->RequestStats();
@@ -754,12 +754,12 @@ extern "C" OPNStreamStatsSnapshot *OPNStreamSessionHandleLatestStatsSnapshot(voi
 }
 
 extern "C" void OPNStreamSessionHandleSendMouseMove(void *session, int16_t dx, int16_t dy) {
-    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    OPN::LibWebRTCStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     rawSession->SendMouseMove(dx, dy);
 }
 
-void OPNSendStreamSessionGamepadState(OPN::IStreamSession *session,
+void OPNSendStreamSessionGamepadState(OPN::LibWebRTCStreamSession *session,
                                       uint16_t controllerId,
                                       uint16_t buttons,
                                       uint8_t leftTrigger,

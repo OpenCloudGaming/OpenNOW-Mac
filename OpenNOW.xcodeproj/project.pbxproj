@@ -385,13 +385,6 @@
 			path = src/streaming/OPNStreamRecordingManager.swift;
 			sourceTree = "<group>";
 		};
-		9EA7774A3F17C84ABA66DE4E /* OPNStreamSession.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStreamSession.h;
-			path = src/streaming/OPNStreamSession.h;
-			sourceTree = "<group>";
-		};
 		F00000000000000000000040 /* OPNStreamStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = OPNStreamStats.h; path = src/streaming/OPNStreamStats.h; sourceTree = "<group>"; };
 		BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */ = {
 			isa = PBXFileReference;
@@ -666,7 +659,6 @@
 				1B53A5DD6FD53397C292235E /* OPNLibWebRTCStreamSession.h in PBXFileReference */,
 				D677A6C2D6C1F5ADA85447E5 /* OPNSessionManager.h in PBXFileReference */,
 				B9C13F571A43AE48E93CFB8B /* OPNStreamPreferences.h in PBXFileReference */,
-				9EA7774A3F17C84ABA66DE4E /* OPNStreamSession.h in PBXFileReference */,
 				F00000000000000000000040 /* OPNStreamStats.h */,
 				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
 			);
