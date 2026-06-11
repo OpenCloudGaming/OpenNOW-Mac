@@ -73,6 +73,49 @@ private func opnGameLaunchSet(_ object: NSObject, _ key: String, _ value: Any?) 
 private func opnGameLaunchBool(_ object: NSObject, _ key: String) -> Bool { (object.value(forKey: key) as? NSNumber)?.boolValue ?? (object.value(forKey: key) as? Bool ?? false) }
 private func opnGameLaunchInt(_ object: NSObject, _ key: String) -> Int { (object.value(forKey: key) as? NSNumber)?.intValue ?? (object.value(forKey: key) as? Int ?? 0) }
 
+private func opnGameLaunchAppendFingerprintField(_ fingerprint: inout String, _ value: String) {
+    fingerprint += "\(value.count):\(value)|"
+}
+
+private func opnGameLaunchFingerprintList(_ values: [String]) -> String {
+    var fingerprint = "["
+    for value in values.sorted() { opnGameLaunchAppendFingerprintField(&fingerprint, value) }
+    fingerprint += "]"
+    return fingerprint
+}
+
+private func opnGameLaunchLibraryFingerprint(_ games: [OPNCatalogGameObject]) -> String {
+    var entries: [String] = []
+    entries.reserveCapacity(games.count)
+    for game in games {
+        var entry = ""
+        opnGameLaunchAppendFingerprintField(&entry, game.id)
+        opnGameLaunchAppendFingerprintField(&entry, game.uuid)
+        opnGameLaunchAppendFingerprintField(&entry, game.launchAppId)
+        opnGameLaunchAppendFingerprintField(&entry, game.title)
+        opnGameLaunchAppendFingerprintField(&entry, game.shortName)
+        opnGameLaunchAppendFingerprintField(&entry, game.playabilityState)
+        opnGameLaunchAppendFingerprintField(&entry, game.imageUrl)
+        opnGameLaunchAppendFingerprintField(&entry, opnGameLaunchFingerprintList(game.availableStores))
+        opnGameLaunchAppendFingerprintField(&entry, opnGameLaunchFingerprintList(game.genres))
+        let variants = game.variants.map { variant in
+            var variantEntry = ""
+            opnGameLaunchAppendFingerprintField(&variantEntry, variant.id)
+            opnGameLaunchAppendFingerprintField(&variantEntry, variant.appStore)
+            opnGameLaunchAppendFingerprintField(&variantEntry, variant.storeUrl)
+            opnGameLaunchAppendFingerprintField(&variantEntry, variant.serviceStatus)
+            opnGameLaunchAppendFingerprintField(&variantEntry, variant.librarySelected ? "1" : "0")
+            opnGameLaunchAppendFingerprintField(&variantEntry, variant.inLibrary ? "1" : "0")
+            return variantEntry
+        }
+        opnGameLaunchAppendFingerprintField(&entry, opnGameLaunchFingerprintList(variants))
+        entries.append(entry)
+    }
+    var fingerprint = ""
+    for entry in entries.sorted() { opnGameLaunchAppendFingerprintField(&fingerprint, entry) }
+    return fingerprint
+}
+
 private func opnGameLaunchPerform(_ object: NSObject, _ selectorName: String) {
     let selector = NSSelectorFromString(selectorName)
     guard object.responds(to: selector) else { return }
@@ -399,7 +442,8 @@ extension NSObject {
     private func continueLaunchAfterServerSelection(game: OPNCatalogGameObject, appId: String, apiToken: String, accountLinked: Bool, selectedStore: String, returnScreen: Int32, launchGeneration: Int) {
         let selfBox = OPNGameLaunchWeakObject(self)
         let gameBox = OPNGameLaunchSendableValue(game)
-        OPNActiveSessionService.fetchActiveSessions(accessToken: apiToken) { ok, sessions, error in
+        let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
+        OPNActiveSessionService.fetchActiveSessions(accessToken: apiToken, streamingBaseUrl: streamingBaseUrl) { ok, sessions, error in
             let sessionsBox = OPNGameLaunchSendableValue(sessions)
             Task { @MainActor in
                 guard let self = selfBox.value, opnGameLaunchInt(self, "gameLaunchGeneration") == launchGeneration, opnGameLaunchGet(self, "streamingController", as: OPNStreamViewController.self) == nil else { return }
@@ -457,7 +501,6 @@ extension NSObject {
             }
             return true
         }
-        if accountLinked && opnGameLaunchVariantOwned(variant) { return false }
         let selfBox = OPNGameLaunchWeakObject(self)
         let gameBox = OPNGameLaunchSendableValue(game)
         let variantBox = OPNGameLaunchSendableValue(variant)
@@ -526,7 +569,7 @@ extension NSObject {
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             guard index >= 0, index < actions.count else { return }
             switch actions[index] {
-            case "launchOwned": self.launchGameObject(game, variantIndex: ownedVariantIndex, returnScreen: OPNGameLaunchScreen.store.rawValue)
+            case "launchOwned": self.launchGameObject(game, variantIndex: ownedVariantIndex, returnScreen: Int32(opnGameLaunchInt(self, "currentScreen")))
             case "link": self.linkAccount(game: game, variantIndex: variantIndex, store: variant.appStore, syncAfterLink: !requiredLinkMissing, retryingAuth: false, continueHandler: continueHandler)
             case "sync": self.syncOwnership(game: game, variantIndex: variantIndex, store: variant.appStore, retryingAuth: false, continueHandler: continueHandler)
             case "markOwned": self.markVariantOwned(game: game, variantIndex: variantIndex, continueHandler: continueHandler)
@@ -546,12 +589,10 @@ extension NSObject {
         fetchAccountAndSyncBaselines(stores: stores) { baselines in
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
-                let game = gameBox.value
                 self.updateOwnershipSyncProgressFooter("Sending sync requests to GeForce NOW...")
                 self.syncStores(stores, retryingAuth: retryingAuth) { anyAccepted, unauthorized, firstError in
                     Task { @MainActor in
                         guard let self = selfBox.value else { return }
-                        let game = gameBox.value
                         if unauthorized && !retryingAuth {
                             self.updateOwnershipSyncProgressMessage("Refreshing your GeForce NOW sign-in, then retrying connected-library sync...")
                             self.refreshOwnershipAuth { _ in Task { @MainActor in
@@ -573,7 +614,7 @@ extension NSObject {
                             return
                         }
                         self.updateOwnershipSyncProgressMessage("GeForce NOW accepted connected-library sync. Monitoring refreshed library data...")
-                        self.monitorAutoResyncOwnership(game: game, variantIndex: variantIndex, stores: stores, baselines: baselines, deadlineAt: Date(timeIntervalSinceNow: 15.0), attempt: 0, continueHandler: continueHandler) {
+                        self.monitorAutoResyncOwnership(game: gameBox.value, variantIndex: variantIndex, stores: stores, baselines: baselines, deadlineAt: Date(timeIntervalSinceNow: 15.0), attempt: 0, continueHandler: continueHandler) {
                             self.dismissOwnershipSyncProgress()
                             OPNGameServiceSwiftAdapter.fetchUserAccountDictionary { ok, dictionary, _ in
                                 let dictionaryBox = OPNGameLaunchSendableValue(dictionary)
@@ -637,7 +678,6 @@ extension NSObject {
                 self.refreshLibraryAfterOwnershipChange(game: game, variantIndex: variantIndex, requireGame: true) { owned in
                     Task { @MainActor in
                         guard let self = selfBox.value else { return }
-                        let game = gameBox.value
                         let freshFailure = freshFailureBox.value
                         if owned { self.dismissOwnershipSyncProgress(); continueHandler(true); return }
                         if !freshFailure.isEmpty { fallbackHandler(); return }
@@ -815,6 +855,13 @@ extension NSObject {
                 var owned = false
                 if success {
                     let games = gamesBox.value
+                    let accountIdentifier = OPNAppDelegateSupport.authSessionIdentifier(opnGameLaunchGet(self, "currentSession", as: OPNAuthSessionObject.self))
+                    if let delegate = self as? OPNAppDelegateLegacy {
+                        delegate.cachedGameLibraryObjects = games
+                        delegate.cachedGameLibraryFingerprint = opnGameLaunchLibraryFingerprint(games)
+                        delegate.cachedGameLibraryAccountIdentifier = accountIdentifier
+                        delegate.hasCachedGameLibrary = true
+                    }
                     if opnGameLaunchInt(self, "currentScreen") == OPNGameLaunchScreen.catalog.rawValue, let catalog = opnGameLaunchGet(self, "catalogView", as: OPNGameCatalogView.self) { catalog.setGameObjects(games) }
                     else if opnGameLaunchInt(self, "currentScreen") == OPNGameLaunchScreen.store.rawValue, let store = opnGameLaunchGet(self, "storeView", as: OPNGameCatalogView.self) { store.setLibraryGameObjects(games) }
                     owned = opnGameLaunchLibraryContainsOwnedVariant(games, requestedGame: game, requestedVariant: requestedVariant)

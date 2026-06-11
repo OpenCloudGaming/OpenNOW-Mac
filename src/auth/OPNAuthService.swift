@@ -77,9 +77,11 @@ final class OPNAuthService: @unchecked Sendable {
             case .failure(let error):
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
             }
+        } readyHandler: {
+            DispatchQueue.main.async {
+                NSWorkspace.shared.open(authURL)
+            }
         }
-
-        NSWorkspace.shared.open(authURL)
     }
 
     func refreshSession(completion: @escaping OPNAuthCallback, forceRefresh: Bool = false) {
@@ -522,7 +524,8 @@ final class OPNAuthService: @unchecked Sendable {
     private func startOAuthCallbackListener(
         port: Int,
         expectedState: String,
-        completion: @escaping @Sendable (Result<String, Error>) -> Void
+        completion: @escaping @Sendable (Result<String, Error>) -> Void,
+        readyHandler: @escaping @Sendable () -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async {
             let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
@@ -546,6 +549,7 @@ final class OPNAuthService: @unchecked Sendable {
                 completion(.failure(ServiceError("Failed to bind OAuth callback listener")))
                 return
             }
+            readyHandler()
             let clientSocket = accept(socketDescriptor, nil, nil)
             close(socketDescriptor)
             guard clientSocket >= 0 else {
@@ -643,7 +647,10 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     private func generateOpenNOWDeviceId() -> String {
-        let hostname = Host.current().localizedName ?? "unknown"
+        var hostnameBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let hostname = gethostname(&hostnameBuffer, hostnameBuffer.count) == 0
+            ? String(decoding: hostnameBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            : "unknown"
         let user = ProcessInfo.processInfo.environment["USER"] ?? "unknown"
         return SHA256.hash(data: Data("\(hostname):\(user):opennow-stable".utf8)).map { String(format: "%02x", $0) }.joined()
     }

@@ -556,6 +556,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         let status = int(session["status"])
         if isReadyActiveSessionStatus(status) {
+            let responseSessionId = string(session["sessionId"])
+            if !responseSessionId.isEmpty, responseSessionId != context.sessionId {
+                context.complete(false, [:], "Resume returned a different session id")
+                return
+            }
             var info = sessionInfo(from: session, requestedSessionId: context.sessionId, baseUrl: context.base, clientId: context.clientId, deviceId: context.deviceId, initialProfile: context.initialProfile)
             mergeAndStoreAdState(&info)
             context.complete(true, info, "")

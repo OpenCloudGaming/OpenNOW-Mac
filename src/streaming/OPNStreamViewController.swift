@@ -224,6 +224,11 @@ final class OPNStreamViewController: NSViewController {
             DispatchQueue.main.async {
                 guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                 if success {
+                    let returnedSessionId = self.string(sessionInfo["sessionId"])
+                    if !self.resumeSessionId.isEmpty, returnedSessionId != self.resumeSessionId {
+                        self.endStream(success: false, errorMessage: "Resume returned a different session id")
+                        return
+                    }
                     self.connect(sessionInfo: sessionInfo as NSDictionary, settings: settings, generation: generation)
                 } else if OPNStreamViewControllerSupport.resumeErrorShouldCreateFreshSession(error) {
                     self.resumeExistingSession = false

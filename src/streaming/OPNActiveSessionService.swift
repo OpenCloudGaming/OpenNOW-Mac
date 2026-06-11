@@ -22,7 +22,7 @@ final class OPNActiveSessionObject: NSObject {
 }
 
 enum OPNActiveSessionService {
-    private static let persistedSessionIdKey = "OpenNOW.ActiveSessionId"
+    private static let persistedSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
 
@@ -36,12 +36,12 @@ enum OPNActiveSessionService {
         UserDefaults.standard.removeObject(forKey: persistedSessionIdKey)
     }
 
-    static func fetchActiveSessions(accessToken: String, completion: @escaping @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
+    static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
         guard !accessToken.isEmpty else {
             completion(false, [], "No access token")
             return
         }
-        let base = normalizedBaseURL(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
+        let base = normalizedBaseURL(streamingBaseUrl)
         guard let url = URL(string: base + "v2/session") else {
             completion(false, [], "Invalid sessions URL")
             return

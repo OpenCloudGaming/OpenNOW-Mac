@@ -295,31 +295,15 @@ extension NSObject {
     }
 
     private func loadStoreContent(for store: OPNGameCatalogView, refreshOnly: Bool) {
-        let selfBox = OPNNavigationWeakObject(self)
-        let storeBox = OPNNavigationWeakObject(store)
-        if !refreshOnly {
-            OPNGameServiceSwiftAdapter.fetchMarqueePanelObjects { success, panels, error in
-                let panelsBox = OPNNavigationSendableValue(panels)
-                Task { @MainActor in
-                    guard let self = selfBox.value, let store = storeBox.value, success, opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { if !success { OPNSentry.logErrorMessage("[AppDelegate] Featured panel fetch failed: \(error)") }; return }
-                    let panels = panelsBox.value
-                    store.setFeaturedGameObjects(panels.flatMap { $0.sections }.flatMap { $0.games })
-                }
-            }
-            OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
-                let panelsBox = OPNNavigationSendableValue(panels)
-                Task { @MainActor in
-                    guard let self = selfBox.value, let store = storeBox.value, success, opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { if !success { OPNSentry.logErrorMessage("[AppDelegate] Store panel fetch failed: \(error)") }; return }
-                    let panels = panelsBox.value
-                    store.setPanelObjects(panels)
-                }
-            }
-        }
-        OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
-            let gamesBox = OPNNavigationSendableValue(games)
-            Task { @MainActor in
-                guard let self = selfBox.value, let store = storeBox.value, success, opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { if !success { OPNSentry.logErrorMessage("[AppDelegate] Library fetch failed: \(error)") }; return }
-                let games = gamesBox.value
+        guard opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { return }
+        guard let delegate = self as? OPNAppDelegateLegacy else { return }
+        if refreshOnly {
+            delegate.refreshGameLibraryInBackground()
+        } else {
+            delegate.refreshFeaturedGamesForCatalog(canRetry: true)
+            delegate.loadStorePanels(canRetry: true)
+            delegate.fetchGameLibrary(canRetry: true) { [weak self] success, games in
+                guard let self, success, opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { return }
                 store.setLibraryGameObjects(games)
             }
         }
@@ -381,17 +365,8 @@ extension NSObject {
         catalog.onSelectGame = { game, variantIndex in if let self = selfBox.value { opnNavLaunchGame(self, game: game, variantIndex: variantIndex, returnScreen: .catalog) } }
         catalog.onMarkGameUnowned = { game, variantIndex in if let self = selfBox.value { opnNavMarkVariantUnowned(self, game: game, variantIndex: variantIndex) } }
         catalog.onCatalogBrowseRequested = { [weak catalog] searchQuery, sortId, filterIds in
-            guard let catalog else { return }
-            catalog.setLoading(true)
-            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: 250) { success, result, error in
-                let resultBox = OPNNavigationSendableValue(result)
-                Task { @MainActor in
-                    guard let self = selfBox.value, opnNavGet(self, "catalogView", as: OPNGameCatalogView.self) === catalog else { return }
-                    let result = resultBox.value
-                    catalog.setLoading(false)
-                    success ? catalog.setCatalogBrowseResultObject(result) : catalog.setError(error.isEmpty ? "Unable to browse catalog." : error)
-                }
-            }
+            guard let self = selfBox.value, let catalog, opnNavGet(self, "catalogView", as: OPNGameCatalogView.self) === catalog else { return }
+            (self as? OPNAppDelegateLegacy)?.browseCatalog(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, canRetry: true, retryAttempt: 0)
         }
     }
 
