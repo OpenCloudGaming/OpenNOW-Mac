@@ -163,7 +163,7 @@ enum OPNActiveSessionService {
         let controlHost = string(controlInfo?["ip"])
         let serverIp = controlHost.isEmpty ? streamingHost : controlHost
         guard !sessionId.isEmpty, !serverIp.isEmpty, reusableStatuses.contains(status) else { return nil }
-        let signalingUrl = streamingHost.isEmpty ? "" : "wss://\(streamingHost):443/nvst/"
+        let signalingUrl = streamingHost.isEmpty ? (controlHost.isEmpty ? "" : "wss://\(controlHost):443/nvst/") : "wss://\(streamingHost):443/nvst/"
         return OPNActiveSessionObject(sessionId: sessionId, appId: appId, status: status, serverIp: serverIp, streamingBaseUrl: streamingBaseUrl, signalingUrl: signalingUrl)
     }
 

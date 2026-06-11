@@ -729,7 +729,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 }
             }
             let controlInfo = session["sessionControlInfo"] as? [String: Any]
-            let serverIp = string(controlInfo?["ip"]).isEmpty ? streamingHost : string(controlInfo?["ip"])
+            let controlHost = string(controlInfo?["ip"])
+            let serverIp = controlHost.isEmpty ? streamingHost : controlHost
             guard !serverIp.isEmpty else { return nil }
             let requestData = session["sessionRequestData"] as? [String: Any]
             return [
@@ -739,7 +740,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "serverIp": serverIp,
                 "gpuType": string(session["gpuType"]),
                 "streamingBaseUrl": streamingBaseUrl,
-                "signalingUrl": streamingHost.isEmpty ? "" : "wss://\(streamingHost):443/nvst/",
+                "signalingUrl": streamingHost.isEmpty ? (controlHost.isEmpty ? "" : "wss://\(controlHost):443/nvst/") : "wss://\(streamingHost):443/nvst/",
             ]
         }
     }

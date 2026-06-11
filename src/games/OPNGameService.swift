@@ -340,7 +340,7 @@ final class OPNGameService: @unchecked Sendable {
                 "status": status,
                 "serverIp": serverIp,
                 "gpuType": launchString(session["gpuType"]),
-                "signalingUrl": connectionHost.isEmpty ? "" : "wss://\(connectionHost):443/nvst/",
+                "signalingUrl": connectionHost.isEmpty ? (controlHost.isEmpty ? "" : "wss://\(controlHost):443/nvst/") : "wss://\(connectionHost):443/nvst/",
             ]
         }
     }
