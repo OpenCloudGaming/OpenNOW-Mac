@@ -137,7 +137,7 @@ private func opnDesktopGamepadButtons() -> OPNDesktopGamepadButton {
     return buttons
 }
 
-@objc(OPNAppDelegateLegacy)
+@objc(AppDelegate)
 @MainActor
 final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc dynamic var window: NSWindow?

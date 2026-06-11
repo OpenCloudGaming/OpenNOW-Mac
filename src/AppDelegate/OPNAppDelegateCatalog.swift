@@ -110,6 +110,7 @@ extension OPNAppDelegateLegacy {
         storeView.setLoading(true)
         let accountIdentifier = OPNAppDelegateSupport.authSessionIdentifier(currentSession)
         OPNGameServiceSwiftAdapter.setAccessToken(OPNAppDelegateSupport.authSessionToken(currentSession))
+        OPNGameServiceSwiftAdapter.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
         OPNGameServiceSwiftAdapter.setVpcId("GFN-PC")
         let selfBox = OPNCatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panelObjects, error in
@@ -217,6 +218,7 @@ extension OPNAppDelegateLegacy {
         }
         featuredGamesRefreshInFlight = true
         OPNGameServiceSwiftAdapter.setAccessToken(OPNAppDelegateSupport.authSessionToken(currentSession))
+        OPNGameServiceSwiftAdapter.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
         OPNGameServiceSwiftAdapter.setVpcId("GFN-PC")
         let selfBox = OPNCatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.fetchMarqueePanelObjects { success, panelObjects, error in
@@ -255,6 +257,7 @@ extension OPNAppDelegateLegacy {
         let accountIdentifier = OPNAppDelegateSupport.authSessionIdentifier(currentSession)
         OPNGameServiceSwiftAdapter.setAccessToken(OPNAppDelegateSupport.authSessionToken(currentSession))
         OPNGameServiceSwiftAdapter.setUserId(accountIdentifier)
+        OPNGameServiceSwiftAdapter.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
         OPNGameServiceSwiftAdapter.setVpcId("GFN-PC")
         catalogView.setLoading(true)
         let selfBox = OPNCatalogWeakObject(self)
@@ -300,6 +303,7 @@ extension OPNAppDelegateLegacy {
         let accountIdentifier = OPNAppDelegateSupport.authSessionIdentifier(currentSession)
         OPNGameServiceSwiftAdapter.setAccessToken(OPNAppDelegateSupport.authSessionToken(currentSession))
         OPNGameServiceSwiftAdapter.setUserId(accountIdentifier)
+        OPNGameServiceSwiftAdapter.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
         OPNGameServiceSwiftAdapter.setVpcId("GFN-PC")
         let selfBox = OPNCatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "last_played", filterIds: [], fetchCount: 96) { success, result, error in

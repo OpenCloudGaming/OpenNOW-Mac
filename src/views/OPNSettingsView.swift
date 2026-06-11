@@ -821,6 +821,7 @@ final class OPNSettingsView: NSView {
         let regions = OPNStreamPreferences.loadCachedRegions()
         let index = sender.indexOfSelectedItem
         if index <= 0 { OPNStreamPreferences.saveSelectedRegionUrl("") } else if index - 1 < regions.count { OPNStreamPreferences.saveSelectedRegionUrl(regions[index - 1].url) }
+        OPNGameServiceSwiftAdapter.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
         rebuildContent()
     }
     @objc private func l4sToggleChanged(_ sender: NSButton) { OPNStreamPreferences.saveL4SEnabled(sender.state == .on); rebuildContent() }

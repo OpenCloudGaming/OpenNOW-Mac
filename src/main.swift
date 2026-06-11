@@ -6,7 +6,7 @@ OPNSentry.initializeSentry()
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 
-let delegate = OPNAppDelegate()
+let delegate = OPNAppDelegateLegacy()
 app.delegate = delegate
 app.run()
 

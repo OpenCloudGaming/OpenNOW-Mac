@@ -106,7 +106,6 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     }
 
     func sendAnswerSdp(_ sdp: String, nvstSdp: String) {
-        guard webSocketTask != nil else { return }
         var answer: [String: Any] = [
             "type": "answer",
             "sdp": sdp,
@@ -118,7 +117,6 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     }
 
     func sendIceCandidate(_ candidate: NSDictionary) {
-        guard webSocketTask != nil else { return }
         var payload: [String: Any] = [
             "candidate": candidate["candidate"] as? String ?? "",
             "sdpMLineIndex": candidate["sdpMLineIndex"] as? Int ?? 0,

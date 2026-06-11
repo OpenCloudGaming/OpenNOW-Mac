@@ -1,11 +1,11 @@
 import Cocoa
 
-@objc(AppDelegate)
+@objc(OPNAppDelegateWrapper)
 final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private let legacyDelegate: NSApplicationDelegate?
 
     override init() {
-        let delegateClass = NSClassFromString("OPNAppDelegateLegacy") as? NSObject.Type
+        let delegateClass = NSClassFromString("AppDelegate") as? NSObject.Type
         legacyDelegate = delegateClass?.init() as? NSApplicationDelegate
         super.init()
     }

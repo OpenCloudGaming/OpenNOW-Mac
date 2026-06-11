@@ -289,7 +289,8 @@ final class OPNStreamViewController: NSViewController {
         }
         signaling.onIceCandidate = { [weak self] candidate in self?.session.addRemoteIceCandidatePayload(candidate as? [AnyHashable: Any] ?? [:]) }
         signaling.onClosed = { [weak self] clean, reason in
-            guard let self, !self.streamEnded, self.launchGeneration == generation, !clean else { return }
+            guard let self, !self.streamEnded, self.launchGeneration == generation else { return }
+            if clean, self.connectedOnce { return }
             self.endStream(success: false, errorMessage: reason.isEmpty ? "Signaling connection closed" : reason)
         }
         signaling.connect { [weak self] success, error in
@@ -314,7 +315,11 @@ final class OPNStreamViewController: NSViewController {
             startStatsRefreshTimer()
             startInactivityTimer()
         } else {
-            endStream(success: false, errorMessage: error.isEmpty ? "Stream connection failed" : error)
+            if error.isEmpty {
+                endStream(success: true, errorMessage: "")
+            } else {
+                endStream(success: false, errorMessage: error)
+            }
         }
     }
 

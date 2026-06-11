@@ -96,7 +96,7 @@ enum OPNActiveSessionService {
             return
         }
         clearPersistedActiveSessionId(sessionId)
-        let base = normalizedBaseURL(OPNStreamPreferences.loadSelectedStreamingBaseUrl())
+        let base = normalizedBaseURL(serverIp.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl() : serverIp)
         guard let encodedSessionId = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed), let url = URL(string: base + "v2/session/" + encodedSessionId) else {
             completion(false, "Invalid stop session URL")
             return
