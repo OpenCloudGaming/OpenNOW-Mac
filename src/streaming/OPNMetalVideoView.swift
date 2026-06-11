@@ -15,17 +15,17 @@ import QuartzCore
 }
 
 @objc(OPNMetalVideoView)
-final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKViewDelegate {
+final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private let metalView: MTKView
-    private var videoFrame: RTCVideoFrame?
+    nonisolated(unsafe) private var videoFrame: RTCVideoFrame?
     private var rendererNV12: OPNRTCMetalRenderer?
     private var rendererRGB: OPNRTCMetalRenderer?
     private var rendererI420: OPNRTCMetalRenderer?
     private var commandQueue: (any MTLCommandQueue)?
     private var enhancementRenderer: OPNVideoEnhancementRenderer?
-    private var sourceFrameSize = CGSize.zero
+    nonisolated(unsafe) private var sourceFrameSize = CGSize.zero
     private let targetFps: Int
-    private var frameSerial: UInt64 = 0
+    nonisolated(unsafe) private var frameSerial: UInt64 = 0
     private var lastDrawnFrameSerial: UInt64 = 0
     private var enhancementDroppedFrameCount: UInt64 = 0
     private var lastEnhancementFrameTimeMs = -1.0
@@ -35,7 +35,7 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
     private var enhancementResult = OPNVideoEnhancementResult()
     private var enhancementOverBudgetCount = 0
     private var adaptiveEnhancementPenalty = 0
-    private weak var owner: OPNLibWebRTCStreamSession?
+    nonisolated(unsafe) private weak var owner: OPNLibWebRTCStreamSession?
 
     init(frame frameRect: NSRect, targetFps: Int32, owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
@@ -87,11 +87,11 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
         updateDrawableSizeForCurrentBackingScale()
     }
 
-    func setSize(_ size: CGSize) {
+    nonisolated func setSize(_ size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        synchronized {
-            sourceFrameSize = size
-        }
+        objc_sync_enter(self)
+        sourceFrameSize = size
+        objc_sync_exit(self)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.drawableSizeDirty = true
@@ -99,13 +99,13 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
         }
     }
 
-    func renderFrame(_ frame: RTCVideoFrame?) {
+    nonisolated func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
         owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
-        synchronized {
-            videoFrame = frame
-            frameSerial += 1
-        }
+        objc_sync_enter(self)
+        videoFrame = frame
+        frameSerial += 1
+        objc_sync_exit(self)
     }
 
     func draw(in view: MTKView) {
