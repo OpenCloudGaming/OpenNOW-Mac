@@ -698,7 +698,16 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let servers = normalizedIceServers(candidate)
             if !servers.isEmpty { return servers }
         }
-        return recursivelyFindIceServers(in: session)
+        let nestedServers = recursivelyFindIceServers(in: session)
+        if !nestedServers.isEmpty { return nestedServers }
+        return defaultIceServers()
+    }
+
+    private func defaultIceServers() -> [[String: Any]] {
+        [
+            ["urls": ["stun:s1.stun.gamestream.nvidia.com:19308"]],
+            ["urls": ["stun:stun.gamestream.nvidia.com:19302"]],
+        ]
     }
 
     private func recursivelyFindIceServers(in value: Any?) -> [[String: Any]] {
