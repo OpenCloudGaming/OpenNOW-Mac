@@ -289,7 +289,11 @@ final class OPNStreamViewController: NSViewController {
                 DispatchQueue.main.async {
                     guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                     if success {
-                        self.waitForReadySession(polledSession as NSDictionary, settings: settings, generation: generation, attempt: attempt + 1)
+                        var mergedSession = sessionInfo as? [String: Any] ?? [:]
+                        for (key, value) in polledSession where !(value is NSNull) {
+                            mergedSession[key] = value
+                        }
+                        self.waitForReadySession(mergedSession as NSDictionary, settings: settings, generation: generation, attempt: attempt + 1)
                     } else {
                         self.endStream(success: false, errorMessage: error)
                     }

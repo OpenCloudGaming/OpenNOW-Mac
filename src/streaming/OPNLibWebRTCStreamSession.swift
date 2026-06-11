@@ -586,7 +586,7 @@ private func extractPublicIp(_ hostOrIp: String) -> String {
 private func dictionary(_ value: Any?) -> [String: Any] { value as? [String: Any] ?? [:] }
 private func dictionary(_ value: NSDictionary) -> [String: Any] { value as? [String: Any] ?? [:] }
 private func array(_ value: Any?) -> [Any] { value as? [Any] ?? [] }
-private func stringArray(_ value: Any?) -> [String] { if let value = value as? [String] { return value }; return (value as? NSArray)?.compactMap { string($0) }.filter { !$0.isEmpty } ?? [] }
+private func stringArray(_ value: Any?) -> [String] { if let value = value as? String { return value.isEmpty ? [] : [value] }; if let value = value as? [String] { return value }; return (value as? NSArray)?.compactMap { string($0) }.filter { !$0.isEmpty } ?? [] }
 private func emptyNil(_ value: String) -> String? { value.isEmpty ? nil : value }
 private func string(_ value: Any?) -> String { if let value = value as? String { return value }; if let value = value as? NSString { return value as String }; if let value = value as? NSNumber { return value.stringValue }; return "" }
 private func int(_ value: Any?, fallback: Int = 0) -> Int { if let value = value as? Int { return value }; if let value = value as? NSNumber { return value.intValue }; if let value = value as? String { return Int(value) ?? fallback }; return fallback }

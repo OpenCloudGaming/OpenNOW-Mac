@@ -1091,6 +1091,7 @@ private func array(_ value: Any?) -> [Any] {
 }
 
 private func stringArray(_ value: Any?) -> [String] {
+    if let value = value as? String { return value.isEmpty ? [] : [value] }
     if let value = value as? [String] { return value }
     if let value = value as? NSArray { return value.compactMap { string($0) }.filter { !$0.isEmpty } }
     return []
