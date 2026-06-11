@@ -1,56 +1,31 @@
 import Foundation
 
-@_silgen_name("OPNStreamSessionHandleBackendAvailable")
-private func OPNStreamSessionHandleBackendAvailable() -> Bool
-
-@_silgen_name("OPNStreamSessionHandleMaxGamepadControllers")
-private func OPNStreamSessionHandleMaxGamepadControllers() -> UInt
-
-@_silgen_name("OPNStreamSessionHandleIceUfragFromOfferSdp")
-private func OPNStreamSessionHandleIceUfragFromOfferSdp(_ offerSdp: NSString) -> NSString
-
-@_silgen_name("OPNStreamSessionHandleCreateRawSession")
-private func OPNStreamSessionHandleCreateRawSession() -> UnsafeMutableRawPointer?
-
-@_silgen_name("OPNStreamSessionHandleReleaseRawSession")
-private func OPNStreamSessionHandleReleaseRawSession(_ session: UnsafeMutableRawPointer?)
-
-@_silgen_name("OPNStreamSessionHandleInputReady")
-private func OPNStreamSessionHandleInputReady(_ session: UnsafeMutableRawPointer?) -> Bool
-
-@_silgen_name("OPNStreamSessionHandleSetNativeWindow")
-private func OPNStreamSessionHandleSetNativeWindow(_ session: UnsafeMutableRawPointer?, _ nativeWindow: UnsafeMutableRawPointer?)
-
-@_silgen_name("OPNStreamSessionHandleSetMaxBitrateMbps")
-private func OPNStreamSessionHandleSetMaxBitrateMbps(_ session: UnsafeMutableRawPointer?, _ mbps: Int)
-
-@_silgen_name("OPNStreamSessionHandleAddRemoteIceCandidatePayload")
-private func OPNStreamSessionHandleAddRemoteIceCandidatePayload(_ session: UnsafeMutableRawPointer?, _ payload: NSDictionary)
-
-@_silgen_name("OPNStreamSessionHandleLatestStatsSnapshot")
-private func OPNStreamSessionHandleLatestStatsSnapshot(_ session: UnsafeMutableRawPointer?) -> OPNStreamStatsSnapshot
-
 @objc(OPNStreamSessionHandle)
 final class OPNStreamSessionHandle: NSObject {
-    @objc private(set) var rawSession: UnsafeMutableRawPointer?
+    private(set) var session: OPNLibWebRTCStreamSession?
+
+    @objc var rawSession: UnsafeMutableRawPointer? {
+        guard let session else { return nil }
+        return Unmanaged.passUnretained(session).toOpaque()
+    }
 
     @objc(isBackendAvailable)
     static func isBackendAvailable() -> Bool {
-        OPNStreamSessionHandleBackendAvailable()
+        OPNLibWebRTCStreamSession.isAvailable()
     }
 
     @objc(maxGamepadControllers)
     static func maxGamepadControllers() -> UInt {
-        OPNStreamSessionHandleMaxGamepadControllers()
+        UInt(OPNLibWebRTCStreamSession.maxGamepadControllers)
     }
 
     @objc(iceUfragFromOfferSdp:)
     static func iceUfrag(fromOfferSdp offerSdp: String) -> String {
-        OPNStreamSessionHandleIceUfragFromOfferSdp(offerSdp as NSString) as String
+        OPNLibWebRTCStreamSession.iceUfrag(fromOfferSdp: offerSdp)
     }
 
     @objc override init() {
-        rawSession = OPNStreamSessionHandleCreateRawSession()
+        session = OPNLibWebRTCStreamSession()
         super.init()
     }
 
@@ -59,33 +34,48 @@ final class OPNStreamSessionHandle: NSObject {
     }
 
     @objc var isValid: Bool {
-        rawSession != nil
+        session != nil
     }
 
     @objc var isInputReady: Bool {
-        OPNStreamSessionHandleInputReady(rawSession)
+        session?.isInputReady ?? false
     }
 
     @objc func stop() {
-        guard let rawSession else { return }
-        self.rawSession = nil
-        OPNStreamSessionHandleReleaseRawSession(rawSession)
+        session?.stop()
+        session = nil
     }
 
     @objc func setNativeWindow(_ nativeWindow: UnsafeMutableRawPointer?) {
-        OPNStreamSessionHandleSetNativeWindow(rawSession, nativeWindow)
+        session?.setNativeWindow(nativeWindow)
     }
 
     @objc func setMaxBitrateMbps(_ mbps: Int) {
-        OPNStreamSessionHandleSetMaxBitrateMbps(rawSession, mbps)
+        session?.setMaxBitrateMbps(mbps)
     }
 
     @objc func addRemoteIceCandidatePayload(_ payload: [AnyHashable: Any]) {
-        OPNStreamSessionHandleAddRemoteIceCandidatePayload(rawSession, payload as NSDictionary)
+        session?.addRemoteIceCandidatePayload(payload)
     }
 
     @objc func latestStatsSnapshot() -> OPNStreamStatsSnapshot {
-        OPNStreamSessionHandleLatestStatsSnapshot(rawSession)
+        session?.latestStatsSnapshot() ?? OPNStreamStatsSnapshot(available: false, latencyMs: -1, jitterMs: -1, inboundBitrateMbps: -1, packetLossPercent: -1, decodeTimeMs: -1, renderFps: -1, framesReceived: 0, framesDropped: 0, packetsLost: 0, fps: 0, resolution: "", codec: "", videoEnhancementActiveTier: "", videoEnhancementConfiguredTier: "", videoEnhancementSourceResolution: "", videoEnhancementDrawableResolution: "", videoEnhancementFallbackReason: "", videoEnhancementDiagnostics: "", videoEnhancementFrameTimeMs: -1, videoEnhancementDroppedFrames: 0)
+    }
+
+    func start(sessionInfo: NSDictionary, offerSdp: String, settings: NSDictionary, answerHandler: @escaping @convention(block) (NSString, NSString) -> Void, localIceCandidateHandler: @escaping @convention(block) (NSDictionary) -> Void, stateHandler: @escaping @convention(block) (Bool, NSString) -> Void) {
+        session?.start(sessionInfo: sessionInfo as? [String: Any] ?? [:], offerSdp: offerSdp, settings: settings as? [String: Any] ?? [:], answerHandler: answerHandler, localIceCandidateHandler: localIceCandidateHandler, stateHandler: stateHandler)
+    }
+
+    func injectManualIceCandidate(sessionInfo: NSDictionary, offerSdp: String, serverIceUfrag: String) {
+        session?.injectManualIceCandidate(sessionInfo: sessionInfo as? [String: Any] ?? [:], offerSdp: offerSdp, serverIceUfrag: serverIceUfrag)
+    }
+
+    @MainActor func configureSurface(streamView: OPNStreamView?, recordingManager: OPNStreamRecordingManager?) {
+        session?.configureSurface(streamView: streamView, recordingManager: recordingManager)
+    }
+
+    @MainActor func clearSurfaceCallbacks(streamView: OPNStreamView?) {
+        session?.clearSurfaceCallbacks(streamView: streamView)
     }
 }
 
