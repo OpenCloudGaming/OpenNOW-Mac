@@ -374,7 +374,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let clientId = UUID().uuidString.lowercased()
-        guard let validationUrl = URL(string: "https://\(serverIp)/v2/session/\(sessionId)") else {
+        let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
+        guard let validationUrl = URL(string: "\(base)/v2/session/\(sessionId)") else {
             completion(false, [:], "Invalid validation URL")
             return
         }
@@ -470,7 +471,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         ]
         let layout = string(settings["keyboardLayout"]).isEmpty ? "us" : string(settings["keyboardLayout"])
         let language = string(settings["gameLanguage"]).isEmpty ? OPNLocale.currentGFNLocale() : string(settings["gameLanguage"])
-        guard let url = URL(string: "https://\(serverIp)/v2/session/\(sessionId)?keyboardLayout=\(layout)&languageCode=\(language)") else {
+        let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
+        guard let url = URL(string: "\(base)/v2/session/\(sessionId)?keyboardLayout=\(layout)&languageCode=\(language)") else {
             completion(false, [:], "Invalid claim URL")
             return
         }
@@ -600,7 +602,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         if initialProfile.isEmpty { info["negotiatedStreamProfile"] = negotiatedStreamProfile(from: session) }
         applyConnectionInfo(session, to: &info)
         if string(info["serverIp"]).isEmpty, let controlInfo = session["sessionControlInfo"] as? [String: Any] {
-            info["serverIp"] = string(controlInfo["ip"])
+            info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))
         }
         return info
     }
@@ -859,18 +861,19 @@ private func applyCommonCloudMatchHeaders(to request: inout URLRequest, token: S
 
 private func resolveSessionBaseUrl(streamingBaseUrl: String, serverIp: String) -> String {
     func normalizedHTTPSBaseUrl(_ url: String) -> String {
-        guard !url.isEmpty, let components = URLComponents(string: url), components.scheme?.lowercased() == "https", components.host?.isEmpty == false else { return "" }
+        guard !url.isEmpty, let components = URLComponents(string: url), components.scheme?.lowercased() == "https", let host = components.host, !usableEndpointHost(host).isEmpty else { return "" }
         return url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
+    let fallbackBase = normalizedHTTPSBaseUrl(streamingBaseUrl)
     if serverIp.isEmpty {
-        let base = normalizedHTTPSBaseUrl(streamingBaseUrl)
-        return base.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : base
+        return fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase
     }
     if serverIp.hasPrefix("https://") || serverIp.hasPrefix("http://") {
         let base = normalizedHTTPSBaseUrl(serverIp)
-        return base.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : base
+        return base.isEmpty ? (fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase) : base
     }
-    return "https://\(serverIp)"
+    let host = usableEndpointHost(serverIp)
+    return host.isEmpty ? (fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase) : "https://\(host)"
 }
 
 private func userAgent() -> String {
@@ -1020,7 +1023,10 @@ private func extractHost(from value: String) -> String? {
 
 private func usableEndpointHost(_ host: String) -> String {
     let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-    return !trimmed.isEmpty && !trimmed.hasPrefix(".") && !trimmed.contains("/") ? trimmed : ""
+    let hostname = trimmed.split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
+    guard !trimmed.isEmpty, !hostname.isEmpty, !hostname.hasPrefix("."), !hostname.hasSuffix("."), !trimmed.contains("/") else { return "" }
+    guard hostname.split(separator: ".", omittingEmptySubsequences: false).allSatisfy({ !$0.isEmpty }) else { return "" }
+    return trimmed
 }
 
 private func isValidSessionId(_ sessionId: String) -> Bool {
