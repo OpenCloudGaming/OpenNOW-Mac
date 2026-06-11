@@ -317,6 +317,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func localVideoEnhancement() -> (Int32, Int32, Int32, Int32) { (Int32(localEnhancementMode), Int32(localEnhancementSharpness), Int32(localEnhancementDenoise), Int32(localEnhancementTargetHeight)) }
     func wantsEnhancedVideoFrames() -> Bool { enhancedVideoFrameCaptureEnabled }
     func nativeWindowHandle() -> UnsafeMutableRawPointer? { nativeWindow }
+    func isMicrophoneCaptureEnabled() -> Bool { microphoneEnabled && impl?.localMicrophoneTrack?.isEnabled == true }
     func handleVideoFrame(_ frame: UnsafeMutableRawPointer?) { onVideoFrame?(frame) }
     func handleEnhancedVideoFrame(_ pixelBuffer: CVPixelBuffer?) { if let pixelBuffer { onEnhancedVideoFrame?(Unmanaged.passUnretained(pixelBuffer).toOpaque()) } }
     func handleClipboardText(_ text: String) { onClipboardText?(text) }

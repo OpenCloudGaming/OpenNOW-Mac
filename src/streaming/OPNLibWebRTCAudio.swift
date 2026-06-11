@@ -158,6 +158,11 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
             )
             let renderStatus = AudioUnitRender(recordingUnit, actionFlags, timestamp, 1, frameCount, &inputData)
             guard renderStatus == noErr else { return renderStatus }
+            guard owner?.isMicrophoneCaptureEnabled() == true else {
+                clearAudioBufferList(&inputData)
+                reportMicrophoneLevelIfNeeded(inputData: &inputData)
+                return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
+            }
             reportMicrophoneLevelIfNeeded(inputData: &inputData)
             return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
         }
