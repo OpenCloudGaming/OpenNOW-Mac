@@ -786,7 +786,7 @@
 			); OTHER_CPLUSPLUSFLAGS = (
 				"$(inherited)",
 				"-fcxx-modules",
-			); SWIFT_OBJC_BRIDGING_HEADER = "OpenNOW-Bridging-Header.h"; SWIFT_VERSION = 6.0; };
+			); SWIFT_VERSION = 6.0; };
 			name = Debug;
 		};
 		15F569470662212ABEBAA581 /* Release in XCBuildConfiguration */ = {
@@ -819,7 +819,7 @@
 			); OTHER_CPLUSPLUSFLAGS = (
 				"$(inherited)",
 				"-fcxx-modules",
-			); SWIFT_OBJC_BRIDGING_HEADER = "OpenNOW-Bridging-Header.h"; SWIFT_VERSION = 6.0; };
+			); SWIFT_VERSION = 6.0; };
 			name = Release;
 		};
 		/* End XCBuildConfiguration section */

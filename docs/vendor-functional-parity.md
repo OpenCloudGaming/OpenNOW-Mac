@@ -26,22 +26,22 @@ Out of scope by design:
 
 | Vendor behavior | OpenNOW coverage | Primary files |
 | --- | --- | --- |
-| OAuth login and token refresh | Implemented | `src/auth/OPNAuthService.*` |
-| Saved sessions and account switching | Implemented | `src/auth/OPNAuthService.*`, `src/OPNAppDelegate.mm` |
-| Provider discovery | Implemented | `src/games/OPNGameService.mm` |
+| OAuth login and token refresh | Implemented | `src/auth/OPNAuthService.swift` |
+| Saved sessions and account switching | Implemented | `src/auth/OPNAuthService.swift`, `src/OPNAppDelegate.swift`, `src/AppDelegate/OPNAppDelegateDesktop.swift` |
+| Provider discovery | Implemented | `src/games/OPNGameService.swift` |
 | Region discovery and latency ordering | Implemented with latency probing, nettest session parsing, bandwidth/loss/jitter bitrate recommendation, and poor-network continue-anyway warning | `src/streaming/OPNStreamPreferences.swift`, `src/streaming/OPNStreamViewController.swift` |
-| Catalog browse, search, filters, panels, and library | Implemented | `src/games/OPNGameService.mm` |
-| Store URL resolution and ownership remediation | Implemented with external store open plus structured launch-time purchase/link/install remediation sheet | `src/games/OPNGameService.mm`, `src/common/OPNGameRemediation.*`, `src/OPNAppDelegate.mm` |
-| Locale-aware requests | Implemented from native preferred locale | `src/common/OPNLocale.*`, `src/auth/OPNAuthService.mm`, `src/games/OPNGameService.mm`, `src/streaming/OPNSessionManager.swift` |
-| Cloudmatch device identity | Implemented with centralized stable ID and legacy migration | `src/common/OPNDeviceIdentity.*`, `src/streaming/OPNSessionManager.swift`, `src/streaming/OPNStreamPreferences.swift` |
+| Catalog browse, search, filters, panels, and library | Implemented | `src/games/OPNGameService.swift` |
+| Store URL resolution and ownership remediation | Implemented with external store open plus structured launch-time purchase/link/install remediation sheet | `src/games/OPNGameService.swift`, `src/common/OPNGameRemediation.swift`, `src/AppDelegate/OPNAppDelegateGameLaunch.swift` |
+| Locale-aware requests | Implemented from native preferred locale | `src/common/OPNLocale.swift`, `src/auth/OPNAuthService.swift`, `src/games/OPNGameService.swift`, `src/streaming/OPNSessionManager.swift` |
+| Cloudmatch device identity | Implemented with centralized stable ID and legacy migration | `src/common/OPNDeviceIdentity.swift`, `src/streaming/OPNSessionManager.swift`, `src/streaming/OPNStreamPreferences.swift` |
 | Session create, poll, resume, claim, stop | Implemented with shared Cloudmatch session headers and monitor settings on launch/resume requests | `src/streaming/OPNSessionManager.swift` |
-| Active-session reuse and session-limit recovery | Implemented | `src/games/OPNGameService.mm`, `src/streaming/OPNSessionManager.swift` |
-| Queue and previous-session cleanup progress | Implemented | `src/games/OPNGameService.mm`, `src/streaming/OPNStreamViewController.mm` |
-| Session ad parsing and reporting | Partially implemented with active ad playback/reporting, required-empty-ad waiting state, queue-paused ad messaging, terminal ad-state filtering, native MP4/HLS media preference, and playback-failure reporting | `src/streaming/OPNSessionManager.swift`, `src/streaming/OPNStreamViewController.swift`, `src/views/OPNLoadingView.mm` |
+| Active-session reuse and session-limit recovery | Implemented | `src/games/OPNGameService.swift`, `src/streaming/OPNSessionManager.swift` |
+| Queue and previous-session cleanup progress | Implemented | `src/games/OPNGameService.swift`, `src/streaming/OPNStreamViewController.swift` |
+| Session ad parsing and reporting | Partially implemented with active ad playback/reporting, required-empty-ad waiting state, queue-paused ad messaging, terminal ad-state filtering, native MP4/HLS media preference, and playback-failure reporting | `src/streaming/OPNSessionManager.swift`, `src/streaming/OPNStreamViewController.swift`, `src/views/OPNLoadingView.swift` |
 | WebRTC signaling and stream connection | Implemented | `src/streaming/OPNWebSocketSignalingClient.swift`, `src/streaming/OPNLibWebRTCStreamSession.swift` |
-| Keyboard, mouse, and gamepad input | Implemented | `src/streaming/OPNInputProtocol.*`, `src/streaming/OPNStreamViewController.mm` |
-| Stream quality settings | Implemented, with display capabilities, explicit HDR request control, local resolution upscaling controls, AI prefilter entitlement/mode gating, and cloud-variable request gating | `src/streaming/OPNStreamPreferences.*`, `src/streaming/OPNSessionManager.swift`, `src/views/OPNSettingsView.mm` |
-| Vendor launch/session error mapping | Implemented for native launch, resume, network, maintenance, capacity, storage, ownership, account-link, install-required, ad-required, age restriction, time-limit, stale-session, hex/SRC/NVB, and diagnostic GSEC failures | `src/common/OPNGFNError.*`, `src/streaming/OPNStreamViewController.mm`, `src/OPNAppDelegate.mm` |
+| Keyboard, mouse, and gamepad input | Implemented | `src/streaming/OPNInputProtocol.swift`, `src/streaming/OPNStreamViewController.swift` |
+| Stream quality settings | Implemented, with display capabilities, explicit HDR request control, local resolution upscaling controls, AI prefilter entitlement/mode gating, and cloud-variable request gating | `src/streaming/OPNStreamPreferences.swift`, `src/streaming/OPNSessionManager.swift`, `src/views/OPNSettingsView.swift` |
+| Vendor launch/session error mapping | Implemented for native launch, resume, network, maintenance, capacity, storage, ownership, account-link, install-required, ad-required, age restriction, time-limit, stale-session, hex/SRC/NVB, and diagnostic GSEC failures | `src/common/OPNGFNError.swift`, `src/streaming/OPNStreamViewController.swift`, `src/AppDelegate/OPNAppDelegateGameLaunch.swift` |
 | Protocol payload validation | Implemented with opt-in sanitized protocol logging for cloud variables, network tests, create-session, and claim-session payloads | `src/common/OPNProtocolDebug.*`, `src/streaming/OPNStreamPreferences.swift`, `src/streaming/OPNSessionManager.swift` |
 
 ## Actionable Gaps
