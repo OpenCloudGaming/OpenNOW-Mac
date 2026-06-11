@@ -12,8 +12,33 @@
 #include <sstream>
 #include <vector>
 
-@interface OPNInputProtocolEncoder : NSObject
-- (instancetype)init;
+@class OPNLibWebRTCSessionImpl;
+
+@interface OPNLibWebRTCInput : NSObject
+- (instancetype)initWithOwner:(void *)owner;
+- (void)sendInputData:(NSData *)data partiallyReliable:(BOOL)partiallyReliable lowLatencyMode:(BOOL)lowLatencyMode sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)createInputChannelWithSessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (BOOL)isInputReady;
+- (void)sendKeyWithKeycode:(uint16_t)keycode scancode:(uint16_t)scancode modifiers:(uint16_t)modifiers down:(BOOL)down sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)sendMouseMoveWithDx:(int16_t)dx dy:(int16_t)dy lowLatencyMode:(BOOL)lowLatencyMode sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)sendMouseButtonWithButton:(uint8_t)button down:(BOOL)down sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)sendMouseWheelWithDelta:(int16_t)delta sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)sendUtf8Text:(NSString *)text sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)sendGamepadStateWithControllerId:(uint16_t)controllerId
+                                  buttons:(uint16_t)buttons
+                              leftTrigger:(uint8_t)leftTrigger
+                             rightTrigger:(uint8_t)rightTrigger
+                               leftStickX:(int16_t)leftStickX
+                               leftStickY:(int16_t)leftStickY
+                              rightStickX:(int16_t)rightStickX
+                              rightStickY:(int16_t)rightStickY
+                              timestampUs:(uint64_t)timestampUs
+                                   bitmap:(uint16_t)bitmap
+                           lowLatencyMode:(BOOL)lowLatencyMode
+                              sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)handleDataChannelStateWithLabel:(NSString *)label open:(BOOL)open;
+- (void)handleDataChannelMessageWithLabel:(NSString *)label data:(NSData *)data sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+- (void)stop;
 @end
 
 namespace OPN {
@@ -602,8 +627,8 @@ std::string LibWebRTCStreamSession::AvailabilityDescription() {
 LibWebRTCStreamSession::LibWebRTCStreamSession() {
     dispatch_queue_t statsQueue = dispatch_queue_create("io.opencg.opennow.webrtc.stats", DISPATCH_QUEUE_SERIAL);
     m_statsQueue = (__bridge_retained void *)statsQueue;
-    OPNInputProtocolEncoder *encoder = [[OPNInputProtocolEncoder alloc] init];
-    m_inputEncoder = (__bridge_retained void *)encoder;
+    OPNLibWebRTCInput *inputController = [[OPNLibWebRTCInput alloc] initWithOwner:this];
+    m_inputController = (__bridge_retained void *)inputController;
     m_callbackLiveness = std::make_shared<std::atomic_bool>(true);
 }
 
@@ -614,10 +639,10 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
         m_statsQueue = nullptr;
         (void)statsQueue;
     }
-    if (m_inputEncoder) {
-        OPNInputProtocolEncoder *encoder = (__bridge_transfer OPNInputProtocolEncoder *)m_inputEncoder;
-        m_inputEncoder = nullptr;
-        (void)encoder;
+    if (m_inputController) {
+        OPNLibWebRTCInput *inputController = (__bridge_transfer OPNLibWebRTCInput *)m_inputController;
+        [inputController stop];
+        m_inputController = nullptr;
     }
 }
 
@@ -1415,11 +1440,89 @@ static bool OPNEnvFlagEnabled(const char *name, bool defaultValue) {
     return !(normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off");
 }
 
-#if defined(OPN_HAVE_LIBWEBRTC)
 static OPNLibWebRTCSessionImpl *OPNImplFromOpaque(void *opaque) {
     return (__bridge OPNLibWebRTCSessionImpl *)opaque;
 }
 
+static OPNLibWebRTCInput *OPNInputController(void *opaque) {
+    return (__bridge OPNLibWebRTCInput *)opaque;
+}
+
+void LibWebRTCStreamSession::SendInput(const uint8_t *data, size_t len) {
+    if (!data || len == 0) return;
+    NSData *payload = [NSData dataWithBytes:data length:len];
+    [OPNInputController(m_inputController) sendInputData:payload partiallyReliable:NO lowLatencyMode:m_settings.lowLatencyMode ? YES : NO sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SendInputPartiallyReliable(const uint8_t *data, size_t len) {
+    if (!data || len == 0) return;
+    NSData *payload = [NSData dataWithBytes:data length:len];
+    [OPNInputController(m_inputController) sendInputData:payload partiallyReliable:YES lowLatencyMode:m_settings.lowLatencyMode ? YES : NO sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::CreateInputChannel() {
+    [OPNInputController(m_inputController) createInputChannelWithSessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+bool LibWebRTCStreamSession::InputReady() const {
+    return [OPNInputController(m_inputController) isInputReady] ? true : false;
+}
+
+void LibWebRTCStreamSession::SendKeyEvent(uint16_t keycode, uint16_t scancode, uint16_t modifiers, bool down) {
+    [OPNInputController(m_inputController) sendKeyWithKeycode:keycode scancode:scancode modifiers:modifiers down:down ? YES : NO sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SendMouseMove(int16_t dx, int16_t dy) {
+    [OPNInputController(m_inputController) sendMouseMoveWithDx:dx dy:dy lowLatencyMode:m_settings.lowLatencyMode ? YES : NO sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SendMouseButton(uint8_t button, bool down) {
+    [OPNInputController(m_inputController) sendMouseButtonWithButton:button down:down ? YES : NO sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SendMouseWheel(int16_t delta) {
+    [OPNInputController(m_inputController) sendMouseWheelWithDelta:delta sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SendUtf8Text(const std::string &text) {
+    [OPNInputController(m_inputController) sendUtf8Text:OPNStringToNSString(text) sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SendGamepadState(const Input::GamepadState &state, uint16_t bitmap) {
+    [OPNInputController(m_inputController) sendGamepadStateWithControllerId:state.controllerId
+                                                                    buttons:state.buttons
+                                                                leftTrigger:state.leftTrigger
+                                                               rightTrigger:state.rightTrigger
+                                                                 leftStickX:state.leftStickX
+                                                                 leftStickY:state.leftStickY
+                                                                rightStickX:state.rightStickX
+                                                                rightStickY:state.rightStickY
+                                                                timestampUs:state.timestampUs
+                                                                     bitmap:bitmap
+                                                             lowLatencyMode:m_settings.lowLatencyMode ? YES : NO
+                                                                sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::HandleDataChannelState(const std::string &label, bool open) {
+    [OPNInputController(m_inputController) handleDataChannelStateWithLabel:OPNStringToNSString(label) open:open ? YES : NO];
+}
+
+void LibWebRTCStreamSession::HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len) {
+    if (!data || len == 0) return;
+    NSData *payload = [NSData dataWithBytes:data length:len];
+    [OPNInputController(m_inputController) handleDataChannelMessageWithLabel:OPNStringToNSString(label) data:payload sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::HandleClipboardText(const std::string &text) {
+    if (m_onClipboardText) m_onClipboardText(text);
+}
+
+extern "C" void OPNLibWebRTCInputOwnerHandleClipboardText(void *owner, NSString *text) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->HandleClipboardText(OPNNSStringToString(text));
+}
+
+#if defined(OPN_HAVE_LIBWEBRTC)
 static const char *OPNRTCRtpTransceiverDirectionName(RTCRtpTransceiverDirection direction) {
     switch (direction) {
         case RTCRtpTransceiverDirectionSendRecv: return "sendrecv";
@@ -1773,10 +1876,7 @@ void LibWebRTCStreamSession::Stop() {
 #else
     m_impl = nullptr;
 #endif
-    StopInputHeartbeat();
-    m_inputReady = false;
-    m_reliableOpen = false;
-    m_partialOpen = false;
+    [OPNInputController(m_inputController) stop];
 }
 
 void LibWebRTCStreamSession::AddRemoteIceCandidate(const IceCandidatePayload &candidate) {

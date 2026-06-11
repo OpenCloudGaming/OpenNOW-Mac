@@ -59,6 +59,7 @@ public:
     void CancelDisconnectGraceTimer();
     void HandleDataChannelState(const std::string &label, bool open);
     void HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len);
+    void HandleClipboardText(const std::string &text);
     void HandleAudioDeviceChange();
     void HandleVideoFrame(void *frame);
     void HandleEnhancedVideoFrame(void *pixelBuffer);
@@ -88,8 +89,6 @@ private:
     void HandleMicrophoneLevelReport(void *report);
     void StartStatsPolling();
     void StopStatsPolling();
-    void StartInputHeartbeat();
-    void StopInputHeartbeat();
     void StartMicrophoneLevelPolling();
     void StopMicrophoneLevelPolling();
     void StartAudioDeviceMonitoring();
@@ -99,7 +98,6 @@ private:
 
     void *m_impl = nullptr;
     void *m_nativeWindow = nullptr;
-    void *m_inputHeartbeat = nullptr;
     void *m_disconnectGraceTimer = nullptr;
     void *m_statsTimer = nullptr;
     void *m_statsQueue = nullptr;
@@ -107,9 +105,6 @@ private:
     void *m_audioDeviceMonitorContext = nullptr;
     std::shared_ptr<std::atomic_bool> m_callbackLiveness;
     std::atomic<bool> m_audioDeviceMonitoringActive{false};
-    bool m_inputReady = false;
-    bool m_reliableOpen = false;
-    bool m_partialOpen = false;
     bool m_statsRequestInFlight = false;
     bool m_microphoneLevelRequestInFlight = false;
     bool m_microphoneEnabled = false;
@@ -139,7 +134,7 @@ private:
     int m_adaptiveRecoveryScore = 0;
     uint64_t m_lastAdaptiveBitrateChangeMs = 0;
     StreamSettings m_settings;
-    void *m_inputEncoder = nullptr;
+    void *m_inputController = nullptr;
     std::function<void(const SendAnswerRequest &)> m_onAnswer;
     std::function<void(const IceCandidatePayload &)> m_onIceCandidate;
     StreamStateCallback m_onState;
