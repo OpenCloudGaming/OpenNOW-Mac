@@ -168,13 +168,13 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
     private static func string(_ value: NSObject?) -> String? { value as? String }
 
     private static func normalizeCodecName(_ value: String) -> String {
-        let lower = value.lowercased()
-        if lower.contains("h265") || lower.contains("hevc") { return "h265" }
-        if lower.contains("h264") || lower.contains("avc") { return "h264" }
-        if lower.contains("av1") { return "av1" }
-        if lower.contains("vp9") { return "vp9" }
-        if lower.contains("vp8") { return "vp8" }
-        return lower.replacingOccurrences(of: "video/", with: "")
+        let upper = value.uppercased()
+        if upper.contains("H264") { return "H264" }
+        if upper.contains("H265") || upper.contains("HEVC") { return "H265" }
+        if upper.contains("AV1") { return "AV1" }
+        if upper.contains("VP9") || upper.contains("VP09") { return "VP9" }
+        if upper.contains("VP8") { return "VP8" }
+        return value
     }
 
     private static func monotonicMs() -> UInt64 {
