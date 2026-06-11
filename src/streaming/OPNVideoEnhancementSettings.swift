@@ -563,7 +563,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
             return false
         }
 
-        if (settings.configuredTier == .spatial || settings.configuredTier == .temporal), !settings.captureEnhancedPixelBuffer {
+        if (settings.configuredTier == .spatial || settings.configuredTier == .metalFX || settings.configuredTier == .temporal), !settings.captureEnhancedPixelBuffer {
             var pixelFormat: NSString?
             var frameSource: NSString?
             var textureFallback: NSString?
@@ -572,6 +572,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
             result.frameSource = (frameSource as String?) ?? result.frameSource
             if let textureFrame, let commandBuffer = commandQueue.makeCommandBuffer() {
                 if settings.configuredTier == .temporal, renderTemporalTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+                    return true
+                }
+                if settings.configuredTier == .metalFX, renderMetalFXTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
                     return true
                 }
                 if settings.configuredTier == .spatial, renderSpatialTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
@@ -632,7 +635,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let outputHeight = drawable.texture.height
         guard sourceWidth > 0, sourceHeight > 0, outputWidth >= sourceWidth, outputHeight >= sourceHeight else { return false }
         guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: sourceWidth, height: sourceHeight, pixelFormat: .bgra8Unorm, usage: [.shaderRead, .renderTarget], label: "OpenNOW MetalFX source"),
-              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: drawable.texture.pixelFormat, usage: [.shaderRead, .shaderWrite], label: "OpenNOW MetalFX output") else {
+              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: drawable.texture.pixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
             result.fallbackReason = "MetalFX texture allocation failed"
             recordDrop(in: result)
             return false
@@ -646,13 +649,11 @@ final class OPNVideoEnhancementRenderer: NSObject {
             recordDrop(in: result)
             return false
         }
-        guard let blit = commandBuffer.makeBlitCommandEncoder() else {
-            result.fallbackReason = "MetalFX blit encoder unavailable"
+        guard encodePresentTexture(sourceTexture: outputTexture, destinationTexture: drawable.texture, commandBuffer: commandBuffer, result: result) else {
+            if result.fallbackReason.isEmpty { result.fallbackReason = "MetalFX present failed" }
             recordDrop(in: result)
             return false
         }
-        blit.copy(from: outputTexture, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0), sourceSize: MTLSize(width: outputWidth, height: outputHeight, depth: 1), to: drawable.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
-        blit.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()
 
@@ -662,6 +663,63 @@ final class OPNVideoEnhancementRenderer: NSObject {
         result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
         result.droppedFrames = droppedFrames
         result.diagnostics = "Swift MetalFX spatial scaler"
+        return true
+    }
+
+    private func renderMetalFXTextureFrame(
+        _ textureFrame: OPNVideoTextureFrame,
+        drawable: any CAMetalDrawable,
+        commandBuffer: any MTLCommandBuffer,
+        settings: OPNVideoEnhancementSettings,
+        result: OPNVideoEnhancementResult,
+        start: CFTimeInterval
+    ) -> Bool {
+        guard isMetalFXAvailable, temporalPresentPipeline != nil else { return false }
+        let outputWidth = drawable.texture.width
+        let outputHeight = drawable.texture.height
+        guard let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: drawable.texture.pixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
+            result.fallbackReason = "MetalFX output texture allocation failed"
+            return false
+        }
+
+        let needsSpatialConversion = textureFrame.kind != 0 || !Self.textureFrameUsesFullCrop(textureFrame)
+        let sourceTexture: (any MTLTexture)?
+        if needsSpatialConversion {
+            let primaryTexture = textureFrame.rgbTexture ?? textureFrame.lumaTexture
+            guard let primaryTexture else { return false }
+            let width = Int(textureFrame.contentWidth) > 0 ? Int(textureFrame.contentWidth) : primaryTexture.width
+            let height = Int(textureFrame.contentHeight) > 0 ? Int(textureFrame.contentHeight) : primaryTexture.height
+            guard let intermediateTexture = reusableTexture(&metalFXIntermediateTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW MetalFX conversion intermediate") else {
+                result.fallbackReason = "MetalFX intermediate texture allocation failed"
+                return false
+            }
+            guard encodeSpatialTextureFrame(textureFrame, destinationTexture: intermediateTexture, commandBuffer: commandBuffer, settings: settings, result: result) else {
+                result.fallbackReason = "MetalFX RGB conversion failed"
+                return false
+            }
+            sourceTexture = intermediateTexture
+        } else {
+            sourceTexture = textureFrame.rgbTexture
+        }
+
+        var fallback: NSString?
+        guard metalFXUpscaler.encodeTexture(sourceTexture, toTexture: outputTexture, commandBuffer: commandBuffer, fallback: &fallback) else {
+            result.fallbackReason = (fallback as String?) ?? "MetalFX encode failed"
+            return false
+        }
+        guard encodePresentTexture(sourceTexture: outputTexture, destinationTexture: drawable.texture, commandBuffer: commandBuffer, result: result) else {
+            if result.fallbackReason.isEmpty { result.fallbackReason = "MetalFX present failed" }
+            return false
+        }
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+
+        result.renderPath = "OPNMetalFXSpatialScalerSwift"
+        result.renderMode = "MetalFX"
+        result.activeTier = "MetalFX Spatial"
+        result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
+        result.droppedFrames = droppedFrames
+        result.diagnostics = needsSpatialConversion ? "Swift MetalFX spatial scaler with RGB conversion" : "Swift MetalFX spatial scaler"
         return true
     }
 
@@ -1159,6 +1217,11 @@ final class OPNVideoEnhancementRenderer: NSObject {
             SIMD2<Float>(0.3125, -0.3125),
         ]
         return offsets[frameIndex % offsets.count]
+    }
+
+    private static func textureFrameUsesFullCrop(_ textureFrame: OPNVideoTextureFrame) -> Bool {
+        let crop = textureFrame.cropRect
+        return crop.minX <= 0.0001 && crop.minY <= 0.0001 && crop.width >= 0.9999 && crop.height >= 0.9999
     }
 
     private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
