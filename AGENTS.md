@@ -23,6 +23,7 @@ Execute every task in this order:
 ## Migration & Conversion
 - **No Stubs:** Never use stubs when migrating or converting code.
 - **In-Place Conversion:** Always convert the existing implementation in place.
+- **No Wrappers:** Do not use wrappers, shims, adapters, or compatibility layers during migration or conversion.
 - **Remove Legacy Files:** Delete the old `.mm` and `.h` files after migration or conversion.
 - **Trace Blockers:** Always trace and convert or migrate blockers during migration or conversion.
 - **Migrate Blockers:** Always migrate blockers instead of bypassing, stubbing, or deferring them.
