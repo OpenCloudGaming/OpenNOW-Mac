@@ -128,12 +128,21 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         audioController.startAudioDeviceMonitoring()
         inputController.createInputChannel(sessionImpl: impl)
 
+        var processedOfferSdp = offerSdp
         let requestedCodec = normalizedCodec(string(settings["codec"]))
-        if !requestedCodec.isEmpty, !OPNWebRTCCodecSupport.supportsCodec(factory: factory, normalizedCodec: requestedCodec) {
+        let requestedCodecSupported = OPNWebRTCCodecSupport.supportsCodec(factory: factory, normalizedCodec: requestedCodec)
+        if requestedCodec == "H265", requestedCodecSupported, envFlagEnabled("OPN_ENABLE_LIBWEBRTC_H265_OFFER_REWRITE", defaultValue: true) {
+            let support = OPNWebRTCCodecSupport.h265ReceiverSupport(factory: factory)
+            processedOfferSdp = rewriteH265OfferForReceiver(processedOfferSdp, maxMainLevelId: int(support["maxMainLevelId"]), maxMain10LevelId: int(support["maxMain10LevelId"]), supportsHighTier: bool(support["supportsHighTier"]))
+        }
+        if isSupportedCodecPreference(requestedCodec), requestedCodecSupported, envFlagEnabled("OPN_ENABLE_LIBWEBRTC_CODEC_FILTER", defaultValue: false) {
+            processedOfferSdp = preferCodecInOffer(processedOfferSdp, normalizedCodec: requestedCodec)
+        } else if !requestedCodec.isEmpty, !requestedCodecSupported {
             NSLog("[LibWebRTC] Requested codec %@ is not supported by this WebRTC.framework; retaining full offer", requestedCodec)
         }
-        logVideoSdpSummary("offer-video", offerSdp)
-        let offer = RTCSessionDescription(type: .offer, sdp: offerSdp)
+        let remoteOfferSdp = processedOfferSdp
+        logVideoSdpSummary("offer-video", remoteOfferSdp)
+        let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
         peerConnection.setRemoteDescription(offer) { [weak self, weak impl] error in
             guard let self, self.callbackGeneration == generation else { return }
             guard error == nil else {
@@ -152,7 +161,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                     self.handleConnectionState(false, error: "createAnswer failed: \(answerError?.localizedDescription ?? "unknown")")
                     return
                 }
-                let answerSdp = alignH265AnswerFmtpToOffer(answer.sdp, offerSdp: offerSdp)
+                let mungedAnswer = envFlagEnabled("OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE", defaultValue: false) ? mungeAnswerSdp(answer.sdp, maxBitrateKbps: max(1000, int(self.settings["maxBitrateMbps"], fallback: 50) * 1000)) : answer.sdp
+                let answerSdp = alignH265AnswerFmtpToOffer(mungedAnswer, offerSdp: remoteOfferSdp)
                 logVideoSdpSummary("answer-video", answerSdp)
                 guard videoSdpHasMediaCodec(answerSdp) else {
                     self.handleConnectionState(false, error: "createAnswer produced no negotiated video media codec")
@@ -692,6 +702,85 @@ private func extractIceCredentials(from sdp: String) -> OPNIceCredentials {
 
 private func extractIceUfrag(from sdp: String) -> String { extractIceCredentials(from: sdp).ufrag }
 
+private func rewriteH265OfferForReceiver(_ sdp: String, maxMainLevelId: Int, maxMain10LevelId: Int, supportsHighTier: Bool) -> String {
+    let h265Payloads = videoPayloads(forCodec: "H265", in: sdp)
+    guard !h265Payloads.isEmpty else { return sdp }
+    var lines = sdpLines(sdp)
+    var changed = false
+    for index in lines.indices where lines[index].hasPrefix("a=fmtp:") {
+        guard let payload = payloadType(lines[index], prefix: "a=fmtp:"), h265Payloads.contains(payload) else { continue }
+        var parameters = fmtpParameters(fmtpText(lines[index]))
+        let profileId = Int(parameterValue(parameters, "profile-id")) ?? 1
+        let maxLevel = profileId == 2 ? maxMain10LevelId : maxMainLevelId
+        var lineChanged = false
+        if !supportsHighTier, parameterValue(parameters, "tier-flag") == "1" {
+            parameters = setParameter(parameters, key: "tier-flag", value: "0")
+            lineChanged = true
+        }
+        let offeredLevel = Int(parameterValue(parameters, "level-id")) ?? -1
+        if maxLevel > 0, offeredLevel > maxLevel {
+            parameters = setParameter(parameters, key: "level-id", value: String(maxLevel))
+            lineChanged = true
+        }
+        guard lineChanged else { continue }
+        lines[index] = "a=fmtp:\(payload) " + parameters.map { $0.value.isEmpty ? $0.key : "\($0.key)=\($0.value)" }.joined(separator: ";")
+        changed = true
+    }
+    return changed ? joinSdpLinesLike(lines, original: sdp) : sdp
+}
+
+private func preferCodecInOffer(_ sdp: String, normalizedCodec: String) -> String {
+    let preferredPayloads = videoPayloads(forCodec: normalizedCodec, in: sdp)
+    guard !preferredPayloads.isEmpty else { return sdp }
+    let rtxApt = rtxAptByPayload(in: sdp)
+    let rtxPayloads = Set(rtxApt.compactMap { preferredPayloads.contains($0.value) ? $0.key : nil })
+    let keptPayloads = preferredPayloads.union(rtxPayloads)
+    var lines = sdpLines(sdp)
+    var inVideo = false
+    for index in lines.indices {
+        let line = lines[index]
+        if line.hasPrefix("m=video") {
+            let parts = line.split(separator: " ").map(String.init)
+            if parts.count > 3 {
+                lines[index] = Array(parts.prefix(3) + keptPayloads.sorted().map(String.init)).joined(separator: " ")
+            }
+            inVideo = true
+            continue
+        }
+        if line.hasPrefix("m=") { inVideo = false; continue }
+        guard inVideo else { continue }
+        if let payload = payloadType(line, prefix: "a=rtpmap:"), !keptPayloads.contains(payload) { lines[index] = "" }
+        else if let payload = payloadType(line, prefix: "a=fmtp:"), !keptPayloads.contains(payload) { lines[index] = "" }
+        else if let payload = payloadType(line, prefix: "a=rtcp-fb:"), !keptPayloads.contains(payload) { lines[index] = "" }
+    }
+    return joinSdpLinesLike(lines.filter { !$0.isEmpty }, original: sdp)
+}
+
+private func rtxAptByPayload(in sdp: String) -> [Int: Int] {
+    var result: [Int: Int] = [:]
+    for (payload, text) in videoFmtpByPayload(in: sdp) {
+        for parameter in fmtpParameters(text) where parameter.key == "apt" {
+            if let apt = Int(parameter.value) { result[payload] = apt }
+        }
+    }
+    return result
+}
+
+private func mungeAnswerSdp(_ sdp: String, maxBitrateKbps: Int) -> String {
+    let lines = sdpLines(sdp)
+    var result: [String] = []
+    for index in lines.indices {
+        var line = lines[index]
+        if line.hasPrefix("a=fmtp:"), line.contains("minptime="), !line.contains("stereo=1") { line += ";stereo=1" }
+        result.append(line)
+        if line.hasPrefix("m=video") || line.hasPrefix("m=audio") {
+            let nextHasBandwidth = index + 1 < lines.count && lines[index + 1].hasPrefix("b=")
+            if !nextHasBandwidth { result.append("b=AS:\(line.hasPrefix("m=video") ? max(1000, maxBitrateKbps) : 128)") }
+        }
+    }
+    return joinSdpLinesLike(result, original: sdp)
+}
+
 private func alignH265AnswerFmtpToOffer(_ answerSdp: String, offerSdp: String) -> String {
     let answerPayloads = videoPayloads(forCodec: "H265", in: answerSdp)
     guard !answerPayloads.isEmpty else { return answerSdp }
@@ -819,6 +908,18 @@ private func normalizedCodec(_ codec: String) -> String {
     if upper == "HEVC" { return "H265" }
     if ["H264", "H265", "AV1"].contains(upper) { return upper }
     return ""
+}
+
+private func isSupportedCodecPreference(_ codec: String) -> Bool {
+    codec == "H264" || codec == "H265" || codec == "AV1"
+}
+
+private func envFlagEnabled(_ name: String, defaultValue: Bool) -> Bool {
+    guard let value = ProcessInfo.processInfo.environment[name], !value.isEmpty else { return defaultValue }
+    let lower = value.lowercased()
+    if ["0", "false", "no", "off"].contains(lower) { return false }
+    if ["1", "true", "yes", "on"].contains(lower) { return true }
+    return defaultValue
 }
 
 private struct OPNIceMediaTarget { var mid = "0"; var mLineIndex: Int32 = -1 }
