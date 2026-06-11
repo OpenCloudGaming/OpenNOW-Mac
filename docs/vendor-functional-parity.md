@@ -29,11 +29,11 @@ Out of scope by design:
 | OAuth login and token refresh | Implemented | `src/auth/OPNAuthService.*` |
 | Saved sessions and account switching | Implemented | `src/auth/OPNAuthService.*`, `src/OPNAppDelegate.mm` |
 | Provider discovery | Implemented | `src/games/OPNGameService.mm` |
-| Region discovery and latency ordering | Implemented with latency probing, nettest session parsing, bandwidth/loss/jitter bitrate recommendation, and poor-network continue-anyway warning | `src/streaming/OPNStreamPreferences.mm`, `src/streaming/OPNStreamViewController.mm` |
+| Region discovery and latency ordering | Implemented with latency probing, nettest session parsing, bandwidth/loss/jitter bitrate recommendation, and poor-network continue-anyway warning | `src/streaming/OPNStreamPreferences.swift`, `src/streaming/OPNStreamViewController.swift` |
 | Catalog browse, search, filters, panels, and library | Implemented | `src/games/OPNGameService.mm` |
 | Store URL resolution and ownership remediation | Implemented with external store open plus structured launch-time purchase/link/install remediation sheet | `src/games/OPNGameService.mm`, `src/common/OPNGameRemediation.*`, `src/OPNAppDelegate.mm` |
 | Locale-aware requests | Implemented from native preferred locale | `src/common/OPNLocale.*`, `src/auth/OPNAuthService.mm`, `src/games/OPNGameService.mm`, `src/streaming/OPNSessionManager.swift` |
-| Cloudmatch device identity | Implemented with centralized stable ID and legacy migration | `src/common/OPNDeviceIdentity.*`, `src/streaming/OPNSessionManager.swift`, `src/streaming/OPNStreamPreferences.mm` |
+| Cloudmatch device identity | Implemented with centralized stable ID and legacy migration | `src/common/OPNDeviceIdentity.*`, `src/streaming/OPNSessionManager.swift`, `src/streaming/OPNStreamPreferences.swift` |
 | Session create, poll, resume, claim, stop | Implemented with shared Cloudmatch session headers and monitor settings on launch/resume requests | `src/streaming/OPNSessionManager.swift` |
 | Active-session reuse and session-limit recovery | Implemented | `src/games/OPNGameService.mm`, `src/streaming/OPNSessionManager.swift` |
 | Queue and previous-session cleanup progress | Implemented | `src/games/OPNGameService.mm`, `src/streaming/OPNStreamViewController.mm` |
@@ -42,7 +42,7 @@ Out of scope by design:
 | Keyboard, mouse, and gamepad input | Implemented | `src/streaming/OPNInputProtocol.*`, `src/streaming/OPNStreamViewController.mm` |
 | Stream quality settings | Implemented, with display capabilities, explicit HDR request control, local resolution upscaling controls, AI prefilter entitlement/mode gating, and cloud-variable request gating | `src/streaming/OPNStreamPreferences.*`, `src/streaming/OPNSessionManager.swift`, `src/views/OPNSettingsView.mm` |
 | Vendor launch/session error mapping | Implemented for native launch, resume, network, maintenance, capacity, storage, ownership, account-link, install-required, ad-required, age restriction, time-limit, stale-session, hex/SRC/NVB, and diagnostic GSEC failures | `src/common/OPNGFNError.*`, `src/streaming/OPNStreamViewController.mm`, `src/OPNAppDelegate.mm` |
-| Protocol payload validation | Implemented with opt-in sanitized protocol logging for cloud variables, network tests, create-session, and claim-session payloads | `src/common/OPNProtocolDebug.*`, `src/streaming/OPNStreamPreferences.mm`, `src/streaming/OPNSessionManager.swift` |
+| Protocol payload validation | Implemented with opt-in sanitized protocol logging for cloud variables, network tests, create-session, and claim-session payloads | `src/common/OPNProtocolDebug.*`, `src/streaming/OPNStreamPreferences.swift`, `src/streaming/OPNSessionManager.swift` |
 
 ## Actionable Gaps
 

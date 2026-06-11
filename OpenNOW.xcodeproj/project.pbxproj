@@ -36,10 +36,6 @@
 		E00000000000000000000030 /* OPNWebSocketSignalingClient.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000031; };
 		E00000000000000000000033 /* OPNSessionReportPayload.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000034; };
 		E000000000000000000000C2 /* OPNSessionManager.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C3 /* OPNSessionManager.swift */; };
-		6AD819D53010E3BBC30EF1FA /* OPNStreamPreferences.mm in PBXBuildFile */ = {
-			isa = PBXBuildFile;
-			fileRef = F326430DE067F6EC2D2435E0;
-		};
 		E00000000000000000000036 /* OPNAuthenticatingView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000037; };
 		FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in PBXBuildFile */ = {
 			isa = PBXBuildFile;
@@ -332,32 +328,11 @@
 		E000000000000000000000C3 /* OPNSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionManager.swift; path = src/streaming/OPNSessionManager.swift; sourceTree = "<group>"; };
 		E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNWebSocketSignalingClient.swift; path = src/streaming/OPNWebSocketSignalingClient.swift; sourceTree = "<group>"; };
 		E00000000000000000000034 /* OPNSessionReportPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportPayload.swift; path = src/common/OPNSessionReportPayload.swift; sourceTree = "<group>"; };
-		B9C13F571A43AE48E93CFB8B /* OPNStreamPreferences.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStreamPreferences.h;
-			path = src/streaming/OPNStreamPreferences.h;
-			sourceTree = "<group>";
-		};
-		F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.cpp.objcpp;
-			name = OPNStreamPreferences.mm;
-			path = src/streaming/OPNStreamPreferences.mm;
-			sourceTree = "<group>";
-		};
 		3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift in PBXFileReference */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			name = OPNStreamRecordingManager.swift;
 			path = src/streaming/OPNStreamRecordingManager.swift;
-			sourceTree = "<group>";
-		};
-		BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */ = {
-			isa = PBXFileReference;
-			lastKnownFileType = sourcecode.c.h;
-			name = OPNStreamTypes.h;
-			path = src/streaming/OPNStreamTypes.h;
 			sourceTree = "<group>";
 		};
 		24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */ = {
@@ -619,12 +594,9 @@
 				E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */,
 				E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */,
 				E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */,
-				F326430DE067F6EC2D2435E0 /* OPNStreamPreferences.mm in PBXFileReference */,
 				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift in PBXFileReference */,
 				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift in PBXFileReference */,
 				E000000000000000000000B1 /* OPNStreamViewController.swift */,
-				B9C13F571A43AE48E93CFB8B /* OPNStreamPreferences.h in PBXFileReference */,
-				BA741E05F599D8F1E107DA97 /* OPNStreamTypes.h in PBXFileReference */,
 			);
 			name = streaming;
 			sourceTree = "<group>";
@@ -746,7 +718,6 @@
 				E000000000000000000000C2 /* OPNSessionManager.swift in PBXBuildFile */,
 				E00000000000000000000030 /* OPNWebSocketSignalingClient.swift in PBXBuildFile */,
 				E00000000000000000000033 /* OPNSessionReportPayload.swift in PBXBuildFile */,
-				6AD819D53010E3BBC30EF1FA /* OPNStreamPreferences.mm in PBXBuildFile */,
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.swift in PBXBuildFile */,
 				FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in PBXBuildFile */,
 				E000000000000000000000B0 /* OPNStreamViewController.swift in PBXBuildFile */,
