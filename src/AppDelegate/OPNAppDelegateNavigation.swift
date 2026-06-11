@@ -39,6 +39,49 @@ private func opnNavSet(_ object: NSObject, _ key: String, _ value: Any?) { objec
 private func opnNavBool(_ object: NSObject, _ key: String) -> Bool { (object.value(forKey: key) as? NSNumber)?.boolValue ?? (object.value(forKey: key) as? Bool ?? false) }
 private func opnNavInt(_ object: NSObject, _ key: String) -> Int32 { Int32((object.value(forKey: key) as? NSNumber)?.intValue ?? (object.value(forKey: key) as? Int ?? 0)) }
 
+private func opnNavAppendFingerprintField(_ fingerprint: inout String, _ value: String) {
+    fingerprint += "\(value.count):\(value)|"
+}
+
+private func opnNavFingerprintList(_ values: [String]) -> String {
+    var fingerprint = "["
+    for value in values.sorted() { opnNavAppendFingerprintField(&fingerprint, value) }
+    fingerprint += "]"
+    return fingerprint
+}
+
+private func opnNavGameLibraryFingerprint(_ games: [OPNCatalogGameObject]) -> String {
+    var entries: [String] = []
+    entries.reserveCapacity(games.count)
+    for game in games {
+        var entry = ""
+        opnNavAppendFingerprintField(&entry, game.id)
+        opnNavAppendFingerprintField(&entry, game.uuid)
+        opnNavAppendFingerprintField(&entry, game.launchAppId)
+        opnNavAppendFingerprintField(&entry, game.title)
+        opnNavAppendFingerprintField(&entry, game.shortName)
+        opnNavAppendFingerprintField(&entry, game.playabilityState)
+        opnNavAppendFingerprintField(&entry, game.imageUrl)
+        opnNavAppendFingerprintField(&entry, opnNavFingerprintList(game.availableStores))
+        opnNavAppendFingerprintField(&entry, opnNavFingerprintList(game.genres))
+        let variantEntries = game.variants.map { variant in
+            var variantEntry = ""
+            opnNavAppendFingerprintField(&variantEntry, variant.id)
+            opnNavAppendFingerprintField(&variantEntry, variant.appStore)
+            opnNavAppendFingerprintField(&variantEntry, variant.storeUrl)
+            opnNavAppendFingerprintField(&variantEntry, variant.serviceStatus)
+            opnNavAppendFingerprintField(&variantEntry, variant.librarySelected ? "1" : "0")
+            opnNavAppendFingerprintField(&variantEntry, variant.inLibrary ? "1" : "0")
+            return variantEntry
+        }
+        opnNavAppendFingerprintField(&entry, opnNavFingerprintList(variantEntries))
+        entries.append(entry)
+    }
+    var fingerprint = ""
+    for entry in entries.sorted() { opnNavAppendFingerprintField(&fingerprint, entry) }
+    return fingerprint
+}
+
 private func opnNavPerform(_ object: NSObject, _ selectorName: String) {
     let selector = NSSelectorFromString(selectorName)
     guard object.responds(to: selector) else { return }
@@ -297,15 +340,32 @@ extension NSObject {
     private func loadStoreContent(for store: OPNGameCatalogView, refreshOnly: Bool) {
         guard opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { return }
         guard let delegate = self as? OPNAppDelegateLegacy else { return }
+        let accountIdentifier = OPNAppDelegateSupport.authSessionIdentifier(delegate.currentSession)
         if refreshOnly {
             delegate.refreshGameLibraryInBackground()
         } else {
+            if delegate.hasCachedFeaturedGames, delegate.cachedFeaturedGamesAccountIdentifier == accountIdentifier {
+                store.setFeaturedGameObjects(delegate.cachedFeaturedGameObjects)
+            }
+            if delegate.hasCachedStorePanels, delegate.cachedStorePanelsAccountIdentifier == accountIdentifier {
+                store.setPanelObjects(delegate.cachedStorePanelObjects)
+            }
+            if delegate.hasCachedGameLibrary, delegate.cachedGameLibraryAccountIdentifier == accountIdentifier {
+                store.setLibraryGameObjects(delegate.cachedGameLibraryObjects)
+            } else {
+                delegate.fetchGameLibrary(canRetry: true) { [weak self] success, games in
+                    guard let self, success, OPNAppDelegateSupport.authSessionIdentifier(delegate.currentSession) == accountIdentifier else { return }
+                    delegate.cachedGameLibraryObjects = games
+                    delegate.cachedGameLibraryFingerprint = opnNavGameLibraryFingerprint(games)
+                    delegate.cachedGameLibraryAccountIdentifier = accountIdentifier
+                    delegate.hasCachedGameLibrary = true
+                    if opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store {
+                        store.setLibraryGameObjects(games)
+                    }
+                }
+            }
             delegate.refreshFeaturedGamesForCatalog(canRetry: true)
             delegate.loadStorePanels(canRetry: true)
-            delegate.fetchGameLibrary(canRetry: true) { [weak self] success, games in
-                guard let self, success, opnNavGet(self, "storeView", as: OPNGameCatalogView.self) === store else { return }
-                store.setLibraryGameObjects(games)
-            }
         }
     }
 
