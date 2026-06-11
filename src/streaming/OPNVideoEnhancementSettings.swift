@@ -329,6 +329,8 @@ final class OPNVideoEnhancementRenderer: NSObject {
     private let ciContext: CIContext?
     private let outputColorSpace = CGColorSpaceCreateDeviceRGB()
     private let metalFXUpscaler: OPNMetalFXUpscaler
+    private var metalFXIntermediateTexture: (any MTLTexture)?
+    private var metalFXOutputTexture: (any MTLTexture)?
     private var droppedFrames: UInt64 = 0
 
     @objc init(device: (any MTLDevice)?, commandQueue: (any MTLCommandQueue)?) {
@@ -382,6 +384,12 @@ final class OPNVideoEnhancementRenderer: NSObject {
             return false
         }
 
+        if settings.configuredTier == .metalFX,
+           !settings.captureEnhancedPixelBuffer,
+           renderMetalFXFrame(source, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+            return true
+        }
+
         let drawableBounds = CGRect(x: 0, y: 0, width: drawable.texture.width, height: drawable.texture.height)
         let filtered = enhancedImage(source, settings: settings)
         ciContext.render(filtered, to: drawable.texture, commandBuffer: commandBuffer, bounds: drawableBounds, colorSpace: outputColorSpace)
@@ -397,6 +405,55 @@ final class OPNVideoEnhancementRenderer: NSObject {
         result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
         result.droppedFrames = droppedFrames
         result.diagnostics = "Swift Core Image renderer"
+        return true
+    }
+
+    private func renderMetalFXFrame(
+        _ image: CIImage,
+        drawable: any CAMetalDrawable,
+        commandBuffer: any MTLCommandBuffer,
+        settings: OPNVideoEnhancementSettings,
+        result: OPNVideoEnhancementResult,
+        start: CFTimeInterval
+    ) -> Bool {
+        guard isMetalFXAvailable, let ciContext else { return false }
+        let sourceExtent = image.extent.integral
+        let sourceWidth = Int(sourceExtent.width.rounded())
+        let sourceHeight = Int(sourceExtent.height.rounded())
+        let outputWidth = drawable.texture.width
+        let outputHeight = drawable.texture.height
+        guard sourceWidth > 0, sourceHeight > 0, outputWidth >= sourceWidth, outputHeight >= sourceHeight else { return false }
+        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: sourceWidth, height: sourceHeight, pixelFormat: .bgra8Unorm, usage: [.shaderRead, .renderTarget], label: "OpenNOW MetalFX source"),
+              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: drawable.texture.pixelFormat, usage: [.shaderRead, .shaderWrite], label: "OpenNOW MetalFX output") else {
+            result.fallbackReason = "MetalFX texture allocation failed"
+            recordDrop(in: result)
+            return false
+        }
+
+        let filtered = enhancedImageWithoutScale(image.transformed(by: CGAffineTransform(translationX: -sourceExtent.origin.x, y: -sourceExtent.origin.y)), settings: settings).cropped(to: CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight))
+        ciContext.render(filtered, to: sourceTexture, commandBuffer: commandBuffer, bounds: CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight), colorSpace: outputColorSpace)
+        var fallback: NSString?
+        guard metalFXUpscaler.encodeTexture(sourceTexture, toTexture: outputTexture, commandBuffer: commandBuffer, fallback: &fallback) else {
+            result.fallbackReason = (fallback as String?) ?? "MetalFX encode failed"
+            recordDrop(in: result)
+            return false
+        }
+        guard let blit = commandBuffer.makeBlitCommandEncoder() else {
+            result.fallbackReason = "MetalFX blit encoder unavailable"
+            recordDrop(in: result)
+            return false
+        }
+        blit.copy(from: outputTexture, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0), sourceSize: MTLSize(width: outputWidth, height: outputHeight, depth: 1), to: drawable.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blit.endEncoding()
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+
+        result.renderPath = "OPNMetalFXSpatialScalerSwift"
+        result.renderMode = "MetalFX"
+        result.activeTier = "MetalFX Spatial"
+        result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
+        result.droppedFrames = droppedFrames
+        result.diagnostics = "Swift MetalFX spatial scaler"
         return true
     }
 
@@ -452,6 +509,12 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let scaleX = target.width / sourceExtent.width
         let scaleY = target.height / sourceExtent.height
         var output = image.transformed(by: CGAffineTransform(translationX: -sourceExtent.origin.x, y: -sourceExtent.origin.y).scaledBy(x: scaleX, y: scaleY))
+        output = enhancedImageWithoutScale(output, settings: settings)
+        return output.cropped(to: target)
+    }
+
+    private func enhancedImageWithoutScale(_ image: CIImage, settings: OPNVideoEnhancementSettings) -> CIImage {
+        var output = image
         if settings.denoise > 0, let filter = CIFilter(name: "CINoiseReduction") {
             filter.setValue(output, forKey: kCIInputImageKey)
             filter.setValue(Double(settings.denoise) / 100.0, forKey: "inputNoiseLevel")
@@ -463,7 +526,26 @@ final class OPNVideoEnhancementRenderer: NSObject {
             filter.setValue(Double(settings.sharpness) / 50.0, forKey: kCIInputSharpnessKey)
             output = filter.outputImage ?? output
         }
-        return output.cropped(to: target)
+        return output
+    }
+
+    private func reusableTexture(
+        _ texture: inout (any MTLTexture)?,
+        width: Int,
+        height: Int,
+        pixelFormat: MTLPixelFormat,
+        usage: MTLTextureUsage,
+        label: String
+    ) -> (any MTLTexture)? {
+        guard let device, width > 0, height > 0 else { return nil }
+        if texture == nil || texture?.width != width || texture?.height != height || texture?.pixelFormat != pixelFormat {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: pixelFormat, width: width, height: height, mipmapped: false)
+            descriptor.usage = usage
+            descriptor.storageMode = .private
+            texture = device.makeTexture(descriptor: descriptor)
+            texture?.label = label
+        }
+        return texture
     }
 
     private func newEnhancedPixelBuffer(from image: CIImage, width: Int, height: Int, context: CIContext) -> CVPixelBuffer? {
