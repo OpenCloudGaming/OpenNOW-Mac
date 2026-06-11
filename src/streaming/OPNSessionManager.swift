@@ -698,6 +698,22 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let servers = normalizedIceServers(candidate)
             if !servers.isEmpty { return servers }
         }
+        return recursivelyFindIceServers(in: session)
+    }
+
+    private func recursivelyFindIceServers(in value: Any?) -> [[String: Any]] {
+        let servers = normalizedIceServers(value)
+        if !servers.isEmpty { return servers }
+        if let dictionary = value as? [String: Any] {
+            for nestedValue in dictionary.values {
+                let servers = recursivelyFindIceServers(in: nestedValue)
+                if !servers.isEmpty { return servers }
+            }
+        }
+        for item in array(value) {
+            let servers = recursivelyFindIceServers(in: item)
+            if !servers.isEmpty { return servers }
+        }
         return []
     }
 
