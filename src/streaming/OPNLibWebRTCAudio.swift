@@ -29,7 +29,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private var recordingUnit: AudioUnit?
     private var outputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
-    private var recordingScratch = [UInt8]()
+    private var recordingScratch = [Int16]()
     private weak var delegate: RTCAudioDeviceDelegate?
     private var lastMicrophoneLevelReportNanoseconds: UInt64 = 0
 
@@ -147,9 +147,10 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     func captureRecording(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, busNumber: Int, frameCount: UInt32) -> OSStatus {
         guard let delegate, let recordingUnit, let actionFlags, let timestamp else { return noErr }
         let format = streamFormat(sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
-        let requiredBytes = Int(frameCount) * Int(format.mBytesPerFrame)
-        if recordingScratch.count < requiredBytes { recordingScratch = [UInt8](repeating: 0, count: requiredBytes) }
-        return recordingScratch.withUnsafeMutableBytes { scratchBuffer in
+        let requiredSamples = Int(frameCount) * Int(format.mChannelsPerFrame)
+        let requiredBytes = requiredSamples * MemoryLayout<Int16>.size
+        if recordingScratch.count < requiredSamples { recordingScratch = [Int16](repeating: 0, count: requiredSamples) }
+        return recordingScratch.withUnsafeMutableBufferPointer { scratchBuffer in
             guard let baseAddress = scratchBuffer.baseAddress else { return noErr }
             var inputData = AudioBufferList(
                 mNumberBuffers: 1,
@@ -539,10 +540,6 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     func startMicrophoneLevelPolling(sessionImpl: OPNLibWebRTCSessionImpl?, statsQueue: DispatchQueue) {
         guard microphoneLevelTimer == nil else { return }
         self.sessionImpl = sessionImpl
-        if sessionImpl?.audioDevice != nil {
-            NSLog("[LibWebRTC] microphone level polling using CoreAudio capture samples")
-            return
-        }
         let timer = DispatchSource.makeTimerSource(queue: statsQueue)
         timer.schedule(deadline: .now(), repeating: .milliseconds(100), leeway: .milliseconds(20))
         timer.setEventHandler { [weak self, weak sessionImpl] in
