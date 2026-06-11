@@ -575,6 +575,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let responseSessionId = string(session["sessionId"])
         let resolvedSessionId = responseSessionId.isEmpty ? requestedSessionId : responseSessionId
         if !resolvedSessionId.isEmpty { storePersistedActiveSessionId(resolvedSessionId) }
+        let streamProfile = initialProfile.isEmpty ? negotiatedStreamProfile(from: session) : negotiatedStreamProfile(from: session, applying: initialProfile)
         var info: [String: Any] = [
             "sessionId": resolvedSessionId,
             "status": int(session["status"]),
@@ -589,7 +590,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "iceServers": iceServers(from: session),
             "gpuType": string(session["gpuType"]),
             "mediaConnectionInfo": ["ip": "", "port": 0],
-            "negotiatedStreamProfile": initialProfile.isEmpty ? negotiatedStreamProfile(from: session) : initialProfile,
+            "negotiatedStreamProfile": streamProfile,
             "adState": sessionAdState(from: session),
             "remainingPlaytimeHours": 0.0,
             "remainingPlaytimeAvailable": false,
@@ -605,7 +606,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             info["remainingPlaytimeHours"] = progress.remainingPlaytimeHours
             info["remainingPlaytimeAvailable"] = true
         }
-        if initialProfile.isEmpty { info["negotiatedStreamProfile"] = negotiatedStreamProfile(from: session) }
         applyConnectionInfo(session, to: &info)
         if string(info["serverIp"]).isEmpty, let controlInfo = session["sessionControlInfo"] as? [String: Any] {
             info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))
@@ -655,6 +655,44 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "prefilterDenoise": parsed.prefilterDenoise,
             "prefilterModel": parsed.prefilterModel,
         ]
+    }
+
+    private func negotiatedStreamProfile(from session: [String: Any], applying initialProfile: [String: Any]) -> [String: Any] {
+        var profile = initialProfile
+        let negotiated = dictionary(session["negotiatedStreamProfile"])
+        let resolution = string(negotiated["resolution"])
+        if !resolution.isEmpty { profile["resolution"] = resolution }
+        let codec = string(negotiated["codec"])
+        if !codec.isEmpty { profile["codec"] = codec }
+        if negotiated["fps"] != nil { profile["fps"] = int(negotiated["fps"]) }
+
+        let features = dictionary(session["finalizedStreamingFeatures"])
+        var colorChanged = false
+        if features["bitDepth"] != nil {
+            profile["bitDepth"] = int(features["bitDepth"], fallback: int(profile["bitDepth"], fallback: -1))
+            colorChanged = true
+        }
+        if features["chromaFormat"] != nil {
+            profile["chromaFormat"] = int(features["chromaFormat"], fallback: int(profile["chromaFormat"], fallback: -1))
+            colorChanged = true
+        }
+        if colorChanged {
+            profile["colorQuality"] = colorQuality(bitDepth: int(profile["bitDepth"], fallback: -1), chromaFormat: int(profile["chromaFormat"], fallback: -1))
+        }
+        if features["prefilterMode"] != nil { profile["prefilterMode"] = min(max(int(features["prefilterMode"]), 0), 2) }
+        if features["prefilterSharpness"] != nil { profile["prefilterSharpness"] = min(max(int(features["prefilterSharpness"]), 0), 10) }
+        if features["prefilterNoiseReduction"] != nil { profile["prefilterDenoise"] = min(max(int(features["prefilterNoiseReduction"]), 0), 10) }
+        if features["prefilterModel"] != nil { profile["prefilterModel"] = max(int(features["prefilterModel"]), 0) }
+        return profile
+    }
+
+    private func colorQuality(bitDepth: Int, chromaFormat: Int) -> String {
+        let tenBit = bitDepth >= 10
+        let fourFourFour = chromaFormat == 2
+        if tenBit && fourFourFour { return "10bit_444" }
+        if tenBit { return "10bit_420" }
+        if fourFourFour { return "8bit_444" }
+        return "8bit_420"
     }
 
     private func sessionAdState(from session: [String: Any]) -> [String: Any] {
@@ -1057,7 +1095,7 @@ private func escapedLogString(_ value: String) -> String {
     value.isEmpty ? "(empty)" : value
 }
 
-private func dictionary(_ value: NSDictionary) -> [String: Any] {
+private func dictionary(_ value: Any?) -> [String: Any] {
     value as? [String: Any] ?? [:]
 }
 
