@@ -1,6 +1,4 @@
 import AppKit
-import AudioToolbox
-import CoreAudio
 import CoreVideo
 import Foundation
 @preconcurrency import WebRTC
@@ -54,10 +52,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     override init() {
         super.init()
-        let realOwner = Unmanaged.passUnretained(self).toOpaque()
-        inputController = OPNLibWebRTCInput(owner: realOwner)
-        audioController = OPNLibWebRTCAudio(owner: realOwner)
-        statsController = OPNLibWebRTCStats(owner: realOwner)
+        inputController = OPNLibWebRTCInput(owner: self)
+        audioController = OPNLibWebRTCAudio(owner: self)
+        statsController = OPNLibWebRTCStats(owner: self)
     }
 
     deinit {
@@ -102,8 +99,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             return
         }
 
-        let owner = Unmanaged.passUnretained(self).toOpaque()
-        let impl = OPNLibWebRTCSessionImpl(owner: owner)
+        let impl = OPNLibWebRTCSessionImpl(owner: self)
         let encoderFactory = RTCDefaultVideoEncoderFactory()
         let decoderFactory = RTCDefaultVideoDecoderFactory()
         impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
@@ -269,41 +265,41 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                                       videoEnhancementDroppedFrames: stats.videoEnhancementDroppedFrames)
     }
 
-    fileprivate var lowLatencyMode: Bool { bool(settings["lowLatencyMode"]) }
-    fileprivate var targetFps: Int { int(settings["fps"], fallback: 60) }
-    fileprivate var gameVolumeLevel: Double { gameVolume }
-    fileprivate func localVideoEnhancement() -> (Int32, Int32, Int32, Int32) { (Int32(localEnhancementMode), Int32(localEnhancementSharpness), Int32(localEnhancementDenoise), Int32(localEnhancementTargetHeight)) }
-    fileprivate func wantsEnhancedVideoFrames() -> Bool { enhancedVideoFrameCaptureEnabled }
-    fileprivate func nativeWindowHandle() -> UnsafeMutableRawPointer? { nativeWindow }
-    fileprivate func handleVideoFrame(_ frame: UnsafeMutableRawPointer?) { onVideoFrame?(frame) }
-    fileprivate func handleEnhancedVideoFrame(_ pixelBuffer: CVPixelBuffer?) { if let pixelBuffer { onEnhancedVideoFrame?(Unmanaged.passUnretained(pixelBuffer).toOpaque()) } }
-    fileprivate func handleClipboardText(_ text: String) { onClipboardText?(text) }
-    fileprivate func handleMicrophoneLevel(_ level: Double) { onMicrophoneLevel?(level) }
-    fileprivate func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) { onGameAudioFrame?(audioBufferList, frameCount, sampleRate, channels) }
-    fileprivate func refreshAudioDevices() { audioController.refreshAudioDevices(sessionImpl: impl) }
+    var lowLatencyMode: Bool { bool(settings["lowLatencyMode"]) }
+    var targetFps: Int { int(settings["fps"], fallback: 60) }
+    var gameVolumeLevel: Double { gameVolume }
+    func localVideoEnhancement() -> (Int32, Int32, Int32, Int32) { (Int32(localEnhancementMode), Int32(localEnhancementSharpness), Int32(localEnhancementDenoise), Int32(localEnhancementTargetHeight)) }
+    func wantsEnhancedVideoFrames() -> Bool { enhancedVideoFrameCaptureEnabled }
+    func nativeWindowHandle() -> UnsafeMutableRawPointer? { nativeWindow }
+    func handleVideoFrame(_ frame: UnsafeMutableRawPointer?) { onVideoFrame?(frame) }
+    func handleEnhancedVideoFrame(_ pixelBuffer: CVPixelBuffer?) { if let pixelBuffer { onEnhancedVideoFrame?(Unmanaged.passUnretained(pixelBuffer).toOpaque()) } }
+    func handleClipboardText(_ text: String) { onClipboardText?(text) }
+    func handleMicrophoneLevel(_ level: Double) { onMicrophoneLevel?(level) }
+    func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) { onGameAudioFrame?(audioBufferList, frameCount, sampleRate, channels) }
+    func refreshAudioDevices() { audioController.refreshAudioDevices(sessionImpl: impl) }
 
-    fileprivate func handleLocalIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int32) {
+    func handleLocalIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int32) {
         onIceCandidate?(["candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": Int(sdpMLineIndex), "usernameFragment": ""])
     }
 
-    fileprivate func handleConnectionState(_ connected: Bool, error: String) {
+    func handleConnectionState(_ connected: Bool, error: String) {
         onState?(connected, error)
     }
 
-    fileprivate func handleDataChannelState(label: String, open: Bool) {
+    func handleDataChannelState(label: String, open: Bool) {
         inputController.handleDataChannelState(label: label, open: open)
     }
 
-    fileprivate func handleDataChannelMessage(label: String, data: Data) {
+    func handleDataChannelMessage(label: String, data: Data) {
         inputController.handleDataChannelMessage(label: label, data: data, sessionImpl: impl)
     }
 
-    fileprivate func cancelDisconnectGraceTimer() {
+    func cancelDisconnectGraceTimer() {
         disconnectGraceTimer?.cancel()
         disconnectGraceTimer = nil
     }
 
-    fileprivate func startDisconnectGraceTimer(reason: String) {
+    func startDisconnectGraceTimer(reason: String) {
         cancelDisconnectGraceTimer()
         let generation = callbackGeneration
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -316,11 +312,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         timer.resume()
     }
 
-    fileprivate func setVideoRendererState(sink: String, pipelineMode: String) {
+    func setVideoRendererState(sink: String, pipelineMode: String) {
         statsLock.withLock { latestStats.videoSink = sink; latestStats.videoPipelineMode = pipelineMode }
     }
 
-    fileprivate func setVideoRenderDiagnostics(pixelFormat: String, renderMode: String, frameSource: String, renderPath: String, fallback: String, enhancementConfiguredTier: String, enhancementActiveTier: String, enhancementFallbackReason: String, enhancementSourceResolution: String, enhancementDrawableResolution: String, enhancementDiagnostics: String, enhancementFrameTimeMs: Double, enhancementDroppedFrames: UInt64) {
+    func setVideoRenderDiagnostics(pixelFormat: String, renderMode: String, frameSource: String, renderPath: String, fallback: String, enhancementConfiguredTier: String, enhancementActiveTier: String, enhancementFallbackReason: String, enhancementSourceResolution: String, enhancementDrawableResolution: String, enhancementDiagnostics: String, enhancementFrameTimeMs: Double, enhancementDroppedFrames: UInt64) {
         statsLock.withLock {
             latestStats.videoPixelFormat = pixelFormat
             latestStats.videoRenderMode = renderMode
@@ -338,7 +334,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         }
     }
 
-    fileprivate func handleStatsReport(_ report: [String: Any]) {
+    func handleStatsReport(_ report: [String: Any]) {
         statsLock.withLock {
             latestStats.available = bool(report["available"])
             latestStats.latencyMs = double(report["latencyMs"], fallback: latestStats.latencyMs)
@@ -509,114 +505,6 @@ private struct OPNStreamStatsState {
     var videoEnhancementFrameTimeMs = -1.0
     var videoEnhancementDroppedFrames: UInt64 = 0
     var fps = 0
-}
-
-@_cdecl("OPNLibWebRTCSessionOwnerCancelDisconnectGraceTimer")
-func OPNLibWebRTCSessionOwnerCancelDisconnectGraceTimerImpl(_ owner: UnsafeMutableRawPointer?) { ownerSession(owner)?.cancelDisconnectGraceTimer() }
-
-@_cdecl("OPNLibWebRTCSessionOwnerStartDisconnectGraceTimer")
-func OPNLibWebRTCSessionOwnerStartDisconnectGraceTimerImpl(_ owner: UnsafeMutableRawPointer?, _ reason: NSString) { ownerSession(owner)?.startDisconnectGraceTimer(reason: reason as String) }
-
-@_cdecl("OPNLibWebRTCSessionOwnerHandleConnectionState")
-func OPNLibWebRTCSessionOwnerHandleConnectionStateImpl(_ owner: UnsafeMutableRawPointer?, _ connected: Bool, _ error: NSString) { ownerSession(owner)?.handleConnectionState(connected, error: error as String) }
-
-@_cdecl("OPNLibWebRTCSessionOwnerHandleLocalIceCandidate")
-func OPNLibWebRTCSessionOwnerHandleLocalIceCandidateImpl(_ owner: UnsafeMutableRawPointer?, _ candidate: NSString, _ sdpMid: NSString, _ sdpMLineIndex: Int32) { ownerSession(owner)?.handleLocalIceCandidate(candidate: candidate as String, sdpMid: sdpMid as String, sdpMLineIndex: sdpMLineIndex) }
-
-@_cdecl("OPNLibWebRTCSessionOwnerNativeWindowHandle")
-func OPNLibWebRTCSessionOwnerNativeWindowHandleImpl(_ owner: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? { ownerSession(owner)?.nativeWindowHandle() }
-
-@_cdecl("OPNLibWebRTCSessionOwnerTargetFps")
-func OPNLibWebRTCSessionOwnerTargetFpsImpl(_ owner: UnsafeMutableRawPointer?) -> Int32 { Int32(ownerSession(owner)?.targetFps ?? 60) }
-
-@_cdecl("OPNLibWebRTCSessionOwnerGameVolume")
-func OPNLibWebRTCSessionOwnerGameVolumeImpl(_ owner: UnsafeMutableRawPointer?) -> Double { ownerSession(owner)?.gameVolumeLevel ?? 1.0 }
-
-@_cdecl("OPNLibWebRTCSessionOwnerSetVideoRendererState")
-func OPNLibWebRTCSessionOwnerSetVideoRendererStateImpl(_ owner: UnsafeMutableRawPointer?, _ sink: NSString, _ pipelineMode: NSString) { ownerSession(owner)?.setVideoRendererState(sink: sink as String, pipelineMode: pipelineMode as String) }
-
-@_cdecl("OPNLibWebRTCSessionOwnerHandleDataChannelState")
-func OPNLibWebRTCSessionOwnerHandleDataChannelStateImpl(_ owner: UnsafeMutableRawPointer?, _ label: NSString, _ open: Bool) { ownerSession(owner)?.handleDataChannelState(label: label as String, open: open) }
-
-@_cdecl("OPNLibWebRTCSessionOwnerInputReady")
-func OPNLibWebRTCSessionOwnerInputReadyImpl(_ owner: UnsafeMutableRawPointer?) -> Bool { ownerSession(owner)?.isInputReady ?? false }
-
-@_cdecl("OPNLibWebRTCSessionOwnerHandleDataChannelMessage")
-func OPNLibWebRTCSessionOwnerHandleDataChannelMessageImpl(_ owner: UnsafeMutableRawPointer?, _ label: NSString, _ data: NSData) { ownerSession(owner)?.handleDataChannelMessage(label: label as String, data: data as Data) }
-
-@_cdecl("OPNLibWebRTCInputOwnerHandleClipboardText")
-func OPNLibWebRTCInputOwnerHandleClipboardTextImpl(_ owner: UnsafeMutableRawPointer?, _ text: NSString) { ownerSession(owner)?.handleClipboardText(text as String) }
-
-@_cdecl("OPNLibWebRTCAudioOwnerHandleMicrophoneLevel")
-func OPNLibWebRTCAudioOwnerHandleMicrophoneLevelImpl(_ owner: UnsafeMutableRawPointer?, _ level: Double) { ownerSession(owner)?.handleMicrophoneLevel(level) }
-
-@_cdecl("OPNLibWebRTCAudioOwnerHandleConnectionState")
-func OPNLibWebRTCAudioOwnerHandleConnectionStateImpl(_ owner: UnsafeMutableRawPointer?, _ connected: Bool, _ error: NSString) { ownerSession(owner)?.handleConnectionState(connected, error: error as String) }
-
-@_cdecl("OPNLibWebRTCStatsOwnerHandleStatsReport")
-func OPNLibWebRTCStatsOwnerHandleStatsReportImpl(_ owner: UnsafeMutableRawPointer?, _ stats: NSDictionary) { ownerSession(owner)?.handleStatsReport(dictionary(stats)) }
-
-@_cdecl("OPNMetalVideoViewOwnerLowLatencyMode")
-func OPNMetalVideoViewOwnerLowLatencyModeImpl(_ owner: UnsafeMutableRawPointer?) -> Bool { ownerSession(owner)?.lowLatencyMode ?? false }
-
-@_cdecl("OPNMetalVideoViewOwnerLocalVideoEnhancement")
-func OPNMetalVideoViewOwnerLocalVideoEnhancementImpl(_ owner: UnsafeMutableRawPointer?, _ mode: UnsafeMutablePointer<Int32>?, _ sharpness: UnsafeMutablePointer<Int32>?, _ denoise: UnsafeMutablePointer<Int32>?, _ targetHeight: UnsafeMutablePointer<Int32>?) {
-    let values = ownerSession(owner)?.localVideoEnhancement() ?? (0, 0, 0, 2160)
-    mode?.pointee = values.0
-    sharpness?.pointee = values.1
-    denoise?.pointee = values.2
-    targetHeight?.pointee = values.3
-}
-
-@_cdecl("OPNMetalVideoViewOwnerHandleVideoFrame")
-func OPNMetalVideoViewOwnerHandleVideoFrameImpl(_ owner: UnsafeMutableRawPointer?, _ frame: UnsafeMutableRawPointer?) { ownerSession(owner)?.handleVideoFrame(frame) }
-
-@_cdecl("OPNMetalVideoViewOwnerWantsEnhancedVideoFrames")
-func OPNMetalVideoViewOwnerWantsEnhancedVideoFramesImpl(_ owner: UnsafeMutableRawPointer?) -> Bool { ownerSession(owner)?.wantsEnhancedVideoFrames() ?? false }
-
-@_cdecl("OPNMetalVideoViewOwnerHandleEnhancedVideoFrame")
-func OPNMetalVideoViewOwnerHandleEnhancedVideoFrameImpl(_ owner: UnsafeMutableRawPointer?, _ pixelBuffer: CVPixelBuffer?) { ownerSession(owner)?.handleEnhancedVideoFrame(pixelBuffer) }
-
-@_cdecl("OPNMetalVideoViewOwnerSetVideoRenderDiagnostics")
-func OPNMetalVideoViewOwnerSetVideoRenderDiagnosticsImpl(_ owner: UnsafeMutableRawPointer?, _ pixelFormat: NSString, _ renderMode: NSString, _ frameSource: NSString, _ renderPath: NSString, _ fallback: NSString, _ enhancementConfiguredTier: NSString, _ enhancementActiveTier: NSString, _ enhancementFallbackReason: NSString, _ enhancementSourceResolution: NSString, _ enhancementDrawableResolution: NSString, _ enhancementDiagnostics: NSString, _ enhancementFrameTimeMs: Double, _ enhancementDroppedFrames: UInt64) {
-    ownerSession(owner)?.setVideoRenderDiagnostics(pixelFormat: pixelFormat as String, renderMode: renderMode as String, frameSource: frameSource as String, renderPath: renderPath as String, fallback: fallback as String, enhancementConfiguredTier: enhancementConfiguredTier as String, enhancementActiveTier: enhancementActiveTier as String, enhancementFallbackReason: enhancementFallbackReason as String, enhancementSourceResolution: enhancementSourceResolution as String, enhancementDrawableResolution: enhancementDrawableResolution as String, enhancementDiagnostics: enhancementDiagnostics as String, enhancementFrameTimeMs: enhancementFrameTimeMs, enhancementDroppedFrames: enhancementDroppedFrames)
-}
-
-@_cdecl("OPNCoreAudioRTCDeviceHandleGameAudioFrame")
-func OPNCoreAudioRTCDeviceHandleGameAudioFrameImpl(_ owner: UnsafeMutableRawPointer?, _ audioBufferList: UnsafeRawPointer?, _ frameCount: UInt32, _ sampleRate: Double, _ channels: UInt32) { ownerSession(owner)?.handleGameAudioFrame(audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels) }
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegatePreferredInputSampleRate")
-func OPNCoreAudioRTCDeviceDelegatePreferredInputSampleRateImpl(_ delegate: AnyObject?) -> Double { 48_000 }
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegatePreferredOutputSampleRate")
-func OPNCoreAudioRTCDeviceDelegatePreferredOutputSampleRateImpl(_ delegate: AnyObject?) -> Double { 48_000 }
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegatePreferredInputIOBufferDuration")
-func OPNCoreAudioRTCDeviceDelegatePreferredInputIOBufferDurationImpl(_ delegate: AnyObject?) -> Double { 0.01 }
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegatePreferredOutputIOBufferDuration")
-func OPNCoreAudioRTCDeviceDelegatePreferredOutputIOBufferDurationImpl(_ delegate: AnyObject?) -> Double { 0.01 }
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegateNotifyDeviceChange")
-func OPNCoreAudioRTCDeviceDelegateNotifyDeviceChangeImpl(_ delegate: AnyObject?) {}
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegateGetPlayoutData")
-func OPNCoreAudioRTCDeviceDelegateGetPlayoutDataImpl(_ delegate: AnyObject?, _ actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, _ timestamp: UnsafePointer<AudioTimeStamp>?, _ busNumber: Int, _ frameCount: UInt32, _ audioBufferList: UnsafeMutablePointer<AudioBufferList>?) -> OSStatus {
-    if let audioBufferList {
-        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
-        for index in 0..<buffers.count {
-            if let data = buffers[index].mData { memset(data, 0, Int(buffers[index].mDataByteSize)) }
-        }
-    }
-    return noErr
-}
-
-@_cdecl("OPNCoreAudioRTCDeviceDelegateDeliverRecordedData")
-func OPNCoreAudioRTCDeviceDelegateDeliverRecordedDataImpl(_ delegate: AnyObject?, _ actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, _ timestamp: UnsafePointer<AudioTimeStamp>?, _ busNumber: Int, _ frameCount: UInt32, _ audioBufferList: UnsafeMutablePointer<AudioBufferList>?) -> OSStatus { noErr }
-
-private func ownerSession(_ owner: UnsafeMutableRawPointer?) -> OPNLibWebRTCStreamSession? {
-    guard let owner else { return nil }
-    return Unmanaged<OPNLibWebRTCStreamSession>.fromOpaque(owner).takeUnretainedValue()
 }
 
 private func buildNvstSdp(settings: [String: Any], credentials: OPNIceCredentials) -> String {

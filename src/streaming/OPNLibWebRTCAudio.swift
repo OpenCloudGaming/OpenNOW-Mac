@@ -2,12 +2,6 @@ import CoreAudio
 import Foundation
 @preconcurrency import WebRTC
 
-@_silgen_name("OPNLibWebRTCAudioOwnerHandleMicrophoneLevel")
-private func OPNLibWebRTCAudioOwnerHandleMicrophoneLevel(_ owner: UnsafeMutableRawPointer?, _ level: Double)
-
-@_silgen_name("OPNLibWebRTCAudioOwnerHandleConnectionState")
-private func OPNLibWebRTCAudioOwnerHandleConnectionState(_ owner: UnsafeMutableRawPointer?, _ connected: Bool, _ error: NSString)
-
 private let audioDeviceChangedCallback: AudioObjectPropertyListenerProc = { _, _, _, clientData in
     guard let clientData else { return noErr }
     let audio = Unmanaged<OPNLibWebRTCAudio>.fromOpaque(clientData).takeUnretainedValue()
@@ -17,7 +11,7 @@ private let audioDeviceChangedCallback: AudioObjectPropertyListenerProc = { _, _
 
 @objc(OPNLibWebRTCAudio)
 final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
-    private let owner: UnsafeMutableRawPointer?
+    private weak var owner: OPNLibWebRTCStreamSession?
     private var microphoneEnabled = false
     @objc private(set) var gameVolume = 1.0
     private var microphoneVolume = 1.0
@@ -31,7 +25,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     private weak var sessionImpl: OPNLibWebRTCSessionImpl?
 
     @objc(initWithOwner:)
-    init(owner: UnsafeMutableRawPointer?) {
+    init(owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
         super.init()
     }
@@ -44,7 +38,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         if enabled, sessionImpl?.localMicrophoneTrack != nil {
             startMicrophoneLevelPolling(sessionImpl: sessionImpl, statsQueue: DispatchQueue.global(qos: .utility))
         } else if !enabled {
-            OPNLibWebRTCAudioOwnerHandleMicrophoneLevel(owner, 0)
+            owner?.handleMicrophoneLevel(0)
         }
     }
 
@@ -71,12 +65,6 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
             NSLog("[LibWebRTC] audio device refresh skipped: peer connection missing")
             return
         }
-        if let audioDevice = sessionImpl.audioDevice {
-            audioDevice.handleDefaultDeviceChange()
-            NSLog("[LibWebRTC] audio device refresh delegated to CoreAudio RTC device input=%u output=%u", defaultInputDevice, defaultOutputDevice)
-            return
-        }
-
         let refreshGeneration = audioDeviceChangeGeneration
         let shouldRestoreMicrophone = sessionImpl.localMicrophoneTrack?.isEnabled ?? false
         sessionImpl.remoteAudioTrack?.isEnabled = false
@@ -173,11 +161,11 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
 
         audioDeviceChangeGeneration &+= 1
         let generation = audioDeviceChangeGeneration
-        if sessionImpl?.audioDevice == nil, Self.envFlagEnabled("OPN_ENABLE_WEBRTC_AUDIO_HOTSWAP_RECOVERY", defaultValue: true) {
+        if Self.envFlagEnabled("OPN_ENABLE_WEBRTC_AUDIO_HOTSWAP_RECOVERY", defaultValue: true) {
             DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(700)) { [weak self] in
                 guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == generation else { return }
                 NSLog("[LibWebRTC] forcing stream recovery after audio device change input=%u output=%u", self.defaultInputDevice, self.defaultOutputDevice)
-                OPNLibWebRTCAudioOwnerHandleConnectionState(self.owner, false, "webrtc audio device changed" as NSString)
+                self.owner?.handleConnectionState(false, error: "webrtc audio device changed")
             }
         }
     }
@@ -192,7 +180,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
             guard let self else { return }
             guard let peerConnection = sessionImpl?.peerConnection, let microphoneTrack = sessionImpl?.localMicrophoneTrack else { return }
             guard self.microphoneEnabled, microphoneTrack.isEnabled else {
-                OPNLibWebRTCAudioOwnerHandleMicrophoneLevel(self.owner, 0)
+                self.owner?.handleMicrophoneLevel(0)
                 return
             }
             guard !self.microphoneLevelRequestInFlight else { return }
@@ -201,7 +189,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
                 guard let self else { return }
                 self.microphoneLevelRequestInFlight = false
                 let level = Self.microphoneLevel(from: report)
-                if level >= 0 { OPNLibWebRTCAudioOwnerHandleMicrophoneLevel(self.owner, level * self.microphoneVolume) }
+                if level >= 0 { self.owner?.handleMicrophoneLevel(level * self.microphoneVolume) }
             }
         }
         microphoneLevelTimer = timer
@@ -213,7 +201,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         microphoneLevelTimer?.cancel()
         microphoneLevelTimer = nil
         microphoneLevelRequestInFlight = false
-        OPNLibWebRTCAudioOwnerHandleMicrophoneLevel(owner, 0)
+        owner?.handleMicrophoneLevel(0)
     }
 
     private func setRTCAudioSessionEnabled(_ enabled: Bool) {

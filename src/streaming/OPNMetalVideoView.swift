@@ -6,39 +6,6 @@ import MetalKit
 import QuartzCore
 @preconcurrency import WebRTC
 
-@_silgen_name("OPNMetalVideoViewOwnerLowLatencyMode")
-private func OPNMetalVideoViewOwnerLowLatencyMode(_ owner: UnsafeMutableRawPointer?) -> Bool
-
-@_silgen_name("OPNMetalVideoViewOwnerLocalVideoEnhancement")
-private func OPNMetalVideoViewOwnerLocalVideoEnhancement(_ owner: UnsafeMutableRawPointer?, _ mode: UnsafeMutablePointer<Int32>?, _ sharpness: UnsafeMutablePointer<Int32>?, _ denoise: UnsafeMutablePointer<Int32>?, _ targetHeight: UnsafeMutablePointer<Int32>?)
-
-@_silgen_name("OPNMetalVideoViewOwnerHandleVideoFrame")
-private func OPNMetalVideoViewOwnerHandleVideoFrame(_ owner: UnsafeMutableRawPointer?, _ frame: UnsafeMutableRawPointer?)
-
-@_silgen_name("OPNMetalVideoViewOwnerWantsEnhancedVideoFrames")
-private func OPNMetalVideoViewOwnerWantsEnhancedVideoFrames(_ owner: UnsafeMutableRawPointer?) -> Bool
-
-@_silgen_name("OPNMetalVideoViewOwnerHandleEnhancedVideoFrame")
-private func OPNMetalVideoViewOwnerHandleEnhancedVideoFrame(_ owner: UnsafeMutableRawPointer?, _ pixelBuffer: CVPixelBuffer?)
-
-@_silgen_name("OPNMetalVideoViewOwnerSetVideoRenderDiagnostics")
-private func OPNMetalVideoViewOwnerSetVideoRenderDiagnostics(
-    _ owner: UnsafeMutableRawPointer?,
-    _ pixelFormat: NSString,
-    _ renderMode: NSString,
-    _ frameSource: NSString,
-    _ renderPath: NSString,
-    _ fallback: NSString,
-    _ enhancementConfiguredTier: NSString,
-    _ enhancementActiveTier: NSString,
-    _ enhancementFallbackReason: NSString,
-    _ enhancementSourceResolution: NSString,
-    _ enhancementDrawableResolution: NSString,
-    _ enhancementDiagnostics: NSString,
-    _ enhancementFrameTimeMs: Double,
-    _ enhancementDroppedFrames: UInt64
-)
-
 @objc private protocol OPNRTCMetalRenderer: NSObjectProtocol {
     @objc(addRenderingDestination:)
     func addRenderingDestination(_ view: MTKView) -> Bool
@@ -68,10 +35,9 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
     private var enhancementResult = OPNVideoEnhancementResult()
     private var enhancementOverBudgetCount = 0
     private var adaptiveEnhancementPenalty = 0
-    private let owner: UnsafeMutableRawPointer?
+    private weak var owner: OPNLibWebRTCStreamSession?
 
-    @objc(initWithFrame:targetFps:owner:)
-    init(frame frameRect: NSRect, targetFps: Int32, owner: UnsafeMutableRawPointer?) {
+    init(frame frameRect: NSRect, targetFps: Int32, owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
         self.targetFps = min(max(Int(targetFps), 30), 240)
         metalView = MTKView(frame: frameRect, device: MTLCreateSystemDefaultDevice())
@@ -93,7 +59,7 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
             metalLayer.presentsWithTransaction = false
             metalLayer.allowsNextDrawableTimeout = false
             if #available(macOS 10.13, *) {
-                metalLayer.maximumDrawableCount = OPNMetalVideoViewOwnerLowLatencyMode(owner) ? 2 : 3
+                metalLayer.maximumDrawableCount = owner?.lowLatencyMode == true ? 2 : 3
             }
         }
         addSubview(metalView)
@@ -135,7 +101,7 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
 
     func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
-        OPNMetalVideoViewOwnerHandleVideoFrame(owner, Unmanaged.passUnretained(frame).toOpaque())
+        owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
         synchronized {
             videoFrame = frame
             frameSerial += 1
@@ -233,7 +199,7 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
         settings.sourceSize = sourceSize
         settings.drawableSize = metalView.drawableSize
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
-        settings.captureEnhancedPixelBuffer = OPNMetalVideoViewOwnerWantsEnhancedVideoFrames(owner)
+        settings.captureEnhancedPixelBuffer = owner?.wantsEnhancedVideoFrames() == true
         settings.lowCostSpatial = adaptiveEnhancementPenalty > 0
         let diagnosticsNow = CACurrentMediaTime()
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
@@ -256,7 +222,7 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
             lastDrawnFrameSerial = drawSerial
             adaptEnhancementBudget(frameTimeMs: result.frameTimeMs, targetFrameTimeMs: settings.targetFrameTimeMs)
             if let enhancedPixelBuffer = result.enhancedPixelBuffer {
-                OPNMetalVideoViewOwnerHandleEnhancedVideoFrame(owner, enhancedPixelBuffer)
+                owner?.handleEnhancedVideoFrame(enhancedPixelBuffer)
                 result.enhancedPixelBuffer = nil
             }
             lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
@@ -352,31 +318,26 @@ final class OPNMetalVideoView: NSView, @preconcurrency RTCVideoRenderer, MTKView
         let now = CACurrentMediaTime()
         guard force || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
         lastDiagnosticsUpdateTime = now
-        OPNMetalVideoViewOwnerSetVideoRenderDiagnostics(
-            owner,
-            diagnostics.pixelFormat as NSString,
-            diagnostics.renderMode as NSString,
-            diagnostics.frameSource as NSString,
-            diagnostics.renderPath as NSString,
-            diagnostics.fallback as NSString,
-            diagnostics.enhancementConfiguredTier as NSString,
-            diagnostics.enhancementActiveTier as NSString,
-            diagnostics.enhancementFallbackReason as NSString,
-            diagnostics.sourceResolution as NSString,
-            diagnostics.drawableResolution as NSString,
-            diagnostics.enhancementDiagnostics as NSString,
-            diagnostics.enhancementFrameTimeMs,
-            enhancementDroppedFrameCount
+        owner?.setVideoRenderDiagnostics(
+            pixelFormat: diagnostics.pixelFormat,
+            renderMode: diagnostics.renderMode,
+            frameSource: diagnostics.frameSource,
+            renderPath: diagnostics.renderPath,
+            fallback: diagnostics.fallback,
+            enhancementConfiguredTier: diagnostics.enhancementConfiguredTier,
+            enhancementActiveTier: diagnostics.enhancementActiveTier,
+            enhancementFallbackReason: diagnostics.enhancementFallbackReason,
+            enhancementSourceResolution: diagnostics.sourceResolution,
+            enhancementDrawableResolution: diagnostics.drawableResolution,
+            enhancementDiagnostics: diagnostics.enhancementDiagnostics,
+            enhancementFrameTimeMs: diagnostics.enhancementFrameTimeMs,
+            enhancementDroppedFrames: enhancementDroppedFrameCount
         )
     }
 
     private func localVideoEnhancement() -> VideoEnhancement {
-        var mode: Int32 = 0
-        var sharpness: Int32 = 0
-        var denoise: Int32 = 0
-        var targetHeight: Int32 = 2160
-        OPNMetalVideoViewOwnerLocalVideoEnhancement(owner, &mode, &sharpness, &denoise, &targetHeight)
-        return VideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+        let values = owner?.localVideoEnhancement() ?? (0, 0, 0, 2160)
+        return VideoEnhancement(mode: values.0, sharpness: values.1, denoise: values.2, targetHeight: values.3)
     }
 
     private func synchronized<T>(_ body: () -> T) -> T {

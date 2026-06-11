@@ -1,9 +1,6 @@
 import Foundation
 @preconcurrency import WebRTC
 
-@_silgen_name("OPNLibWebRTCInputOwnerHandleClipboardText")
-private func OPNLibWebRTCInputOwnerHandleClipboardText(_ owner: UnsafeMutableRawPointer?, _ text: NSString)
-
 @objc(OPNLibWebRTCInput)
 final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     private enum Constants {
@@ -13,7 +10,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         static let lowLatencyInputBacklogLimitBytes: UInt64 = 4 * 1024
     }
 
-    private let owner: UnsafeMutableRawPointer?
+    private weak var owner: OPNLibWebRTCStreamSession?
     private let encoder = OPNInputProtocolEncoder()
     private var inputReady = false
     private var reliableOpen = false
@@ -22,7 +19,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     private weak var sessionImpl: OPNLibWebRTCSessionImpl?
 
     @objc(initWithOwner:)
-    init(owner: UnsafeMutableRawPointer?) {
+    init(owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
         super.init()
     }
@@ -183,7 +180,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             clipboardText = clipboardTextFromJSON(payload)
         }
         if !clipboardText.isEmpty {
-            OPNLibWebRTCInputOwnerHandleClipboardText(owner, clipboardText as NSString)
+            owner?.handleClipboardText(clipboardText)
             NSLog("[LibWebRTC] remote clipboard text received bytes=%zu", data.count)
         }
     }

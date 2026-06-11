@@ -65,7 +65,6 @@
 		E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AB; };
 		E000000000000000000000B4 /* OPNWebRTCCodecSupport.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B5; };
 		E000000000000000000000B6 /* OPNMetalVideoView.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B7; };
-		E000000000000000000000B2 /* OPNCoreAudioRTCDevice.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B3; };
 		E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B9; };
 		E000000000000000000000BA /* OPNLibWebRTCInput.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BB; };
 		E000000000000000000000BE /* OPNLibWebRTCStats.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BF; };
@@ -306,7 +305,6 @@
 		E000000000000000000000C5 /* OPNLibWebRTCStreamSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCStreamSession.swift; path = src/streaming/OPNLibWebRTCStreamSession.swift; sourceTree = "<group>"; };
 		E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNWebRTCCodecSupport.swift; path = src/streaming/OPNWebRTCCodecSupport.swift; sourceTree = "<group>"; };
 		E000000000000000000000B7 /* OPNMetalVideoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNMetalVideoView.swift; path = src/streaming/OPNMetalVideoView.swift; sourceTree = "<group>"; };
-		E000000000000000000000B3 /* OPNCoreAudioRTCDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAudioRTCDevice.swift; path = src/streaming/OPNCoreAudioRTCDevice.swift; sourceTree = "<group>"; };
 		E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCSessionImpl.swift; path = src/streaming/OPNLibWebRTCSessionImpl.swift; sourceTree = "<group>"; };
 		E000000000000000000000BB /* OPNLibWebRTCInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCInput.swift; path = src/streaming/OPNLibWebRTCInput.swift; sourceTree = "<group>"; };
 		E000000000000000000000BF /* OPNLibWebRTCStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCStats.swift; path = src/streaming/OPNLibWebRTCStats.swift; sourceTree = "<group>"; };
@@ -581,7 +579,6 @@
 				E000000000000000000000AB /* OPNInputProtocol.swift */,
 				E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */,
 				E000000000000000000000B7 /* OPNMetalVideoView.swift */,
-				E000000000000000000000B3 /* OPNCoreAudioRTCDevice.swift */,
 				E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */,
 				E000000000000000000000BB /* OPNLibWebRTCInput.swift */,
 				E000000000000000000000BF /* OPNLibWebRTCStats.swift */,
@@ -705,7 +702,6 @@
 				E000000000000000000000AA /* OPNInputProtocol.swift in PBXBuildFile */,
 				E000000000000000000000B4 /* OPNWebRTCCodecSupport.swift in PBXBuildFile */,
 				E000000000000000000000B6 /* OPNMetalVideoView.swift in PBXBuildFile */,
-				E000000000000000000000B2 /* OPNCoreAudioRTCDevice.swift in PBXBuildFile */,
 				E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in PBXBuildFile */,
 				E000000000000000000000BA /* OPNLibWebRTCInput.swift in PBXBuildFile */,
 				E000000000000000000000BE /* OPNLibWebRTCStats.swift in PBXBuildFile */,

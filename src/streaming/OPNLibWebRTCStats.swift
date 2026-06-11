@@ -1,19 +1,16 @@
 import Foundation
 @preconcurrency import WebRTC
 
-@_silgen_name("OPNLibWebRTCStatsOwnerHandleStatsReport")
-private func OPNLibWebRTCStatsOwnerHandleStatsReport(_ owner: UnsafeMutableRawPointer?, _ stats: NSDictionary)
-
 @objc(OPNLibWebRTCStats)
 final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
-    private let owner: UnsafeMutableRawPointer?
+    private weak var owner: OPNLibWebRTCStreamSession?
     private var timer: DispatchSourceTimer?
     private var requestInFlight = false
     private var lastRequestMs: UInt64 = 0
     private weak var sessionImpl: OPNLibWebRTCSessionImpl?
 
     @objc(initWithOwner:)
-    init(owner: UnsafeMutableRawPointer?) {
+    init(owner: OPNLibWebRTCStreamSession?) {
         self.owner = owner
         super.init()
     }
@@ -32,10 +29,10 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
                 guard let self else { return }
                 self.requestInFlight = false
                 guard let parsed = Self.parse(report) else {
-                    OPNLibWebRTCStatsOwnerHandleStatsReport(self.owner, ["available": false])
+                    self.owner?.handleStatsReport(["available": false])
                     return
                 }
-                OPNLibWebRTCStatsOwnerHandleStatsReport(self.owner, parsed as NSDictionary)
+                self.owner?.handleStatsReport(parsed)
             }
         }
     }
