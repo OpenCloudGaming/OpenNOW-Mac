@@ -24,6 +24,12 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     private var didOpen = false
     private var connectCompletion: ((Bool, String) -> Void)?
     private var activeURL: URL?
+    private var intentionallyDisconnected = false
+    private var reconnecting = false
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 5
+    private var pendingAckMessages: [(ackId: Int, json: String)] = []
+    private var queuedMessages: [String] = []
 
     init(signalingServer: String, sessionId: String, signalingUrl: String) {
         self.signalingServer = signalingServer
@@ -50,7 +56,11 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
 
         peerName = "peer-\(UInt32.random(in: 0..<1_000_000_000))"
         didOpen = false
-        guard let url = buildSignInURL() else {
+        intentionallyDisconnected = false
+        reconnectAttempts = 0
+        pendingAckMessages.removeAll()
+        queuedMessages.removeAll()
+        guard let url = buildSignInURL(reconnect: false) else {
             completion(false, "Failed to build signaling URL")
             return
         }
@@ -85,6 +95,8 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
 
     func disconnect() {
         connectionGeneration += 1
+        intentionallyDisconnected = true
+        reconnecting = false
         clearHeartbeat()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
@@ -125,8 +137,12 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            let wasOpen = self.didOpen
             self.didOpen = true
-            self.sendPeerInfo()
+            self.reconnecting = false
+            self.reconnectAttempts = 0
+            if wasOpen { self.flushPendingMessages() }
+            else { self.sendPeerInfo(); self.flushQueuedMessages() }
             self.setupHeartbeat()
             let completion = self.connectCompletion
             self.connectCompletion = nil
@@ -142,10 +158,10 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
                 let nsError = error as NSError
                 if self.isSocketNotConnectedError(nsError) {
                     NSLog("[Signaling] Post-connection socket closed: %@", nsError.localizedDescription)
-                    self.onClosed?(true, "")
+                    self.scheduleReconnect(reason: nsError.localizedDescription)
                 } else {
                     NSLog("[Signaling] Post-connection error: %@", nsError)
-                    self.onClosed?(false, nsError.localizedDescription)
+                    self.scheduleReconnect(reason: nsError.localizedDescription)
                 }
                 return
             }
@@ -164,9 +180,14 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
             NSLog("[Signaling] WebSocket closed: code=%ld, reason=%@", closeCode.rawValue, reasonText)
             self.clearHeartbeat()
             self.webSocketTask = nil
-            if self.didOpen {
+            if self.reconnecting { return }
+            if self.didOpen, !self.intentionallyDisconnected {
                 let clean = closeCode == .normalClosure || closeCode == .goingAway
-                self.onClosed?(clean, reasonText)
+                if clean {
+                    self.onClosed?(true, reasonText)
+                } else {
+                    self.scheduleReconnect(reason: reasonText.isEmpty ? "Signaling socket closed" : reasonText)
+                }
             }
         }
     }
@@ -177,7 +198,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         return queue
     }
 
-    private func buildSignInURL() -> URL? {
+    private func buildSignInURL(reconnect: Bool) -> URL? {
         let baseURLString: String
         if !signalingUrl.isEmpty {
             baseURLString = signalingUrl
@@ -202,8 +223,49 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         items.append(URLQueryItem(name: "version", value: "2"))
         items.append(URLQueryItem(name: "peer_role", value: "1"))
         items.append(URLQueryItem(name: "pairing_id", value: sessionId))
+        if reconnect { items.append(URLQueryItem(name: "reconnect", value: "1")) }
         components.queryItems = items
         return components.url
+    }
+
+    private func scheduleReconnect(reason: String) {
+        guard !intentionallyDisconnected else { return }
+        guard reconnectAttempts < maxReconnectAttempts else {
+            onClosed?(false, reason.isEmpty ? "Signaling reconnect failed" : reason)
+            return
+        }
+        reconnectAttempts += 1
+        reconnecting = true
+        clearHeartbeat()
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+        webSocketTask = nil
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
+        let attempt = reconnectAttempts
+        let generation = connectionGeneration
+        NSLog("[Signaling] Reconnecting socket attempt=%d reason=%@", attempt, reason)
+        DispatchQueue.main.asyncAfter(deadline: .now() + min(3.0, Double(attempt))) { [weak self] in
+            guard let self, self.connectionGeneration == generation, !self.intentionallyDisconnected else { return }
+            self.reconnectSocket()
+        }
+    }
+
+    private func reconnectSocket() {
+        guard let url = buildSignInURL(reconnect: true) else {
+            onClosed?(false, "Failed to build reconnect signaling URL")
+            return
+        }
+        activeURL = url
+        let configuration = URLSessionConfiguration.default
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: singleThreadedDelegateQueue())
+        var request = URLRequest(url: url)
+        request.setValue("x-nv-sessionid.\(sessionId)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
+        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        let task = session.webSocketTask(with: request)
+        urlSession = session
+        webSocketTask = task
+        task.resume()
     }
 
     private func setupHeartbeat() {
@@ -254,7 +316,36 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     }
 
     private func sendJson(_ json: String) {
-        webSocketTask?.send(.string(json)) { _ in }
+        guard let task = webSocketTask, task.state == .running else {
+            queuedMessages.append(json)
+            if didOpen { scheduleReconnect(reason: "Signaling send queued while socket closed") }
+            return
+        }
+        task.send(.string(json)) { [weak self] error in
+            guard let self, error != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.queuedMessages.append(json)
+                self?.scheduleReconnect(reason: error?.localizedDescription ?? "Signaling send failed")
+            }
+        }
+    }
+
+    private func sendReliableJson(_ json: String, ackId: Int) {
+        pendingAckMessages.append((ackId: ackId, json: json))
+        sendJson(json)
+    }
+
+    private func flushPendingMessages() {
+        let pending = pendingAckMessages.map(\.json)
+        let queued = queuedMessages
+        queuedMessages.removeAll()
+        for json in pending + queued { sendJson(json) }
+    }
+
+    private func flushQueuedMessages() {
+        let queued = queuedMessages
+        queuedMessages.removeAll()
+        for json in queued { sendJson(json) }
     }
 
     private func sendPeerInfo() {
@@ -272,7 +363,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
                 "version": 2,
             ],
         ]
-        sendJSONObject(info)
+        sendJSONObject(info, ackId: ackCounter)
     }
 
     private func handleMessage(_ text: String) {
@@ -295,7 +386,10 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
             }
         }
 
-        if json["ack"] != nil { return }
+        if let ack = json["ack"] as? NSNumber {
+            pendingAckMessages.removeAll { $0.ackId <= ack.intValue }
+            return
+        }
         if json["hb"] != nil {
             sendJson("{\"hb\":1}")
             return
@@ -344,13 +438,14 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
             ],
             "ackid": ackCounter,
         ]
-        sendJSONObject(peerMessage)
+        sendJSONObject(peerMessage, ackId: ackCounter)
     }
 
-    private func sendJSONObject(_ object: [String: Any]) {
+    private func sendJSONObject(_ object: [String: Any], ackId: Int? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let text = String(data: data, encoding: .utf8) else { return }
-        sendJson(text)
+        if let ackId { sendReliableJson(text, ackId: ackId) }
+        else { sendJson(text) }
     }
 
     private func sanitizedSignalingURLString() -> String {
