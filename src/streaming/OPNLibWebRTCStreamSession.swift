@@ -502,7 +502,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     private func attachMicrophoneTrack(impl: OPNLibWebRTCSessionImpl, audioTrack: RTCAudioTrack) -> Bool {
         guard let peerConnection = impl.peerConnection else { return false }
-        if let transceiver = peerConnection.transceivers.first(where: { $0.mediaType == .audio }) {
+        if let transceiver = findMicrophoneTransceiver(peerConnection: peerConnection) {
             var target = transceiver.direction
             if transceiver.direction == .recvOnly { target = .sendRecv }
             else if transceiver.direction == .inactive { target = .sendOnly }
@@ -519,6 +519,17 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         guard let sender = peerConnection.add(audioTrack, streamIds: ["mic"]) else { return false }
         impl.localMicrophoneSender = sender
         return true
+    }
+
+    private func findMicrophoneTransceiver(peerConnection: RTCPeerConnection) -> RTCRtpTransceiver? {
+        var firstAvailableAudio: RTCRtpTransceiver?
+        var firstSendableAudio: RTCRtpTransceiver?
+        for transceiver in peerConnection.transceivers where transceiver.mediaType == .audio && !transceiver.isStopped {
+            if transceiver.mid == "3" { return transceiver }
+            if firstAvailableAudio == nil, transceiver.sender.track == nil { firstAvailableAudio = transceiver }
+            if firstSendableAudio == nil, transceiver.direction == .sendRecv || transceiver.direction == .recvOnly || transceiver.direction == .inactive { firstSendableAudio = transceiver }
+        }
+        return firstAvailableAudio ?? firstSendableAudio
     }
 
     private func iceServers(from sessionInfo: [String: Any]) -> [RTCIceServer] {
