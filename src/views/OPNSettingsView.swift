@@ -832,7 +832,11 @@ final class OPNSettingsView: NSView {
     @objc private func upscalingSharpnessPopupChanged(_ sender: NSPopUpButton) { OPNStreamPreferences.saveUpscalingSharpness(sender.indexOfSelectedItem); rebuildContent() }
     @objc private func upscalingDenoisePopupChanged(_ sender: NSPopUpButton) { OPNStreamPreferences.saveUpscalingDenoise(sender.indexOfSelectedItem); rebuildContent() }
     @objc private func recordingEnhancedVideoToggleChanged(_ sender: NSButton) { OPNStreamPreferences.saveRecordingEnhancedVideoEnabled(sender.state == .on); rebuildContent() }
-    @objc private func recordingVideoBitrateSliderChanged(_ sender: NSSlider) { OPNStreamPreferences.saveRecordingVideoBitrateMbps(max(0, Int(sender.doubleValue.rounded()))); rebuildContent() }
+    @objc private func recordingVideoBitrateSliderChanged(_ sender: NSSlider) {
+        let bitrateMbps = Int(sender.doubleValue.rounded())
+        OPNStreamPreferences.saveRecordingVideoBitrateMbps(bitrateMbps > 0 ? max(5, bitrateMbps) : 0)
+        rebuildContent()
+    }
     @objc private func recordingAudioBitrateSliderChanged(_ sender: NSSlider) { OPNStreamPreferences.saveRecordingAudioBitrateKbps(Int(sender.doubleValue.rounded())); rebuildContent() }
     @objc private func suppressInputWhenInactiveToggleChanged(_ sender: NSButton) { OPNStreamPreferences.saveSuppressInputWhenInactive(sender.state == .on); rebuildContent() }
     @objc private func directMouseInputToggleChanged(_ sender: NSButton) { OPNStreamPreferences.saveDirectMouseInputEnabled(sender.state == .on); rebuildContent() }
