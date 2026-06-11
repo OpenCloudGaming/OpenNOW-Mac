@@ -280,10 +280,19 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func refreshAudioDevices() { audioController.refreshAudioDevices(sessionImpl: impl) }
 
     func handleLocalIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int32) {
-        onIceCandidate?(["candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": Int(sdpMLineIndex), "usernameFragment": ""])
+        onIceCandidate?(["candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": Int(sdpMLineIndex)])
     }
 
     func handleConnectionState(_ connected: Bool, error: String) {
+        if connected {
+            statsLock.withLock {
+                latestStats.available = true
+                latestStats.videoPipelineMode = "libwebrtc connected"
+            }
+            statsController.startPolling(sessionImpl: impl, queue: statsQueue)
+        } else {
+            statsController.stopPolling()
+        }
         onState?(connected, error)
     }
 
@@ -392,8 +401,15 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let lostDelta = max(0, packetsLost - previousPacketsLost)
         let packetDelta = max(0, Int64(packetsReceived >= previousPacketsReceived ? packetsReceived - previousPacketsReceived : 0))
         let lossPercent = packetDelta + lostDelta > 0 ? Double(lostDelta) * 100.0 / Double(packetDelta + lostDelta) : 0
+        let byteDelta = bytesReceived >= previousBytesReceived ? bytesReceived - previousBytesReceived : 0
+        let bitrateMbps = Double(byteDelta) * 8.0 / Double(dtMs) / 1000.0
         let framesDelta = framesDecoded >= previousFramesDecoded ? framesDecoded - previousFramesDecoded : 0
         let fps = Double(framesDelta) * 1000.0 / Double(dtMs)
+        statsLock.withLock {
+            latestStats.inboundBitrateMbps = bitrateMbps
+            latestStats.packetLossPercent = lossPercent
+            if fps > 0 { latestStats.fps = Int(fps.rounded()) }
+        }
         previousStatsTimestampMs = timestampMs
         previousBytesReceived = bytesReceived
         previousPacketsReceived = packetsReceived

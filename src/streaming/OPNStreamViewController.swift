@@ -8,6 +8,14 @@ private typealias OPNStreamSessionAnswerHandler = @convention(block) (NSString, 
 private typealias OPNStreamSessionLocalIceCandidateHandler = @convention(block) (NSDictionary) -> Void
 private typealias OPNStreamSessionStateHandler = @convention(block) (Bool, NSString) -> Void
 
+private final class OPNStreamSendableValue<T>: @unchecked Sendable {
+    let value: T
+
+    init(_ value: T) {
+        self.value = value
+    }
+}
+
 @objc(OPNStreamViewController)
 @objcMembers
 final class OPNStreamViewController: NSViewController {
@@ -193,14 +201,32 @@ final class OPNStreamViewController: NSViewController {
         healthReportStarted = true
 
         let settings = streamSettingsDictionary()
-        apply(settings: settings)
         OPNSessionManager.shared.setAccessToken(apiToken)
-        OPNSessionManager.shared.setStreamingBaseUrl(OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId))
+        let selectedStreamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
+        OPNSessionManager.shared.setStreamingBaseUrl(selectedStreamingBaseUrl)
 
-        if resumeExistingSession {
-            claimSession(settings: settings, generation: generation)
-        } else {
-            createSession(settings: settings, generation: generation)
+        let settingsBox = OPNStreamSendableValue(settings)
+        let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"], fallback: 50)
+        OPNStreamPreferences.fetchCloudVariables(token: apiToken) { [weak self] _ in
+            guard let self else { return }
+            OPNStreamPreferences.runNetworkPreflight(token: self.apiToken, providerStreamingBaseUrl: selectedStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps) { [weak self] preflight in
+                DispatchQueue.main.async {
+                    guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                    var launchSettings = settingsBox.value
+                    launchSettings["networkTestSessionId"] = preflight.networkTestSessionId
+                    launchSettings["networkType"] = preflight.networkType
+                    launchSettings["networkLatencyMs"] = preflight.latencyMs >= 0 ? String(preflight.latencyMs) : "Unknown"
+                    if !preflight.streamingBaseUrl.isEmpty {
+                        OPNSessionManager.shared.setStreamingBaseUrl(preflight.streamingBaseUrl)
+                    }
+                    self.apply(settings: launchSettings)
+                    if self.resumeExistingSession {
+                        self.claimSession(settings: launchSettings, generation: generation)
+                    } else {
+                        self.createSession(settings: launchSettings, generation: generation)
+                    }
+                }
+            }
         }
     }
 
@@ -245,6 +271,7 @@ final class OPNStreamViewController: NSViewController {
     private func waitForReadySession(_ sessionInfo: NSDictionary, settings: [String: Any], generation: UInt, attempt: Int = 0) {
         let status = int(sessionInfo["status"])
         let serverIp = string(sessionInfo["serverIp"])
+        updateActiveSessionInfo(sessionInfo)
         if (status == 2 || status == 3), !serverIp.isEmpty {
             connect(sessionInfo: sessionInfo, settings: settings, generation: generation)
             return
@@ -274,21 +301,22 @@ final class OPNStreamViewController: NSViewController {
     private func connect(sessionInfo: NSDictionary, settings: [String: Any], generation: UInt) {
         activeSessionInfo = sessionInfo as? [String: Any] ?? [:]
         hasActiveSessionInfo = true
+        let negotiatedSettings = settingsByApplyingNegotiatedProfile(settings: settings, sessionInfo: sessionInfo)
         setStatus("Connecting to stream...")
         let signaling = OPNWebSocketSignalingClient(signalingServer: string(sessionInfo["signalingServer"]), sessionId: string(sessionInfo["sessionId"]), signalingUrl: string(sessionInfo["signalingUrl"]))
-        signaling.setPeerResolution(settings["resolution"] as? String ?? "1920x1080")
+        signaling.setPeerResolution(negotiatedSettings["resolution"] as? String ?? "1920x1080")
         self.signaling = signaling
 
         signaling.onOffer = { [weak self] offer in
             guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
             self.session.setNativeWindow(Unmanaged.passUnretained(self.streamView?.nativeVideoView() ?? self.view).toOpaque())
             let serverIceUfrag = OPNStreamSessionHandle.iceUfrag(fromOfferSdp: offer)
-            self.session.start(sessionInfo: sessionInfo, offerSdp: offer, settings: settings as NSDictionary, answerHandler: { [weak self] sdp, nvstSdp in
+            self.session.start(sessionInfo: sessionInfo, offerSdp: offer, settings: negotiatedSettings as NSDictionary, answerHandler: { [weak self] sdp, nvstSdp in
                 DispatchQueue.main.async { self?.signaling?.sendAnswerSdp(sdp as String, nvstSdp: nvstSdp as String) }
             }, localIceCandidateHandler: { [weak self] candidate in
                 DispatchQueue.main.async { self?.signaling?.sendIceCandidate(candidate) }
             }, stateHandler: { [weak self] connected, error in
-                DispatchQueue.main.async { self?.handleConnectionState(connected: connected, error: error as String, generation: generation, settings: settings) }
+                DispatchQueue.main.async { self?.handleConnectionState(connected: connected, error: error as String, generation: generation, settings: negotiatedSettings) }
             })
             self.session.injectManualIceCandidate(sessionInfo: sessionInfo, offerSdp: offer, serverIceUfrag: serverIceUfrag)
         }
@@ -405,6 +433,16 @@ final class OPNStreamViewController: NSViewController {
         loading.startAnimating()
         loadingView = loading
         statusLabel = loading.messageLabel
+        loading.adPlaybackEventHandler = { [weak self] adId, action, watchedTimeInMs, pausedTimeInMs, cancelReason in
+            guard let self, self.hasActiveSessionInfo else { return }
+            OPNSessionManager.shared.reportSessionAd(session: self.activeSessionInfo, adId: adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: pausedTimeInMs, cancelReason: cancelReason) { [weak self] success, updatedInfo, _ in
+                DispatchQueue.main.async {
+                    guard let self, success, !updatedInfo.isEmpty else { return }
+                    self.activeSessionInfo = updatedInfo
+                    self.hasActiveSessionInfo = true
+                }
+            }
+        }
         view.addSubview(loading)
     }
 
@@ -416,6 +454,7 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func updateLaunchAdState(_ session: NSDictionary) {
+        updateActiveSessionInfo(session)
         let queuePosition = int(session["queuePosition"])
         loadingView?.updateQueuePosition(queuePosition)
         guard let adState = session["adState"] as? [String: Any], bool(adState["isAdsRequired"]) else {
@@ -425,6 +464,25 @@ final class OPNStreamViewController: NSViewController {
         let ads = adState["sessionAds"] as? [[String: Any]] ?? []
         let ad = ads.first ?? [:]
         loadingView?.updateAdPresentation(visible: true, chipText: bool(adState["isQueuePaused"]) ? "Queue Paused" : "Sponsored Break", title: string(ad["title"], fallback: "Watch to continue"), message: string(adState["message"], fallback: "Your launch will resume automatically after the ad."), adId: string(ad["adId"], fallback: "ad"), mediaUrl: string(ad["mediaUrl"]), durationMs: int(ad["durationMs"], fallback: 30000))
+    }
+
+    private func updateActiveSessionInfo(_ session: NSDictionary) {
+        guard !string(session["sessionId"]).isEmpty else { return }
+        activeSessionInfo = session as? [String: Any] ?? [:]
+        hasActiveSessionInfo = true
+    }
+
+    private func settingsByApplyingNegotiatedProfile(settings: [String: Any], sessionInfo: NSDictionary) -> [String: Any] {
+        guard let profile = sessionInfo["negotiatedStreamProfile"] as? [String: Any], !profile.isEmpty else { return settings }
+        var result = settings
+        for key in ["resolution", "codec", "colorQuality"] {
+            let value = string(profile[key])
+            if !value.isEmpty { result[key] = value }
+        }
+        for key in ["fps", "prefilterMode", "prefilterSharpness", "prefilterDenoise", "prefilterModel"] where profile[key] != nil {
+            result[key] = int(profile[key])
+        }
+        return result
     }
 
     private func progressMessage(for session: NSDictionary) -> String {
@@ -516,9 +574,9 @@ final class OPNStreamViewController: NSViewController {
     private func recordStreamUserActivity() { lastStreamActivityTime = CACurrentMediaTime() }
     private func startInactivityTimer() { lastStreamActivityTime = CACurrentMediaTime(); inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in Task { @MainActor [weak self] in self?.checkInactivity() } } }
     private func stopInactivityTimer() { inactivityTimer?.invalidate(); inactivityTimer = nil }
-    private func checkInactivity() { if connectedOnce, CACurrentMediaTime() - lastStreamActivityTime > 600 { endStream(success: false, errorMessage: "Session ended due to inactivity.") } }
+    private func checkInactivity() { if connectedOnce, CACurrentMediaTime() - lastStreamActivityTime > 600 { requestRemoteStopForActiveSession(); endStream(success: false, errorMessage: "Session ended due to inactivity.") } }
     private func toggleIdleDeviceInputMode() { idleDeviceInputEnabled.toggle() }
-    private func endStreamFromUserQuit() { remoteStopRequested = true; endStream(success: true, errorMessage: "") }
+    private func endStreamFromUserQuit() { requestRemoteStopForActiveSession(); endStream(success: true, errorMessage: "") }
 
     private func requestRemoteStopForActiveSession() {
         guard hasActiveSessionInfo, !remoteStopRequested else { return }
