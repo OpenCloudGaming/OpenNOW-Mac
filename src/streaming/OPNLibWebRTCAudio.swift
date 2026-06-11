@@ -31,6 +31,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var recordingScratch = [UInt8]()
     private weak var delegate: RTCAudioDeviceDelegate?
+    private var lastMicrophoneLevelReportNanoseconds: UInt64 = 0
 
     private(set) var deviceInputSampleRate = 48_000.0
     private(set) var inputIOBufferDuration: TimeInterval = 0.01
@@ -156,8 +157,34 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
             )
             let renderStatus = AudioUnitRender(recordingUnit, actionFlags, timestamp, 1, frameCount, &inputData)
             guard renderStatus == noErr else { return renderStatus }
+            reportMicrophoneLevelIfNeeded(inputData: &inputData)
             return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
         }
+    }
+
+    private func reportMicrophoneLevelIfNeeded(inputData: UnsafeMutablePointer<AudioBufferList>) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now - lastMicrophoneLevelReportNanoseconds >= 50_000_000 else { return }
+        lastMicrophoneLevelReportNanoseconds = now
+        owner?.handleCapturedMicrophoneLevel(microphoneLevel(from: inputData))
+    }
+
+    private func microphoneLevel(from inputData: UnsafeMutablePointer<AudioBufferList>) -> Double {
+        var sumSquares = 0.0
+        var sampleCount = 0
+        for buffer in UnsafeMutableAudioBufferListPointer(inputData) {
+            guard let data = buffer.mData else { continue }
+            let count = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+            guard count > 0 else { continue }
+            let samples = data.bindMemory(to: Int16.self, capacity: count)
+            for index in 0..<count {
+                let sample = Double(samples[index]) / Double(Int16.max)
+                sumSquares += sample * sample
+            }
+            sampleCount += count
+        }
+        guard sampleCount > 0 else { return 0 }
+        return min(1, sqrt(sumSquares / Double(sampleCount)) * 6)
     }
 
     private func startPlayoutLocked() -> Bool {
@@ -512,6 +539,10 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     func startMicrophoneLevelPolling(sessionImpl: OPNLibWebRTCSessionImpl?, statsQueue: DispatchQueue) {
         guard microphoneLevelTimer == nil else { return }
         self.sessionImpl = sessionImpl
+        if sessionImpl?.audioDevice != nil {
+            NSLog("[LibWebRTC] microphone level polling using CoreAudio capture samples")
+            return
+        }
         let timer = DispatchSource.makeTimerSource(queue: statsQueue)
         timer.schedule(deadline: .now(), repeating: .milliseconds(100), leeway: .milliseconds(20))
         timer.setEventHandler { [weak self, weak sessionImpl] in
