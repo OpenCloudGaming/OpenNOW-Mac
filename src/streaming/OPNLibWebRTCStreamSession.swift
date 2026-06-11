@@ -141,15 +141,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             NSLog("[LibWebRTC] Requested codec %@ is not supported by this WebRTC.framework; retaining full offer", requestedCodec)
         }
         let remoteOfferSdp = processedOfferSdp
+        let canRetryOriginalOffer = processedOfferSdp != offerSdp
         logVideoSdpSummary("offer-video", remoteOfferSdp)
-        let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
-        peerConnection.setRemoteDescription(offer) { [weak self, weak impl] error in
-            guard let self, self.callbackGeneration == generation else { return }
-            guard error == nil else {
-                self.handleConnectionState(false, error: "setRemoteDescription failed: \(error?.localizedDescription ?? "unknown")")
-                return
-            }
-            guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+
+        @Sendable func handleRemoteDescriptionSet(impl: OPNLibWebRTCSessionImpl, peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
             self.prepareMicrophoneIfNeeded(impl: impl, factory: factory)
             let answerCodec = normalizedCodec(string(self.settings["codec"]))
             if !answerCodec.isEmpty, !OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec) {
@@ -179,6 +174,31 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                     self.onAnswer?(answerSdp, buildNvstSdp(settings: self.settings, credentials: extractIceCredentials(from: answerSdp)))
                 }
             }
+        }
+
+        let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
+        peerConnection.setRemoteDescription(offer) { [weak self, weak impl] error in
+            guard let self, self.callbackGeneration == generation else { return }
+            if let error {
+                guard canRetryOriginalOffer else {
+                    self.handleConnectionState(false, error: "setRemoteDescription failed: \(error.localizedDescription)")
+                    return
+                }
+                guard let impl, let peerConnection = impl.peerConnection, impl.factory != nil else { return }
+                let originalOffer = RTCSessionDescription(type: .offer, sdp: offerSdp)
+                peerConnection.setRemoteDescription(originalOffer) { [weak self, weak impl] retryError in
+                    guard let self, self.callbackGeneration == generation else { return }
+                    guard retryError == nil else {
+                        self.handleConnectionState(false, error: "setRemoteDescription failed: \(retryError?.localizedDescription ?? error.localizedDescription)")
+                        return
+                    }
+                    guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+                    handleRemoteDescriptionSet(impl: impl, peerConnection: peerConnection, factory: factory)
+                }
+                return
+            }
+            guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+            handleRemoteDescriptionSet(impl: impl, peerConnection: peerConnection, factory: factory)
         }
     }
 
