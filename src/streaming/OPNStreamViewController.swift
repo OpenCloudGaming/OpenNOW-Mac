@@ -327,7 +327,7 @@ final class OPNStreamViewController: NSViewController {
         signaling.onIceCandidate = { [weak self] candidate in self?.session.addRemoteIceCandidatePayload(candidate as? [AnyHashable: Any] ?? [:]) }
         signaling.onClosed = { [weak self] clean, reason in
             guard let self, !self.streamEnded, self.launchGeneration == generation else { return }
-            if clean, self.connectedOnce { return }
+            if clean { return }
             self.endStream(success: false, errorMessage: reason.isEmpty ? "Signaling connection closed" : reason)
         }
         signaling.connect { [weak self] success, error in
