@@ -5,6 +5,8 @@ final class OPNEmailEntryView: NSView {
     @objc var onSignInWithBrowser: (() -> Void)?
     @objc var stayLoggedInToggle = NSButton(frame: .zero)
 
+    private static let defaultProviderIdpId = OPNAuthService.defaultIdpId
+
     private let contentView = NSView(frame: NSRect(x: 0.0, y: 0.0, width: 480.0, height: 500.0))
     private let providerPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var providerIds = [String]()
@@ -12,13 +14,13 @@ final class OPNEmailEntryView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         buildUI()
-        setProviderItems(ids: ["DEFAULT"], labels: ["NVIDIA"], selectedId: "DEFAULT")
+        setProviderItems(ids: [Self.defaultProviderIdpId], labels: ["NVIDIA"], selectedId: Self.defaultProviderIdpId)
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         buildUI()
-        setProviderItems(ids: ["DEFAULT"], labels: ["NVIDIA"], selectedId: "DEFAULT")
+        setProviderItems(ids: [Self.defaultProviderIdpId], labels: ["NVIDIA"], selectedId: Self.defaultProviderIdpId)
     }
 
     override var isFlipped: Bool { true }
@@ -47,7 +49,7 @@ final class OPNEmailEntryView: NSView {
         }
 
         if providerIds.isEmpty {
-            providerIds = ["DEFAULT"]
+            providerIds = [Self.defaultProviderIdpId]
             providerPopup.addItem(withTitle: "NVIDIA")
         }
 
@@ -76,9 +78,9 @@ final class OPNEmailEntryView: NSView {
 
     @objc func selectedProviderIdentifier() -> String {
         let index = providerPopup.indexOfSelectedItem
-        guard index >= 0 && index < providerIds.count else { return "DEFAULT" }
+        guard index >= 0 && index < providerIds.count else { return Self.defaultProviderIdpId }
         let id = providerIds[index]
-        return id.isEmpty ? "DEFAULT" : id
+        return id.isEmpty ? Self.defaultProviderIdpId : id
     }
 
     @objc(selectedProviderIdpId)
