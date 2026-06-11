@@ -5,12 +5,27 @@
 
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
+#import <AudioToolbox/AudioToolbox.h>
+#import <AppKit/AppKit.h>
 
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <vector>
+
+@class OPNStreamRecordingManager;
+
+@interface OPNStreamRecordingManager : NSObject
+- (void)appendWebRTCAudioBufferList:(const AudioBufferList *)audioBufferList frameCount:(UInt32)frameCount sampleRate:(double)sampleRate channels:(UInt32)channels;
+@end
+
+@interface OPNStreamView : NSView
+- (void)receiveMicrophoneLevel:(double)level;
+- (void)receiveVideoFrame:(void *)frame;
+- (void)receiveEnhancedVideoFrame:(void *)pixelBuffer;
+- (void)receiveClipboardText:(NSString *)text;
+@end
 
 @class OPNLibWebRTCSessionImpl;
 
@@ -550,6 +565,141 @@ extern "C" void OPNStreamSessionHandleSetNativeWindow(void *session, void *nativ
     OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
     if (!rawSession) return;
     rawSession->SetNativeWindow(nativeWindow);
+}
+
+extern "C" BOOL OPNStreamSessionNativeInputReady(void *session) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    return rawSession && rawSession->InputReady() ? YES : NO;
+}
+
+extern "C" void OPNStreamSessionNativeSetMicrophoneEnabled(void *session, BOOL enabled) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SetMicrophoneEnabled(enabled ? true : false);
+}
+
+extern "C" void OPNStreamSessionNativeSetGameVolume(void *session, double volume) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SetGameVolume(volume);
+}
+
+extern "C" void OPNStreamSessionNativeSetMicrophoneVolume(void *session, double volume) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SetMicrophoneVolume(volume);
+}
+
+extern "C" void OPNStreamSessionNativeSetMaxBitrate(void *session, NSInteger mbps) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SetMaxBitrateMbps((int)mbps);
+}
+
+extern "C" void OPNStreamSessionNativeSetEnhancedVideoCaptureEnabled(void *session, BOOL enabled) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SetEnhancedVideoFrameCaptureEnabled(enabled ? true : false);
+}
+
+extern "C" void OPNStreamSessionNativeSetVideoEnhancement(void *session, NSInteger mode, NSInteger sharpness, NSInteger denoise, NSInteger targetHeight) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SetLocalVideoEnhancement((int)mode, (int)sharpness, (int)denoise, (int)targetHeight);
+}
+
+extern "C" void OPNStreamSessionNativeSendUtf8Text(void *session, NSString *text) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SendUtf8Text(std::string(text.UTF8String ?: ""));
+}
+
+extern "C" void OPNStreamSessionNativeSendKeyEvent(void *session, uint16_t keycode, uint16_t scancode, uint16_t modifiers, BOOL down) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SendKeyEvent(keycode, scancode, modifiers, down ? true : false);
+}
+
+extern "C" void OPNStreamSessionNativeSendMouseMove(void *session, int16_t dx, int16_t dy) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SendMouseMove(dx, dy);
+}
+
+extern "C" void OPNStreamSessionNativeSendMouseButton(void *session, uint8_t button, BOOL down) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SendMouseButton(button, down ? true : false);
+}
+
+extern "C" void OPNStreamSessionNativeSendMouseWheel(void *session, int16_t delta) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (rawSession) rawSession->SendMouseWheel(delta);
+}
+
+extern "C" void OPNStreamSessionNativeSendGamepadState(void *session,
+                                                       uint16_t controllerId,
+                                                       uint16_t buttons,
+                                                       uint8_t leftTrigger,
+                                                       uint8_t rightTrigger,
+                                                       int16_t leftStickX,
+                                                       int16_t leftStickY,
+                                                       int16_t rightStickX,
+                                                       int16_t rightStickY,
+                                                       BOOL connected,
+                                                       uint16_t bitmap,
+                                                       uint64_t timestampUs) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (!rawSession) return;
+    OPN::Input::GamepadState state;
+    state.controllerId = controllerId;
+    state.buttons = buttons;
+    state.leftTrigger = leftTrigger;
+    state.rightTrigger = rightTrigger;
+    state.leftStickX = leftStickX;
+    state.leftStickY = leftStickY;
+    state.rightStickX = rightStickX;
+    state.rightStickY = rightStickY;
+    state.connected = connected ? true : false;
+    state.timestampUs = timestampUs;
+    rawSession->SendGamepadState(state, bitmap);
+}
+
+static void OPNClearStreamSessionCallbacks(OPN::IStreamSession *session) {
+    if (!session) return;
+    session->OnVideoFrame(OPN::VideoFrameCallback{});
+    session->OnEnhancedVideoFrame(OPN::VideoFrameCallback{});
+    session->OnGameAudioFrame(OPN::GameAudioFrameCallback{});
+    session->OnMicrophoneLevel(OPN::MicrophoneLevelCallback{});
+    session->OnClipboardText(OPN::ClipboardTextCallback{});
+}
+
+extern "C" void OPNStreamSessionClearNativeCallbacks(void *session) {
+    OPNClearStreamSessionCallbacks(OPNRawStreamSession(session));
+}
+
+extern "C" void OPNStreamSessionConfigureNativeViewCallbacks(void *session, OPNStreamView *streamView, OPNStreamRecordingManager *recordingManager) {
+    OPN::IStreamSession *rawSession = OPNRawStreamSession(session);
+    if (!rawSession || !streamView) return;
+    __weak OPNStreamView *weakView = streamView;
+    rawSession->OnMicrophoneLevel([weakView](double level) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            OPNStreamView *view = weakView;
+            if (view) [view receiveMicrophoneLevel:level];
+        });
+    });
+    rawSession->OnVideoFrame([weakView](void *frame) {
+        OPNStreamView *view = weakView;
+        if (view) [view receiveVideoFrame:frame];
+    });
+    rawSession->OnEnhancedVideoFrame([weakView](void *pixelBuffer) {
+        OPNStreamView *view = weakView;
+        if (view) [view receiveEnhancedVideoFrame:pixelBuffer];
+    });
+    rawSession->OnGameAudioFrame([weakView, recordingManager](const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
+        OPNStreamView *view = weakView;
+        if (!view || !audioBufferList) return;
+        [recordingManager appendWebRTCAudioBufferList:static_cast<const AudioBufferList *>(audioBufferList) frameCount:frameCount sampleRate:sampleRate channels:channels];
+    });
+    rawSession->OnClipboardText([weakView](const std::string &text) {
+        std::string textCopy = text;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            OPNStreamView *view = weakView;
+            if (!view) return;
+            NSString *clipboardText = [[NSString alloc] initWithBytes:textCopy.data() length:textCopy.size() encoding:NSUTF8StringEncoding];
+            [view receiveClipboardText:clipboardText ?: @""];
+        });
+    });
 }
 
 extern "C" void OPNStreamSessionHandleSetMaxBitrateMbps(void *session, NSInteger mbps) {
@@ -1946,6 +2096,111 @@ void LibWebRTCStreamSession::HandleStatsDictionary(void *rawStats) {
         m_latestStats = parsed;
     }
     UpdateAdaptiveBitrate(parsed);
+}
+
+void LibWebRTCStreamSession::OnAnswerReady(std::function<void(const SendAnswerRequest &)> cb) {
+    m_onAnswer = std::move(cb);
+}
+
+void LibWebRTCStreamSession::OnIceCandidateReady(std::function<void(const IceCandidatePayload &)> cb) {
+    m_onIceCandidate = std::move(cb);
+}
+
+void LibWebRTCStreamSession::OnMicrophoneLevel(MicrophoneLevelCallback cb) {
+    m_onMicrophoneLevel = std::move(cb);
+}
+
+void LibWebRTCStreamSession::OnVideoFrame(VideoFrameCallback cb) {
+    m_onVideoFrame = std::move(cb);
+}
+
+void LibWebRTCStreamSession::OnEnhancedVideoFrame(VideoFrameCallback cb) {
+    m_onEnhancedVideoFrame = std::move(cb);
+}
+
+void LibWebRTCStreamSession::OnGameAudioFrame(GameAudioFrameCallback cb) {
+    m_onGameAudioFrame = std::move(cb);
+}
+
+void LibWebRTCStreamSession::OnClipboardText(ClipboardTextCallback cb) {
+    m_onClipboardText = std::move(cb);
+}
+
+void LibWebRTCStreamSession::HandleGameAudioFrame(const void *audioBufferList, uint32_t frameCount, double sampleRate, uint32_t channels) {
+    if (m_onGameAudioFrame) m_onGameAudioFrame(audioBufferList, frameCount, sampleRate, channels);
+}
+
+void *LibWebRTCStreamSession::NativeWindowHandle() const {
+    return m_nativeWindow;
+}
+
+void LibWebRTCStreamSession::SetNativeWindow(void *wnd) {
+    m_nativeWindow = wnd;
+}
+
+void LibWebRTCStreamSession::HandleLocalIceCandidate(const IceCandidatePayload &candidate) {
+    if (m_onIceCandidate) m_onIceCandidate(candidate);
+}
+
+void LibWebRTCStreamSession::HandleConnectionState(bool connected, const std::string &error) {
+    if (connected) {
+        CancelDisconnectGraceTimer();
+        {
+            std::lock_guard<std::mutex> lock(m_statsMutex);
+            m_latestStats.available = true;
+            m_latestStats.videoPipelineMode = "libwebrtc connected";
+        }
+        StartStatsPolling();
+    } else {
+        StopStatsPolling();
+    }
+    if (m_onState) m_onState(connected, error);
+}
+
+void LibWebRTCStreamSession::StartDisconnectGraceTimer(const std::string &reason) {
+    NSCAssert([NSThread isMainThread], @"disconnect grace timer must be accessed on main thread");
+    CancelDisconnectGraceTimer();
+    auto callbackLiveness = m_callbackLiveness;
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    if (!timer) {
+        HandleConnectionState(false, reason);
+        return;
+    }
+
+    static constexpr int64_t OPNLibWebRTCDisconnectGraceMs = 3000;
+    void *timerToken = (__bridge_retained void *)timer;
+    m_disconnectGraceTimer = timerToken;
+    std::string reasonCopy = reason;
+    dispatch_source_set_timer(timer,
+                              dispatch_time(DISPATCH_TIME_NOW, OPNLibWebRTCDisconnectGraceMs * NSEC_PER_MSEC),
+                              DISPATCH_TIME_FOREVER,
+                              0);
+    dispatch_source_set_event_handler(timer, ^{
+        if (callbackLiveness && !callbackLiveness->load()) return;
+        if (m_disconnectGraceTimer != timerToken) return;
+        dispatch_source_t firedTimer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
+        m_disconnectGraceTimer = nullptr;
+        dispatch_source_cancel(firedTimer);
+        OPNLogInfo(@"[LibWebRTC] disconnect grace expired after %lldms: %s", (long long)OPNLibWebRTCDisconnectGraceMs, reasonCopy.c_str());
+        HandleConnectionState(false, reasonCopy);
+    });
+    dispatch_resume(timer);
+}
+
+void LibWebRTCStreamSession::CancelDisconnectGraceTimer() {
+    NSCAssert([NSThread isMainThread], @"disconnect grace timer must be accessed on main thread");
+    if (!m_disconnectGraceTimer) return;
+    dispatch_source_t timer = (__bridge_transfer dispatch_source_t)m_disconnectGraceTimer;
+    m_disconnectGraceTimer = nullptr;
+    dispatch_source_cancel(timer);
+}
+
+int LibWebRTCStreamSession::TargetFps() const {
+    return std::max(30, std::min(m_settings.fps > 0 ? m_settings.fps : 60, 240));
+}
+
+bool LibWebRTCStreamSession::LowLatencyMode() const {
+    return m_settings.lowLatencyMode;
 }
 
 extern "C" void OPNLibWebRTCStatsOwnerHandleStatsReport(void *owner, NSDictionary *stats) {
