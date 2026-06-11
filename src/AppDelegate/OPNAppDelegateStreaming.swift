@@ -30,7 +30,7 @@ private struct OPNActivePromptButton: OptionSet {
     static let y = OPNActivePromptButton(rawValue: 1 << 2)
 }
 
-private func opnButton(_ title: String, _ frame: NSRect, _ background: NSColor, _ textColor: NSColor, _ bordered: Bool, _ borderColor: NSColor?) -> NSButton { OPNUIHelpers.button(title: title, frame: frame, background: background, textColor: textColor, bordered: bordered, borderColor: borderColor) }
+@MainActor private func opnButton(_ title: String, _ frame: NSRect, _ background: NSColor, _ textColor: NSColor, _ bordered: Bool, _ borderColor: NSColor?) -> NSButton { OPNUIHelpers.button(title: title, frame: frame, background: background, textColor: textColor, bordered: bordered, borderColor: borderColor) }
 
 private func opnActivePromptButtons() -> OPNActivePromptButton {
     guard let pad = GCController.controllers().first?.extendedGamepad else { return [] }

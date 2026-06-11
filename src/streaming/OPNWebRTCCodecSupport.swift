@@ -69,9 +69,13 @@ final class OPNWebRTCCodecSupport: NSObject {
 
         var applied = false
         for transceiver in peerConnection.transceivers where transceiver.mediaType == .video && !transceiver.isStopped {
-            transceiver.setCodecPreferences(preferredCodecs)
-            applied = true
-            NSLog("[LibWebRTC] Applied %@ codec preference to video transceiver mid=%@ (%lu codecs)", normalizedCodec, transceiver.mid, UInt(preferredCodecs.count))
+            do {
+                try transceiver.setCodecPreferences(preferredCodecs, error: ())
+                applied = true
+                NSLog("[LibWebRTC] Applied %@ codec preference to video transceiver mid=%@ (%lu codecs)", normalizedCodec, transceiver.mid, UInt(preferredCodecs.count))
+            } catch {
+                NSLog("[LibWebRTC] Failed to apply %@ codec preference to video transceiver mid=%@: %@", normalizedCodec, transceiver.mid, error.localizedDescription)
+            }
         }
         return applied
     }

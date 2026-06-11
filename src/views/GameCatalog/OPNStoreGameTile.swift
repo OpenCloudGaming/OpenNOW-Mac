@@ -192,8 +192,9 @@ final class OPNStoreGameTile: NSView {
         }
         pendingMouseSelection = true
         lastDragLocationInWindow = event.locationInWindow
-        if let scrollView = enclosingScrollView, scrollView.responds(to: Selector(("beginDragScrollingAtTime:"))) {
-            scrollView.perform(Selector(("beginDragScrollingAtTime:")), with: event.timestamp as NSNumber)
+        let selector = #selector(OPNStoreRailScrollView.beginDragScrolling(atTime:))
+        if let scrollView = enclosingScrollView, scrollView.responds(to: selector) {
+            scrollView.perform(selector, with: event.timestamp as NSNumber)
         }
     }
 
@@ -210,8 +211,9 @@ final class OPNStoreGameTile: NSView {
         guard dragThresholdReached else { return }
         pendingMouseSelection = false
         draggingRail = true
-        if let scrollView = enclosingScrollView, scrollView.responds(to: Selector(("dragScrollHorizontallyByDelta:timestamp:"))) {
-            scrollView.perform(Selector(("dragScrollHorizontallyByDelta:timestamp:")), with: deltaX as NSNumber, with: event.timestamp as NSNumber)
+        let selector = #selector(OPNStoreRailScrollView.dragScrollHorizontally(byDelta:timestamp:))
+        if let scrollView = enclosingScrollView, scrollView.responds(to: selector) {
+            scrollView.perform(selector, with: deltaX as NSNumber, with: event.timestamp as NSNumber)
         }
     }
 
@@ -220,8 +222,9 @@ final class OPNStoreGameTile: NSView {
         let shouldContinueScroll = draggingRail
         pendingMouseSelection = false
         draggingRail = false
-        if shouldContinueScroll, let scrollView = enclosingScrollView, scrollView.responds(to: Selector(("endDragScrollingWithInertia"))) {
-            scrollView.perform(Selector(("endDragScrollingWithInertia")))
+        let selector = #selector(OPNStoreRailScrollView.endDragScrollingWithInertia)
+        if shouldContinueScroll, let scrollView = enclosingScrollView, scrollView.responds(to: selector) {
+            scrollView.perform(selector)
         }
         if shouldSelect { selectPressed() }
     }

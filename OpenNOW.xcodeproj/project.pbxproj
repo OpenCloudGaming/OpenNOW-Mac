@@ -724,6 +724,7 @@
 				OTHER_LDFLAGS = "-Wl,-rpath,third_party/webrtc-official";
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;

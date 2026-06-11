@@ -242,6 +242,7 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(labelWithText:frame:size:color:weight:alignment:)
+    @MainActor
     static func label(text: String, frame: NSRect, size: CGFloat, color: NSColor, weight: NSFont.Weight, alignment: NSTextAlignment) -> NSTextField {
         let label = NSTextField(frame: frame)
         label.stringValue = text
@@ -256,6 +257,7 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(buttonWithTitle:frame:background:textColor:bordered:borderColor:)
+    @MainActor
     static func button(title: String, frame: NSRect, background: NSColor, textColor: NSColor, bordered: Bool, borderColor: NSColor?) -> NSButton {
         let button = NSButton(frame: frame)
         button.title = title
@@ -275,6 +277,7 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(textFieldWithFrame:placeholder:secure:)
+    @MainActor
     static func textField(frame: NSRect, placeholder: String, secure: Bool) -> NSTextField {
         let field = secure ? NSSecureTextField(frame: frame) : NSTextField(frame: frame)
         field.placeholderString = placeholder
@@ -288,6 +291,7 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(spinnerWithFrame:)
+    @MainActor
     static func spinner(frame: NSRect) -> NSProgressIndicator {
         let spinner = NSProgressIndicator(frame: frame)
         spinner.style = .spinning
@@ -296,6 +300,7 @@ final class OPNUIHelpers: NSObject {
         return spinner
     }
 
+    @MainActor
     static func disableFocusHighlights(_ view: NSView) {
         view.focusRingType = .none
         view.subviews.forEach(disableFocusHighlights)
@@ -405,61 +410,65 @@ final class OPNUIHelpers: NSObject {
             return false
         }
         if alreadyPending { return token }
-        if let diskData = OPNGameDataCache.shared.loadImage(urlString: normalizedURL), !diskData.isEmpty {
-            let operation = BlockOperation {
+        let operation = BlockOperation {
+            if let diskData = OPNGameDataCache.shared.loadImage(urlString: normalizedURL), !diskData.isEmpty {
                 let image = decodedImage(data: diskData, maxPixelDimension: maxPixelDimension)
                 completeImageRequest(cacheKey: key, urlString: normalizedURL, image: image, data: image == nil ? nil : diskData, cacheFailure: image == nil)
+                return
             }
+
+            guard let url = URL(string: normalizedURL) else {
+                completeImageRequest(cacheKey: key, urlString: normalizedURL, image: nil, data: nil, cacheFailure: true)
+                return
+            }
+
+            let request = NSMutableURLRequest(url: url)
+            let trace = OPNSentry.traceHTTPRequest(request, name: "Image asset")
+            let task = session.dataTask(with: request as URLRequest) { data, response, error in
+                defer { trace?.finish() }
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 200
+                guard error == nil, let data, !data.isEmpty, statusCode < 400 else {
+                    let cacheFailure = (error as NSError?)?.code != NSURLErrorCancelled
+                    completeImageRequest(cacheKey: key, urlString: normalizedURL, image: nil, data: nil, cacheFailure: cacheFailure)
+                    return
+                }
+                trace?.setStatus(true)
+                let operation = BlockOperation {
+                    let image = decodedImage(data: data, maxPixelDimension: maxPixelDimension)
+                    if image != nil { OPNGameDataCache.shared.saveImage(urlString: normalizedURL, data: data) }
+                    completeImageRequest(cacheKey: key, urlString: normalizedURL, image: image, data: image == nil ? nil : data, cacheFailure: image == nil)
+                }
+                let shouldDecode = stateQueue.sync { () -> Bool in
+                    guard pendingCompletions[key] != nil else { return false }
+                    pendingOperations[key] = operation
+                    return true
+                }
+                if shouldDecode { imageQueue.addOperation(operation) } else { operation.cancel() }
+            }
+
             let shouldStart = stateQueue.sync { () -> Bool in
                 guard pendingCompletions[key] != nil else { return false }
-                pendingOperations[key] = operation
+                pendingOperations.removeValue(forKey: key)
+                pendingTasks[key] = task
                 return true
             }
             if shouldStart, !token.isCancelled {
-                token.setOperation(operation)
-                imageQueue.addOperation(operation)
+                token.setTask(task)
+                task.resume()
             } else {
-                operation.cancel()
+                task.cancel()
             }
-            return token
-        }
-        guard let url = URL(string: normalizedURL) else {
-            completeImageRequest(cacheKey: key, urlString: normalizedURL, image: nil, data: nil, cacheFailure: true)
-            return token
-        }
-        let request = NSMutableURLRequest(url: url)
-        let trace = OPNSentry.traceHTTPRequest(request, name: "Image asset")
-        let task = session.dataTask(with: request as URLRequest) { data, response, error in
-            defer { trace?.finish() }
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 200
-            guard error == nil, let data, !data.isEmpty, statusCode < 400 else {
-                let cacheFailure = (error as NSError?)?.code != NSURLErrorCancelled
-                completeImageRequest(cacheKey: key, urlString: normalizedURL, image: nil, data: nil, cacheFailure: cacheFailure)
-                return
-            }
-            trace?.setStatus(true)
-            let operation = BlockOperation {
-                let image = decodedImage(data: data, maxPixelDimension: maxPixelDimension)
-                if image != nil { OPNGameDataCache.shared.saveImage(urlString: normalizedURL, data: data) }
-                completeImageRequest(cacheKey: key, urlString: normalizedURL, image: image, data: image == nil ? nil : data, cacheFailure: image == nil)
-            }
-            let shouldDecode = stateQueue.sync { () -> Bool in
-                guard pendingCompletions[key] != nil else { return false }
-                pendingOperations[key] = operation
-                return true
-            }
-            if shouldDecode { imageQueue.addOperation(operation) } else { operation.cancel() }
         }
         let shouldStart = stateQueue.sync { () -> Bool in
             guard pendingCompletions[key] != nil else { return false }
-            pendingTasks[key] = task
+            pendingOperations[key] = operation
             return true
         }
         if shouldStart, !token.isCancelled {
-            token.setTask(task)
-            task.resume()
+            token.setOperation(operation)
+            imageQueue.addOperation(operation)
         } else {
-            task.cancel()
+            operation.cancel()
         }
         return token
     }
@@ -559,12 +568,12 @@ final class OPNUIHelpers: NSObject {
 
     private static func setFailure(_ urlString: String) {
         guard !urlString.isEmpty else { return }
-        _ = stateQueue.sync { failureCache[urlString] = Date(timeIntervalSinceNow: 10.0 * 60.0) }
+        stateQueue.sync { failureCache[urlString] = Date(timeIntervalSinceNow: 10.0 * 60.0) }
     }
 
     private static func clearFailure(_ urlString: String) {
         guard !urlString.isEmpty else { return }
-        stateQueue.sync { failureCache.removeValue(forKey: urlString) }
+        stateQueue.sync { _ = failureCache.removeValue(forKey: urlString) }
     }
 
     private static func cancelPendingImageCompletion(cacheKey: String, token: OpnImageLoadToken) {

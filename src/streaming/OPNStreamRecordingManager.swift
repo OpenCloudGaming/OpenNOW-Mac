@@ -12,6 +12,14 @@ private enum OPNRecordingAudioKind {
     case microphone
 }
 
+private struct OPNRecordedPCMBuffer: Sendable {
+    let data: Data
+    let frameCount: UInt32
+    let sampleRate: Double
+    let channels: UInt32
+    let hostTime: CFTimeInterval
+}
+
 private final class OPNSendableBox<T>: @unchecked Sendable {
     let value: T
 
@@ -326,6 +334,34 @@ final class OPNStreamRecordingManager: NSObject {
         let dataBytes = min(expectedBytes, buffer.mDataByteSize)
         guard dataBytes > 0 else { return }
 
+        let copiedBuffer = OPNRecordedPCMBuffer(
+            data: Data(bytes: data, count: Int(dataBytes)),
+            frameCount: frameCount,
+            sampleRate: sampleRate,
+            channels: channels,
+            hostTime: CACurrentMediaTime()
+        )
+        writerQueue.async { [weak self, copiedBuffer] in
+            self?.appendCopiedWebRTCAudioBuffer(copiedBuffer)
+        }
+    }
+
+    private func appendCopiedWebRTCAudioBuffer(_ copiedBuffer: OPNRecordedPCMBuffer) {
+        guard acceptingSamples, writer?.status == .writing else { return }
+
+        var format = AudioStreamBasicDescription()
+        format.mSampleRate = copiedBuffer.sampleRate > 0 ? copiedBuffer.sampleRate : 48_000
+        format.mFormatID = kAudioFormatLinearPCM
+        format.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
+        format.mBitsPerChannel = 16
+        format.mChannelsPerFrame = max(1, copiedBuffer.channels)
+        format.mFramesPerPacket = 1
+        format.mBytesPerFrame = format.mChannelsPerFrame * UInt32(MemoryLayout<Int16>.size)
+        format.mBytesPerPacket = format.mBytesPerFrame
+
+        let dataBytes = min(copiedBuffer.data.count, Int(copiedBuffer.frameCount * format.mBytesPerFrame))
+        guard dataBytes > 0 else { return }
+
         var formatDescription: CMAudioFormatDescription?
         var status = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &format, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &formatDescription)
         guard status == noErr, let formatDescription else { return }
@@ -333,15 +369,18 @@ final class OPNStreamRecordingManager: NSObject {
         var blockBuffer: CMBlockBuffer?
         status = CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: Int(dataBytes), blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: Int(dataBytes), flags: 0, blockBufferOut: &blockBuffer)
         guard status == noErr, let blockBuffer else { return }
-        status = CMBlockBufferReplaceDataBytes(with: data, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: Int(dataBytes))
+        status = copiedBuffer.data.withUnsafeBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else { return noErr }
+            return CMBlockBufferReplaceDataBytes(with: baseAddress, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: dataBytes)
+        }
         guard status == noErr else { return }
 
-        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: CMTimeScale(format.mSampleRate)), presentationTimeStamp: CMTime(seconds: max(0, CACurrentMediaTime() - recordingStartHostTime), preferredTimescale: 600), decodeTimeStamp: .invalid)
+        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: CMTimeScale(format.mSampleRate)), presentationTimeStamp: CMTime(seconds: max(0, copiedBuffer.hostTime - recordingStartHostTime), preferredTimescale: 600), decodeTimeStamp: .invalid)
         var sampleBuffer: CMSampleBuffer?
-        let sampleCount = max(1, CMItemCount(dataBytes / format.mBytesPerFrame))
+        let sampleCount = max(1, CMItemCount(dataBytes / Int(format.mBytesPerFrame)))
         status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, formatDescription: formatDescription, sampleCount: sampleCount, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sampleBuffer)
         guard status == noErr, let sampleBuffer else { return }
-        appendPreparedAudioSampleBuffer(sampleBuffer, kind: .system)
+        appendPreparedAudioSampleBufferOnWriterQueue(sampleBuffer, kind: .system)
     }
 
     @objc(thumbnailForRecordingURL:size:)
@@ -507,13 +546,16 @@ final class OPNStreamRecordingManager: NSObject {
         let sampleBufferBox = OPNSendableBox(sampleBuffer)
         writerQueue.async { [weak self, sampleBufferBox] in
             guard let self else { return }
-            let sampleBuffer = sampleBufferBox.value
-            guard self.acceptingSamples, self.writer?.status == .writing else { return }
-            let input = kind == .microphone ? self.microphoneAudioInput : self.systemAudioInput
-            guard input?.isReadyForMoreMediaData == true else { return }
-            if input?.append(sampleBuffer) != true {
-                OPNSentry.logErrorMessage("[Recording] Prepared audio append failed: \(String(describing: self.writer?.error))")
-            }
+            self.appendPreparedAudioSampleBufferOnWriterQueue(sampleBufferBox.value, kind: kind)
+        }
+    }
+
+    private func appendPreparedAudioSampleBufferOnWriterQueue(_ sampleBuffer: CMSampleBuffer, kind: OPNRecordingAudioKind) {
+        guard acceptingSamples, writer?.status == .writing else { return }
+        let input = kind == .microphone ? microphoneAudioInput : systemAudioInput
+        guard input?.isReadyForMoreMediaData == true else { return }
+        if input?.append(sampleBuffer) != true {
+            OPNSentry.logErrorMessage("[Recording] Prepared audio append failed: \(String(describing: writer?.error))")
         }
     }
 

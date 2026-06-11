@@ -487,6 +487,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
     private let outputColorSpace = CGColorSpaceCreateDeviceRGB()
     private let metalFXUpscaler: OPNMetalFXUpscaler
     private let textureSource: OPNVideoTextureSource
+    private let shaderLibrary: (any MTLLibrary)?
     private var metalFXIntermediateTexture: (any MTLTexture)?
     private var metalFXOutputTexture: (any MTLTexture)?
     private var spatialRGBPipeline: (any MTLRenderPipelineState)?
@@ -518,6 +519,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         self.ciContext = device.map { CIContext(mtlDevice: $0, options: [.workingColorSpace: NSNull()]) }
         self.metalFXUpscaler = OPNMetalFXUpscaler(device: device)
         self.textureSource = OPNVideoTextureSource(device: device)
+        self.shaderLibrary = Self.makeShaderLibrary(device: device)
         super.init()
         spatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_rgb")
         spatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_nv12")
@@ -979,16 +981,25 @@ final class OPNVideoEnhancementRenderer: NSObject {
     }
 
     private func newSpatialPipeline(fragmentFunctionName: String, pixelFormat: MTLPixelFormat = .bgra8Unorm) -> (any MTLRenderPipelineState)? {
-        guard let device else { return nil }
+        guard let device, let shaderLibrary else { return nil }
         do {
-            let library = try device.makeLibrary(source: OPNVideoTextureSource.spatialShaderSource, options: nil)
             let descriptor = MTLRenderPipelineDescriptor()
-            descriptor.vertexFunction = library.makeFunction(name: "opn_video_vertex")
-            descriptor.fragmentFunction = library.makeFunction(name: fragmentFunctionName)
+            descriptor.vertexFunction = shaderLibrary.makeFunction(name: "opn_video_vertex")
+            descriptor.fragmentFunction = shaderLibrary.makeFunction(name: fragmentFunctionName)
             descriptor.colorAttachments[0].pixelFormat = pixelFormat
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
             NSLog("[LibWebRTC] spatial enhancement pipeline %@ failed: %@", fragmentFunctionName, error.localizedDescription)
+            return nil
+        }
+    }
+
+    private static func makeShaderLibrary(device: (any MTLDevice)?) -> (any MTLLibrary)? {
+        guard let device else { return nil }
+        do {
+            return try device.makeLibrary(source: OPNVideoTextureSource.spatialShaderSource, options: nil)
+        } catch {
+            NSLog("[LibWebRTC] spatial enhancement shader library failed: %@", error.localizedDescription)
             return nil
         }
     }
@@ -1206,18 +1217,19 @@ final class OPNVideoEnhancementRenderer: NSObject {
     }
 
     private static func temporalJitter(frameIndex: Int) -> SIMD2<Float> {
-        let offsets: [SIMD2<Float>] = [
-            SIMD2<Float>(-0.375, -0.125),
-            SIMD2<Float>(0.125, 0.375),
-            SIMD2<Float>(-0.125, -0.375),
-            SIMD2<Float>(0.375, 0.125),
-            SIMD2<Float>(-0.3125, 0.3125),
-            SIMD2<Float>(0.1875, -0.1875),
-            SIMD2<Float>(-0.1875, 0.1875),
-            SIMD2<Float>(0.3125, -0.3125),
-        ]
-        return offsets[frameIndex % offsets.count]
+        temporalJitterOffsets[frameIndex % temporalJitterOffsets.count]
     }
+
+    private static let temporalJitterOffsets: [SIMD2<Float>] = [
+        SIMD2<Float>(-0.375, -0.125),
+        SIMD2<Float>(0.125, 0.375),
+        SIMD2<Float>(-0.125, -0.375),
+        SIMD2<Float>(0.375, 0.125),
+        SIMD2<Float>(-0.3125, 0.3125),
+        SIMD2<Float>(0.1875, -0.1875),
+        SIMD2<Float>(-0.1875, 0.1875),
+        SIMD2<Float>(0.3125, -0.3125),
+    ]
 
     private static func textureFrameUsesFullCrop(_ textureFrame: OPNVideoTextureFrame) -> Bool {
         let crop = textureFrame.cropRect
