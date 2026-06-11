@@ -240,6 +240,80 @@ final class OPNVideoTextureSource: NSObject {
     private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
         NSStringFromClass(type(of: buffer) as AnyClass) as NSString
     }
+
+    fileprivate static let spatialShaderSource = """
+#include <metal_stdlib>
+using namespace metal;
+struct VertexOut { float4 position [[position]]; float2 texCoord; };
+vertex VertexOut opn_video_vertex(uint vid [[vertex_id]]) {
+    const float2 positions[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };
+    const float2 texCoords[3] = { float2(0.0, 1.0), float2(2.0, 1.0), float2(0.0, -1.0) };
+    VertexOut out;
+    out.position = float4(positions[vid], 0.0, 1.0);
+    out.texCoord = texCoords[vid];
+    return out;
+}
+static float2 opn_crop_uv(float2 texCoord, float4 crop) {
+    return mix(crop.xy, crop.zw, clamp(texCoord, float2(0.0), float2(1.0)));
+}
+static float2 opn_clamp_crop(float2 uv, float4 crop) {
+    return clamp(uv, crop.xy, crop.zw);
+}
+static float3 opn_nv12_rgb(texture2d<float> yTexture, texture2d<float> uvTexture, sampler s, float2 uv) {
+    float y = yTexture.sample(s, uv).r;
+    float2 cbcr = uvTexture.sample(s, uv).rg - float2(0.5, 0.5);
+    return saturate(float3(y + 1.5748 * cbcr.y, y - 0.1873 * cbcr.x - 0.4681 * cbcr.y, y + 1.8556 * cbcr.x));
+}
+static float3 opn_i420_rgb(texture2d<float> yTexture, texture2d<float> uTexture, texture2d<float> vTexture, sampler s, float2 uv) {
+    float y = yTexture.sample(s, uv).r;
+    float cb = uTexture.sample(s, uv).r - 0.5;
+    float cr = vTexture.sample(s, uv).r - 0.5;
+    return saturate(float3(y + 1.5748 * cr, y - 0.1873 * cb - 0.4681 * cr, y + 1.8556 * cb));
+}
+static float3 opn_finish(float3 center, float3 blur, float sharpness, float denoise) {
+    float3 denoised = mix(center, blur, clamp(denoise, 0.0, 1.0));
+    return clamp(denoised + (denoised - blur) * sharpness, float3(0.0), float3(1.0));
+}
+static float3 opn_rgb_spatial(texture2d<float> sourceTexture, sampler s, float2 uv, float2 texel, float4 crop, float sharpness, float denoise) {
+    float3 center = sourceTexture.sample(s, uv).rgb;
+    float3 blur = (sourceTexture.sample(s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(0.0, texel.y), crop)).rgb) * 0.25;
+    return opn_finish(center, blur, sharpness, denoise);
+}
+fragment float4 opn_video_spatial_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
+    float2 texel = max(scale, float2(1.0 / 8192.0));
+    return float4(opn_rgb_spatial(sourceTexture, s, uv, texel, crop, sharpness, denoise), 1.0);
+}
+fragment float4 opn_video_spatial_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
+    float2 texel = max(scale, float2(1.0 / 8192.0));
+    float3 center = opn_nv12_rgb(yTexture, uvTexture, s, uv);
+    float3 blur = (opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_nv12_rgb(yTexture, uvTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;
+    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);
+}
+fragment float4 opn_video_spatial_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 uv = opn_clamp_crop(opn_crop_uv(in.texCoord, crop) + jitter, crop);
+    float2 texel = max(scale, float2(1.0 / 8192.0));
+    float3 center = opn_i420_rgb(yTexture, uTexture, vTexture, s, uv);
+    float3 blur = (opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)) + opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_clamp_crop(uv - float2(0.0, texel.y), crop))) * 0.25;
+    return float4(opn_finish(center, blur, sharpness, denoise), 1.0);
+}
+fragment float4 opn_video_fast_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    return float4(sourceTexture.sample(s, opn_crop_uv(in.texCoord, crop)).rgb, 1.0);
+}
+fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uvTexture [[texture(1)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    return float4(opn_nv12_rgb(yTexture, uvTexture, s, opn_crop_uv(in.texCoord, crop)), 1.0);
+}
+fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    return float4(opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_crop_uv(in.texCoord, crop)), 1.0);
+}
+"""
 }
 
 @objc(OPNMetalFXUpscaler)
@@ -329,8 +403,15 @@ final class OPNVideoEnhancementRenderer: NSObject {
     private let ciContext: CIContext?
     private let outputColorSpace = CGColorSpaceCreateDeviceRGB()
     private let metalFXUpscaler: OPNMetalFXUpscaler
+    private let textureSource: OPNVideoTextureSource
     private var metalFXIntermediateTexture: (any MTLTexture)?
     private var metalFXOutputTexture: (any MTLTexture)?
+    private var spatialRGBPipeline: (any MTLRenderPipelineState)?
+    private var spatialNV12Pipeline: (any MTLRenderPipelineState)?
+    private var spatialI420Pipeline: (any MTLRenderPipelineState)?
+    private var fastSpatialRGBPipeline: (any MTLRenderPipelineState)?
+    private var fastSpatialNV12Pipeline: (any MTLRenderPipelineState)?
+    private var fastSpatialI420Pipeline: (any MTLRenderPipelineState)?
     private var droppedFrames: UInt64 = 0
 
     @objc init(device: (any MTLDevice)?, commandQueue: (any MTLCommandQueue)?) {
@@ -338,7 +419,14 @@ final class OPNVideoEnhancementRenderer: NSObject {
         self.commandQueue = commandQueue
         self.ciContext = device.map { CIContext(mtlDevice: $0, options: [.workingColorSpace: NSNull()]) }
         self.metalFXUpscaler = OPNMetalFXUpscaler(device: device)
+        self.textureSource = OPNVideoTextureSource(device: device)
         super.init()
+        spatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_rgb")
+        spatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_nv12")
+        spatialI420Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_spatial_i420")
+        fastSpatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_rgb")
+        fastSpatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_nv12")
+        fastSpatialI420Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_i420")
     }
 
     @objc var isMetalFXAvailable: Bool {
@@ -373,6 +461,20 @@ final class OPNVideoEnhancementRenderer: NSObject {
             recordDrop(in: result)
             return false
         }
+
+        if settings.configuredTier == .spatial, !settings.captureEnhancedPixelBuffer {
+            var pixelFormat: NSString?
+            var frameSource: NSString?
+            var textureFallback: NSString?
+            let textureFrame = textureSource.newTextureFrame(for: frame, pixelFormat: &pixelFormat, frameSource: &frameSource, fallback: &textureFallback) as? OPNVideoTextureFrame
+            result.pixelFormat = (pixelFormat as String?) ?? result.pixelFormat
+            result.frameSource = (frameSource as String?) ?? result.frameSource
+            if let textureFrame, let commandBuffer = commandQueue.makeCommandBuffer(), renderSpatialTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+                return true
+            }
+            if let textureFallback, result.fallbackReason.isEmpty { result.fallbackReason = textureFallback as String }
+        }
+
         guard let source = image(for: frame, result: result) else {
             result.fallbackReason = result.fallbackReason.isEmpty ? "video frame conversion failed" : result.fallbackReason
             recordDrop(in: result)
@@ -455,6 +557,105 @@ final class OPNVideoEnhancementRenderer: NSObject {
         result.droppedFrames = droppedFrames
         result.diagnostics = "Swift MetalFX spatial scaler"
         return true
+    }
+
+    private func renderSpatialTextureFrame(
+        _ textureFrame: OPNVideoTextureFrame,
+        drawable: any CAMetalDrawable,
+        commandBuffer: any MTLCommandBuffer,
+        settings: OPNVideoEnhancementSettings,
+        result: OPNVideoEnhancementResult,
+        start: CFTimeInterval
+    ) -> Bool {
+        guard encodeSpatialTextureFrame(textureFrame, destinationTexture: drawable.texture, commandBuffer: commandBuffer, settings: settings, result: result) else { return false }
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+        result.renderPath = "OPNMetalSpatialUpscalerSwift"
+        result.renderMode = "Spatial"
+        result.activeTier = settings.lowCostSpatial ? "Metal Spatial Low Cost" : "Metal Spatial"
+        result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
+        result.droppedFrames = droppedFrames
+        result.diagnostics = settings.lowCostSpatial ? "Swift Metal fast spatial shader" : "Swift Metal spatial shader"
+        return true
+    }
+
+    private func encodeSpatialTextureFrame(
+        _ textureFrame: OPNVideoTextureFrame,
+        destinationTexture: any MTLTexture,
+        commandBuffer: any MTLCommandBuffer,
+        settings: OPNVideoEnhancementSettings,
+        result: OPNVideoEnhancementResult
+    ) -> Bool {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = destinationTexture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            result.fallbackReason = "spatial scaler could not create encoder"
+            return false
+        }
+
+        let primaryTexture: (any MTLTexture)?
+        let pipeline: (any MTLRenderPipelineState)?
+        switch textureFrame.kind {
+        case 1:
+            primaryTexture = textureFrame.lumaTexture
+            pipeline = settings.lowCostSpatial ? (fastSpatialNV12Pipeline ?? spatialNV12Pipeline) : spatialNV12Pipeline
+        case 2:
+            primaryTexture = textureFrame.lumaTexture
+            pipeline = settings.lowCostSpatial ? (fastSpatialI420Pipeline ?? spatialI420Pipeline) : spatialI420Pipeline
+        default:
+            primaryTexture = textureFrame.rgbTexture
+            pipeline = settings.lowCostSpatial ? (fastSpatialRGBPipeline ?? spatialRGBPipeline) : spatialRGBPipeline
+        }
+        guard let primaryTexture, let pipeline else {
+            encoder.endEncoding()
+            result.fallbackReason = "spatial scaler missing texture or pipeline"
+            return false
+        }
+
+        var texel = SIMD2<Float>(primaryTexture.width > 0 ? 1.0 / Float(primaryTexture.width) : 0, primaryTexture.height > 0 ? 1.0 / Float(primaryTexture.height) : 0)
+        var sharpness = min(max(Float(settings.sharpness) / 10.0, 0), 4)
+        var denoise = min(max((Float(settings.denoise) / 10.0) * 0.65, 0), 1)
+        let cropRect = textureFrame.cropRect.width > 0 && textureFrame.cropRect.height > 0 ? textureFrame.cropRect : CGRect(x: 0, y: 0, width: 1, height: 1)
+        let minX = min(max(Float(cropRect.minX), 0), 1)
+        let minY = min(max(Float(cropRect.minY), 0), 1)
+        let maxX = min(max(Float(cropRect.maxX), 0), 1)
+        let maxY = min(max(Float(cropRect.maxY), 0), 1)
+        var crop = maxX > minX && maxY > minY ? SIMD4<Float>(minX, minY, maxX, maxY) : SIMD4<Float>(0, 0, 1, 1)
+        var jitter = SIMD2<Float>(0, 0)
+
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setFragmentTexture(primaryTexture, index: 0)
+        if textureFrame.kind == 1 { encoder.setFragmentTexture(textureFrame.chromaTexture, index: 1) }
+        if textureFrame.kind == 2 {
+            encoder.setFragmentTexture(textureFrame.chromaUTexture, index: 1)
+            encoder.setFragmentTexture(textureFrame.chromaVTexture, index: 2)
+        }
+        encoder.setFragmentBytes(&texel, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
+        encoder.setFragmentBytes(&sharpness, length: MemoryLayout<Float>.size, index: 1)
+        encoder.setFragmentBytes(&denoise, length: MemoryLayout<Float>.size, index: 2)
+        encoder.setFragmentBytes(&crop, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
+        encoder.setFragmentBytes(&jitter, length: MemoryLayout<SIMD2<Float>>.size, index: 4)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        return true
+    }
+
+    private func newSpatialPipeline(fragmentFunctionName: String) -> (any MTLRenderPipelineState)? {
+        guard let device else { return nil }
+        do {
+            let library = try device.makeLibrary(source: OPNVideoTextureSource.spatialShaderSource, options: nil)
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = library.makeFunction(name: "opn_video_vertex")
+            descriptor.fragmentFunction = library.makeFunction(name: fragmentFunctionName)
+            descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+            return try device.makeRenderPipelineState(descriptor: descriptor)
+        } catch {
+            NSLog("[LibWebRTC] spatial enhancement pipeline %@ failed: %@", fragmentFunctionName, error.localizedDescription)
+            return nil
+        }
     }
 
     private func populateResult(_ result: OPNVideoEnhancementResult?, settings: OPNVideoEnhancementSettings?) {
