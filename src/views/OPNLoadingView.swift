@@ -82,9 +82,12 @@ final class OPNLoadingView: NSView {
         let width = bounds.width
         let height = bounds.height
         let hasSteps = !stepIndicatorLayers.isEmpty
-        let panelWidth = min(hasSteps ? 540.0 : 460.0, max(320.0, width - 48.0))
+        let availablePanelWidth = max(320.0, width - 48.0)
+        let panelWidth = adVisible
+            ? min(920.0, min(availablePanelWidth, max(360.0, width - 96.0)))
+            : min(hasSteps ? 540.0 : 460.0, availablePanelWidth)
         let showQueueBadge = !queuePositionLabel.isHidden
-        var panelHeight = adVisible ? 460.0 : (hasSteps ? 338.0 : 296.0)
+        var panelHeight = adVisible ? max(420.0, (panelWidth - 84.0) * 9.0 / 16.0 + 126.0) : (hasSteps ? 338.0 : 296.0)
         panelHeight = min(panelHeight, max(252.0, height - 48.0))
         let panelX = floor((width - panelWidth) * 0.5)
         let panelY = floor((height - panelHeight) * 0.5)
@@ -119,25 +122,29 @@ final class OPNLoadingView: NSView {
             dot.frame = NSRect(x: dotStart + CGFloat(index) * 13.0, y: barY + 45.0, width: 5.0, height: 5.0)
         }
 
+        messageLabel.isHidden = false
         messageLabel.frame = NSRect(x: panelX + 36.0, y: barY + 66.0, width: max(80.0, panelWidth - 72.0), height: 42.0)
         if showQueueBadge {
             queuePositionLabel.frame = NSRect(x: centerX - 54.0, y: barY + 114.0, width: 108.0, height: 28.0)
         }
 
         if adVisible {
-            let adInset = 28.0
-            let queueRowHeight = showQueueBadge ? 38.0 : 0.0
-            let adHeight = panelHeight - 106.0 - queueRowHeight
-            adContainerView.frame = NSRect(x: panelX + adInset, y: panelY + 34.0, width: panelWidth - adInset * 2.0, height: adHeight)
+            messageLabel.isHidden = true
+            let adInset = 22.0
+            let adHeight = panelHeight - adInset * 2.0
+            adContainerView.frame = NSRect(x: panelX + adInset, y: panelY + adInset, width: panelWidth - adInset * 2.0, height: adHeight)
             let adWidth = adContainerView.bounds.width
-            let mediaHeight = min(190.0, max(120.0, adHeight * 0.54))
-            adPlayerView.frame = NSRect(x: 18.0, y: 18.0, width: adWidth - 36.0, height: mediaHeight)
-            adChipLabel.frame = NSRect(x: 20.0, y: mediaHeight + 32.0, width: adWidth - 40.0, height: 18.0)
-            adTitleLabel.frame = NSRect(x: 20.0, y: mediaHeight + 54.0, width: adWidth - 40.0 - (showQueueBadge ? 206.0 : 0.0), height: 54.0)
-            adMessageLabel.frame = NSRect(x: 20.0, y: mediaHeight + 112.0, width: adWidth - 40.0, height: 56.0)
-            messageLabel.frame = NSRect(x: panelX + 36.0, y: panelRect.maxY - 52.0, width: max(80.0, panelWidth - 72.0), height: 24.0)
+            let contentInset = 18.0
+            let textHeight = 72.0
+            let maxVideoRect = NSRect(x: contentInset, y: contentInset, width: adWidth - contentInset * 2.0, height: max(120.0, adHeight - textHeight - contentInset * 2.0))
+            let videoFrame = aspectFitRect(aspectRatio: currentAdAspectRatio(), in: maxVideoRect)
+            adPlayerView.frame = videoFrame
+            let textY = min(adHeight - textHeight - 10.0, videoFrame.maxY + 14.0)
+            adChipLabel.frame = NSRect(x: contentInset, y: textY, width: showQueueBadge ? max(120.0, adWidth - 180.0) : adWidth - contentInset * 2.0, height: 16.0)
+            adTitleLabel.frame = NSRect(x: contentInset, y: textY + 20.0, width: adWidth - contentInset * 2.0, height: 24.0)
+            adMessageLabel.frame = NSRect(x: contentInset, y: textY + 46.0, width: adWidth - contentInset * 2.0, height: 24.0)
             if showQueueBadge {
-                queuePositionLabel.frame = NSRect(x: centerX - 54.0, y: adContainerView.frame.maxY + 10.0, width: 108.0, height: 28.0)
+                queuePositionLabel.frame = NSRect(x: adContainerView.frame.maxX - 132.0, y: adContainerView.frame.minY + textY - 4.0, width: 108.0, height: 24.0)
             }
         }
 
@@ -225,6 +232,7 @@ final class OPNLoadingView: NSView {
         if let url = URL(string: mediaUrl), !mediaUrl.isEmpty {
             let item = AVPlayerItem(url: url)
             let player = AVPlayer(playerItem: item)
+            player.volume = 0.5
             adPlayer = player
             adPlayerView.player = player
             adPlayerView.isHidden = false
@@ -442,23 +450,23 @@ final class OPNLoadingView: NSView {
 
     private func configureAdViews() {
         adContainerView.wantsLayer = true
-        adContainerView.layer?.backgroundColor = opnColor(0x05070A, 0.48).cgColor
-        adContainerView.layer?.cornerRadius = 22.0
+        adContainerView.layer?.backgroundColor = opnColor(0x05070A, 0.30).cgColor
+        adContainerView.layer?.cornerRadius = 18.0
         adContainerView.layer?.borderWidth = 1.0
-        adContainerView.layer?.borderColor = opnColor(0xFFFFFF, 0.12).cgColor
+        adContainerView.layer?.borderColor = opnColor(0xFFFFFF, 0.08).cgColor
         adContainerView.isHidden = true
         addSubview(adContainerView)
 
-        adChipLabel.font = NSFont.systemFont(ofSize: 12.0, weight: .semibold)
+        adChipLabel.font = NSFont.systemFont(ofSize: 11.0, weight: .semibold)
         adChipLabel.textColor = opnColor(OPNViewColor.brandGreen)
         adContainerView.addSubview(adChipLabel)
-        adTitleLabel.font = NSFont.systemFont(ofSize: 20.0, weight: .bold)
+        adTitleLabel.font = NSFont.systemFont(ofSize: 16.0, weight: .semibold)
         adTitleLabel.textColor = opnColor(OPNViewColor.textPrimary)
-        adTitleLabel.maximumNumberOfLines = 2
+        adTitleLabel.maximumNumberOfLines = 1
         adContainerView.addSubview(adTitleLabel)
-        adMessageLabel.font = NSFont.systemFont(ofSize: 13.0)
+        adMessageLabel.font = NSFont.systemFont(ofSize: 12.0)
         adMessageLabel.textColor = opnColor(OPNViewColor.textSecondary)
-        adMessageLabel.maximumNumberOfLines = 3
+        adMessageLabel.maximumNumberOfLines = 1
         adContainerView.addSubview(adMessageLabel)
         adPlayerView.controlsStyle = .none
         adPlayerView.videoGravity = .resizeAspect
@@ -541,6 +549,7 @@ final class OPNLoadingView: NSView {
         sparkLayer.isHidden = hidden
         barLayers.forEach { $0.isHidden = hidden }
         dotLayers.forEach { $0.isHidden = hidden }
+        stepIndicatorLayers.forEach { $0.isHidden = hidden }
     }
 
     private func resetAdPlayback() {
@@ -567,6 +576,22 @@ final class OPNLoadingView: NSView {
         }
         guard let adStartedAt else { return 0 }
         return max(0, Int((-adStartedAt.timeIntervalSinceNow * 1000.0).rounded()))
+    }
+
+    private func currentAdAspectRatio() -> CGFloat {
+        guard let size = adPlayer?.currentItem?.presentationSize, size.width > 0, size.height > 0 else { return 16.0 / 9.0 }
+        return size.width / size.height
+    }
+
+    private func aspectFitRect(aspectRatio: CGFloat, in rect: NSRect) -> NSRect {
+        guard aspectRatio > 0, rect.width > 0, rect.height > 0 else { return rect }
+        let rectRatio = rect.width / rect.height
+        if rectRatio > aspectRatio {
+            let width = floor(rect.height * aspectRatio)
+            return NSRect(x: rect.minX + floor((rect.width - width) * 0.5), y: rect.minY, width: width, height: rect.height)
+        }
+        let height = floor(rect.width / aspectRatio)
+        return NSRect(x: rect.minX, y: rect.minY + floor((rect.height - height) * 0.5), width: rect.width, height: height)
     }
 
     private func bool(_ value: Any?) -> Bool {
