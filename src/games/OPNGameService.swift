@@ -296,7 +296,7 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private func isSessionAuthenticationError(_ error: String) -> Bool {
-        error.contains("401") || error.localizedCaseInsensitiveContains("unauthorized") || error.localizedCaseInsensitiveContains("auth")
+        error.contains("HTTP 401") || error.contains("HTTP 403") || error.contains("AUTH_FAILURE") || error.contains("auth_failure") || error.contains("No access token")
     }
 
     private func isSessionLimitExceededError(_ error: String) -> Bool {
