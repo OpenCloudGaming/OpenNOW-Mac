@@ -110,6 +110,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
         let configuration = RTCConfiguration()
         configuration.iceServers = iceServers(from: sessionInfo)
+        NSLog("[LibWebRTC] configured ICE servers=%d", configuration.iceServers.count)
         configuration.sdpSemantics = .unifiedPlan
         configuration.bundlePolicy = .maxBundle
         configuration.rtcpMuxPolicy = .require

@@ -581,6 +581,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "serverIp": "",
             "signalingServer": "",
             "signalingUrl": "",
+            "iceServers": iceServers(from: session),
             "gpuType": string(session["gpuType"]),
             "mediaConnectionInfo": ["ip": "", "port": 0],
             "negotiatedStreamProfile": initialProfile.isEmpty ? negotiatedStreamProfile(from: session) : initialProfile,
@@ -675,6 +676,45 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 ]
             },
         ]
+    }
+
+    private func iceServers(from session: [String: Any]) -> [[String: Any]] {
+        let candidates = [
+            session["iceServers"],
+            session["ice_servers"],
+            session["iceServerList"],
+            session["iceServerInfo"],
+            (session["sessionControlInfo"] as? [String: Any])?["iceServers"],
+            (session["sessionControlInfo"] as? [String: Any])?["ice_servers"],
+            (session["sessionControlInfo"] as? [String: Any])?["iceServerList"],
+            (session["sessionControlInfo"] as? [String: Any])?["iceServerInfo"],
+        ]
+        for candidate in candidates {
+            let servers = normalizedIceServers(candidate)
+            if !servers.isEmpty { return servers }
+        }
+        return []
+    }
+
+    private func normalizedIceServers(_ value: Any?) -> [[String: Any]] {
+        let items: [Any]
+        if let array = value as? [Any] { items = array }
+        else if let dictionary = value as? [String: Any] { items = [dictionary] }
+        else { return [] }
+        return items.compactMap { item -> [String: Any]? in
+            guard let dictionary = item as? [String: Any] else { return nil }
+            var urls = stringArray(dictionary["urls"])
+            if urls.isEmpty { urls = stringArray(dictionary["url"]) }
+            if urls.isEmpty { urls = stringArray(dictionary["uri"]) }
+            urls = urls.filter { $0.hasPrefix("stun:") || $0.hasPrefix("turn:") || $0.hasPrefix("turns:") }
+            guard !urls.isEmpty else { return nil }
+            var server: [String: Any] = ["urls": urls]
+            let username = string(dictionary["username"])
+            let credential = string(dictionary["credential"])
+            if !username.isEmpty { server["username"] = username }
+            if !credential.isEmpty { server["credential"] = credential }
+            return server
+        }
     }
 
     private func mergeAndStoreAdState(_ info: inout [String: Any]) {
