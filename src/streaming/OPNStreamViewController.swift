@@ -233,9 +233,10 @@ final class OPNStreamViewController: NSViewController {
 
         let settingsBox = OPNStreamSendableValue(settings)
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"], fallback: 50)
+        let providerStreamingBaseUrl = OPNGameService.shared.providerStreamingBaseURL()
         OPNStreamPreferences.fetchCloudVariables(token: apiToken) { [weak self] cloudVariables in
             guard let self else { return }
-            OPNStreamPreferences.runNetworkPreflight(token: self.apiToken, providerStreamingBaseUrl: selectedStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps) { [weak self] preflight in
+            OPNStreamPreferences.runNetworkPreflight(token: self.apiToken, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps) { [weak self] preflight in
                 DispatchQueue.main.async {
                     guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                     var launchSettings = self.settingsByApplyingCloudVariables(settingsBox.value, variables: cloudVariables)
