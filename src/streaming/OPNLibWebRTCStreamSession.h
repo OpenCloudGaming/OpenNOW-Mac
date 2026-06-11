@@ -61,6 +61,7 @@ public:
     void HandleDataChannelMessage(const std::string &label, const uint8_t *data, size_t len);
     void HandleClipboardText(const std::string &text);
     void HandleMicrophoneLevel(double level);
+    void HandleStatsDictionary(void *stats);
     void HandleAudioDeviceChange();
     void HandleVideoFrame(void *frame);
     void HandleEnhancedVideoFrame(void *pixelBuffer);
@@ -86,7 +87,6 @@ public:
                                    uint64_t enhancementDroppedFrames);
 
 private:
-    void HandleStatsReport(void *report);
     void StartStatsPolling();
     void StopStatsPolling();
     void StartMicrophoneLevelPolling();
@@ -99,18 +99,16 @@ private:
     void *m_impl = nullptr;
     void *m_nativeWindow = nullptr;
     void *m_disconnectGraceTimer = nullptr;
-    void *m_statsTimer = nullptr;
     void *m_statsQueue = nullptr;
     void *m_audioController = nullptr;
+    void *m_statsController = nullptr;
     std::shared_ptr<std::atomic_bool> m_callbackLiveness;
-    bool m_statsRequestInFlight = false;
     bool m_microphoneEnabled = false;
     double m_gameVolume = 1.0;
     double m_microphoneVolumeLevel = 1.0;
     StreamStats m_latestStats;
     mutable std::mutex m_statsMutex;
     uint64_t m_previousStatsTimestampMs = 0;
-    uint64_t m_lastStatsRequestMs = 0;
     uint64_t m_previousBytesReceived = 0;
     uint64_t m_previousPacketsReceived = 0;
     uint64_t m_previousFramesDecoded = 0;

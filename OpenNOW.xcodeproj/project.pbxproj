@@ -75,7 +75,7 @@
 		E000000000000000000000B2 /* OPNCoreAudioRTCDevice.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B3; };
 		E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B9; };
 		E000000000000000000000BA /* OPNLibWebRTCInput.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BB; };
-		E00000000000000000000077 /* OPNLibWebRTCStats.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000078; };
+		E000000000000000000000BE /* OPNLibWebRTCStats.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BF; };
 		E000000000000000000000BC /* OPNLibWebRTCAudio.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BD; };
 		E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E0000000000000000000007C; };
 		E0000000000000000000007F /* OPNStreamSessionHandle.swift in PBXBuildFile */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080; };
@@ -333,7 +333,7 @@
 		E000000000000000000000B3 /* OPNCoreAudioRTCDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAudioRTCDevice.swift; path = src/streaming/OPNCoreAudioRTCDevice.swift; sourceTree = "<group>"; };
 		E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCSessionImpl.swift; path = src/streaming/OPNLibWebRTCSessionImpl.swift; sourceTree = "<group>"; };
 		E000000000000000000000BB /* OPNLibWebRTCInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCInput.swift; path = src/streaming/OPNLibWebRTCInput.swift; sourceTree = "<group>"; };
-		E00000000000000000000078 /* OPNLibWebRTCStats.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCStats.mm; path = src/streaming/OPNLibWebRTCStats.mm; sourceTree = "<group>"; };
+		E000000000000000000000BF /* OPNLibWebRTCStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCStats.swift; path = src/streaming/OPNLibWebRTCStats.swift; sourceTree = "<group>"; };
 		E000000000000000000000BD /* OPNLibWebRTCAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCAudio.swift; path = src/streaming/OPNLibWebRTCAudio.swift; sourceTree = "<group>"; };
 		E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = OPNLibWebRTCSessionSurface.mm; path = src/streaming/OPNLibWebRTCSessionSurface.mm; sourceTree = "<group>"; };
 		E00000000000000000000080 /* OPNStreamSessionHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandle.swift; path = src/streaming/OPNStreamSessionHandle.swift; sourceTree = "<group>"; };
@@ -651,7 +651,7 @@
 				E000000000000000000000B3 /* OPNCoreAudioRTCDevice.swift */,
 				E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */,
 				E000000000000000000000BB /* OPNLibWebRTCInput.swift */,
-				E00000000000000000000078 /* OPNLibWebRTCStats.mm */,
+				E000000000000000000000BF /* OPNLibWebRTCStats.swift */,
 				E000000000000000000000BD /* OPNLibWebRTCAudio.swift */,
 				E0000000000000000000007C /* OPNLibWebRTCSessionSurface.mm */,
 				E00000000000000000000080 /* OPNStreamSessionHandle.swift */,
@@ -783,7 +783,7 @@
 				E000000000000000000000B2 /* OPNCoreAudioRTCDevice.swift in PBXBuildFile */,
 				E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in PBXBuildFile */,
 				E000000000000000000000BA /* OPNLibWebRTCInput.swift in PBXBuildFile */,
-				E00000000000000000000077 /* OPNLibWebRTCStats.mm in PBXBuildFile */,
+				E000000000000000000000BE /* OPNLibWebRTCStats.swift in PBXBuildFile */,
 				E000000000000000000000BC /* OPNLibWebRTCAudio.swift in PBXBuildFile */,
 				E0000000000000000000007B /* OPNLibWebRTCSessionSurface.mm in PBXBuildFile */,
 				E0000000000000000000007F /* OPNStreamSessionHandle.swift in PBXBuildFile */,

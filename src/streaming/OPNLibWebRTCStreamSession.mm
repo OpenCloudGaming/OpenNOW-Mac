@@ -55,6 +55,14 @@
 @property(nonatomic, readonly) double gameVolume;
 @end
 
+@interface OPNLibWebRTCStats : NSObject
+- (instancetype)initWithOwner:(void *)owner;
+- (void)requestStatsWithSessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl queue:(dispatch_queue_t)queue;
+- (void)startPollingWithSessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl queue:(dispatch_queue_t)queue;
+- (void)stopPolling;
+- (void)applyRuntimeBitrateLimitMbps:(NSInteger)mbps reason:(NSString *)reason sessionImpl:(OPNLibWebRTCSessionImpl *)sessionImpl;
+@end
+
 namespace OPN {
 
 bool LibWebRTCStreamSession::IsAvailable() {
@@ -645,6 +653,8 @@ LibWebRTCStreamSession::LibWebRTCStreamSession() {
     m_inputController = (__bridge_retained void *)inputController;
     OPNLibWebRTCAudio *audioController = [[OPNLibWebRTCAudio alloc] initWithOwner:this];
     m_audioController = (__bridge_retained void *)audioController;
+    OPNLibWebRTCStats *statsController = [[OPNLibWebRTCStats alloc] initWithOwner:this];
+    m_statsController = (__bridge_retained void *)statsController;
     m_callbackLiveness = std::make_shared<std::atomic_bool>(true);
 }
 
@@ -665,6 +675,11 @@ LibWebRTCStreamSession::~LibWebRTCStreamSession() {
         [audioController stopAudioDeviceMonitoring];
         [audioController stopMicrophoneLevelPolling];
         m_audioController = nullptr;
+    }
+    if (m_statsController) {
+        OPNLibWebRTCStats *statsController = (__bridge_transfer OPNLibWebRTCStats *)m_statsController;
+        [statsController stopPolling];
+        m_statsController = nullptr;
     }
 }
 
@@ -1474,6 +1489,45 @@ static OPNLibWebRTCAudio *OPNAudioController(void *opaque) {
     return (__bridge OPNLibWebRTCAudio *)opaque;
 }
 
+static OPNLibWebRTCStats *OPNStatsController(void *opaque) {
+    return (__bridge OPNLibWebRTCStats *)opaque;
+}
+
+static uint64_t OPNMonotonicMs() {
+    using Clock = std::chrono::steady_clock;
+    return (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
+}
+
+static double OPNStatsDouble(NSDictionary *stats, NSString *key, double fallback = -1.0) {
+    id value = stats[key];
+    return [value respondsToSelector:@selector(doubleValue)] ? [value doubleValue] : fallback;
+}
+
+static uint64_t OPNStatsUInt64(NSDictionary *stats, NSString *key) {
+    id value = stats[key];
+    return [value respondsToSelector:@selector(unsignedLongLongValue)] ? [value unsignedLongLongValue] : 0;
+}
+
+static int64_t OPNStatsInt64(NSDictionary *stats, NSString *key) {
+    id value = stats[key];
+    return [value respondsToSelector:@selector(longLongValue)] ? [value longLongValue] : 0;
+}
+
+static bool OPNStatsBool(NSDictionary *stats, NSString *key) {
+    id value = stats[key];
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : false;
+}
+
+static std::string OPNStatsString(NSDictionary *stats, NSString *key) {
+    id value = stats[key];
+    if (![value isKindOfClass:NSString.class]) return "";
+    return OPNNSStringToString((NSString *)value);
+}
+
+static dispatch_queue_t OPNStatsQueue(void *queue) {
+    return queue ? (__bridge dispatch_queue_t)queue : dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+}
+
 void LibWebRTCStreamSession::SendInput(const uint8_t *data, size_t len) {
     if (!data || len == 0) return;
     NSData *payload = [NSData dataWithBytes:data length:len];
@@ -1661,6 +1715,244 @@ extern "C" OSStatus OPNCoreAudioRTCDeviceDelegateDeliverRecordedData(id<RTCAudio
     return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, audioBufferList, nullptr, nil);
 }
 
+void LibWebRTCStreamSession::RequestStats() {
+    [OPNStatsController(m_statsController) requestStatsWithSessionImpl:OPNImplFromOpaque(m_impl) queue:OPNStatsQueue(m_statsQueue)];
+}
+
+void LibWebRTCStreamSession::StartStatsPolling() {
+    [OPNStatsController(m_statsController) startPollingWithSessionImpl:OPNImplFromOpaque(m_impl) queue:OPNStatsQueue(m_statsQueue)];
+}
+
+void LibWebRTCStreamSession::StopStatsPolling() {
+    [OPNStatsController(m_statsController) stopPolling];
+}
+
+StreamStats LibWebRTCStreamSession::GetLatestStats() const {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    return m_latestStats;
+}
+
+void LibWebRTCStreamSession::ApplyRuntimeBitrateLimit(int mbps, const char *reason) {
+    int clampedMbps = std::max(1, std::min(mbps, 250));
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_latestStats.videoPipelineMode = "libwebrtc bitrate " + std::to_string(clampedMbps) + " Mbps";
+    }
+    [OPNStatsController(m_statsController) applyRuntimeBitrateLimitMbps:clampedMbps reason:@(reason ? reason : "manual") sessionImpl:OPNImplFromOpaque(m_impl)];
+}
+
+void LibWebRTCStreamSession::SetMaxBitrateMbps(int mbps) {
+    int clampedMbps = std::max(1, std::min(mbps, 250));
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_settings.maxBitrateMbps = clampedMbps;
+        m_configuredMaxBitrateMbps = clampedMbps;
+        m_adaptiveBitrateMbps = clampedMbps;
+        m_minAdaptiveBitrateMbps = std::min(clampedMbps, std::max(8, clampedMbps * 35 / 100));
+        m_adaptiveCongestionScore = 0;
+        m_adaptiveRecoveryScore = 0;
+    }
+    ApplyRuntimeBitrateLimit(clampedMbps, "manual");
+}
+
+void LibWebRTCStreamSession::UpdateAdaptiveBitrate(const StreamStats &stats) {
+    if (!stats.available) return;
+
+    int bitrateToApply = 0;
+    const char *reason = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        const int configuredMax = std::max(1, m_configuredMaxBitrateMbps > 0 ? m_configuredMaxBitrateMbps : m_settings.maxBitrateMbps);
+        if (m_adaptiveBitrateMbps <= 0) m_adaptiveBitrateMbps = configuredMax;
+        if (m_minAdaptiveBitrateMbps <= 0) m_minAdaptiveBitrateMbps = std::min(configuredMax, std::max(8, configuredMax * 35 / 100));
+
+        const double targetFps = m_settings.fps > 0 ? (double)m_settings.fps : 60.0;
+        const double frameBudgetMs = 1000.0 / targetFps;
+        const bool congested = stats.packetLossPercent >= 1.0 || stats.jitterMs >= 25.0 || stats.latencyMs >= 110.0 || stats.decodeTimeMs >= frameBudgetMs * 0.90 || (stats.renderFps > 0.0 && stats.renderFps < targetFps * 0.82);
+        const uint64_t nowMs = stats.timestampMs > 0 ? stats.timestampMs : OPNMonotonicMs();
+
+        if (congested) {
+            m_adaptiveCongestionScore = std::min(m_adaptiveCongestionScore + 1, 6);
+            m_adaptiveRecoveryScore = 0;
+        } else {
+            m_adaptiveCongestionScore = std::max(0, m_adaptiveCongestionScore - 1);
+            m_adaptiveRecoveryScore = std::min(m_adaptiveRecoveryScore + 1, 20);
+        }
+
+        const bool downCooldownElapsed = m_lastAdaptiveBitrateChangeMs == 0 || nowMs - m_lastAdaptiveBitrateChangeMs >= 2500;
+        const bool upCooldownElapsed = m_lastAdaptiveBitrateChangeMs == 0 || nowMs - m_lastAdaptiveBitrateChangeMs >= 10000;
+        if (m_adaptiveCongestionScore >= 2 && downCooldownElapsed && m_adaptiveBitrateMbps > m_minAdaptiveBitrateMbps) {
+            int reduced = std::max(m_minAdaptiveBitrateMbps, (int)std::floor((double)m_adaptiveBitrateMbps * 0.82));
+            if (reduced < m_adaptiveBitrateMbps) {
+                m_adaptiveBitrateMbps = reduced;
+                m_lastAdaptiveBitrateChangeMs = nowMs;
+                m_adaptiveCongestionScore = 0;
+                bitrateToApply = reduced;
+                reason = "adaptive-congestion";
+            }
+        } else if (m_adaptiveRecoveryScore >= 10 && upCooldownElapsed && m_adaptiveBitrateMbps < configuredMax) {
+            int increased = std::min(configuredMax, std::max(m_adaptiveBitrateMbps + 1, (int)std::ceil((double)m_adaptiveBitrateMbps * 1.10)));
+            if (increased > m_adaptiveBitrateMbps) {
+                m_adaptiveBitrateMbps = increased;
+                m_lastAdaptiveBitrateChangeMs = nowMs;
+                m_adaptiveRecoveryScore = 0;
+                bitrateToApply = increased;
+                reason = "adaptive-recovery";
+            }
+        }
+    }
+
+    if (bitrateToApply > 0) ApplyRuntimeBitrateLimit(bitrateToApply, reason);
+}
+
+void LibWebRTCStreamSession::SetLocalVideoEnhancement(int mode, int sharpness, int denoise, int targetHeight) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_localEnhancementMode = std::max(0, std::min(mode, 4));
+    m_localEnhancementSharpness = std::max(0, std::min(sharpness, 40));
+    m_localEnhancementDenoise = std::max(0, std::min(denoise, 20));
+    m_localEnhancementTargetHeight = std::max(1440, std::min(targetHeight, 2160));
+}
+
+void LibWebRTCStreamSession::SetEnhancedVideoFrameCaptureEnabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_enhancedVideoFrameCaptureEnabled = enabled;
+}
+
+void LibWebRTCStreamSession::HandleVideoFrame(void *frame) {
+#if defined(OPN_HAVE_LIBWEBRTC)
+    RTCVideoFrame *videoFrame = (__bridge RTCVideoFrame *)frame;
+    if (videoFrame && videoFrame.width > 0 && videoFrame.height > 0) {
+        std::string frameResolution = std::to_string(videoFrame.width) + "x" + std::to_string(videoFrame.height);
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_latestStats.resolution = frameResolution;
+    }
+#else
+    (void)frame;
+#endif
+    if (m_onVideoFrame) m_onVideoFrame(frame);
+}
+
+void LibWebRTCStreamSession::HandleEnhancedVideoFrame(void *pixelBuffer) {
+    if (m_onEnhancedVideoFrame) m_onEnhancedVideoFrame(pixelBuffer);
+}
+
+bool LibWebRTCStreamSession::WantsEnhancedVideoFrames() const {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    return m_enhancedVideoFrameCaptureEnabled && (bool)m_onEnhancedVideoFrame;
+}
+
+void LibWebRTCStreamSession::LocalVideoEnhancement(int &mode, int &sharpness, int &denoise, int &targetHeight) const {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    mode = m_localEnhancementMode;
+    sharpness = m_localEnhancementSharpness;
+    denoise = m_localEnhancementDenoise;
+    targetHeight = m_localEnhancementTargetHeight;
+}
+
+void LibWebRTCStreamSession::SetVideoRendererState(const std::string &sink, const std::string &pipelineMode) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_latestStats.videoSink = sink;
+    if (!pipelineMode.empty()) m_latestStats.videoPipelineMode = pipelineMode;
+}
+
+void LibWebRTCStreamSession::SetVideoRenderDiagnostics(const std::string &pixelFormat,
+                                                       const std::string &renderMode,
+                                                       const std::string &frameSource,
+                                                       const std::string &renderPath,
+                                                       const std::string &fallback,
+                                                       const std::string &enhancementConfiguredTier,
+                                                       const std::string &enhancementActiveTier,
+                                                       const std::string &enhancementFallbackReason,
+                                                       const std::string &enhancementSourceResolution,
+                                                       const std::string &enhancementDrawableResolution,
+                                                       const std::string &enhancementDiagnostics,
+                                                       double enhancementFrameTimeMs,
+                                                       uint64_t enhancementDroppedFrames) {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_latestStats.videoPixelFormat = pixelFormat;
+    m_latestStats.videoRenderMode = renderMode;
+    m_latestStats.videoFrameSource = frameSource;
+    m_latestStats.videoRenderPath = renderPath;
+    m_latestStats.videoRendererFallback = fallback;
+    m_latestStats.videoEnhancementConfiguredTier = enhancementConfiguredTier;
+    m_latestStats.videoEnhancementActiveTier = enhancementActiveTier;
+    m_latestStats.videoEnhancementFallbackReason = enhancementFallbackReason;
+    m_latestStats.videoEnhancementSourceResolution = enhancementSourceResolution;
+    m_latestStats.videoEnhancementDrawableResolution = enhancementDrawableResolution;
+    m_latestStats.videoEnhancementDiagnostics = enhancementDiagnostics;
+    m_latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs;
+    m_latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames;
+}
+
+void LibWebRTCStreamSession::HandleStatsDictionary(void *rawStats) {
+    NSDictionary *stats = (__bridge NSDictionary *)rawStats;
+    if (!stats) return;
+
+    StreamStats parsed;
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        parsed = m_latestStats;
+    }
+    parsed.available = OPNStatsBool(stats, @"available");
+    parsed.latencyMs = OPNStatsDouble(stats, @"latencyMs");
+    parsed.jitterMs = OPNStatsDouble(stats, @"jitterMs");
+    parsed.inboundBitrateMbps = OPNStatsDouble(stats, @"inboundBitrateMbps");
+    parsed.packetLossPercent = OPNStatsDouble(stats, @"packetLossPercent");
+    parsed.decodeTimeMs = OPNStatsDouble(stats, @"decodeTimeMs");
+    parsed.renderFps = OPNStatsDouble(stats, @"renderFps");
+    parsed.bytesReceived = OPNStatsUInt64(stats, @"bytesReceived");
+    parsed.packetsReceived = OPNStatsUInt64(stats, @"packetsReceived");
+    parsed.packetsLost = OPNStatsInt64(stats, @"packetsLost");
+    parsed.framesReceived = OPNStatsUInt64(stats, @"framesReceived");
+    parsed.framesDecoded = OPNStatsUInt64(stats, @"framesDecoded");
+    parsed.framesDropped = OPNStatsUInt64(stats, @"framesDropped");
+    parsed.timestampMs = OPNStatsUInt64(stats, @"timestampMs");
+    parsed.videoDecoder = OPNStatsString(stats, @"videoDecoder");
+    if (parsed.videoSink.empty()) parsed.videoSink = OPNStatsString(stats, @"videoSink");
+    if (parsed.videoPipelineMode.empty()) parsed.videoPipelineMode = OPNStatsString(stats, @"videoPipelineMode");
+    std::string resolution = OPNStatsString(stats, @"resolution");
+    if (!resolution.empty()) parsed.resolution = resolution;
+    std::string codec = OPNStatsString(stats, @"codec");
+    if (!codec.empty()) parsed.codec = codec;
+
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        if (parsed.bytesReceived > 0 && m_previousBytesReceived > 0 && parsed.timestampMs > m_previousStatsTimestampMs) {
+            uint64_t deltaBytes = parsed.bytesReceived >= m_previousBytesReceived ? parsed.bytesReceived - m_previousBytesReceived : 0;
+            uint64_t deltaFramesDecoded = parsed.framesDecoded >= m_previousFramesDecoded ? parsed.framesDecoded - m_previousFramesDecoded : 0;
+            double deltaSeconds = (double)(parsed.timestampMs - m_previousStatsTimestampMs) / 1000.0;
+            if (deltaSeconds > 0.0) {
+                parsed.inboundBitrateMbps = ((double)deltaBytes * 8.0) / (deltaSeconds * 1000000.0);
+                if (parsed.renderFps < 0.0) parsed.renderFps = (double)deltaFramesDecoded / deltaSeconds;
+            }
+        }
+        if (m_previousPacketsReceived > 0 || m_previousPacketsLost > 0) {
+            uint64_t packetsDelta = parsed.packetsReceived >= m_previousPacketsReceived ? parsed.packetsReceived - m_previousPacketsReceived : 0;
+            int64_t lostDelta = parsed.packetsLost - m_previousPacketsLost;
+            if (packetsDelta > 0) {
+                double totalPackets = (double)packetsDelta + (double)lostDelta;
+                parsed.packetLossPercent = totalPackets > 0.0 ? ((double)lostDelta * 100.0) / totalPackets : 0.0;
+            }
+        }
+        if (parsed.bytesReceived > 0) {
+            m_previousBytesReceived = parsed.bytesReceived;
+            m_previousStatsTimestampMs = parsed.timestampMs;
+        }
+        if (parsed.packetsReceived > 0 || parsed.packetsLost > 0) {
+            m_previousPacketsReceived = parsed.packetsReceived;
+            m_previousPacketsLost = parsed.packetsLost;
+        }
+        if (parsed.framesDecoded > 0) m_previousFramesDecoded = parsed.framesDecoded;
+        m_latestStats = parsed;
+    }
+    UpdateAdaptiveBitrate(parsed);
+}
+
+extern "C" void OPNLibWebRTCStatsOwnerHandleStatsReport(void *owner, NSDictionary *stats) {
+    OPN::LibWebRTCStreamSession *session = owner ? static_cast<OPN::LibWebRTCStreamSession *>(owner) : nullptr;
+    if (session) session->HandleStatsDictionary((__bridge void *)stats);
+}
+
 #if defined(OPN_HAVE_LIBWEBRTC)
 static const char *OPNRTCRtpTransceiverDirectionName(RTCRtpTransceiverDirection direction) {
     switch (direction) {
@@ -1767,9 +2059,7 @@ void LibWebRTCStreamSession::Start(const SessionInfo &session,
         m_latestStats.videoEnhancementDiagnostics = "";
         m_latestStats.videoEnhancementFrameTimeMs = -1.0;
         m_latestStats.videoEnhancementDroppedFrames = 0;
-        m_statsRequestInFlight = false;
         m_previousStatsTimestampMs = 0;
-        m_lastStatsRequestMs = 0;
         m_previousBytesReceived = 0;
         m_previousPacketsReceived = 0;
         m_previousFramesDecoded = 0;
@@ -1990,10 +2280,6 @@ void LibWebRTCStreamSession::Stop() {
     StopAudioDeviceMonitoring();
     StopStatsPolling();
     StopMicrophoneLevelPolling();
-    {
-        std::lock_guard<std::mutex> lock(m_statsMutex);
-        m_statsRequestInFlight = false;
-    }
 #if defined(OPN_HAVE_LIBWEBRTC)
     if (m_impl) {
         OPNLibWebRTCSessionImpl *impl = (__bridge_transfer OPNLibWebRTCSessionImpl *)m_impl;
