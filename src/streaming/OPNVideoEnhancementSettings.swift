@@ -274,6 +274,15 @@ static float3 opn_finish(float3 center, float3 blur, float sharpness, float deno
     float3 denoised = mix(center, blur, clamp(denoise, 0.0, 1.0));
     return clamp(denoised + (denoised - blur) * sharpness, float3(0.0), float3(1.0));
 }
+static float opn_luma(float3 color) {
+    return dot(color, float3(0.2126, 0.7152, 0.0722));
+}
+static float opn_block_luma(texture2d<float> sourceTexture, sampler s, float2 uv, float2 texel) {
+    float center = opn_luma(sourceTexture.sample(s, clamp(uv, float2(0.0), float2(1.0))).rgb);
+    float horizontal = opn_luma(sourceTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb) + opn_luma(sourceTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb);
+    float vertical = opn_luma(sourceTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb) + opn_luma(sourceTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb);
+    return (center * 2.0 + horizontal + vertical) / 6.0;
+}
 static float3 opn_rgb_spatial(texture2d<float> sourceTexture, sampler s, float2 uv, float2 texel, float4 crop, float sharpness, float denoise) {
     float3 center = sourceTexture.sample(s, uv).rgb;
     float3 blur = (sourceTexture.sample(s, opn_clamp_crop(uv + float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(texel.x, 0.0), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv + float2(0.0, texel.y), crop)).rgb + sourceTexture.sample(s, opn_clamp_crop(uv - float2(0.0, texel.y), crop)).rgb) * 0.25;
@@ -312,6 +321,80 @@ fragment float4 opn_video_fast_nv12(VertexOut in [[stage_in]], texture2d<float> 
 fragment float4 opn_video_fast_i420(VertexOut in [[stage_in]], texture2d<float> yTexture [[texture(0)]], texture2d<float> uTexture [[texture(1)]], texture2d<float> vTexture [[texture(2)]], constant float2 &scale [[buffer(0)]], constant float &sharpness [[buffer(1)]], constant float &denoise [[buffer(2)]], constant float4 &crop [[buffer(3)]], constant float2 &jitter [[buffer(4)]]) {
     constexpr sampler s(address::clamp_to_edge, filter::linear);
     return float4(opn_i420_rgb(yTexture, uTexture, vTexture, s, opn_crop_uv(in.texCoord, crop)), 1.0);
+}
+fragment float4 opn_video_temporal_motion(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], constant float2 &texel [[buffer(0)]], constant int &hasHistory [[buffer(1)]], constant float2 &jitterDelta [[buffer(2)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));
+    if (hasHistory == 0) return float4(0.0, 0.0, 0.0, 1.0);
+    float2 blockTexel = texel * 2.0;
+    float currentLuma = opn_block_luma(currentTexture, s, uv, blockTexel);
+    float bestDiff = 1.0;
+    float bestScore = 1.0;
+    float2 bestOffset = float2(0.0);
+    for (int y = -2; y <= 2; ++y) {
+        for (int x = -2; x <= 2; ++x) {
+            float2 offset = jitterDelta + float2((float)x, (float)y) * blockTexel;
+            float diff = fabs(currentLuma - opn_block_luma(historyTexture, s, uv + offset, blockTexel));
+            float score = diff + length(float2((float)x, (float)y)) * 0.003;
+            if (score < bestScore) { bestScore = score; bestDiff = diff; bestOffset = offset; }
+        }
+    }
+    float confidence = 1.0 - smoothstep(0.018, 0.135, bestDiff);
+    return float4(bestOffset, confidence, bestDiff);
+}
+fragment float4 opn_video_temporal_composite(VertexOut in [[stage_in]], texture2d<float> currentTexture [[texture(0)]], texture2d<float> historyTexture [[texture(1)]], texture2d<float> motionTexture [[texture(2)]], constant float2 &texel [[buffer(0)]], constant float &historyWeight [[buffer(1)]], constant float &sharpness [[buffer(2)]], constant int &hasHistory [[buffer(3)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));
+    float3 current = currentTexture.sample(s, uv).rgb;
+    float2 uvL = clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0));
+    float2 uvR = clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0));
+    float2 uvU = clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0));
+    float2 uvD = clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0));
+    float3 left = currentTexture.sample(s, uvL).rgb;
+    float3 right = currentTexture.sample(s, uvR).rgb;
+    float3 up = currentTexture.sample(s, uvU).rgb;
+    float3 down = currentTexture.sample(s, uvD).rgb;
+    float3 blur = (left + right + up + down) * 0.25;
+    float3 minColor = min(min(current, left), min(right, min(up, down)));
+    float3 maxColor = max(max(current, left), max(right, max(up, down)));
+    float3 history = current;
+    float motionConfidence = 0.0;
+    float historyDiff = 1.0;
+    if (hasHistory != 0) {
+        float4 motion = motionTexture.sample(s, uv);
+        float2 rawHistoryUv = uv + motion.xy;
+        float historyInside = step(0.0, rawHistoryUv.x) * step(rawHistoryUv.x, 1.0) * step(0.0, rawHistoryUv.y) * step(rawHistoryUv.y, 1.0);
+        float2 historyUv = clamp(rawHistoryUv, float2(0.0), float2(1.0));
+        history = clamp(historyTexture.sample(s, historyUv).rgb, minColor - float3(0.004), maxColor + float3(0.004));
+        historyDiff = fabs(opn_luma(current) - opn_luma(history));
+        float sceneContinuity = 1.0 - smoothstep(0.105, 0.255, motion.w);
+        motionConfidence = clamp(motion.z, 0.0, 1.0) * historyInside * sceneContinuity;
+    }
+    float lumaStability = 1.0 - smoothstep(0.016, 0.125, historyDiff);
+    float edgeStrength = smoothstep(0.014, 0.20, length(current - blur));
+    float temporalMix = hasHistory != 0 ? clamp(historyWeight * motionConfidence * lumaStability * mix(1.0, 0.68, edgeStrength), 0.0, 0.86) : 0.0;
+    float3 reconstructed = mix(current, history, temporalMix);
+    reconstructed += (current - blur) * sharpness * edgeStrength * (1.0 - temporalMix * 0.52);
+    return float4(clamp(reconstructed, float3(0.0), float3(1.0)), 1.0);
+}
+fragment float4 opn_video_present_rgb(VertexOut in [[stage_in]], texture2d<float> sourceTexture [[texture(0)]]) {
+    constexpr sampler s(address::clamp_to_edge, filter::linear);
+    float2 uv = clamp(in.texCoord, float2(0.0), float2(1.0));
+    float2 texel = max(1.0 / float2((float)sourceTexture.get_width(), (float)sourceTexture.get_height()), float2(1.0 / 8192.0));
+    float3 center = sourceTexture.sample(s, uv).rgb;
+    float3 left = sourceTexture.sample(s, clamp(uv - float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;
+    float3 right = sourceTexture.sample(s, clamp(uv + float2(texel.x, 0.0), float2(0.0), float2(1.0))).rgb;
+    float3 up = sourceTexture.sample(s, clamp(uv + float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;
+    float3 down = sourceTexture.sample(s, clamp(uv - float2(0.0, texel.y), float2(0.0), float2(1.0))).rgb;
+    float centerLuma = opn_luma(center);
+    float horizontalContrast = abs(opn_luma(left) - centerLuma) + abs(opn_luma(right) - centerLuma);
+    float verticalContrast = abs(opn_luma(up) - centerLuma) + abs(opn_luma(down) - centerLuma);
+    float edgeAmount = smoothstep(0.04, 0.22, max(horizontalContrast, verticalContrast));
+    float3 tangent = horizontalContrast > verticalContrast ? (up + down) * 0.5 : (left + right) * 0.5;
+    float3 resolved = mix(center, tangent, edgeAmount * 0.20);
+    float3 minColor = min(min(center, left), min(right, min(up, down)));
+    float3 maxColor = max(max(center, left), max(right, max(up, down)));
+    return float4(clamp(resolved, minColor, maxColor), 1.0);
 }
 """
 }
@@ -412,6 +495,21 @@ final class OPNVideoEnhancementRenderer: NSObject {
     private var fastSpatialRGBPipeline: (any MTLRenderPipelineState)?
     private var fastSpatialNV12Pipeline: (any MTLRenderPipelineState)?
     private var fastSpatialI420Pipeline: (any MTLRenderPipelineState)?
+    private var temporalMotionPipeline: (any MTLRenderPipelineState)?
+    private var temporalCompositePipeline: (any MTLRenderPipelineState)?
+    private var temporalPresentPipeline: (any MTLRenderPipelineState)?
+    private var temporalCurrentTexture: (any MTLTexture)?
+    private var temporalHistoryTexture: (any MTLTexture)?
+    private var temporalOutputTexture: (any MTLTexture)?
+    private var temporalMotionTexture: (any MTLTexture)?
+    private var temporalHistoryValid = false
+    private var temporalFrameIndex = 0
+    private var temporalPreviousJitter = SIMD2<Float>(0, 0)
+    private var temporalHistoryWidth = 0
+    private var temporalHistoryHeight = 0
+    private var temporalSourceWidth = 0
+    private var temporalSourceHeight = 0
+    private var temporalHistoryResetCount = 0
     private var droppedFrames: UInt64 = 0
 
     @objc init(device: (any MTLDevice)?, commandQueue: (any MTLCommandQueue)?) {
@@ -427,6 +525,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
         fastSpatialRGBPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_rgb")
         fastSpatialNV12Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_nv12")
         fastSpatialI420Pipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_fast_i420")
+        temporalMotionPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_temporal_motion", pixelFormat: .rgba16Float)
+        temporalCompositePipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_temporal_composite")
+        temporalPresentPipeline = newSpatialPipeline(fragmentFunctionName: "opn_video_present_rgb")
     }
 
     @objc var isMetalFXAvailable: Bool {
@@ -434,7 +535,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
     }
 
     @objc var isTemporalAvailable: Bool {
-        device != nil && commandQueue != nil && ciContext != nil
+        commandQueue != nil && spatialRGBPipeline != nil && spatialNV12Pipeline != nil && spatialI420Pipeline != nil && temporalMotionPipeline != nil && temporalCompositePipeline != nil && temporalPresentPipeline != nil
     }
 
     @objc(renderFrame:toView:settings:result:)
@@ -462,15 +563,20 @@ final class OPNVideoEnhancementRenderer: NSObject {
             return false
         }
 
-        if settings.configuredTier == .spatial, !settings.captureEnhancedPixelBuffer {
+        if (settings.configuredTier == .spatial || settings.configuredTier == .temporal), !settings.captureEnhancedPixelBuffer {
             var pixelFormat: NSString?
             var frameSource: NSString?
             var textureFallback: NSString?
             let textureFrame = textureSource.newTextureFrame(for: frame, pixelFormat: &pixelFormat, frameSource: &frameSource, fallback: &textureFallback) as? OPNVideoTextureFrame
             result.pixelFormat = (pixelFormat as String?) ?? result.pixelFormat
             result.frameSource = (frameSource as String?) ?? result.frameSource
-            if let textureFrame, let commandBuffer = commandQueue.makeCommandBuffer(), renderSpatialTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
-                return true
+            if let textureFrame, let commandBuffer = commandQueue.makeCommandBuffer() {
+                if settings.configuredTier == .temporal, renderTemporalTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+                    return true
+                }
+                if settings.configuredTier == .spatial, renderSpatialTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+                    return true
+                }
             }
             if let textureFallback, result.fallbackReason.isEmpty { result.fallbackReason = textureFallback as String }
         }
@@ -579,12 +685,81 @@ final class OPNVideoEnhancementRenderer: NSObject {
         return true
     }
 
+    private func renderTemporalTextureFrame(
+        _ textureFrame: OPNVideoTextureFrame,
+        drawable: any CAMetalDrawable,
+        commandBuffer: any MTLCommandBuffer,
+        settings: OPNVideoEnhancementSettings,
+        result: OPNVideoEnhancementResult,
+        start: CFTimeInterval
+    ) -> Bool {
+        guard isTemporalAvailable else { return false }
+        let width = drawable.texture.width
+        let height = drawable.texture.height
+        let motionWidth = max(1, (width + 1) / 2)
+        let motionHeight = max(1, (height + 1) / 2)
+        guard let currentTexture = reusableTexture(&temporalCurrentTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal current"),
+              let outputTexture = reusableTexture(&temporalOutputTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal output"),
+              let historyTexture = reusableTexture(&temporalHistoryTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal history"),
+              let motionTexture = reusableTexture(&temporalMotionTexture, width: motionWidth, height: motionHeight, pixelFormat: .rgba16Float, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal half-res motion") else {
+            result.fallbackReason = "temporal upscaler could not allocate history textures"
+            temporalHistoryValid = false
+            return false
+        }
+
+        let primaryTexture = textureFrame.rgbTexture ?? textureFrame.lumaTexture
+        let sourceWidth = primaryTexture?.width ?? 0
+        let sourceHeight = primaryTexture?.height ?? 0
+        let jitterPixels = Self.temporalJitter(frameIndex: temporalFrameIndex)
+        let currentJitter = SIMD2<Float>(sourceWidth > 0 ? jitterPixels.x / Float(sourceWidth) : 0, sourceHeight > 0 ? jitterPixels.y / Float(sourceHeight) : 0)
+        var previousJitter = temporalPreviousJitter
+        if temporalHistoryWidth != width || temporalHistoryHeight != height || temporalSourceWidth != sourceWidth || temporalSourceHeight != sourceHeight {
+            if temporalHistoryWidth > 0 || temporalHistoryHeight > 0 || temporalSourceWidth > 0 || temporalSourceHeight > 0 { temporalHistoryResetCount += 1 }
+            temporalHistoryValid = false
+            temporalHistoryWidth = width
+            temporalHistoryHeight = height
+            temporalSourceWidth = sourceWidth
+            temporalSourceHeight = sourceHeight
+            previousJitter = currentJitter
+        }
+        let hadHistoryBeforeFrame = temporalHistoryValid
+        let jitterDelta = currentJitter - previousJitter
+
+        guard encodeSpatialTextureFrame(textureFrame, destinationTexture: currentTexture, commandBuffer: commandBuffer, settings: settings, result: result, jitter: currentJitter),
+              encodeTemporalMotionTexture(currentTexture: currentTexture, historyTexture: historyTexture, motionTexture: motionTexture, jitterDelta: jitterDelta, commandBuffer: commandBuffer, result: result),
+              encodeTemporalCurrentTexture(currentTexture: currentTexture, historyTexture: historyTexture, motionTexture: motionTexture, destinationTexture: outputTexture, commandBuffer: commandBuffer, settings: settings, result: result),
+              encodePresentTexture(sourceTexture: outputTexture, destinationTexture: drawable.texture, commandBuffer: commandBuffer, result: result) else {
+            temporalHistoryValid = false
+            return false
+        }
+
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+        let previousHistory = temporalHistoryTexture
+        temporalHistoryTexture = temporalOutputTexture
+        temporalOutputTexture = previousHistory
+        temporalHistoryValid = true
+        temporalPreviousJitter = currentJitter
+        temporalFrameIndex = (temporalFrameIndex + 1) % 8
+
+        result.renderPath = "OPNMetalTemporalUpscalerSwift"
+        result.renderMode = "Temporal"
+        result.activeTier = "Temporal reconstruction"
+        if settings.emitDiagnostics {
+            result.diagnostics = String(format: "motion %dx%d half-res; jitter 8-sample %.2f,%.2f px; history %@; resets %d; AA history clip/adaptive edge resolve", motionWidth, motionHeight, jitterPixels.x, jitterPixels.y, hadHistoryBeforeFrame ? "reused" : "priming", temporalHistoryResetCount)
+        }
+        result.frameTimeMs = max(0, (CACurrentMediaTime() - start) * 1000)
+        result.droppedFrames = droppedFrames
+        return true
+    }
+
     private func encodeSpatialTextureFrame(
         _ textureFrame: OPNVideoTextureFrame,
         destinationTexture: any MTLTexture,
         commandBuffer: any MTLCommandBuffer,
         settings: OPNVideoEnhancementSettings,
-        result: OPNVideoEnhancementResult
+        result: OPNVideoEnhancementResult,
+        jitter suppliedJitter: SIMD2<Float> = SIMD2<Float>(0, 0)
     ) -> Bool {
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = destinationTexture
@@ -624,7 +799,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let maxX = min(max(Float(cropRect.maxX), 0), 1)
         let maxY = min(max(Float(cropRect.maxY), 0), 1)
         var crop = maxX > minX && maxY > minY ? SIMD4<Float>(minX, minY, maxX, maxY) : SIMD4<Float>(0, 0, 1, 1)
-        var jitter = SIMD2<Float>(0, 0)
+        var jitter = suppliedJitter
 
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentTexture(primaryTexture, index: 0)
@@ -643,14 +818,116 @@ final class OPNVideoEnhancementRenderer: NSObject {
         return true
     }
 
-    private func newSpatialPipeline(fragmentFunctionName: String) -> (any MTLRenderPipelineState)? {
+    private func encodeTemporalMotionTexture(
+        currentTexture: any MTLTexture,
+        historyTexture: any MTLTexture,
+        motionTexture: any MTLTexture,
+        jitterDelta: SIMD2<Float>,
+        commandBuffer: any MTLCommandBuffer,
+        result: OPNVideoEnhancementResult
+    ) -> Bool {
+        guard let temporalMotionPipeline else {
+            result.fallbackReason = "temporal upscaler missing motion target"
+            return false
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = motionTexture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            result.fallbackReason = "temporal upscaler could not create motion encoder"
+            return false
+        }
+        var texel = SIMD2<Float>(currentTexture.width > 0 ? 1.0 / Float(currentTexture.width) : 0, currentTexture.height > 0 ? 1.0 / Float(currentTexture.height) : 0)
+        var hasHistory: Int32 = temporalHistoryValid ? 1 : 0
+        var jitterDelta = jitterDelta
+        encoder.setRenderPipelineState(temporalMotionPipeline)
+        encoder.setFragmentTexture(currentTexture, index: 0)
+        encoder.setFragmentTexture(historyTexture, index: 1)
+        encoder.setFragmentBytes(&texel, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
+        encoder.setFragmentBytes(&hasHistory, length: MemoryLayout<Int32>.size, index: 1)
+        encoder.setFragmentBytes(&jitterDelta, length: MemoryLayout<SIMD2<Float>>.size, index: 2)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        return true
+    }
+
+    private func encodeTemporalCurrentTexture(
+        currentTexture: any MTLTexture,
+        historyTexture: any MTLTexture,
+        motionTexture: any MTLTexture,
+        destinationTexture: any MTLTexture,
+        commandBuffer: any MTLCommandBuffer,
+        settings: OPNVideoEnhancementSettings,
+        result: OPNVideoEnhancementResult
+    ) -> Bool {
+        guard let temporalCompositePipeline else {
+            result.fallbackReason = "temporal upscaler missing composite target"
+            return false
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = destinationTexture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            result.fallbackReason = "temporal upscaler could not create composite encoder"
+            return false
+        }
+        var texel = SIMD2<Float>(currentTexture.width > 0 ? 1.0 / Float(currentTexture.width) : 0, currentTexture.height > 0 ? 1.0 / Float(currentTexture.height) : 0)
+        let denoiseScale = min(max(Float(settings.denoise) / 20.0, 0), 1)
+        let sharpnessScale = min(max(Float(settings.sharpness) / 40.0, 0), 1)
+        var historyWeight = min(max(0.52 + denoiseScale * 0.24 - sharpnessScale * 0.08, 0.35), 0.76)
+        var temporalSharpness = min(max(0.08 + sharpnessScale * 0.34, 0), 0.42)
+        var hasHistory: Int32 = temporalHistoryValid ? 1 : 0
+        encoder.setRenderPipelineState(temporalCompositePipeline)
+        encoder.setFragmentTexture(currentTexture, index: 0)
+        encoder.setFragmentTexture(historyTexture, index: 1)
+        encoder.setFragmentTexture(motionTexture, index: 2)
+        encoder.setFragmentBytes(&texel, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
+        encoder.setFragmentBytes(&historyWeight, length: MemoryLayout<Float>.size, index: 1)
+        encoder.setFragmentBytes(&temporalSharpness, length: MemoryLayout<Float>.size, index: 2)
+        encoder.setFragmentBytes(&hasHistory, length: MemoryLayout<Int32>.size, index: 3)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        return true
+    }
+
+    private func encodePresentTexture(
+        sourceTexture: any MTLTexture,
+        destinationTexture: any MTLTexture,
+        commandBuffer: any MTLCommandBuffer,
+        result: OPNVideoEnhancementResult
+    ) -> Bool {
+        guard let temporalPresentPipeline else {
+            result.fallbackReason = "temporal upscaler missing present target"
+            return false
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = destinationTexture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            result.fallbackReason = "temporal upscaler could not create present encoder"
+            return false
+        }
+        encoder.setRenderPipelineState(temporalPresentPipeline)
+        encoder.setFragmentTexture(sourceTexture, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+        return true
+    }
+
+    private func newSpatialPipeline(fragmentFunctionName: String, pixelFormat: MTLPixelFormat = .bgra8Unorm) -> (any MTLRenderPipelineState)? {
         guard let device else { return nil }
         do {
             let library = try device.makeLibrary(source: OPNVideoTextureSource.spatialShaderSource, options: nil)
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: "opn_video_vertex")
             descriptor.fragmentFunction = library.makeFunction(name: fragmentFunctionName)
-            descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+            descriptor.colorAttachments[0].pixelFormat = pixelFormat
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
             NSLog("[LibWebRTC] spatial enhancement pipeline %@ failed: %@", fragmentFunctionName, error.localizedDescription)
@@ -868,6 +1145,20 @@ final class OPNVideoEnhancementRenderer: NSObject {
 
     private func clamp8(_ value: Int) -> UInt8 {
         UInt8(max(0, min(255, value)))
+    }
+
+    private static func temporalJitter(frameIndex: Int) -> SIMD2<Float> {
+        let offsets: [SIMD2<Float>] = [
+            SIMD2<Float>(-0.375, -0.125),
+            SIMD2<Float>(0.125, 0.375),
+            SIMD2<Float>(-0.125, -0.375),
+            SIMD2<Float>(0.375, 0.125),
+            SIMD2<Float>(-0.3125, 0.3125),
+            SIMD2<Float>(0.1875, -0.1875),
+            SIMD2<Float>(-0.1875, 0.1875),
+            SIMD2<Float>(0.3125, -0.3125),
+        ]
+        return offsets[frameIndex % offsets.count]
     }
 
     private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
