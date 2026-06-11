@@ -313,15 +313,40 @@ final class OPNLoadingView: NSView {
             return
         }
         let ads = adState["sessionAds"] as? [NSDictionary] ?? []
-        let ad = ads.first ?? [:]
+        if let ad = ads.first {
+            updateAdPresentation(
+                visible: true,
+                chipText: bool(adState["isQueuePaused"]) ? "Queue Paused" : "Sponsored Break",
+                title: string(ad["title"], fallback: "Watch to continue"),
+                message: string(adState["message"], fallback: "Your launch will resume automatically after the ad."),
+                adId: string(ad["adId"], fallback: "ad"),
+                mediaUrl: string(ad["mediaUrl"]),
+                durationMs: int(ad["durationMs"], fallback: max(1, int(ad["adLengthInSeconds"])) * 1000)
+            )
+            return
+        }
+
+        if bool(adState["isQueuePaused"]) {
+            updateAdPresentation(
+                visible: true,
+                chipText: "Queue Paused",
+                title: "Paused for ads",
+                message: queuePausedAdMessage(adState),
+                adId: "",
+                mediaUrl: "",
+                durationMs: 0
+            )
+            return
+        }
+
         updateAdPresentation(
             visible: true,
-            chipText: bool(adState["isQueuePaused"]) ? "Queue Paused" : "Sponsored Break",
-            title: string(ad["title"], fallback: "Watch to continue"),
-            message: string(adState["message"], fallback: "Your launch will resume automatically after the ad."),
-            adId: string(ad["adId"], fallback: "ad"),
-            mediaUrl: string(ad["mediaUrl"]),
-            durationMs: int(ad["durationMs"], fallback: max(1, int(ad["adLengthInSeconds"])) * 1000)
+            chipText: "Ad Pending",
+            title: "Waiting for an ad",
+            message: waitingForAdMessage(adState),
+            adId: "",
+            mediaUrl: "",
+            durationMs: 0
         )
     }
 
@@ -561,6 +586,20 @@ final class OPNLoadingView: NSView {
         if let value = value as? String { return value }
         if let value = value as? NSNumber { return value.stringValue }
         return fallback
+    }
+
+    private func queuePausedAdMessage(_ adState: NSDictionary) -> String {
+        let message = string(adState["message"])
+        if !message.isEmpty { return message }
+        return int(adState["gracePeriodSeconds"]) > 0 ? "Resume before the grace period ends." : "Resume ads to continue."
+    }
+
+    private func waitingForAdMessage(_ adState: NSDictionary) -> String {
+        let message = string(adState["message"])
+        if !message.isEmpty { return message }
+        return bool(adState["serverSentEmptyAds"])
+            ? "GeForce NOW has not returned one yet. OpenNOW will keep checking."
+            : "GeForce NOW requires an ad before launch can continue."
     }
 
     private func reportAdAction(_ action: String, cancelReason: String) {

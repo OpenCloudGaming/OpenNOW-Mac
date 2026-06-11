@@ -129,7 +129,7 @@ final class OPNEmailEntryView: NSView {
         stayLoggedInToggle.title = "Keep me signed in"
         stayLoggedInToggle.font = NSFont.systemFont(ofSize: 13.0, weight: .medium)
         stayLoggedInToggle.contentTintColor = opnColor(OPNViewColor.brandGreen)
-        stayLoggedInToggle.state = loadStayLoggedIn() ? .on : .off
+        stayLoggedInToggle.state = OPNAuthServiceDirect.shared.getStayLoggedIn() ? .on : .off
         card.addSubview(stayLoggedInToggle)
 
         let browserButton = opnButton("Continue with Browser", NSRect(x: 56.0, y: 266.0, width: 288.0, height: 48.0), opnColor(OPNViewColor.brandGreen), opnColor(OPNViewColor.accentOn))
@@ -141,22 +141,8 @@ final class OPNEmailEntryView: NSView {
         contentView.addSubview(opnLabel("Open-source cloud gaming client for macOS", NSRect(x: 0.0, y: 468.0, width: 480.0, height: 20.0), 12.0, opnColor(0x787A82), .regular, .center))
     }
 
-    private func loadStayLoggedIn() -> Bool {
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: "OPN_StayLoggedIn") != nil { return defaults.bool(forKey: "OPN_StayLoggedIn") }
-        if defaults.object(forKey: "GFN_StayLoggedIn") != nil { return defaults.bool(forKey: "GFN_StayLoggedIn") }
-        return true
-    }
-
-    private func saveStayLoggedIn(_ value: Bool) {
-        let defaults = UserDefaults.standard
-        defaults.set(value, forKey: "OPN_StayLoggedIn")
-        defaults.set(value, forKey: "GFN_StayLoggedIn")
-        defaults.synchronize()
-    }
-
     @objc private func signInWithBrowserClicked() {
-        saveStayLoggedIn(stayLoggedInToggle.state == .on)
+        OPNAuthServiceDirect.shared.setStayLoggedIn(stayLoggedInToggle.state == .on)
         onSignInWithBrowser?()
     }
 }

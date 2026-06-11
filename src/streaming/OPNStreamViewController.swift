@@ -431,7 +431,9 @@ final class OPNStreamViewController: NSViewController {
             }, stateHandler: { [weak self] connected, error in
                 DispatchQueue.main.async { self?.handleConnectionState(connected: connected, error: error as String, generation: generation, settings: negotiatedSettings) }
             })
-            self.session.injectManualIceCandidate(sessionInfo: sessionInfo, offerSdp: offer, serverIceUfrag: serverIceUfrag)
+            if self.shouldInjectManualIceCandidate(for: offer) {
+                self.session.injectManualIceCandidate(sessionInfo: sessionInfo, offerSdp: offer, serverIceUfrag: serverIceUfrag)
+            }
         }
         signaling.onIceCandidate = { [weak self] candidate in
             guard let self else { return }
@@ -663,9 +665,16 @@ final class OPNStreamViewController: NSViewController {
             loadingView?.clearAdPresentation()
             return
         }
-        let ads = adState["sessionAds"] as? [[String: Any]] ?? []
-        let ad = ads.first ?? [:]
-        loadingView?.updateAdPresentation(visible: true, chipText: bool(adState["isQueuePaused"]) ? "Queue Paused" : "Sponsored Break", title: string(ad["title"], fallback: "Watch to continue"), message: string(adState["message"], fallback: "Your launch will resume automatically after the ad."), adId: string(ad["adId"], fallback: "ad"), mediaUrl: string(ad["mediaUrl"]), durationMs: int(ad["durationMs"], fallback: 30000))
+        loadingView?.updateAdState(adState as NSDictionary)
+    }
+
+    private func shouldInjectManualIceCandidate(for offerSdp: String) -> Bool {
+        let manualIce = ProcessInfo.processInfo.environment["OPN_INJECT_MANUAL_ICE"]
+        if manualIce == "0" {
+            OPNSentry.logInfoMessage("[StreamVC] Manual ICE candidate injection disabled by OPN_INJECT_MANUAL_ICE=0")
+            return false
+        }
+        return offerSdp.contains("0.0.0.0") || manualIce == "1"
     }
 
     private func updateActiveSessionInfo(_ session: NSDictionary) {
