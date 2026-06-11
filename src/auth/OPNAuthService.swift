@@ -453,7 +453,8 @@ final class OPNAuthService: @unchecked Sendable {
         fetchClientToken(accessToken: session.accessToken) { success, clientToken, expiresInText in
             var enriched = session
             if success, !clientToken.isEmpty {
-                let expiresIn = Int64(expiresInText) ?? 86400
+                let parsedExpiresIn = Int64(expiresInText) ?? 0
+                let expiresIn = parsedExpiresIn > 0 ? parsedExpiresIn : 86400
                 enriched.clientToken = clientToken
                 enriched.clientTokenExpiry = OPNAuthSession.currentEpochMs() + expiresIn * 1000
                 enriched.clientTokenExpiryLength = expiresIn * 1000
