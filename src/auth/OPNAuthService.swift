@@ -23,6 +23,7 @@ final class OPNAuthService: @unchecked Sendable {
     private static let clientTokenRefreshPolicy = JarvisClientTokenRefreshPolicy.gfnPC
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
+    private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
 
     private init() {}
 
@@ -42,6 +43,7 @@ final class OPNAuthService: @unchecked Sendable {
         let redirectUri = "http://localhost:\(port)"
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
         let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
+        telemetry.recordBreadcrumb("Jarvis OAuth login starting", attributes: ["provider_idp_id": selectedProviderIdpId])
 
         guard let authURL = JarvisOAuthRequestFactory.authorizationURL(
             configuration: Self.jarvisConfiguration,
@@ -51,6 +53,7 @@ final class OPNAuthService: @unchecked Sendable {
             oauthState: pkce,
             providerIdpId: selectedProviderIdpId
         ) else {
+            telemetry.recordError(ServiceError("Invalid OAuth authorize URL"), operation: .getLoginToken, attributes: ["phase": "authorization_url"])
             DispatchQueue.main.async { completion(false, OPNAuthSession(), "Invalid OAuth authorize URL") }
             return
         }
@@ -67,10 +70,12 @@ final class OPNAuthService: @unchecked Sendable {
                     completion: completion
                 )
             case .failure(let error):
+                self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         } readyHandler: {
             DispatchQueue.main.async {
+                self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
                 NSWorkspace.shared.open(authURL)
             }
         }
@@ -136,10 +141,11 @@ final class OPNAuthService: @unchecked Sendable {
 
     func fetchStarFleetUserInfo(accessToken: String, completion: @escaping @Sendable (Bool, NSDictionary?, String) -> Void) {
         guard let request = JarvisOAuthRequestFactory.userInfoRequest(accessToken: accessToken, configuration: Self.jarvisConfiguration) else {
+            telemetry.recordError(ServiceError("Invalid userinfo URL"), operation: .getUserInfo, attributes: [:])
             completion(false, nil, "Invalid userinfo URL")
             return
         }
-        performJSONRequest(request) { result in
+        performJSONRequest(request, operation: .getUserInfo) { result in
             switch result {
             case .success(let json): completion(true, json, "")
             case .failure(let error): completion(false, nil, error.localizedDescription)
@@ -149,15 +155,17 @@ final class OPNAuthService: @unchecked Sendable {
 
     func fetchClientToken(accessToken: String, completion: @escaping @Sendable (Bool, String, String) -> Void) {
         guard let request = JarvisOAuthRequestFactory.clientTokenRequest(accessToken: accessToken, configuration: Self.jarvisConfiguration) else {
+            telemetry.recordError(ServiceError("Invalid client token URL"), operation: .getSessionToken, attributes: [:])
             completion(false, "", "Invalid client token URL")
             return
         }
-        performJSONRequest(request) { result in
+        performJSONRequest(request, operation: .getSessionToken) { result in
             switch result {
             case .success(let json):
                 let clientToken = json["client_token"] as? String ?? ""
                 let expiresIn = (json["expires_in"] as? NSNumber)?.stringValue ?? (json["expires_in"] as? String ?? "")
                 if clientToken.isEmpty {
+                    self.telemetry.recordError(ServiceError("No client_token in response"), operation: .getSessionToken, attributes: [:])
                     completion(false, "", "No client_token in response")
                 } else {
                     completion(true, clientToken, expiresIn)
@@ -432,27 +440,42 @@ final class OPNAuthService: @unchecked Sendable {
 
     private func performTokenRequest(body: String, completion: @escaping @Sendable (Result<NSDictionary, Error>) -> Void) {
         guard let request = JarvisOAuthRequestFactory.tokenRequest(body: body, configuration: Self.jarvisConfiguration) else {
+            telemetry.recordError(ServiceError("Invalid token URL"), operation: .getSessionToken, attributes: [:])
             completion(.failure(ServiceError("Invalid token URL")))
             return
         }
-        performJSONRequest(request, completion: completion)
+        performJSONRequest(request, operation: .getSessionToken, completion: completion)
     }
 
-    private func performJSONRequest(_ request: URLRequest, completion: @escaping @Sendable (Result<NSDictionary, Error>) -> Void) {
+    private func performJSONRequest(_ request: URLRequest, operation: Jarvis.Operation?, completion: @escaping @Sendable (Result<NSDictionary, Error>) -> Void) {
+        let span = telemetry.startSpan(name: operation?.rawValue ?? "Jarvis HTTP request", operation: operation, attributes: ["host": request.url?.host ?? ""])
+        let telemetry = telemetry
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
+                telemetry.recordError(error, operation: operation, attributes: ["phase": "http"])
+                span.finish(success: false)
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
-            let http = response as? HTTPURLResponse
-            guard http?.statusCode == 200, let data else {
-                DispatchQueue.main.async { completion(.failure(ServiceError("HTTP \(http?.statusCode ?? 0)"))) }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200, let data else {
+                let http = response as? HTTPURLResponse
+                let serviceError = ServiceError("HTTP \(http?.statusCode ?? 0)")
+                telemetry.recordError(serviceError, operation: operation, attributes: ["status_code": String(http?.statusCode ?? 0)])
+                span.setAttribute("status_code", value: String(http?.statusCode ?? 0))
+                span.finish(success: false)
+                DispatchQueue.main.async { completion(.failure(serviceError)) }
                 return
             }
             guard let object = try? JSONSerialization.jsonObject(with: data), let json = object as? NSDictionary else {
-                DispatchQueue.main.async { completion(.failure(ServiceError("Invalid JSON response"))) }
+                let serviceError = ServiceError("Invalid JSON response")
+                telemetry.recordError(serviceError, operation: operation, attributes: [:])
+                span.setAttribute("status_code", value: String(http.statusCode))
+                span.finish(success: false)
+                DispatchQueue.main.async { completion(.failure(serviceError)) }
                 return
             }
+            span.setAttribute("status_code", value: String(http.statusCode))
+            span.finish(success: true)
             DispatchQueue.main.async { completion(.success(json)) }
         }.resume()
     }

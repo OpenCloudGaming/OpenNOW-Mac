@@ -15,6 +15,51 @@ public enum JarvisAuthType: String, CaseIterable, Sendable {
     case jwtPartner = "JWT_PARTNER"
 }
 
+public protocol JarvisTelemetrySpan: Sendable {
+    func setAttribute(_ key: String, value: String)
+    func finish(success: Bool)
+}
+
+public protocol JarvisTelemetry: Sendable {
+    func startSpan(name: String, operation: Jarvis.Operation?, attributes: [String: String]) -> JarvisTelemetrySpan
+    func recordBreadcrumb(_ message: String, attributes: [String: String])
+    func recordCounter(name: String, attributes: [String: String])
+    func recordError(_ error: Error, operation: Jarvis.Operation?, attributes: [String: String])
+}
+
+public struct JarvisNoOpTelemetry: JarvisTelemetry {
+    public init() {}
+
+    public func startSpan(name: String, operation: Jarvis.Operation?, attributes: [String: String]) -> JarvisTelemetrySpan {
+        _ = name
+        _ = operation
+        _ = attributes
+        return JarvisNoOpTelemetrySpan()
+    }
+
+    public func recordBreadcrumb(_ message: String, attributes: [String: String]) {
+        _ = message
+        _ = attributes
+    }
+
+    public func recordCounter(name: String, attributes: [String: String]) {
+        _ = name
+        _ = attributes
+    }
+
+    public func recordError(_ error: Error, operation: Jarvis.Operation?, attributes: [String: String]) {
+        _ = error
+        _ = operation
+        _ = attributes
+    }
+}
+
+public struct JarvisNoOpTelemetrySpan: JarvisTelemetrySpan {
+    public init() {}
+    public func setAttribute(_ key: String, value: String) { _ = key; _ = value }
+    public func finish(success: Bool) { _ = success }
+}
+
 public struct JarvisAuthToken: Equatable, Sendable {
     public let tokenType: JarvisAuthType
     public let token: String
@@ -266,17 +311,20 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
     private let configuration: JarvisOAuthConfiguration
     private let refreshPolicy: JarvisClientTokenRefreshPolicy
     private let transport: Transport
+    private let telemetry: JarvisTelemetry
     private var isSessionRefreshable: Bool
 
     public init(
         configuration: JarvisOAuthConfiguration = .gfnPC,
         refreshPolicy: JarvisClientTokenRefreshPolicy = .gfnPC,
         transport: Transport,
+        telemetry: JarvisTelemetry = JarvisNoOpTelemetry(),
         session: JarvisSession = JarvisSession()
     ) {
         self.configuration = configuration
         self.refreshPolicy = refreshPolicy
         self.transport = transport
+        self.telemetry = telemetry
         self.session = session
         self.cachedUser = JarvisUserInfo()
         self.status = session.isAuthenticated ? .loggedIn : .notLoggedIn
@@ -293,83 +341,147 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         cachedUser = JarvisUserInfo()
         status = .notLoggedIn
         isSessionRefreshable = true
+        telemetry.recordBreadcrumb("Jarvis session cleared", attributes: ["status": status.rawValue])
     }
 
     public func createOAuthLoginRequest(deviceId: String, redirectURI: String, locale: String, oauthState: JarvisOAuthState, providerIdpId: String, windowParameters: JarvisOAuthWindowParameters = JarvisOAuthWindowParameters(), useAppURL: Bool = false) throws -> JarvisOAuthLoginRequest {
+        let span = telemetry.startSpan(name: Jarvis.oauthSpanName, operation: .getLoginToken, attributes: ["provider_idp_id": providerIdpId.isEmpty ? configuration.defaultIdpId : providerIdpId])
         guard let url = JarvisOAuthRequestFactory.authorizationURL(configuration: configuration, deviceId: deviceId, redirectURI: redirectURI, locale: locale, oauthState: oauthState, providerIdpId: providerIdpId) else {
+            telemetry.recordError(JarvisAuthError.invalidOAuthURL, operation: .getLoginToken, attributes: [:])
+            span.finish(success: false)
             throw JarvisAuthError.invalidOAuthURL
         }
+        telemetry.recordBreadcrumb("Jarvis OAuth login URL created", attributes: ["provider_idp_id": providerIdpId.isEmpty ? configuration.defaultIdpId : providerIdpId])
+        span.finish(success: true)
         return JarvisOAuthLoginRequest(url: url, windowParameters: windowParameters, useAppURL: useAppURL, state: oauthState)
     }
 
     public func exchangeAuthorizationCode(authCode: String, redirectURI: String, codeVerifier: String, providerIdpId: String = "") async throws -> JarvisSession {
-        let body = JarvisOAuthRequestFactory.authorizationCodeTokenBody(authCode: authCode, redirectURI: redirectURI, codeVerifier: codeVerifier)
-        var exchanged = try await requestSession(body: body)
-        if !providerIdpId.isEmpty { exchanged.idpId = providerIdpId }
-        let enriched = try await ensureClientToken(exchanged)
-        session = enriched
-        status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
-        return enriched
+        let span = telemetry.startSpan(name: Jarvis.Operation.getSessionToken.rawValue, operation: .getSessionToken, attributes: ["grant_type": "authorization_code"])
+        do {
+            let body = JarvisOAuthRequestFactory.authorizationCodeTokenBody(authCode: authCode, redirectURI: redirectURI, codeVerifier: codeVerifier)
+            var exchanged = try await requestSession(body: body, operation: .getSessionToken)
+            if !providerIdpId.isEmpty { exchanged.idpId = providerIdpId }
+            let enriched = try await ensureClientToken(exchanged)
+            session = enriched
+            status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
+            telemetry.recordCounter(name: "jarvis.auth.exchange.count", attributes: ["outcome": "success"])
+            span.finish(success: true)
+            return enriched
+        } catch {
+            telemetry.recordError(error, operation: .getSessionToken, attributes: ["phase": "authorization_code_exchange"])
+            telemetry.recordCounter(name: "jarvis.auth.exchange.count", attributes: ["outcome": "failure"])
+            span.finish(success: false)
+            throw error
+        }
     }
 
     public func refreshSession(force: Bool = false) async throws -> JarvisSession {
-        guard session.isAuthenticated else { throw JarvisAuthError.noSavedSession }
-        if !force && session.isAccessTokenValid {
-            if shouldRefreshClientToken(session) {
-                let enriched = try await ensureClientToken(session)
-                self.session = enriched
-                return enriched
+        let span = telemetry.startSpan(name: Jarvis.Operation.getSessionToken.rawValue, operation: .getSessionToken, attributes: ["force": force ? "true" : "false"])
+        do {
+            guard session.isAuthenticated else { throw JarvisAuthError.noSavedSession }
+            if !force && session.isAccessTokenValid {
+                if shouldRefreshClientToken(session) {
+                    let enriched = try await ensureClientToken(session)
+                    self.session = enriched
+                    span.finish(success: true)
+                    return enriched
+                }
+                span.finish(success: true)
+                return session
             }
-            return session
-        }
-        guard isSessionRefreshable else { throw JarvisAuthError.noRefreshMechanism }
-        if !session.clientToken.isEmpty {
-            do {
+            guard isSessionRefreshable else { throw JarvisAuthError.noRefreshMechanism }
+            if !session.clientToken.isEmpty {
                 let body = JarvisOAuthRequestFactory.clientTokenGrantBody(clientToken: session.clientToken, userId: session.userId, configuration: configuration)
-                let refreshed = merge(saved: session, refreshed: try await requestSession(body: body))
+                let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
                 let enriched = try await ensureClientToken(refreshed)
                 session = enriched
                 status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
+                telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "client_token"])
+                span.finish(success: true)
                 return enriched
-            } catch {
-                return try await refreshWithOAuthToken()
             }
+            let refreshed = try await refreshWithOAuthToken()
+            telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "refresh_token"])
+            span.finish(success: true)
+            return refreshed
+        } catch {
+            telemetry.recordError(error, operation: .getSessionToken, attributes: ["phase": "session_refresh"])
+            telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "failure"])
+            span.finish(success: false)
+            throw error
         }
-        return try await refreshWithOAuthToken()
     }
 
     public func getAuthToken(forceRefresh: Bool = false) async throws -> JarvisAuthToken {
-        let refreshed = try await refreshSession(force: forceRefresh)
-        guard !refreshed.accessToken.isEmpty else { throw JarvisAuthError.missingAccessToken }
-        return JarvisAuthToken(tokenType: .jwtGFN, token: refreshed.accessToken, userId: refreshed.userId, externalUserId: refreshed.userId, idpId: refreshed.idpId)
+        let span = telemetry.startSpan(name: Jarvis.Operation.getUserToken.rawValue, operation: .getUserToken, attributes: ["force_refresh": forceRefresh ? "true" : "false"])
+        do {
+            let refreshed = try await refreshSession(force: forceRefresh)
+            guard !refreshed.accessToken.isEmpty else { throw JarvisAuthError.missingAccessToken }
+            span.finish(success: true)
+            return JarvisAuthToken(tokenType: .jwtGFN, token: refreshed.accessToken, userId: refreshed.userId, externalUserId: refreshed.userId, idpId: refreshed.idpId)
+        } catch {
+            telemetry.recordError(error, operation: .getUserToken, attributes: [:])
+            span.finish(success: false)
+            throw error
+        }
     }
 
     public func getCurrentUser(forceRefresh: Bool = false) async throws -> JarvisUserInfo {
-        let refreshed = try await refreshSession(force: forceRefresh)
-        if !forceRefresh, cachedUser.isAuthenticated, cachedUser.userId == refreshed.userId {
-            return cachedUser
+        let span = telemetry.startSpan(name: Jarvis.Operation.getUserInfo.rawValue, operation: .getUserInfo, attributes: ["force_refresh": forceRefresh ? "true" : "false"])
+        do {
+            let refreshed = try await refreshSession(force: forceRefresh)
+            if !forceRefresh, cachedUser.isAuthenticated, cachedUser.userId == refreshed.userId {
+                span.setAttribute("cache", value: "hit")
+                span.finish(success: true)
+                return cachedUser
+            }
+            let user = try await fetchUserInfo(accessToken: refreshed.accessToken, isNetworkCall: true)
+            cachedUser = user
+            span.setAttribute("cache", value: "miss")
+            span.finish(success: true)
+            return user
+        } catch {
+            telemetry.recordError(error, operation: .getUserInfo, attributes: [:])
+            span.finish(success: false)
+            throw error
         }
-        let user = try await fetchUserInfo(accessToken: refreshed.accessToken, isNetworkCall: true)
-        cachedUser = user
-        return user
     }
 
     public func fetchUserInfo(accessToken: String, isNetworkCall: Bool = true) async throws -> JarvisUserInfo {
+        let span = telemetry.startSpan(name: Jarvis.Operation.getUserInfo.rawValue, operation: .getUserInfo, attributes: ["network_call": isNetworkCall ? "true" : "false"])
         guard let request = JarvisOAuthRequestFactory.userInfoRequest(accessToken: accessToken, configuration: configuration) else {
+            telemetry.recordError(JarvisAuthError.invalidUserInfoURL, operation: .getUserInfo, attributes: [:])
+            span.finish(success: false)
             throw JarvisAuthError.invalidUserInfoURL
         }
-        let json = try await performJSONRequest(request)
-        return parseUserInfo(json, isNetworkCall: isNetworkCall)
+        do {
+            let json = try await performJSONRequest(request, operation: .getUserInfo)
+            span.finish(success: true)
+            return parseUserInfo(json, isNetworkCall: isNetworkCall)
+        } catch {
+            telemetry.recordError(error, operation: .getUserInfo, attributes: [:])
+            span.finish(success: false)
+            throw error
+        }
     }
 
     public func fetchClientToken(accessToken: String) async throws -> (clientToken: String, expiresIn: String) {
+        let span = telemetry.startSpan(name: "Get_Client_Token", operation: .getSessionToken, attributes: [:])
         guard let request = JarvisOAuthRequestFactory.clientTokenRequest(accessToken: accessToken, configuration: configuration) else {
+            telemetry.recordError(JarvisAuthError.invalidClientTokenURL, operation: .getSessionToken, attributes: [:])
+            span.finish(success: false)
             throw JarvisAuthError.invalidClientTokenURL
         }
-        let json = try await performJSONRequest(request)
+        let json = try await performJSONRequest(request, operation: .getSessionToken)
         let clientToken = json["client_token"] as? String ?? ""
-        guard !clientToken.isEmpty else { throw JarvisAuthError.missingClientToken }
+        guard !clientToken.isEmpty else {
+            telemetry.recordError(JarvisAuthError.missingClientToken, operation: .getSessionToken, attributes: [:])
+            span.finish(success: false)
+            throw JarvisAuthError.missingClientToken
+        }
         let expiresIn = (json["expires_in"] as? NSNumber)?.stringValue ?? (json["expires_in"] as? String ?? "")
+        span.finish(success: true)
         return (clientToken, expiresIn)
     }
 
@@ -398,11 +510,13 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
 
     public func sameTabAuthStarted() -> JarvisAuthStatus {
         status = .pendingLogin
+        telemetry.recordBreadcrumb("Jarvis same-tab auth started", attributes: ["status": status.rawValue])
         return status
     }
 
     public func finishLogin(success: Bool) -> JarvisAuthStatus {
         status = success ? .loggedIn : .authorizationError
+        telemetry.recordCounter(name: "jarvis.auth.login.count", attributes: ["outcome": success ? "success" : "failure"])
         return status
     }
 
@@ -413,9 +527,20 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
 
     public func parseCallback(query: String?, expectedState: String) throws -> JarvisOAuthCallback {
         let parsed = JarvisOAuthCallbackParser.parse(query: query)
-        if !parsed.error.isEmpty || !parsed.errorDescription.isEmpty { throw JarvisAuthError.oauthError(parsed.resolvedError) }
-        guard parsed.state == expectedState else { throw JarvisAuthError.stateMismatch }
-        guard !parsed.code.isEmpty else { throw JarvisAuthError.missingAuthorizationCode }
+        telemetry.recordBreadcrumb("Jarvis OAuth callback captured", attributes: ["has_code": parsed.code.isEmpty ? "false" : "true", "has_error": parsed.resolvedError.isEmpty ? "false" : "true"])
+        if !parsed.error.isEmpty || !parsed.errorDescription.isEmpty {
+            let error = JarvisAuthError.oauthError(parsed.resolvedError)
+            telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
+            throw error
+        }
+        guard parsed.state == expectedState else {
+            telemetry.recordError(JarvisAuthError.stateMismatch, operation: .getLoginToken, attributes: ["phase": "callback"])
+            throw JarvisAuthError.stateMismatch
+        }
+        guard !parsed.code.isEmpty else {
+            telemetry.recordError(JarvisAuthError.missingAuthorizationCode, operation: .getLoginToken, attributes: ["phase": "callback"])
+            throw JarvisAuthError.missingAuthorizationCode
+        }
         return parsed
     }
 
@@ -425,18 +550,19 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             throw JarvisAuthError.noRefreshMechanism
         }
         let body = JarvisOAuthRequestFactory.refreshTokenBody(refreshToken: session.refreshToken, configuration: configuration)
-        let refreshed = merge(saved: session, refreshed: try await requestSession(body: body))
+        let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
         let enriched = try await ensureClientToken(refreshed)
         session = enriched
         status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
         return enriched
     }
 
-    private func requestSession(body: String) async throws -> JarvisSession {
+    private func requestSession(body: String, operation: Jarvis.Operation) async throws -> JarvisSession {
         guard let request = JarvisOAuthRequestFactory.tokenRequest(body: body, configuration: configuration) else {
+            telemetry.recordError(JarvisAuthError.invalidTokenURL, operation: operation, attributes: [:])
             throw JarvisAuthError.invalidTokenURL
         }
-        let json = try await performJSONRequest(request)
+        let json = try await performJSONRequest(request, operation: operation)
         return JarvisSessionParser.parseTokenResponse(json, defaultIdpId: configuration.defaultIdpId)
     }
 
@@ -472,10 +598,15 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         return merged
     }
 
-    private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+    private func performJSONRequest(_ request: URLRequest, operation: Jarvis.Operation?) async throws -> [String: Any] {
         let (data, response) = try await transport.send(request)
-        guard response.statusCode == 200 else { throw JarvisAuthError.httpStatus(response.statusCode) }
+        guard response.statusCode == 200 else {
+            let error = JarvisAuthError.httpStatus(response.statusCode)
+            telemetry.recordError(error, operation: operation, attributes: ["status_code": String(response.statusCode)])
+            throw error
+        }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            telemetry.recordError(JarvisAuthError.invalidJSONResponse, operation: operation, attributes: [:])
             throw JarvisAuthError.invalidJSONResponse
         }
         return json
