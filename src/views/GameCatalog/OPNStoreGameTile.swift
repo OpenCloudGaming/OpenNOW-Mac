@@ -1,5 +1,38 @@
 import AppKit
+import Combine
 import QuartzCore
+import SwiftUI
+
+@MainActor
+private final class OPNStoreGameTileModel: ObservableObject {
+    let prominent: Bool
+    @Published var title: String
+    @Published var meta: String
+    @Published var feature: String
+    @Published var availabilityTitle = "Cloud ready"
+    @Published var actionTitle = "Play"
+    @Published var selectedVariantIndex: Int32
+    @Published var storeFocused = false
+    @Published var mouseHovering = false
+    @Published var artwork: NSImage
+    @Published var storeIcons: [OPNStoreGameTileIcon] = []
+
+    init(gameObject: OPNCatalogGameObject, prominent: Bool) {
+        self.prominent = prominent
+        title = gameObject.title.isEmpty ? "Untitled" : gameObject.title
+        meta = "Cloud Game"
+        feature = "Ready to stream"
+        selectedVariantIndex = gameObject.variants.isEmpty ? -1 : 0
+        artwork = OPNGameCatalogArtworkSupport.fallbackArtworkImage()
+    }
+}
+
+private struct OPNStoreGameTileIcon: Identifiable, Equatable {
+    let id: Int
+    let variantIndex: Int
+    let store: String
+    var image: NSImage
+}
 
 @objc(OPNStoreGameTile)
 @objcMembers
@@ -14,6 +47,9 @@ final class OPNStoreGameTile: NSView {
             }
             availabilityLabel.stringValue = Self.availabilityTitle(gameObject: gameObject, variantIndex: Int(selectedVariantIndex))
             playButton.title = Self.primaryActionTitle(gameObject: gameObject, variantIndex: Int(selectedVariantIndex), prominent: prominent)
+            model.selectedVariantIndex = selectedVariantIndex
+            model.availabilityTitle = availabilityLabel.stringValue
+            model.actionTitle = playButton.title
             updateStoreIconSelection()
         }
     }
@@ -37,6 +73,8 @@ final class OPNStoreGameTile: NSView {
     private let featureLabel: NSTextField
     private let availabilityLabel: NSTextField
     private let playButton = NSButton(frame: .zero)
+    private let model: OPNStoreGameTileModel
+    private var hostingView: NSHostingView<OPNStoreGameTileSwiftUIView>?
     private var trackingAreaReference: NSTrackingArea?
     private var storeFocused = false
     private var pendingMouseSelection = false
@@ -49,6 +87,7 @@ final class OPNStoreGameTile: NSView {
     init(frame frameRect: NSRect, gameObject: OPNCatalogGameObject, prominent: Bool) {
         self.gameObject = gameObject
         self.prominent = prominent
+        model = OPNStoreGameTileModel(gameObject: gameObject, prominent: prominent)
         selectedVariantIndex = gameObject.variants.isEmpty ? -1 : 0
         titleLabel = OPNUIHelpers.label(text: gameObject.title.isEmpty ? "Untitled" : gameObject.title, frame: .zero, size: prominent ? 31 : 15, color: Self.color(0xF5F5F7), weight: .bold, alignment: .left)
         metaLabel = OPNUIHelpers.label(text: Self.primaryGenre(gameObject), frame: .zero, size: prominent ? 13 : 11.5, color: Self.color(0xDBDEE5, alpha: 0.86), weight: .semibold, alignment: .left)
@@ -88,10 +127,12 @@ final class OPNStoreGameTile: NSView {
         metaLabel.isHidden = !prominent
         featureLabel.isHidden = !prominent
         availabilityLabel.isHidden = !prominent
+        hostingView?.frame = bounds
     }
 
     func setStoreFocused(_ focused: Bool) {
         storeFocused = focused
+        model.storeFocused = focused
         alphaValue = 1
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.18)
@@ -138,6 +179,7 @@ final class OPNStoreGameTile: NSView {
         guard !prominent, !storeFocused, let window else { return }
         let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
         if !bounds.contains(convert(windowPoint, from: nil)) {
+            model.mouseHovering = false
             playButton.isHidden = true
             layer?.borderColor = Self.color(0xFFFFFF, alpha: 0.12).cgColor
         }
@@ -232,11 +274,13 @@ final class OPNStoreGameTile: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         onHover?()
+        model.mouseHovering = true
         if !prominent { playButton.isHidden = false }
         if !storeFocused { layer?.borderColor = Self.color(0x34C759, alpha: 0.42).cgColor }
     }
 
     override func mouseExited(with event: NSEvent) {
+        model.mouseHovering = false
         if !prominent && !storeFocused { playButton.isHidden = true }
         if !storeFocused { layer?.borderColor = Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.12).cgColor }
     }
@@ -296,7 +340,19 @@ final class OPNStoreGameTile: NSView {
         addSubview(playButton)
         refreshSelectedVariantPresentation()
         imageView.image = OPNGameCatalogArtworkSupport.fallbackArtworkImage()
+        model.artwork = imageView.image ?? OPNGameCatalogArtworkSupport.fallbackArtworkImage()
+        model.meta = Self.primaryGenre(gameObject)
+        model.feature = Self.featureSummary(gameObject)
+        installSwiftUIRenderer()
         updateTrackingAreas()
+    }
+
+    private func installSwiftUIRenderer() {
+        let hosting = NSHostingView(rootView: OPNStoreGameTileSwiftUIView(model: model))
+        hosting.frame = bounds
+        hosting.autoresizingMask = [.width, .height]
+        addSubview(hosting, positioned: .above, relativeTo: playButton)
+        hostingView = hosting
     }
 
     private func configureStoreIcons() {
@@ -306,6 +362,7 @@ final class OPNStoreGameTile: NSView {
         storeBadgeView.addSubview(storeIconView)
         storeIconViews.append(storeIconView)
         storeIconVariantIndexes.append(0)
+        appendStoreIcon(store: firstStore, variantIndex: 0, image: storeIconView.image)
         loadStoreIcon(firstStore, into: storeIconView)
         let variantIconCount = gameObject.variants.isEmpty ? variantStores.count : gameObject.variants.count
         guard variantIconCount > 1 else { return }
@@ -316,8 +373,14 @@ final class OPNStoreGameTile: NSView {
             storeBadgeView.addSubview(iconView)
             storeIconViews.append(iconView)
             storeIconVariantIndexes.append(index)
+            appendStoreIcon(store: store, variantIndex: index, image: iconView.image)
             loadStoreIcon(store, into: iconView)
         }
+    }
+
+    private func appendStoreIcon(store: String, variantIndex: Int, image: NSImage?) {
+        let icon = OPNStoreGameTileIcon(id: model.storeIcons.count, variantIndex: variantIndex, store: OPNGameCatalogArtworkSupport.displayLabel(store), image: image ?? OPNGameCatalogArtworkSupport.iconPlaceholderImage(store))
+        model.storeIcons.append(icon)
     }
 
     private func configure(iconView: NSImageView, store: String) {
@@ -336,8 +399,14 @@ final class OPNStoreGameTile: NSView {
             guard let image, let iconView else { return }
             MainActor.assumeIsolated {
                 iconView.image = OPNGameCatalogArtworkSupport.greyscaleIconImage(image)
+                self.updateStoreIconModelImage(for: iconView, image: iconView.image)
             }
         }
+    }
+
+    private func updateStoreIconModelImage(for iconView: NSImageView, image: NSImage?) {
+        guard let index = storeIconViews.firstIndex(where: { $0 === iconView }), index < model.storeIcons.count, let image else { return }
+        model.storeIcons[index] = OPNStoreGameTileIcon(id: model.storeIcons[index].id, variantIndex: model.storeIcons[index].variantIndex, store: model.storeIcons[index].store, image: image)
     }
 
     private func layoutProminent(width: CGFloat, height: CGFloat) {
@@ -423,6 +492,7 @@ final class OPNStoreGameTile: NSView {
         let candidates = imageCandidates()
         guard !candidates.isEmpty else {
             imageView.image = OPNGameCatalogArtworkSupport.fallbackArtworkImage()
+            model.artwork = imageView.image ?? OPNGameCatalogArtworkSupport.fallbackArtworkImage()
             return
         }
         loadImage(from: candidates, index: 0)
@@ -432,6 +502,7 @@ final class OPNStoreGameTile: NSView {
         let generation = imageLoadGeneration
         guard index < urlStrings.count else {
             if imageView.image == nil { imageView.image = OPNGameCatalogArtworkSupport.fallbackArtworkImage() }
+            model.artwork = imageView.image ?? OPNGameCatalogArtworkSupport.fallbackArtworkImage()
             return
         }
         let urlString = urlStrings[index]
@@ -451,6 +522,7 @@ final class OPNStoreGameTile: NSView {
             let revealDelay = self.imageView.image == nil ? self.imageRevealDelay : 0
             self.imageView.alphaValue = 0
             self.imageView.image = image
+            self.model.artwork = image
             DispatchQueue.main.asyncAfter(deadline: .now() + revealDelay) { [weak self] in
                 guard let self, generation == self.imageLoadGeneration else { return }
                 NSAnimationContext.runAnimationGroup { context in
@@ -594,6 +666,132 @@ final class OPNStoreGameTile: NSView {
         let profileEnabled = !appId.isEmpty && OPNStreamPreferences.profileEnabled(forGame: appId)
         let storeCount = max(gameObject.availableStores.count, gameObject.variants.count)
         return OPNGameCatalogMetadataSupport.availabilityTitle(needsPurchase: gameNeedsPurchase(gameObject: gameObject, variantIndex: variantIndex), profileEnabled: profileEnabled, storeCount: storeCount)
+    }
+}
+
+private struct OPNStoreGameTileSwiftUIView: View {
+    @ObservedObject var model: OPNStoreGameTileModel
+
+    private var focused: Bool { model.storeFocused || model.mouseHovering }
+    private var cornerRadius: CGFloat { model.prominent ? 28 : 18 }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Image(nsImage: model.artwork)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .overlay(LinearGradient(colors: [.black.opacity(model.prominent ? 0.08 : 0.02), .black.opacity(model.prominent ? 0.18 : 0.12), .black.opacity(model.prominent ? 0.88 : 0.82)], startPoint: .top, endPoint: .bottom))
+
+            VStack(alignment: .leading, spacing: 0) {
+                topChrome
+                Spacer(minLength: 0)
+                if model.prominent { prominentText }
+            }
+            .padding(model.prominent ? 30 : 12)
+
+            if model.prominent || focused { actionPill }
+
+            accentBar
+        }
+        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x070A0C, alpha: 0.92)))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(focused ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.98)) : .white.opacity(model.prominent ? 0.18 : 0.12), lineWidth: focused ? 2.5 : 1.25))
+        .shadow(color: focused ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.38)) : .clear, radius: focused ? 26 : 0)
+        .animation(.easeOut(duration: 0.18), value: focused)
+        .allowsHitTesting(false)
+    }
+
+    private var topChrome: some View {
+        HStack(alignment: .top) {
+            storeIcons
+            Spacer(minLength: 12)
+            if model.prominent {
+                Text(model.availabilityTitle)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.96)))
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var storeIcons: some View {
+        HStack(spacing: model.prominent ? 8 : 6) {
+            ForEach(model.storeIcons) { icon in
+                Image(nsImage: icon.image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(model.prominent ? 7 : 6)
+                    .frame(width: model.prominent ? 34 : 28, height: model.prominent ? 34 : 28)
+                    .background(iconBackground(icon), in: Circle())
+                    .overlay(Circle().stroke(iconBorder(icon), lineWidth: 1))
+                    .help(icon.store)
+            }
+        }
+    }
+
+    private var prominentText: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(model.meta)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xDBDEE5, alpha: 0.86)))
+                .lineLimit(1)
+            Text(model.title)
+                .font(.system(size: 31, weight: .bold))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xF5F5F7, alpha: 1)))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(model.feature)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xB9BDC7, alpha: 0.82)))
+                .lineLimit(2)
+        }
+        .padding(.trailing, 172)
+    }
+
+    private var actionPill: some View {
+        Text(model.actionTitle.uppercased())
+            .font(.system(size: model.prominent ? 14 : 11, weight: .black))
+            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x06140A, alpha: 1)))
+            .frame(width: model.prominent ? 112 : 50, height: model.prominent ? 42 : 28)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.98)), in: Capsule())
+            .shadow(color: model.prominent ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.42)) : .clear, radius: model.prominent ? 24 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .padding(.trailing, model.prominent ? 40 : 14)
+            .padding(.bottom, model.prominent ? 28 : 20)
+    }
+
+    private var accentBar: some View {
+        Group {
+            if model.prominent {
+                Rectangle()
+                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.96)))
+                    .frame(width: 5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            } else {
+                Rectangle()
+                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.96)))
+                    .frame(height: 3)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+        }
+    }
+
+    private func iconBackground(_ icon: OPNStoreGameTileIcon) -> Color {
+        icon.variantIndex == Int(model.selectedVariantIndex) && model.selectedVariantIndex >= 0
+            ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.24))
+            : Color(nsColor: OPNUIHelpers.color(rgb: 0x030506, alpha: 0.72))
+    }
+
+    private func iconBorder(_ icon: OPNStoreGameTileIcon) -> Color {
+        if icon.variantIndex == Int(model.selectedVariantIndex) && model.selectedVariantIndex >= 0 {
+            return Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.96))
+        }
+        if model.storeFocused {
+            return Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.42))
+        }
+        return .white.opacity(0.18)
     }
 }
 
