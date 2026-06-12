@@ -9,6 +9,8 @@ import Testing
     #expect(UDS.UseCase.toastShown.rawValue == "UDSToastShown")
     #expect(UDS.UseCase.suggestionFeedback.rawValue == "UDSSuggestionFeedback")
     #expect(UDS.UseCase.dialogShown.rawValue == "UDSDialogShown")
+    #expect(UDS.LaunchSource.mall.rawValue == "Mall")
+    #expect(UDS.TriggerSource.notification.rawValue == "Notification")
 }
 
 @Test func udsBuildsAuthenticatedJsonRequest() throws {
@@ -18,4 +20,16 @@ import Testing
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
     #expect(request.httpMethod == "POST")
     #expect(request.httpBody != nil)
+}
+
+@Test func udsBuildsVendorReportRequest() throws {
+    let configuration = UDSConfiguration(serverURLString: "https://uds.example")
+    let payload = UDSReportPayload(source: .mall, locale: "en_US", deviceId: "device", sessionId: "session", sessionDurationInSeconds: 30, isVPN: true)
+    let request = try #require(UDSRequestFactory.reportRequest(useCase: .endOfSessionReport, payload: payload, accessToken: "access", configuration: configuration))
+    #expect(request.url?.absoluteString == "https://uds.example/report?serviceUseCase=UdsEndOfSessionReport")
+    #expect(request.httpMethod == "POST")
+    let body = try #require(request.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["source"] as? String == "Mall")
+    #expect(json["isVPN"] as? Bool == true)
 }

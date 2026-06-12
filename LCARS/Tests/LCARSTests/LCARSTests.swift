@@ -9,6 +9,11 @@ import Testing
     #expect(LCARS.RequestType.clientStrings.rawValue == "clientStrings")
     #expect(LCARS.RequestType.loginWallData.rawValue == "loginWallData")
     #expect(LCARS.RequestType.loginWallStrings.rawValue == "loginWallStrings")
+    #expect(LCARS.RequestType.overallGfnSupportedLanguages.rawValue == "overallGfnSupportedLanguages")
+    #expect(LCARS.RequestType.panels.cachePolicy.maxEntries == 10)
+    #expect(LCARS.RequestType.staticAppData.cachePolicy.cacheName == "LCARSStatic")
+    #expect(LCARS.RequestType.loginWallData.cachePolicy.maxAgeSeconds == 604_800)
+    #expect(LCARS.RequestType.overallGfnSupportedLanguages.cachePolicy.maxEntries == 1)
 }
 
 @Test func lcarsBuildsGraphQLRequest() throws {

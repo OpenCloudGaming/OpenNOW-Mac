@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-import Testing
 @testable import Starfleet
 
 private struct MockStarfleetTransport: StarfleetHTTPTransport {

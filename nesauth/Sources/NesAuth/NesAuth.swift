@@ -10,6 +10,29 @@ public enum NesAuth: Sendable {
 }
 
 public extension NesAuth {
+    enum Operation: String, CaseIterable, Sendable {
+        case nes = "NES"
+        case cancelSubscription = "NES_Cancel_Subscription"
+        case getApps = "NES_Get_Apps"
+        case getCredits = "NES_Get_Credits"
+        case getPlayTime = "NES_Get_PlayTime"
+        case getProductCredits = "NES_Get_Product_Credits"
+        case getProducts = "NES_Get_Products"
+        case getResource = "NES_Get_Resource"
+        case getServiceUrls = "NES_Get_ServiceUrls"
+        case getSubscriptions = "NES_Get_Subscriptions"
+        case getClientStreamingQuality = "NES_GetClientStreamingQuality"
+        case install = "NES_Install"
+        case uninstall = "NES_Uninstall"
+        case updateSubscription = "NES_Update_Subscription"
+    }
+
+    enum LaunchStatus: String, CaseIterable, Sendable {
+        case failed = "NesAuthFailed"
+        case notEntitled = "NesNotEntitled"
+        case autoAuthorization = "NesAutoAuthorization"
+    }
+
     enum ElementName: String, CaseIterable, Sendable {
         case auth = "gfn-nes-auth"
         case authError = "gfn-nes-auth-error"
