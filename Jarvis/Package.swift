@@ -9,8 +9,11 @@ let package = Package(
     products: [
         .library(name: "Jarvis", targets: ["Jarvis"]),
     ],
+    dependencies: [
+        .package(path: "../starfleet"),
+    ],
     targets: [
-        .target(name: "Jarvis"),
+        .target(name: "Jarvis", dependencies: [.product(name: "Starfleet", package: "starfleet")]),
         .testTarget(name: "JarvisTests", dependencies: ["Jarvis"]),
     ],
     swiftLanguageModes: [.v6]

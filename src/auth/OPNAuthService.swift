@@ -3,6 +3,7 @@ import CryptoKit
 import Darwin
 import Foundation
 import Jarvis
+import Starfleet
 
 typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
@@ -20,8 +21,7 @@ final class OPNAuthService: @unchecked Sendable {
     static let defaultUserAgent = jarvisConfiguration.userAgent
     static let oAuthLogoutURL = jarvisConfiguration.logoutURLString
 
-    private static let clientTokenRefreshWindowMs: Int64 = 5 * 60 * 1000
-    private static let clientTokenRefreshWindowPercent: Int64 = 20
+    private static let clientTokenRefreshPolicy = StarfleetClientTokenRefreshPolicy.gfnPC
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
 
@@ -408,12 +408,12 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     private func shouldRefreshClientToken(_ session: OPNAuthSession) -> Bool {
-        if session.clientToken.isEmpty || session.clientTokenExpiry == 0 { return true }
-        let remainingMs = session.clientTokenExpiry - OPNAuthSession.currentEpochMs()
-        if session.clientTokenExpiryLength > 0 {
-            return remainingMs < (session.clientTokenExpiryLength * Self.clientTokenRefreshWindowPercent) / 100
-        }
-        return remainingMs < Self.clientTokenRefreshWindowMs
+        Self.clientTokenRefreshPolicy.shouldRefresh(
+            clientToken: session.clientToken,
+            clientTokenExpiry: session.clientTokenExpiry,
+            clientTokenExpiryLength: session.clientTokenExpiryLength,
+            currentEpochMs: OPNAuthSession.currentEpochMs()
+        )
     }
 
     private func mergeRefreshedSession(saved: OPNAuthSession, refreshed: OPNAuthSession) -> OPNAuthSession {
