@@ -62,6 +62,7 @@
 		E0000000000000000000000B /* OPNGameDataCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001B /* OPNGameDataCache.swift */; };
 		E0000000000000000000000C /* OPNAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001C /* OPNAuthService.swift */; };
 		E000000000000000000000E2 /* OPNJarvisSentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E3 /* OPNJarvisSentryTelemetry.swift */; };
+		E000000000000000000000E4 /* OPNJarvisSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E5 /* OPNJarvisSessionStore.swift */; };
 		E0000000000000000000000D /* OPNGameService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001D /* OPNGameService.swift */; };
 		E0000000000000000000000F /* OPNLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001F /* OPNLocale.swift */; };
 		E00000000000000000000020 /* OPNGameRemediation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000021 /* OPNGameRemediation.swift */; };
@@ -176,6 +177,7 @@
 		E0000000000000000000001B /* OPNGameDataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameDataCache.swift; path = src/games/OPNGameDataCache.swift; sourceTree = "<group>"; };
 		E0000000000000000000001C /* OPNAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthService.swift; path = src/auth/OPNAuthService.swift; sourceTree = "<group>"; };
 		E000000000000000000000E3 /* OPNJarvisSentryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNJarvisSentryTelemetry.swift; path = src/auth/OPNJarvisSentryTelemetry.swift; sourceTree = "<group>"; };
+		E000000000000000000000E5 /* OPNJarvisSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNJarvisSessionStore.swift; path = src/auth/OPNJarvisSessionStore.swift; sourceTree = "<group>"; };
 		E0000000000000000000001D /* OPNGameService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameService.swift; path = src/games/OPNGameService.swift; sourceTree = "<group>"; };
 		E0000000000000000000001F /* OPNLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLocale.swift; path = src/common/OPNLocale.swift; sourceTree = "<group>"; };
 		E00000000000000000000021 /* OPNGameRemediation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameRemediation.swift; path = src/common/OPNGameRemediation.swift; sourceTree = "<group>"; };
@@ -438,6 +440,7 @@
 			children = (
 				E0000000000000000000001C /* OPNAuthService.swift */,
 				E000000000000000000000E3 /* OPNJarvisSentryTelemetry.swift */,
+				E000000000000000000000E5 /* OPNJarvisSessionStore.swift */,
 			);
 			name = auth;
 			sourceTree = "<group>";
@@ -534,6 +537,7 @@
 				E0000000000000000000003C /* OpenNOWApp.swift in Sources */,
 				E0000000000000000000000C /* OPNAuthService.swift in Sources */,
 				E000000000000000000000E2 /* OPNJarvisSentryTelemetry.swift in Sources */,
+				E000000000000000000000E4 /* OPNJarvisSessionStore.swift in Sources */,
 				E00000000000000000000009 /* OPNModels.swift in Sources */,
 				E0000000000000000000000A /* OPNDeviceIdentity.swift in Sources */,
 				E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in Sources */,

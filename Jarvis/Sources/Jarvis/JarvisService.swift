@@ -96,6 +96,48 @@ public actor JarvisInMemorySessionStore: JarvisSessionStore {
     public func clearUserInfo() async throws { storedUserInfo = JarvisUserInfo() }
 }
 
+public enum JarvisAuthFailureCategory: String, CaseIterable, Sendable {
+    case invalidRequest = "INVALID_REQUEST"
+    case authorization = "AUTHORIZATION"
+    case offline = "OFFLINE"
+    case timeout = "TIMEOUT"
+    case server = "SERVER"
+    case rateLimited = "RATE_LIMITED"
+    case unavailable = "UNAVAILABLE"
+    case parsing = "PARSING"
+    case missingData = "MISSING_DATA"
+    case unknown = "UNKNOWN"
+}
+
+public struct JarvisRetryPolicy: Equatable, Sendable {
+    public let maxRetries: Int
+    public let baseDelayMs: UInt64
+    public let retryableHTTPStatuses: Set<Int>
+
+    public init(maxRetries: Int = 1, baseDelayMs: UInt64 = 250, retryableHTTPStatuses: Set<Int> = [408, 425, 429, 500, 502, 503, 504]) {
+        self.maxRetries = max(0, maxRetries)
+        self.baseDelayMs = baseDelayMs
+        self.retryableHTTPStatuses = retryableHTTPStatuses
+    }
+
+    public static let gfnPC = JarvisRetryPolicy()
+
+    public func shouldRetry(_ error: JarvisAuthError, attempt: Int) -> Bool {
+        guard attempt < maxRetries else { return false }
+        return switch error {
+        case .httpStatus(let status): retryableHTTPStatuses.contains(status)
+        case .transportFailure(_, let category): category == .timeout || category == .offline || category == .unavailable
+        default: false
+        }
+    }
+
+    public func delayNanoseconds(forAttempt attempt: Int) -> UInt64 {
+        guard baseDelayMs > 0 else { return 0 }
+        let multiplier = UInt64(max(1, attempt + 1))
+        return baseDelayMs * multiplier * 1_000_000
+    }
+}
+
 public struct JarvisAuthToken: Equatable, Sendable {
     public let tokenType: JarvisAuthType
     public let token: String
@@ -382,6 +424,64 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
     case missingAccessToken
     case missingDelegateToken
 
+    case transportFailure(String, JarvisAuthFailureCategory)
+
+    public var category: JarvisAuthFailureCategory {
+        switch self {
+        case .invalidOAuthURL, .invalidTokenURL, .invalidUserInfoURL, .invalidClientTokenURL, .invalidOperationURL, .invalidCallbackRequest, .stateMismatch, .missingAuthorizationCode:
+            .invalidRequest
+        case .oauthError, .noSavedSession, .noRefreshMechanism, .missingAccessToken:
+            .authorization
+        case .invalidHTTPResponse:
+            .unavailable
+        case .httpStatus(let status):
+            Self.category(forHTTPStatus: status)
+        case .invalidJSONResponse:
+            .parsing
+        case .missingClientToken, .missingDelegateToken:
+            .missingData
+        case .transportFailure(_, let category):
+            category
+        }
+    }
+
+    public var isRetryable: Bool {
+        switch self {
+        case .httpStatus(let status): JarvisRetryPolicy.gfnPC.retryableHTTPStatuses.contains(status)
+        case .transportFailure(_, let category): category == .timeout || category == .offline || category == .unavailable
+        default: false
+        }
+    }
+
+    public static func category(forHTTPStatus status: Int) -> JarvisAuthFailureCategory {
+        switch status {
+        case 400, 404, 409, 422: .invalidRequest
+        case 401, 403: .authorization
+        case 408: .timeout
+        case 429: .rateLimited
+        case 500...599: status == 503 || status == 504 ? .unavailable : .server
+        default: .unknown
+        }
+    }
+
+    public static func transportFailure(_ error: Error) -> JarvisAuthError {
+        let nsError = error as NSError
+        let category: JarvisAuthFailureCategory
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorTimedOut:
+                category = .timeout
+            case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost, NSURLErrorDNSLookupFailed, NSURLErrorInternationalRoamingOff, NSURLErrorDataNotAllowed:
+                category = .offline
+            default:
+                category = .unavailable
+            }
+        } else {
+            category = .unknown
+        }
+        return .transportFailure(error.localizedDescription, category)
+    }
+
     public var errorDescription: String? {
         switch self {
         case .invalidOAuthURL: "Invalid OAuth URL"
@@ -401,6 +501,7 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
         case .missingClientToken: "No client_token in response"
         case .missingAccessToken: "Missing access token"
         case .missingDelegateToken: "No delegate token in response"
+        case .transportFailure(let message, _): message
         }
     }
 }
@@ -412,6 +513,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
 
     private let configuration: JarvisOAuthConfiguration
     private let refreshPolicy: JarvisClientTokenRefreshPolicy
+    private let retryPolicy: JarvisRetryPolicy
     private let transport: Transport
     private let telemetry: JarvisTelemetry
     private let sessionStore: JarvisSessionStore
@@ -421,6 +523,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
     public init(
         configuration: JarvisOAuthConfiguration = .gfnPC,
         refreshPolicy: JarvisClientTokenRefreshPolicy = .gfnPC,
+        retryPolicy: JarvisRetryPolicy = .gfnPC,
         transport: Transport,
         telemetry: JarvisTelemetry = JarvisNoOpTelemetry(),
         sessionStore: JarvisSessionStore = JarvisNoOpSessionStore(),
@@ -428,6 +531,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
     ) {
         self.configuration = configuration
         self.refreshPolicy = refreshPolicy
+        self.retryPolicy = retryPolicy
         self.transport = transport
         self.telemetry = telemetry
         self.sessionStore = sessionStore
@@ -508,6 +612,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             span.finish(success: true)
             return enriched
         } catch {
+            handleAuthFailure(error)
             telemetry.recordError(error, operation: .getSessionToken, attributes: ["phase": "authorization_code_exchange"])
             telemetry.recordCounter(name: "jarvis.auth.exchange.count", attributes: ["outcome": "failure"])
             span.finish(success: false)
@@ -546,6 +651,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             span.finish(success: true)
             return refreshed
         } catch {
+            handleAuthFailure(error)
             telemetry.recordError(error, operation: .getSessionToken, attributes: ["phase": "session_refresh"])
             telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "failure"])
             span.finish(success: false)
@@ -561,6 +667,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             span.finish(success: true)
             return JarvisAuthToken(tokenType: .jwtGFN, token: refreshed.accessToken, userId: refreshed.userId, externalUserId: refreshed.userId, idpId: refreshed.idpId)
         } catch {
+            handleAuthFailure(error)
             telemetry.recordError(error, operation: .getUserToken, attributes: [:])
             span.finish(success: false)
             throw error
@@ -583,6 +690,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             span.finish(success: true)
             return user
         } catch {
+            handleAuthFailure(error)
             telemetry.recordError(error, operation: .getUserInfo, attributes: [:])
             span.finish(success: false)
             throw error
@@ -756,6 +864,18 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         telemetry.recordCounter(name: "jarvis.auth.status.subscription.count", attributes: ["event": "stopped"])
     }
 
+    private func handleAuthFailure(_ error: Error) {
+        let category = (error as? JarvisAuthError)?.category ?? JarvisAuthError.transportFailure(error).category
+        switch category {
+        case .authorization:
+            updateStatus(session.isAuthenticated ? .authorizationError : .notLoggedIn)
+        case .invalidRequest:
+            if !session.isAuthenticated { updateStatus(.notLoggedIn) }
+        default:
+            break
+        }
+    }
+
     private func persistSession(_ session: JarvisSession) async throws {
         if session.isAuthenticated {
             try await sessionStore.saveSession(session)
@@ -807,6 +927,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             span.finish(success: true)
             return json
         } catch {
+            handleAuthFailure(error)
             telemetry.recordError(error, operation: operation, attributes: [:])
             telemetry.recordCounter(name: "jarvis.auth.operation.count", attributes: ["operation": operation.rawValue, "outcome": "failure"])
             span.finish(success: false)
@@ -852,10 +973,44 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
     }
 
     private func performJSONRequest(_ request: URLRequest, operation: Jarvis.Operation?) async throws -> [String: Any] {
-        let (data, response) = try await transport.send(request)
+        var attempt = 0
+        while true {
+            do {
+                return try await performJSONRequestOnce(request, operation: operation)
+            } catch let error as JarvisAuthError {
+                guard retryPolicy.shouldRetry(error, attempt: attempt) else { throw error }
+                telemetry.recordCounter(name: "jarvis.auth.retry.count", attributes: ["category": error.category.rawValue, "attempt": String(attempt + 1)])
+                let delay = retryPolicy.delayNanoseconds(forAttempt: attempt)
+                attempt += 1
+                if delay > 0 { try await Task.sleep(nanoseconds: delay) }
+            } catch {
+                let mapped = JarvisAuthError.transportFailure(error)
+                guard retryPolicy.shouldRetry(mapped, attempt: attempt) else { throw mapped }
+                telemetry.recordCounter(name: "jarvis.auth.retry.count", attributes: ["category": mapped.category.rawValue, "attempt": String(attempt + 1)])
+                let delay = retryPolicy.delayNanoseconds(forAttempt: attempt)
+                attempt += 1
+                if delay > 0 { try await Task.sleep(nanoseconds: delay) }
+            }
+        }
+    }
+
+    private func performJSONRequestOnce(_ request: URLRequest, operation: Jarvis.Operation?) async throws -> [String: Any] {
+        let data: Data
+        let response: HTTPURLResponse
+        do {
+            (data, response) = try await transport.send(request)
+        } catch let error as JarvisAuthError {
+            telemetry.recordError(error, operation: operation, attributes: ["category": error.category.rawValue])
+            throw error
+        } catch {
+            let mapped = JarvisAuthError.transportFailure(error)
+            telemetry.recordError(mapped, operation: operation, attributes: ["category": mapped.category.rawValue])
+            throw mapped
+        }
+
         guard response.statusCode == 200 else {
             let error = JarvisAuthError.httpStatus(response.statusCode)
-            telemetry.recordError(error, operation: operation, attributes: ["status_code": String(response.statusCode)])
+            telemetry.recordError(error, operation: operation, attributes: ["status_code": String(response.statusCode), "category": error.category.rawValue])
             throw error
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {

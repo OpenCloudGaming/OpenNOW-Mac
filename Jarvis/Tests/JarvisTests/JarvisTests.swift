@@ -14,6 +14,31 @@ private struct MockJarvisTransport: JarvisHTTPTransport {
     }
 }
 
+private actor SequencedJarvisTransport: JarvisHTTPTransport {
+    private var responses: [Result<(status: Int, json: [String: Any]), Error>]
+    private var count = 0
+
+    var requestCount: Int { count }
+
+    init(_ responses: [Result<(status: Int, json: [String: Any]), Error>]) {
+        self.responses = responses
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        count += 1
+        let response = responses.isEmpty ? .success((status: 200, json: [:])) : responses.removeFirst()
+
+        switch response {
+        case .success(let payload):
+            let data = try JSONSerialization.data(withJSONObject: payload.json)
+            let http = HTTPURLResponse(url: request.url ?? URL(string: "https://login.nvidia.com")!, statusCode: payload.status, httpVersion: nil, headerFields: nil)!
+            return (data, http)
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
 private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     let data = try #require(request.httpBody)
     return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -64,6 +89,17 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     #expect(!policy.shouldRefresh(clientToken: "client", clientTokenExpiry: 1_500, clientTokenExpiryLength: 1_000, currentEpochMs: 900))
 }
 
+@Test func jarvisAuthErrorClassifiesVendorRetryConditions() {
+    #expect(JarvisAuthError.httpStatus(401).category == .authorization)
+    #expect(JarvisAuthError.httpStatus(408).category == .timeout)
+    #expect(JarvisAuthError.httpStatus(429).category == .rateLimited)
+    #expect(JarvisAuthError.httpStatus(503).category == .unavailable)
+    #expect(JarvisAuthError.transportFailure(URLError(.notConnectedToInternet)).category == .offline)
+    #expect(JarvisAuthError.transportFailure(URLError(.timedOut)).category == .timeout)
+    #expect(JarvisRetryPolicy(maxRetries: 1, baseDelayMs: 0).shouldRetry(.httpStatus(503), attempt: 0))
+    #expect(!JarvisRetryPolicy(maxRetries: 1, baseDelayMs: 0).shouldRetry(.httpStatus(401), attempt: 0))
+}
+
 @Test func jarvisAuthServiceExchangesCodeAndRefreshesClientToken() async throws {
     let service = JarvisAuthService(transport: MockJarvisTransport { request in
         if request.url?.absoluteString == "https://login.nvidia.com/token" {
@@ -102,6 +138,40 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     #expect(user.userId == "user")
     #expect(user.displayName == "GFN User")
     #expect(user.isAuthenticated)
+}
+
+@Test func jarvisAuthServiceRetriesTransientHTTPFailures() async throws {
+    let transport = SequencedJarvisTransport([
+        .success((status: 503, json: ["error": "unavailable"])),
+        .success((status: 200, json: ["sub": "user", "name": "GFN User", "email": "user@example.com", "idp_id": "idp"])),
+    ])
+    let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 1, baseDelayMs: 0), transport: transport)
+    let user = try await service.fetchUserInfo(accessToken: "access")
+    #expect(user.userId == "user")
+    #expect(await transport.requestCount == 2)
+}
+
+@Test func jarvisAuthServicePreservesSessionOnTimeoutButMarksAuthorizationFailure() async throws {
+    let session = JarvisSession(
+        accessToken: "access",
+        refreshToken: "refresh",
+        userId: "user",
+        isAuthenticated: true,
+        accessTokenExpiry: JarvisSession.currentEpochMs() - 1_000
+    )
+    let timeoutTransport = SequencedJarvisTransport([.failure(URLError(.timedOut))])
+    let timeoutService = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: timeoutTransport, session: session)
+    await #expect(throws: JarvisAuthError.transportFailure(URLError(.timedOut).localizedDescription, .timeout)) {
+        _ = try await timeoutService.refreshSession(force: true)
+    }
+    #expect(await timeoutService.status == .loggedIn)
+
+    let authTransport = SequencedJarvisTransport([.success((status: 401, json: ["error": "unauthorized"]))])
+    let authService = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: authTransport, session: session)
+    await #expect(throws: JarvisAuthError.httpStatus(401)) {
+        _ = try await authService.refreshSession(force: true)
+    }
+    #expect(await authService.status == .authorizationError)
 }
 
 @Test func jarvisOAuthCallbackValidationMatchesVendorStateFlow() async throws {
