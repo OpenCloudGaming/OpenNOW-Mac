@@ -416,23 +416,6 @@ final class OPNAuthService: @unchecked Sendable {
         _ = await jarvisAuthService.finishLogin(success: false)
     }
 
-    private func dictionary(from userInfo: JarvisUserInfo) -> NSDictionary {
-        let dictionary = NSMutableDictionary()
-        put(userInfo.userId, key: "sub", into: dictionary)
-        put(userInfo.userId, key: "userId", into: dictionary)
-        put(userInfo.externalId, key: "external_id", into: dictionary)
-        put(userInfo.externalId, key: "externalId", into: dictionary)
-        put(userInfo.idpId, key: "idp_id", into: dictionary)
-        put(userInfo.idpId, key: "idpId", into: dictionary)
-        put(userInfo.idpName, key: "idp_name", into: dictionary)
-        put(userInfo.preferredUsername, key: "preferred_username", into: dictionary)
-        put(userInfo.displayName, key: "name", into: dictionary)
-        put(userInfo.displayName, key: "displayName", into: dictionary)
-        put(userInfo.email, key: "email", into: dictionary)
-        if !userInfo.consent.isEmpty { dictionary["consent"] = userInfo.consent }
-        return dictionary
-    }
-
     private func dictionary(from userInfo: StarfleetUserInfo) -> NSDictionary {
         let dictionary = NSMutableDictionary()
         put(userInfo.userId, key: "sub", into: dictionary)
