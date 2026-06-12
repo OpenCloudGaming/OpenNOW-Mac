@@ -3,7 +3,6 @@ import CryptoKit
 import Darwin
 import Foundation
 import Jarvis
-import Starfleet
 
 typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
@@ -21,7 +20,7 @@ final class OPNAuthService: @unchecked Sendable {
     static let defaultUserAgent = jarvisConfiguration.userAgent
     static let oAuthLogoutURL = jarvisConfiguration.logoutURLString
 
-    private static let clientTokenRefreshPolicy = StarfleetClientTokenRefreshPolicy.gfnPC
+    private static let clientTokenRefreshPolicy = JarvisClientTokenRefreshPolicy.gfnPC
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
 

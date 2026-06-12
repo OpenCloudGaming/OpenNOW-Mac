@@ -36,3 +36,10 @@ import Testing
     #expect(session.idpId == Jarvis.defaultIdpId)
     #expect(session.accessTokenExpiry > JarvisSession.currentEpochMs())
 }
+
+@Test func jarvisClientTokenRefreshPolicyIsSelfContained() {
+    let policy = JarvisClientTokenRefreshPolicy(fixedWindowMs: 300_000, percentageWindow: 20)
+    #expect(policy.shouldRefresh(clientToken: "", clientTokenExpiry: 0, clientTokenExpiryLength: 0, currentEpochMs: 1_000))
+    #expect(policy.shouldRefresh(clientToken: "client", clientTokenExpiry: 1_050, clientTokenExpiryLength: 1_000, currentEpochMs: 900))
+    #expect(!policy.shouldRefresh(clientToken: "client", clientTokenExpiry: 1_500, clientTokenExpiryLength: 1_000, currentEpochMs: 900))
+}
