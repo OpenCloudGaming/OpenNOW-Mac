@@ -96,6 +96,11 @@ public actor JarvisInMemorySessionStore: JarvisSessionStore {
     public func clearUserInfo() async throws { storedUserInfo = JarvisUserInfo() }
 }
 
+public enum JarvisSessionPersistenceMode: String, CaseIterable, Sendable {
+    case automatic = "AUTOMATIC"
+    case manual = "MANUAL"
+}
+
 public enum JarvisAuthFailureCategory: String, CaseIterable, Sendable {
     case invalidRequest = "INVALID_REQUEST"
     case authorization = "AUTHORIZATION"
@@ -517,6 +522,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
     private let transport: Transport
     private let telemetry: JarvisTelemetry
     private let sessionStore: JarvisSessionStore
+    private let persistenceMode: JarvisSessionPersistenceMode
     private var isSessionRefreshable: Bool
     private var statusContinuations: [UUID: AsyncStream<JarvisAuthStatus>.Continuation]
 
@@ -527,6 +533,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         transport: Transport,
         telemetry: JarvisTelemetry = JarvisNoOpTelemetry(),
         sessionStore: JarvisSessionStore = JarvisNoOpSessionStore(),
+        persistenceMode: JarvisSessionPersistenceMode = .automatic,
         session: JarvisSession = JarvisSession()
     ) {
         self.configuration = configuration
@@ -535,6 +542,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         self.transport = transport
         self.telemetry = telemetry
         self.sessionStore = sessionStore
+        self.persistenceMode = persistenceMode
         self.session = session
         self.cachedUser = JarvisUserInfo()
         self.status = session.isAuthenticated ? .loggedIn : .notLoggedIn
@@ -607,7 +615,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             if !providerIdpId.isEmpty { exchanged.idpId = providerIdpId }
             let enriched = try await ensureClientToken(exchanged)
             setSessionInMemory(enriched)
-            try await persistSession(enriched)
+            try await persistSessionIfAutomatic(enriched)
             telemetry.recordCounter(name: "jarvis.auth.exchange.count", attributes: ["outcome": "success"])
             span.finish(success: true)
             return enriched
@@ -628,7 +636,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
                 if shouldRefreshClientToken(session) {
                     let enriched = try await ensureClientToken(session)
                     setSessionInMemory(enriched)
-                    try await persistSession(enriched)
+                    try await persistSessionIfAutomatic(enriched)
                     span.finish(success: true)
                     return enriched
                 }
@@ -641,7 +649,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
                 let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
                 let enriched = try await ensureClientToken(refreshed)
                 setSessionInMemory(enriched)
-                try await persistSession(enriched)
+                try await persistSessionIfAutomatic(enriched)
                 telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "client_token"])
                 span.finish(success: true)
                 return enriched
@@ -685,7 +693,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             }
             let user = try await fetchUserInfo(accessToken: refreshed.accessToken, isNetworkCall: true)
             cachedUser = user
-            try await persistUserInfo(user)
+            try await persistUserInfoIfAutomatic(user)
             span.setAttribute("cache", value: "miss")
             span.finish(success: true)
             return user
@@ -739,7 +747,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         let payload = nestedDictionary(json, keys: ["session", "data", "result"]) ?? json
         let chained = merge(saved: session, refreshed: JarvisSessionParser.parseTokenResponse(payload, defaultIdpId: configuration.defaultIdpId))
         setSessionInMemory(chained)
-        try await persistSession(chained)
+        try await persistSessionIfAutomatic(chained)
         return chained
     }
 
@@ -756,7 +764,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         let payload = nestedDictionary(json, keys: ["user", "userInfo", "data", "result"]) ?? json
         let user = parseUserInfo(payload, isNetworkCall: true)
         cachedUser = user
-        try await persistUserInfo(user)
+        try await persistUserInfoIfAutomatic(user)
         return user
     }
 
@@ -884,12 +892,22 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         }
     }
 
+    private func persistSessionIfAutomatic(_ session: JarvisSession) async throws {
+        guard persistenceMode == .automatic else { return }
+        try await persistSession(session)
+    }
+
     private func persistUserInfo(_ userInfo: JarvisUserInfo) async throws {
         if userInfo.isAuthenticated {
             try await sessionStore.saveUserInfo(userInfo)
         } else {
             try await sessionStore.clearUserInfo()
         }
+    }
+
+    private func persistUserInfoIfAutomatic(_ userInfo: JarvisUserInfo) async throws {
+        guard persistenceMode == .automatic else { return }
+        try await persistUserInfo(userInfo)
     }
 
     private func refreshWithOAuthToken() async throws -> JarvisSession {
@@ -901,7 +919,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
         let enriched = try await ensureClientToken(refreshed)
         setSessionInMemory(enriched)
-        try await persistSession(enriched)
+        try await persistSessionIfAutomatic(enriched)
         return enriched
     }
 

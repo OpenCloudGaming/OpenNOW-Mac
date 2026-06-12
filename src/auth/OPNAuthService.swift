@@ -10,6 +10,7 @@ typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Vo
 final class OPNAuthService: @unchecked Sendable {
     static let shared = OPNAuthService()
     private static let jarvisConfiguration = JarvisOAuthConfiguration.gfnPC
+    static let jarvisAuthStatusDidChangeNotification = Notification.Name("OpenNOW.JarvisAuthStatusDidChange")
 
     static let oAuthAuthorizeURL = jarvisConfiguration.authorizeURLString
     static let oAuthTokenURL = jarvisConfiguration.tokenURLString
@@ -24,14 +25,30 @@ final class OPNAuthService: @unchecked Sendable {
     nonisolated(unsafe) private static var cachedUUID = ""
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
     private let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
+    private let statusObservationTask: Task<Void, Never>
 
     private init() {
-        self.jarvisAuthService = JarvisAuthService(
+        let service = JarvisAuthService(
             configuration: Self.jarvisConfiguration,
             retryPolicy: .gfnPC,
             transport: JarvisURLSessionTransport(),
-            telemetry: OPNJarvisSentryTelemetry.shared
+            telemetry: OPNJarvisSentryTelemetry.shared,
+            sessionStore: OPNJarvisSessionStore.shared,
+            persistenceMode: .manual
         )
+        self.jarvisAuthService = service
+        self.statusObservationTask = Task { [service] in
+            let stream = await service.monitorLoginStatus()
+            for await status in stream {
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: Self.jarvisAuthStatusDidChangeNotification,
+                        object: nil,
+                        userInfo: ["status": status.rawValue]
+                    )
+                }
+            }
+        }
     }
 
     func startOAuthLogin(completion: @escaping OPNAuthCallback) {
@@ -55,6 +72,7 @@ final class OPNAuthService: @unchecked Sendable {
         Task { [weak self] in
             guard let self else { return }
             do {
+                _ = await self.jarvisAuthService.sameTabAuthStarted()
                 let loginRequest = try await self.jarvisAuthService.createOAuthLoginRequest(
                     deviceId: deviceId,
                     redirectURI: redirectUri,
@@ -62,20 +80,34 @@ final class OPNAuthService: @unchecked Sendable {
                     oauthState: pkce,
                     providerIdpId: selectedProviderIdpId
                 )
-                self.startOAuthCallbackListener(port: port, expectedState: pkce.state) { [weak self] result in
+                self.startOAuthCallbackListener(port: port) { [weak self] result in
                     guard let self else { return }
                     switch result {
-                    case .success(let code):
-                        self.doOAuthTokenExchange(
-                            authCode: code,
-                            codeVerifier: pkce.codeVerifier,
-                            redirectUri: redirectUri,
-                            providerIdpId: selectedProviderIdpId,
-                            completion: completion
-                        )
+                    case .success(let query):
+                        Task { [weak self] in
+                            guard let self else { return }
+                            do {
+                                let callback = try await self.jarvisAuthService.parseCallback(query: query, expectedState: pkce.state)
+                                self.doOAuthTokenExchange(
+                                    authCode: callback.code,
+                                    codeVerifier: pkce.codeVerifier,
+                                    redirectUri: redirectUri,
+                                    providerIdpId: selectedProviderIdpId,
+                                    completion: completion
+                                )
+                            } catch {
+                                _ = await self.jarvisAuthService.finishLogin(success: false)
+                                self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
+                                DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                            }
+                        }
                     case .failure(let error):
-                        self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
-                        DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                        Task { [weak self] in
+                            guard let self else { return }
+                            _ = await self.jarvisAuthService.finishLogin(success: false)
+                            self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
+                            DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                        }
                     }
                 } readyHandler: {
                     DispatchQueue.main.async {
@@ -84,6 +116,7 @@ final class OPNAuthService: @unchecked Sendable {
                     }
                 }
             } catch {
+                _ = await self.jarvisAuthService.finishLogin(success: false)
                 self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "authorization_url"])
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
             }
@@ -108,6 +141,10 @@ final class OPNAuthService: @unchecked Sendable {
                 DispatchQueue.main.async { completion(false, session, error.localizedDescription) }
             }
         }
+    }
+
+    func monitorLoginStatus(replayCurrent: Bool = true) async -> AsyncStream<JarvisAuthStatus> {
+        await jarvisAuthService.monitorLoginStatus(replayCurrent: replayCurrent)
     }
 
     func fetchStarFleetUserInfo(accessToken: String, completion: @escaping @Sendable (Bool, NSDictionary?, String) -> Void) {
@@ -187,6 +224,8 @@ final class OPNAuthService: @unchecked Sendable {
     func saveSession(_ session: OPNAuthSession) {
         guard session.isAuthenticated, !session.accessToken.isEmpty else { return }
         guard let identity = sessionIdentity(from: session), !identity.isEmpty else { return }
+
+        Task { [jarvisAuthService] in await jarvisAuthService.setSession(session) }
 
         let existing = loadAccountDictionaries(activeUserId: nil)
         var accounts = existing.filter { sessionIdentity(from: $0) != identity }
@@ -286,6 +325,7 @@ final class OPNAuthService: @unchecked Sendable {
         let defaults = Self.authUserDefaults()
         if let activeUserId = defaults.string(forKey: "OPN_ActiveUserId"), !activeUserId.isEmpty {
             removeSavedSession(userId: activeUserId)
+            Task { [jarvisAuthService] in await jarvisAuthService.clearSession() }
             return
         }
         [accountsFilePath(), sessionFilePath(), legacySessionFilePath()].forEach { path in
@@ -295,6 +335,7 @@ final class OPNAuthService: @unchecked Sendable {
         defaults.removeObject(forKey: "GFN_HasSavedSession")
         defaults.removeObject(forKey: "OPN_ActiveUserId")
         defaults.synchronize()
+        Task { [jarvisAuthService] in await jarvisAuthService.clearSession() }
     }
 
     func getStayLoggedIn() -> Bool {
@@ -333,8 +374,10 @@ final class OPNAuthService: @unchecked Sendable {
             guard let self else { return }
             do {
                 let session = try await self.jarvisAuthService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId)
+                _ = await self.jarvisAuthService.finishLogin(success: true)
                 DispatchQueue.main.async { completion(true, session, "") }
             } catch {
+                _ = await self.jarvisAuthService.finishLogin(success: false)
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
@@ -359,7 +402,6 @@ final class OPNAuthService: @unchecked Sendable {
 
     private func startOAuthCallbackListener(
         port: Int,
-        expectedState: String,
         completion: @escaping @Sendable (Result<String, Error>) -> Void,
         readyHandler: @escaping @Sendable () -> Void
     ) {
@@ -411,17 +453,7 @@ final class OPNAuthService: @unchecked Sendable {
             }
             let path = String(request[pathStart..<pathEnd])
             let query = path.split(separator: "?", maxSplits: 1).dropFirst().first.map(String.init)
-            let params = Self.parseQueryString(query)
-            guard let code = params["code"] as? String, !code.isEmpty else {
-                let error = params["error_description"] as? String ?? params["error"] as? String ?? "Unknown OAuth error"
-                completion(.failure(ServiceError(error)))
-                return
-            }
-            guard params["state"] as? String == expectedState else {
-                completion(.failure(ServiceError("State mismatch - possible CSRF")))
-                return
-            }
-            completion(.success(code))
+            completion(.success(query ?? ""))
         }
     }
 

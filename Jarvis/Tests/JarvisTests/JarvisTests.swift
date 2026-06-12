@@ -366,3 +366,25 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     #expect(savedUser.userId == "user")
     #expect(savedUser.displayName == "GFN User")
 }
+
+@Test func jarvisAuthServiceManualPersistenceRequiresExplicitSave() async throws {
+    let store = JarvisInMemorySessionStore()
+    let service = JarvisAuthService(transport: MockJarvisTransport { request in
+        if request.url?.absoluteString == "https://login.nvidia.com/token" {
+            return ["access_token": "access", "refresh_token": "refresh", "expires_in": 120]
+        }
+        if request.url?.absoluteString == "https://login.nvidia.com/client_token" {
+            return ["client_token": "client", "expires_in": 240]
+        }
+        return [:]
+    }, sessionStore: store, persistenceMode: .manual)
+
+    _ = try await service.exchangeAuthorizationCode(authCode: "code", redirectURI: "http://localhost:2259", codeVerifier: "verifier", providerIdpId: "idp")
+    let unsavedSession = try await store.loadSession()
+    #expect(!unsavedSession.isAuthenticated)
+
+    try await service.persistCurrentState()
+    let savedSession = try await store.loadSession()
+    #expect(savedSession.accessToken == "access")
+    #expect(savedSession.clientToken == "client")
+}
