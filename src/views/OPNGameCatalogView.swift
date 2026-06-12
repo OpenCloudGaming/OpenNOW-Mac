@@ -537,30 +537,8 @@ struct OPNGameCatalogSwiftUIView: View {
     }
 
     private func heroView(_ item: OPNGameCatalogItemModel, viewportSize: CGSize) -> some View {
-        Button { onSelect(item) } label: {
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    OPNCatalogArtworkView(urlStrings: Self.heroImageCandidates(for: item.gameObject), contentMode: .fill)
-                        .overlay(LinearGradient(colors: [.black.opacity(0.10), .black.opacity(0.08), .black.opacity(0.54)], startPoint: .top, endPoint: .bottom))
-                        .overlay(LinearGradient(colors: [.black.opacity(0.42), .black.opacity(0.10), .clear], startPoint: .leading, endPoint: .trailing))
-                    heroIdentity(item)
-                        .frame(width: min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxWidth, max(160, geometry.size.width - heroHorizontalInset(for: geometry.size.width) * 2)), height: min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxHeight, max(56, geometry.size.height * 0.44)), alignment: .leading)
-                        .padding(.leading, heroHorizontalInset(for: geometry.size.width))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    Rectangle()
-                        .fill(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.88)))
-                        .frame(width: 5)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                }
-            }
+        OPNCatalogHeroStageView(item: item)
             .frame(height: OPNGameCatalogLayoutSupport.heroHeight(forWidth: viewportSize.width, viewportHeight: viewportSize.height))
-            .clipShape(RoundedRectangle(cornerRadius: 0, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func heroIdentity(_ item: OPNGameCatalogItemModel) -> some View {
-        OPNCatalogLogoView(urlStrings: Self.logoCandidates(for: item.gameObject), fallbackTitle: item.gameObject.title.isEmpty ? "Untitled" : item.gameObject.title)
     }
 
     private func catalogSections(proxy: ScrollViewProxy) -> some View {
@@ -682,17 +660,6 @@ struct OPNGameCatalogSwiftUIView: View {
         return floor((140 * scale - 44 * scale) * 0.5)
     }
 
-    private func heroHorizontalInset(for width: CGFloat) -> CGFloat {
-        min(OPNGameCatalogLayoutSupport.heroContentInset(forWidth: width), max(24, width * 0.08))
-    }
-
-    private static func heroImageCandidates(for game: OPNCatalogGameObject) -> [String] {
-        imageCandidates(for: game, preferredTypes: ["MARQUEE_HERO_IMAGE", "HERO_IMAGE", "TV_BANNER", "FEATURE_IMAGE", "KEY_ART", "KEY_IMAGE", "GAME_BOX_ART"], includeScreenshots: true)
-    }
-
-    private static func logoCandidates(for game: OPNCatalogGameObject) -> [String] {
-        imageCandidates(for: game, preferredTypes: ["GAME_LOGO", "LOGO", "TITLE_LOGO"], includeScreenshots: false)
-    }
 }
 
 private struct OPNCatalogTileView: View {
@@ -805,38 +772,262 @@ private struct OPNCatalogArtworkView: View {
     }
 }
 
-private struct OPNCatalogLogoView: View {
-    let urlStrings: [String]
-    let fallbackTitle: String
+private struct OPNCatalogHeroStageView: NSViewRepresentable {
+    let item: OPNGameCatalogItemModel
 
-    var body: some View {
-        if let urlString = urlStrings.first, let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                        .shadow(color: .black.opacity(0.90), radius: 18, y: 2)
-                default:
-                    fallback
+    func makeNSView(context: Context) -> OPNCatalogHeroStageNSView {
+        OPNCatalogHeroStageNSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: OPNCatalogHeroStageNSView, context: Context) {
+        nsView.update(gameObject: item.gameObject)
+    }
+}
+
+@MainActor
+private final class OPNCatalogHeroStageNSView: NSView {
+    private let artworkView = OPNHeroArtworkView(frame: .zero)
+    private let titleFallback: NSTextField
+    private let logoView = NSImageView(frame: .zero)
+    private var artworkTransitionView: OPNHeroArtworkView?
+    private var logoTransitionView: NSImageView?
+    private var imageLoadTokens: [OpnImageLoadToken] = []
+    private var representedIdentity = ""
+    private var generation = 0
+
+    override init(frame frameRect: NSRect) {
+        let textShadow = NSShadow()
+        textShadow.shadowBlurRadius = 18.0
+        textShadow.shadowOffset = NSSize(width: 0.0, height: -2.0)
+        textShadow.shadowColor = OPNUIHelpers.color(rgb: 0x000000, alpha: 0.82)
+        titleFallback = OPNUIHelpers.label(text: "", frame: .zero, size: 42.0, color: OPNUIHelpers.color(rgb: 0xF5F5F7, alpha: 1.0), weight: .black, alignment: .left)
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.masksToBounds = true
+        artworkView.image = OPNUIHelpers.fallbackHeroArtworkImage()
+        addSubview(artworkView, positioned: .below, relativeTo: nil)
+        titleFallback.maximumNumberOfLines = 2
+        titleFallback.lineBreakMode = .byWordWrapping
+        titleFallback.shadow = textShadow
+        titleFallback.wantsLayer = true
+        titleFallback.layer?.zPosition = 1000.0
+        addSubview(titleFallback, positioned: .above, relativeTo: nil)
+        logoView.isHidden = true
+        OPNGameCatalogArtworkSupport.configureHeroLogoImageView(logoView, zPosition: 1001.0)
+        addSubview(logoView, positioned: .above, relativeTo: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override var isFlipped: Bool { true }
+
+    deinit {
+        imageLoadTokens.forEach { $0.cancel() }
+    }
+
+    override func layout() {
+        super.layout()
+        artworkView.frame = bounds
+        artworkTransitionView?.frame = bounds
+        updateLogoFrame()
+    }
+
+    func update(gameObject: OPNCatalogGameObject) {
+        let identity = Self.gameIdentity(for: gameObject)
+        guard identity != representedIdentity else {
+            titleFallback.stringValue = gameObject.title
+            updateLogoFrame()
+            return
+        }
+        representedIdentity = identity
+        generation += 1
+        let currentGeneration = generation
+        imageLoadTokens.forEach { $0.cancel() }
+        imageLoadTokens.removeAll()
+        titleFallback.stringValue = gameObject.title
+        titleFallback.isHidden = false
+        titleFallback.alphaValue = 1.0
+        logoView.image = nil
+        logoView.isHidden = true
+        logoView.alphaValue = 1.0
+        artworkView.image = OPNUIHelpers.fallbackHeroArtworkImage()
+        artworkView.alphaValue = 1.0
+        updateLogoFrame()
+        loadArtwork(for: gameObject, identity: identity, generation: currentGeneration)
+        loadLogo(for: gameObject, generation: currentGeneration)
+    }
+
+    private func loadArtwork(for gameObject: OPNCatalogGameObject, identity: String, generation currentGeneration: Int) {
+        let candidates = heroImageCandidates(for: gameObject)
+        if let cachedImage = OPNUIHelpers.cachedMemoryImage(candidates: candidates, maxPixelDimension: 1600.0, resolvedURL: nil), OPNGameCatalogArtworkSupport.heroImageHasVisibleContent(cachedImage) {
+            setArtworkImage(cachedImage, animated: false)
+            return
+        }
+        guard !candidates.isEmpty else { return }
+        loadArtwork(candidates: candidates, identity: identity, index: 0, generation: currentGeneration)
+    }
+
+    private func loadArtwork(candidates: [String], identity: String, index: Int, generation currentGeneration: Int) {
+        guard index < candidates.count else { return }
+        let remainingCandidates = Array(candidates[index...])
+        if let cachedImage = OPNUIHelpers.cachedMemoryImage(candidates: remainingCandidates, maxPixelDimension: 1600.0, resolvedURL: nil), OPNGameCatalogArtworkSupport.heroImageHasVisibleContent(cachedImage) {
+            setArtworkImage(cachedImage, animated: true)
+            return
+        }
+        let token = OPNUIHelpers.loadImageForURLCancellable(urlString: candidates[index], maxPixelDimension: 1600.0) { [weak self] image, _, _ in
+            guard let self, self.generation == currentGeneration, self.representedIdentity == identity else { return }
+            guard let image, OPNGameCatalogArtworkSupport.heroImageHasVisibleContent(image) else {
+                self.loadArtwork(candidates: candidates, identity: identity, index: index + 1, generation: currentGeneration)
+                return
+            }
+            self.setArtworkImage(image, animated: true)
+        }
+        track(token)
+    }
+
+    private func loadLogo(for gameObject: OPNCatalogGameObject, generation currentGeneration: Int) {
+        let candidates = logoCandidates(for: gameObject)
+        let applyLogo: (NSImage?) -> Void = { [weak self] image in
+            guard let self, self.generation == currentGeneration else { return }
+            DispatchQueue.global(qos: .utility).async {
+                let visibleLogo = image.flatMap(OPNGameCatalogArtworkSupport.visibleLogoImage)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.generation == currentGeneration else { return }
+                    self.setLogoImage(visibleLogo, animated: true)
                 }
             }
-        } else {
-            fallback
+        }
+        if let cachedLogo = OPNUIHelpers.cachedMemoryImage(candidates: candidates, maxPixelDimension: 720.0, resolvedURL: nil) {
+            applyLogo(cachedLogo)
+            return
+        }
+        let token = OPNUIHelpers.loadImageFromCandidatesCancellable(candidates: candidates, maxPixelDimension: 720.0) { image, _, _ in
+            applyLogo(image)
+        }
+        track(token)
+    }
+
+    private func setArtworkImage(_ image: NSImage, animated: Bool) {
+        guard animated, artworkView.image != nil, artworkView.superview != nil else {
+            artworkTransitionView?.removeFromSuperview()
+            artworkTransitionView = nil
+            artworkView.image = image
+            artworkView.alphaValue = 1.0
+            updateLogoFrame()
+            return
+        }
+        artworkTransitionView?.removeFromSuperview()
+        let transitionView = OPNHeroArtworkView(frame: artworkView.frame)
+        transitionView.autoresizingMask = [.width, .height]
+        transitionView.image = image
+        transitionView.alphaValue = 0.0
+        addSubview(transitionView, positioned: .above, relativeTo: artworkView)
+        artworkTransitionView = transitionView
+        bringLogoToFront()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = OPNGameCatalogLayoutSupport.storeHeroBackgroundFadeDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            transitionView.animator().alphaValue = 1.0
+        } completionHandler: { [weak self, weak transitionView] in
+            MainActor.assumeIsolated {
+                guard let self, let transitionView, self.artworkTransitionView === transitionView else { return }
+                self.artworkView.image = image
+                self.artworkView.alphaValue = 1.0
+                transitionView.removeFromSuperview()
+                self.artworkTransitionView = nil
+                self.updateLogoFrame()
+            }
         }
     }
 
-    private var fallback: some View {
-        Text(fallbackTitle)
-            .font(.system(size: 42, weight: .black))
-            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .shadow(color: .black.opacity(0.82), radius: 18, y: 2)
+    private func setLogoImage(_ image: NSImage?, animated: Bool) {
+        logoTransitionView?.removeFromSuperview()
+        logoTransitionView = nil
+        guard animated, let image else {
+            logoView.image = image
+            logoView.frame = image.map { OPNGameCatalogArtworkSupport.heroLogoFrame(for: $0, bounds: bounds, artworkImage: artworkView.image) } ?? OPNGameCatalogArtworkSupport.heroLogoFallbackFrame(bounds, artworkImage: artworkView.image)
+            logoView.alphaValue = 1.0
+            logoView.isHidden = image == nil
+            titleFallback.isHidden = image != nil
+            titleFallback.alphaValue = 1.0
+            bringLogoToFront()
+            return
+        }
+        let logoFrame = OPNGameCatalogArtworkSupport.heroLogoFrame(for: image, bounds: bounds, artworkImage: artworkView.image)
+        let transitionView = NSImageView(frame: logoFrame)
+        transitionView.image = image
+        transitionView.alphaValue = 0.0
+        transitionView.isHidden = false
+        OPNGameCatalogArtworkSupport.configureHeroLogoImageView(transitionView, zPosition: 1002.0)
+        addSubview(transitionView, positioned: .above, relativeTo: nil)
+        logoTransitionView = transitionView
+        bringLogoToFront()
+        addSubview(transitionView, positioned: .above, relativeTo: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + OPNGameCatalogLayoutSupport.storeHeroLogoFadeDelay) { [weak self, weak transitionView] in
+            guard let self, let transitionView, self.logoTransitionView === transitionView else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = OPNGameCatalogLayoutSupport.storeHeroLogoFadeDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                transitionView.animator().alphaValue = 1.0
+                self.logoView.animator().alphaValue = 0.0
+                self.titleFallback.animator().alphaValue = 0.0
+            } completionHandler: { [weak self, weak transitionView] in
+                MainActor.assumeIsolated {
+                    guard let self, let transitionView, self.logoTransitionView === transitionView else { return }
+                    self.logoView.frame = logoFrame
+                    self.logoView.image = image
+                    self.logoView.isHidden = false
+                    self.logoView.alphaValue = 1.0
+                    self.titleFallback.isHidden = true
+                    self.titleFallback.alphaValue = 1.0
+                    transitionView.removeFromSuperview()
+                    self.logoTransitionView = nil
+                    self.bringLogoToFront()
+                }
+            }
+        }
     }
+
+    private func updateLogoFrame() {
+        titleFallback.frame = OPNGameCatalogArtworkSupport.heroLogoFallbackFrame(bounds, artworkImage: artworkView.image)
+        logoView.frame = logoView.image.map { OPNGameCatalogArtworkSupport.heroLogoFrame(for: $0, bounds: bounds, artworkImage: artworkView.image) } ?? OPNGameCatalogArtworkSupport.heroLogoFallbackFrame(bounds, artworkImage: artworkView.image)
+        if let transitionImage = logoTransitionView?.image {
+            logoTransitionView?.frame = OPNGameCatalogArtworkSupport.heroLogoFrame(for: transitionImage, bounds: bounds, artworkImage: artworkView.image)
+        }
+        bringLogoToFront()
+    }
+
+    private func bringLogoToFront() {
+        OPNGameCatalogArtworkSupport.bringHeroLogoToFront(container: self, titleFallback: titleFallback, logoView: logoView)
+        if logoTransitionView?.superview === self, let logoTransitionView { addSubview(logoTransitionView, positioned: .above, relativeTo: nil) }
+    }
+
+    private func track(_ token: OpnImageLoadToken?) {
+        guard let token else { return }
+        imageLoadTokens.append(token)
+        if imageLoadTokens.count > 16 {
+            let removeCount = imageLoadTokens.count - 12
+            for token in imageLoadTokens.prefix(removeCount) { token.cancel() }
+            imageLoadTokens.removeFirst(removeCount)
+        }
+    }
+
+    private static func gameIdentity(for game: OPNCatalogGameObject) -> String {
+        if !game.id.isEmpty { return game.id }
+        if !game.uuid.isEmpty { return game.uuid }
+        if !game.launchAppId.isEmpty { return game.launchAppId }
+        return game.title
+    }
+}
+
+private func heroImageCandidates(for game: OPNCatalogGameObject) -> [String] {
+    imageCandidates(for: game, preferredTypes: ["MARQUEE_HERO_IMAGE", "HERO_IMAGE", "TV_BANNER", "FEATURE_IMAGE", "KEY_ART", "KEY_IMAGE", "GAME_BOX_ART"], includeScreenshots: true)
+}
+
+private func logoCandidates(for game: OPNCatalogGameObject) -> [String] {
+    imageCandidates(for: game, preferredTypes: ["GAME_LOGO", "LOGO", "TITLE_LOGO"], includeScreenshots: false)
 }
 
 private func imageCandidates(for game: OPNCatalogGameObject, preferredTypes: [String], includeScreenshots: Bool) -> [String] {
