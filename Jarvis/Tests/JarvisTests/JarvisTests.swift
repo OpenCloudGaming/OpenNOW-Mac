@@ -226,3 +226,73 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     #expect(chained.refreshToken == "new-refresh")
     #expect(await service.status == .loggedIn)
 }
+
+@Test func jarvisAuthServicePublishesLoginStatusUpdates() async throws {
+    let service = JarvisAuthService(transport: MockJarvisTransport { _ in [:] })
+    let stream = await service.monitorLoginStatus()
+    var iterator = stream.makeAsyncIterator()
+
+    let initial = await iterator.next()
+    #expect(initial == .notLoggedIn)
+
+    let pending = await service.sameTabAuthStarted()
+    #expect(pending == .pendingLogin)
+    let pendingUpdate = await iterator.next()
+    #expect(pendingUpdate == .pendingLogin)
+
+    let loggedIn = await service.finishLogin(success: true)
+    #expect(loggedIn == .loggedIn)
+    let loggedInUpdate = await iterator.next()
+    #expect(loggedInUpdate == .loggedIn)
+}
+
+@Test func jarvisAuthServiceRestoresAndClearsStoredState() async throws {
+    let storedSession = JarvisSession(
+        accessToken: "access",
+        userId: "user",
+        idpId: "idp",
+        isAuthenticated: true,
+        accessTokenExpiry: JarvisSession.currentEpochMs() + 600_000
+    )
+    let storedUser = JarvisUserInfo(userId: "user", externalId: "external", idpId: "idp", displayName: "GFN User", email: "user@example.com", isAuthenticated: true)
+    let store = JarvisInMemorySessionStore(session: storedSession, userInfo: storedUser)
+    let service = JarvisAuthService(transport: MockJarvisTransport { _ in [:] }, sessionStore: store)
+
+    let restored = try await service.restoreCachedState()
+    #expect(restored.session.accessToken == "access")
+    #expect(restored.userInfo.userId == "user")
+    #expect(await service.status == .loggedIn)
+
+    try await service.clearCachedState()
+    let clearedSession = try await store.loadSession()
+    let clearedUser = try await store.loadUserInfo()
+    #expect(!clearedSession.isAuthenticated)
+    #expect(!clearedUser.isAuthenticated)
+    #expect(await service.status == .notLoggedIn)
+}
+
+@Test func jarvisAuthServicePersistsExchangedSessionAndFetchedUser() async throws {
+    let store = JarvisInMemorySessionStore()
+    let service = JarvisAuthService(transport: MockJarvisTransport { request in
+        if request.url?.absoluteString == "https://login.nvidia.com/token" {
+            return ["access_token": "access", "refresh_token": "refresh", "expires_in": 120]
+        }
+        if request.url?.absoluteString == "https://login.nvidia.com/client_token" {
+            return ["client_token": "client", "expires_in": 240]
+        }
+        if request.url?.absoluteString == "https://login.nvidia.com/userinfo" {
+            return ["sub": "user", "name": "GFN User", "email": "user@example.com", "idp_id": "idp"]
+        }
+        return [:]
+    }, sessionStore: store)
+
+    _ = try await service.exchangeAuthorizationCode(authCode: "code", redirectURI: "http://localhost:2259", codeVerifier: "verifier", providerIdpId: "idp")
+    let savedSession = try await store.loadSession()
+    #expect(savedSession.accessToken == "access")
+    #expect(savedSession.clientToken == "client")
+
+    _ = try await service.getCurrentUser(forceRefresh: true)
+    let savedUser = try await store.loadUserInfo()
+    #expect(savedUser.userId == "user")
+    #expect(savedUser.displayName == "GFN User")
+}

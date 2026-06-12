@@ -60,6 +60,42 @@ public struct JarvisNoOpTelemetrySpan: JarvisTelemetrySpan {
     public func finish(success: Bool) { _ = success }
 }
 
+public protocol JarvisSessionStore: Sendable {
+    func loadSession() async throws -> JarvisSession
+    func saveSession(_ session: JarvisSession) async throws
+    func clearSession() async throws
+    func loadUserInfo() async throws -> JarvisUserInfo
+    func saveUserInfo(_ userInfo: JarvisUserInfo) async throws
+    func clearUserInfo() async throws
+}
+
+public struct JarvisNoOpSessionStore: JarvisSessionStore {
+    public init() {}
+    public func loadSession() async throws -> JarvisSession { JarvisSession() }
+    public func saveSession(_ session: JarvisSession) async throws { _ = session }
+    public func clearSession() async throws {}
+    public func loadUserInfo() async throws -> JarvisUserInfo { JarvisUserInfo() }
+    public func saveUserInfo(_ userInfo: JarvisUserInfo) async throws { _ = userInfo }
+    public func clearUserInfo() async throws {}
+}
+
+public actor JarvisInMemorySessionStore: JarvisSessionStore {
+    private var storedSession: JarvisSession
+    private var storedUserInfo: JarvisUserInfo
+
+    public init(session: JarvisSession = JarvisSession(), userInfo: JarvisUserInfo = JarvisUserInfo()) {
+        self.storedSession = session
+        self.storedUserInfo = userInfo
+    }
+
+    public func loadSession() async throws -> JarvisSession { storedSession }
+    public func saveSession(_ session: JarvisSession) async throws { storedSession = session }
+    public func clearSession() async throws { storedSession = JarvisSession() }
+    public func loadUserInfo() async throws -> JarvisUserInfo { storedUserInfo }
+    public func saveUserInfo(_ userInfo: JarvisUserInfo) async throws { storedUserInfo = userInfo }
+    public func clearUserInfo() async throws { storedUserInfo = JarvisUserInfo() }
+}
+
 public struct JarvisAuthToken: Equatable, Sendable {
     public let tokenType: JarvisAuthType
     public let token: String
@@ -378,36 +414,73 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
     private let refreshPolicy: JarvisClientTokenRefreshPolicy
     private let transport: Transport
     private let telemetry: JarvisTelemetry
+    private let sessionStore: JarvisSessionStore
     private var isSessionRefreshable: Bool
+    private var statusContinuations: [UUID: AsyncStream<JarvisAuthStatus>.Continuation]
 
     public init(
         configuration: JarvisOAuthConfiguration = .gfnPC,
         refreshPolicy: JarvisClientTokenRefreshPolicy = .gfnPC,
         transport: Transport,
         telemetry: JarvisTelemetry = JarvisNoOpTelemetry(),
+        sessionStore: JarvisSessionStore = JarvisNoOpSessionStore(),
         session: JarvisSession = JarvisSession()
     ) {
         self.configuration = configuration
         self.refreshPolicy = refreshPolicy
         self.transport = transport
         self.telemetry = telemetry
+        self.sessionStore = sessionStore
         self.session = session
         self.cachedUser = JarvisUserInfo()
         self.status = session.isAuthenticated ? .loggedIn : .notLoggedIn
         self.isSessionRefreshable = true
+        self.statusContinuations = [:]
     }
 
     public func setSession(_ session: JarvisSession) {
-        self.session = session
-        self.status = session.isAuthenticated ? .loggedIn : .notLoggedIn
+        setSessionInMemory(session)
     }
 
     public func clearSession() {
         session = JarvisSession()
         cachedUser = JarvisUserInfo()
-        status = .notLoggedIn
+        updateStatus(.notLoggedIn)
         isSessionRefreshable = true
         telemetry.recordBreadcrumb("Jarvis session cleared", attributes: ["status": status.rawValue])
+    }
+
+    public func clearCachedState() async throws {
+        clearSession()
+        try await sessionStore.clearSession()
+        try await sessionStore.clearUserInfo()
+    }
+
+    public func restoreCachedState() async throws -> (session: JarvisSession, userInfo: JarvisUserInfo) {
+        let restoredSession = try await sessionStore.loadSession()
+        let restoredUserInfo = try await sessionStore.loadUserInfo()
+        session = restoredSession
+        cachedUser = restoredUserInfo
+        updateStatus(restoredSession.isAuthenticated ? .loggedIn : .notLoggedIn)
+        telemetry.recordBreadcrumb("Jarvis cached state restored", attributes: ["status": status.rawValue, "has_user": restoredUserInfo.isAuthenticated ? "true" : "false"])
+        return (restoredSession, restoredUserInfo)
+    }
+
+    public func persistCurrentState() async throws {
+        try await persistSession(session)
+        try await persistUserInfo(cachedUser)
+    }
+
+    public func monitorLoginStatus(replayCurrent: Bool = true) -> AsyncStream<JarvisAuthStatus> {
+        let id = UUID()
+        let stream = AsyncStream<JarvisAuthStatus>.makeStream(of: JarvisAuthStatus.self)
+        statusContinuations[id] = stream.continuation
+        if replayCurrent { stream.continuation.yield(status) }
+        stream.continuation.onTermination = { @Sendable [weak self] _ in
+            Task { await self?.removeStatusContinuation(id) }
+        }
+        telemetry.recordCounter(name: "jarvis.auth.status.subscription.count", attributes: ["event": "started"])
+        return stream.stream
     }
 
     public func createOAuthLoginRequest(deviceId: String, redirectURI: String, locale: String, oauthState: JarvisOAuthState, providerIdpId: String, windowParameters: JarvisOAuthWindowParameters = JarvisOAuthWindowParameters(), useAppURL: Bool = false) throws -> JarvisOAuthLoginRequest {
@@ -429,8 +502,8 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             var exchanged = try await requestSession(body: body, operation: .getSessionToken)
             if !providerIdpId.isEmpty { exchanged.idpId = providerIdpId }
             let enriched = try await ensureClientToken(exchanged)
-            session = enriched
-            status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
+            setSessionInMemory(enriched)
+            try await persistSession(enriched)
             telemetry.recordCounter(name: "jarvis.auth.exchange.count", attributes: ["outcome": "success"])
             span.finish(success: true)
             return enriched
@@ -449,7 +522,8 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             if !force && session.isAccessTokenValid {
                 if shouldRefreshClientToken(session) {
                     let enriched = try await ensureClientToken(session)
-                    self.session = enriched
+                    setSessionInMemory(enriched)
+                    try await persistSession(enriched)
                     span.finish(success: true)
                     return enriched
                 }
@@ -461,8 +535,8 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
                 let body = JarvisOAuthRequestFactory.clientTokenGrantBody(clientToken: session.clientToken, userId: session.userId, configuration: configuration)
                 let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
                 let enriched = try await ensureClientToken(refreshed)
-                session = enriched
-                status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
+                setSessionInMemory(enriched)
+                try await persistSession(enriched)
                 telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "client_token"])
                 span.finish(success: true)
                 return enriched
@@ -504,6 +578,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             }
             let user = try await fetchUserInfo(accessToken: refreshed.accessToken, isNetworkCall: true)
             cachedUser = user
+            try await persistUserInfo(user)
             span.setAttribute("cache", value: "miss")
             span.finish(success: true)
             return user
@@ -555,8 +630,8 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         let json = try await executeOperation(.chainSession, accessToken: accessToken, parameters: ["sessionId": sessionId])
         let payload = nestedDictionary(json, keys: ["session", "data", "result"]) ?? json
         let chained = merge(saved: session, refreshed: JarvisSessionParser.parseTokenResponse(payload, defaultIdpId: configuration.defaultIdpId))
-        session = chained
-        status = chained.isAuthenticated ? .loggedIn : .notLoggedIn
+        setSessionInMemory(chained)
+        try await persistSession(chained)
         return chained
     }
 
@@ -573,6 +648,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         let payload = nestedDictionary(json, keys: ["user", "userInfo", "data", "result"]) ?? json
         let user = parseUserInfo(payload, isNetworkCall: true)
         cachedUser = user
+        try await persistUserInfo(user)
         return user
     }
 
@@ -622,18 +698,18 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         created.isAuthenticated = true
         isSessionRefreshable = false
         session = created
-        status = .loggedIn
+        updateStatus(.loggedIn)
         return created
     }
 
     public func sameTabAuthStarted() -> JarvisAuthStatus {
-        status = .pendingLogin
+        updateStatus(.pendingLogin)
         telemetry.recordBreadcrumb("Jarvis same-tab auth started", attributes: ["status": status.rawValue])
         return status
     }
 
     public func finishLogin(success: Bool) -> JarvisAuthStatus {
-        status = success ? .loggedIn : .authorizationError
+        updateStatus(success ? .loggedIn : .authorizationError)
         telemetry.recordCounter(name: "jarvis.auth.login.count", attributes: ["outcome": success ? "success" : "failure"])
         return status
     }
@@ -662,6 +738,40 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         return parsed
     }
 
+    private func setSessionInMemory(_ session: JarvisSession) {
+        self.session = session
+        updateStatus(session.isAuthenticated ? .loggedIn : .notLoggedIn)
+    }
+
+    private func updateStatus(_ status: JarvisAuthStatus) {
+        guard self.status != status else { return }
+        self.status = status
+        for continuation in statusContinuations.values {
+            continuation.yield(status)
+        }
+    }
+
+    private func removeStatusContinuation(_ id: UUID) {
+        statusContinuations[id] = nil
+        telemetry.recordCounter(name: "jarvis.auth.status.subscription.count", attributes: ["event": "stopped"])
+    }
+
+    private func persistSession(_ session: JarvisSession) async throws {
+        if session.isAuthenticated {
+            try await sessionStore.saveSession(session)
+        } else {
+            try await sessionStore.clearSession()
+        }
+    }
+
+    private func persistUserInfo(_ userInfo: JarvisUserInfo) async throws {
+        if userInfo.isAuthenticated {
+            try await sessionStore.saveUserInfo(userInfo)
+        } else {
+            try await sessionStore.clearUserInfo()
+        }
+    }
+
     private func refreshWithOAuthToken() async throws -> JarvisSession {
         guard !session.refreshToken.isEmpty else {
             if session.isAccessTokenValid { return try await ensureClientToken(session) }
@@ -670,8 +780,8 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         let body = JarvisOAuthRequestFactory.refreshTokenBody(refreshToken: session.refreshToken, configuration: configuration)
         let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
         let enriched = try await ensureClientToken(refreshed)
-        session = enriched
-        status = enriched.isAuthenticated ? .loggedIn : .notLoggedIn
+        setSessionInMemory(enriched)
+        try await persistSession(enriched)
         return enriched
     }
 
