@@ -22,6 +22,12 @@
 		7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758B2FDCA4F900B177D8 /* Jarvis */; };
 		7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758E2FDCA4F900B177D8 /* Starfleet */; };
 		777875922FDCA4F900B177D8 /* NesAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 777875912FDCA4F900B177D8 /* NesAuth */; };
+		A00000000000000000000101 /* CloudMatch in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000201 /* CloudMatch */; };
+		A00000000000000000000102 /* LCARS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000202 /* LCARS */; };
+		A00000000000000000000103 /* GDN in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000203 /* GDN */; };
+		A00000000000000000000104 /* Ragnarok in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000204 /* Ragnarok */; };
+		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
+		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
 		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
@@ -234,6 +240,12 @@
 				7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
 				777875922FDCA4F900B177D8 /* NesAuth in Frameworks */,
+				A00000000000000000000101 /* CloudMatch in Frameworks */,
+				A00000000000000000000102 /* LCARS in Frameworks */,
+				A00000000000000000000103 /* GDN in Frameworks */,
+				A00000000000000000000104 /* Ragnarok in Frameworks */,
+				A00000000000000000000105 /* UDS in Frameworks */,
+				A00000000000000000000106 /* NetworkTest in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
 				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
@@ -467,6 +479,12 @@
 				7778758B2FDCA4F900B177D8 /* Jarvis */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
 				777875912FDCA4F900B177D8 /* NesAuth */,
+				A00000000000000000000201 /* CloudMatch */,
+				A00000000000000000000202 /* LCARS */,
+				A00000000000000000000203 /* GDN */,
+				A00000000000000000000204 /* Ragnarok */,
+				A00000000000000000000205 /* UDS */,
+				A00000000000000000000206 /* NetworkTest */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -501,6 +519,12 @@
 				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */,
 				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */,
+				A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */,
+				A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */,
+				A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */,
+				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
+				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
+				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
 			projectDirPath = "";
@@ -795,6 +819,30 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = nesauth;
 		};
+		A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = CloudMatch;
+		};
+		A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = LCARS;
+		};
+		A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = GDN;
+		};
+		A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Ragnarok;
+		};
+		A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = UDS;
+		};
+		A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = NetworkTest;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -828,6 +876,36 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */;
 			productName = NesAuth;
+		};
+		A00000000000000000000201 /* CloudMatch */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */;
+			productName = CloudMatch;
+		};
+		A00000000000000000000202 /* LCARS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */;
+			productName = LCARS;
+		};
+		A00000000000000000000203 /* GDN */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */;
+			productName = GDN;
+		};
+		A00000000000000000000204 /* Ragnarok */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */;
+			productName = Ragnarok;
+		};
+		A00000000000000000000205 /* UDS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */;
+			productName = UDS;
+		};
+		A00000000000000000000206 /* NetworkTest */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */;
+			productName = NetworkTest;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
