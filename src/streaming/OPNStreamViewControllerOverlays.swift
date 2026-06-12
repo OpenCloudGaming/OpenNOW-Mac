@@ -1,41 +1,6 @@
 import AppKit
-
-import AppKit
-
-@MainActor
-private func overlayColor(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat) -> NSColor {
-    NSColor(calibratedRed: red, green: green, blue: blue, alpha: alpha)
-}
-
-@MainActor
-private func overlayLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, alignment: NSTextAlignment) -> NSTextField {
-    let label = NSTextField(frame: .zero)
-    label.stringValue = text
-    label.font = NSFont.systemFont(ofSize: size, weight: weight)
-    label.textColor = color
-    label.alignment = alignment
-    label.drawsBackground = false
-    label.isBordered = false
-    label.isEditable = false
-    label.isSelectable = false
-    return label
-}
-
-@MainActor
-private func styleOverlayButton(_ button: NSButton, background: NSColor, textColor: NSColor) {
-    button.bezelStyle = .regularSquare
-    button.isBordered = false
-    button.wantsLayer = true
-    button.layer?.cornerRadius = 10
-    button.layer?.backgroundColor = background.cgColor
-    button.attributedTitle = NSAttributedString(
-        string: button.title,
-        attributes: [
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-            .foregroundColor: textColor,
-        ]
-    )
-}
+import Combine
+import SwiftUI
 
 typealias OverlayAction = @convention(block) () -> Void
 
@@ -45,47 +10,24 @@ final class OPNQuitGameOverlayView: NSView {
     @objc var onCancel: OverlayAction?
     @objc var onQuit: OverlayAction?
 
-    private var cardFrame = NSRect.zero
-    private let brandLabel = overlayLabel("OpenNOW", size: 13, weight: .semibold, color: overlayColor(0.72, 0.74, 0.78, 1), alignment: .left)
-    private let eyebrowLabel = overlayLabel("Command-Q", size: 12, weight: .medium, color: overlayColor(0.48, 0.50, 0.56, 1), alignment: .left)
-    private let titleLabel = overlayLabel("End stream?", size: 24, weight: .semibold, color: overlayColor(0.96, 0.96, 0.98, 1), alignment: .left)
-    private let messageLabel = overlayLabel(
-        "Your stream will close and you will return to the library. Unsaved in-game progress may be lost.",
-        size: 13,
-        weight: .regular,
-        color: overlayColor(0.66, 0.68, 0.73, 1),
-        alignment: .left
-    )
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
-    private let quitButton = NSButton(title: "End Stream", target: nil, action: nil)
+    private var hostingView: NSHostingView<OPNQuitGameOverlaySwiftUIView>?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         autoresizingMask = [.width, .height]
-        messageLabel.maximumNumberOfLines = 2
-
-        cancelButton.target = self
-        cancelButton.action = #selector(cancelPressed(_:))
-        styleOverlayButton(cancelButton, background: overlayColor(0.20, 0.21, 0.24, 0.95), textColor: overlayColor(0.88, 0.89, 0.92, 1))
-        cancelButton.layer?.borderWidth = 1
-        cancelButton.layer?.borderColor = overlayColor(1, 1, 1, 0.10).cgColor
-
-        quitButton.target = self
-        quitButton.action = #selector(quitPressed(_:))
-        styleOverlayButton(quitButton, background: overlayColor(0, 0.48, 1, 1), textColor: .white)
-        quitButton.layer?.shadowColor = overlayColor(0, 0, 0, 1).cgColor
-        quitButton.layer?.shadowOpacity = 0.20
-        quitButton.layer?.shadowRadius = 12
-        quitButton.layer?.shadowOffset = CGSize(width: 0, height: -3)
-
-        [brandLabel, eyebrowLabel, titleLabel, messageLabel, cancelButton, quitButton].forEach(addSubview)
+        let hosting = NSHostingView(rootView: OPNQuitGameOverlaySwiftUIView(
+            onCancel: { [weak self] in self?.onCancel?() },
+            onQuit: { [weak self] in self?.onQuit?() }
+        ))
+        hosting.frame = bounds
+        hosting.autoresizingMask = [.width, .height]
+        addSubview(hosting)
+        hostingView = hosting
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
+    required init?(coder: NSCoder) { nil }
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -96,53 +38,7 @@ final class OPNQuitGameOverlayView: NSView {
 
     override func layout() {
         super.layout()
-        let cardWidth = min(460, max(320, bounds.width - 80))
-        let cardHeight: CGFloat = 236
-        cardFrame = NSRect(
-            x: floor((bounds.width - cardWidth) / 2),
-            y: floor((bounds.height - cardHeight) / 2),
-            width: cardWidth,
-            height: cardHeight
-        )
-        let x = cardFrame.minX
-        let top = cardFrame.maxY
-        let padding: CGFloat = 28
-        brandLabel.frame = NSRect(x: x + padding, y: top - 43, width: 140, height: 18)
-        eyebrowLabel.frame = NSRect(x: cardFrame.maxX - padding - 82, y: top - 43, width: 82, height: 18)
-        titleLabel.frame = NSRect(x: x + padding, y: top - 88, width: cardWidth - padding * 2, height: 30)
-        messageLabel.frame = NSRect(x: x + padding, y: top - 134, width: cardWidth - padding * 2, height: 42)
-
-        let buttonWidth: CGFloat = 124
-        let buttonY = cardFrame.minY + 26
-        quitButton.frame = NSRect(x: cardFrame.maxX - padding - buttonWidth, y: buttonY, width: buttonWidth, height: 42)
-        cancelButton.frame = NSRect(x: quitButton.frame.minX - 12 - buttonWidth, y: buttonY, width: buttonWidth, height: 42)
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        overlayColor(0, 0, 0, 0.52).setFill()
-        bounds.fill()
-
-        NSGradient(starting: overlayColor(0.12, 0.13, 0.16, 0.58), ending: overlayColor(0.04, 0.05, 0.06, 0.84))?.draw(in: bounds, angle: 90)
-
-        let outer = NSBezierPath(roundedRect: cardFrame, xRadius: 22, yRadius: 22)
-        overlayColor(1, 1, 1, 0.12).setFill()
-        outer.fill()
-
-        let inner = NSBezierPath(roundedRect: cardFrame.insetBy(dx: 1, dy: 1), xRadius: 21, yRadius: 21)
-        NSGradient(starting: overlayColor(0.15, 0.16, 0.18, 0.96), ending: overlayColor(0.10, 0.11, 0.13, 0.96))?.draw(in: inner, angle: 90)
-
-        let divider = NSRect(x: cardFrame.minX + 28, y: cardFrame.minY + 78, width: cardFrame.width - 56, height: 1)
-        overlayColor(1, 1, 1, 0.08).setFill()
-        divider.fill()
-    }
-
-    @objc private func cancelPressed(_ sender: Any) {
-        onCancel?()
-    }
-
-    @objc private func quitPressed(_ sender: Any) {
-        onQuit?()
+        hostingView?.frame = bounds
     }
 
     override func keyDown(with event: NSEvent) {
@@ -160,58 +56,146 @@ final class OPNQuitGameOverlayView: NSView {
     }
 }
 
+private struct OPNQuitGameOverlaySwiftUIView: View {
+    let onCancel: () -> Void
+    let onQuit: () -> Void
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [.black.opacity(0.52), Color(red: 0.04, green: 0.05, blue: 0.06).opacity(0.84)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("OpenNOW")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.72, green: 0.74, blue: 0.78))
+                    Spacer()
+                    Text("Command-Q")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color(red: 0.48, green: 0.50, blue: 0.56))
+                }
+
+                Text("End stream?")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.96, green: 0.96, blue: 0.98))
+                    .padding(.top, 26)
+
+                Text("Your stream will close and you will return to the library. Unsaved in-game progress may be lost.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(red: 0.66, green: 0.68, blue: 0.73))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 14)
+
+                Rectangle()
+                    .fill(.white.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.top, 22)
+
+                HStack(spacing: 12) {
+                    Spacer()
+                    Button("Cancel") { onCancel() }
+                        .buttonStyle(OPNQuitOverlayButtonStyle(background: Color(red: 0.20, green: 0.21, blue: 0.24), foreground: Color(red: 0.88, green: 0.89, blue: 0.92), border: .white.opacity(0.10)))
+                        .frame(width: 124, height: 42)
+                    Button("End Stream") { onQuit() }
+                        .buttonStyle(OPNQuitOverlayButtonStyle(background: Color(red: 0, green: 0.48, blue: 1), foreground: .white, border: .clear))
+                        .frame(width: 124, height: 42)
+                }
+                .padding(.top, 26)
+            }
+            .padding(28)
+            .frame(minWidth: 320, idealWidth: 460, maxWidth: 460, minHeight: 236, idealHeight: 236, maxHeight: 236)
+            .background(LinearGradient(colors: [Color(red: 0.15, green: 0.16, blue: 0.18).opacity(0.96), Color(red: 0.10, green: 0.11, blue: 0.13).opacity(0.96)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+            .padding(.horizontal, 40)
+        }
+    }
+}
+
+private struct OPNQuitOverlayButtonStyle: ButtonStyle {
+    let background: Color
+    let foreground: Color
+    let border: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(background.opacity(configuration.isPressed ? 0.78 : 0.95), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(border, lineWidth: 1))
+    }
+}
+
 @objc(OPNShortcutLegendView)
 @MainActor
 final class OPNShortcutLegendView: NSView {
-    private let titleLabel = overlayLabel(
-        "Shortcuts",
-        size: 18,
-        weight: .semibold,
-        color: overlayColor(0.96, 0.97, 0.99, 1),
-        alignment: .left
-    )
-    private let shortcutLabels: [NSTextField]
-    private let descriptionLabels: [NSTextField]
+    private var hostingView: NSHostingView<OPNShortcutLegendSwiftUIView>?
 
     override init(frame frameRect: NSRect) {
-        let shortcuts = ["Hold Options", "Command-H", "Command-G", "Command-R", "Command-N", "Command-M", "Command-K", "Command-L", "Command-Q", "Hold Esc"]
-        let descriptions = ["Home dashboard", "Toggle this legend", "Audio HUD", "Record stream", "Stats HUD", "Toggle microphone", "Anti-AFK", "Copy logs", "Quit stream", "Release pointer"]
-        shortcutLabels = shortcuts.map { shortcut in
-            overlayLabel(shortcut, size: 12, weight: .semibold, color: overlayColor(0.75, 0.92, 0.86, 1), alignment: .left)
-        }
-        descriptionLabels = descriptions.map { description in
-            overlayLabel(description, size: 12, weight: .regular, color: overlayColor(0.74, 0.76, 0.80, 1), alignment: .right)
-        }
         super.init(frame: frameRect)
-
         wantsLayer = true
-        layer?.cornerRadius = 18
-        layer?.backgroundColor = overlayColor(0.03, 0.035, 0.045, 0.90).cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = overlayColor(1, 1, 1, 0.12).cgColor
-
-        addSubview(titleLabel)
-        for label in shortcutLabels { addSubview(label) }
-        for label in descriptionLabels { addSubview(label) }
+        let hosting = NSHostingView(rootView: OPNShortcutLegendSwiftUIView())
+        hosting.frame = bounds
+        hosting.autoresizingMask = [.width, .height]
+        addSubview(hosting)
+        hostingView = hosting
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
+    required init?(coder: NSCoder) { nil }
 
     override func layout() {
         super.layout()
-        let padding: CGFloat = 20
-        let width = bounds.width
-        let top = bounds.height
-        titleLabel.frame = NSRect(x: padding, y: top - 42, width: width - padding * 2, height: 22)
-        for index in shortcutLabels.indices {
-            let y = top - 78 - CGFloat(index) * 28
-            shortcutLabels[index].frame = NSRect(x: padding, y: y, width: 112, height: 18)
-            descriptionLabels[index].frame = NSRect(x: 132, y: y, width: width - 132 - padding, height: 18)
-        }
+        hostingView?.frame = bounds
     }
+}
+
+private struct OPNShortcutLegendSwiftUIView: View {
+    private let rows: [(String, String)] = [
+        ("Hold Options", "Home dashboard"),
+        ("Command-H", "Toggle this legend"),
+        ("Command-G", "Audio HUD"),
+        ("Command-R", "Record stream"),
+        ("Command-N", "Stats HUD"),
+        ("Command-M", "Toggle microphone"),
+        ("Command-K", "Anti-AFK"),
+        ("Command-L", "Copy logs"),
+        ("Command-Q", "Quit stream"),
+        ("Hold Esc", "Release pointer")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Shortcuts")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color(red: 0.96, green: 0.97, blue: 0.99))
+
+            VStack(spacing: 10) {
+                ForEach(rows, id: \.0) { shortcut, description in
+                    HStack {
+                        Text(shortcut)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.75, green: 0.92, blue: 0.86))
+                        Spacer()
+                        Text(description)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color(red: 0.74, green: 0.76, blue: 0.80))
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(red: 0.03, green: 0.035, blue: 0.045).opacity(0.90), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+    }
+}
+
+@MainActor
+private final class OPNStatsOverlayModel: ObservableObject {
+    @Published var text = "Stats: measuring"
 }
 
 @objc(OPNStatsOverlayView)
@@ -222,64 +206,48 @@ final class OPNStatsOverlayView: NSView {
     private static let verticalPadding: CGFloat = 4
     private static let minHeight: CGFloat = 22
 
-    private let statsLineLabel: NSTextField = {
-        let label = overlayLabel("", size: 10, weight: .medium, color: .clear, alignment: .left)
-        label.lineBreakMode = .byCharWrapping
-        label.maximumNumberOfLines = 0
-        label.attributedStringValue = OPNStatsOverlayView.outlinedLine("Stats: measuring")
-        return label
-    }()
+    private let model = OPNStatsOverlayModel()
+    private var hostingView: NSHostingView<OPNStatsOverlaySwiftUIView>?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         autoresizingMask = [.minXMargin, .minYMargin]
-        addSubview(statsLineLabel)
+        let hosting = NSHostingView(rootView: OPNStatsOverlaySwiftUIView(model: model))
+        hosting.frame = bounds
+        hosting.autoresizingMask = [.width, .height]
+        addSubview(hosting)
+        hostingView = hosting
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
+    required init?(coder: NSCoder) { nil }
 
     override var isFlipped: Bool { true }
 
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func layout() {
         super.layout()
-        statsLineLabel.frame = bounds.insetBy(dx: Self.horizontalPadding, dy: Self.verticalPadding)
+        hostingView?.frame = bounds
     }
 
     @objc(preferredSizeForMaxWidth:)
     func preferredSize(forMaxWidth maxWidth: CGFloat) -> NSSize {
         let availableMaxWidth = max(1, maxWidth - Self.horizontalPadding * 2)
-        let text = statsLineLabel.attributedStringValue.length > 0 ? statsLineLabel.attributedStringValue : Self.outlinedLine("Stats: measuring")
-        let textBounds = text.boundingRect(
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 10, weight: .medium)]
+        let textBounds = (model.text as NSString).boundingRect(
             with: NSSize(width: availableMaxWidth, height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
         )
-        let contentWidth = ceil(textBounds.width)
-        let contentHeight = ceil(textBounds.height)
-        let width = min(maxWidth, max(Self.minWidth, contentWidth + Self.horizontalPadding * 2))
-        let height = max(Self.minHeight, contentHeight + Self.verticalPadding * 2)
+        let width = min(maxWidth, max(Self.minWidth, ceil(textBounds.width) + Self.horizontalPadding * 2))
+        let height = max(Self.minHeight, ceil(textBounds.height) + Self.verticalPadding * 2)
         return NSSize(width: width, height: height)
     }
 
     @objc(updateLatencyMs:bitrateMbps:packetsLost:resolution:fps:renderFps:codec:enhancement:framesDropped:)
-    func update(
-        latencyMs: Int,
-        bitrateMbps: Double,
-        packetsLost: Int64,
-        resolution: String,
-        fps: Int,
-        renderFps: Double,
-        codec: String,
-        enhancement: String,
-        framesDropped: UInt64
-    ) {
+    func update(latencyMs: Int, bitrateMbps: Double, packetsLost: Int64, resolution: String, fps: Int, renderFps: Double, codec: String, enhancement: String, framesDropped: UInt64) {
         let latencyText = latencyMs >= 0 ? "\(latencyMs) ms" : "measuring"
         let bitrateText = bitrateMbps >= 0 ? String(format: "%.1f Mbps", bitrateMbps) : "--"
         var streamText = "--"
@@ -288,29 +256,27 @@ final class OPNStatsOverlayView: NSView {
         } else if !resolution.isEmpty {
             streamText = resolution
         }
-        if !codec.isEmpty {
-            streamText = "\(streamText)/\(codec)"
-        }
+        if !codec.isEmpty { streamText = "\(streamText)/\(codec)" }
         let renderText = renderFps >= 0 ? String(format: "%.0f fps", renderFps) : "-- fps"
         let enhancementText = enhancement.isEmpty ? "enh --" : enhancement
         let dropText = framesDropped > 0 ? "drop \(framesDropped)" : "drop 0"
         let lossText = packetsLost > 0 ? "loss \(packetsLost)" : "loss 0"
-        statsLineLabel.attributedStringValue = Self.outlinedLine("\(latencyText) | \(bitrateText) | \(streamText) | \(renderText) | \(enhancementText) | \(dropText) | \(lossText)")
+        model.text = "\(latencyText) | \(bitrateText) | \(streamText) | \(renderText) | \(enhancementText) | \(dropText) | \(lossText)"
     }
+}
 
-    private static func outlinedLine(_ text: String) -> NSAttributedString {
-        let style = NSMutableParagraphStyle()
-        style.alignment = .left
-        style.lineBreakMode = .byCharWrapping
-        return NSAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .medium),
-                .foregroundColor: overlayColor(1, 0.86, 0.18, 1),
-                .strokeColor: overlayColor(0, 0, 0, 1),
-                .strokeWidth: -2.8,
-                .paragraphStyle: style,
-            ]
-        )
+private struct OPNStatsOverlaySwiftUIView: View {
+    @ObservedObject var model: OPNStatsOverlayModel
+
+    var body: some View {
+        Text(model.text)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(Color(red: 1, green: 0.86, blue: 0.18))
+            .lineLimit(nil)
+            .shadow(color: .black, radius: 1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .allowsHitTesting(false)
     }
 }

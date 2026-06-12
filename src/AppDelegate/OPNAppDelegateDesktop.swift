@@ -597,20 +597,13 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
             desktopBrandLabel = nil
         }
         if desktopTopChromeView == nil {
-            let chrome = NSView(frame: .zero)
-            chrome.wantsLayer = true
-            chrome.layer?.backgroundColor = NSColor.clear.cgColor
+            let chrome = OPNDesktopChromeView(frame: .zero)
+            chrome.autoresizingMask = [.width]
+            chrome.onAccountSelected = { [weak self] identifier in self?.switchToAccountIdentifier(identifier) }
+            chrome.onAddAccountSelected = { [weak self] in self?.addAccount() }
+            chrome.onManageAccountSelected = { [weak self] in self?.desktopAccountTypePillClicked(nil) }
+            chrome.onSettingsSelected = { [weak self] in self?.desktopSettingsPillClicked(nil) }
             desktopTopChromeView = chrome
-
-            let brandLabel = opnDesktopLabel("OpenNOW", .zero, 18.0, opnDesktopColor(0xF5F5F7), .black)
-            brandLabel.lineBreakMode = .byTruncatingTail
-            brandLabel.wantsLayer = true
-            brandLabel.layer?.shadowColor = NSColor.black.cgColor
-            brandLabel.layer?.shadowOpacity = 0.95
-            brandLabel.layer?.shadowRadius = 3.0
-            brandLabel.layer?.shadowOffset = .zero
-            desktopBrandLabel = brandLabel
-            chrome.addSubview(brandLabel)
             rootView.addSubview(chrome, positioned: .above, relativeTo: contentContainer)
         }
         applyApplicationIconTheme()
@@ -618,233 +611,68 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
     }
 
     @objc func installDesktopAccountSwitcherIfNeeded() {
-        guard let rootView else { return }
-        if desktopAccountSwitcher != nil, desktopAccountSwitcher?.superview !== rootView {
-            desktopAccountSwitcher = nil
-            desktopAccountTypePill = nil
-            desktopRemainingPlayTimePill = nil
-            desktopRemainingPlayTimeLabel = nil
-        }
-        guard desktopAccountSwitcher == nil else { return }
-        let switcher = NSPopUpButton(frame: .zero, pullsDown: false)
-        switcher.target = self
-        switcher.action = #selector(desktopAccountSwitcherChanged(_:))
-        switcher.isBordered = false
-        switcher.font = NSFont.systemFont(ofSize: 12.0, weight: .semibold)
-        switcher.contentTintColor = opnDesktopColor(0xF5F5F7, alpha: 0.96)
-        switcher.focusRingType = .none
-        switcher.wantsLayer = true
-        switcher.layer?.cornerRadius = 18.0
-        switcher.layer?.backgroundColor = opnDesktopColor(0x000000, alpha: 0.50).cgColor
-        switcher.layer?.borderColor = NSColor.clear.cgColor
-        switcher.layer?.borderWidth = 0.0
-        switcher.layer?.shadowColor = NSColor.black.cgColor
-        switcher.layer?.shadowOpacity = 0.0
-        switcher.layer?.shadowRadius = 0.0
-        switcher.layer?.shadowOffset = .zero
-        desktopAccountSwitcher = switcher
-        rootView.addSubview(switcher, positioned: .above, relativeTo: desktopTopChromeView)
-
-        let accountTypePill = NSButton(frame: .zero)
-        accountTypePill.isBordered = false
-        accountTypePill.bezelStyle = .regularSquare
-        accountTypePill.setButtonType(.momentaryChange)
-        accountTypePill.focusRingType = .none
-        accountTypePill.target = self
-        accountTypePill.action = #selector(desktopAccountTypePillClicked(_:))
-        accountTypePill.title = ""
-        accountTypePill.wantsLayer = true
-        accountTypePill.layer?.cornerRadius = 10.0
-        accountTypePill.layer?.backgroundColor = opnDesktopColor(0x000000, alpha: 0.50).cgColor
-        accountTypePill.layer?.borderColor = NSColor.clear.cgColor
-        accountTypePill.layer?.borderWidth = 0.0
-        accountTypePill.layer?.shadowColor = NSColor.black.cgColor
-        accountTypePill.layer?.shadowOpacity = 0.0
-        accountTypePill.layer?.shadowRadius = 0.0
-        accountTypePill.layer?.shadowOffset = .zero
-        desktopAccountTypePill = accountTypePill
-        rootView.addSubview(accountTypePill, positioned: .above, relativeTo: switcher)
-
-        let playTimePill = NSView(frame: .zero)
-        playTimePill.wantsLayer = true
-        playTimePill.layer?.cornerRadius = 14.0
-        playTimePill.layer?.backgroundColor = opnDesktopColor(0x000000, alpha: 0.50).cgColor
-        playTimePill.layer?.borderColor = NSColor.clear.cgColor
-        playTimePill.layer?.borderWidth = 0.0
-        playTimePill.layer?.shadowColor = NSColor.black.cgColor
-        playTimePill.layer?.shadowOpacity = 0.0
-        playTimePill.layer?.shadowRadius = 0.0
-        playTimePill.layer?.shadowOffset = .zero
-        desktopRemainingPlayTimePill = playTimePill
-
-        let playTimeLabel = opnDesktopLabel("Playtime: --", .zero, 11.0, opnDesktopColor(0xF5F5F7, alpha: 0.92), .bold, .center)
-        playTimeLabel.lineBreakMode = .byTruncatingTail
-        desktopRemainingPlayTimeLabel = playTimeLabel
-        playTimePill.addSubview(playTimeLabel)
-        rootView.addSubview(playTimePill, positioned: .above, relativeTo: desktopTopChromeView)
-
-        rebuildDesktopAccountSwitcher()
-        layoutDesktopAccountSwitcher()
-        updateDesktopAccountSwitcher()
+        installDesktopTopChromeIfNeeded()
     }
 
     @objc func installDesktopSettingsPillIfNeeded() {
-        guard let rootView else { return }
-        if desktopSettingsPillButton != nil, desktopSettingsPillButton?.superview !== rootView { desktopSettingsPillButton = nil }
-        guard desktopSettingsPillButton == nil else { return }
-        let button = NSButton(frame: .zero)
-        button.isBordered = false
-        button.bezelStyle = .regularSquare
-        button.setButtonType(.toggle)
-        button.focusRingType = .none
-        button.target = self
-        button.action = #selector(desktopSettingsPillClicked(_:))
-        button.wantsLayer = true
-        button.layer?.backgroundColor = opnDesktopColor(0x000000, alpha: 0.50).cgColor
-        button.layer?.borderColor = NSColor.clear.cgColor
-        button.layer?.borderWidth = 0.0
-        button.layer?.shadowColor = NSColor.black.cgColor
-        button.layer?.shadowOpacity = 0.0
-        button.layer?.shadowRadius = 0.0
-        button.layer?.shadowOffset = .zero
-        desktopSettingsPillButton = button
-        rootView.addSubview(button, positioned: .above, relativeTo: desktopRemainingPlayTimePill ?? desktopTopChromeView)
-        updateDesktopSettingsPill()
+        installDesktopTopChromeIfNeeded()
     }
 
     @objc func layoutDesktopTopChrome() {
-        guard let desktopTopChromeView, let rootView, let desktopBrandLabel else { return }
+        guard let desktopTopChromeView, let rootView else { return }
         let width = rootView.bounds.width
         let height = rootView.bounds.height
         let scale = OPNAppDelegateSupport.desktopChromeScale(forHeight: height)
         let chromeHeight = floor(140.0 * scale)
         desktopTopChromeView.frame = NSRect(x: 0.0, y: 0.0, width: width, height: chromeHeight)
-        let brandX = max(48.0, floor(width * 0.024))
-        let brandFont = NSFont.systemFont(ofSize: 18.0 * scale, weight: .black)
-        desktopBrandLabel.font = brandFont
-        desktopBrandLabel.attributedStringValue = NSAttributedString(string: "OpenNOW", attributes: [
-            .font: brandFont,
-            .foregroundColor: opnDesktopColor(0xF5F5F7),
-            .strokeColor: NSColor.black,
-            .strokeWidth: -3.0
-        ])
-        desktopBrandLabel.frame = NSRect(x: brandX, y: floor((chromeHeight - 28.0 * scale) * 0.5), width: 180.0 * scale, height: 28.0 * scale)
     }
 
     @objc func layoutDesktopAccountSwitcher() {
-        guard let desktopAccountSwitcher, let desktopAccountTypePill, let desktopRemainingPlayTimePill, let desktopRemainingPlayTimeLabel, let rootView else { return }
-        let width = rootView.bounds.width
-        let scale = OPNAppDelegateSupport.desktopChromeScale(forHeight: rootView.bounds.height)
-        let switcherWidth = min(180.0, max(150.0, width * 0.10))
-        let controlHeight = floor(44.0 * scale)
-        let accountX = max(24.0, width - switcherWidth - 58.0 * scale)
-        let accountY = floor((140.0 * scale - controlHeight) * 0.5)
-        desktopAccountSwitcher.frame = NSRect(x: accountX, y: accountY, width: switcherWidth, height: controlHeight)
-        let accountTypeHeight = floor(20.0 * scale)
-        let accountTypeY = accountY + controlHeight + 6.0 * scale
-        desktopAccountTypePill.frame = NSRect(x: accountX + 10.0 * scale, y: accountTypeY, width: switcherWidth - 20.0 * scale, height: accountTypeHeight)
-        desktopAccountTypePill.layer?.cornerRadius = accountTypeHeight * 0.5
-        let pillWidth = 172.0 * scale
-        desktopRemainingPlayTimePill.frame = NSRect(x: accountX - pillWidth - 14.0 * scale, y: accountY, width: pillWidth, height: controlHeight)
-        desktopRemainingPlayTimePill.layer?.cornerRadius = controlHeight * 0.5
-        desktopRemainingPlayTimeLabel.font = NSFont.systemFont(ofSize: 11.0 * scale, weight: .bold)
-        desktopRemainingPlayTimeLabel.frame = desktopRemainingPlayTimePill.bounds.insetBy(dx: 12.0 * scale, dy: 13.0 * scale)
+        layoutDesktopTopChrome()
     }
 
     @objc func layoutDesktopSettingsPill() {
-        guard let desktopSettingsPillButton, let rootView else { return }
-        let width = rootView.bounds.width
-        let scale = OPNAppDelegateSupport.desktopChromeScale(forHeight: rootView.bounds.height)
-        let switcherWidth = min(180.0, max(150.0, width * 0.10))
-        let controlHeight = floor(44.0 * scale)
-        let buttonWidth = floor(124.0 * scale)
-        let gap = 14.0 * scale
-        let accountX = max(24.0, width - switcherWidth - 58.0 * scale)
-        let accountY = floor((140.0 * scale - controlHeight) * 0.5)
-        let leftNeighborX = desktopRemainingPlayTimePill?.isHidden == true ? accountX : (desktopRemainingPlayTimePill?.frame.minX ?? accountX)
-        desktopSettingsPillButton.frame = NSRect(x: max(24.0, leftNeighborX - buttonWidth - gap), y: accountY, width: buttonWidth, height: controlHeight)
-        desktopSettingsPillButton.layer?.cornerRadius = controlHeight * 0.5
+        layoutDesktopTopChrome()
     }
 
     @objc func updateDesktopTopChrome() {
         installDesktopTopChromeIfNeeded()
         updateDesktopAccountSwitcher()
         updateDesktopSettingsPill()
-        guard let desktopTopChromeView else { return }
+        guard let chrome = desktopTopChromeView as? OPNDesktopChromeView else { return }
         let visible = OPNAppDelegateSupport.supportsDesktopNavigation(forScreen: Int(currentScreen))
-        desktopTopChromeView.isHidden = !visible
+        chrome.visible = visible
+        chrome.isHidden = !visible
         if visible { layoutDesktopTopChrome() }
     }
 
     @objc func updateDesktopAccountSwitcher() {
         installDesktopAccountSwitcherIfNeeded()
-        guard let desktopAccountSwitcher else { return }
+        guard let chrome = desktopTopChromeView as? OPNDesktopChromeView else { return }
         let visible = OPNAppDelegateSupport.supportsDesktopNavigation(forScreen: Int(currentScreen))
-        desktopAccountSwitcher.isHidden = !visible
-        let accountType = (rootView?.accountStatus ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let accountTypeVisible = visible && !accountType.isEmpty
-        desktopAccountTypePill?.isHidden = !accountTypeVisible
-        let scale = OPNAppDelegateSupport.desktopChromeScale(forHeight: rootView?.bounds.height ?? 0.0)
-        let accountTypeTitle = accountType.isEmpty ? "" : accountType + " Account"
-        desktopAccountTypePill?.attributedTitle = NSAttributedString(string: accountTypeTitle, attributes: [
-            .font: NSFont.systemFont(ofSize: 9.5 * scale, weight: .black),
-            .foregroundColor: opnDesktopColor(0xF5F5F7, alpha: 0.96)
-        ])
-        let remainingPlayTime = (rootView?.remainingPlayTime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let playTimeVisible = visible && !remainingPlayTime.isEmpty
-        desktopRemainingPlayTimePill?.isHidden = !playTimeVisible
-        desktopRemainingPlayTimeLabel?.stringValue = remainingPlayTime.isEmpty ? "Playtime: --" : "Playtime: \(remainingPlayTime)"
+        chrome.visible = visible
+        chrome.isHidden = !visible
+        chrome.accountName = rootView?.accountName ?? OPNAppDelegateSupport.authSessionDisplayName(currentSession)
+        chrome.accountStatus = (rootView?.accountStatus ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        chrome.remainingPlayTime = (rootView?.remainingPlayTime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        chrome.accountMenuItems = rootView?.accountMenuItems ?? []
+        chrome.currentAccountIdentifier = rootView?.currentAccountIdentifier ?? OPNAppDelegateSupport.authSessionIdentifier(currentSession)
         guard visible else { return }
-        layoutDesktopAccountSwitcher()
-        layoutDesktopSettingsPill()
+        layoutDesktopTopChrome()
     }
 
     @objc func updateDesktopSettingsPill() {
         installDesktopSettingsPillIfNeeded()
-        guard let desktopSettingsPillButton else { return }
+        guard let chrome = desktopTopChromeView as? OPNDesktopChromeView else { return }
         let visible = OPNAppDelegateSupport.supportsDesktopNavigation(forScreen: Int(currentScreen))
-        desktopSettingsPillButton.isHidden = !visible
-        guard visible else { return }
-        let selected = currentScreen == OPNDesktopScreen.settings.rawValue
-        desktopSettingsPillButton.state = selected ? .on : .off
-        let textColor = selected ? opnDesktopColor(0x000000, alpha: 0.96) : opnDesktopColor(0xF5F5F7, alpha: 0.96)
-        let backgroundColor = selected ? opnDesktopColor(0x34C759, alpha: 0.94) : opnDesktopColor(0x000000, alpha: 0.50)
-        let font = NSFont.systemFont(ofSize: 12.0 * OPNAppDelegateSupport.desktopChromeScale(forHeight: rootView?.bounds.height ?? 0.0), weight: .bold)
-        desktopSettingsPillButton.layer?.backgroundColor = backgroundColor.cgColor
-        desktopSettingsPillButton.attributedTitle = NSAttributedString(string: "Settings", attributes: [.font: font, .foregroundColor: textColor])
-        layoutDesktopSettingsPill()
+        chrome.visible = visible
+        chrome.isHidden = !visible
+        chrome.settingsSelected = currentScreen == OPNDesktopScreen.settings.rawValue
+        if visible { layoutDesktopTopChrome() }
     }
 
     @objc func rebuildDesktopAccountSwitcher() {
-        guard let desktopAccountSwitcher else { return }
-        desktopAccountSwitcher.removeAllItems()
-        let currentIdentifierString = OPNAppDelegateSupport.authSessionIdentifier(currentSession)
-        var selectedIndex = 0
-        var addedAnyAccount = false
-        let savedSessions = OPNAuthServiceDirect.shared.loadSavedSessions()
-        for sessionObject in savedSessions {
-            let identifier = OPNAppDelegateSupport.authSessionIdentifier(sessionObject)
-            guard !identifier.isEmpty else { continue }
-            let isCurrentSession = identifier == currentIdentifierString
-            let sessionForDisplay = isCurrentSession ? currentSession : sessionObject
-            desktopAccountSwitcher.addItem(withTitle: OPNAppDelegateSupport.authSessionDisplayName(sessionForDisplay))
-            let item = desktopAccountSwitcher.lastItem
-            item?.representedObject = identifier
-            item?.image = OPNAppDelegateSupport.accountSwitcherImage(forSession: sessionForDisplay, currentAvatar: isCurrentSession ? rootView?.accountAvatarImage : nil)
-            if isCurrentSession { selectedIndex = desktopAccountSwitcher.numberOfItems - 1 }
-            addedAnyAccount = true
-        }
-
-        if !addedAnyAccount && currentSession.isAuthenticated {
-            desktopAccountSwitcher.addItem(withTitle: OPNAppDelegateSupport.authSessionDisplayName(currentSession))
-            desktopAccountSwitcher.lastItem?.representedObject = currentIdentifierString
-            desktopAccountSwitcher.lastItem?.image = OPNAppDelegateSupport.accountSwitcherImage(forSession: currentSession, currentAvatar: rootView?.accountAvatarImage)
-        }
-
-        if desktopAccountSwitcher.numberOfItems > 0 { desktopAccountSwitcher.menu?.addItem(.separator()) }
-        desktopAccountSwitcher.addItem(withTitle: "Add Account...")
-        desktopAccountSwitcher.lastItem?.representedObject = opnDesktopAddAccountIdentifier
-        if selectedIndex >= 0 && selectedIndex < desktopAccountSwitcher.numberOfItems { desktopAccountSwitcher.selectItem(at: selectedIndex) }
+        updateDesktopAccountSwitcher()
     }
 
     @objc func desktopAccountSwitcherChanged(_ sender: NSPopUpButton) {

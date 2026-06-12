@@ -341,43 +341,12 @@ extension NSObject {
     func showOwnershipSyncProgress(gameTitle: String, storeName: String) {
         guard let parentView = opnGameLaunchGet(self, "window", as: NSWindow.self)?.contentView else { return }
         if opnGameLaunchGet(self, "ownershipSyncOverlayView", as: NSView.self) == nil {
-            let overlay = NSView(frame: parentView.bounds)
+            let overlay = OPNOwnershipSyncProgressView(frame: parentView.bounds)
             overlay.autoresizingMask = [.width, .height]
-            overlay.wantsLayer = true
-            overlay.layer?.backgroundColor = OPNUIHelpers.color(rgb: 0x020304, alpha: 0.64).cgColor
-            let panelWidth = 430.0
-            let panelHeight = 210.0
-            let panel = NSView(frame: NSRect(x: (overlay.bounds.width - panelWidth) * 0.5, y: (overlay.bounds.height - panelHeight) * 0.5, width: panelWidth, height: panelHeight))
-            panel.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
-            panel.wantsLayer = true
-            panel.layer?.backgroundColor = OPNUIHelpers.color(rgb: 0x0A0C0F, alpha: 0.98).cgColor
-            panel.layer?.cornerRadius = 24.0
-            panel.layer?.borderWidth = 1.0
-            panel.layer?.borderColor = OPNUIHelpers.color(rgb: 0xFFFFFF, alpha: 0.14).cgColor
-            panel.layer?.shadowColor = NSColor.black.cgColor
-            panel.layer?.shadowOpacity = 0.34
-            panel.layer?.shadowRadius = 28.0
-            panel.layer?.shadowOffset = CGSize(width: 0.0, height: 16.0)
-            overlay.addSubview(panel)
-            let spinner = OPNUIHelpers.spinner(frame: NSRect(x: (panelWidth - 34.0) * 0.5, y: panelHeight - 66.0, width: 34.0, height: 34.0))
-            spinner.startAnimation(nil)
-            panel.addSubview(spinner)
-            let title = OPNUIHelpers.label(text: "Syncing Store Library", frame: NSRect(x: 32.0, y: 92.0, width: panelWidth - 64.0, height: 28.0), size: 19.0, color: OPNUIHelpers.color(rgb: 0xF5F5F7, alpha: 1.0), weight: .bold, alignment: .center)
-            title.maximumNumberOfLines = 1
-            panel.addSubview(title)
-            let message = OPNUIHelpers.label(text: "", frame: NSRect(x: 36.0, y: 48.0, width: panelWidth - 72.0, height: 44.0), size: 13.0, color: OPNUIHelpers.color(rgb: 0xA8ADB7, alpha: 1.0), weight: .regular, alignment: .center)
-            message.maximumNumberOfLines = 2
-            panel.addSubview(message)
-            let footer = OPNUIHelpers.label(text: "Waiting for GeForce NOW library updates.", frame: NSRect(x: 36.0, y: 24.0, width: panelWidth - 72.0, height: 18.0), size: 11.0, color: OPNUIHelpers.color(rgb: 0x8E969F, alpha: 1.0), weight: .regular, alignment: .center)
-            panel.addSubview(footer)
             opnGameLaunchSet(self, "ownershipSyncOverlayView", overlay)
-            opnGameLaunchSet(self, "ownershipSyncTitleLabel", title)
-            opnGameLaunchSet(self, "ownershipSyncMessageLabel", message)
-            opnGameLaunchSet(self, "ownershipSyncFooterLabel", footer)
-            opnGameLaunchSet(self, "ownershipSyncSpinner", spinner)
             OPNUIHelpers.disableFocusHighlights(overlay)
         }
-        opnGameLaunchGet(self, "ownershipSyncTitleLabel", as: NSTextField.self)?.stringValue = "Syncing Store Library"
+        updateOwnershipSyncProgressTitle("Syncing Store Library")
         let title = gameTitle.isEmpty ? "this game" : gameTitle
         let store = storeName.isEmpty ? "the selected store" : storeName
         updateOwnershipSyncProgressMessage("Asking GeForce NOW to sync \(store) for \(title).")
@@ -390,18 +359,22 @@ extension NSObject {
         }
     }
 
+    @objc(updateOwnershipSyncProgressTitle:)
+    func updateOwnershipSyncProgressTitle(_ title: String) {
+        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: OPNOwnershipSyncProgressView.self)?.titleText = title.isEmpty ? "Syncing Store Library" : title
+    }
+
     @objc(updateOwnershipSyncProgressMessage:)
     func updateOwnershipSyncProgressMessage(_ message: String) {
-        opnGameLaunchGet(self, "ownershipSyncMessageLabel", as: NSTextField.self)?.stringValue = message.isEmpty ? "Syncing your store library..." : message
+        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: OPNOwnershipSyncProgressView.self)?.messageText = message.isEmpty ? "Syncing your store library..." : message
     }
 
     @objc(updateOwnershipSyncProgressFooter:)
     func updateOwnershipSyncProgressFooter(_ footer: String) {
-        opnGameLaunchGet(self, "ownershipSyncFooterLabel", as: NSTextField.self)?.stringValue = footer.isEmpty ? "Waiting for GeForce NOW library updates." : footer
+        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: OPNOwnershipSyncProgressView.self)?.footerText = footer.isEmpty ? "Waiting for GeForce NOW library updates." : footer
     }
 
     @objc func dismissOwnershipSyncProgress() {
-        opnGameLaunchGet(self, "ownershipSyncSpinner", as: NSProgressIndicator.self)?.stopAnimation(nil)
         opnGameLaunchGet(self, "ownershipSyncOverlayView", as: NSView.self)?.removeFromSuperview()
         opnGameLaunchSet(self, "ownershipSyncOverlayView", nil)
         opnGameLaunchSet(self, "ownershipSyncTitleLabel", nil)
@@ -595,7 +568,7 @@ extension NSObject {
     private func autoResyncOwnership(game: OPNCatalogGameObject, variantIndex: Int32, stores: [String], definitions: [OPNGameLaunchStoreDefinition], retryingAuth: Bool, continueHandler: @escaping @MainActor (Bool) -> Void) {
         let storeListName = opnGameLaunchStoreListName(stores)
         showOwnershipSyncProgress(gameTitle: game.title, storeName: storeListName)
-        opnGameLaunchGet(self, "ownershipSyncTitleLabel", as: NSTextField.self)?.stringValue = "Checking Connected Libraries"
+        updateOwnershipSyncProgressTitle("Checking Connected Libraries")
         updateOwnershipSyncProgressMessage("\(retryingAuth ? "Retrying" : "Asking") GeForce NOW to sync \(storeListName) before showing ownership options.")
         let selfBox = OPNGameLaunchWeakObject(self)
         let gameBox = OPNGameLaunchSendableValue(game)
@@ -740,7 +713,7 @@ extension NSObject {
             let gameBox = OPNGameLaunchSendableValue(game)
             let variantId = variant.id
             self.showOwnershipSyncProgress(gameTitle: game.title, storeName: storeName)
-            opnGameLaunchGet(self, "ownershipSyncTitleLabel", as: NSTextField.self)?.stringValue = "Updating GeForce NOW Library"
+            self.updateOwnershipSyncProgressTitle("Updating GeForce NOW Library")
             self.updateOwnershipSyncProgressMessage("Asking GeForce NOW to mark the \(storeName) version as unowned.")
             self.updateOwnershipSyncProgressFooter("Refreshing library data after the update.")
             OPNGameServiceSwiftAdapter.removeOwnedVariant(variantId) { success, error in

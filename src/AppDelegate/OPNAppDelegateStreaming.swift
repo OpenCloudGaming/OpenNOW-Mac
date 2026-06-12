@@ -135,53 +135,10 @@ extension NSObject {
         opnSet(self, "activeSessionContinueHandler", continueHandler)
         opnSet(self, "activeSessionDeleteHandler", deleteHandler)
         guard let host = opnGet(self, "contentContainer", as: NSView.self) ?? opnGet(self, "window", as: NSWindow.self)?.contentView else { return }
-        let overlay = NSView(frame: host.bounds)
+        let overlay = OPNActiveSessionPromptView(frame: host.bounds, sessionTitle: sessionTitle, selectedGameTitle: selectedGameTitle)
         overlay.autoresizingMask = [.width, .height]
-        overlay.wantsLayer = true
-        overlay.layer?.backgroundColor = opnColor(0x020304, 0.82).cgColor
-        let panelWidth = min(640.0, max(420.0, host.bounds.width - 96.0))
-        let panelHeight = 330.0
-        let panel = NSView(frame: NSRect(x: floor((host.bounds.width - panelWidth) / 2), y: floor((host.bounds.height - panelHeight) / 2), width: panelWidth, height: panelHeight))
-        panel.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
-        panel.wantsLayer = true
-        panel.layer?.cornerRadius = 28
-        panel.layer?.backgroundColor = opnColor(0x0A0C0F, 0.98).cgColor
-        panel.layer?.borderWidth = 1.5
-        panel.layer?.borderColor = opnColor(0xFFFFFF, 0.16).cgColor
-        panel.layer?.shadowColor = NSColor.black.cgColor
-        panel.layer?.shadowOpacity = 0.58
-        panel.layer?.shadowRadius = 46
-        panel.layer?.shadowOffset = CGSize(width: 0, height: 20)
-        overlay.addSubview(panel)
-        let accentBar = NSView(frame: NSRect(x: 34, y: panelHeight - 38, width: 80, height: 3))
-        accentBar.wantsLayer = true
-        accentBar.layer?.cornerRadius = 1.5
-        accentBar.layer?.backgroundColor = opnColor(0x34C759, 0.88).cgColor
-        panel.addSubview(accentBar)
-        panel.addSubview(opnLabel("ACTIVE SESSION", NSRect(x: 34, y: panelHeight - 72, width: panelWidth - 68, height: 18), 12, opnColor(0x34C759), .bold))
-        panel.addSubview(opnLabel("Resume or Replace", NSRect(x: 32, y: panelHeight - 124, width: panelWidth - 64, height: 42), 31, opnColor(0xF5F5F7), .black))
-        let body = "\(sessionTitle.isEmpty ? "the active cloud session" : sessionTitle) is already running. Continue that stream, or delete it and launch \(selectedGameTitle.isEmpty ? "the selected game" : selectedGameTitle)."
-        let bodyLabel = opnLabel(body, NSRect(x: 34, y: panelHeight - 188, width: panelWidth - 68, height: 54), 15, opnColor(0xB7B8BE), .medium)
-        bodyLabel.maximumNumberOfLines = 3
-        panel.addSubview(bodyLabel)
-        let divider = NSView(frame: NSRect(x: 34, y: 112, width: panelWidth - 68, height: 1))
-        divider.wantsLayer = true
-        divider.layer?.backgroundColor = opnColor(0xFFFFFF, 0.10).cgColor
-        panel.addSubview(divider)
-        let buttonY = 44.0
-        let buttonGap = 14.0
-        let buttonWidth = floor((panelWidth - 68.0 - buttonGap) / 2.0)
-        let continueButton = opnButton("A  Continue Session", NSRect(x: 34, y: buttonY, width: buttonWidth, height: 48), opnColor(0x11161A, 0.98), opnColor(0x34C759), true, opnColor(0x34C759, 0.52))
-        continueButton.font = NSFont.systemFont(ofSize: 14, weight: .bold)
-        continueButton.target = self
-        continueButton.action = #selector(activeSessionContinueClicked(_:))
-        panel.addSubview(continueButton)
-        let deleteButton = opnButton("Y  Delete Session", NSRect(x: continueButton.frame.maxX + buttonGap, y: buttonY, width: buttonWidth, height: 48), opnColor(0x111114, 0.98), opnColor(0xFF453A), true, opnColor(0xFF453A, 0.46))
-        deleteButton.font = NSFont.systemFont(ofSize: 14, weight: .bold)
-        deleteButton.target = self
-        deleteButton.action = #selector(activeSessionDeleteClicked(_:))
-        panel.addSubview(deleteButton)
-        panel.addSubview(opnLabel("Choose how to handle the existing cloud session before launching.", NSRect(x: 34, y: 18, width: panelWidth - 68, height: 18), 12, opnColor(0x787A82), .medium, .center))
+        overlay.onContinue = { [weak self] in self?.activeSessionContinueClicked(nil) }
+        overlay.onDelete = { [weak self] in self?.activeSessionDeleteClicked(nil) }
         opnSet(self, "activeSessionPromptView", overlay)
         host.addSubview(overlay, positioned: .above, relativeTo: nil)
         startActiveSessionPromptControllerPolling()
