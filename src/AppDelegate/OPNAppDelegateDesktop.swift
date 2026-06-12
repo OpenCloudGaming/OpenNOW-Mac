@@ -115,11 +115,13 @@ private func opnDesktopMenuItem(_ title: String, _ action: Selector?, _ keyEquiv
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
     window.isMovableByWindowBackground = true
+    window.isOpaque = false
     window.standardWindowButton(.closeButton)?.isHidden = false
     window.standardWindowButton(.miniaturizeButton)?.isHidden = false
     window.standardWindowButton(.zoomButton)?.isHidden = false
     window.appearance = NSAppearance(named: .darkAqua)
-    window.backgroundColor = opnDesktopColor(0x101113)
+    window.backgroundColor = NSColor.clear
+    if #available(macOS 11.0, *) { window.titlebarSeparatorStyle = .none }
 }
 
 private func opnDesktopGamepadButtons() -> OPNDesktopGamepadButton {

@@ -237,15 +237,6 @@ private struct OPNDesktopChromeSwiftUIView: View {
 
             Spacer(minLength: 24)
 
-            if !model.remainingPlayTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Playtime: \(model.remainingPlayTime)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-                    .frame(width: 172, height: 44)
-                    .background(.black.opacity(0.50), in: Capsule())
-            }
-
             Button(action: openSettings) {
                 Text("Settings")
                     .font(.system(size: 12, weight: .bold))
@@ -254,6 +245,15 @@ private struct OPNDesktopChromeSwiftUIView: View {
                     .background(model.settingsSelected ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.94)) : .black.opacity(0.50), in: Capsule())
             }
             .buttonStyle(.plain)
+
+            if !model.remainingPlayTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Playtime: \(model.remainingPlayTime)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .frame(width: 172, height: 44)
+                    .background(.black.opacity(0.50), in: Capsule())
+            }
 
             accountMenu
         }

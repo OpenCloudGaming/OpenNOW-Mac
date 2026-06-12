@@ -121,11 +121,13 @@ private func opnNavMarkVariantUnowned(_ object: NSObject, game: OPNCatalogGameOb
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
     window.isMovableByWindowBackground = true
+    window.isOpaque = false
     window.standardWindowButton(.closeButton)?.isHidden = false
     window.standardWindowButton(.miniaturizeButton)?.isHidden = false
     window.standardWindowButton(.zoomButton)?.isHidden = false
     window.appearance = NSAppearance(named: .darkAqua)
-    window.backgroundColor = OPNUIHelpers.color(rgb: 0x101014, alpha: 1.0)
+    window.backgroundColor = NSColor.clear
+    if #available(macOS 11.0, *) { window.titlebarSeparatorStyle = .none }
 }
 
 @MainActor
@@ -150,6 +152,7 @@ extension NSObject {
             root.onSignOutSelected = { selfBox.value?.performServerLogout() }
             root.onExitSelected = { NSApp.terminate(nil) }
             window.contentView = root
+            opnNavConfigureLibraryWindow(window)
             OPNUIHelpers.disableFocusHighlights(root)
             opnNavSet(self, "rootView", root)
             rootView = root
