@@ -57,4 +57,41 @@ public struct NesAuthorizationResult: Equatable, Sendable {
         self.state = state
         self.errorCode = errorCode
     }
+
+    public var launchStatus: NesAuth.LaunchStatus? {
+        switch state {
+        case .authorized:
+            nil
+        case .notEntitled:
+            .notEntitled
+        case .failed:
+            .failed
+        case .pending:
+            nil
+        }
+    }
+}
+
+public struct NesAuthorizationPolicy: Equatable, Sendable {
+    public let skipForJWTAuth: Bool
+    public let autoAuthorizeWhenSkipped: Bool
+
+    public init(skipForJWTAuth: Bool = true, autoAuthorizeWhenSkipped: Bool = true) {
+        self.skipForJWTAuth = skipForJWTAuth
+        self.autoAuthorizeWhenSkipped = autoAuthorizeWhenSkipped
+    }
+
+    public func result(authType: String, entitlementErrorCode: String = "") -> NesAuthorizationResult {
+        let normalizedAuthType = authType.uppercased()
+        if skipForJWTAuth, normalizedAuthType.contains("JWT") {
+            return NesAuthorizationResult(state: autoAuthorizeWhenSkipped ? .authorized : .pending)
+        }
+        if entitlementErrorCode == "NVB_R_USER_IS_NOT_ENTITLED" || entitlementErrorCode == "351" {
+            return NesAuthorizationResult(state: .notEntitled, errorCode: entitlementErrorCode)
+        }
+        if !entitlementErrorCode.isEmpty {
+            return NesAuthorizationResult(state: .failed, errorCode: entitlementErrorCode)
+        }
+        return NesAuthorizationResult(state: .authorized)
+    }
 }

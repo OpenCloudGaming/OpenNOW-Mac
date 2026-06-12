@@ -10,3 +10,11 @@ import Testing
     #expect(NesAuth.Operation.getClientStreamingQuality.rawValue == "NES_GetClientStreamingQuality")
     #expect(NesAuth.LaunchStatus.autoAuthorization.rawValue == "NesAutoAuthorization")
 }
+
+@Test func nesAuthMapsVendorAuthorizationPolicy() {
+    let policy = NesAuthorizationPolicy()
+    #expect(policy.result(authType: "JWT_GFN").state == .authorized)
+    #expect(policy.result(authType: "NONE", entitlementErrorCode: "NVB_R_USER_IS_NOT_ENTITLED").state == .notEntitled)
+    #expect(policy.result(authType: "NONE", entitlementErrorCode: "351").launchStatus == .notEntitled)
+    #expect(policy.result(authType: "NONE", entitlementErrorCode: "NVB_R_NETWORK_ERROR").launchStatus == .failed)
+}

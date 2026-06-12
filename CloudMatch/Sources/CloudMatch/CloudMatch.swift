@@ -39,6 +39,15 @@ public struct CloudMatchCachePolicy: Equatable, Sendable {
         self.purgeOnQuotaError = purgeOnQuotaError
         self.flushCacheOnResponseCodes = flushCacheOnResponseCodes
     }
+
+    public func shouldFlush(responseStatusCode: Int) -> Bool {
+        flushCacheOnResponseCodes.contains(responseStatusCode)
+    }
+
+    public func isExpired(cachedAt: Date, now: Date = Date()) -> Bool {
+        guard maxAgeSeconds > 0 else { return true }
+        return now.timeIntervalSince(cachedAt) >= TimeInterval(maxAgeSeconds)
+    }
 }
 
 public struct CloudMatchZone: Equatable, Sendable {
@@ -65,6 +74,24 @@ public struct CloudMatchServerInfo: Equatable, Sendable {
         self.defaultZone = defaultZone
         self.detectedLocalZone = detectedLocalZone
     }
+}
+
+public struct CloudMatchRouteOverride: Equatable, Sendable {
+    public let zone: CloudMatchZone
+    public let isInternal: Bool
+    public let runNetworkTest: Bool
+
+    public init(zone: CloudMatchZone, isInternal: Bool = false, runNetworkTest: Bool = false) {
+        self.zone = zone
+        self.isInternal = isInternal
+        self.runNetworkTest = runNetworkTest
+    }
+}
+
+public enum CloudMatchRouteDecision: Equatable, Sendable {
+    case useDefault(CloudMatchZone?)
+    case useOverride(CloudMatchRouteOverride)
+    case clearUnavailableOverride(CloudMatchRouteOverride)
 }
 
 public struct CloudMatchConfiguration: Equatable, Sendable {
@@ -141,5 +168,13 @@ public enum CloudMatchServerInfoParser {
         if let string = value as? String { return string }
         if let number = value as? NSNumber { return number.stringValue }
         return nil
+    }
+}
+
+public enum CloudMatchRoutingPolicy {
+    public static func decision(serverInfo: CloudMatchServerInfo, override: CloudMatchRouteOverride?) -> CloudMatchRouteDecision {
+        guard let override else { return .useDefault(serverInfo.defaultZone) }
+        if override.isInternal || serverInfo.zones.values.contains(override.zone) { return .useOverride(override) }
+        return .clearUnavailableOverride(override)
     }
 }

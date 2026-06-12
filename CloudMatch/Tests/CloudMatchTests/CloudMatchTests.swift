@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import CloudMatch
 
@@ -10,6 +11,8 @@ import Testing
     #expect(CloudMatch.Endpoint.subscriptions.path == "/v4/subscriptions")
     #expect(CloudMatch.Endpoint.serviceUrls.cachePolicy.maxAgeSeconds == 1_209_600)
     #expect(CloudMatch.Endpoint.subscriptions.cachePolicy.flushCacheOnResponseCodes == [404])
+    #expect(CloudMatch.Endpoint.subscriptions.cachePolicy.shouldFlush(responseStatusCode: 404))
+    #expect(CloudMatch.Endpoint.serviceUrls.cachePolicy.isExpired(cachedAt: Date(timeIntervalSince1970: 0), now: Date(timeIntervalSince1970: 1_209_600)))
 }
 
 @Test func cloudMatchBuildsAuthenticatedRequests() throws {
@@ -34,4 +37,15 @@ import Testing
     #expect(info.serverType == "prod")
     #expect(info.zones["sjc.cloudmatch.example"]?.name == "np-sjc-01")
     #expect(info.detectedLocalZone?.address == "sjc.cloudmatch.example")
+}
+
+@Test func cloudMatchClearsUnavailableRouteOverrides() {
+    let available = CloudMatchZone(name: "np-sjc-01", address: "sjc.cloudmatch.example")
+    let unavailable = CloudMatchRouteOverride(zone: CloudMatchZone(name: "np-removed", address: "removed.example"))
+    let internalOverride = CloudMatchRouteOverride(zone: CloudMatchZone(name: "internal", address: "internal.example"), isInternal: true)
+    let serverInfo = CloudMatchServerInfo(zones: [available.address: available], defaultZone: available)
+    #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: nil) == .useDefault(available))
+    #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: CloudMatchRouteOverride(zone: available)) == .useOverride(CloudMatchRouteOverride(zone: available)))
+    #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: unavailable) == .clearUnavailableOverride(unavailable))
+    #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: internalOverride) == .useOverride(internalOverride))
 }

@@ -18,9 +18,30 @@ public extension Ragnarok {
     }
 
     enum EventName: String, CaseIterable, Sendable {
+        case applicationInstall = "Application_Install"
+        case authenticationProvider = "AuthenticationProvider"
+        case autoUpdate = "AutoUpdate"
+        case checkGFN = "CheckGFN"
+        case exception = "Exception"
+        case gameQuitEvent = "Game_Quit_Event"
+        case gfnSession = "GFNSession"
+        case httpFailure = "HTTPFailure"
+        case httpSuccess = "HTTPSuccess"
+        case launchProcess = "LaunchProcess"
+        case loginStart = "LoginStart"
         case networkTest = "NetworkTest"
         case networkTestHTTP = "NetworkTest_Http_Event"
         case networkTestException = "NetworkTest_Exception_Event"
+        case pageLoadPerformanceMetrics = "PageLoadPerformanceMetrics"
+        case popUpDialogClosed = "PopUpDialogClosed"
+        case popUpDialogShown = "PopUpDialogShown"
+        case routingStatus = "RoutingStatus"
+        case settingSnapshot = "SettingSnapshot"
+        case streamingProfile = "StreamingProfile"
+        case streamingQualityChanged = "StreamingQualityChangedEvent"
+        case systemInfo = "SystemInfo"
+        case uiAction = "UIAction"
+        case userSession = "UserSession"
         case udsDialogShown = "UDSDialogShown"
         case udsSuggestionFeedback = "UDSSuggestionFeedback"
         case gameLaunchEvent = "Game_Launch_Event"
@@ -28,16 +49,42 @@ public extension Ragnarok {
 
         public var gdprLevel: GDPRLevel {
             switch self {
-            case .networkTest:
+            case .applicationInstall, .networkTest, .userSession:
                 .behavioral
-            case .networkTestHTTP, .udsDialogShown, .udsSuggestionFeedback, .gameLaunchMetrics:
+            case .authenticationProvider, .autoUpdate, .checkGFN, .exception, .gameQuitEvent, .gfnSession, .httpFailure, .httpSuccess, .launchProcess, .networkTestHTTP, .pageLoadPerformanceMetrics, .popUpDialogShown, .routingStatus, .streamingQualityChanged, .systemInfo, .uiAction, .udsDialogShown, .udsSuggestionFeedback, .gameLaunchMetrics:
                 .functional
-            case .networkTestException, .gameLaunchEvent:
+            case .gameLaunchEvent, .loginStart, .networkTestException, .popUpDialogClosed, .settingSnapshot, .streamingProfile:
                 .technical
             }
         }
 
         public var personalization: Personalization { .userPreferred }
+    }
+}
+
+public struct RagnarokCommonData: Equatable, Sendable {
+    public let appId: String
+    public let clientVersion: String
+    public let deviceId: String
+    public let locale: String
+    public let sessionId: String
+
+    public init(appId: String = "gfnpc", clientVersion: String = "", deviceId: String = "", locale: String = "", sessionId: String = "") {
+        self.appId = appId
+        self.clientVersion = clientVersion
+        self.deviceId = deviceId
+        self.locale = locale
+        self.sessionId = sessionId
+    }
+
+    public var dictionary: [String: String] {
+        [
+            "appId": appId,
+            "clientVersion": clientVersion,
+            "deviceId": deviceId,
+            "locale": locale,
+            "sessionId": sessionId,
+        ].filter { !$0.value.isEmpty }
     }
 }
 
@@ -81,6 +128,10 @@ public struct RagnarokEvent: Equatable, Sendable {
 }
 
 public enum RagnarokRequestFactory {
+    public static func eventsRequest(events: [RagnarokEvent], commonData: RagnarokCommonData, configuration: RagnarokConfiguration = .production, timeoutInterval: TimeInterval = 10) -> URLRequest? {
+        eventsRequest(events: events, commonData: commonData.dictionary, configuration: configuration, timeoutInterval: timeoutInterval)
+    }
+
     public static func eventsRequest(events: [RagnarokEvent], commonData: [String: String] = [:], configuration: RagnarokConfiguration = .production, timeoutInterval: TimeInterval = 10) -> URLRequest? {
         guard let url = URL(string: configuration.eventsURLString) else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)

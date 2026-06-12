@@ -31,4 +31,17 @@ import Testing
     #expect(result.downlinkBandwidth == 55_000)
     #expect(result.maxPacketSize == 1_200)
     #expect(result.rawStatus == "COMPLETED")
+    #expect(result.isCompleted)
+}
+
+@Test func networkTestModelsVendorLifecycleAndFingerprintKeys() {
+    let result = NetworkTestResult(sessionId: "session", zoneAddress: "zone.example", rawStatus: "SUCCESS")
+    let lifecycle = NetworkTestLifecycle().starting().finishing(result: result)
+    #expect(lifecycle.state == .finished)
+    #expect(lifecycle.result == result)
+    #expect(NetworkTestLifecycle().starting().cancelling().errorName == .cancelled)
+    #expect(NetworkTestLifecycle().starting().failing(errorName: .sdkError).state == .failed)
+
+    let record = NetworkTestFingerprintRecord(fingerprint: "fp", zoneAddress: "zone.example", result: result, lastUpdatedEpochMs: 1_000)
+    #expect(record.vendorKey == "fp_zone.example")
 }

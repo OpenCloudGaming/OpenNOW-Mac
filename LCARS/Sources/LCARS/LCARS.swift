@@ -54,6 +54,14 @@ public struct LCARSCachePolicy: Equatable, Sendable {
         self.maxAgeSeconds = maxAgeSeconds
         self.purgeOnQuotaError = purgeOnQuotaError
     }
+
+    public func isExpired(cachedAt: Date, now: Date = Date()) -> Bool {
+        now.timeIntervalSince(cachedAt) >= TimeInterval(maxAgeSeconds)
+    }
+
+    public func cacheKey(prefix: String, requestType: LCARS.RequestType) -> String {
+        "\(prefix)-\(cacheName)-\(requestType.rawValue)"
+    }
 }
 
 public struct LCARSConfiguration: Equatable, Sendable {

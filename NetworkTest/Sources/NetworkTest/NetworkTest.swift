@@ -7,6 +7,14 @@ public enum NetworkTest: Sendable {
 }
 
 public extension NetworkTest {
+    enum LifecycleState: String, CaseIterable, Sendable {
+        case idle = "Idle"
+        case started = "Started"
+        case finished = "Finished"
+        case cancelled = "Cancelled"
+        case failed = "Failed"
+    }
+
     enum EventName: String, CaseIterable, Sendable {
         case networkTest = "NetworkTest"
         case analytics = "NetworkTestAnalytics"
@@ -20,6 +28,52 @@ public extension NetworkTest {
         case failed = "NetworkTestFailed"
         case sdkError = "NetworkTestSdkError"
         case geronimoNetworkTestError = "GeronimoNetworkTestError"
+    }
+}
+
+public struct NetworkTestLifecycle: Equatable, Sendable {
+    public let state: NetworkTest.LifecycleState
+    public let result: NetworkTestResult?
+    public let errorName: NetworkTest.ErrorName?
+
+    public init(state: NetworkTest.LifecycleState = .idle, result: NetworkTestResult? = nil, errorName: NetworkTest.ErrorName? = nil) {
+        self.state = state
+        self.result = result
+        self.errorName = errorName
+    }
+
+    public func starting() -> NetworkTestLifecycle {
+        NetworkTestLifecycle(state: .started)
+    }
+
+    public func finishing(result: NetworkTestResult) -> NetworkTestLifecycle {
+        NetworkTestLifecycle(state: .finished, result: result)
+    }
+
+    public func cancelling() -> NetworkTestLifecycle {
+        NetworkTestLifecycle(state: .cancelled, errorName: .cancelled)
+    }
+
+    public func failing(errorName: NetworkTest.ErrorName = .failed) -> NetworkTestLifecycle {
+        NetworkTestLifecycle(state: .failed, errorName: errorName)
+    }
+}
+
+public struct NetworkTestFingerprintRecord: Equatable, Sendable {
+    public let fingerprint: String
+    public let zoneAddress: String
+    public let result: NetworkTestResult
+    public let lastUpdatedEpochMs: Int64
+
+    public init(fingerprint: String, zoneAddress: String, result: NetworkTestResult, lastUpdatedEpochMs: Int64) {
+        self.fingerprint = fingerprint
+        self.zoneAddress = zoneAddress
+        self.result = result
+        self.lastUpdatedEpochMs = lastUpdatedEpochMs
+    }
+
+    public var vendorKey: String {
+        zoneAddress.isEmpty ? fingerprint : "\(fingerprint)_\(zoneAddress)"
     }
 }
 
@@ -56,6 +110,10 @@ public struct NetworkTestResult: Equatable, Sendable {
     public let downlinkBandwidth: Int
     public let maxPacketSize: Int
     public let rawStatus: String
+
+    public var isCompleted: Bool {
+        rawStatus.caseInsensitiveCompare("COMPLETED") == .orderedSame || rawStatus.caseInsensitiveCompare("SUCCESS") == .orderedSame
+    }
 
     public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, rawStatus: String = "") {
         self.sessionId = sessionId

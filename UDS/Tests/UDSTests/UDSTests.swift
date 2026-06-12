@@ -33,3 +33,30 @@ import Testing
     #expect(json["source"] as? String == "Mall")
     #expect(json["isVPN"] as? Bool == true)
 }
+
+@Test func udsModelsNotificationSnoozeAndDiagnosticReports() {
+    let notification = UDSNotificationState(canShowIcon: true, hasNotification: true, toastShown: false).afterSummonedReportOpened()
+    #expect(!notification.canShowIcon)
+    #expect(!notification.hasNotification)
+    #expect(notification.toastShown)
+
+    let policy = UDSSnoozePolicy(durationInDays: 2)
+    let start = Date(timeIntervalSince1970: 1_000)
+    let stop = policy.stopDate(startingAt: start)
+    #expect(policy.isSnoozed(until: stop, now: start.addingTimeInterval(10)))
+    #expect(!policy.isSnoozed(until: stop, now: start.addingTimeInterval(200_000)))
+
+    let report = UDSDiagnosticReportParser.parse([
+        "reports": [[
+            "streamedAppName": "Game",
+            "sessionId": "session",
+            "errorCode": "NVB_R_NETWORK_ERROR",
+            "recommendationList": [["id": "one"], ["id": "two"]],
+            "areSAScoresGood": true,
+        ]],
+    ])
+    #expect(report.streamedAppName == "Game")
+    #expect(report.sessionId == "session")
+    #expect(report.recommendationCount == 2)
+    #expect(report.areSAScoresGood)
+}

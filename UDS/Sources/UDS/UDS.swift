@@ -27,6 +27,42 @@ public extension UDS {
     }
 }
 
+public struct UDSNotificationState: Equatable, Sendable {
+    public let canShowIcon: Bool
+    public let hasNotification: Bool
+    public let toastShown: Bool
+
+    public init(canShowIcon: Bool = false, hasNotification: Bool = false, toastShown: Bool = false) {
+        self.canShowIcon = canShowIcon
+        self.hasNotification = hasNotification
+        self.toastShown = toastShown
+    }
+
+    public func afterSummonedReportOpened() -> UDSNotificationState {
+        UDSNotificationState(canShowIcon: false, hasNotification: false, toastShown: true)
+    }
+}
+
+public struct UDSSnoozePolicy: Equatable, Sendable {
+    public let durationInDays: Int
+    public let disabled: Bool
+
+    public init(durationInDays: Int, disabled: Bool = false) {
+        self.durationInDays = max(0, durationInDays)
+        self.disabled = disabled
+    }
+
+    public func stopDate(startingAt date: Date = Date()) -> Date? {
+        guard !disabled, durationInDays > 0 else { return nil }
+        return date.addingTimeInterval(TimeInterval(durationInDays * 24 * 60 * 60))
+    }
+
+    public func isSnoozed(until stopDate: Date?, now: Date = Date()) -> Bool {
+        guard !disabled, let stopDate else { return false }
+        return now < stopDate
+    }
+}
+
 public struct UDSReportPayload: Equatable, Sendable {
     public let source: UDS.LaunchSource
     public let locale: String
@@ -54,6 +90,47 @@ public struct UDSReportPayload: Equatable, Sendable {
         ]
         if let isVPN { payload["isVPN"] = isVPN }
         return payload
+    }
+}
+
+public struct UDSDiagnosticReport: Equatable, Sendable {
+    public let streamedAppName: String
+    public let sessionId: String
+    public let errorCode: String
+    public let recommendationCount: Int
+    public let areSAScoresGood: Bool
+
+    public init(streamedAppName: String = "", sessionId: String = "", errorCode: String = "", recommendationCount: Int = 0, areSAScoresGood: Bool = false) {
+        self.streamedAppName = streamedAppName
+        self.sessionId = sessionId
+        self.errorCode = errorCode
+        self.recommendationCount = recommendationCount
+        self.areSAScoresGood = areSAScoresGood
+    }
+}
+
+public enum UDSDiagnosticReportParser {
+    public static func parse(_ json: [String: Any]) -> UDSDiagnosticReport {
+        let report = ((json["reports"] as? [[String: Any]])?.first) ?? json
+        return UDSDiagnosticReport(
+            streamedAppName: stringValue(report["streamedAppName"]) ?? "",
+            sessionId: stringValue(report["sessionId"]) ?? "",
+            errorCode: stringValue(report["errorCode"]) ?? stringValue(json["errorCode"]) ?? "",
+            recommendationCount: (report["recommendationList"] as? [Any])?.count ?? 0,
+            areSAScoresGood: boolValue(report["areSAScoresGood"]) ?? false
+        )
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        if let string = value as? String { return string }
+        if let number = value as? NSNumber { return number.stringValue }
+        return nil
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        if let bool = value as? Bool { return bool }
+        if let number = value as? NSNumber { return number.boolValue }
+        return nil
     }
 }
 
