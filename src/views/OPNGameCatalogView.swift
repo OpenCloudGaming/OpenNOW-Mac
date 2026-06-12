@@ -562,25 +562,32 @@ struct OPNGameCatalogSwiftUIView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: OPNGameCatalogLayoutSupport.storeCardSpacing) {
                             ForEach(Array(section.games.enumerated()), id: \.element.id) { columnIndex, item in
-                                OPNCatalogTileView(
+                                OPNCatalogStoreTileView(
                                     item: item,
                                     focused: model.focusedRowIndex == rowIndex && model.focusedColumnIndex == columnIndex,
-                                    onSelect: { onSelect(model.item(withID: item.id) ?? item) },
+                                    onSelect: { selectedVariantIndex in
+                                        model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
+                                        onSelect(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
+                                    },
                                     onHover: {
                                         model.focusedRowIndex = rowIndex
                                         model.focusedColumnIndex = columnIndex
                                         model.focusedTileID = item.id
                                     },
-                                    onVariantSelected: { variantIndex in model.setVariant(itemID: item.id, variantIndex: variantIndex) },
-                                    onMarkUnowned: { onMarkUnowned(model.item(withID: item.id) ?? item) }
+                                    onMarkUnowned: { selectedVariantIndex in
+                                        model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
+                                        onMarkUnowned(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
+                                    }
                                 )
                                 .id(item.id)
                                 .frame(width: OPNGameCatalogLayoutSupport.storeTileWidth, height: OPNGameCatalogLayoutSupport.storeTileHeight)
                             }
                         }
                         .padding(.horizontal, horizontalInset)
-                        .padding(.vertical, 10)
+                        .padding(.top, 10)
+                        .padding(.bottom, 20)
                     }
+                    .frame(height: OPNGameCatalogLayoutSupport.storeTileHeight + 30)
                     .background(Color.white.opacity(0.032), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.055), lineWidth: 1))
                     .padding(.horizontal, max(12, horizontalInset - 18))
@@ -653,7 +660,7 @@ struct OPNGameCatalogSwiftUIView: View {
         }
     }
 
-    private var horizontalInset: CGFloat { 58 }
+    private var horizontalInset: CGFloat { OPNGameCatalogLayoutSupport.storeHeroMaxContentInset }
 
     private func searchTopPadding(for viewportSize: CGSize) -> CGFloat {
         let scale = viewportSize.height <= 760 ? 0.82 : (viewportSize.height < 900 ? 0.92 : 1.0)
@@ -662,86 +669,33 @@ struct OPNGameCatalogSwiftUIView: View {
 
 }
 
-private struct OPNCatalogTileView: View {
+private struct OPNCatalogStoreTileView: NSViewRepresentable {
     let item: OPNGameCatalogItemModel
     let focused: Bool
-    let onSelect: () -> Void
+    let onSelect: (Int32) -> Void
     let onHover: () -> Void
-    let onVariantSelected: (Int32) -> Void
-    let onMarkUnowned: () -> Void
+    let onMarkUnowned: (Int32) -> Void
 
-    var body: some View {
-        Button(action: onSelect) {
-            ZStack(alignment: .bottomLeading) {
-                OPNCatalogArtworkView(urlStrings: imageCandidates(for: item.gameObject, preferredTypes: ["TV_BANNER", "HERO_IMAGE", "KEY_IMAGE", "KEY_ART", "GAME_BOX_ART", "FEATURE_IMAGE"], includeScreenshots: false), contentMode: .fill)
-                    .overlay(LinearGradient(colors: [.black.opacity(0.02), .black.opacity(0.12), .black.opacity(0.82)], startPoint: .top, endPoint: .bottom))
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 6) { storeBadges }
-                    Spacer(minLength: 0)
-                    Text(item.gameObject.title.isEmpty ? "Untitled" : item.gameObject.title)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
-                        .lineLimit(1)
-                    Text(primaryActionTitle(item).uppercased())
-                        .font(.system(size: 11, weight: .black))
-                        .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.accentOn, alpha: 1)))
-                        .frame(width: 54, height: 28)
-                        .background(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.98)), in: Capsule())
-                        .opacity(focused ? 1 : 0)
-                }
-                .padding(12)
-                Rectangle()
-                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.96)))
-                    .frame(height: 3)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x070A0C, alpha: 0.92)))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(focused ? Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.98)) : .white.opacity(0.12), lineWidth: focused ? 2.5 : 1.25))
-            .shadow(color: focused ? Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.38)) : .clear, radius: focused ? 26 : 0)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in if hovering { onHover() } }
-        .contextMenu { contextMenu }
+    func makeNSView(context: Context) -> OPNStoreGameTile {
+        let tile = OPNStoreGameTile(frame: .zero, gameObject: item.gameObject, prominent: false)
+        configure(tile)
+        return tile
     }
 
-    @ViewBuilder
-    private var storeBadges: some View {
-        let stores = variantStores(item.gameObject)
-        ForEach(Array(stores.prefix(4).enumerated()), id: \.offset) { index, store in
-            Button { onVariantSelected(Int32(index)) } label: {
-                Text(storePrefix(store))
-                    .font(.system(size: 10, weight: .black))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 0.88)))
-                    .frame(width: 28, height: 28)
-                    .background(index == Int(item.selectedVariantIndex) ? Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.24)) : Color.black.opacity(0.72), in: Circle())
-                    .overlay(Circle().stroke(index == Int(item.selectedVariantIndex) ? Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.96)) : .white.opacity(0.18), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-        }
+    func updateNSView(_ nsView: OPNStoreGameTile, context: Context) {
+        configure(nsView)
     }
 
-    @ViewBuilder
-    private var contextMenu: some View {
-        let appId = gameProfileAppId(item)
-        Button("Save Current Stream Settings as Game Profile") {
-            guard !appId.isEmpty else { return }
-            OPNStreamPreferences.saveProfile(forGame: appId, profile: OPNStreamPreferences.loadProfile())
+    private func configure(_ tile: OPNStoreGameTile) {
+        tile.selectedVariantIndex = item.selectedVariantIndex
+        tile.setStoreFocused(focused)
+        tile.ensureImageLoaded()
+        tile.onSelect = { [weak tile] in
+            onSelect(tile?.selectedVariantIndex ?? item.selectedVariantIndex)
         }
-        .disabled(appId.isEmpty)
-        Button("Use Game Stream Profile") {
-            guard !appId.isEmpty, OPNStreamPreferences.profileExists(forGame: appId) else { return }
-            OPNStreamPreferences.setProfileEnabled(forGame: appId, enabled: !OPNStreamPreferences.profileEnabled(forGame: appId))
-        }
-        .disabled(appId.isEmpty || !OPNStreamPreferences.profileExists(forGame: appId))
-        Button("Delete Game Stream Profile") {
-            guard !appId.isEmpty else { return }
-            OPNStreamPreferences.deleteProfile(forGame: appId)
-        }
-        .disabled(appId.isEmpty || !OPNStreamPreferences.profileExists(forGame: appId))
-        if variantCanBeMarkedUnowned(item) {
-            Divider()
-            Button("Mark Selected Store as Unowned", action: onMarkUnowned)
+        tile.onHover = onHover
+        tile.onMarkUnowned = { [weak tile] in
+            onMarkUnowned(tile?.selectedVariantIndex ?? item.selectedVariantIndex)
         }
     }
 }
