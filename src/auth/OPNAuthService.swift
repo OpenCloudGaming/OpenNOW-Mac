@@ -2,21 +2,23 @@ import AppKit
 import CryptoKit
 import Darwin
 import Foundation
+import Jarvis
 
 typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
 
 final class OPNAuthService: @unchecked Sendable {
     static let shared = OPNAuthService()
+    private static let jarvisConfiguration = JarvisOAuthConfiguration.gfnPC
 
-    static let oAuthAuthorizeURL = "https://login.nvidia.com/authorize"
-    static let oAuthTokenURL = "https://login.nvidia.com/token"
-    static let oAuthClientId = "ZU7sPN-miLujMD95LfOQ453IB0AtjM8sMyvgJ9wCXEQ"
-    static let oAuthRedirectURI = "com.nvidia.geforcenow://oauth/callback"
-    static let oAuthScope = "openid consent email tk_client age"
-    static let defaultIdpId = "PDiAhv2kJTFeQ7WOPqiQ2tRZ7lGhR2X11dXvM4TZSxg"
-    static let defaultUserAgent = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173"
-    static let oAuthLogoutURL = "https://login.nvidia.com/logout"
+    static let oAuthAuthorizeURL = jarvisConfiguration.authorizeURLString
+    static let oAuthTokenURL = jarvisConfiguration.tokenURLString
+    static let oAuthClientId = jarvisConfiguration.clientId
+    static let oAuthRedirectURI = jarvisConfiguration.redirectURI
+    static let oAuthScope = jarvisConfiguration.scope
+    static let defaultIdpId = jarvisConfiguration.defaultIdpId
+    static let defaultUserAgent = jarvisConfiguration.userAgent
+    static let oAuthLogoutURL = jarvisConfiguration.logoutURLString
 
     private static let clientTokenRefreshWindowMs: Int64 = 5 * 60 * 1000
     private static let clientTokenRefreshWindowPercent: Int64 = 20
@@ -38,27 +40,18 @@ final class OPNAuthService: @unchecked Sendable {
 
         let pkce = generatePKCEState()
         let deviceId = generateOpenNOWDeviceId()
-        let nonce = generateRandomString(length: 32)
         let redirectUri = "http://localhost:\(port)"
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
         let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
 
-        var components = URLComponents(string: Self.oAuthAuthorizeURL)
-        components?.queryItems = [
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "device_id", value: deviceId),
-            URLQueryItem(name: "scope", value: Self.oAuthScope),
-            URLQueryItem(name: "client_id", value: Self.oAuthClientId),
-            URLQueryItem(name: "redirect_uri", value: redirectUri),
-            URLQueryItem(name: "ui_locales", value: locale),
-            URLQueryItem(name: "nonce", value: nonce),
-            URLQueryItem(name: "prompt", value: "select_account"),
-            URLQueryItem(name: "code_challenge", value: pkce.codeChallenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "idp_id", value: selectedProviderIdpId),
-            URLQueryItem(name: "state", value: pkce.state),
-        ]
-        guard let authURL = components?.url else {
+        guard let authURL = JarvisOAuthRequestFactory.authorizationURL(
+            configuration: Self.jarvisConfiguration,
+            deviceId: deviceId,
+            redirectURI: redirectUri,
+            locale: locale,
+            oauthState: pkce,
+            providerIdpId: selectedProviderIdpId
+        ) else {
             DispatchQueue.main.async { completion(false, OPNAuthSession(), "Invalid OAuth authorize URL") }
             return
         }
@@ -112,7 +105,7 @@ final class OPNAuthService: @unchecked Sendable {
                 return
             }
 
-            let body = "grant_type=refresh_token&refresh_token=\(self.formURLEncode(savedSession.refreshToken))&client_id=\(self.formURLEncode(Self.oAuthClientId))"
+            let body = JarvisOAuthRequestFactory.refreshTokenBody(refreshToken: savedSession.refreshToken, configuration: Self.jarvisConfiguration)
             self.performTokenRequest(body: body) { result in
                 switch result {
                 case .success(let json):
@@ -129,7 +122,7 @@ final class OPNAuthService: @unchecked Sendable {
             return
         }
 
-        let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Aclient_token&client_token=\(formURLEncode(session.clientToken))&client_id=\(formURLEncode(Self.oAuthClientId))&sub=\(formURLEncode(session.userId))"
+        let body = JarvisOAuthRequestFactory.clientTokenGrantBody(clientToken: session.clientToken, userId: session.userId, configuration: Self.jarvisConfiguration)
         performTokenRequest(body: body) { [weak self] result in
             guard let self else { return }
             switch result {
@@ -143,16 +136,10 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     func fetchStarFleetUserInfo(accessToken: String, completion: @escaping @Sendable (Bool, NSDictionary?, String) -> Void) {
-        guard let url = URL(string: "https://login.nvidia.com/userinfo") else {
+        guard let request = JarvisOAuthRequestFactory.userInfoRequest(accessToken: accessToken, configuration: Self.jarvisConfiguration) else {
             completion(false, nil, "Invalid userinfo URL")
             return
         }
-        var request = URLRequest(url: url, timeoutInterval: 10)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("https://nvfile", forHTTPHeaderField: "Origin")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(Self.defaultUserAgent, forHTTPHeaderField: "User-Agent")
         performJSONRequest(request) { result in
             switch result {
             case .success(let json): completion(true, json, "")
@@ -162,16 +149,10 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     func fetchClientToken(accessToken: String, completion: @escaping @Sendable (Bool, String, String) -> Void) {
-        guard let url = URL(string: "https://login.nvidia.com/client_token") else {
+        guard let request = JarvisOAuthRequestFactory.clientTokenRequest(accessToken: accessToken, configuration: Self.jarvisConfiguration) else {
             completion(false, "", "Invalid client token URL")
             return
         }
-        var request = URLRequest(url: url, timeoutInterval: 10)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("https://nvfile", forHTTPHeaderField: "Origin")
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue(Self.defaultUserAgent, forHTTPHeaderField: "User-Agent")
         performJSONRequest(request) { result in
             switch result {
             case .success(let json):
@@ -195,8 +176,7 @@ final class OPNAuthService: @unchecked Sendable {
             return
         }
         let resolvedLocale = locale.isEmpty ? Locale.current.identifier.replacingOccurrences(of: "-", with: "_") : locale
-        let urlString = "\(Self.oAuthLogoutURL)?id_token_hint=\(urlEncode(idToken))&ui_locales=\(urlEncode(resolvedLocale))"
-        guard let url = URL(string: urlString) else {
+        guard let url = JarvisOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, configuration: Self.jarvisConfiguration) else {
             clearSession()
             completion(false, "Invalid logout URL")
             return
@@ -365,48 +345,12 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     static func parseOAuthSession(json: NSDictionary) -> OPNAuthSession {
-        var session = OPNAuthSession()
-        session.accessToken = json["access_token"] as? String ?? ""
-        session.idToken = json["id_token"] as? String ?? ""
-        session.refreshToken = json["refresh_token"] as? String ?? ""
-        session.clientToken = json["client_token"] as? String ?? ""
-        let expiresIn = int64Value(json["expires_in"]) ?? 86400
-        let nowMs = OPNAuthSession.currentEpochMs()
-        session.accessTokenExpiry = nowMs + expiresIn * 1000
-        session.expiresAt = Int64(Date().timeIntervalSince1970) + expiresIn
-
-        if let clientTokenExpiresIn = int64Value(json["client_token_expires_in"]), clientTokenExpiresIn > 0, !session.clientToken.isEmpty {
-            session.clientTokenExpiry = nowMs + clientTokenExpiresIn * 1000
-            session.clientTokenExpiryLength = clientTokenExpiresIn * 1000
-        }
-
-        if !session.idToken.isEmpty {
-            session.idTokenExpiry = idTokenExpiry(session.idToken)
-            let claims = jwtClaims(session.idToken)
-            session.userId = claims["sub"] as? String ?? ""
-            session.displayName = claims["name"] as? String ?? (claims["preferred_username"] as? String ?? "")
-            session.email = claims["email"] as? String ?? ""
-            session.membershipTier = claims["membership_tier"] as? String ?? "Free"
-            session.idpId = claims["idp_id"] as? String ?? ""
-        }
-        if !session.idToken.isEmpty, session.membershipTier.isEmpty { session.membershipTier = "Free" }
-        if session.idpId.isEmpty { session.idpId = defaultIdpId }
-        if session.expiresAt == 0 {
-            session.expiresAt = Int64(Date().timeIntervalSince1970) + 86400
-            session.accessTokenExpiry = OPNAuthSession.currentEpochMs() + 86_400_000
-        }
-        session.isAuthenticated = !session.accessToken.isEmpty
-        return session
+        JarvisSessionParser.parseTokenResponse(json as? [String: Any] ?? [:], defaultIdpId: defaultIdpId)
     }
 
     static func parseQueryString(_ query: String?) -> NSDictionary {
         let params = NSMutableDictionary()
-        guard let query, !query.isEmpty else { return params }
-        for pair in query.split(separator: "&") {
-            let components = pair.split(separator: "=", maxSplits: 1).map(String.init)
-            guard components.count == 2 else { continue }
-            let key = components[0].removingPercentEncoding ?? components[0]
-            let value = components[1].removingPercentEncoding ?? ""
+        for (key, value) in JarvisSessionParser.parseQueryString(query) {
             params[key] = value
         }
         return params
@@ -419,7 +363,7 @@ final class OPNAuthService: @unchecked Sendable {
         providerIdpId: String,
         completion: @escaping OPNAuthCallback
     ) {
-        let body = "grant_type=authorization_code&code=\(formURLEncode(authCode))&redirect_uri=\(formURLEncode(redirectUri))&code_verifier=\(formURLEncode(codeVerifier))"
+        let body = JarvisOAuthRequestFactory.authorizationCodeTokenBody(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier)
         performTokenRequest(body: body) { [weak self] result in
             guard let self else { return }
             switch result {
@@ -488,18 +432,10 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     private func performTokenRequest(body: String, completion: @escaping @Sendable (Result<NSDictionary, Error>) -> Void) {
-        guard let url = URL(string: Self.oAuthTokenURL) else {
+        guard let request = JarvisOAuthRequestFactory.tokenRequest(body: body, configuration: Self.jarvisConfiguration) else {
             completion(.failure(ServiceError("Invalid token URL")))
             return
         }
-        var request = URLRequest(url: url, timeoutInterval: 15)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue("https://nvfile", forHTTPHeaderField: "Origin")
-        request.setValue("https://nvfile/", forHTTPHeaderField: "Referer")
-        request.setValue(Self.defaultUserAgent, forHTTPHeaderField: "User-Agent")
-        request.httpBody = body.data(using: .utf8)
         performJSONRequest(request, completion: completion)
     }
 
@@ -625,9 +561,9 @@ final class OPNAuthService: @unchecked Sendable {
         return 0
     }
 
-    private func generatePKCEState() -> OAuthState {
+    private func generatePKCEState() -> JarvisOAuthState {
         let verifier = generateRandomString(length: 64)
-        return OAuthState(
+        return JarvisOAuthState(
             codeVerifier: verifier,
             codeChallenge: base64URLEncodedSHA256(verifier),
             state: generateRandomString(length: 32),
@@ -654,16 +590,6 @@ final class OPNAuthService: @unchecked Sendable {
             : "unknown"
         let user = ProcessInfo.processInfo.environment["USER"] ?? "unknown"
         return SHA256.hash(data: Data("\(hostname):\(user):opennow-stable".utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private func urlEncode(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
-    }
-
-    private func formURLEncode(_ value: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     private static func authUserDefaults() -> UserDefaults {
@@ -773,47 +699,17 @@ final class OPNAuthService: @unchecked Sendable {
         session.email = dictionary["email"] as? String ?? ""
         session.membershipTier = dictionary["membership_tier"] as? String ?? "Free"
         session.idpId = dictionary["idp_id"] as? String ?? Self.defaultIdpId
-        session.expiresAt = Self.int64Value(dictionary["expires_at"]) ?? 0
-        session.accessTokenExpiry = Self.int64Value(dictionary["access_token_expiry"]) ?? 0
-        session.clientTokenExpiry = Self.int64Value(dictionary["client_token_expiry"]) ?? 0
-        session.clientTokenExpiryLength = Self.int64Value(dictionary["client_token_expiry_length"]) ?? 0
-        session.idTokenExpiry = Self.int64Value(dictionary["id_token_expiry"]) ?? 0
+        session.expiresAt = JarvisSessionParser.int64Value(dictionary["expires_at"]) ?? 0
+        session.accessTokenExpiry = JarvisSessionParser.int64Value(dictionary["access_token_expiry"]) ?? 0
+        session.clientTokenExpiry = JarvisSessionParser.int64Value(dictionary["client_token_expiry"]) ?? 0
+        session.clientTokenExpiryLength = JarvisSessionParser.int64Value(dictionary["client_token_expiry_length"]) ?? 0
+        session.idTokenExpiry = JarvisSessionParser.int64Value(dictionary["id_token_expiry"]) ?? 0
         session.isAuthenticated = true
         return session
     }
 
     private func put(_ value: String, key: String, into dictionary: NSMutableDictionary) {
         if !value.isEmpty { dictionary[key] = value }
-    }
-
-    private static func int64Value(_ value: Any?) -> Int64? {
-        if let number = value as? NSNumber { return number.int64Value }
-        if let string = value as? String { return Int64(string) }
-        return nil
-    }
-
-    private static func idTokenExpiry(_ idToken: String) -> Int64 {
-        guard let exp = jwtClaims(idToken)["exp"] as? NSNumber else { return 0 }
-        return exp.int64Value * 1000
-    }
-
-    private static func jwtClaims(_ idToken: String) -> NSDictionary {
-        let parts = idToken.split(separator: ".").map(String.init)
-        guard parts.count >= 2 else { return [:] }
-        var payload = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        while payload.count % 4 != 0 { payload.append("=") }
-        guard let data = Data(base64Encoded: payload),
-              let claims = try? JSONSerialization.jsonObject(with: data) as? NSDictionary else {
-            return [:]
-        }
-        return claims
-    }
-
-    private struct OAuthState: Sendable {
-        let codeVerifier: String
-        let codeChallenge: String
-        let state: String
-        let nonce: String
     }
 
     private struct ServiceError: LocalizedError, Sendable {

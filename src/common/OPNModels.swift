@@ -1,5 +1,7 @@
 import Foundation
 
+import Jarvis
+
 @objc enum OPNAuthScreen: Int {
     case emailEntry
     case authenticating
@@ -10,49 +12,8 @@ import Foundation
     case oAuthBrowser
 }
 
-struct OPNAuthCredentials: Equatable, Sendable {
-    var email = ""
-    var providerIdpId = ""
-    var stayLoggedIn = true
-}
-
-struct OPNAuthSession: Equatable, Sendable {
-    var accessToken = ""
-    var idToken = ""
-    var refreshToken = ""
-    var userId = ""
-    var displayName = ""
-    var email = ""
-    var membershipTier = ""
-    var idpId = ""
-    var expiresAt: Int64 = 0
-    var isAuthenticated = false
-    var clientToken = ""
-    var clientTokenExpiry: Int64 = 0
-    var clientTokenExpiryLength: Int64 = 0
-    var idTokenExpiry: Int64 = 0
-    var accessTokenExpiry: Int64 = 0
-
-    static func currentEpochMs() -> Int64 {
-        Int64(Date().timeIntervalSince1970 * 1000.0)
-    }
-
-    var isClientTokenValid: Bool {
-        !clientToken.isEmpty && clientTokenExpiry > Self.currentEpochMs()
-    }
-
-    var isAccessTokenValid: Bool {
-        !accessToken.isEmpty && accessTokenExpiry > Self.currentEpochMs()
-    }
-
-    var hasAccessToken: Bool {
-        !accessToken.isEmpty
-    }
-
-    mutating func clear() {
-        self = OPNAuthSession()
-    }
-}
+typealias OPNAuthCredentials = JarvisCredentials
+typealias OPNAuthSession = JarvisSession
 
 struct OPNSubscriptionInfo: Equatable, Sendable {
     var membershipTier = "Free"
