@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -19,6 +19,9 @@
 		4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2725E7B4151D930B8EEC76B0 /* Cocoa.framework */; };
 		56330183F7065F54C2D88C7F /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */; };
 		57557463BAE573CB78603B2B /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F7F59E351286CF299470CD20 /* OpenGL.framework */; };
+		7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758B2FDCA4F900B177D8 /* Jarvis */; };
+		7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758E2FDCA4F900B177D8 /* Starfleet */; };
+		777875922FDCA4F900B177D8 /* NesAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 777875912FDCA4F900B177D8 /* NesAuth */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
 		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
@@ -47,7 +50,6 @@
 		D0000000000000000000003C /* OPNGameCatalogLayoutSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */; };
 		D4D1FDD046EF74604BF789F3 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */; };
 		E00000000000000000000001 /* OPNAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000011 /* OPNAppDelegate.swift */; };
-		E000000000000000000000E0 /* OpenNOWAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E1 /* OpenNOWAppModel.swift */; };
 		E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */; };
 		E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */; };
 		E00000000000000000000004 /* OPNVideoSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000014 /* OPNVideoSurfaceView.swift */; };
@@ -96,6 +98,7 @@
 		E000000000000000000000C0 /* OPNLibWebRTCSessionSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C1 /* OPNLibWebRTCSessionSurface.swift */; };
 		E000000000000000000000C2 /* OPNSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C3 /* OPNSessionManager.swift */; };
 		E000000000000000000000C4 /* OPNLibWebRTCStreamSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C5 /* OPNLibWebRTCStreamSession.swift */; };
+		E000000000000000000000E0 /* OpenNOWAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E1 /* OpenNOWAppModel.swift */; };
 		E57A113BFF3CA1175BCB810D /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 71540FEB572BA7ADB70C4D69 /* WebRTC.framework */; };
 		E61312258EEB2041AA067B25 /* OPNGameCatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift */; };
 		E61312258EEB2041AA067B26 /* OPNGameCatalogModelSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift */; };
@@ -160,7 +163,6 @@
 		D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogLayoutSupport.swift; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.swift; sourceTree = "<group>"; };
 		D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
 		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
-		E000000000000000000000E1 /* OpenNOWAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWAppModel.swift; path = src/OpenNOWAppModel.swift; sourceTree = "<group>"; };
 		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
 		E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoEnhancementSettings.swift; path = src/streaming/OPNVideoEnhancementSettings.swift; sourceTree = "<group>"; };
 		E00000000000000000000014 /* OPNVideoSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoSurfaceView.swift; path = src/streaming/OPNVideoSurfaceView.swift; sourceTree = "<group>"; };
@@ -209,6 +211,7 @@
 		E000000000000000000000C1 /* OPNLibWebRTCSessionSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCSessionSurface.swift; path = src/streaming/OPNLibWebRTCSessionSurface.swift; sourceTree = "<group>"; };
 		E000000000000000000000C3 /* OPNSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionManager.swift; path = src/streaming/OPNSessionManager.swift; sourceTree = "<group>"; };
 		E000000000000000000000C5 /* OPNLibWebRTCStreamSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCStreamSession.swift; path = src/streaming/OPNLibWebRTCStreamSession.swift; sourceTree = "<group>"; };
+		E000000000000000000000E1 /* OpenNOWAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWAppModel.swift; path = src/OpenNOWAppModel.swift; sourceTree = "<group>"; };
 		EE996F149E2BE5CD1D7B96C5 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		F1CB59A202D1743D348CB6E2 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		F7F59E351286CF299470CD20 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
@@ -224,6 +227,9 @@
 				4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */,
 				7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */,
 				8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */,
+				7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */,
+				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
+				777875922FDCA4F900B177D8 /* NesAuth in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
 				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
@@ -452,6 +458,9 @@
 			name = OpenNOW;
 			packageProductDependencies = (
 				4C3E83E448564D2B9FBD3A13 /* Sentry */,
+				7778758B2FDCA4F900B177D8 /* Jarvis */,
+				7778758E2FDCA4F900B177D8 /* Starfleet */,
+				777875912FDCA4F900B177D8 /* NesAuth */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -483,6 +492,9 @@
 			mainGroup = F3C5A43586F71EF5B9F29AFA /* OpenNOW */;
 			packageReferences = (
 				4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "jarvis" */,
+				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */,
+				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
 			projectDirPath = "";
@@ -672,6 +684,7 @@
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/../Frameworks",
@@ -714,6 +727,7 @@
 				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/../Frameworks",
@@ -760,6 +774,21 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "jarvis" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = jarvis;
+		};
+		7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = starfleet;
+		};
+		777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = nesauth;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -776,6 +805,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
 			productName = Sentry;
+		};
+		7778758B2FDCA4F900B177D8 /* Jarvis */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "jarvis" */;
+			productName = Jarvis;
+		};
+		7778758E2FDCA4F900B177D8 /* Starfleet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */;
+			productName = Starfleet;
+		};
+		777875912FDCA4F900B177D8 /* NesAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */;
+			productName = NesAuth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
