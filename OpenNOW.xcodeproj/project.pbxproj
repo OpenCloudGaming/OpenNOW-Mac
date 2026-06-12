@@ -492,7 +492,7 @@
 			mainGroup = F3C5A43586F71EF5B9F29AFA /* OpenNOW */;
 			packageReferences = (
 				4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
-				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "jarvis" */,
+				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */,
 				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */,
 			);
@@ -775,9 +775,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "jarvis" */ = {
+		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = jarvis;
+			relativePath = Jarvis;
 		};
 		7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -808,7 +808,7 @@
 		};
 		7778758B2FDCA4F900B177D8 /* Jarvis */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "jarvis" */;
+			package = 7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */;
 			productName = Jarvis;
 		};
 		7778758E2FDCA4F900B177D8 /* Starfleet */ = {
