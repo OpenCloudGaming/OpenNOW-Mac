@@ -2,6 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 @objc(OPNSessionReportView)
+@MainActor
 final class OPNSessionReportView: NSView {
     @objc var onDone: (() -> Void)?
 

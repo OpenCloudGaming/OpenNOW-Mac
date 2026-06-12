@@ -19,6 +19,7 @@ private final class OPNStreamSendableValue<T>: @unchecked Sendable {
 
 @objc(OPNStreamViewController)
 @objcMembers
+@MainActor
 final class OPNStreamViewController: NSViewController {
     var onStreamEnd: ((Bool, String, OPNSessionReportPayload) -> Void)?
     var onDashboardToggleRequested: (() -> Void)?

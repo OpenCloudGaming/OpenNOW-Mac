@@ -40,6 +40,7 @@ private func styleOverlayButton(_ button: NSButton, background: NSColor, textCol
 typealias OverlayAction = @convention(block) () -> Void
 
 @objc(OPNQuitGameOverlayView)
+@MainActor
 final class OPNQuitGameOverlayView: NSView {
     @objc var onCancel: OverlayAction?
     @objc var onQuit: OverlayAction?
@@ -160,6 +161,7 @@ final class OPNQuitGameOverlayView: NSView {
 }
 
 @objc(OPNShortcutLegendView)
+@MainActor
 final class OPNShortcutLegendView: NSView {
     private let titleLabel = overlayLabel(
         "Shortcuts",
@@ -213,6 +215,7 @@ final class OPNShortcutLegendView: NSView {
 }
 
 @objc(OPNStatsOverlayView)
+@MainActor
 final class OPNStatsOverlayView: NSView {
     private static let minWidth: CGFloat = 320
     private static let horizontalPadding: CGFloat = 8

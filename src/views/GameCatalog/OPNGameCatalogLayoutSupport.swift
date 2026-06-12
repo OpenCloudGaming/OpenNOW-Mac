@@ -35,11 +35,13 @@ final class OPNStoreControllerHintStyle: NSObject {
 }
 
 @objc(OPNStoreDocumentView)
+@MainActor
 final class OPNStoreDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
 @objc(OPNStoreRailScrollView)
+@MainActor
 final class OPNStoreRailScrollView: NSScrollView {
     private var dragScrolling = false
     private var lastDragLocation = NSPoint.zero
@@ -157,6 +159,7 @@ final class OPNStoreRailScrollView: NSScrollView {
 }
 
 @objc(OPNStoreHintFixedView)
+@MainActor
 final class OPNStoreHintFixedView: NSView {
     @objc var fixedSize = NSSize.zero
     override var intrinsicContentSize: NSSize { fixedSize }
@@ -241,6 +244,7 @@ private final class OPNStoreControllerGlyphView: NSView {
 }
 
 @objc(OPNStoreHintPillView)
+@MainActor
 final class OPNStoreHintPillView: NSView {
     override var isFlipped: Bool { true }
 
@@ -250,6 +254,7 @@ final class OPNStoreHintPillView: NSView {
 }
 
 @objc(OPNGameCatalogLayoutSupport)
+@MainActor
 final class OPNGameCatalogLayoutSupport: NSObject {
     @objc static let storeTopInset: CGFloat = 0.0
     @objc static let storeNavigationClearance: CGFloat = 0.0

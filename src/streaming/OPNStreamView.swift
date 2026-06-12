@@ -34,6 +34,7 @@ private struct OPNPadSnapshot { var known = false; var state = OPNStreamGamepadS
 
 @objcMembers
 @objc(OPNStreamView)
+@MainActor
 final class OPNStreamView: NSView {
     private static let mouseLeft: UInt8 = 1
     private static let mouseMiddle: UInt8 = 2

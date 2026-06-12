@@ -1,6 +1,7 @@
 import AppKit
 
 @objc(OPNGameCardView)
+@MainActor
 final class OPNGameCardView: NSView {
     @objc var selectedVariantIndex: Int32 = -1
     @objc var imageRevealDelay: TimeInterval = 0.0

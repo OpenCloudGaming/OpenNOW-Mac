@@ -9,6 +9,7 @@ enum OPNViewColor {
     static let linkBlue: UInt32 = 0x0A84FF
 }
 
+@MainActor
 func opnColor(_ rgb: UInt32, _ alpha: CGFloat = 1.0) -> NSColor {
     let red = CGFloat((rgb >> 16) & 0xFF) / 255.0
     let green = CGFloat((rgb >> 8) & 0xFF) / 255.0

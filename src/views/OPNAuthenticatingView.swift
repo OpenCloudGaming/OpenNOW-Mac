@@ -1,6 +1,7 @@
 import AppKit
 
 @objc(OPNAuthenticatingView)
+@MainActor
 final class OPNAuthenticatingView: NSView {
     @objc var statusLabel: NSTextField?
 

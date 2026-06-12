@@ -1,6 +1,7 @@
 import AppKit
 
 @objc(OPNErrorView)
+@MainActor
 final class OPNErrorView: NSView {
     @objc var onRetry: (() -> Void)?
     @objc var onBackToEmail: (() -> Void)?

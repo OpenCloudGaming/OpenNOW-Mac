@@ -41,6 +41,7 @@ private final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
 }
 
 @objc(OPNMetalVideoView)
+@MainActor
 final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private let metalView: MTKView
     nonisolated(unsafe) private var videoFrame: RTCVideoFrame?

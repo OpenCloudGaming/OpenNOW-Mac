@@ -188,6 +188,7 @@ final class OPNGameCatalogArtworkSupport: NSObject {
         return bounds
     }
 
+    @MainActor
     static func heroLogoFrame(for image: NSImage?, bounds: NSRect, artworkImage: NSImage?) -> NSRect {
         let artworkRect = heroVisibleArtworkRect(for: artworkImage, bounds: bounds)
         let horizontalInset = min(OPNGameCatalogLayoutSupport.heroContentInset(forWidth: bounds.width), max(24, artworkRect.width * 0.08))
@@ -208,6 +209,7 @@ final class OPNGameCatalogArtworkSupport: NSObject {
         return NSRect(x: artworkRect.minX + horizontalInset, y: artworkRect.minY + floor((artworkRect.height - height) * 0.5), width: width, height: height)
     }
 
+    @MainActor
     static func heroLogoFallbackFrame(_ bounds: NSRect, artworkImage: NSImage?) -> NSRect {
         let artworkRect = heroVisibleArtworkRect(for: artworkImage, bounds: bounds)
         let horizontalInset = min(OPNGameCatalogLayoutSupport.heroContentInset(forWidth: bounds.width), max(24, artworkRect.width * 0.08))

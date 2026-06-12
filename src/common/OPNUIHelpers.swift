@@ -81,6 +81,7 @@ final class OpnImageLoadToken: NSObject {
 extension OpnImageLoadToken: @unchecked Sendable {}
 
 @objc(OPNHeroArtworkView)
+@MainActor
 final class OPNHeroArtworkView: NSView {
     @objc var image: NSImage? {
         didSet { updateImageLayer() }

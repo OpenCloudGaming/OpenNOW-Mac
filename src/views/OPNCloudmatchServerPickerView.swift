@@ -132,6 +132,7 @@ private final class OPNCloudmatchServerRowView: NSControl {
 }
 
 @objc(OPNCloudmatchServerPickerView)
+@MainActor
 final class OPNCloudmatchServerPickerView: NSView {
     @objc var onConfirm: ((OPNCloudmatchServerOption) -> Void)?
     @objc var onCancel: (() -> Void)?

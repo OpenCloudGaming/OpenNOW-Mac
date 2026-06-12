@@ -1,6 +1,7 @@
 import AppKit
 
 @objc(OPNEmailEntryView)
+@MainActor
 final class OPNEmailEntryView: NSView {
     @objc var onSignInWithBrowser: (() -> Void)?
     @objc var stayLoggedInToggle = NSButton(frame: .zero)

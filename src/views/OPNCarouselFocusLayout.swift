@@ -6,6 +6,7 @@ private func opnSmoothstep(_ value: CGFloat) -> CGFloat {
 }
 
 @objc(OPNCarouselFocusLayout)
+@MainActor
 final class OPNCarouselFocusLayout: NSCollectionViewLayout {
     @objc var itemSize = NSSize(width: 164.0, height: 164.0)
     @objc var itemSpacing: CGFloat = 26.0

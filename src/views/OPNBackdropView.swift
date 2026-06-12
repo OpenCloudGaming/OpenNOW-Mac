@@ -1,6 +1,7 @@
 import AppKit
 
 @objc(OPNBackdropView)
+@MainActor
 final class OPNBackdropView: NSView {
     @objc var mode: Int = 0 {
         didSet {

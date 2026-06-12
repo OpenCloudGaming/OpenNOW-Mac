@@ -136,6 +136,7 @@ private func settingsAudioDevicesChanged(
 }
 
 @objc(OPNSettingsView)
+@MainActor
 final class OPNSettingsView: NSView {
     @objc var onBackRequested: (() -> Void)?
     @objc var onCheckForUpdatesRequested: (() -> Void)?

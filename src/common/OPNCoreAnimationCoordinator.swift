@@ -3,9 +3,10 @@ import MetalKit
 import QuartzCore
 
 @objc(OPNCoreAnimationCoordinator)
+@MainActor
 final class OPNCoreAnimationCoordinator: NSObject {
     @objc(sharedCoordinator)
-    nonisolated(unsafe) static let sharedCoordinator = OPNCoreAnimationCoordinator()
+    static let sharedCoordinator = OPNCoreAnimationCoordinator()
 
     @objc(appleQuinticTimingFunction)
     static func appleQuinticTimingFunction() -> CAMediaTimingFunction {
@@ -79,7 +80,6 @@ final class OPNCoreAnimationCoordinator: NSObject {
         CATransaction.commit()
     }
 
-    @MainActor
     @objc(animateCardLayer:metadataContainer:backgroundLayer:expanded:accentColor:)
     func animateCardLayer(
         _ cardLayer: CALayer?,
@@ -126,7 +126,6 @@ final class OPNCoreAnimationCoordinator: NSObject {
         CATransaction.commit()
     }
 
-    @MainActor
     @objc(springScrollClipView:toX:velocity:)
     func springScrollClipView(_ clipView: NSClipView?, toX targetX: CGFloat, velocity: CGFloat) {
         guard let clipView else { return }
@@ -159,7 +158,6 @@ final class OPNCoreAnimationCoordinator: NSObject {
         clipView.enclosingScrollView?.reflectScrolledClipView(clipView)
     }
 
-    @MainActor
     @objc(configureMetalViewForProMotion:)
     func configureMetalViewForProMotion(_ metalView: MTKView?) {
         guard let metalView else { return }

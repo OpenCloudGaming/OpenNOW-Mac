@@ -3,6 +3,7 @@ import QuartzCore
 
 @objc(OPNStoreGameTile)
 @objcMembers
+@MainActor
 final class OPNStoreGameTile: NSView {
     let gameObject: OPNCatalogGameObject
     let prominent: Bool
@@ -598,6 +599,7 @@ final class OPNStoreGameTile: NSView {
 
 @objc(OPNStoreRowLayout)
 @objcMembers
+@MainActor
 final class OPNStoreRowLayout: NSObject {
     var glowView: NSView?
     var indexLabel: NSTextField?

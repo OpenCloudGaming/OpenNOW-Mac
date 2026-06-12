@@ -2,6 +2,7 @@ import AVKit
 import QuartzCore
 
 @objc(OPNLoadingView)
+@MainActor
 final class OPNLoadingView: NSView {
     @objc var message: String {
         didSet {

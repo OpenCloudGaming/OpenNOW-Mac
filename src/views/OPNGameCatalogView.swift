@@ -3,6 +3,7 @@ import GameController
 
 @objcMembers
 @objc(OPNGameCatalogView)
+@MainActor
 final class OPNGameCatalogView: NSView {
     var onSelectGame: ((OPNCatalogGameObject, Int32) -> Void)?
     var onBuyGame: ((OPNCatalogGameObject, Int32, String) -> Void)?

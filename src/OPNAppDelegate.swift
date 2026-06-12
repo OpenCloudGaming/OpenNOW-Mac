@@ -1,6 +1,7 @@
 import Cocoa
 
 @objc(OPNAppDelegateWrapper)
+@MainActor
 final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private let legacyDelegate: NSApplicationDelegate?
 
