@@ -476,39 +476,46 @@ struct OPNGameCatalogSwiftUIView: View {
     let onMarkUnowned: (OPNGameCatalogItemModel) -> Void
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Color.clear
-            ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        catalogSearch
-                            .padding(.top, 38)
-                            .padding(.bottom, 28)
-                        if model.isLoading {
-                            loadingState
-                        } else if !model.errorMessage.isEmpty {
-                            errorState
-                        } else {
-                            if let heroGame = model.heroGame {
-                                heroView(heroGame)
-                                    .padding(.bottom, 52)
-                            }
-                            if model.sections.isEmpty {
-                                emptyState
+        GeometryReader { viewport in
+            ZStack {
+                Color.clear
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            if model.isLoading {
+                                loadingState
+                                    .padding(.top, 88)
+                            } else if !model.errorMessage.isEmpty {
+                                errorState
+                                    .padding(.top, 88)
                             } else {
-                                catalogSections(proxy: proxy)
+                                if let heroGame = model.heroGame {
+                                    heroView(heroGame, viewportSize: viewport.size)
+                                        .padding(.bottom, OPNGameCatalogLayoutSupport.storeHeroFirstRowSpacing)
+                                } else {
+                                    Color.clear.frame(height: 88)
+                                }
+                                if model.sections.isEmpty {
+                                    emptyState
+                                } else {
+                                    catalogSections(proxy: proxy)
+                                }
                             }
                         }
+                        .padding(.bottom, 88)
                     }
-                    .padding(.bottom, 88)
+                    .onChange(of: model.focusedTileID) { _, tileID in
+                        guard let tileID else { return }
+                        withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(tileID, anchor: .center) }
+                    }
                 }
-                .onChange(of: model.focusedTileID) { _, tileID in
-                    guard let tileID else { return }
-                    withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(tileID, anchor: .center) }
-                }
+                catalogSearch
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, searchTopPadding(for: viewport.size))
+                controllerHints
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 18)
             }
-            controllerHints
-                .padding(.bottom, 18)
         }
     }
 
@@ -529,44 +536,31 @@ struct OPNGameCatalogSwiftUIView: View {
         .overlay(Capsule().stroke(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.34)), lineWidth: 1))
     }
 
-    private func heroView(_ item: OPNGameCatalogItemModel) -> some View {
+    private func heroView(_ item: OPNGameCatalogItemModel, viewportSize: CGSize) -> some View {
         Button { onSelect(item) } label: {
             GeometryReader { geometry in
-                ZStack(alignment: .bottomLeading) {
+                ZStack(alignment: .leading) {
                     OPNCatalogArtworkView(urlStrings: Self.heroImageCandidates(for: item.gameObject), contentMode: .fill)
-                        .overlay(LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.18), .black.opacity(0.82)], startPoint: .top, endPoint: .bottom))
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(primaryGenre(item.gameObject).uppercased())
-                            .font(.system(size: 12, weight: .black))
-                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 1)))
-                        Text(item.gameObject.title.isEmpty ? "Untitled" : item.gameObject.title)
-                            .font(.system(size: max(34, min(58, geometry.size.width * 0.052)), weight: .black))
-                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
-                            .lineLimit(2)
-                            .shadow(color: .black.opacity(0.72), radius: 18, y: 2)
-                        Text(featureSummary(item.gameObject))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textSecondary, alpha: 1)))
-                            .lineLimit(1)
-                        Text(primaryActionTitle(item))
-                            .font(.system(size: 14, weight: .black))
-                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.accentOn, alpha: 1)))
-                            .frame(width: 126, height: 44)
-                            .background(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.96)), in: Capsule())
-                            .padding(.top, 8)
-                    }
-                    .padding(.leading, max(30, geometry.size.width * 0.055))
-                    .padding(.bottom, 48)
+                        .overlay(LinearGradient(colors: [.black.opacity(0.10), .black.opacity(0.08), .black.opacity(0.54)], startPoint: .top, endPoint: .bottom))
+                        .overlay(LinearGradient(colors: [.black.opacity(0.42), .black.opacity(0.10), .clear], startPoint: .leading, endPoint: .trailing))
+                    heroIdentity(item)
+                        .frame(width: min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxWidth, max(160, geometry.size.width - heroHorizontalInset(for: geometry.size.width) * 2)), height: min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxHeight, max(56, geometry.size.height * 0.44)), alignment: .leading)
+                        .padding(.leading, heroHorizontalInset(for: geometry.size.width))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     Rectangle()
                         .fill(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.88)))
                         .frame(width: 5)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
             }
-            .frame(height: min(620, max(320, NSScreen.main?.visibleFrame.height ?? 720) * 0.46))
+            .frame(height: OPNGameCatalogLayoutSupport.heroHeight(forWidth: viewportSize.width, viewportHeight: viewportSize.height))
             .clipShape(RoundedRectangle(cornerRadius: 0, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private func heroIdentity(_ item: OPNGameCatalogItemModel) -> some View {
+        OPNCatalogLogoView(urlStrings: Self.logoCandidates(for: item.gameObject), fallbackTitle: item.gameObject.title.isEmpty ? "Untitled" : item.gameObject.title)
     }
 
     private func catalogSections(proxy: ScrollViewProxy) -> some View {
@@ -683,8 +677,21 @@ struct OPNGameCatalogSwiftUIView: View {
 
     private var horizontalInset: CGFloat { 58 }
 
+    private func searchTopPadding(for viewportSize: CGSize) -> CGFloat {
+        let scale = viewportSize.height <= 760 ? 0.82 : (viewportSize.height < 900 ? 0.92 : 1.0)
+        return floor((140 * scale - 44 * scale) * 0.5)
+    }
+
+    private func heroHorizontalInset(for width: CGFloat) -> CGFloat {
+        min(OPNGameCatalogLayoutSupport.heroContentInset(forWidth: width), max(24, width * 0.08))
+    }
+
     private static func heroImageCandidates(for game: OPNCatalogGameObject) -> [String] {
         imageCandidates(for: game, preferredTypes: ["MARQUEE_HERO_IMAGE", "HERO_IMAGE", "TV_BANNER", "FEATURE_IMAGE", "KEY_ART", "KEY_IMAGE", "GAME_BOX_ART"], includeScreenshots: true)
+    }
+
+    private static func logoCandidates(for game: OPNCatalogGameObject) -> [String] {
+        imageCandidates(for: game, preferredTypes: ["GAME_LOGO", "LOGO", "TITLE_LOGO"], includeScreenshots: false)
     }
 }
 
@@ -795,6 +802,40 @@ private struct OPNCatalogArtworkView: View {
         Image(nsImage: OPNGameCatalogArtworkSupport.fallbackArtworkImage())
             .resizable()
             .aspectRatio(contentMode: contentMode)
+    }
+}
+
+private struct OPNCatalogLogoView: View {
+    let urlStrings: [String]
+    let fallbackTitle: String
+
+    var body: some View {
+        if let urlString = urlStrings.first, let url = URL(string: urlString) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                        .shadow(color: .black.opacity(0.90), radius: 18, y: 2)
+                default:
+                    fallback
+                }
+            }
+        } else {
+            fallback
+        }
+    }
+
+    private var fallback: some View {
+        Text(fallbackTitle)
+            .font(.system(size: 42, weight: .black))
+            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .shadow(color: .black.opacity(0.82), radius: 18, y: 2)
     }
 }
 
