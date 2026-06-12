@@ -24,8 +24,16 @@ final class OPNAuthService: @unchecked Sendable {
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
+    private let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
 
-    private init() {}
+    private init() {
+        self.jarvisAuthService = JarvisAuthService(
+            configuration: Self.jarvisConfiguration,
+            retryPolicy: .gfnPC,
+            transport: JarvisURLSessionTransport(),
+            telemetry: OPNJarvisSentryTelemetry.shared
+        )
+    }
 
     func startOAuthLogin(completion: @escaping OPNAuthCallback) {
         startOAuthLogin(providerIdpId: Self.defaultIdpId, completion: completion)
@@ -45,38 +53,40 @@ final class OPNAuthService: @unchecked Sendable {
         let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
         telemetry.recordBreadcrumb("Jarvis OAuth login starting", attributes: ["provider_idp_id": selectedProviderIdpId])
 
-        guard let authURL = JarvisOAuthRequestFactory.authorizationURL(
-            configuration: Self.jarvisConfiguration,
-            deviceId: deviceId,
-            redirectURI: redirectUri,
-            locale: locale,
-            oauthState: pkce,
-            providerIdpId: selectedProviderIdpId
-        ) else {
-            telemetry.recordError(ServiceError("Invalid OAuth authorize URL"), operation: .getLoginToken, attributes: ["phase": "authorization_url"])
-            DispatchQueue.main.async { completion(false, OPNAuthSession(), "Invalid OAuth authorize URL") }
-            return
-        }
-
-        startOAuthCallbackListener(port: port, expectedState: pkce.state) { [weak self] result in
+        Task { [weak self] in
             guard let self else { return }
-            switch result {
-            case .success(let code):
-                self.doOAuthTokenExchange(
-                    authCode: code,
-                    codeVerifier: pkce.codeVerifier,
-                    redirectUri: redirectUri,
-                    providerIdpId: selectedProviderIdpId,
-                    completion: completion
+            do {
+                let loginRequest = try await self.jarvisAuthService.createOAuthLoginRequest(
+                    deviceId: deviceId,
+                    redirectURI: redirectUri,
+                    locale: locale,
+                    oauthState: pkce,
+                    providerIdpId: selectedProviderIdpId
                 )
-            case .failure(let error):
-                self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
+                self.startOAuthCallbackListener(port: port, expectedState: pkce.state) { [weak self] result in
+                    guard let self else { return }
+                    switch result {
+                    case .success(let code):
+                        self.doOAuthTokenExchange(
+                            authCode: code,
+                            codeVerifier: pkce.codeVerifier,
+                            redirectUri: redirectUri,
+                            providerIdpId: selectedProviderIdpId,
+                            completion: completion
+                        )
+                    case .failure(let error):
+                        self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "callback"])
+                        DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
+                    }
+                } readyHandler: {
+                    DispatchQueue.main.async {
+                        self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
+                        NSWorkspace.shared.open(loginRequest.url)
+                    }
+                }
+            } catch {
+                self.telemetry.recordError(error, operation: .getLoginToken, attributes: ["phase": "authorization_url"])
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
-            }
-        } readyHandler: {
-            DispatchQueue.main.async {
-                self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
-                NSWorkspace.shared.open(authURL)
             }
         }
     }
@@ -88,90 +98,40 @@ final class OPNAuthService: @unchecked Sendable {
             return
         }
 
-        if !forceRefresh && session.isAccessTokenValid {
-            if shouldRefreshClientToken(session) {
-                completeRefreshWithSession(session, completion: completion)
-            } else {
-                completion(true, session, "")
-            }
-            return
-        }
-
-        let savedSession = session
-        let refreshWithOAuthToken: @Sendable () -> Void = { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
-            if savedSession.refreshToken.isEmpty {
-                if savedSession.isAccessTokenValid {
-                    self.completeRefreshWithSession(savedSession, completion: completion)
-                } else {
-                    completion(false, savedSession, "No refresh mechanism available")
-                }
-                return
-            }
-
-            let body = JarvisOAuthRequestFactory.refreshTokenBody(refreshToken: savedSession.refreshToken, configuration: Self.jarvisConfiguration)
-            self.performTokenRequest(body: body) { result in
-                switch result {
-                case .success(let json):
-                    let refreshed = self.mergeRefreshedSession(saved: savedSession, refreshed: Self.parseOAuthSession(json: json))
-                    self.completeRefreshWithSession(refreshed, completion: completion)
-                case .failure(let error):
-                    completion(false, savedSession, error.localizedDescription)
-                }
-            }
-        }
-
-        guard !session.clientToken.isEmpty else {
-            refreshWithOAuthToken()
-            return
-        }
-
-        let body = JarvisOAuthRequestFactory.clientTokenGrantBody(clientToken: session.clientToken, userId: session.userId, configuration: Self.jarvisConfiguration)
-        performTokenRequest(body: body) { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success(let json):
-                let refreshed = self.mergeRefreshedSession(saved: savedSession, refreshed: Self.parseOAuthSession(json: json))
-                self.completeRefreshWithSession(refreshed, completion: completion)
-            case .failure:
-                refreshWithOAuthToken()
+            await self.jarvisAuthService.setSession(session)
+            do {
+                let refreshed = try await self.jarvisAuthService.refreshSession(force: forceRefresh)
+                self.saveSession(refreshed)
+                DispatchQueue.main.async { completion(true, refreshed, "") }
+            } catch {
+                DispatchQueue.main.async { completion(false, session, error.localizedDescription) }
             }
         }
     }
 
     func fetchStarFleetUserInfo(accessToken: String, completion: @escaping @Sendable (Bool, NSDictionary?, String) -> Void) {
-        guard let request = JarvisOAuthRequestFactory.userInfoRequest(accessToken: accessToken, configuration: Self.jarvisConfiguration) else {
-            telemetry.recordError(ServiceError("Invalid userinfo URL"), operation: .getUserInfo, attributes: [:])
-            completion(false, nil, "Invalid userinfo URL")
-            return
-        }
-        performJSONRequest(request, operation: .getUserInfo) { result in
-            switch result {
-            case .success(let json): completion(true, json, "")
-            case .failure(let error): completion(false, nil, error.localizedDescription)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let userInfo = try await self.jarvisAuthService.fetchUserInfo(accessToken: accessToken)
+                let dictionary = self.dictionary(from: userInfo)
+                DispatchQueue.main.async { completion(true, dictionary, "") }
+            } catch {
+                DispatchQueue.main.async { completion(false, nil, error.localizedDescription) }
             }
         }
     }
 
     func fetchClientToken(accessToken: String, completion: @escaping @Sendable (Bool, String, String) -> Void) {
-        guard let request = JarvisOAuthRequestFactory.clientTokenRequest(accessToken: accessToken, configuration: Self.jarvisConfiguration) else {
-            telemetry.recordError(ServiceError("Invalid client token URL"), operation: .getSessionToken, attributes: [:])
-            completion(false, "", "Invalid client token URL")
-            return
-        }
-        performJSONRequest(request, operation: .getSessionToken) { result in
-            switch result {
-            case .success(let json):
-                let clientToken = json["client_token"] as? String ?? ""
-                let expiresIn = (json["expires_in"] as? NSNumber)?.stringValue ?? (json["expires_in"] as? String ?? "")
-                if clientToken.isEmpty {
-                    self.telemetry.recordError(ServiceError("No client_token in response"), operation: .getSessionToken, attributes: [:])
-                    completion(false, "", "No client_token in response")
-                } else {
-                    completion(true, clientToken, expiresIn)
-                }
-            case .failure(let error):
-                completion(false, "", error.localizedDescription)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await self.jarvisAuthService.fetchClientToken(accessToken: accessToken)
+                DispatchQueue.main.async { completion(true, result.clientToken, result.expiresIn) }
+            } catch {
+                DispatchQueue.main.async { completion(false, "", error.localizedDescription) }
             }
         }
     }
@@ -370,22 +330,32 @@ final class OPNAuthService: @unchecked Sendable {
         providerIdpId: String,
         completion: @escaping OPNAuthCallback
     ) {
-        let body = JarvisOAuthRequestFactory.authorizationCodeTokenBody(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier)
-        performTokenRequest(body: body) { [weak self] result in
+        Task { [weak self] in
             guard let self else { return }
-            switch result {
-            case .success(let json):
-                var session = Self.parseOAuthSession(json: json)
-                if !providerIdpId.isEmpty { session.idpId = providerIdpId }
-                self.ensureClientToken(session) { enriched in
-                    var enrichedSession = enriched
-                    if !providerIdpId.isEmpty { enrichedSession.idpId = providerIdpId }
-                    DispatchQueue.main.async { completion(true, enrichedSession, "") }
-                }
-            case .failure(let error):
+            do {
+                let session = try await self.jarvisAuthService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId)
+                DispatchQueue.main.async { completion(true, session, "") }
+            } catch {
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
+    }
+
+    private func dictionary(from userInfo: JarvisUserInfo) -> NSDictionary {
+        let dictionary = NSMutableDictionary()
+        put(userInfo.userId, key: "sub", into: dictionary)
+        put(userInfo.userId, key: "userId", into: dictionary)
+        put(userInfo.externalId, key: "external_id", into: dictionary)
+        put(userInfo.externalId, key: "externalId", into: dictionary)
+        put(userInfo.idpId, key: "idp_id", into: dictionary)
+        put(userInfo.idpId, key: "idpId", into: dictionary)
+        put(userInfo.idpName, key: "idp_name", into: dictionary)
+        put(userInfo.preferredUsername, key: "preferred_username", into: dictionary)
+        put(userInfo.displayName, key: "name", into: dictionary)
+        put(userInfo.displayName, key: "displayName", into: dictionary)
+        put(userInfo.email, key: "email", into: dictionary)
+        if !userInfo.consent.isEmpty { dictionary["consent"] = userInfo.consent }
+        return dictionary
     }
 
     private func completeRefreshWithSession(_ session: OPNAuthSession, completion: @escaping OPNAuthCallback) {
