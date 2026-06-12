@@ -3,6 +3,7 @@ import CryptoKit
 import Darwin
 import Foundation
 import Jarvis
+import Starfleet
 
 typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
@@ -25,10 +26,11 @@ final class OPNAuthService: @unchecked Sendable {
     nonisolated(unsafe) private static var cachedUUID = ""
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
     private let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
+    private let starfleetService: StarfleetService<StarfleetURLSessionTransport>
     private let statusObservationTask: Task<Void, Never>
 
     private init() {
-        let service = JarvisAuthService(
+        let jarvisService = JarvisAuthService(
             configuration: Self.jarvisConfiguration,
             retryPolicy: .gfnPC,
             transport: JarvisURLSessionTransport(),
@@ -36,9 +38,16 @@ final class OPNAuthService: @unchecked Sendable {
             sessionStore: OPNJarvisSessionStore.shared,
             persistenceMode: .manual
         )
-        self.jarvisAuthService = service
-        self.statusObservationTask = Task { [service] in
-            let stream = await service.monitorLoginStatus()
+        let starfleetService = StarfleetService(
+            configuration: .gfnPC,
+            refreshPolicy: .gfnPC,
+            retryPolicy: .gfnPC,
+            transport: StarfleetURLSessionTransport()
+        )
+        self.jarvisAuthService = jarvisService
+        self.starfleetService = starfleetService
+        self.statusObservationTask = Task { [jarvisService] in
+            let stream = await jarvisService.monitorLoginStatus()
             for await status in stream {
                 await MainActor.run {
                     NotificationCenter.default.post(
@@ -132,12 +141,14 @@ final class OPNAuthService: @unchecked Sendable {
 
         Task { [weak self] in
             guard let self else { return }
-            await self.jarvisAuthService.setSession(session)
+            await self.syncBackendSessions(session)
             do {
-                let refreshed = try await self.jarvisAuthService.refreshSession(force: forceRefresh)
+                let refreshed = Self.opnSession(from: try await self.starfleetService.refreshSession(force: forceRefresh))
+                await self.jarvisAuthService.setSession(refreshed)
                 self.saveSession(refreshed)
                 DispatchQueue.main.async { completion(true, refreshed, "") }
             } catch {
+                await self.handleStarfleetFailure(error)
                 DispatchQueue.main.async { completion(false, session, error.localizedDescription) }
             }
         }
@@ -151,10 +162,11 @@ final class OPNAuthService: @unchecked Sendable {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let userInfo = try await self.jarvisAuthService.fetchUserInfo(accessToken: accessToken)
+                let userInfo = try await self.starfleetService.fetchUserInfo(accessToken: accessToken)
                 let dictionary = self.dictionary(from: userInfo)
                 DispatchQueue.main.async { completion(true, dictionary, "") }
             } catch {
+                await self.handleStarfleetFailure(error)
                 DispatchQueue.main.async { completion(false, nil, error.localizedDescription) }
             }
         }
@@ -164,9 +176,10 @@ final class OPNAuthService: @unchecked Sendable {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await self.jarvisAuthService.fetchClientToken(accessToken: accessToken)
+                let result = try await self.starfleetService.fetchClientToken(accessToken: accessToken)
                 DispatchQueue.main.async { completion(true, result.clientToken, result.expiresIn) }
             } catch {
+                await self.handleStarfleetFailure(error)
                 DispatchQueue.main.async { completion(false, "", error.localizedDescription) }
             }
         }
@@ -179,7 +192,7 @@ final class OPNAuthService: @unchecked Sendable {
             return
         }
         let resolvedLocale = locale.isEmpty ? Locale.current.identifier.replacingOccurrences(of: "-", with: "_") : locale
-        guard let url = JarvisOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, configuration: Self.jarvisConfiguration) else {
+        guard let url = StarfleetOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, configuration: .gfnPC) else {
             clearSession()
             completion(false, "Invalid logout URL")
             return
@@ -225,7 +238,10 @@ final class OPNAuthService: @unchecked Sendable {
         guard session.isAuthenticated, !session.accessToken.isEmpty else { return }
         guard let identity = sessionIdentity(from: session), !identity.isEmpty else { return }
 
-        Task { [jarvisAuthService] in await jarvisAuthService.setSession(session) }
+        Task { [jarvisAuthService, starfleetService] in
+            await jarvisAuthService.setSession(session)
+            await starfleetService.setSession(Self.starfleetSession(from: session))
+        }
 
         let existing = loadAccountDictionaries(activeUserId: nil)
         var accounts = existing.filter { sessionIdentity(from: $0) != identity }
@@ -325,7 +341,10 @@ final class OPNAuthService: @unchecked Sendable {
         let defaults = Self.authUserDefaults()
         if let activeUserId = defaults.string(forKey: "OPN_ActiveUserId"), !activeUserId.isEmpty {
             removeSavedSession(userId: activeUserId)
-            Task { [jarvisAuthService] in await jarvisAuthService.clearSession() }
+            Task { [jarvisAuthService, starfleetService] in
+                await jarvisAuthService.clearSession()
+                await starfleetService.clearSession()
+            }
             return
         }
         [accountsFilePath(), sessionFilePath(), legacySessionFilePath()].forEach { path in
@@ -335,7 +354,10 @@ final class OPNAuthService: @unchecked Sendable {
         defaults.removeObject(forKey: "GFN_HasSavedSession")
         defaults.removeObject(forKey: "OPN_ActiveUserId")
         defaults.synchronize()
-        Task { [jarvisAuthService] in await jarvisAuthService.clearSession() }
+        Task { [jarvisAuthService, starfleetService] in
+            await jarvisAuthService.clearSession()
+            await starfleetService.clearSession()
+        }
     }
 
     func getStayLoggedIn() -> Bool {
@@ -352,7 +374,7 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     static func parseOAuthSession(json: NSDictionary) -> OPNAuthSession {
-        JarvisSessionParser.parseTokenResponse(json as? [String: Any] ?? [:], defaultIdpId: defaultIdpId)
+        opnSession(from: StarfleetSessionParser.parseTokenResponse(json as? [String: Any] ?? [:], defaultIdpId: defaultIdpId))
     }
 
     static func parseQueryString(_ query: String?) -> NSDictionary {
@@ -373,7 +395,8 @@ final class OPNAuthService: @unchecked Sendable {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let session = try await self.jarvisAuthService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId)
+                let session = Self.opnSession(from: try await self.starfleetService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId))
+                await self.jarvisAuthService.setSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)
                 DispatchQueue.main.async { completion(true, session, "") }
             } catch {
@@ -381,6 +404,16 @@ final class OPNAuthService: @unchecked Sendable {
                 DispatchQueue.main.async { completion(false, OPNAuthSession(), error.localizedDescription) }
             }
         }
+    }
+
+    private func syncBackendSessions(_ session: OPNAuthSession) async {
+        await jarvisAuthService.setSession(session)
+        await starfleetService.setSession(Self.starfleetSession(from: session))
+    }
+
+    private func handleStarfleetFailure(_ error: Error) async {
+        guard (error as? StarfleetAuthError)?.category == .authorization else { return }
+        _ = await jarvisAuthService.finishLogin(success: false)
     }
 
     private func dictionary(from userInfo: JarvisUserInfo) -> NSDictionary {
@@ -397,6 +430,21 @@ final class OPNAuthService: @unchecked Sendable {
         put(userInfo.displayName, key: "displayName", into: dictionary)
         put(userInfo.email, key: "email", into: dictionary)
         if !userInfo.consent.isEmpty { dictionary["consent"] = userInfo.consent }
+        return dictionary
+    }
+
+    private func dictionary(from userInfo: StarfleetUserInfo) -> NSDictionary {
+        let dictionary = NSMutableDictionary()
+        put(userInfo.userId, key: "sub", into: dictionary)
+        put(userInfo.userId, key: "userId", into: dictionary)
+        put(userInfo.externalId, key: "external_id", into: dictionary)
+        put(userInfo.externalId, key: "externalId", into: dictionary)
+        put(userInfo.idpId, key: "idp_id", into: dictionary)
+        put(userInfo.idpId, key: "idpId", into: dictionary)
+        put(userInfo.preferredUsername, key: "preferred_username", into: dictionary)
+        put(userInfo.displayName, key: "name", into: dictionary)
+        put(userInfo.displayName, key: "displayName", into: dictionary)
+        put(userInfo.email, key: "email", into: dictionary)
         return dictionary
     }
 
@@ -637,6 +685,47 @@ final class OPNAuthService: @unchecked Sendable {
         session.idTokenExpiry = JarvisSessionParser.int64Value(dictionary["id_token_expiry"]) ?? 0
         session.isAuthenticated = true
         return session
+    }
+
+    private static func opnSession(from session: StarfleetSession) -> OPNAuthSession {
+        var mapped = OPNAuthSession()
+        mapped.accessToken = session.accessToken
+        mapped.idToken = session.idToken
+        mapped.refreshToken = session.refreshToken
+        mapped.clientToken = session.clientToken
+        mapped.userId = session.userId
+        mapped.displayName = session.displayName
+        mapped.email = session.email
+        mapped.idpId = session.idpId
+        mapped.expiresAt = session.expiresAt
+        mapped.isAuthenticated = session.isAuthenticated
+        mapped.clientTokenExpiry = session.clientTokenExpiry
+        mapped.clientTokenExpiryLength = session.clientTokenExpiryLength
+        mapped.idTokenExpiry = session.idTokenExpiry
+        mapped.accessTokenExpiry = session.accessTokenExpiry
+        if !session.idToken.isEmpty {
+            mapped.membershipTier = StarfleetTokenParser.jwtClaims(session.idToken)["membership_tier"] as? String ?? "Free"
+        }
+        return mapped
+    }
+
+    private static func starfleetSession(from session: OPNAuthSession) -> StarfleetSession {
+        StarfleetSession(
+            accessToken: session.accessToken,
+            idToken: session.idToken,
+            refreshToken: session.refreshToken,
+            userId: session.userId,
+            displayName: session.displayName,
+            email: session.email,
+            idpId: session.idpId.isEmpty ? defaultIdpId : session.idpId,
+            expiresAt: session.expiresAt,
+            isAuthenticated: session.isAuthenticated,
+            clientToken: session.clientToken,
+            clientTokenExpiry: session.clientTokenExpiry,
+            clientTokenExpiryLength: session.clientTokenExpiryLength,
+            idTokenExpiry: session.idTokenExpiry,
+            accessTokenExpiry: session.accessTokenExpiry
+        )
     }
 
     private func put(_ value: String, key: String, into dictionary: NSMutableDictionary) {
