@@ -1,11 +1,15 @@
 import Cocoa
 
+import AppKit
+
 @objc(OPNAppDelegateWrapper)
 @MainActor
 final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private let legacyDelegate: NSApplicationDelegate?
 
     override init() {
+        OPNLogCapture.start()
+        OPNSentry.initializeSentry()
         let delegateClass = NSClassFromString("AppDelegate") as? NSObject.Type
         legacyDelegate = delegateClass?.init() as? NSApplicationDelegate
         super.init()
@@ -21,6 +25,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         legacyDelegate?.applicationWillTerminate?(notification)
+        OPNSentry.closeSentry()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

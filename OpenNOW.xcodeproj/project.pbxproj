@@ -47,6 +47,7 @@
 		D0000000000000000000003C /* OPNGameCatalogLayoutSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */; };
 		D4D1FDD046EF74604BF789F3 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */; };
 		E00000000000000000000001 /* OPNAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000011 /* OPNAppDelegate.swift */; };
+		E000000000000000000000E0 /* OpenNOWAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E1 /* OpenNOWAppModel.swift */; };
 		E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */; };
 		E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */; };
 		E00000000000000000000004 /* OPNVideoSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000014 /* OPNVideoSurfaceView.swift */; };
@@ -73,7 +74,7 @@
 		E00000000000000000000036 /* OPNAuthenticatingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000037 /* OPNAuthenticatingView.swift */; };
 		E00000000000000000000038 /* OPNCloudmatchServerPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */; };
 		E0000000000000000000003A /* OPNSessionReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003B /* OPNSessionReportView.swift */; };
-		E0000000000000000000003C /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003D /* main.swift */; };
+		E0000000000000000000003C /* OpenNOWApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003D /* OpenNOWApp.swift */; };
 		E0000000000000000000003E /* OPNHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003F /* OPNHTTP.swift */; };
 		E00000000000000000000042 /* OPNGitHubUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000043 /* OPNGitHubUpdater.swift */; };
 		E00000000000000000000059 /* OPNSentryTransactionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000005A /* OPNSentryTransactionBridge.swift */; };
@@ -159,6 +160,7 @@
 		D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogLayoutSupport.swift; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.swift; sourceTree = "<group>"; };
 		D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
 		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
+		E000000000000000000000E1 /* OpenNOWAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWAppModel.swift; path = src/OpenNOWAppModel.swift; sourceTree = "<group>"; };
 		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
 		E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoEnhancementSettings.swift; path = src/streaming/OPNVideoEnhancementSettings.swift; sourceTree = "<group>"; };
 		E00000000000000000000014 /* OPNVideoSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoSurfaceView.swift; path = src/streaming/OPNVideoSurfaceView.swift; sourceTree = "<group>"; };
@@ -185,7 +187,7 @@
 		E00000000000000000000037 /* OPNAuthenticatingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthenticatingView.swift; path = src/views/OPNAuthenticatingView.swift; sourceTree = "<group>"; };
 		E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCloudmatchServerPickerView.swift; path = src/views/OPNCloudmatchServerPickerView.swift; sourceTree = "<group>"; };
 		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
-		E0000000000000000000003D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = main.swift; path = src/main.swift; sourceTree = "<group>"; };
+		E0000000000000000000003D /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWApp.swift; path = src/OpenNOWApp.swift; sourceTree = "<group>"; };
 		E0000000000000000000003F /* OPNHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNHTTP.swift; path = src/common/OPNHTTP.swift; sourceTree = "<group>"; };
 		E00000000000000000000043 /* OPNGitHubUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGitHubUpdater.swift; path = src/common/OPNGitHubUpdater.swift; sourceTree = "<group>"; };
 		E0000000000000000000005A /* OPNSentryTransactionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentryTransactionBridge.swift; path = src/common/OPNSentryTransactionBridge.swift; sourceTree = "<group>"; };
@@ -246,6 +248,7 @@
 			isa = PBXGroup;
 			children = (
 				E00000000000000000000011 /* OPNAppDelegate.swift */,
+				E000000000000000000000E1 /* OpenNOWAppModel.swift */,
 				C00000000000000000000050 /* AppDelegate */,
 				F515E1DCA81C9F38EDA5851E /* auth */,
 				258D3F331162A2E4DD8D0A15 /* common */,
@@ -253,7 +256,7 @@
 				10C7B3F3A6E6F504ED29F4C7 /* shaders */,
 				258FB9F9F30FA962CED75214 /* streaming */,
 				92DF8FC120985BDB402B5489 /* views */,
-				E0000000000000000000003D /* main.swift */,
+				E0000000000000000000003D /* OpenNOWApp.swift */,
 			);
 			name = src;
 			sourceTree = "<group>";
@@ -506,13 +509,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				E00000000000000000000001 /* OPNAppDelegate.swift in Sources */,
+				E000000000000000000000E0 /* OpenNOWAppModel.swift in Sources */,
 				C00000000000000000000030 /* OPNAppDelegateDesktop.swift in Sources */,
 				C00000000000000000000031 /* OPNAppDelegateStreaming.swift in Sources */,
 				C00000000000000000000032 /* OPNAppDelegateGameLaunch.swift in Sources */,
 				C00000000000000000000033 /* OPNAppDelegateNavigation.swift in Sources */,
 				C00000000000000000000034 /* OPNAppDelegateCatalog.swift in Sources */,
 				C00000000000000000000035 /* OPNAppDelegateSupport.swift in Sources */,
-				E0000000000000000000003C /* main.swift in Sources */,
+				E0000000000000000000003C /* OpenNOWApp.swift in Sources */,
 				E0000000000000000000000C /* OPNAuthService.swift in Sources */,
 				E00000000000000000000009 /* OPNModels.swift in Sources */,
 				E0000000000000000000000A /* OPNDeviceIdentity.swift in Sources */,
