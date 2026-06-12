@@ -13,12 +13,15 @@ public enum Jarvis: Sendable {
         .chainSession,
         .getDelegateToken,
         .getLoginToken,
+        .getPin,
         .getSessionToken,
         .getThirdPartyProviderInfo,
         .getUserInfo,
         .getUserToken,
         .redeemDelegateToken,
         .requestEmailVerify,
+        .setPin,
+        .verifyPin,
     ]
 }
 
@@ -154,6 +157,7 @@ public struct JarvisOAuthConfiguration: Equatable, Sendable {
     public let tokenURLString: String
     public let userInfoURLString: String
     public let clientTokenURLString: String
+    public let operationURLString: String
     public let logoutURLString: String
     public let clientId: String
     public let redirectURI: String
@@ -168,6 +172,7 @@ public struct JarvisOAuthConfiguration: Equatable, Sendable {
         tokenURLString: String = "https://login.nvidia.com/token",
         userInfoURLString: String = "https://login.nvidia.com/userinfo",
         clientTokenURLString: String = "https://login.nvidia.com/client_token",
+        operationURLString: String = "",
         logoutURLString: String = "https://login.nvidia.com/logout",
         clientId: String = "ZU7sPN-miLujMD95LfOQ453IB0AtjM8sMyvgJ9wCXEQ",
         redirectURI: String = "com.nvidia.geforcenow://oauth/callback",
@@ -181,6 +186,7 @@ public struct JarvisOAuthConfiguration: Equatable, Sendable {
         self.tokenURLString = tokenURLString
         self.userInfoURLString = userInfoURLString
         self.clientTokenURLString = clientTokenURLString
+        self.operationURLString = operationURLString
         self.logoutURLString = logoutURLString
         self.clientId = clientId
         self.redirectURI = redirectURI
@@ -266,6 +272,21 @@ public enum JarvisOAuthRequestFactory {
 
     public static func clientTokenRequest(accessToken: String, configuration: JarvisOAuthConfiguration = .gfnPC, timeoutInterval: TimeInterval = 10) -> URLRequest? {
         authenticatedGetRequest(urlString: configuration.clientTokenURLString, accessToken: accessToken, accept: "application/json, text/plain, */*", configuration: configuration, timeoutInterval: timeoutInterval)
+    }
+
+    public static func operationRequest(operation: Jarvis.Operation, accessToken: String, parameters: [String: String] = [:], configuration: JarvisOAuthConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        guard !configuration.operationURLString.isEmpty, let url = URL(string: configuration.operationURLString) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue(configuration.origin, forHTTPHeaderField: "Origin")
+        request.setValue(configuration.referer, forHTTPHeaderField: "Referer")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        let body: [String: Any] = ["operation": operation.rawValue, "parameters": parameters]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
     }
 
     public static func logoutURL(idToken: String, locale: String, configuration: JarvisOAuthConfiguration = .gfnPC) -> URL? {

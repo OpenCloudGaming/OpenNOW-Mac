@@ -127,6 +127,68 @@ public struct JarvisConsentBlock: Equatable, Sendable {
     }
 }
 
+public struct JarvisDelegateToken: Equatable, Sendable {
+    public var token: String
+    public var userId: String
+    public var expiresIn: String
+
+    public init(token: String = "", userId: String = "", expiresIn: String = "") {
+        self.token = token
+        self.userId = userId
+        self.expiresIn = expiresIn
+    }
+}
+
+public struct JarvisProviderInfo: Equatable, Sendable {
+    public var idpId: String
+    public var providerName: String
+    public var loginProvider: String
+    public var loginProviderCode: String
+    public var loginRequired: Bool
+    public var preferredProviders: [String]
+    public var isAffiliate: Bool
+
+    public init(idpId: String = "", providerName: String = "", loginProvider: String = "", loginProviderCode: String = "", loginRequired: Bool = false, preferredProviders: [String] = [], isAffiliate: Bool = false) {
+        self.idpId = idpId
+        self.providerName = providerName
+        self.loginProvider = loginProvider
+        self.loginProviderCode = loginProviderCode
+        self.loginRequired = loginRequired
+        self.preferredProviders = preferredProviders
+        self.isAffiliate = isAffiliate
+    }
+}
+
+public struct JarvisPinStatus: Equatable, Sendable {
+    public var isSet: Bool
+    public var isVerified: Bool
+    public var attemptsRemaining: Int
+    public var challengeId: String
+    public var message: String
+
+    public init(isSet: Bool = false, isVerified: Bool = false, attemptsRemaining: Int = 0, challengeId: String = "", message: String = "") {
+        self.isSet = isSet
+        self.isVerified = isVerified
+        self.attemptsRemaining = attemptsRemaining
+        self.challengeId = challengeId
+        self.message = message
+    }
+}
+
+public struct JarvisEmailVerificationStatus: Equatable, Sendable {
+    public var email: String
+    public var requested: Bool
+    public var status: String
+    public var message: String
+
+    public init(email: String = "", requested: Bool = false, status: String = "", message: String = "") {
+        self.email = email
+        self.requested = requested
+        self.status = status
+        self.message = message
+    }
+}
+
 public struct JarvisOAuthWindowParameters: Equatable, Sendable {
     public var width: Int
     public var height: Int
@@ -270,6 +332,7 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
     case invalidTokenURL
     case invalidUserInfoURL
     case invalidClientTokenURL
+    case invalidOperationURL
     case invalidCallbackRequest
     case oauthError(String)
     case stateMismatch
@@ -281,6 +344,7 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
     case invalidJSONResponse
     case missingClientToken
     case missingAccessToken
+    case missingDelegateToken
 
     public var errorDescription: String? {
         switch self {
@@ -288,6 +352,7 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
         case .invalidTokenURL: "Invalid token URL"
         case .invalidUserInfoURL: "Invalid userinfo URL"
         case .invalidClientTokenURL: "Invalid client token URL"
+        case .invalidOperationURL: "Invalid Jarvis operation URL"
         case .invalidCallbackRequest: "Invalid OAuth callback request"
         case .oauthError(let message): message
         case .stateMismatch: "State mismatch"
@@ -299,6 +364,7 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
         case .invalidJSONResponse: "Invalid JSON response"
         case .missingClientToken: "No client_token in response"
         case .missingAccessToken: "Missing access token"
+        case .missingDelegateToken: "No delegate token in response"
         }
     }
 }
@@ -485,6 +551,58 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         return (clientToken, expiresIn)
     }
 
+    public func chainSession(sessionId: String, accessToken: String? = nil) async throws -> JarvisSession {
+        let json = try await executeOperation(.chainSession, accessToken: accessToken, parameters: ["sessionId": sessionId])
+        let payload = nestedDictionary(json, keys: ["session", "data", "result"]) ?? json
+        let chained = merge(saved: session, refreshed: JarvisSessionParser.parseTokenResponse(payload, defaultIdpId: configuration.defaultIdpId))
+        session = chained
+        status = chained.isAuthenticated ? .loggedIn : .notLoggedIn
+        return chained
+    }
+
+    public func getDelegateToken(userId: String = "", accessToken: String? = nil) async throws -> JarvisDelegateToken {
+        let parameters = userId.isEmpty ? [:] : ["userId": userId]
+        let json = try await executeOperation(.getDelegateToken, accessToken: accessToken, parameters: parameters)
+        let delegate = parseDelegateToken(json)
+        guard !delegate.token.isEmpty else { throw JarvisAuthError.missingDelegateToken }
+        return delegate
+    }
+
+    public func redeemDelegateToken(_ delegateToken: String, accessToken: String? = nil) async throws -> JarvisUserInfo {
+        let json = try await executeOperation(.redeemDelegateToken, accessToken: accessToken, parameters: ["delegateToken": delegateToken])
+        let payload = nestedDictionary(json, keys: ["user", "userInfo", "data", "result"]) ?? json
+        let user = parseUserInfo(payload, isNetworkCall: true)
+        cachedUser = user
+        return user
+    }
+
+    public func getThirdPartyProviderInfo(idpId: String, accessToken: String? = nil) async throws -> JarvisProviderInfo {
+        let json = try await executeOperation(.getThirdPartyProviderInfo, accessToken: accessToken, parameters: ["idpId": idpId])
+        let payload = nestedDictionary(json, keys: ["provider", "providerInfo", "serviceEndpoint", "data", "result"]) ?? json
+        return parseProviderInfo(payload, fallbackIdpId: idpId)
+    }
+
+    public func requestEmailVerify(email: String, accessToken: String? = nil) async throws -> JarvisEmailVerificationStatus {
+        let json = try await executeOperation(.requestEmailVerify, accessToken: accessToken, parameters: ["email": email])
+        return parseEmailVerification(json, fallbackEmail: email)
+    }
+
+    public func getPin(userId: String = "", accessToken: String? = nil) async throws -> JarvisPinStatus {
+        let parameters = userId.isEmpty ? [:] : ["userId": userId]
+        let json = try await executeOperation(.getPin, accessToken: accessToken, parameters: parameters)
+        return parsePinStatus(json)
+    }
+
+    public func setPin(_ pin: String, accessToken: String? = nil) async throws -> JarvisPinStatus {
+        let json = try await executeOperation(.setPin, accessToken: accessToken, parameters: ["pin": pin])
+        return parsePinStatus(json)
+    }
+
+    public func verifyPin(_ pin: String, accessToken: String? = nil) async throws -> JarvisPinStatus {
+        let json = try await executeOperation(.verifyPin, accessToken: accessToken, parameters: ["pin": pin])
+        return parsePinStatus(json)
+    }
+
     public func createSessionFromIdToken(_ idToken: String, validForSeconds: Int64 = 172_800) -> JarvisSession {
         let claims = JarvisSessionParser.jwtClaims(idToken)
         let nowMs = JarvisSession.currentEpochMs()
@@ -566,6 +684,31 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
         return JarvisSessionParser.parseTokenResponse(json, defaultIdpId: configuration.defaultIdpId)
     }
 
+    private func executeOperation(_ operation: Jarvis.Operation, accessToken explicitAccessToken: String?, parameters: [String: String]) async throws -> [String: Any] {
+        let span = telemetry.startSpan(name: operation.rawValue, operation: operation, attributes: parameters)
+        do {
+            let token = try await operationAccessToken(explicitAccessToken)
+            guard let request = JarvisOAuthRequestFactory.operationRequest(operation: operation, accessToken: token, parameters: parameters, configuration: configuration) else {
+                telemetry.recordError(JarvisAuthError.invalidOperationURL, operation: operation, attributes: [:])
+                throw JarvisAuthError.invalidOperationURL
+            }
+            let json = try await performJSONRequest(request, operation: operation)
+            telemetry.recordCounter(name: "jarvis.auth.operation.count", attributes: ["operation": operation.rawValue, "outcome": "success"])
+            span.finish(success: true)
+            return json
+        } catch {
+            telemetry.recordError(error, operation: operation, attributes: [:])
+            telemetry.recordCounter(name: "jarvis.auth.operation.count", attributes: ["operation": operation.rawValue, "outcome": "failure"])
+            span.finish(success: false)
+            throw error
+        }
+    }
+
+    private func operationAccessToken(_ explicitAccessToken: String?) async throws -> String {
+        if let explicitAccessToken, !explicitAccessToken.isEmpty { return explicitAccessToken }
+        return try await getAuthToken().token
+    }
+
     private func ensureClientToken(_ current: JarvisSession) async throws -> JarvisSession {
         guard current.isAuthenticated, current.isAccessTokenValid, shouldRefreshClientToken(current) else { return current }
         let result = try await fetchClientToken(accessToken: current.accessToken)
@@ -628,6 +771,84 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             isAuthenticated: !userId.isEmpty || !displayName.isEmpty,
             isNetworkCall: isNetworkCall
         )
+    }
+
+    private func parseDelegateToken(_ json: [String: Any]) -> JarvisDelegateToken {
+        let payload = nestedDictionary(json, keys: ["delegate", "data", "result"]) ?? json
+        return JarvisDelegateToken(
+            token: stringValue(payload["delegate_token"]) ?? stringValue(payload["delegateToken"]) ?? stringValue(payload["token"]) ?? "",
+            userId: stringValue(payload["user_id"]) ?? stringValue(payload["userId"]) ?? stringValue(payload["sub"]) ?? "",
+            expiresIn: stringValue(payload["expires_in"]) ?? stringValue(payload["expiresIn"]) ?? ""
+        )
+    }
+
+    private func parseProviderInfo(_ json: [String: Any], fallbackIdpId: String) -> JarvisProviderInfo {
+        JarvisProviderInfo(
+            idpId: stringValue(json["idp_id"]) ?? stringValue(json["idpId"]) ?? fallbackIdpId,
+            providerName: stringValue(json["provider_name"]) ?? stringValue(json["providerName"]) ?? stringValue(json["loginProvider"]) ?? "",
+            loginProvider: stringValue(json["loginProvider"]) ?? stringValue(json["login_provider"]) ?? "",
+            loginProviderCode: stringValue(json["loginProviderCode"]) ?? stringValue(json["login_provider_code"]) ?? "",
+            loginRequired: boolValue(json["loginRequired"]) ?? boolValue(json["login_required"]) ?? false,
+            preferredProviders: stringArrayValue(json["loginPreferredProviders"]) ?? stringArrayValue(json["preferredProviders"]) ?? [],
+            isAffiliate: boolValue(json["isAffiliate"]) ?? boolValue(json["affiliate"]) ?? false
+        )
+    }
+
+    private func parsePinStatus(_ json: [String: Any]) -> JarvisPinStatus {
+        let payload = nestedDictionary(json, keys: ["pin", "data", "result"]) ?? json
+        return JarvisPinStatus(
+            isSet: boolValue(payload["is_set"]) ?? boolValue(payload["isSet"]) ?? boolValue(payload["pinSet"]) ?? false,
+            isVerified: boolValue(payload["is_verified"]) ?? boolValue(payload["isVerified"]) ?? boolValue(payload["verified"]) ?? false,
+            attemptsRemaining: intValue(payload["attempts_remaining"]) ?? intValue(payload["attemptsRemaining"]) ?? 0,
+            challengeId: stringValue(payload["challenge_id"]) ?? stringValue(payload["challengeId"]) ?? "",
+            message: stringValue(payload["message"]) ?? stringValue(payload["error"]) ?? ""
+        )
+    }
+
+    private func parseEmailVerification(_ json: [String: Any], fallbackEmail: String) -> JarvisEmailVerificationStatus {
+        let payload = nestedDictionary(json, keys: ["emailVerification", "data", "result"]) ?? json
+        return JarvisEmailVerificationStatus(
+            email: stringValue(payload["email"]) ?? fallbackEmail,
+            requested: boolValue(payload["requested"]) ?? boolValue(payload["success"]) ?? true,
+            status: stringValue(payload["status"]) ?? "",
+            message: stringValue(payload["message"]) ?? ""
+        )
+    }
+
+    private func nestedDictionary(_ json: [String: Any], keys: [String]) -> [String: Any]? {
+        for key in keys {
+            if let dictionary = json[key] as? [String: Any] { return dictionary }
+        }
+        return nil
+    }
+
+    private func stringValue(_ value: Any?) -> String? {
+        if let string = value as? String { return string }
+        if let number = value as? NSNumber { return number.stringValue }
+        return nil
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int { return int }
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String { return Int(string) }
+        return nil
+    }
+
+    private func boolValue(_ value: Any?) -> Bool? {
+        if let bool = value as? Bool { return bool }
+        if let number = value as? NSNumber { return number.boolValue }
+        if let string = value as? String {
+            if string.caseInsensitiveCompare("true") == .orderedSame { return true }
+            if string.caseInsensitiveCompare("false") == .orderedSame { return false }
+        }
+        return nil
+    }
+
+    private func stringArrayValue(_ value: Any?) -> [String]? {
+        if let strings = value as? [String] { return strings }
+        if let string = value as? String { return string.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } }
+        return nil
     }
 }
 

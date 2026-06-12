@@ -14,10 +14,18 @@ private struct MockJarvisTransport: JarvisHTTPTransport {
     }
 }
 
+private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
+    let data = try #require(request.httpBody)
+    return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+}
+
 @Test func jarvisOperationNamesMatchVendorNames() {
     #expect(Jarvis.systemName == "Jarvis")
     #expect(Jarvis.Operation.getLoginToken.rawValue == "JARVIS_Get_Login_Token")
+    #expect(Jarvis.Operation.getPin.rawValue == "JARVIS_Get_Pin")
     #expect(Jarvis.Operation.getSessionToken.rawValue == "JARVIS_Get_Session_Token")
+    #expect(Jarvis.Operation.setPin.rawValue == "JARVIS_Set_Pin")
+    #expect(Jarvis.Operation.verifyPin.rawValue == "JARVIS_Verify_Pin")
     #expect(Jarvis.oauthLoggerName == "jarvis/o-auth")
 }
 
@@ -110,4 +118,111 @@ private struct MockJarvisTransport: JarvisHTTPTransport {
     #expect(JarvisOperationFactory.redeemDelegateToken(delegateToken: "delegate").parameters["delegateToken"] == "delegate")
     #expect(JarvisOperationFactory.verifyPin(pin: "1234").operation == .verifyPin)
     #expect(JarvisOperationFactory.requestEmailVerify(email: "user@example.com").parameters["email"] == "user@example.com")
+}
+
+@Test func jarvisOperationRequestBuildsVendorCommandEnvelope() throws {
+    let request = try #require(JarvisOAuthRequestFactory.operationRequest(
+        operation: .getDelegateToken,
+        accessToken: "access",
+        parameters: ["userId": "user"],
+        configuration: JarvisOAuthConfiguration(operationURLString: "https://login.nvidia.com/jarvis")
+    ))
+    let body = try jsonBody(request)
+    let parameters = try #require(body["parameters"] as? [String: String])
+    #expect(request.url?.absoluteString == "https://login.nvidia.com/jarvis")
+    #expect(request.httpMethod == "POST")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+    #expect(body["operation"] as? String == Jarvis.Operation.getDelegateToken.rawValue)
+    #expect(parameters["userId"] == "user")
+}
+
+@Test func jarvisAuthServiceExecutesDelegateProviderPinAndEmailOperations() async throws {
+    let configuration = JarvisOAuthConfiguration(operationURLString: "https://login.nvidia.com/jarvis")
+    let initial = JarvisSession(
+        accessToken: "access",
+        userId: "user",
+        idpId: "idp",
+        expiresAt: Int64(Date().timeIntervalSince1970) + 120,
+        isAuthenticated: true,
+        clientToken: "client",
+        clientTokenExpiry: JarvisSession.currentEpochMs() + 600_000,
+        clientTokenExpiryLength: 600_000,
+        accessTokenExpiry: JarvisSession.currentEpochMs() + 600_000
+    )
+    let service = JarvisAuthService(configuration: configuration, transport: MockJarvisTransport { request in
+        #expect(request.url?.absoluteString == "https://login.nvidia.com/jarvis")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+        let body = try jsonBody(request)
+        let operation = try #require(body["operation"] as? String)
+        switch operation {
+        case Jarvis.Operation.getDelegateToken.rawValue:
+            return ["delegate_token": "delegate", "user_id": "user", "expires_in": 60]
+        case Jarvis.Operation.redeemDelegateToken.rawValue:
+            return ["userInfo": ["sub": "user", "name": "GFN User", "email": "user@example.com", "idp_id": "idp"]]
+        case Jarvis.Operation.getThirdPartyProviderInfo.rawValue:
+            return ["serviceEndpoint": ["idpId": "idp", "loginProvider": "nvidia", "loginProviderCode": "NV", "loginRequired": true, "loginPreferredProviders": ["nvidia", "steam"], "isAffiliate": true]]
+        case Jarvis.Operation.requestEmailVerify.rawValue:
+            return ["emailVerification": ["email": "user@example.com", "requested": true, "status": "SENT"]]
+        case Jarvis.Operation.getPin.rawValue:
+            return ["pin": ["isSet": true, "isVerified": false, "attemptsRemaining": 3, "challengeId": "challenge"]]
+        case Jarvis.Operation.setPin.rawValue:
+            return ["pin": ["isSet": true, "isVerified": true, "attemptsRemaining": 3]]
+        case Jarvis.Operation.verifyPin.rawValue:
+            return ["pin": ["isSet": true, "isVerified": true, "attemptsRemaining": 2]]
+        default:
+            return [:]
+        }
+    }, session: initial)
+
+    let delegate = try await service.getDelegateToken(userId: "user")
+    #expect(delegate.token == "delegate")
+    #expect(delegate.expiresIn == "60")
+
+    let redeemed = try await service.redeemDelegateToken("delegate")
+    #expect(redeemed.userId == "user")
+    #expect(redeemed.displayName == "GFN User")
+
+    let provider = try await service.getThirdPartyProviderInfo(idpId: "idp")
+    #expect(provider.loginProvider == "nvidia")
+    #expect(provider.loginRequired)
+    #expect(provider.preferredProviders == ["nvidia", "steam"])
+    #expect(provider.isAffiliate)
+
+    let email = try await service.requestEmailVerify(email: "user@example.com")
+    #expect(email.requested)
+    #expect(email.status == "SENT")
+
+    let currentPin = try await service.getPin(userId: "user")
+    #expect(currentPin.isSet)
+    #expect(!currentPin.isVerified)
+    #expect(currentPin.challengeId == "challenge")
+
+    let setPin = try await service.setPin("1234")
+    #expect(setPin.isVerified)
+
+    let verifiedPin = try await service.verifyPin("1234")
+    #expect(verifiedPin.isVerified)
+    #expect(verifiedPin.attemptsRemaining == 2)
+}
+
+@Test func jarvisAuthServiceChainsSessionThroughOperationEndpoint() async throws {
+    let configuration = JarvisOAuthConfiguration(operationURLString: "https://login.nvidia.com/jarvis")
+    let initial = JarvisSession(
+        accessToken: "access",
+        userId: "old-user",
+        isAuthenticated: true,
+        clientToken: "client",
+        clientTokenExpiry: JarvisSession.currentEpochMs() + 600_000,
+        clientTokenExpiryLength: 600_000,
+        accessTokenExpiry: JarvisSession.currentEpochMs() + 600_000
+    )
+    let service = JarvisAuthService(configuration: configuration, transport: MockJarvisTransport { request in
+        let body = try jsonBody(request)
+        #expect(body["operation"] as? String == Jarvis.Operation.chainSession.rawValue)
+        return ["session": ["access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 300]]
+    }, session: initial)
+    let chained = try await service.chainSession(sessionId: "session")
+    #expect(chained.accessToken == "new-access")
+    #expect(chained.refreshToken == "new-refresh")
+    #expect(await service.status == .loggedIn)
 }
