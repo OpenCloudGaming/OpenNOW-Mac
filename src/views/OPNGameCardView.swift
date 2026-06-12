@@ -1,4 +1,12 @@
 import AppKit
+import Combine
+import SwiftUI
+
+@MainActor
+private final class OPNGameCardModel: ObservableObject {
+    @Published var gamepadFocused = false
+    @Published var mouseHovering = false
+}
 
 @objc(OPNGameCardView)
 @MainActor
@@ -7,21 +15,18 @@ final class OPNGameCardView: NSView {
     @objc var imageRevealDelay: TimeInterval = 0.0
     @objc var onPlay: (() -> Void)?
 
-    private let contentView = NSView()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let playButton = NSButton(frame: .zero)
-    private var mouseHovering = false
-    private var gamepadFocused = false
+    private let model = OPNGameCardModel()
+    private var hostingView: NSHostingView<OPNGameCardSwiftUIView>?
     private var trackingAreaRef: NSTrackingArea?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        buildViewHierarchy()
+        configure()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        buildViewHierarchy()
+        configure()
     }
 
     override var isFlipped: Bool { true }
@@ -40,16 +45,7 @@ final class OPNGameCardView: NSView {
 
     override func layout() {
         super.layout()
-        let shortestSide = max(1.0, min(bounds.width, bounds.height))
-        let cornerRadius = shortestSide * (20.0 / 180.0)
-        layer?.cornerRadius = cornerRadius
-        contentView.frame = bounds
-        contentView.layer?.cornerRadius = cornerRadius
-        titleLabel.frame = NSRect(x: 16.0, y: max(12.0, bounds.height - 44.0), width: max(0.0, bounds.width - 32.0), height: 22.0)
-        let playWidth = bounds.width * (76.0 / 180.0)
-        let playHeight = bounds.height * (34.0 / 180.0)
-        playButton.frame = NSRect(x: (bounds.width - playWidth) / 2.0, y: 10.0, width: playWidth, height: playHeight)
-        updatePlayButtonVisibility()
+        hostingView?.frame = bounds
     }
 
     @objc func selectVariant(at index: Int32) {
@@ -57,97 +53,70 @@ final class OPNGameCardView: NSView {
     }
 
     @objc func setGamepadFocused(_ focused: Bool) {
-        guard gamepadFocused != focused else { return }
-        gamepadFocused = focused
-        updateInteractionChrome()
+        model.gamepadFocused = focused
     }
 
     @objc func resetMouseTrackingIfOutside() {
-        guard mouseHovering, let window else { return }
+        guard model.mouseHovering, let window else { return }
         let screenPoint = NSEvent.mouseLocation
         let windowPoint = window.convertPoint(fromScreen: screenPoint)
         let localPoint = convert(windowPoint, from: nil)
-        if !bounds.contains(localPoint) {
-            mouseHovering = false
-            updateInteractionChrome()
-        }
+        if !bounds.contains(localPoint) { model.mouseHovering = false }
     }
 
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
-        mouseHovering = true
-        updateInteractionChrome()
+        model.mouseHovering = true
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        mouseHovering = false
-        updateInteractionChrome()
+        model.mouseHovering = false
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let trackingAreaRef {
-            removeTrackingArea(trackingAreaRef)
-        }
+        if let trackingAreaRef { removeTrackingArea(trackingAreaRef) }
         let nextTrackingArea = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: nil)
         trackingAreaRef = nextTrackingArea
         addTrackingArea(nextTrackingArea)
     }
 
-    private func buildViewHierarchy() {
+    private func configure() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
-        layer?.borderWidth = 1.0
-        layer?.borderColor = opnColor(0xFFFFFF, 0.13).cgColor
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.38
-        layer?.shadowRadius = 20.0
-        layer?.shadowOffset = CGSize(width: 0.0, height: 16.0)
-
-        contentView.wantsLayer = true
-        contentView.layer?.masksToBounds = true
-        contentView.layer?.backgroundColor = opnColor(0x071108, 0.84).cgColor
-        addSubview(contentView)
-
-        titleLabel.stringValue = "Game"
-        titleLabel.font = NSFont.systemFont(ofSize: 14.0, weight: .bold)
-        titleLabel.textColor = opnColor(OPNViewColor.textPrimary)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.isHidden = true
-        contentView.addSubview(titleLabel)
-
-        playButton.title = "PLAY"
-        playButton.isBordered = false
-        playButton.font = NSFont.systemFont(ofSize: 12.0, weight: .bold)
-        playButton.contentTintColor = opnColor(OPNViewColor.accentOn)
-        playButton.wantsLayer = true
-        playButton.layer?.cornerRadius = 17.0
-        playButton.layer?.backgroundColor = opnColor(OPNViewColor.brandGreen, 0.94).cgColor
-        playButton.isHidden = true
-        playButton.target = self
-        playButton.action = #selector(playClicked)
-        addSubview(playButton)
+        let hosting = NSHostingView(rootView: OPNGameCardSwiftUIView(model: model, onPlay: { [weak self] in self?.onPlay?() }))
+        hosting.frame = bounds
+        hosting.autoresizingMask = [.width, .height]
+        addSubview(hosting)
+        hostingView = hosting
     }
+}
 
-    private func updateInteractionChrome() {
-        let focused = mouseHovering || gamepadFocused
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.14)
-        layer?.borderWidth = focused ? 2.0 : 1.0
-        layer?.borderColor = focused ? opnColor(OPNViewColor.brandGreen, 0.88).cgColor : opnColor(0xFFFFFF, 0.10).cgColor
-        layer?.shadowOpacity = focused ? 0.52 : 0.38
-        layer?.shadowRadius = focused ? 26.0 : 20.0
-        layer?.zPosition = gamepadFocused ? 6.0 : 0.0
-        CATransaction.commit()
-        updatePlayButtonVisibility()
-    }
+private struct OPNGameCardSwiftUIView: View {
+    @ObservedObject var model: OPNGameCardModel
 
-    private func updatePlayButtonVisibility() {
-        playButton.isHidden = !(mouseHovering || gamepadFocused)
-    }
+    let onPlay: () -> Void
 
-    @objc private func playClicked() {
-        onPlay?()
+    private var focused: Bool { model.mouseHovering || model.gamepadFocused }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x071108, alpha: 0.84)))
+                .overlay(RoundedRectangle(cornerRadius: 32, style: .continuous).stroke(focused ? Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.88)) : .white.opacity(0.10), lineWidth: focused ? 2 : 1))
+                .shadow(color: .black.opacity(focused ? 0.52 : 0.38), radius: focused ? 26 : 20, y: 16)
+
+            if focused {
+                Button("PLAY") { onPlay() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.accentOn, alpha: 1)))
+                    .frame(width: 122, height: 54)
+                    .background(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.94)), in: Capsule())
+                    .padding(.bottom, 16)
+            }
+        }
+        .animation(.easeOut(duration: 0.14), value: focused)
     }
 }

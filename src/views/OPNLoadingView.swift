@@ -1,5 +1,24 @@
 import AVKit
-import QuartzCore
+import Combine
+import SwiftUI
+
+@MainActor
+private final class OPNLoadingViewModel: ObservableObject {
+    @Published var message: String
+    @Published var steps: [String] = []
+    @Published var currentStepIndex = -1
+    @Published var queuePosition = 0
+    @Published var adVisible = false
+    @Published var adChipText = "Sponsored Break"
+    @Published var adTitle = "Watch to continue"
+    @Published var adMessage = "Your launch will resume automatically after the ad."
+    @Published var adPlayer: AVPlayer?
+    @Published var isAnimating = false
+
+    init(message: String) {
+        self.message = message.isEmpty ? "Loading..." : message
+    }
+}
 
 @objc(OPNLoadingView)
 @MainActor
@@ -7,71 +26,60 @@ final class OPNLoadingView: NSView {
     @objc var message: String {
         didSet {
             if message.isEmpty { message = "Loading..." }
+            model.message = message
             messageLabel.stringValue = message
             updateQueueBadge()
-            needsLayout = true
         }
     }
 
     @objc var steps: [String] = [] {
-        didSet { rebuildStepIndicators() }
+        didSet { model.steps = steps }
     }
 
     @objc var currentStepIndex: Int = -1 {
-        didSet { restyleStepIndicators() }
+        didSet { model.currentStepIndex = currentStepIndex }
     }
 
     @objc var queuePosition: Int = 0 {
         didSet {
             queuePosition = max(0, queuePosition)
-            updateQueueBadge()
-            needsLayout = true
+            model.queuePosition = shouldShowQueueBadge() ? queuePosition : 0
         }
     }
 
     @objc private(set) var messageLabel = NSTextField(labelWithString: "")
     @objc var adPlaybackEventHandler: ((String, String, Int, Int, String) -> Void)?
 
-    private let panelLayer = CALayer()
-    private let sweepLayer = CAGradientLayer()
-    private let orbitLayer = CAShapeLayer()
-    private let innerOrbitLayer = CAShapeLayer()
-    private let coreLayer = CALayer()
-    private let sparkLayer = CALayer()
-    private var barLayers: [CALayer] = []
-    private var dotLayers: [CALayer] = []
-    private var stepIndicatorLayers: [CALayer] = []
-    private let queuePositionLabel = NSTextField(labelWithString: "")
-    private let adContainerView = NSView()
-    private let adChipLabel = NSTextField(labelWithString: "Sponsored Break")
-    private let adTitleLabel = NSTextField(labelWithString: "Watch to continue")
-    private let adMessageLabel = NSTextField(labelWithString: "Your launch will resume automatically after the ad.")
-    private let adPlayerView = AVPlayerView()
+    private let model: OPNLoadingViewModel
+    private var hostingView: NSHostingView<OPNLoadingSwiftUIView>?
     private var adPlayer: AVPlayer?
     private var adTimeObserver: Any?
     private var adFallbackTimer: Timer?
     private var activeAdId: String?
     private var adStartedAt: Date?
-    private var adVisible = false
     private var adStartReported = false
     private var adFinishReported = false
     private var adCancelReported = false
 
     @objc(initWithFrame:message:)
     init(frame frameRect: NSRect, message rawMessage: String?) {
-        message = rawMessage?.isEmpty == false ? rawMessage! : "Loading..."
+        let normalizedMessage = rawMessage?.isEmpty == false ? rawMessage! : "Loading..."
+        message = normalizedMessage
+        model = OPNLoadingViewModel(message: normalizedMessage)
         super.init(frame: frameRect)
         buildViewHierarchy()
     }
 
     override init(frame frameRect: NSRect) {
         message = "Loading..."
+        model = OPNLoadingViewModel(message: "Loading...")
         super.init(frame: frameRect)
         buildViewHierarchy()
     }
 
     required init?(coder: NSCoder) {
         message = "Loading..."
+        model = OPNLoadingViewModel(message: "Loading...")
         super.init(coder: coder)
         buildViewHierarchy()
     }
@@ -80,86 +88,7 @@ final class OPNLoadingView: NSView {
 
     override func layout() {
         super.layout()
-        let width = bounds.width
-        let height = bounds.height
-        let hasSteps = !stepIndicatorLayers.isEmpty
-        let availablePanelWidth = max(320.0, width - 48.0)
-        let panelWidth = adVisible
-            ? min(920.0, min(availablePanelWidth, max(360.0, width - 96.0)))
-            : min(hasSteps ? 540.0 : 460.0, availablePanelWidth)
-        let showQueueBadge = !queuePositionLabel.isHidden
-        var panelHeight = adVisible ? max(420.0, (panelWidth - 84.0) * 9.0 / 16.0 + 126.0) : (hasSteps ? 338.0 : 296.0)
-        panelHeight = min(panelHeight, max(252.0, height - 48.0))
-        let panelX = floor((width - panelWidth) * 0.5)
-        let panelY = floor((height - panelHeight) * 0.5)
-        let panelRect = NSRect(x: panelX, y: panelY, width: panelWidth, height: panelHeight)
-        let centerX = panelRect.midX
-        let orbitSize = min(108.0, max(80.0, panelWidth * 0.22))
-        let orbitY = panelY + 34.0
-        let orbitRect = NSRect(x: centerX - orbitSize * 0.5, y: orbitY, width: orbitSize, height: orbitSize)
-
-        panelLayer.frame = panelRect
-        panelLayer.shadowPath = CGPath(roundedRect: NSRect(x: 0.0, y: 0.0, width: panelWidth, height: panelHeight), cornerWidth: 28.0, cornerHeight: 28.0, transform: nil)
-        sweepLayer.frame = NSRect(x: -width * 0.8, y: 0.0, width: width * 0.72, height: height)
-        orbitLayer.frame = orbitRect
-        orbitLayer.path = CGPath(ellipseIn: NSRect(x: 0.0, y: 0.0, width: orbitSize, height: orbitSize), transform: nil)
-        innerOrbitLayer.frame = orbitRect.insetBy(dx: 13.0, dy: 13.0)
-        innerOrbitLayer.path = CGPath(ellipseIn: NSRect(x: 0.0, y: 0.0, width: orbitSize - 26.0, height: orbitSize - 26.0), transform: nil)
-        coreLayer.frame = NSRect(x: centerX - 7.0, y: orbitY + orbitSize * 0.5 - 7.0, width: 14.0, height: 14.0)
-        coreLayer.cornerRadius = 7.0
-        sparkLayer.frame = NSRect(x: orbitRect.maxX - 8.0, y: orbitY + orbitSize * 0.5 - 4.0, width: 8.0, height: 8.0)
-        sparkLayer.cornerRadius = 4.0
-
-        let barWidth = min(148.0, panelWidth - 96.0)
-        let barY = orbitY + orbitSize + 26.0
-        for (index, bar) in barLayers.enumerated() {
-            let fraction = 1.0 - CGFloat(index) * 0.16
-            let x = centerX - (barWidth * fraction) * 0.5
-            bar.frame = NSRect(x: x, y: barY + CGFloat(index) * 8.0, width: barWidth * fraction, height: 4.0)
-        }
-
-        let dotStart = centerX - 29.0
-        for (index, dot) in dotLayers.enumerated() {
-            dot.frame = NSRect(x: dotStart + CGFloat(index) * 13.0, y: barY + 45.0, width: 5.0, height: 5.0)
-        }
-
-        messageLabel.isHidden = false
-        messageLabel.frame = NSRect(x: panelX + 36.0, y: barY + 66.0, width: max(80.0, panelWidth - 72.0), height: 42.0)
-        if showQueueBadge {
-            queuePositionLabel.frame = NSRect(x: centerX - 54.0, y: barY + 114.0, width: 108.0, height: 28.0)
-        }
-
-        if adVisible {
-            messageLabel.isHidden = true
-            let adInset = 22.0
-            let adHeight = panelHeight - adInset * 2.0
-            adContainerView.frame = NSRect(x: panelX + adInset, y: panelY + adInset, width: panelWidth - adInset * 2.0, height: adHeight)
-            let adWidth = adContainerView.bounds.width
-            let contentInset = 18.0
-            let textHeight = 72.0
-            let maxVideoRect = NSRect(x: contentInset, y: contentInset, width: adWidth - contentInset * 2.0, height: max(120.0, adHeight - textHeight - contentInset * 2.0))
-            let videoFrame = aspectFitRect(aspectRatio: currentAdAspectRatio(), in: maxVideoRect)
-            adPlayerView.frame = videoFrame
-            let textY = min(adHeight - textHeight - 10.0, videoFrame.maxY + 14.0)
-            adChipLabel.frame = NSRect(x: contentInset, y: textY, width: showQueueBadge ? max(120.0, adWidth - 180.0) : adWidth - contentInset * 2.0, height: 16.0)
-            adTitleLabel.frame = NSRect(x: contentInset, y: textY + 20.0, width: adWidth - contentInset * 2.0, height: 24.0)
-            adMessageLabel.frame = NSRect(x: contentInset, y: textY + 46.0, width: adWidth - contentInset * 2.0, height: 24.0)
-            if showQueueBadge {
-                queuePositionLabel.frame = NSRect(x: adContainerView.frame.maxX - 132.0, y: adContainerView.frame.minY + textY - 4.0, width: 108.0, height: 24.0)
-            }
-        }
-
-        let stepCount = stepIndicatorLayers.count
-        if stepCount > 0 {
-            let gap = 7.0
-            let railWidth = min(240.0, panelWidth - 112.0)
-            let segmentWidth = floor((railWidth - gap * CGFloat(stepCount - 1)) / CGFloat(stepCount))
-            let segmentX = centerX - railWidth * 0.5
-            let segmentY = showQueueBadge ? barY + 154.0 : barY + 126.0
-            for index in stepIndicatorLayers.indices {
-                stepIndicatorLayers[index].frame = NSRect(x: segmentX + (segmentWidth + gap) * CGFloat(index), y: segmentY, width: segmentWidth, height: 3.0)
-            }
-        }
+        hostingView?.frame = bounds
     }
 
     override func viewDidMoveToWindow() {
@@ -181,7 +110,6 @@ final class OPNLoadingView: NSView {
     func setSteps(_ steps: [String], currentStepIndex: Int) {
         self.steps = steps
         self.currentStepIndex = currentStepIndex
-        rebuildStepIndicators()
     }
 
     @objc(advanceToStep:message:)
@@ -202,26 +130,20 @@ final class OPNLoadingView: NSView {
             return
         }
 
-        adVisible = true
-        adContainerView.isHidden = false
-        adChipLabel.stringValue = chipText.isEmpty ? "Sponsored Break" : chipText
-        adTitleLabel.stringValue = title.isEmpty ? "Watch to continue" : title
-        adMessageLabel.stringValue = message.isEmpty ? "Your launch will resume automatically after the ad." : message
-        setLoadingChrome(hidden: true)
+        model.adVisible = true
+        model.adChipText = chipText.isEmpty ? "Sponsored Break" : chipText
+        model.adTitle = title.isEmpty ? "Watch to continue" : title
+        model.adMessage = message.isEmpty ? "Your launch will resume automatically after the ad." : message
         stopAnimating()
 
         guard !adId.isEmpty || !mediaUrl.isEmpty else {
             resetAdPlayback()
             activeAdId = nil
-            needsLayout = true
             return
         }
 
         let normalizedAdId = adId.isEmpty ? "ad" : adId
-        if activeAdId == normalizedAdId {
-            needsLayout = true
-            return
-        }
+        if activeAdId == normalizedAdId { return }
 
         resetAdPlayback()
         activeAdId = normalizedAdId
@@ -235,8 +157,7 @@ final class OPNLoadingView: NSView {
             let player = AVPlayer(playerItem: item)
             player.volume = 0.5
             adPlayer = player
-            adPlayerView.player = player
-            adPlayerView.isHidden = false
+            model.adPlayer = player
             NotificationCenter.default.addObserver(self, selector: #selector(handleAdFinished(_:)), name: .AVPlayerItemDidPlayToEndTime, object: item)
             NotificationCenter.default.addObserver(self, selector: #selector(handleAdPlaybackFailed(_:)), name: .AVPlayerItemFailedToPlayToEndTime, object: item)
             adTimeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC)), queue: .main) { [weak self] time in
@@ -247,71 +168,27 @@ final class OPNLoadingView: NSView {
             }
             player.play()
         } else {
-            adPlayerView.player = nil
-            adPlayerView.isHidden = true
+            model.adPlayer = nil
             reportAdAction("start", cancelReason: "")
             let seconds = max(5.0, Double(max(durationMs, 1)) / 1000.0)
             adFallbackTimer = Timer.scheduledTimer(timeInterval: seconds, target: self, selector: #selector(handleFallbackAdTimer(_:)), userInfo: nil, repeats: false)
         }
-        needsLayout = true
     }
 
     @objc func clearAdPresentation() {
-        guard adVisible else { return }
+        guard model.adVisible else { return }
         resetAdPlayback()
-        adContainerView.isHidden = true
         activeAdId = nil
-        adVisible = false
-        setLoadingChrome(hidden: false)
+        model.adVisible = false
         if window != nil { startAnimating() }
-        needsLayout = true
     }
 
     @objc func startAnimating() {
-        guard orbitLayer.animation(forKey: "opn.orbit.rotate") == nil else { return }
-        addRotationAnimation(to: orbitLayer, key: "opn.orbit.rotate", from: 0.0, to: .pi * 2.0, duration: 1.65)
-        addRotationAnimation(to: innerOrbitLayer, key: "opn.inner.rotate", from: .pi * 2.0, to: 0.0, duration: 4.2)
-        addRotationAnimation(to: sparkLayer, key: "opn.spark.rotate", from: 0.0, to: .pi * 2.0, duration: 1.65)
+        model.isAnimating = true
+    }
 
-        let pulse = CABasicAnimation(keyPath: "transform.scale")
-        pulse.fromValue = 0.82
-        pulse.toValue = 1.24
-        pulse.duration = 0.82
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        coreLayer.add(pulse, forKey: "opn.core.pulse")
-
-        let sweep = CABasicAnimation(keyPath: "transform.translation.x")
-        sweep.fromValue = 0.0
-        sweep.toValue = bounds.width * 2.1
-        sweep.duration = 2.65
-        sweep.repeatCount = .infinity
-        sweep.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        sweepLayer.add(sweep, forKey: "opn.sweep")
-
-        for (index, bar) in barLayers.enumerated() {
-            let scale = CABasicAnimation(keyPath: "transform.scale.x")
-            scale.fromValue = 0.28
-            scale.toValue = 1.0
-            scale.duration = 0.92
-            scale.autoreverses = true
-            scale.repeatCount = .infinity
-            scale.beginTime = CACurrentMediaTime() + CFTimeInterval(index) * 0.12
-            scale.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            bar.add(scale, forKey: "opn.bar.scale")
-        }
-
-        for (index, dot) in dotLayers.enumerated() {
-            let opacity = CABasicAnimation(keyPath: "opacity")
-            opacity.fromValue = 0.22
-            opacity.toValue = 1.0
-            opacity.duration = 0.72
-            opacity.autoreverses = true
-            opacity.repeatCount = .infinity
-            opacity.beginTime = CACurrentMediaTime() + CFTimeInterval(index) * 0.10
-            dot.add(opacity, forKey: "opn.dot.opacity")
-        }
+    @objc func stopAnimating() {
+        model.isAnimating = false
     }
 
     @objc(updateAdState:)
@@ -359,144 +236,18 @@ final class OPNLoadingView: NSView {
         )
     }
 
-    @objc func stopAnimating() {
-        sweepLayer.removeAllAnimations()
-        orbitLayer.removeAllAnimations()
-        innerOrbitLayer.removeAllAnimations()
-        coreLayer.removeAllAnimations()
-        sparkLayer.removeAllAnimations()
-        barLayers.forEach { $0.removeAllAnimations() }
-        dotLayers.forEach { $0.removeAllAnimations() }
-    }
-
     private func buildViewHierarchy() {
         wantsLayer = true
-        layer?.backgroundColor = opnColor(0x020304, 0.98).cgColor
-        layer?.masksToBounds = true
-
-        panelLayer.backgroundColor = opnColor(0x0A0C0F, 0.96).cgColor
-        panelLayer.cornerRadius = 28.0
-        panelLayer.borderWidth = 1.0
-        panelLayer.borderColor = opnColor(0xFFFFFF, 0.11).cgColor
-        panelLayer.shadowColor = NSColor.black.cgColor
-        panelLayer.shadowOpacity = 0.32
-        panelLayer.shadowRadius = 32.0
-        panelLayer.shadowOffset = CGSize(width: 0.0, height: 18.0)
-        layer?.addSublayer(panelLayer)
-
-        sweepLayer.locations = [0.0, 0.42, 0.50, 1.0]
-        sweepLayer.startPoint = CGPoint(x: 0.0, y: 0.5)
-        sweepLayer.endPoint = CGPoint(x: 1.0, y: 0.5)
-        layer?.addSublayer(sweepLayer)
-
-        orbitLayer.fillColor = NSColor.clear.cgColor
-        orbitLayer.lineWidth = 2.0
-        orbitLayer.lineCap = .round
-        orbitLayer.strokeStart = 0.04
-        orbitLayer.strokeEnd = 0.72
-        layer?.addSublayer(orbitLayer)
-
-        innerOrbitLayer.fillColor = NSColor.clear.cgColor
-        innerOrbitLayer.strokeColor = opnColor(0xFFFFFF, 0.26).cgColor
-        innerOrbitLayer.lineWidth = 1.0
-        innerOrbitLayer.lineDashPattern = [3, 7]
-        layer?.addSublayer(innerOrbitLayer)
-
-        coreLayer.shadowOpacity = 0.86
-        coreLayer.shadowRadius = 14.0
-        coreLayer.shadowOffset = .zero
-        layer?.addSublayer(coreLayer)
-
-        sparkLayer.shadowOpacity = 0.9
-        sparkLayer.shadowRadius = 10.0
-        sparkLayer.shadowOffset = .zero
-        layer?.addSublayer(sparkLayer)
-
-        for _ in 0..<4 {
-            let bar = CALayer()
-            bar.cornerRadius = 2.0
-            layer?.addSublayer(bar)
-            barLayers.append(bar)
-        }
-
-        for _ in 0..<5 {
-            let dot = CALayer()
-            dot.cornerRadius = 2.5
-            dot.shadowOpacity = 0.36
-            dot.shadowRadius = 5.0
-            dot.shadowOffset = .zero
-            layer?.addSublayer(dot)
-            dotLayers.append(dot)
-        }
-
-        messageLabel = opnLabel(message, .zero, 15.0, opnColor(OPNViewColor.textPrimary), .semibold, .center)
-        messageLabel.maximumNumberOfLines = 2
+        layer?.backgroundColor = NSColor.clear.cgColor
+        messageLabel.stringValue = message
+        messageLabel.isHidden = true
         addSubview(messageLabel)
-
-        queuePositionLabel.font = NSFont.systemFont(ofSize: 12.0, weight: .bold)
-        queuePositionLabel.textColor = opnColor(OPNViewColor.brandGreen)
-        queuePositionLabel.alignment = .center
-        queuePositionLabel.isHidden = true
-        queuePositionLabel.wantsLayer = true
-        queuePositionLabel.layer?.backgroundColor = opnColor(0x07140F, 0.92).cgColor
-        queuePositionLabel.layer?.cornerRadius = 14.0
-        queuePositionLabel.layer?.borderWidth = 1.0
-        queuePositionLabel.layer?.borderColor = opnColor(OPNViewColor.brandGreen, 0.36).cgColor
-        addSubview(queuePositionLabel)
-
-        configureAdViews()
-        applyAccentColors()
-        NotificationCenter.default.addObserver(self, selector: #selector(interfacePreferencesChanged(_:)), name: Notification.Name("OpenNOW.InterfacePreferencesDidChange"), object: nil)
-    }
-
-    private func configureAdViews() {
-        adContainerView.wantsLayer = true
-        adContainerView.layer?.backgroundColor = opnColor(0x05070A, 0.30).cgColor
-        adContainerView.layer?.cornerRadius = 18.0
-        adContainerView.layer?.borderWidth = 1.0
-        adContainerView.layer?.borderColor = opnColor(0xFFFFFF, 0.08).cgColor
-        adContainerView.isHidden = true
-        addSubview(adContainerView)
-
-        adChipLabel.font = NSFont.systemFont(ofSize: 11.0, weight: .semibold)
-        adChipLabel.textColor = opnColor(OPNViewColor.brandGreen)
-        adContainerView.addSubview(adChipLabel)
-        adTitleLabel.font = NSFont.systemFont(ofSize: 16.0, weight: .semibold)
-        adTitleLabel.textColor = opnColor(OPNViewColor.textPrimary)
-        adTitleLabel.maximumNumberOfLines = 1
-        adContainerView.addSubview(adTitleLabel)
-        adMessageLabel.font = NSFont.systemFont(ofSize: 12.0)
-        adMessageLabel.textColor = opnColor(OPNViewColor.textSecondary)
-        adMessageLabel.maximumNumberOfLines = 1
-        adContainerView.addSubview(adMessageLabel)
-        adPlayerView.controlsStyle = .none
-        adPlayerView.videoGravity = .resizeAspect
-        adPlayerView.isHidden = true
-        adContainerView.addSubview(adPlayerView)
-    }
-
-    @objc private func interfacePreferencesChanged(_ notification: Notification) {
-        applyAccentColors()
-    }
-
-    private func applyAccentColors() {
-        sweepLayer.colors = [
-            opnColor(OPNViewColor.brandGreen, 0.0).cgColor,
-            opnColor(OPNViewColor.brandGreen, 0.28).cgColor,
-            opnColor(0x49D56B, 0.42).cgColor,
-            opnColor(OPNViewColor.brandGreen, 0.0).cgColor,
-        ]
-        orbitLayer.strokeColor = opnColor(OPNViewColor.brandGreen, 0.78).cgColor
-        coreLayer.backgroundColor = opnColor(0x49D56B, 0.92).cgColor
-        coreLayer.shadowColor = opnColor(OPNViewColor.brandGreen).cgColor
-        sparkLayer.backgroundColor = opnColor(OPNViewColor.brandGreen, 0.92).cgColor
-        sparkLayer.shadowColor = opnColor(OPNViewColor.brandGreen).cgColor
-        barLayers.forEach { $0.backgroundColor = opnColor(OPNViewColor.brandGreen, 0.54).cgColor }
-        dotLayers.forEach {
-            $0.backgroundColor = opnColor(0x49D56B, 0.74).cgColor
-            $0.shadowColor = opnColor(OPNViewColor.brandGreen).cgColor
-        }
-        restyleStepIndicators()
+        let hosting = NSHostingView(rootView: OPNLoadingSwiftUIView(model: model))
+        hosting.frame = bounds
+        hosting.autoresizingMask = [.width, .height]
+        addSubview(hosting)
+        hostingView = hosting
+        updateQueueBadge()
     }
 
     private func shouldShowQueueBadge() -> Bool {
@@ -510,47 +261,7 @@ final class OPNLoadingView: NSView {
     }
 
     private func updateQueueBadge() {
-        if shouldShowQueueBadge() {
-            queuePositionLabel.stringValue = "QUEUE  #\(queuePosition)"
-            queuePositionLabel.isHidden = false
-        } else {
-            queuePositionLabel.stringValue = ""
-            queuePositionLabel.isHidden = true
-        }
-    }
-
-    private func rebuildStepIndicators() {
-        stepIndicatorLayers.forEach { $0.removeFromSuperlayer() }
-        stepIndicatorLayers.removeAll()
-        for _ in steps {
-            let indicator = CALayer()
-            indicator.cornerRadius = 1.5
-            layer?.addSublayer(indicator)
-            stepIndicatorLayers.append(indicator)
-        }
-        restyleStepIndicators()
-        needsLayout = true
-    }
-
-    private func restyleStepIndicators() {
-        for index in stepIndicatorLayers.indices {
-            let completed = index < currentStepIndex
-            let current = index == currentStepIndex
-            stepIndicatorLayers[index].backgroundColor = current
-                ? opnColor(0x49D56B, 0.96).cgColor
-                : (completed ? opnColor(OPNViewColor.brandGreen, 0.54).cgColor : opnColor(0xFFFFFF, 0.16).cgColor)
-        }
-    }
-
-    private func setLoadingChrome(hidden: Bool) {
-        sweepLayer.isHidden = hidden
-        orbitLayer.isHidden = hidden
-        innerOrbitLayer.isHidden = hidden
-        coreLayer.isHidden = hidden
-        sparkLayer.isHidden = hidden
-        barLayers.forEach { $0.isHidden = hidden }
-        dotLayers.forEach { $0.isHidden = hidden }
-        stepIndicatorLayers.forEach { $0.isHidden = hidden }
+        model.queuePosition = shouldShowQueueBadge() ? queuePosition : 0
     }
 
     private func resetAdPlayback() {
@@ -561,8 +272,7 @@ final class OPNLoadingView: NSView {
         removeAdTimeObserver()
         adPlayer?.pause()
         adPlayer = nil
-        adPlayerView.player = nil
-        adPlayerView.isHidden = true
+        model.adPlayer = nil
     }
 
     private func removeAdTimeObserver() {
@@ -577,22 +287,6 @@ final class OPNLoadingView: NSView {
         }
         guard let adStartedAt else { return 0 }
         return max(0, Int((-adStartedAt.timeIntervalSinceNow * 1000.0).rounded()))
-    }
-
-    private func currentAdAspectRatio() -> CGFloat {
-        guard let size = adPlayer?.currentItem?.presentationSize, size.width > 0, size.height > 0 else { return 16.0 / 9.0 }
-        return size.width / size.height
-    }
-
-    private func aspectFitRect(aspectRatio: CGFloat, in rect: NSRect) -> NSRect {
-        guard aspectRatio > 0, rect.width > 0, rect.height > 0 else { return rect }
-        let rectRatio = rect.width / rect.height
-        if rectRatio > aspectRatio {
-            let width = floor(rect.height * aspectRatio)
-            return NSRect(x: rect.minX + floor((rect.width - width) * 0.5), y: rect.minY, width: width, height: rect.height)
-        }
-        let height = floor(rect.width / aspectRatio)
-        return NSRect(x: rect.minX, y: rect.minY + floor((rect.height - height) * 0.5), width: rect.width, height: height)
     }
 
     private func bool(_ value: Any?) -> Bool {
@@ -658,14 +352,191 @@ final class OPNLoadingView: NSView {
     @objc private func handleFallbackAdTimer(_ timer: Timer) {
         reportAdAction("finish", cancelReason: "")
     }
+}
 
-    private func addRotationAnimation(to layer: CALayer, key: String, from: Double, to: Double, duration: CFTimeInterval) {
-        let animation = CABasicAnimation(keyPath: "transform.rotation.z")
-        animation.fromValue = from
-        animation.toValue = to
-        animation.duration = duration
-        animation.repeatCount = .infinity
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(animation, forKey: key)
+private struct OPNLoadingSwiftUIView: View {
+    @ObservedObject var model: OPNLoadingViewModel
+
+    var body: some View {
+        ZStack {
+            Color(nsColor: OPNUIHelpers.color(rgb: 0x020304, alpha: 0.98))
+                .ignoresSafeArea()
+
+            if model.adVisible {
+                adPanel
+            } else {
+                loadingPanel
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: model.adVisible)
+        .animation(.easeOut(duration: 0.18), value: model.queuePosition)
+        .animation(.easeOut(duration: 0.18), value: model.steps)
+    }
+
+    private var loadingPanel: some View {
+        VStack(spacing: 22) {
+            loadingMark
+                .frame(width: 108, height: 108)
+                .padding(.top, 10)
+
+            VStack(spacing: 8) {
+                ForEach(0..<4, id: \.self) { index in
+                    Capsule()
+                        .fill(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.54)))
+                        .frame(width: max(70, 148 - CGFloat(index) * 24), height: 4)
+                        .opacity(model.isAnimating ? 0.92 : 0.44)
+                        .scaleEffect(x: model.isAnimating ? 1.0 : 0.42, y: 1.0, anchor: .center)
+                        .animation(.easeInOut(duration: 0.92).repeatForever(autoreverses: true).delay(Double(index) * 0.12), value: model.isAnimating)
+                }
+            }
+
+            VStack(spacing: 14) {
+                Text(model.message)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+
+                if model.queuePosition > 0 {
+                    queueBadge
+                }
+
+                if !model.steps.isEmpty {
+                    stepRail
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .frame(minWidth: 320, idealWidth: model.steps.isEmpty ? 460 : 540, maxWidth: model.steps.isEmpty ? 460 : 540, minHeight: 252, idealHeight: model.steps.isEmpty ? 296 : 338, maxHeight: model.steps.isEmpty ? 296 : 338)
+        .padding(.horizontal, 24)
+        .background(panelBackground)
+        .padding(24)
+    }
+
+    private var loadingMark: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0.04, to: 0.72)
+                .stroke(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.78)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(model.isAnimating ? .degrees(360) : .degrees(0))
+                .animation(.linear(duration: 1.65).repeatForever(autoreverses: false), value: model.isAnimating)
+
+            Circle()
+                .stroke(Color.white.opacity(0.26), style: StrokeStyle(lineWidth: 1, dash: [3, 7]))
+                .padding(13)
+                .rotationEffect(model.isAnimating ? .degrees(-360) : .degrees(0))
+                .animation(.linear(duration: 4.2).repeatForever(autoreverses: false), value: model.isAnimating)
+
+            Circle()
+                .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x49D56B, alpha: 0.92)))
+                .frame(width: 14, height: 14)
+                .shadow(color: Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.84)), radius: 14)
+                .scaleEffect(model.isAnimating ? 1.24 : 0.82)
+                .animation(.easeInOut(duration: 0.82).repeatForever(autoreverses: true), value: model.isAnimating)
+
+            Circle()
+                .fill(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.92)))
+                .frame(width: 8, height: 8)
+                .offset(x: 54)
+                .shadow(color: Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.90)), radius: 10)
+                .rotationEffect(model.isAnimating ? .degrees(360) : .degrees(0))
+                .animation(.linear(duration: 1.65).repeatForever(autoreverses: false), value: model.isAnimating)
+        }
+    }
+
+    private var queueBadge: some View {
+        Text("QUEUE  #\(model.queuePosition)")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 1)))
+            .frame(width: 108, height: 28)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x07140F, alpha: 0.92)), in: Capsule())
+            .overlay(Capsule().stroke(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.36)), lineWidth: 1))
+    }
+
+    private var stepRail: some View {
+        HStack(spacing: 7) {
+            ForEach(model.steps.indices, id: \.self) { index in
+                Capsule()
+                    .fill(stepColor(index))
+                    .frame(height: 3)
+            }
+        }
+        .frame(maxWidth: 240)
+    }
+
+    private var adPanel: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                if let player = model.adPlayer {
+                    OPNAdPlayerSwiftUIView(player: player)
+                } else {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.black.opacity(0.32))
+                        .overlay(
+                            VStack(spacing: 10) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text(model.adTitle)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        )
+                }
+            }
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.adChipText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 1)))
+                    Text(model.adTitle)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
+                        .lineLimit(1)
+                    Text(model.adMessage)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textSecondary, alpha: 1)))
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 12)
+                if model.queuePosition > 0 { queueBadge }
+            }
+        }
+        .padding(22)
+        .frame(minWidth: 360, idealWidth: 920, maxWidth: 920, minHeight: 420)
+        .background(panelBackground)
+        .padding(48)
+    }
+
+    private var panelBackground: some View {
+        RoundedRectangle(cornerRadius: 28, style: .continuous)
+            .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x0A0C0F, alpha: 0.96)))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.white.opacity(0.11), lineWidth: 1))
+            .shadow(color: .black.opacity(0.32), radius: 32, y: 18)
+    }
+
+    private func stepColor(_ index: Int) -> Color {
+        if index == model.currentStepIndex { return Color(nsColor: OPNUIHelpers.color(rgb: 0x49D56B, alpha: 0.96)) }
+        if index < model.currentStepIndex { return Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.54)) }
+        return .white.opacity(0.16)
+    }
+}
+
+private struct OPNAdPlayerSwiftUIView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player { nsView.player = player }
     }
 }
