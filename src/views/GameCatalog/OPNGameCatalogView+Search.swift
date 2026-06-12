@@ -3,15 +3,7 @@ import AppKit
 extension OPNGameCatalogView: NSSearchFieldDelegate {
     public func controlTextDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === searchField else { return }
-        searchQuery = searchField.stringValue
-        searchGeneration += 1
-        searchDebounceTimer?.invalidate()
-        searchDebounceTimer = nil
-        if !OPNGameCatalogSearchSupport.normalizedString(searchQuery).isEmpty {
-            searchDebounceTimer = Timer.scheduledTimer(timeInterval: OPNGameCatalogLayoutSupport.storeSearchDebounceInterval, target: self, selector: #selector(performAsyncSearchTimerFired(_:)), userInfo: nil, repeats: false)
-            return
-        }
-        scheduleAsyncSearchForCurrentQuery()
+        handleSwiftUISearchQueryChanged(searchField.stringValue)
     }
 
     @objc func scheduleAsyncSearchForCurrentQuery() {
@@ -62,7 +54,7 @@ extension OPNGameCatalogView: NSSearchFieldDelegate {
         initialHeroIdentity = nil
         DispatchQueue.main.async { [weak self] in
             guard let self, generation == self.searchGeneration else { return }
-            self.renderStoreWhenInitialHeroReady()
+            self.rebuildSwiftUICatalog()
         }
     }
 

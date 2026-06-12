@@ -48,7 +48,7 @@ extension OPNGameCatalogView {
         let candidateCount = heroCandidateCount()
         guard candidateCount >= 2 else { return }
         currentHeroIndex = (currentHeroIndex + 1) % candidateCount
-        updateHeroTileOnly()
+        rebuildSwiftUICatalog()
     }
 
     @objc func renderStoreWhenInitialHeroReady() {
