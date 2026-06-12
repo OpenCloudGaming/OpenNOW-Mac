@@ -2,6 +2,17 @@ import Foundation
 import Testing
 @testable import CloudMatch
 
+private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
+    let handler: @Sendable (URLRequest) throws -> [String: Any]
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let json = try handler(request)
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let response = HTTPURLResponse(url: request.url ?? URL(string: "https://prod.cloudmatchbeta.nvidiagrid.net")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (data, response)
+    }
+}
+
 @Test func cloudMatchVendorEndpointsMatchEvidence() throws {
     #expect(CloudMatch.systemName == "CloudMatch")
     #expect(CloudMatch.productionBaseURLString == "https://prod.cloudmatchbeta.nvidiagrid.net")
@@ -48,4 +59,27 @@ import Testing
     #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: CloudMatchRouteOverride(zone: available)) == .useOverride(CloudMatchRouteOverride(zone: available)))
     #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: unavailable) == .clearUnavailableOverride(unavailable))
     #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: internalOverride) == .useOverride(internalOverride))
+}
+
+@Test func cloudMatchServiceFetchesServerInfoAndSubscriptions() async throws {
+    let service = CloudMatchService(transport: MockCloudMatchTransport { request in
+        if request.url?.path == "/v2/serverInfo" {
+            return [
+                "vpcId": "vpc",
+                "serverType": "prod",
+                "metadata": [
+                    ["key": "gfn-regions", "value": "np-sjc-01"],
+                    ["key": "np-sjc-01", "value": "sjc.cloudmatch.example"],
+                ],
+            ]
+        }
+        #expect(request.url?.path == "/v4/subscriptions")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+        return ["subscriptions": [["id": "sub"]]]
+    })
+    let serverInfo = try await service.fetchServerInfo()
+    #expect(serverInfo.zones["sjc.cloudmatch.example"]?.name == "np-sjc-01")
+    let subscriptions = try await service.fetchSubscriptions(accessToken: "access")
+    let items = try #require(subscriptions["subscriptions"] as? [[String: Any]])
+    #expect(items.first?["id"] as? String == "sub")
 }

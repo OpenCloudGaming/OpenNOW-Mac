@@ -2,6 +2,17 @@ import Foundation
 import Testing
 @testable import UDS
 
+private struct MockUDSTransport: UDSHTTPTransport {
+    let handler: @Sendable (URLRequest) throws -> [String: Any]
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let json = try handler(request)
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let response = HTTPURLResponse(url: request.url ?? URL(string: "https://uds.example")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (data, response)
+    }
+}
+
 @Test func udsUseCasesMatchVendorEvidence() {
     #expect(UDS.systemName == "UDS")
     #expect(UDS.UseCase.endOfSessionReport.rawValue == "UdsEndOfSessionReport")
@@ -59,4 +70,20 @@ import Testing
     #expect(report.sessionId == "session")
     #expect(report.recommendationCount == 2)
     #expect(report.areSAScoresGood)
+}
+
+@Test func udsServiceFetchesReportsAndUpdatesNotificationState() async throws {
+    let service = UDSService(
+        configuration: UDSConfiguration(serverURLString: "https://uds.example"),
+        transport: MockUDSTransport { request in
+            #expect(request.url?.absoluteString == "https://uds.example/report?serviceUseCase=UdsSummonedReport")
+            #expect(request.httpMethod == "GET")
+            return ["reports": [["streamedAppName": "Game", "sessionId": "session", "recommendationList": [["id": "one"]]]]]
+        },
+        notificationState: UDSNotificationState(canShowIcon: true, hasNotification: true)
+    )
+    let report = try await service.fetchSummonedReport(payload: UDSReportPayload(source: .notification), accessToken: "access")
+    #expect(report.streamedAppName == "Game")
+    #expect(report.recommendationCount == 1)
+    #expect(await service.notificationState.toastShown)
 }

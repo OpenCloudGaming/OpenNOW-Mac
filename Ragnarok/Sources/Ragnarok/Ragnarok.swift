@@ -144,3 +144,48 @@ public enum RagnarokRequestFactory {
         return request
     }
 }
+
+public protocol RagnarokHTTPTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+public struct RagnarokURLSessionTransport: RagnarokHTTPTransport {
+    public init() {}
+
+    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw RagnarokServiceError.invalidHTTPResponse }
+        return (data, httpResponse)
+    }
+}
+
+public enum RagnarokServiceError: LocalizedError, Equatable, Sendable {
+    case invalidEventsURL
+    case invalidHTTPResponse
+    case httpStatus(Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidEventsURL: "Invalid Ragnarok events URL"
+        case .invalidHTTPResponse: "Invalid Ragnarok HTTP response"
+        case .httpStatus(let status): "Ragnarok HTTP status \(status)"
+        }
+    }
+}
+
+public struct RagnarokService<Transport: RagnarokHTTPTransport>: Sendable {
+    private let configuration: RagnarokConfiguration
+    private let transport: Transport
+
+    public init(configuration: RagnarokConfiguration = .production, transport: Transport) {
+        self.configuration = configuration
+        self.transport = transport
+    }
+
+    public func send(events: [RagnarokEvent], commonData: RagnarokCommonData = RagnarokCommonData()) async throws -> HTTPURLResponse {
+        guard let request = RagnarokRequestFactory.eventsRequest(events: events, commonData: commonData, configuration: configuration) else { throw RagnarokServiceError.invalidEventsURL }
+        let (_, response) = try await transport.send(request)
+        guard (200..<300).contains(response.statusCode) else { throw RagnarokServiceError.httpStatus(response.statusCode) }
+        return response
+    }
+}

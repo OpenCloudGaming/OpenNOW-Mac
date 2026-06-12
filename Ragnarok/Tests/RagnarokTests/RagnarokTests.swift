@@ -2,6 +2,16 @@ import Foundation
 import Testing
 @testable import Ragnarok
 
+private struct MockRagnarokTransport: RagnarokHTTPTransport {
+    let handler: @Sendable (URLRequest) throws -> Int
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let status = try handler(request)
+        let response = HTTPURLResponse(url: request.url ?? URL(string: Ragnarok.productionEventsURLString)!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        return (Data(), response)
+    }
+}
+
 @Test func ragnarokTelemetryEndpointsMatchVendorEvidence() {
     #expect(Ragnarok.systemName == "Ragnarok")
     #expect(Ragnarok.productionEventsURLString == "https://events.telemetry.data.nvidia.com/v1.1/events/json")
@@ -44,4 +54,18 @@ import Testing
     #expect(commonData["appId"] == "gfnpc")
     #expect(commonData["clientVersion"] == "2.0.80.173")
     #expect(commonData["deviceId"] == "device")
+}
+
+@Test func ragnarokServiceSendsEvents() async throws {
+    let service = RagnarokService(transport: MockRagnarokTransport { request in
+        #expect(request.url?.absoluteString == Ragnarok.productionEventsURLString)
+        #expect(request.httpMethod == "POST")
+        let body = try #require(request.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let events = try #require(json["events"] as? [[String: Any]])
+        #expect(events.first?["name"] as? String == "NetworkTest")
+        return 202
+    })
+    let response = try await service.send(events: [RagnarokEvent(eventName: .networkTest)])
+    #expect(response.statusCode == 202)
 }

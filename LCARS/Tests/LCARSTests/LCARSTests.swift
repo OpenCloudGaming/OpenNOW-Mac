@@ -2,6 +2,17 @@ import Foundation
 import Testing
 @testable import LCARS
 
+private struct MockLCARSTransport: LCARSHTTPTransport {
+    let handler: @Sendable (URLRequest) throws -> [String: Any]
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let json = try handler(request)
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let response = HTTPURLResponse(url: request.url ?? URL(string: "https://api.gfn.example")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (data, response)
+    }
+}
+
 @Test func lcarsRequestTypesMatchVendorCacheRoutes() {
     #expect(LCARS.systemName == "LCARS")
     #expect(LCARS.RequestType.panels.rawValue == "panels")
@@ -24,4 +35,15 @@ import Testing
     let request = try #require(LCARSRequestFactory.graphQLRequest(requestType: .panels, accessToken: "access", configuration: configuration))
     #expect(request.url?.absoluteString == "https://api.gfn.example/graphql?requestType=panels")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+}
+
+@Test func lcarsServiceFetchesGraphQLRequestTypes() async throws {
+    let service = LCARSService(configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), transport: MockLCARSTransport { request in
+        #expect(request.url?.absoluteString == "https://api.gfn.example/graphql?requestType=loginWallData")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+        return ["data": ["loginWallData": ["enabled": true]]]
+    })
+    let json = try await service.fetch(requestType: .loginWallData, accessToken: "access")
+    let data = try #require(json["data"] as? [String: Any])
+    #expect(data["loginWallData"] != nil)
 }

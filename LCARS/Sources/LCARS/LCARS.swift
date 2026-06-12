@@ -89,3 +89,55 @@ public enum LCARSRequestFactory {
         return request
     }
 }
+
+public protocol LCARSHTTPTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+public struct LCARSURLSessionTransport: LCARSHTTPTransport {
+    public init() {}
+
+    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw LCARSServiceError.invalidHTTPResponse }
+        return (data, httpResponse)
+    }
+}
+
+public enum LCARSServiceError: LocalizedError, Equatable, Sendable {
+    case invalidGraphQLURL(LCARS.RequestType)
+    case invalidHTTPResponse
+    case httpStatus(Int)
+    case invalidJSONResponse
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidGraphQLURL(let requestType): "Invalid LCARS GraphQL URL for \(requestType.rawValue)"
+        case .invalidHTTPResponse: "Invalid LCARS HTTP response"
+        case .httpStatus(let status): "LCARS HTTP status \(status)"
+        case .invalidJSONResponse: "Invalid LCARS JSON response"
+        }
+    }
+}
+
+public struct LCARSService<Transport: LCARSHTTPTransport>: Sendable {
+    private let configuration: LCARSConfiguration
+    private let transport: Transport
+
+    public init(configuration: LCARSConfiguration, transport: Transport) {
+        self.configuration = configuration
+        self.transport = transport
+    }
+
+    public func fetch(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
+        guard let request = LCARSRequestFactory.graphQLRequest(requestType: requestType, accessToken: accessToken, queryItems: queryItems, configuration: configuration) else { throw LCARSServiceError.invalidGraphQLURL(requestType) }
+        return try await performJSONRequest(request)
+    }
+
+    private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+        let (data, response) = try await transport.send(request)
+        guard response.statusCode == 200 else { throw LCARSServiceError.httpStatus(response.statusCode) }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw LCARSServiceError.invalidJSONResponse }
+        return json
+    }
+}

@@ -165,3 +165,72 @@ public enum UDSRequestFactory {
         return request
     }
 }
+
+public protocol UDSHTTPTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+public struct UDSURLSessionTransport: UDSHTTPTransport {
+    public init() {}
+
+    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw UDSServiceError.invalidHTTPResponse }
+        return (data, httpResponse)
+    }
+}
+
+public enum UDSServiceError: LocalizedError, Equatable, Sendable {
+    case invalidRequest(UDS.UseCase)
+    case invalidHTTPResponse
+    case httpStatus(Int)
+    case invalidJSONResponse
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidRequest(let useCase): "Invalid UDS request for \(useCase.rawValue)"
+        case .invalidHTTPResponse: "Invalid UDS HTTP response"
+        case .httpStatus(let status): "UDS HTTP status \(status)"
+        case .invalidJSONResponse: "Invalid UDS JSON response"
+        }
+    }
+}
+
+public actor UDSService<Transport: UDSHTTPTransport> {
+    public private(set) var notificationState: UDSNotificationState
+
+    private let configuration: UDSConfiguration
+    private let transport: Transport
+
+    public init(configuration: UDSConfiguration, transport: Transport, notificationState: UDSNotificationState = UDSNotificationState()) {
+        self.configuration = configuration
+        self.transport = transport
+        self.notificationState = notificationState
+    }
+
+    public func fetchSummonedReport(payload: UDSReportPayload, accessToken: String = "") async throws -> UDSDiagnosticReport {
+        let json = try await performReportRequest(useCase: .summonedReport, payload: payload, accessToken: accessToken)
+        notificationState = notificationState.afterSummonedReportOpened()
+        return UDSDiagnosticReportParser.parse(json)
+    }
+
+    public func fetchEndOfSessionReport(payload: UDSReportPayload, accessToken: String = "") async throws -> UDSDiagnosticReport {
+        UDSDiagnosticReportParser.parse(try await performReportRequest(useCase: .endOfSessionReport, payload: payload, accessToken: accessToken))
+    }
+
+    public func submitSuggestionFeedback(payload: UDSReportPayload, accessToken: String = "") async throws -> UDSDiagnosticReport {
+        UDSDiagnosticReportParser.parse(try await performReportRequest(useCase: .suggestionFeedback, payload: payload, accessToken: accessToken))
+    }
+
+    private func performReportRequest(useCase: UDS.UseCase, payload: UDSReportPayload, accessToken: String) async throws -> [String: Any] {
+        guard let request = UDSRequestFactory.reportRequest(useCase: useCase, payload: payload, accessToken: accessToken, configuration: configuration) else { throw UDSServiceError.invalidRequest(useCase) }
+        return try await performJSONRequest(request)
+    }
+
+    private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+        let (data, response) = try await transport.send(request)
+        guard response.statusCode == 200 else { throw UDSServiceError.httpStatus(response.statusCode) }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw UDSServiceError.invalidJSONResponse }
+        return json
+    }
+}

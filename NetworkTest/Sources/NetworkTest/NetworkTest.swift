@@ -156,3 +156,74 @@ public enum NetworkTestResultParser {
         return nil
     }
 }
+
+public protocol NetworkTestHTTPTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+public struct NetworkTestURLSessionTransport: NetworkTestHTTPTransport {
+    public init() {}
+
+    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw NetworkTestServiceError.invalidHTTPResponse }
+        return (data, httpResponse)
+    }
+}
+
+public enum NetworkTestServiceError: LocalizedError, Equatable, Sendable {
+    case invalidSessionURL
+    case invalidHTTPResponse
+    case httpStatus(Int)
+    case invalidJSONResponse
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidSessionURL: "Invalid NetworkTest session URL"
+        case .invalidHTTPResponse: "Invalid NetworkTest HTTP response"
+        case .httpStatus(let status): "NetworkTest HTTP status \(status)"
+        case .invalidJSONResponse: "Invalid NetworkTest JSON response"
+        }
+    }
+}
+
+public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
+    public private(set) var lifecycle: NetworkTestLifecycle
+
+    private let configuration: NetworkTestConfiguration
+    private let transport: Transport
+
+    public init(configuration: NetworkTestConfiguration = .gfnPC, transport: Transport, lifecycle: NetworkTestLifecycle = NetworkTestLifecycle()) {
+        self.configuration = configuration
+        self.transport = transport
+        self.lifecycle = lifecycle
+    }
+
+    public func startSession(accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> NetworkTestResult {
+        lifecycle = lifecycle.starting()
+        guard let request = NetworkTestRequestFactory.sessionRequest(accessToken: accessToken, queryItems: queryItems, configuration: configuration) else {
+            lifecycle = lifecycle.failing(errorName: .sdkError)
+            throw NetworkTestServiceError.invalidSessionURL
+        }
+        do {
+            let json = try await performJSONRequest(request)
+            let result = NetworkTestResultParser.parse(json)
+            lifecycle = lifecycle.finishing(result: result)
+            return result
+        } catch {
+            lifecycle = lifecycle.failing(errorName: .failed)
+            throw error
+        }
+    }
+
+    public func cancel() {
+        lifecycle = lifecycle.cancelling()
+    }
+
+    private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+        let (data, response) = try await transport.send(request)
+        guard response.statusCode == 200 else { throw NetworkTestServiceError.httpStatus(response.statusCode) }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw NetworkTestServiceError.invalidJSONResponse }
+        return json
+    }
+}

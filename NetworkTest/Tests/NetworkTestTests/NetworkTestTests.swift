@@ -1,5 +1,17 @@
+import Foundation
 import Testing
 @testable import NetworkTest
+
+private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
+    let handler: @Sendable (URLRequest) throws -> [String: Any]
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let json = try handler(request)
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let response = HTTPURLResponse(url: request.url ?? URL(string: "https://prod.cloudmatchbeta.nvidiagrid.net")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (data, response)
+    }
+}
 
 @Test func networkTestNamesMatchVendorEvidence() {
     #expect(NetworkTest.systemName == "NetworkTest")
@@ -44,4 +56,20 @@ import Testing
 
     let record = NetworkTestFingerprintRecord(fingerprint: "fp", zoneAddress: "zone.example", result: result, lastUpdatedEpochMs: 1_000)
     #expect(record.vendorKey == "fp_zone.example")
+}
+
+@Test func networkTestServiceStartsSessionAndUpdatesLifecycle() async throws {
+    let service = NetworkTestService(transport: MockNetworkTestTransport { request in
+        #expect(request.url?.path == "/v2/nettestsession")
+        #expect(request.value(forHTTPHeaderField: "User-Agent") == NetworkTest.defaultUserAgent)
+        return [
+            "networkSessionId": "session",
+            "zone": ["address": "zone.example", "name": "np-sjc-01"],
+            "testResult": ["downlinkBandwidth": 55_000, "maxPacketSize": 1_200, "status": "COMPLETED"],
+        ]
+    })
+    let result = try await service.startSession(accessToken: "access")
+    #expect(result.sessionId == "session")
+    #expect(result.isCompleted)
+    #expect(await service.lifecycle.state == .finished)
 }

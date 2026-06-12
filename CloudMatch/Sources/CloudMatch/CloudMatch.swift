@@ -178,3 +178,71 @@ public enum CloudMatchRoutingPolicy {
         return .clearUnavailableOverride(override)
     }
 }
+
+public protocol CloudMatchHTTPTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+public struct CloudMatchURLSessionTransport: CloudMatchHTTPTransport {
+    public init() {}
+
+    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw CloudMatchServiceError.invalidHTTPResponse }
+        return (data, httpResponse)
+    }
+}
+
+public enum CloudMatchServiceError: LocalizedError, Equatable, Sendable {
+    case invalidURL(CloudMatch.Endpoint)
+    case invalidHTTPResponse
+    case httpStatus(Int)
+    case invalidJSONResponse
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidURL(let endpoint): "Invalid CloudMatch URL for \(endpoint.rawValue)"
+        case .invalidHTTPResponse: "Invalid CloudMatch HTTP response"
+        case .httpStatus(let status): "CloudMatch HTTP status \(status)"
+        case .invalidJSONResponse: "Invalid CloudMatch JSON response"
+        }
+    }
+}
+
+public struct CloudMatchService<Transport: CloudMatchHTTPTransport>: Sendable {
+    private let configuration: CloudMatchConfiguration
+    private let transport: Transport
+
+    public init(configuration: CloudMatchConfiguration = .gfnPC, transport: Transport) {
+        self.configuration = configuration
+        self.transport = transport
+    }
+
+    public func fetchServiceUrls(accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
+        try await performEndpointRequest(.serviceUrls, accessToken: accessToken, queryItems: queryItems)
+    }
+
+    public func fetchServerInfo(accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> CloudMatchServerInfo {
+        CloudMatchServerInfoParser.parse(try await performEndpointRequest(.serverInfo, accessToken: accessToken, queryItems: queryItems))
+    }
+
+    public func createNetworkTestSession(accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
+        try await performEndpointRequest(.networkTestSession, accessToken: accessToken, queryItems: queryItems)
+    }
+
+    public func fetchSubscriptions(accessToken: String, queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
+        try await performEndpointRequest(.subscriptions, accessToken: accessToken, queryItems: queryItems)
+    }
+
+    private func performEndpointRequest(_ endpoint: CloudMatch.Endpoint, accessToken: String, queryItems: [URLQueryItem]) async throws -> [String: Any] {
+        guard let request = CloudMatchRequestFactory.request(endpoint: endpoint, accessToken: accessToken, queryItems: queryItems, configuration: configuration) else { throw CloudMatchServiceError.invalidURL(endpoint) }
+        return try await performJSONRequest(request)
+    }
+
+    private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
+        let (data, response) = try await transport.send(request)
+        guard response.statusCode == 200 else { throw CloudMatchServiceError.httpStatus(response.statusCode) }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CloudMatchServiceError.invalidJSONResponse }
+        return json
+    }
+}
