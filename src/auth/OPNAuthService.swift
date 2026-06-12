@@ -20,7 +20,6 @@ final class OPNAuthService: @unchecked Sendable {
     static let defaultUserAgent = jarvisConfiguration.userAgent
     static let oAuthLogoutURL = jarvisConfiguration.logoutURLString
 
-    private static let clientTokenRefreshPolicy = JarvisClientTokenRefreshPolicy.gfnPC
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
@@ -356,98 +355,6 @@ final class OPNAuthService: @unchecked Sendable {
         put(userInfo.email, key: "email", into: dictionary)
         if !userInfo.consent.isEmpty { dictionary["consent"] = userInfo.consent }
         return dictionary
-    }
-
-    private func completeRefreshWithSession(_ session: OPNAuthSession, completion: @escaping OPNAuthCallback) {
-        ensureClientToken(session) { [weak self] enriched in
-            guard let self else { return }
-            self.saveSession(enriched)
-            DispatchQueue.main.async { completion(true, enriched, "") }
-        }
-    }
-
-    private func ensureClientToken(_ session: OPNAuthSession, completion: @escaping @Sendable (OPNAuthSession) -> Void) {
-        guard session.isAuthenticated, session.isAccessTokenValid, shouldRefreshClientToken(session) else {
-            completion(session)
-            return
-        }
-        fetchClientToken(accessToken: session.accessToken) { success, clientToken, expiresInText in
-            var enriched = session
-            if success, !clientToken.isEmpty {
-                let parsedExpiresIn = Int64(expiresInText) ?? 0
-                let expiresIn = parsedExpiresIn > 0 ? parsedExpiresIn : 86400
-                enriched.clientToken = clientToken
-                enriched.clientTokenExpiry = OPNAuthSession.currentEpochMs() + expiresIn * 1000
-                enriched.clientTokenExpiryLength = expiresIn * 1000
-            }
-            completion(enriched)
-        }
-    }
-
-    private func shouldRefreshClientToken(_ session: OPNAuthSession) -> Bool {
-        Self.clientTokenRefreshPolicy.shouldRefresh(
-            clientToken: session.clientToken,
-            clientTokenExpiry: session.clientTokenExpiry,
-            clientTokenExpiryLength: session.clientTokenExpiryLength,
-            currentEpochMs: OPNAuthSession.currentEpochMs()
-        )
-    }
-
-    private func mergeRefreshedSession(saved: OPNAuthSession, refreshed: OPNAuthSession) -> OPNAuthSession {
-        var merged = refreshed
-        if merged.refreshToken.isEmpty { merged.refreshToken = saved.refreshToken }
-        if merged.clientToken.isEmpty {
-            merged.clientToken = saved.clientToken
-            merged.clientTokenExpiry = saved.clientTokenExpiry
-            merged.clientTokenExpiryLength = saved.clientTokenExpiryLength
-        }
-        if merged.email.isEmpty { merged.email = saved.email }
-        if merged.displayName.isEmpty { merged.displayName = saved.displayName }
-        if merged.membershipTier.isEmpty { merged.membershipTier = saved.membershipTier }
-        if merged.userId.isEmpty { merged.userId = saved.userId }
-        return merged
-    }
-
-    private func performTokenRequest(body: String, completion: @escaping @Sendable (Result<NSDictionary, Error>) -> Void) {
-        guard let request = JarvisOAuthRequestFactory.tokenRequest(body: body, configuration: Self.jarvisConfiguration) else {
-            telemetry.recordError(ServiceError("Invalid token URL"), operation: .getSessionToken, attributes: [:])
-            completion(.failure(ServiceError("Invalid token URL")))
-            return
-        }
-        performJSONRequest(request, operation: .getSessionToken, completion: completion)
-    }
-
-    private func performJSONRequest(_ request: URLRequest, operation: Jarvis.Operation?, completion: @escaping @Sendable (Result<NSDictionary, Error>) -> Void) {
-        let span = telemetry.startSpan(name: operation?.rawValue ?? "Jarvis HTTP request", operation: operation, attributes: ["host": request.url?.host ?? ""])
-        let telemetry = telemetry
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error {
-                telemetry.recordError(error, operation: operation, attributes: ["phase": "http"])
-                span.finish(success: false)
-                DispatchQueue.main.async { completion(.failure(error)) }
-                return
-            }
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200, let data else {
-                let http = response as? HTTPURLResponse
-                let serviceError = ServiceError("HTTP \(http?.statusCode ?? 0)")
-                telemetry.recordError(serviceError, operation: operation, attributes: ["status_code": String(http?.statusCode ?? 0)])
-                span.setAttribute("status_code", value: String(http?.statusCode ?? 0))
-                span.finish(success: false)
-                DispatchQueue.main.async { completion(.failure(serviceError)) }
-                return
-            }
-            guard let object = try? JSONSerialization.jsonObject(with: data), let json = object as? NSDictionary else {
-                let serviceError = ServiceError("Invalid JSON response")
-                telemetry.recordError(serviceError, operation: operation, attributes: [:])
-                span.setAttribute("status_code", value: String(http.statusCode))
-                span.finish(success: false)
-                DispatchQueue.main.async { completion(.failure(serviceError)) }
-                return
-            }
-            span.setAttribute("status_code", value: String(http.statusCode))
-            span.finish(success: true)
-            DispatchQueue.main.async { completion(.success(json)) }
-        }.resume()
     }
 
     private func startOAuthCallbackListener(
