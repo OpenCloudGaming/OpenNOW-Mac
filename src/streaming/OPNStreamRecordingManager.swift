@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import AppKit
+@preconcurrency import Accelerate
 import CoreImage
 @preconcurrency import CoreMedia
 @preconcurrency import CoreVideo
@@ -62,6 +63,8 @@ final class OPNStreamRecordingManager: NSObject {
     private var droppedVideoFrames: UInt64 = 0
     private var lastDroppedVideoFrameLogTime: CFTimeInterval = 0
     private var microphoneCaptureSession: AVCaptureSession?
+    private var ypCbCrToARGBInfo = vImage_YpCbCrToARGB()
+    private var ypCbCrConversionReady = false
 
     override init() {
         super.init()
@@ -489,40 +492,72 @@ final class OPNStreamRecordingManager: NSObject {
         guard let i420Frame = Self.sendObject(frame, selector: #selector(OPNDynamicRTCVideoFrame.newI420VideoFrame)), let i420 = Self.sendObject(i420Frame, selector: #selector(getter: OPNDynamicRTCVideoFrame.buffer)) else {
             return nil
         }
-        copyI420Buffer(i420, toBGRAOutput: output)
+        guard copyI420Buffer(i420, toBGRAOutput: output) else { return nil }
         return output
     }
 
-    private func copyI420Buffer(_ i420: AnyObject, toBGRAOutput output: CVPixelBuffer) {
+    private func ensureYpCbCrConversionReady() -> Bool {
+        if ypCbCrConversionReady { return true }
+
+        var pixelRange = vImage_YpCbCrPixelRange(Yp_bias: 16, CbCr_bias: 128, YpRangeMax: 235, CbCrRangeMax: 240, YpMax: 255, YpMin: 0, CbCrMax: 255, CbCrMin: 1)
+        let status = vImageConvert_YpCbCrToARGB_GenerateConversion(
+            kvImage_YpCbCrToARGBMatrix_ITU_R_601_4,
+            &pixelRange,
+            &ypCbCrToARGBInfo,
+            kvImage420Yp8_Cb8_Cr8,
+            kvImageARGB8888,
+            vImage_Flags(kvImageNoFlags)
+        )
+        ypCbCrConversionReady = status == kvImageNoError
+        if !ypCbCrConversionReady {
+            OPNSentry.logErrorMessage("[Recording] vImage conversion setup failed: \(status)")
+        }
+        return ypCbCrConversionReady
+    }
+
+    private func copyI420Buffer(_ i420: AnyObject, toBGRAOutput output: CVPixelBuffer) -> Bool {
+        guard ensureYpCbCrConversionReady() else { return false }
         CVPixelBufferLockBaseAddress(output, [])
         defer { CVPixelBufferUnlockBaseAddress(output, []) }
-        guard let baseAddress = CVPixelBufferGetBaseAddress(output) else { return }
-        let dst = baseAddress.assumingMemoryBound(to: UInt8.self)
+        guard let baseAddress = CVPixelBufferGetBaseAddress(output) else { return false }
         let dstStride = CVPixelBufferGetBytesPerRow(output)
         let width = min(Int(videoSize.width), Int(Self.sendInt(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.width))))
         let height = min(Int(videoSize.height), Int(Self.sendInt(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.height))))
-        guard let dataY = Self.sendPointer(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.dataY)), let dataU = Self.sendPointer(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.dataU)), let dataV = Self.sendPointer(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.dataV)) else { return }
+        guard width > 0, height > 0 else { return false }
+        guard let dataY = Self.sendPointer(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.dataY)), let dataU = Self.sendPointer(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.dataU)), let dataV = Self.sendPointer(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.dataV)) else { return false }
         let strideY = Int(Self.sendInt(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.strideY)))
         let strideU = Int(Self.sendInt(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.strideU)))
         let strideV = Int(Self.sendInt(i420, selector: #selector(getter: OPNDynamicRTCI420Buffer.strideV)))
-        for y in 0..<height {
-            let row = dst.advanced(by: y * dstStride)
-            let yRow = dataY.advanced(by: y * strideY)
-            let uRow = dataU.advanced(by: (y / 2) * strideU)
-            let vRow = dataV.advanced(by: (y / 2) * strideV)
-            for x in 0..<width {
-                let yy = Int(yRow[x])
-                let uu = Int(uRow[x / 2]) - 128
-                let vv = Int(vRow[x / 2]) - 128
-                let r = yy + Int((1.402 * Double(vv)).rounded())
-                let g = yy - Int((0.344136 * Double(uu) + 0.714136 * Double(vv)).rounded())
-                let b = yy + Int((1.772 * Double(uu)).rounded())
-                row[x * 4] = UInt8(max(0, min(255, b)))
-                row[x * 4 + 1] = UInt8(max(0, min(255, g)))
-                row[x * 4 + 2] = UInt8(max(0, min(255, r)))
-                row[x * 4 + 3] = 255
-            }
+        guard strideY > 0, strideU > 0, strideV > 0 else { return false }
+
+        var sourceY = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: dataY), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: strideY)
+        var sourceCb = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: dataU), height: vImagePixelCount((height + 1) / 2), width: vImagePixelCount((width + 1) / 2), rowBytes: strideU)
+        var sourceCr = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: dataV), height: vImagePixelCount((height + 1) / 2), width: vImagePixelCount((width + 1) / 2), rowBytes: strideV)
+        var destination = vImage_Buffer(data: baseAddress, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: dstStride)
+        var argbMap: [UInt8] = [0, 1, 2, 3]
+
+        let conversionStatus = vImageConvert_420Yp8_Cb8_Cr8ToARGB8888(
+            &sourceY,
+            &sourceCb,
+            &sourceCr,
+            &destination,
+            &ypCbCrToARGBInfo,
+            &argbMap,
+            255,
+            vImage_Flags(kvImageNoFlags)
+        )
+        guard conversionStatus == kvImageNoError else {
+            OPNSentry.logErrorMessage("[Recording] vImage I420 conversion failed: \(conversionStatus)")
+            return false
         }
+
+        var bgraMap: [UInt8] = [3, 2, 1, 0]
+        let permutationStatus = vImagePermuteChannels_ARGB8888(&destination, &destination, &bgraMap, vImage_Flags(kvImageNoFlags))
+        if permutationStatus != kvImageNoError {
+            OPNSentry.logErrorMessage("[Recording] vImage BGRA permutation failed: \(permutationStatus)")
+            return false
+        }
+        return true
     }
 
     private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, kind: OPNRecordingAudioKind) {
