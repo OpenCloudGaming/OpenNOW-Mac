@@ -504,6 +504,7 @@ struct OPNGameCatalogSwiftUIView: View {
                         }
                         .padding(.bottom, 88)
                     }
+                    .ignoresSafeArea(.container, edges: .top)
                     .onChange(of: model.focusedTileID) { _, tileID in
                         guard let tileID else { return }
                         withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(tileID, anchor: .center) }
