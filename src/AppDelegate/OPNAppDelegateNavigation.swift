@@ -1,4 +1,5 @@
 import AppKit
+import GFNErrorMapping
 import QuartzCore
 
 private enum OPNNavigationScreen: Int32 {

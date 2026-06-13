@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import AVFoundation
 import Foundation
+import GFNErrorMapping
 import GameController
 import OpenNOWNetwork
 import QuartzCore

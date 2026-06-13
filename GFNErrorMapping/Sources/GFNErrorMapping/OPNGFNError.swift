@@ -1,5 +1,7 @@
 import Foundation
 
+import Foundation
+
 enum OPNGFNErrorMapper {
     private static let noGFNErrorCode = Int64.min
 
@@ -236,14 +238,14 @@ enum OPNGFNErrorMapper {
 }
 
 @objc(OPNGFNError)
-final class OPNGFNError: NSObject {
+public final class OPNGFNError: NSObject {
     @objc(userFacingMessageForErrorMessage:gameTitle:)
-    static func userFacingMessage(errorMessage: String, gameTitle: String) -> String {
+    public static func userFacingMessage(errorMessage: String, gameTitle: String) -> String {
         OPNGFNErrorMapper.userFacingMessage(errorMessage, gameTitle: gameTitle)
     }
 
     @objc(userFacingMessageForErrorMessage:gameTitle:sessionWasConnected:)
-    static func userFacingMessage(errorMessage: String, gameTitle: String, sessionWasConnected: Bool) -> String {
+    public static func userFacingMessage(errorMessage: String, gameTitle: String, sessionWasConnected: Bool) -> String {
         OPNGFNErrorMapper.userFacingMessage(errorMessage, gameTitle: gameTitle, sessionWasConnected: sessionWasConnected)
     }
 }
