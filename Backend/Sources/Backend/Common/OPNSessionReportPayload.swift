@@ -2,20 +2,20 @@ import Foundation
 
 @objcMembers
 @objc(OPNSessionReportPayload)
-final class OPNSessionReportPayload: NSObject {
-    let gameTitle: String
-    let success: Bool
-    let launchText: String
-    let averageLatencyText: String
-    let averageBitrateText: String
-    let droppedFramesText: String
-    let reportText: String
-    let copyText: String
-    let shouldShow: Bool
-    let displayScore: Int
-    let displayReason: String
+public final class OPNSessionReportPayload: NSObject {
+    public let gameTitle: String
+    public let success: Bool
+    public let launchText: String
+    public let averageLatencyText: String
+    public let averageBitrateText: String
+    public let droppedFramesText: String
+    public let reportText: String
+    public let copyText: String
+    public let shouldShow: Bool
+    public let displayScore: Int
+    public let displayReason: String
 
-    init(
+    public init(
         gameTitle: String,
         success: Bool,
         launchText: String,

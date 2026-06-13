@@ -8,8 +8,30 @@ let package = Package(
     products: [
         .library(name: "Backend", targets: ["Backend"]),
     ],
+    dependencies: [
+        .package(path: "../Common"),
+        .package(path: "../Network"),
+        .package(path: "../jarvis"),
+        .package(path: "../starfleet"),
+        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.17.1"),
+    ],
     targets: [
-        .target(name: "Backend"),
+        .target(
+            name: "Backend",
+            dependencies: [
+                "Common",
+                .product(name: "OpenNOWNetwork", package: "Network"),
+                .product(name: "Jarvis", package: "jarvis"),
+                .product(name: "Starfleet", package: "starfleet"),
+                .product(name: "Sentry", package: "sentry-cocoa"),
+            ],
+            swiftSettings: [
+                .unsafeFlags(["-F", "../third_party/webrtc-official"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-F", "../third_party/webrtc-official", "-framework", "WebRTC"]),
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

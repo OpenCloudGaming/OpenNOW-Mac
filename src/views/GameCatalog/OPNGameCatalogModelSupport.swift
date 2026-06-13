@@ -1,4 +1,6 @@
+import Backend
 import Foundation
+import SwiftUI
 
 extension OPNGameCatalogView {
     static func catalogPanels(for sourceGames: [OPNCatalogGameObject]) -> [OPNCatalogPanelObject] {

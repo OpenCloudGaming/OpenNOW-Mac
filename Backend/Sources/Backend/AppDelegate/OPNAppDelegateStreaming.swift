@@ -136,7 +136,7 @@ extension NSObject {
         opnSet(self, "activeSessionContinueHandler", continueHandler)
         opnSet(self, "activeSessionDeleteHandler", deleteHandler)
         guard let host = opnGet(self, "contentContainer", as: NSView.self) ?? opnGet(self, "window", as: NSWindow.self)?.contentView else { return }
-        let overlay = OPNActiveSessionPromptView(frame: host.bounds, sessionTitle: sessionTitle, selectedGameTitle: selectedGameTitle)
+        guard let overlay = OPNAppViewBridge.activeSessionPromptView(frame: host.bounds, sessionTitle: sessionTitle, selectedGameTitle: selectedGameTitle) else { return }
         overlay.autoresizingMask = [.width, .height]
         overlay.onContinue = { [weak self] in self?.activeSessionContinueClicked(nil) }
         overlay.onDelete = { [weak self] in self?.activeSessionDeleteClicked(nil) }
@@ -192,13 +192,13 @@ extension NSObject {
         guard let host = opnGet(self, "contentContainer", as: NSView.self) ?? opnGet(self, "window", as: NSWindow.self)?.contentView else { completion(false); return }
         let generation = opnInt(self, "cloudmatchServerPickerGeneration") + 1
         opnSet(self, "cloudmatchServerPickerGeneration", generation)
-        let picker = OPNCloudmatchServerPickerView(frame: host.bounds, gameTitle: gameTitle)
+        guard let picker = OPNAppViewBridge.serverPickerView(frame: host.bounds, gameTitle: gameTitle) else { completion(false); return }
         picker.autoresizingMask = [.width, .height]
         opnSet(self, "cloudmatchServerPickerView", picker)
         let cachedRegions = OPNStreamPreferences.loadCachedRegions()
         picker.setOptions(opnCloudmatchOptions(cachedRegions), selectedRegionUrl: OPNStreamPreferences.loadSelectedRegionUrl(), refreshing: true)
         picker.setStatusMessage(cachedRegions.isEmpty ? "Finding routes..." : "Refreshing ping...", isError: false)
-        picker.onConfirm = { [weak self, weak picker] option in
+        picker.onConfirm = { [weak self, weak picker] (option: OPNCloudmatchServerOption) in
             guard let self, let picker, opnGet(self, "cloudmatchServerPickerView", as: OPNCloudmatchServerPickerView.self) === picker else { return }
             OPNStreamPreferences.saveSelectedRegionUrl(option.url)
             OPNSentry.logInfoMessage("[AppDelegate] Cloudmatch server selected: \(option.url.isEmpty ? "automatic" : option.url)")
@@ -355,7 +355,7 @@ extension NSObject {
     @objc func showSessionReport(_ report: OPNSessionReportPayload) {
         guard let contentContainer = opnGet(self, "contentContainer", as: NSView.self) else { return }
         opnGet(self, "sessionReportView", as: OPNSessionReportView.self)?.removeFromSuperview()
-        let view = OPNSessionReportView(frame: contentContainer.bounds, report: report)
+        guard let view = OPNAppViewBridge.sessionReportView(frame: contentContainer.bounds, report: report) else { return }
         view.autoresizingMask = [.width, .height]
         view.onDone = { [weak self] in
             guard let self else { return }

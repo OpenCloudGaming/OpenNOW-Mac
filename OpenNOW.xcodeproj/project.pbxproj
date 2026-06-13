@@ -7,14 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift */; };
 		20E194CFFBA3687D0A48D383 /* OPNPremiumBackdrop.metal in Sources */ = {isa = PBXBuildFile; fileRef = 56C01BA183847B38981C01FD /* OPNPremiumBackdrop.metal */; };
 		2EF04056FF33CDBD1E80741E /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA8C15C5E2D0BC2B518A5122 /* ScreenCaptureKit.framework */; };
 		3B4CCDD106825E705E33C838 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3351CF6EEB747A30AA91CDE3 /* AuthenticationServices.framework */; };
-		3BC225D2A5926453B554382C /* OPNUIHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957905FB492F42AD9B576509 /* OPNUIHelpers.swift */; };
 		428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F1CB59A202D1743D348CB6E2 /* Metal.framework */; };
 		4A06F3F6B2094450A5049F2A /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework */; };
-		4C3E83E448564D2B9FBD3A10 /* OPNSentry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3E83E448564D2B9FBD3A11 /* OPNSentry.swift */; };
 		4C3E83E448564D2B9FBD3A12 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 4C3E83E448564D2B9FBD3A13 /* Sentry */; };
 		4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2725E7B4151D930B8EEC76B0 /* Cocoa.framework */; };
 		56330183F7065F54C2D88C7F /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */; };
@@ -37,17 +34,9 @@
 		9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5BCB75964D40550D1FBD77B5 /* MetalKit.framework */; };
 		9AFDB0810ACB8B82728142E5 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2847DD23C73CB01927B8B6D /* CoreMedia.framework */; };
 		A00000000000000000000011 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000021 /* AudioUnit.framework */; };
-		A00000000000000000000024 /* OPNSessionHealthReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000024 /* OPNSessionHealthReport.swift */; };
 		A750DCB728A12BBBBF23C682 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EE996F149E2BE5CD1D7B96C5 /* CoreAudio.framework */; };
 		B7F49677C78ABB1ED6E07C13 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 69C67B7CFDCBD4BFA8A4BDDB /* AVFoundation.framework */; };
 		B9D4D385ED2A4B1F9E1E24BA /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 71540FEB572BA7ADB70C4D69 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		C00000000000000000000030 /* OPNAppDelegateDesktop.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000041 /* OPNAppDelegateDesktop.swift */; };
-		C00000000000000000000031 /* OPNAppDelegateStreaming.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000042 /* OPNAppDelegateStreaming.swift */; };
-		C00000000000000000000032 /* OPNAppDelegateGameLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000043 /* OPNAppDelegateGameLaunch.swift */; };
-		C00000000000000000000033 /* OPNAppDelegateNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000044 /* OPNAppDelegateNavigation.swift */; };
-		C00000000000000000000034 /* OPNAppDelegateCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000045 /* OPNAppDelegateCatalog.swift */; };
-		C00000000000000000000035 /* OPNAppDelegateSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000046 /* OPNAppDelegateSupport.swift */; };
-		C00000000000000000000047 /* OPNActiveSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000048 /* OPNActiveSessionService.swift */; };
 		D00000000000000000000032 /* OPNGameCatalogArtworkSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */; };
 		D00000000000000000000033 /* OPNGameCatalogMetadataSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */; };
 		D00000000000000000000034 /* OPNStoreGameTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000044 /* OPNStoreGameTile.swift */; };
@@ -58,57 +47,23 @@
 		D0000000000000000000003B /* OPNGameCatalogSearchSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */; };
 		D0000000000000000000003C /* OPNGameCatalogLayoutSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */; };
 		D4D1FDD046EF74604BF789F3 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */; };
-		E00000000000000000000001 /* OPNAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000011 /* OPNAppDelegate.swift */; };
-		E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */; };
-		E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */; };
-		E00000000000000000000004 /* OPNVideoSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000014 /* OPNVideoSurfaceView.swift */; };
 		E00000000000000000000005 /* OPNBackdropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000015 /* OPNBackdropView.swift */; };
 		E00000000000000000000006 /* OPNCarouselFocusLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000016 /* OPNCarouselFocusLayout.swift */; };
 		E00000000000000000000007 /* OPNErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000017 /* OPNErrorView.swift */; };
 		E00000000000000000000008 /* OPNViewSwiftSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000018 /* OPNViewSwiftSupport.swift */; };
-		E00000000000000000000009 /* OPNModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000019 /* OPNModels.swift */; };
-		E0000000000000000000000B /* OPNGameDataCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001B /* OPNGameDataCache.swift */; };
-		E0000000000000000000000C /* OPNAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001C /* OPNAuthService.swift */; };
-		E000000000000000000000E2 /* OPNJarvisSentryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E3 /* OPNJarvisSentryTelemetry.swift */; };
-		E000000000000000000000E4 /* OPNJarvisSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E5 /* OPNJarvisSessionStore.swift */; };
-		E0000000000000000000000D /* OPNGameService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001D /* OPNGameService.swift */; };
-		E0000000000000000000000F /* OPNLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001F /* OPNLocale.swift */; };
-		E00000000000000000000020 /* OPNGameRemediation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000021 /* OPNGameRemediation.swift */; };
 		E00000000000000000000028 /* OPNSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000029 /* OPNSettingsView.swift */; };
 		E0000000000000000000002A /* OPNGameCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002B /* OPNGameCardView.swift */; };
 		E0000000000000000000002C /* OPNLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002D /* OPNLoadingView.swift */; };
 		E0000000000000000000002E /* OPNEmailEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002F /* OPNEmailEntryView.swift */; };
-		E00000000000000000000033 /* OPNSessionReportPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000034 /* OPNSessionReportPayload.swift */; };
 		E00000000000000000000036 /* OPNAuthenticatingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000037 /* OPNAuthenticatingView.swift */; };
 		E00000000000000000000038 /* OPNCloudmatchServerPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */; };
 		E0000000000000000000003A /* OPNSessionReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003B /* OPNSessionReportView.swift */; };
 		E0000000000000000000003C /* OpenNOWApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003D /* OpenNOWApp.swift */; };
-		E0000000000000000000003E /* OPNHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000003F /* OPNHTTP.swift */; };
-		E00000000000000000000042 /* OPNGitHubUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000043 /* OPNGitHubUpdater.swift */; };
-		E00000000000000000000059 /* OPNSentryTransactionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000005A /* OPNSentryTransactionBridge.swift */; };
-		E0000000000000000000007F /* OPNStreamSessionHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080 /* OPNStreamSessionHandle.swift */; };
-		E00000000000000000000081 /* OPNStreamSessionHandleSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000082 /* OPNStreamSessionHandleSurface.swift */; };
 		E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */; };
-		E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */; };
-		E00000000000000000000099 /* OPNDiscordPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000098 /* OPNDiscordPresence.swift */; };
-		E0000000000000000000009B /* OPNLogCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000009A /* OPNLogCapture.swift */; };
-		E000000000000000000000AE /* OPNStreamViewControllerSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */; };
-		E000000000000000000000B0 /* OPNStreamViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B1 /* OPNStreamViewController.swift */; };
-		E000000000000000000000B4 /* OPNWebRTCCodecSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */; };
-		E000000000000000000000B6 /* OPNMetalVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B7 /* OPNMetalVideoView.swift */; };
-		E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */; };
-		E000000000000000000000BA /* OPNLibWebRTCInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BB /* OPNLibWebRTCInput.swift */; };
-		E000000000000000000000BC /* OPNLibWebRTCAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BD /* OPNLibWebRTCAudio.swift */; };
-		E000000000000000000000BE /* OPNLibWebRTCStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000BF /* OPNLibWebRTCStats.swift */; };
-		E000000000000000000000C0 /* OPNLibWebRTCSessionSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C1 /* OPNLibWebRTCSessionSurface.swift */; };
-		E000000000000000000000C2 /* OPNSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C3 /* OPNSessionManager.swift */; };
-		E000000000000000000000C4 /* OPNLibWebRTCStreamSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000C5 /* OPNLibWebRTCStreamSession.swift */; };
-		E000000000000000000000E0 /* OpenNOWAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000E1 /* OpenNOWAppModel.swift */; };
 		E57A113BFF3CA1175BCB810D /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 71540FEB572BA7ADB70C4D69 /* WebRTC.framework */; };
 		E61312258EEB2041AA067B25 /* OPNGameCatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift */; };
 		E61312258EEB2041AA067B26 /* OPNGameCatalogModelSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift */; };
 		ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5C2052B439E438DCA24889EC /* CoreImage.framework */; };
-		FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -128,12 +83,9 @@
 /* Begin PBXFileReference section */
 		0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
 		0D2B74C98C7ACD14E1175295 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamView.swift; path = src/streaming/OPNStreamView.swift; sourceTree = "<group>"; };
 		2725E7B4151D930B8EEC76B0 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		2DC921A46254106F27A61389 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
-		3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamRecordingManager.swift; path = src/streaming/OPNStreamRecordingManager.swift; sourceTree = "<group>"; };
 		3351CF6EEB747A30AA91CDE3 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
-		4C3E83E448564D2B9FBD3A11 /* OPNSentry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentry.swift; path = src/common/OPNSentry.swift; sourceTree = "<group>"; };
 		56C01BA183847B38981C01FD /* OPNPremiumBackdrop.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = OPNPremiumBackdrop.metal; path = src/shaders/OPNPremiumBackdrop.metal; sourceTree = "<group>"; };
 		5BCB75964D40550D1FBD77B5 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		5C2052B439E438DCA24889EC /* CoreImage.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreImage.framework; path = System/Library/Frameworks/CoreImage.framework; sourceTree = SDKROOT; };
@@ -143,19 +95,10 @@
 		7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 		8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		8C182E3135E4306DC54F496B /* OpenNOW-Info.plist */ = {isa = PBXFileReference; explicitFileType = text.plist.xml; path = "OpenNOW-Info.plist"; sourceTree = "<group>"; };
-		957905FB492F42AD9B576509 /* OPNUIHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNUIHelpers.swift; path = src/common/OPNUIHelpers.swift; sourceTree = "<group>"; };
 		A2847DD23C73CB01927B8B6D /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogView.swift; path = src/views/OPNGameCatalogView.swift; sourceTree = "<group>"; };
 		AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogModelSupport.swift; path = src/views/GameCatalog/OPNGameCatalogModelSupport.swift; sourceTree = "<group>"; };
 		B00000000000000000000021 /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = System/Library/Frameworks/AudioUnit.framework; sourceTree = SDKROOT; };
-		B00000000000000000000024 /* OPNSessionHealthReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionHealthReport.swift; path = src/common/OPNSessionHealthReport.swift; sourceTree = "<group>"; };
-		C00000000000000000000041 /* OPNAppDelegateDesktop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateDesktop.swift; path = src/AppDelegate/OPNAppDelegateDesktop.swift; sourceTree = "<group>"; };
-		C00000000000000000000042 /* OPNAppDelegateStreaming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateStreaming.swift; path = src/AppDelegate/OPNAppDelegateStreaming.swift; sourceTree = "<group>"; };
-		C00000000000000000000043 /* OPNAppDelegateGameLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateGameLaunch.swift; path = src/AppDelegate/OPNAppDelegateGameLaunch.swift; sourceTree = "<group>"; };
-		C00000000000000000000044 /* OPNAppDelegateNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateNavigation.swift; path = src/AppDelegate/OPNAppDelegateNavigation.swift; sourceTree = "<group>"; };
-		C00000000000000000000045 /* OPNAppDelegateCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateCatalog.swift; path = src/AppDelegate/OPNAppDelegateCatalog.swift; sourceTree = "<group>"; };
-		C00000000000000000000046 /* OPNAppDelegateSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegateSupport.swift; path = src/AppDelegate/OPNAppDelegateSupport.swift; sourceTree = "<group>"; };
-		C00000000000000000000048 /* OPNActiveSessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNActiveSessionService.swift; path = src/streaming/OPNActiveSessionService.swift; sourceTree = "<group>"; };
 		CA8C15C5E2D0BC2B518A5122 /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
 		D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogArtworkSupport.swift; path = src/views/GameCatalog/OPNGameCatalogArtworkSupport.swift; sourceTree = "<group>"; };
 		D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogMetadataSupport.swift; path = src/views/GameCatalog/OPNGameCatalogMetadataSupport.swift; sourceTree = "<group>"; };
@@ -167,52 +110,19 @@
 		D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogSearchSupport.swift; path = src/views/GameCatalog/OPNGameCatalogSearchSupport.swift; sourceTree = "<group>"; };
 		D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogLayoutSupport.swift; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.swift; sourceTree = "<group>"; };
 		D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
-		E00000000000000000000011 /* OPNAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAppDelegate.swift; path = src/OPNAppDelegate.swift; sourceTree = "<group>"; };
-		E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCoreAnimationCoordinator.swift; path = src/common/OPNCoreAnimationCoordinator.swift; sourceTree = "<group>"; };
-		E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoEnhancementSettings.swift; path = src/streaming/OPNVideoEnhancementSettings.swift; sourceTree = "<group>"; };
-		E00000000000000000000014 /* OPNVideoSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNVideoSurfaceView.swift; path = src/streaming/OPNVideoSurfaceView.swift; sourceTree = "<group>"; };
 		E00000000000000000000015 /* OPNBackdropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNBackdropView.swift; path = src/views/OPNBackdropView.swift; sourceTree = "<group>"; };
 		E00000000000000000000016 /* OPNCarouselFocusLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCarouselFocusLayout.swift; path = src/views/OPNCarouselFocusLayout.swift; sourceTree = "<group>"; };
 		E00000000000000000000017 /* OPNErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNErrorView.swift; path = src/views/OPNErrorView.swift; sourceTree = "<group>"; };
 		E00000000000000000000018 /* OPNViewSwiftSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNViewSwiftSupport.swift; path = src/views/OPNViewSwiftSupport.swift; sourceTree = "<group>"; };
-		E00000000000000000000019 /* OPNModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNModels.swift; path = src/common/OPNModels.swift; sourceTree = "<group>"; };
-		E0000000000000000000001B /* OPNGameDataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameDataCache.swift; path = src/games/OPNGameDataCache.swift; sourceTree = "<group>"; };
-		E0000000000000000000001C /* OPNAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthService.swift; path = src/auth/OPNAuthService.swift; sourceTree = "<group>"; };
-		E000000000000000000000E3 /* OPNJarvisSentryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNJarvisSentryTelemetry.swift; path = src/auth/OPNJarvisSentryTelemetry.swift; sourceTree = "<group>"; };
-		E000000000000000000000E5 /* OPNJarvisSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNJarvisSessionStore.swift; path = src/auth/OPNJarvisSessionStore.swift; sourceTree = "<group>"; };
-		E0000000000000000000001D /* OPNGameService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameService.swift; path = src/games/OPNGameService.swift; sourceTree = "<group>"; };
-		E0000000000000000000001F /* OPNLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLocale.swift; path = src/common/OPNLocale.swift; sourceTree = "<group>"; };
-		E00000000000000000000021 /* OPNGameRemediation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameRemediation.swift; path = src/common/OPNGameRemediation.swift; sourceTree = "<group>"; };
 		E00000000000000000000029 /* OPNSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSettingsView.swift; path = src/views/OPNSettingsView.swift; sourceTree = "<group>"; };
 		E0000000000000000000002B /* OPNGameCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCardView.swift; path = src/views/OPNGameCardView.swift; sourceTree = "<group>"; };
 		E0000000000000000000002D /* OPNLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLoadingView.swift; path = src/views/OPNLoadingView.swift; sourceTree = "<group>"; };
 		E0000000000000000000002F /* OPNEmailEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNEmailEntryView.swift; path = src/views/OPNEmailEntryView.swift; sourceTree = "<group>"; };
-		E00000000000000000000034 /* OPNSessionReportPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportPayload.swift; path = src/common/OPNSessionReportPayload.swift; sourceTree = "<group>"; };
 		E00000000000000000000037 /* OPNAuthenticatingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthenticatingView.swift; path = src/views/OPNAuthenticatingView.swift; sourceTree = "<group>"; };
 		E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCloudmatchServerPickerView.swift; path = src/views/OPNCloudmatchServerPickerView.swift; sourceTree = "<group>"; };
 		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
 		E0000000000000000000003D /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWApp.swift; path = src/OpenNOWApp.swift; sourceTree = "<group>"; };
-		E0000000000000000000003F /* OPNHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNHTTP.swift; path = src/common/OPNHTTP.swift; sourceTree = "<group>"; };
-		E00000000000000000000043 /* OPNGitHubUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGitHubUpdater.swift; path = src/common/OPNGitHubUpdater.swift; sourceTree = "<group>"; };
-		E0000000000000000000005A /* OPNSentryTransactionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentryTransactionBridge.swift; path = src/common/OPNSentryTransactionBridge.swift; sourceTree = "<group>"; };
-		E00000000000000000000080 /* OPNStreamSessionHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandle.swift; path = src/streaming/OPNStreamSessionHandle.swift; sourceTree = "<group>"; };
-		E00000000000000000000082 /* OPNStreamSessionHandleSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandleSurface.swift; path = src/streaming/OPNStreamSessionHandleSurface.swift; sourceTree = "<group>"; };
 		E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewControllerOverlays.swift; path = src/streaming/OPNStreamViewControllerOverlays.swift; sourceTree = "<group>"; };
-		E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAudioDeviceMonitorContext.swift; path = src/streaming/OPNAudioDeviceMonitorContext.swift; sourceTree = "<group>"; };
-		E00000000000000000000098 /* OPNDiscordPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDiscordPresence.swift; path = src/common/OPNDiscordPresence.swift; sourceTree = "<group>"; };
-		E0000000000000000000009A /* OPNLogCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLogCapture.swift; path = src/common/OPNLogCapture.swift; sourceTree = "<group>"; };
-		E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewControllerSupport.swift; path = src/streaming/OPNStreamViewControllerSupport.swift; sourceTree = "<group>"; };
-		E000000000000000000000B1 /* OPNStreamViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewController.swift; path = src/streaming/OPNStreamViewController.swift; sourceTree = "<group>"; };
-		E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNWebRTCCodecSupport.swift; path = src/streaming/OPNWebRTCCodecSupport.swift; sourceTree = "<group>"; };
-		E000000000000000000000B7 /* OPNMetalVideoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNMetalVideoView.swift; path = src/streaming/OPNMetalVideoView.swift; sourceTree = "<group>"; };
-		E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCSessionImpl.swift; path = src/streaming/OPNLibWebRTCSessionImpl.swift; sourceTree = "<group>"; };
-		E000000000000000000000BB /* OPNLibWebRTCInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCInput.swift; path = src/streaming/OPNLibWebRTCInput.swift; sourceTree = "<group>"; };
-		E000000000000000000000BD /* OPNLibWebRTCAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCAudio.swift; path = src/streaming/OPNLibWebRTCAudio.swift; sourceTree = "<group>"; };
-		E000000000000000000000BF /* OPNLibWebRTCStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCStats.swift; path = src/streaming/OPNLibWebRTCStats.swift; sourceTree = "<group>"; };
-		E000000000000000000000C1 /* OPNLibWebRTCSessionSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCSessionSurface.swift; path = src/streaming/OPNLibWebRTCSessionSurface.swift; sourceTree = "<group>"; };
-		E000000000000000000000C3 /* OPNSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionManager.swift; path = src/streaming/OPNSessionManager.swift; sourceTree = "<group>"; };
-		E000000000000000000000C5 /* OPNLibWebRTCStreamSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLibWebRTCStreamSession.swift; path = src/streaming/OPNLibWebRTCStreamSession.swift; sourceTree = "<group>"; };
-		E000000000000000000000E1 /* OpenNOWAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWAppModel.swift; path = src/OpenNOWAppModel.swift; sourceTree = "<group>"; };
 		EE996F149E2BE5CD1D7B96C5 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		F1CB59A202D1743D348CB6E2 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		F7F59E351286CF299470CD20 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
@@ -263,8 +173,6 @@
 		09E51D173F1A00C061B7641B /* src */ = {
 			isa = PBXGroup;
 			children = (
-				E00000000000000000000011 /* OPNAppDelegate.swift */,
-				E000000000000000000000E1 /* OpenNOWAppModel.swift */,
 				C00000000000000000000050 /* AppDelegate */,
 				F515E1DCA81C9F38EDA5851E /* auth */,
 				258D3F331162A2E4DD8D0A15 /* common */,
@@ -288,19 +196,6 @@
 		258D3F331162A2E4DD8D0A15 /* common */ = {
 			isa = PBXGroup;
 			children = (
-				E00000000000000000000019 /* OPNModels.swift */,
-				E00000000000000000000012 /* OPNCoreAnimationCoordinator.swift */,
-				E0000000000000000000001F /* OPNLocale.swift */,
-				E00000000000000000000021 /* OPNGameRemediation.swift */,
-				E0000000000000000000003F /* OPNHTTP.swift */,
-				E00000000000000000000098 /* OPNDiscordPresence.swift */,
-				E00000000000000000000043 /* OPNGitHubUpdater.swift */,
-				E0000000000000000000009A /* OPNLogCapture.swift */,
-				B00000000000000000000024 /* OPNSessionHealthReport.swift */,
-				E00000000000000000000034 /* OPNSessionReportPayload.swift */,
-				4C3E83E448564D2B9FBD3A11 /* OPNSentry.swift */,
-				E0000000000000000000005A /* OPNSentryTransactionBridge.swift */,
-				957905FB492F42AD9B576509 /* OPNUIHelpers.swift */,
 			);
 			name = common;
 			sourceTree = "<group>";
@@ -308,26 +203,7 @@
 		258FB9F9F30FA962CED75214 /* streaming */ = {
 			isa = PBXGroup;
 			children = (
-				E00000000000000000000013 /* OPNVideoEnhancementSettings.swift */,
-				E00000000000000000000014 /* OPNVideoSurfaceView.swift */,
-				C00000000000000000000048 /* OPNActiveSessionService.swift */,
-				E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */,
-				E000000000000000000000B7 /* OPNMetalVideoView.swift */,
-				E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */,
-				E000000000000000000000BB /* OPNLibWebRTCInput.swift */,
-				E000000000000000000000BF /* OPNLibWebRTCStats.swift */,
-				E000000000000000000000BD /* OPNLibWebRTCAudio.swift */,
-				E000000000000000000000C1 /* OPNLibWebRTCSessionSurface.swift */,
-				E000000000000000000000C5 /* OPNLibWebRTCStreamSession.swift */,
-				E000000000000000000000C3 /* OPNSessionManager.swift */,
-				E00000000000000000000080 /* OPNStreamSessionHandle.swift */,
-				E00000000000000000000082 /* OPNStreamSessionHandleSurface.swift */,
 				E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */,
-				E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */,
-				E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */,
-				3030D7D1FFA6262DEDB1FB76 /* OPNStreamRecordingManager.swift */,
-				24D4F5F148ABE96F6C8D54D7 /* OPNStreamView.swift */,
-				E000000000000000000000B1 /* OPNStreamViewController.swift */,
 			);
 			name = streaming;
 			sourceTree = "<group>";
@@ -335,8 +211,6 @@
 		4A2AEEDD7ECFD3B280FE224B /* games */ = {
 			isa = PBXGroup;
 			children = (
-				E0000000000000000000001B /* OPNGameDataCache.swift */,
-				E0000000000000000000001D /* OPNGameService.swift */,
 			);
 			name = games;
 			sourceTree = "<group>";
@@ -396,12 +270,6 @@
 		C00000000000000000000050 /* AppDelegate */ = {
 			isa = PBXGroup;
 			children = (
-				C00000000000000000000045 /* OPNAppDelegateCatalog.swift */,
-				C00000000000000000000041 /* OPNAppDelegateDesktop.swift */,
-				C00000000000000000000043 /* OPNAppDelegateGameLaunch.swift */,
-				C00000000000000000000044 /* OPNAppDelegateNavigation.swift */,
-				C00000000000000000000046 /* OPNAppDelegateSupport.swift */,
-				C00000000000000000000042 /* OPNAppDelegateStreaming.swift */,
 			);
 			name = AppDelegate;
 			sourceTree = "<group>";
@@ -438,9 +306,6 @@
 		F515E1DCA81C9F38EDA5851E /* auth */ = {
 			isa = PBXGroup;
 			children = (
-				E0000000000000000000001C /* OPNAuthService.swift */,
-				E000000000000000000000E3 /* OPNJarvisSentryTelemetry.swift */,
-				E000000000000000000000E5 /* OPNJarvisSessionStore.swift */,
 			);
 			name = auth;
 			sourceTree = "<group>";
@@ -544,53 +409,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E00000000000000000000001 /* OPNAppDelegate.swift in Sources */,
-				E000000000000000000000E0 /* OpenNOWAppModel.swift in Sources */,
-				C00000000000000000000030 /* OPNAppDelegateDesktop.swift in Sources */,
-				C00000000000000000000031 /* OPNAppDelegateStreaming.swift in Sources */,
-				C00000000000000000000032 /* OPNAppDelegateGameLaunch.swift in Sources */,
-				C00000000000000000000033 /* OPNAppDelegateNavigation.swift in Sources */,
-				C00000000000000000000034 /* OPNAppDelegateCatalog.swift in Sources */,
-				C00000000000000000000035 /* OPNAppDelegateSupport.swift in Sources */,
 				E0000000000000000000003C /* OpenNOWApp.swift in Sources */,
-				E0000000000000000000000C /* OPNAuthService.swift in Sources */,
-				E000000000000000000000E2 /* OPNJarvisSentryTelemetry.swift in Sources */,
-				E000000000000000000000E4 /* OPNJarvisSessionStore.swift in Sources */,
-				E00000000000000000000009 /* OPNModels.swift in Sources */,
-				E00000000000000000000002 /* OPNCoreAnimationCoordinator.swift in Sources */,
-				E0000000000000000000000F /* OPNLocale.swift in Sources */,
-				E00000000000000000000020 /* OPNGameRemediation.swift in Sources */,
-				E0000000000000000000009B /* OPNLogCapture.swift in Sources */,
-				4C3E83E448564D2B9FBD3A10 /* OPNSentry.swift in Sources */,
-				3BC225D2A5926453B554382C /* OPNUIHelpers.swift in Sources */,
-				E0000000000000000000000B /* OPNGameDataCache.swift in Sources */,
-				E0000000000000000000000D /* OPNGameService.swift in Sources */,
-				E00000000000000000000099 /* OPNDiscordPresence.swift in Sources */,
-				E00000000000000000000059 /* OPNSentryTransactionBridge.swift in Sources */,
-				E00000000000000000000042 /* OPNGitHubUpdater.swift in Sources */,
-				E0000000000000000000003E /* OPNHTTP.swift in Sources */,
-				E000000000000000000000B4 /* OPNWebRTCCodecSupport.swift in Sources */,
-				E000000000000000000000B6 /* OPNMetalVideoView.swift in Sources */,
-				E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in Sources */,
-				E000000000000000000000BA /* OPNLibWebRTCInput.swift in Sources */,
-				E000000000000000000000BE /* OPNLibWebRTCStats.swift in Sources */,
-				E000000000000000000000BC /* OPNLibWebRTCAudio.swift in Sources */,
-				E000000000000000000000C0 /* OPNLibWebRTCSessionSurface.swift in Sources */,
-				E0000000000000000000007F /* OPNStreamSessionHandle.swift in Sources */,
-				E00000000000000000000081 /* OPNStreamSessionHandleSurface.swift in Sources */,
-				E000000000000000000000C4 /* OPNLibWebRTCStreamSession.swift in Sources */,
-				A00000000000000000000024 /* OPNSessionHealthReport.swift in Sources */,
-				E000000000000000000000C2 /* OPNSessionManager.swift in Sources */,
-				E00000000000000000000033 /* OPNSessionReportPayload.swift in Sources */,
-				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.swift in Sources */,
-				FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in Sources */,
-				E000000000000000000000B0 /* OPNStreamViewController.swift in Sources */,
-				E00000000000000000000003 /* OPNVideoEnhancementSettings.swift in Sources */,
 				E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in Sources */,
-				E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in Sources */,
-				E000000000000000000000AE /* OPNStreamViewControllerSupport.swift in Sources */,
-				E00000000000000000000004 /* OPNVideoSurfaceView.swift in Sources */,
-				C00000000000000000000047 /* OPNActiveSessionService.swift in Sources */,
 				E00000000000000000000036 /* OPNAuthenticatingView.swift in Sources */,
 				E00000000000000000000005 /* OPNBackdropView.swift in Sources */,
 				E00000000000000000000006 /* OPNCarouselFocusLayout.swift in Sources */,

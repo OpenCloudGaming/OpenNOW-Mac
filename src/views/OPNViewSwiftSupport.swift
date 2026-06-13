@@ -1,4 +1,6 @@
 import AppKit
+import Backend
+import SwiftUI
 
 enum OPNViewColor {
     static let brandGreen: UInt32 = 0x34C759

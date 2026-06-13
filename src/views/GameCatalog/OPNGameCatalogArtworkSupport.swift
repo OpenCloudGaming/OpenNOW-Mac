@@ -1,6 +1,8 @@
 import AppKit
+import Backend
 import Foundation
 import QuartzCore
+import SwiftUI
 
 @objc(OPNGameCatalogArtworkSupport)
 @objcMembers

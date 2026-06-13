@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Backend
 import GameController
 import QuartzCore
 import SwiftUI
@@ -30,35 +31,6 @@ private func opnCloudmatchGamepadButtons() -> OPNCloudmatchGamepadButton {
     if pad.buttonB.value > 0.5 { buttons.insert(.b) }
     if pad.buttonY.value > 0.5 { buttons.insert(.y) }
     return buttons
-}
-
-@objc(OPNCloudmatchServerOption)
-final class OPNCloudmatchServerOption: NSObject {
-    @objc let name: String
-    @objc let url: String
-    @objc let latencyMs: Int
-    @objc(isAutomatic) let automatic: Bool
-
-    @objc var latencyText: String {
-        if latencyMs < 0 { return "Measuring" }
-        return automatic ? "Best \(latencyMs) ms" : "\(latencyMs) ms"
-    }
-
-    @objc var detailText: String {
-        if automatic {
-            return latencyMs >= 0 ? "Lowest measured region" : "Best available region"
-        }
-        return name.isEmpty ? "Cloudmatch region" : name
-    }
-
-    @objc(initWithName:url:latencyMs:automatic:)
-    init(name: String, url: String, latencyMs: Int, automatic: Bool) {
-        self.name = name.isEmpty ? "Cloudmatch" : name
-        self.url = url.isEmpty ? "" : url
-        self.latencyMs = latencyMs
-        self.automatic = automatic
-        super.init()
-    }
 }
 
 @MainActor

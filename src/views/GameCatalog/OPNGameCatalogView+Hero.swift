@@ -1,5 +1,7 @@
 import AppKit
+import Backend
 import QuartzCore
+import SwiftUI
 
 extension OPNGameCatalogView {
     @objc func heroCandidateCount() -> Int {

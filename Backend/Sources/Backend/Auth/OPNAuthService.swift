@@ -8,7 +8,7 @@ import Starfleet
 typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
 
-final class OPNAuthService: @unchecked Sendable {
+public final class OPNAuthService: @unchecked Sendable {
     static let shared = OPNAuthService()
     private static let jarvisConfiguration = JarvisOAuthConfiguration.gfnPC
     static let jarvisAuthStatusDidChangeNotification = Notification.Name("OpenNOW.JarvisAuthStatusDidChange")
@@ -18,7 +18,7 @@ final class OPNAuthService: @unchecked Sendable {
     static let oAuthClientId = jarvisConfiguration.clientId
     static let oAuthRedirectURI = jarvisConfiguration.redirectURI
     static let oAuthScope = jarvisConfiguration.scope
-    static let defaultIdpId = jarvisConfiguration.defaultIdpId
+    public static let defaultIdpId = jarvisConfiguration.defaultIdpId
     static let defaultUserAgent = jarvisConfiguration.userAgent
     static let oAuthLogoutURL = jarvisConfiguration.logoutURLString
 
@@ -833,9 +833,9 @@ final class OPNAuthSessionObject: NSObject {
 }
 
 @objc(OPNAuthServiceDirect)
-final class OPNAuthServiceDirect: NSObject, @unchecked Sendable {
+public final class OPNAuthServiceDirect: NSObject, @unchecked Sendable {
     @objc(shared)
-    static let shared = OPNAuthServiceDirect()
+    public static let shared = OPNAuthServiceDirect()
 
     @objc(startOAuthLoginWithProviderIdpId:completion:)
     func startOAuthLogin(providerIdpId: String, completion: @escaping @Sendable (Bool, OPNAuthSessionObject, String) -> Void) {
@@ -902,12 +902,12 @@ final class OPNAuthServiceDirect: NSObject, @unchecked Sendable {
     }
 
     @objc(getStayLoggedIn)
-    func getStayLoggedIn() -> Bool {
+    public func getStayLoggedIn() -> Bool {
         OPNAuthService.shared.getStayLoggedIn()
     }
 
     @objc(setStayLoggedIn:)
-    func setStayLoggedIn(_ value: Bool) {
+    public func setStayLoggedIn(_ value: Bool) {
         OPNAuthService.shared.setStayLoggedIn(value)
     }
 

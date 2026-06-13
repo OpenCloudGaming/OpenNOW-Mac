@@ -2,7 +2,7 @@ import Foundation
 
 import Jarvis
 
-@objc enum OPNAuthScreen: Int {
+@objc public enum OPNAuthScreen: Int {
     case emailEntry
     case authenticating
     case store
@@ -12,199 +12,213 @@ import Jarvis
     case oAuthBrowser
 }
 
-typealias OPNAuthCredentials = JarvisCredentials
-typealias OPNAuthSession = JarvisSession
+public typealias OPNAuthCredentials = JarvisCredentials
+public typealias OPNAuthSession = JarvisSession
 
-struct OPNSubscriptionInfo: Equatable, Sendable {
-    var membershipTier = "Free"
-    var subscriptionType = ""
-    var subscriptionSubType = ""
-    var allottedHours = 0.0
-    var purchasedHours = 0.0
-    var rolledOverHours = 0.0
-    var usedHours = 0.0
-    var remainingHours = 0.0
-    var totalHours = 0.0
-    var isUnlimited = false
-    var isGamePlayAllowed = true
+public struct OPNSubscriptionInfo: Equatable, Sendable {
+    public var membershipTier = "Free"
+    public var subscriptionType = ""
+    public var subscriptionSubType = ""
+    public var allottedHours = 0.0
+    public var purchasedHours = 0.0
+    public var rolledOverHours = 0.0
+    public var usedHours = 0.0
+    public var remainingHours = 0.0
+    public var totalHours = 0.0
+    public var isUnlimited = false
+    public var isGamePlayAllowed = true
 }
 
-struct OPNGameVariant: Codable, Equatable, Sendable {
-    var id = ""
-    var appStore = ""
-    var storeUrl = ""
-    var serviceStatus = ""
-    var librarySelected = false
-    var inLibrary = false
+public struct OPNGameVariant: Codable, Equatable, Sendable {
+    public var id = ""
+    public var appStore = ""
+    public var storeUrl = ""
+    public var serviceStatus = ""
+    public var librarySelected = false
+    public var inLibrary = false
 }
 
-struct OPNStoreAccountSyncingInfo: Equatable, Sendable {
-    var totalNumberOfSyncedGfnGames = 0
-    var syncState = ""
-    var syncDate = ""
+public struct OPNStoreAccountSyncingInfo: Equatable, Sendable {
+    public var totalNumberOfSyncedGfnGames = 0
+    public var syncState = ""
+    public var syncDate = ""
 }
 
-struct OPNStoreAccountInfo: Equatable, Sendable {
-    var store = ""
-    var userDisplayName = ""
-    var expiresIn = ""
-    var userIdentifier = ""
-    var hasAccountLinkingData = false
-    var hasAccountSyncingData = false
-    var syncing = OPNStoreAccountSyncingInfo()
+public struct OPNStoreAccountInfo: Equatable, Sendable {
+    public var store = ""
+    public var userDisplayName = ""
+    public var expiresIn = ""
+    public var userIdentifier = ""
+    public var hasAccountLinkingData = false
+    public var hasAccountSyncingData = false
+    public var syncing = OPNStoreAccountSyncingInfo()
 }
 
-struct OPNUserAccountInfo: Equatable, Sendable {
-    var subscriptions: [String] = []
-    var stores: [OPNStoreAccountInfo] = []
+public struct OPNUserAccountInfo: Equatable, Sendable {
+    public var subscriptions: [String] = []
+    public var stores: [OPNStoreAccountInfo] = []
 }
 
-struct OPNStoreFeatureInfo: Equatable, Sendable {
-    var type = ""
-    var displayProposition = ""
-    var supported = false
+public struct OPNStoreFeatureInfo: Equatable, Sendable {
+    public var type = ""
+    public var displayProposition = ""
+    public var supported = false
 }
 
-struct OPNStoreAccountLinkingMetadata: Equatable, Sendable {
-    var supportedVariantIds: [String] = []
-    var isSupported = false
-    var isRequired = false
-    var label = ""
+public struct OPNStoreAccountLinkingMetadata: Equatable, Sendable {
+    public var supportedVariantIds: [String] = []
+    public var isSupported = false
+    public var isRequired = false
+    public var label = ""
 }
 
-struct OPNStoreDefinition: Equatable, Sendable {
-    var store = ""
-    var label = ""
-    var smallImageUrl = ""
-    var sortOrder = 0
-    var features: [OPNStoreFeatureInfo] = []
-    var accountLinkingMetadata = OPNStoreAccountLinkingMetadata()
+public struct OPNStoreDefinition: Equatable, Sendable {
+    public var store = ""
+    public var label = ""
+    public var smallImageUrl = ""
+    public var sortOrder = 0
+    public var features: [OPNStoreFeatureInfo] = []
+    public var accountLinkingMetadata = OPNStoreAccountLinkingMetadata()
 }
 
-struct OPNGameInfo: Codable, Equatable, Sendable {
-    var id = ""
-    var uuid = ""
-    var launchAppId = ""
-    var title = ""
-    var shortName = ""
-    var description = ""
-    var developerName = ""
-    var publisherName = ""
-    var maxLocalPlayers = 0
-    var maxOnlinePlayers = 0
-    var playType = ""
-    var membershipTierLabel = ""
-    var playabilityState = ""
-    var imageUrl = ""
-    var heroImageUrl = ""
-    var screenshotUrls: [String] = []
-    var imageUrlsByType: [String: [String]] = [:]
-    var genres: [String] = []
-    var featureLabels: [String] = []
-    var supportedControls: [String] = []
-    var contentRatings: [String] = []
-    var nvidiaTech: [String] = []
-    var availableStores: [String] = []
-    var isInLibrary = false
-    var variants: [OPNGameVariant] = []
+public struct OPNGameInfo: Codable, Equatable, Sendable {
+    public var id = ""
+    public var uuid = ""
+    public var launchAppId = ""
+    public var title = ""
+    public var shortName = ""
+    public var description = ""
+    public var developerName = ""
+    public var publisherName = ""
+    public var maxLocalPlayers = 0
+    public var maxOnlinePlayers = 0
+    public var playType = ""
+    public var membershipTierLabel = ""
+    public var playabilityState = ""
+    public var imageUrl = ""
+    public var heroImageUrl = ""
+    public var screenshotUrls: [String] = []
+    public var imageUrlsByType: [String: [String]] = [:]
+    public var genres: [String] = []
+    public var featureLabels: [String] = []
+    public var supportedControls: [String] = []
+    public var contentRatings: [String] = []
+    public var nvidiaTech: [String] = []
+    public var availableStores: [String] = []
+    public var isInLibrary = false
+    public var variants: [OPNGameVariant] = []
 }
 
-struct OPNActiveSessionEntry: Equatable, Sendable {
-    var sessionId = ""
-    var appId = 0
-    var status = 0
-    var serverIp = ""
-    var gpuType = ""
-    var streamingBaseUrl = ""
-    var signalingUrl = ""
+public struct OPNActiveSessionEntry: Equatable, Sendable {
+    public var sessionId = ""
+    public var appId = 0
+    public var status = 0
+    public var serverIp = ""
+    public var gpuType = ""
+    public var streamingBaseUrl = ""
+    public var signalingUrl = ""
 }
 
-struct OPNPanelSection: Equatable, Sendable {
-    var id = ""
-    var title = ""
-    var typename = ""
-    var games: [OPNGameInfo] = []
+public struct OPNPanelSection: Equatable, Sendable {
+    public var id = ""
+    public var title = ""
+    public var typename = ""
+    public var games: [OPNGameInfo] = []
+
+    public init(id: String = "", title: String = "", typename: String = "", games: [OPNGameInfo] = []) {
+        self.id = id
+        self.title = title
+        self.typename = typename
+        self.games = games
+    }
 }
 
-struct OPNPanelResult: Equatable, Sendable {
-    var id = ""
-    var title = ""
-    var typename = ""
-    var sections: [OPNPanelSection] = []
+public struct OPNPanelResult: Equatable, Sendable {
+    public var id = ""
+    public var title = ""
+    public var typename = ""
+    public var sections: [OPNPanelSection] = []
+
+    public init(id: String = "", title: String = "", typename: String = "", sections: [OPNPanelSection] = []) {
+        self.id = id
+        self.title = title
+        self.typename = typename
+        self.sections = sections
+    }
 }
 
-struct OPNCatalogFilterOption: Equatable, Sendable {
-    var id = ""
-    var rawId = ""
-    var label = ""
-    var groupId = ""
-    var groupLabel = ""
+public struct OPNCatalogFilterOption: Equatable, Sendable {
+    public var id = ""
+    public var rawId = ""
+    public var label = ""
+    public var groupId = ""
+    public var groupLabel = ""
 }
 
-struct OPNCatalogFilterGroup: Equatable, Sendable {
-    var id = ""
-    var label = ""
-    var options: [OPNCatalogFilterOption] = []
+public struct OPNCatalogFilterGroup: Equatable, Sendable {
+    public var id = ""
+    public var label = ""
+    public var options: [OPNCatalogFilterOption] = []
 }
 
-struct OPNCatalogSortOption: Equatable, Sendable {
-    var id = ""
-    var label = ""
-    var orderBy = ""
+public struct OPNCatalogSortOption: Equatable, Sendable {
+    public var id = ""
+    public var label = ""
+    public var orderBy = ""
 }
 
-struct OPNCatalogBrowseResult: Equatable, Sendable {
-    var games: [OPNGameInfo] = []
-    var numberReturned = 0
-    var numberSupported = 0
-    var totalCount = 0
-    var hasNextPage = false
-    var endCursor = ""
-    var searchQuery = ""
-    var selectedSortId = ""
-    var selectedFilterIds: [String] = []
-    var filterGroups: [OPNCatalogFilterGroup] = []
-    var sortOptions: [OPNCatalogSortOption] = []
+public struct OPNCatalogBrowseResult: Equatable, Sendable {
+    public var games: [OPNGameInfo] = []
+    public var numberReturned = 0
+    public var numberSupported = 0
+    public var totalCount = 0
+    public var hasNextPage = false
+    public var endCursor = ""
+    public var searchQuery = ""
+    public var selectedSortId = ""
+    public var selectedFilterIds: [String] = []
+    public var filterGroups: [OPNCatalogFilterGroup] = []
+    public var sortOptions: [OPNCatalogSortOption] = []
 }
 
-struct OPNGameProviderEndpoint: Equatable, Sendable {
-    var loginProvider = ""
-    var loginProviderCode = ""
-    var loginProviderDisplayName = ""
-    var streamingServiceUrl = ""
-    var idpId = ""
-    var redeemRedirectUrl = ""
-    var priority = 0
+public struct OPNGameProviderEndpoint: Equatable, Sendable {
+    public var loginProvider = ""
+    public var loginProviderCode = ""
+    public var loginProviderDisplayName = ""
+    public var streamingServiceUrl = ""
+    public var idpId = ""
+    public var redeemRedirectUrl = ""
+    public var priority = 0
 }
 
-struct OPNGameProviderInfo: Equatable, Sendable {
-    var defaultProvider = ""
-    var loggedInProvider = ""
-    var loginRequired = false
-    var loginPreferredProviders: [String] = []
-    var endpoints: [OPNGameProviderEndpoint] = []
+public struct OPNGameProviderInfo: Equatable, Sendable {
+    public var defaultProvider = ""
+    public var loggedInProvider = ""
+    public var loginRequired = false
+    public var loginPreferredProviders: [String] = []
+    public var endpoints: [OPNGameProviderEndpoint] = []
 }
 
-struct OPNFeaturedGamesResult: Equatable, Sendable {
-    var games: [OPNGameInfo] = []
-    var usedExplicitFeaturedSection = false
+public struct OPNFeaturedGamesResult: Equatable, Sendable {
+    public var games: [OPNGameInfo] = []
+    public var usedExplicitFeaturedSection = false
 }
 
 @objc(OPNCatalogGameVariantObject)
 @objcMembers
-final class OPNCatalogGameVariantObject: NSObject {
-    var id: String
-    var appStore: String
-    var storeUrl: String
-    var serviceStatus: String
-    var librarySelected: Bool
-    var inLibrary: Bool
+public final class OPNCatalogGameVariantObject: NSObject {
+    public var id: String
+    public var appStore: String
+    public var storeUrl: String
+    public var serviceStatus: String
+    public var librarySelected: Bool
+    public var inLibrary: Bool
 
-    override convenience init() {
+    public override convenience init() {
         self.init(variant: OPNGameVariant())
     }
 
-    init(variant: OPNGameVariant) {
+    public init(variant: OPNGameVariant) {
         id = variant.id
         appStore = variant.appStore
         storeUrl = variant.storeUrl
@@ -214,7 +228,7 @@ final class OPNCatalogGameVariantObject: NSObject {
         super.init()
     }
 
-    var swiftValue: OPNGameVariant {
+    public var swiftValue: OPNGameVariant {
         OPNGameVariant(
             id: id,
             appStore: appStore,
@@ -228,38 +242,38 @@ final class OPNCatalogGameVariantObject: NSObject {
 
 @objc(OPNCatalogGameObject)
 @objcMembers
-final class OPNCatalogGameObject: NSObject {
-    var id: String
-    var uuid: String
-    var launchAppId: String
-    var title: String
-    var shortName: String
-    var gameDescription: String
-    var developerName: String
-    var publisherName: String
-    var maxLocalPlayers: Int
-    var maxOnlinePlayers: Int
-    var playType: String
-    var membershipTierLabel: String
-    var playabilityState: String
-    var imageUrl: String
-    var heroImageUrl: String
-    var screenshotUrls: [String]
-    var imageUrlsByType: [String: [String]]
-    var genres: [String]
-    var featureLabels: [String]
-    var supportedControls: [String]
-    var contentRatings: [String]
-    var nvidiaTech: [String]
-    var availableStores: [String]
-    var isInLibrary: Bool
-    var variants: [OPNCatalogGameVariantObject]
+public final class OPNCatalogGameObject: NSObject {
+    public var id: String
+    public var uuid: String
+    public var launchAppId: String
+    public var title: String
+    public var shortName: String
+    public var gameDescription: String
+    public var developerName: String
+    public var publisherName: String
+    public var maxLocalPlayers: Int
+    public var maxOnlinePlayers: Int
+    public var playType: String
+    public var membershipTierLabel: String
+    public var playabilityState: String
+    public var imageUrl: String
+    public var heroImageUrl: String
+    public var screenshotUrls: [String]
+    public var imageUrlsByType: [String: [String]]
+    public var genres: [String]
+    public var featureLabels: [String]
+    public var supportedControls: [String]
+    public var contentRatings: [String]
+    public var nvidiaTech: [String]
+    public var availableStores: [String]
+    public var isInLibrary: Bool
+    public var variants: [OPNCatalogGameVariantObject]
 
-    override convenience init() {
+    public override convenience init() {
         self.init(game: OPNGameInfo())
     }
 
-    init(game: OPNGameInfo) {
+    public init(game: OPNGameInfo) {
         id = game.id
         uuid = game.uuid
         launchAppId = game.launchAppId
@@ -288,7 +302,7 @@ final class OPNCatalogGameObject: NSObject {
         super.init()
     }
 
-    var swiftValue: OPNGameInfo {
+    public var swiftValue: OPNGameInfo {
         var game = OPNGameInfo()
         game.id = id
         game.uuid = uuid
@@ -321,17 +335,17 @@ final class OPNCatalogGameObject: NSObject {
 
 @objc(OPNCatalogPanelSectionObject)
 @objcMembers
-final class OPNCatalogPanelSectionObject: NSObject {
-    var id: String
-    var title: String
-    var typeName: String
-    var games: [OPNCatalogGameObject]
+public final class OPNCatalogPanelSectionObject: NSObject {
+    public var id: String
+    public var title: String
+    public var typeName: String
+    public var games: [OPNCatalogGameObject]
 
-    override convenience init() {
+    public override convenience init() {
         self.init(section: OPNPanelSection())
     }
 
-    init(section: OPNPanelSection) {
+    public init(section: OPNPanelSection) {
         id = section.id
         title = section.title
         typeName = section.typename
@@ -339,24 +353,24 @@ final class OPNCatalogPanelSectionObject: NSObject {
         super.init()
     }
 
-    var swiftValue: OPNPanelSection {
+    public var swiftValue: OPNPanelSection {
         OPNPanelSection(id: id, title: title, typename: typeName, games: games.map(\.swiftValue))
     }
 }
 
 @objc(OPNCatalogPanelObject)
 @objcMembers
-final class OPNCatalogPanelObject: NSObject {
-    var id: String
-    var title: String
-    var typeName: String
-    var sections: [OPNCatalogPanelSectionObject]
+public final class OPNCatalogPanelObject: NSObject {
+    public var id: String
+    public var title: String
+    public var typeName: String
+    public var sections: [OPNCatalogPanelSectionObject]
 
-    override convenience init() {
+    public override convenience init() {
         self.init(panel: OPNPanelResult())
     }
 
-    init(panel: OPNPanelResult) {
+    public init(panel: OPNPanelResult) {
         id = panel.id
         title = panel.title
         typeName = panel.typename
@@ -364,29 +378,29 @@ final class OPNCatalogPanelObject: NSObject {
         super.init()
     }
 
-    var swiftValue: OPNPanelResult {
+    public var swiftValue: OPNPanelResult {
         OPNPanelResult(id: id, title: title, typename: typeName, sections: sections.map(\.swiftValue))
     }
 }
 
 @objc(OPNCatalogBrowseResultObject)
 @objcMembers
-final class OPNCatalogBrowseResultObject: NSObject {
-    var games: [OPNCatalogGameObject]
-    var numberReturned: Int
-    var numberSupported: Int
-    var totalCount: Int
-    var hasNextPage: Bool
-    var endCursor: String
-    var searchQuery: String
-    var selectedSortId: String
-    var selectedFilterIds: [String]
+public final class OPNCatalogBrowseResultObject: NSObject {
+    public var games: [OPNCatalogGameObject]
+    public var numberReturned: Int
+    public var numberSupported: Int
+    public var totalCount: Int
+    public var hasNextPage: Bool
+    public var endCursor: String
+    public var searchQuery: String
+    public var selectedSortId: String
+    public var selectedFilterIds: [String]
 
-    override convenience init() {
+    public override convenience init() {
         self.init(result: OPNCatalogBrowseResult())
     }
 
-    init(result: OPNCatalogBrowseResult) {
+    public init(result: OPNCatalogBrowseResult) {
         games = result.games.map(OPNCatalogGameObject.init)
         numberReturned = result.numberReturned
         numberSupported = result.numberSupported
@@ -399,7 +413,7 @@ final class OPNCatalogBrowseResultObject: NSObject {
         super.init()
     }
 
-    var swiftValue: OPNCatalogBrowseResult {
+    public var swiftValue: OPNCatalogBrowseResult {
         var result = OPNCatalogBrowseResult()
         result.games = games.map(\.swiftValue)
         result.numberReturned = numberReturned
@@ -414,44 +428,44 @@ final class OPNCatalogBrowseResultObject: NSObject {
     }
 }
 
-struct OPNIceServer: Equatable, Sendable {
-    var urls: [String] = []
-    var username = ""
-    var credential = ""
+public struct OPNIceServer: Equatable, Sendable {
+    public var urls: [String] = []
+    public var username = ""
+    public var credential = ""
 }
 
-struct OPNMediaConnectionInfo: Equatable, Sendable {
-    var ip = ""
-    var port = 0
+public struct OPNMediaConnectionInfo: Equatable, Sendable {
+    public var ip = ""
+    public var port = 0
 }
 
-struct OPNNegotiatedStreamProfile: Equatable, Sendable {
-    var resolution = ""
-    var fps = 0
-    var codec = ""
-    var colorQuality = ""
-    var bitDepth = -1
-    var chromaFormat = -1
-    var prefilterMode = -1
-    var prefilterSharpness = -1
-    var prefilterDenoise = -1
-    var prefilterModel = -1
+public struct OPNNegotiatedStreamProfile: Equatable, Sendable {
+    public var resolution = ""
+    public var fps = 0
+    public var codec = ""
+    public var colorQuality = ""
+    public var bitDepth = -1
+    public var chromaFormat = -1
+    public var prefilterMode = -1
+    public var prefilterSharpness = -1
+    public var prefilterDenoise = -1
+    public var prefilterModel = -1
 }
 
 @objcMembers
-final class OPNParsedNegotiatedStreamProfile: NSObject {
-    let resolution: String
-    let fps: Int
-    let codec: String
-    let colorQuality: String
-    let bitDepth: Int
-    let chromaFormat: Int
-    let prefilterMode: Int
-    let prefilterSharpness: Int
-    let prefilterDenoise: Int
-    let prefilterModel: Int
+public final class OPNParsedNegotiatedStreamProfile: NSObject {
+    public let resolution: String
+    public let fps: Int
+    public let codec: String
+    public let colorQuality: String
+    public let bitDepth: Int
+    public let chromaFormat: Int
+    public let prefilterMode: Int
+    public let prefilterSharpness: Int
+    public let prefilterDenoise: Int
+    public let prefilterModel: Int
 
-    init(profile: OPNNegotiatedStreamProfile) {
+    public init(profile: OPNNegotiatedStreamProfile) {
         resolution = profile.resolution
         fps = profile.fps
         codec = profile.codec
@@ -466,14 +480,14 @@ final class OPNParsedNegotiatedStreamProfile: NSObject {
 }
 
 @objcMembers
-final class OPNParsedSessionProgress: NSObject {
-    let queuePosition: Int
-    let seatSetupStep: Int
-    let progressState: Int
-    let remainingPlaytimeHours: Double
-    let remainingPlaytimeAvailable: Bool
+public final class OPNParsedSessionProgress: NSObject {
+    public let queuePosition: Int
+    public let seatSetupStep: Int
+    public let progressState: Int
+    public let remainingPlaytimeHours: Double
+    public let remainingPlaytimeAvailable: Bool
 
-    init(queuePosition: Int, seatSetupStep: Int, progressState: OPNSessionProgressState, remainingPlaytimeHours: Double, remainingPlaytimeAvailable: Bool) {
+    public init(queuePosition: Int, seatSetupStep: Int, progressState: OPNSessionProgressState, remainingPlaytimeHours: Double, remainingPlaytimeAvailable: Bool) {
         self.queuePosition = queuePosition
         self.seatSetupStep = seatSetupStep
         self.progressState = progressState.rawValue
@@ -483,30 +497,30 @@ final class OPNParsedSessionProgress: NSObject {
 }
 
 @objcMembers
-final class OPNParsedSessionAdMediaFile: NSObject {
-    let mediaFileUrl: String
-    let encodingProfile: String
+public final class OPNParsedSessionAdMediaFile: NSObject {
+    public let mediaFileUrl: String
+    public let encodingProfile: String
 
-    init(mediaFileUrl: String, encodingProfile: String) {
+    public init(mediaFileUrl: String, encodingProfile: String) {
         self.mediaFileUrl = mediaFileUrl
         self.encodingProfile = encodingProfile
     }
 }
 
 @objcMembers
-final class OPNParsedSessionAd: NSObject {
-    let adId: String
-    let adState: Int
-    let adUrl: String
-    let mediaUrl: String
-    let adMediaFiles: [OPNParsedSessionAdMediaFile]
-    let clickThroughUrl: String
-    let adLengthInSeconds: Int
-    let durationMs: Int
-    let title: String
-    let adDescription: String
+public final class OPNParsedSessionAd: NSObject {
+    public let adId: String
+    public let adState: Int
+    public let adUrl: String
+    public let mediaUrl: String
+    public let adMediaFiles: [OPNParsedSessionAdMediaFile]
+    public let clickThroughUrl: String
+    public let adLengthInSeconds: Int
+    public let durationMs: Int
+    public let title: String
+    public let adDescription: String
 
-    init(ad: OPNSessionAdInfo) {
+    public init(ad: OPNSessionAdInfo) {
         adId = ad.adId
         adState = ad.adState
         adUrl = ad.adUrl
@@ -521,16 +535,16 @@ final class OPNParsedSessionAd: NSObject {
 }
 
 @objcMembers
-final class OPNParsedSessionAdState: NSObject {
-    let isAdsRequired: Bool
-    let sessionAdsRequired: Bool
-    let isQueuePaused: Bool
-    let serverSentEmptyAds: Bool
-    let gracePeriodSeconds: Int
-    let message: String
-    let sessionAds: [OPNParsedSessionAd]
+public final class OPNParsedSessionAdState: NSObject {
+    public let isAdsRequired: Bool
+    public let sessionAdsRequired: Bool
+    public let isQueuePaused: Bool
+    public let serverSentEmptyAds: Bool
+    public let gracePeriodSeconds: Int
+    public let message: String
+    public let sessionAds: [OPNParsedSessionAd]
 
-    init(adState: OPNSessionAdState) {
+    public init(adState: OPNSessionAdState) {
         isAdsRequired = adState.isAdsRequired
         sessionAdsRequired = adState.sessionAdsRequired
         isQueuePaused = adState.isQueuePaused
@@ -542,9 +556,9 @@ final class OPNParsedSessionAdState: NSObject {
 }
 
 @objc(OPNSessionJSONParser)
-final class OPNSessionJSONParser: NSObject {
+public final class OPNSessionJSONParser: NSObject {
     @objc(parseNegotiatedStreamProfileFromSession:)
-    static func parseNegotiatedStreamProfile(from session: NSDictionary?) -> OPNParsedNegotiatedStreamProfile {
+    public static func parseNegotiatedStreamProfile(from session: NSDictionary?) -> OPNParsedNegotiatedStreamProfile {
         let session = session as? [String: Any] ?? [:]
         var profile = OPNNegotiatedStreamProfile()
 
@@ -588,7 +602,7 @@ final class OPNSessionJSONParser: NSObject {
     }
 
     @objc(parseSessionProgressFromSession:)
-    static func parseSessionProgress(from session: NSDictionary?) -> OPNParsedSessionProgress {
+    public static func parseSessionProgress(from session: NSDictionary?) -> OPNParsedSessionProgress {
         let session = session as? [String: Any] ?? [:]
         let seatSetupInfo = dictionary(session["seatSetupInfo"])
         let sessionProgress = dictionary(session["sessionProgress"])
@@ -616,7 +630,7 @@ final class OPNSessionJSONParser: NSObject {
     }
 
     @objc(parseSessionAdStateFromSession:)
-    static func parseSessionAdState(from session: NSDictionary?) -> OPNParsedSessionAdState {
+    public static func parseSessionAdState(from session: NSDictionary?) -> OPNParsedSessionAdState {
         let session = session as? [String: Any] ?? [:]
         let progress = dictionary(session["sessionProgress"])
         let progressInfo = dictionary(session["progressInfo"])
@@ -793,35 +807,35 @@ final class OPNSessionJSONParser: NSObject {
     }
 }
 
-struct OPNSessionAdMediaFile: Equatable, Sendable {
-    var mediaFileUrl = ""
-    var encodingProfile = ""
+public struct OPNSessionAdMediaFile: Equatable, Sendable {
+    public var mediaFileUrl = ""
+    public var encodingProfile = ""
 }
 
-struct OPNSessionAdInfo: Equatable, Sendable {
-    var adId = ""
-    var adState = -1
-    var adUrl = ""
-    var mediaUrl = ""
-    var adMediaFiles: [OPNSessionAdMediaFile] = []
-    var clickThroughUrl = ""
-    var adLengthInSeconds = 0
-    var durationMs = 0
-    var title = ""
-    var description = ""
+public struct OPNSessionAdInfo: Equatable, Sendable {
+    public var adId = ""
+    public var adState = -1
+    public var adUrl = ""
+    public var mediaUrl = ""
+    public var adMediaFiles: [OPNSessionAdMediaFile] = []
+    public var clickThroughUrl = ""
+    public var adLengthInSeconds = 0
+    public var durationMs = 0
+    public var title = ""
+    public var description = ""
 }
 
-struct OPNSessionAdState: Equatable, Sendable {
-    var isAdsRequired = false
-    var sessionAdsRequired = false
-    var isQueuePaused = false
-    var serverSentEmptyAds = false
-    var gracePeriodSeconds = 0
-    var message = ""
-    var sessionAds: [OPNSessionAdInfo] = []
+public struct OPNSessionAdState: Equatable, Sendable {
+    public var isAdsRequired = false
+    public var sessionAdsRequired = false
+    public var isQueuePaused = false
+    public var serverSentEmptyAds = false
+    public var gracePeriodSeconds = 0
+    public var message = ""
+    public var sessionAds: [OPNSessionAdInfo] = []
 }
 
-enum OPNSessionProgressState: Int, Sendable {
+public enum OPNSessionProgressState: Int, Sendable {
     case unknown = 0
     case connecting
     case inQueue
@@ -830,37 +844,37 @@ enum OPNSessionProgressState: Int, Sendable {
     case settingUp
 }
 
-struct OPNSessionInfo: Equatable, Sendable {
-    var sessionId = ""
-    var status = 0
-    var queuePosition = 0
-    var seatSetupStep = 0
-    var progressState = OPNSessionProgressState.unknown
-    var zone = ""
-    var streamingBaseUrl = ""
-    var serverIp = ""
-    var signalingServer = ""
-    var signalingUrl = ""
-    var gpuType = ""
-    var iceServers: [OPNIceServer] = []
-    var mediaConnectionInfo = OPNMediaConnectionInfo()
-    var negotiatedStreamProfile = OPNNegotiatedStreamProfile()
-    var adState = OPNSessionAdState()
-    var remainingPlaytimeHours = 0.0
-    var remainingPlaytimeAvailable = false
-    var remainingPlaytimeUnlimited = false
-    var clientId = ""
-    var deviceId = ""
+public struct OPNSessionInfo: Equatable, Sendable {
+    public var sessionId = ""
+    public var status = 0
+    public var queuePosition = 0
+    public var seatSetupStep = 0
+    public var progressState = OPNSessionProgressState.unknown
+    public var zone = ""
+    public var streamingBaseUrl = ""
+    public var serverIp = ""
+    public var signalingServer = ""
+    public var signalingUrl = ""
+    public var gpuType = ""
+    public var iceServers: [OPNIceServer] = []
+    public var mediaConnectionInfo = OPNMediaConnectionInfo()
+    public var negotiatedStreamProfile = OPNNegotiatedStreamProfile()
+    public var adState = OPNSessionAdState()
+    public var remainingPlaytimeHours = 0.0
+    public var remainingPlaytimeAvailable = false
+    public var remainingPlaytimeUnlimited = false
+    public var clientId = ""
+    public var deviceId = ""
 }
 
-struct OPNIceCandidatePayload: Equatable, Sendable {
-    var candidate = ""
-    var sdpMid = ""
-    var sdpMLineIndex = 0
-    var usernameFragment = ""
+public struct OPNIceCandidatePayload: Equatable, Sendable {
+    public var candidate = ""
+    public var sdpMid = ""
+    public var sdpMLineIndex = 0
+    public var usernameFragment = ""
 }
 
-struct OPNSendAnswerRequest: Equatable, Sendable {
-    var sdp = ""
-    var nvstSdp = ""
+public struct OPNSendAnswerRequest: Equatable, Sendable {
+    public var sdp = ""
+    public var nvstSdp = ""
 }

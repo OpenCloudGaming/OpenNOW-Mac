@@ -1628,7 +1628,7 @@ final class OPNGameService: @unchecked Sendable {
 }
 
 @objc(OPNGameServiceSwiftAdapter)
-final class OPNGameServiceSwiftAdapter: NSObject {
+public final class OPNGameServiceSwiftAdapter: NSObject {
     @objc(setAccessToken:)
     static func setAccessToken(_ token: String) {
         OPNGameService.shared.setAccessToken(token)
@@ -1650,7 +1650,7 @@ final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     @objc(setStreamingBaseUrl:)
-    static func setStreamingBaseUrl(_ url: String) {
+    public static func setStreamingBaseUrl(_ url: String) {
         OPNGameService.shared.setStreamingBaseUrl(url)
     }
 

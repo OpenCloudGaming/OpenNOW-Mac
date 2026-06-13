@@ -1,4 +1,6 @@
 import AppKit
+import Backend
+import SwiftUI
 
 private func opnSmoothstep(_ value: CGFloat) -> CGFloat {
     let x = max(0.0, min(1.0, value))

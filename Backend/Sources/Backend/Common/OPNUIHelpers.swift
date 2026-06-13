@@ -2,10 +2,10 @@ import AppKit
 import ImageIO
 import QuartzCore
 
-let OPNInterfacePreferencesDidChangeNotification = Notification.Name("OpenNOW.InterfacePreferencesDidChange")
+public let OPNInterfacePreferencesDidChangeNotification = Notification.Name("OpenNOW.InterfacePreferencesDidChange")
 
 @objc(OpnImageLoadToken)
-final class OpnImageLoadToken: NSObject {
+public final class OpnImageLoadToken: NSObject {
     private let lock = NSLock()
     private var cancelledValue = false
     private var operation: Operation?
@@ -14,7 +14,7 @@ final class OpnImageLoadToken: NSObject {
     private var cancelHandler: (() -> Void)?
 
     @objc(isCancelled)
-    var isCancelled: Bool {
+    public var isCancelled: Bool {
         lock.lock()
         let value = cancelledValue
         lock.unlock()
@@ -22,7 +22,7 @@ final class OpnImageLoadToken: NSObject {
     }
 
     @objc
-    func cancel() {
+    public func cancel() {
         var operationToCancel: Operation?
         var taskToCancel: URLSessionDataTask?
         var childrenToCancel: [OpnImageLoadToken] = []
@@ -44,7 +44,7 @@ final class OpnImageLoadToken: NSObject {
         childrenToCancel.forEach { $0.cancel() }
     }
 
-    func setOperation(_ operation: Operation) {
+    public func setOperation(_ operation: Operation) {
         lock.lock()
         self.operation = operation
         let cancelNow = cancelledValue
@@ -52,7 +52,7 @@ final class OpnImageLoadToken: NSObject {
         if cancelNow { operation.cancel() }
     }
 
-    func setTask(_ task: URLSessionDataTask) {
+    public func setTask(_ task: URLSessionDataTask) {
         lock.lock()
         self.task = task
         let cancelNow = cancelledValue
@@ -60,7 +60,7 @@ final class OpnImageLoadToken: NSObject {
         if cancelNow { task.cancel() }
     }
 
-    func addChild(_ token: OpnImageLoadToken) {
+    public func addChild(_ token: OpnImageLoadToken) {
         lock.lock()
         let cancelNow = cancelledValue
         if !cancelNow { children.append(token) }
@@ -68,7 +68,7 @@ final class OpnImageLoadToken: NSObject {
         if cancelNow { token.cancel() }
     }
 
-    func setCancelHandler(_ handler: (() -> Void)?) {
+    public func setCancelHandler(_ handler: (() -> Void)?) {
         lock.lock()
         cancelHandler = handler
         let cancelNow = cancelledValue
@@ -82,15 +82,15 @@ extension OpnImageLoadToken: @unchecked Sendable {}
 
 @objc(OPNHeroArtworkView)
 @MainActor
-final class OPNHeroArtworkView: NSView {
-    @objc var image: NSImage? {
+public final class OPNHeroArtworkView: NSView {
+    @objc public var image: NSImage? {
         didSet { updateImageLayer() }
     }
 
     private let imageLayer = CALayer()
     private let fadeLayer = CAGradientLayer()
 
-    override init(frame frameRect: NSRect) {
+    public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = OPNUIHelpers.color(rgb: 0x101113, alpha: 1.0).cgColor
@@ -108,13 +108,13 @@ final class OPNHeroArtworkView: NSView {
         layer?.addSublayer(fadeLayer)
     }
 
-    required init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         super.init(coder: coder)
     }
 
-    override var isFlipped: Bool { true }
+    public override var isFlipped: Bool { true }
 
-    override func layout() {
+    public override func layout() {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -155,7 +155,7 @@ private final class OPNImageCompletionBox: @unchecked Sendable {
 
 @objcMembers
 @objc(OPNUIHelpers)
-final class OPNUIHelpers: NSObject {
+public final class OPNUIHelpers: NSObject {
     private static let autoFullScreenDefaultsKey = "OpenNOW.Interface.AutoFullScreen"
     private static let appIconThemeDefaultsKey = "OpenNOW.Interface.AppIconTheme"
     private static let backgroundTintStrengthValue: CGFloat = 0.85
@@ -194,13 +194,13 @@ final class OPNUIHelpers: NSObject {
     private nonisolated(unsafe) static var fallbackHeroArtwork: NSImage?
 
     @objc(colorWithRGB:alpha:)
-    static func color(rgb: UInt32, alpha: CGFloat) -> NSColor {
+    public static func color(rgb: UInt32, alpha: CGFloat) -> NSColor {
         let resolved = resolvedInterfaceColor(rgb)
         return NSColor(calibratedRed: CGFloat((resolved >> 16) & 0xFF) / 255.0, green: CGFloat((resolved >> 8) & 0xFF) / 255.0, blue: CGFloat(resolved & 0xFF) / 255.0, alpha: alpha)
     }
 
     @objc(blendRGB:target:amount:)
-    static func blendRGB(_ rgb: UInt32, target: UInt32, amount: CGFloat) -> UInt32 {
+    public static func blendRGB(_ rgb: UInt32, target: UInt32, amount: CGFloat) -> UInt32 {
         let clamped = max(0.0, min(amount, 1.0))
         let r = Int(round(Double(CGFloat((rgb >> 16) & 0xFF) * (1.0 - clamped) + CGFloat((target >> 16) & 0xFF) * clamped)))
         let g = Int(round(Double(CGFloat((rgb >> 8) & 0xFF) * (1.0 - clamped) + CGFloat((target >> 8) & 0xFF) * clamped)))
@@ -208,25 +208,25 @@ final class OPNUIHelpers: NSObject {
         return (UInt32(clampedByte(r)) << 16) | (UInt32(clampedByte(g)) << 8) | UInt32(clampedByte(b))
     }
 
-    static func autoFullScreenEnabled() -> Bool {
+    public static func autoFullScreenEnabled() -> Bool {
         UserDefaults.standard.bool(forKey: autoFullScreenDefaultsKey)
     }
 
-    static func setAutoFullScreenEnabled(_ enabled: Bool) {
+    public static func setAutoFullScreenEnabled(_ enabled: Bool) {
         guard enabled != autoFullScreenEnabled() else { return }
         UserDefaults.standard.set(enabled, forKey: autoFullScreenDefaultsKey)
         UserDefaults.standard.synchronize()
         NotificationCenter.default.post(name: OPNInterfacePreferencesDidChangeNotification, object: nil)
     }
 
-    static func appIconThemePreference() -> Int {
+    public static func appIconThemePreference() -> Int {
         let value = UserDefaults.standard.string(forKey: appIconThemeDefaultsKey)
         if value == "green" { return 1 }
         if value == "blue" { return 2 }
         return 0
     }
 
-    static func setAppIconThemePreference(_ theme: Int) {
+    public static func setAppIconThemePreference(_ theme: Int) {
         let normalized = theme == 1 || theme == 2 ? theme : 0
         guard normalized != appIconThemePreference() else { return }
         let value = normalized == 1 ? "green" : (normalized == 2 ? "blue" : "black")
@@ -235,16 +235,16 @@ final class OPNUIHelpers: NSObject {
         NotificationCenter.default.post(name: OPNInterfacePreferencesDidChangeNotification, object: nil)
     }
 
-    static func backgroundTintStrength() -> CGFloat { backgroundTintStrengthValue }
+    public static func backgroundTintStrength() -> CGFloat { backgroundTintStrengthValue }
 
     @objc(textStyleWithSize:color:weight:)
-    static func textStyle(size: CGFloat, color: NSColor, weight: NSFont.Weight) -> [NSAttributedString.Key: Any] {
+    public static func textStyle(size: CGFloat, color: NSColor, weight: NSFont.Weight) -> [NSAttributedString.Key: Any] {
         [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color]
     }
 
     @objc(labelWithText:frame:size:color:weight:alignment:)
     @MainActor
-    static func label(text: String, frame: NSRect, size: CGFloat, color: NSColor, weight: NSFont.Weight, alignment: NSTextAlignment) -> NSTextField {
+    public static func label(text: String, frame: NSRect, size: CGFloat, color: NSColor, weight: NSFont.Weight, alignment: NSTextAlignment) -> NSTextField {
         let label = NSTextField(frame: frame)
         label.stringValue = text
         label.font = NSFont.systemFont(ofSize: size, weight: weight)
@@ -259,7 +259,7 @@ final class OPNUIHelpers: NSObject {
 
     @objc(buttonWithTitle:frame:background:textColor:bordered:borderColor:)
     @MainActor
-    static func button(title: String, frame: NSRect, background: NSColor, textColor: NSColor, bordered: Bool, borderColor: NSColor?) -> NSButton {
+    public static func button(title: String, frame: NSRect, background: NSColor, textColor: NSColor, bordered: Bool, borderColor: NSColor?) -> NSButton {
         let button = NSButton(frame: frame)
         button.title = title
         button.bezelStyle = .regularSquare
@@ -279,7 +279,7 @@ final class OPNUIHelpers: NSObject {
 
     @objc(textFieldWithFrame:placeholder:secure:)
     @MainActor
-    static func textField(frame: NSRect, placeholder: String, secure: Bool) -> NSTextField {
+    public static func textField(frame: NSRect, placeholder: String, secure: Bool) -> NSTextField {
         let field = secure ? NSSecureTextField(frame: frame) : NSTextField(frame: frame)
         field.placeholderString = placeholder
         field.font = NSFont.systemFont(ofSize: 14.0, weight: .regular)
@@ -293,7 +293,7 @@ final class OPNUIHelpers: NSObject {
 
     @objc(spinnerWithFrame:)
     @MainActor
-    static func spinner(frame: NSRect) -> NSProgressIndicator {
+    public static func spinner(frame: NSRect) -> NSProgressIndicator {
         let spinner = NSProgressIndicator(frame: frame)
         spinner.style = .spinning
         spinner.controlSize = .regular
@@ -302,22 +302,22 @@ final class OPNUIHelpers: NSObject {
     }
 
     @MainActor
-    static func disableFocusHighlights(_ view: NSView) {
+    public static func disableFocusHighlights(_ view: NSView) {
         view.focusRingType = .none
         view.subviews.forEach(disableFocusHighlights)
     }
 
     @objc(newRoundedRectPathWithRect:xRadius:yRadius:)
-    static func newRoundedRectPath(rect: NSRect, xRadius: CGFloat, yRadius: CGFloat) -> CGPath {
+    public static func newRoundedRectPath(rect: NSRect, xRadius: CGFloat, yRadius: CGFloat) -> CGPath {
         CGPath(roundedRect: rect, cornerWidth: xRadius, cornerHeight: yRadius, transform: nil)
     }
 
     @objc(newEllipsePathWithRect:)
-    static func newEllipsePath(rect: NSRect) -> CGPath {
+    public static func newEllipsePath(rect: NSRect) -> CGPath {
         CGPath(ellipseIn: rect, transform: nil)
     }
 
-    static func clearImageCaches() {
+    public static func clearImageCaches() {
         decodedImageCache.removeAllObjects()
         imageDataMemoryCache.removeAllObjects()
         URLCache.shared.removeAllCachedResponses()
@@ -325,17 +325,17 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(loadImageForURL:maxPixelDimension:completion:)
-    static func loadImage(urlString: String, maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) {
+    public static func loadImage(urlString: String, maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) {
         _ = loadImageForURLCancellable(urlString: urlString, maxPixelDimension: maxPixelDimension, completion: completion)
     }
 
     @objc(loadImageFromCandidates:maxPixelDimension:completion:)
-    static func loadImage(candidates: [String], maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) {
+    public static func loadImage(candidates: [String], maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) {
         _ = loadImageFromCandidatesCancellable(candidates: candidates, maxPixelDimension: maxPixelDimension, completion: completion)
     }
 
     @objc(cachedImageForURL:maxPixelDimension:)
-    static func cachedImage(urlString: String, maxPixelDimension: CGFloat) -> NSImage? {
+    public static func cachedImage(urlString: String, maxPixelDimension: CGFloat) -> NSImage? {
         let normalizedURL = normalized(urlString)
         guard !normalizedURL.isEmpty else { return nil }
         let key = cacheKey(normalizedURL, maxPixelDimension)
@@ -347,7 +347,7 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(cachedImageFromCandidates:maxPixelDimension:resolvedURL:)
-    static func cachedImage(candidates: [String], maxPixelDimension: CGFloat, resolvedURL: AutoreleasingUnsafeMutablePointer<NSString?>?) -> NSImage? {
+    public static func cachedImage(candidates: [String], maxPixelDimension: CGFloat, resolvedURL: AutoreleasingUnsafeMutablePointer<NSString?>?) -> NSImage? {
         for candidate in candidates {
             let normalizedURL = normalized(candidate)
             guard !normalizedURL.isEmpty else { continue }
@@ -360,14 +360,14 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(cachedMemoryImageForURL:maxPixelDimension:)
-    static func cachedMemoryImage(urlString: String, maxPixelDimension: CGFloat) -> NSImage? {
+    public static func cachedMemoryImage(urlString: String, maxPixelDimension: CGFloat) -> NSImage? {
         let normalizedURL = normalized(urlString)
         guard !normalizedURL.isEmpty else { return nil }
         return decodedImageCache.object(forKey: cacheKey(normalizedURL, maxPixelDimension) as NSString)
     }
 
     @objc(cachedMemoryImageFromCandidates:maxPixelDimension:resolvedURL:)
-    static func cachedMemoryImage(candidates: [String], maxPixelDimension: CGFloat, resolvedURL: AutoreleasingUnsafeMutablePointer<NSString?>?) -> NSImage? {
+    public static func cachedMemoryImage(candidates: [String], maxPixelDimension: CGFloat, resolvedURL: AutoreleasingUnsafeMutablePointer<NSString?>?) -> NSImage? {
         for candidate in candidates {
             let normalizedURL = normalized(candidate)
             guard !normalizedURL.isEmpty else { continue }
@@ -380,7 +380,7 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(loadImageForURLCancellable:maxPixelDimension:completion:)
-    static func loadImageForURLCancellable(urlString: String, maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) -> OpnImageLoadToken {
+    public static func loadImageForURLCancellable(urlString: String, maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) -> OpnImageLoadToken {
         let token = OpnImageLoadToken()
         let completionBox = OPNImageCompletionBox(completion)
         let normalizedURL = normalized(urlString)
@@ -475,23 +475,23 @@ final class OPNUIHelpers: NSObject {
     }
 
     @objc(loadImageFromCandidatesCancellable:maxPixelDimension:completion:)
-    static func loadImageFromCandidatesCancellable(candidates: [String], maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) -> OpnImageLoadToken {
+    public static func loadImageFromCandidatesCancellable(candidates: [String], maxPixelDimension: CGFloat, completion: @escaping (NSImage?, String?, Data?) -> Void) -> OpnImageLoadToken {
         let token = OpnImageLoadToken()
         loadImageCandidate(at: 0, candidates: candidates, maxPixelDimension: maxPixelDimension, completion: completion, parentToken: token)
         return token
     }
 
     @objc(prefetchImageForURL:maxPixelDimension:)
-    static func prefetchImage(urlString: String, maxPixelDimension: CGFloat) -> OpnImageLoadToken {
+    public static func prefetchImage(urlString: String, maxPixelDimension: CGFloat) -> OpnImageLoadToken {
         loadImageForURLCancellable(urlString: urlString, maxPixelDimension: maxPixelDimension) { _, _, _ in }
     }
 
     @objc(prefetchImageFromCandidates:maxPixelDimension:)
-    static func prefetchImage(candidates: [String], maxPixelDimension: CGFloat) -> OpnImageLoadToken {
+    public static func prefetchImage(candidates: [String], maxPixelDimension: CGFloat) -> OpnImageLoadToken {
         loadImageFromCandidatesCancellable(candidates: candidates, maxPixelDimension: maxPixelDimension) { _, _, _ in }
     }
 
-    static func fallbackHeroArtworkImage() -> NSImage {
+    public static func fallbackHeroArtworkImage() -> NSImage {
         if let fallbackHeroArtwork { return fallbackHeroArtwork }
         let size = NSSize(width: 1600.0, height: 900.0)
         let image = NSImage(size: size)

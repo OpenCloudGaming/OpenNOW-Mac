@@ -193,7 +193,7 @@ final class OPNStreamViewController: NSViewController {
             view.window?.makeFirstResponder(quitOverlay)
             return
         }
-        let overlay = OPNQuitGameOverlayView(frame: view.bounds)
+        guard let overlay = OPNAppViewBridge.view(named: "OPNQuitGameOverlayView", frame: view.bounds) else { return }
         overlay.autoresizingMask = [.width, .height]
         overlay.onCancel = { [weak self] in self?.dismissQuitGameOverlayAndRefocus(true) }
         overlay.onQuit = { [weak self] in self?.endStreamFromUserQuit() }
@@ -634,13 +634,13 @@ final class OPNStreamViewController: NSViewController {
             if loadingView.superview == nil { view.addSubview(loadingView, positioned: .above, relativeTo: nil) }
             return
         }
-        let loading = OPNLoadingView(frame: view.bounds, message: message)
+        guard let loading = OPNAppViewBridge.view(named: "OPNLoadingView", frame: view.bounds, string: message) else { return }
         loading.autoresizingMask = [.width, .height]
         loading.setSteps(["Check network route", "Allocate cloud session", "Receive stream offer", "Negotiate WebRTC", "Connected"], currentStepIndex: -1)
         loading.startAnimating()
         loadingView = loading
         statusLabel = loading.messageLabel
-        loading.adPlaybackEventHandler = { [weak self] adId, action, watchedTimeInMs, pausedTimeInMs, cancelReason in
+        loading.adPlaybackEventHandler = { [weak self] (adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String) in
             guard let self, self.hasActiveSessionInfo else { return }
             OPNSessionManager.shared.reportSessionAd(session: self.activeSessionInfo, adId: adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: pausedTimeInMs, cancelReason: cancelReason) { [weak self] success, updatedInfo, _ in
                 DispatchQueue.main.async {
@@ -760,7 +760,7 @@ final class OPNStreamViewController: NSViewController {
 
     private func toggleStatsOverlay() {
         if let statsOverlay { statsOverlay.removeFromSuperview(); self.statsOverlay = nil; if !connectedOnce { stopStatsRefreshTimer() }; return }
-        let overlay = OPNStatsOverlayView(frame: statsOverlayFrame())
+        guard let overlay = OPNAppViewBridge.view(named: "OPNStatsOverlayView", frame: statsOverlayFrame()) else { return }
         statsOverlay = overlay
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
         updateStatsOverlay()
@@ -817,7 +817,7 @@ final class OPNStreamViewController: NSViewController {
 
     private func toggleShortcutLegendOverlay() {
         if let shortcutLegendOverlay { shortcutLegendOverlay.removeFromSuperview(); self.shortcutLegendOverlay = nil; return }
-        let overlay = OPNShortcutLegendView(frame: shortcutLegendFrame())
+        guard let overlay = OPNAppViewBridge.view(named: "OPNShortcutLegendView", frame: shortcutLegendFrame()) else { return }
         shortcutLegendOverlay = overlay
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
     }

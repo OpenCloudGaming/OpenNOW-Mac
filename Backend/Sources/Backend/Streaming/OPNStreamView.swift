@@ -4,7 +4,6 @@ import Common
 import AudioToolbox
 import CoreVideo
 import GameController
-import Backend
 import QuartzCore
 
 typealias OPNStreamInputReadyProvider = @convention(block) () -> Bool

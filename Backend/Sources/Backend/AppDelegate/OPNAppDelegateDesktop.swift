@@ -148,12 +148,12 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
     @objc dynamic var pendingProviderIdpId = ""
     @objc dynamic var pendingStayLoggedIn = false
     @objc dynamic var currentSession = OPNAuthSessionObject()
-    @objc dynamic var rootView: OPNBackdropView?
-    @objc dynamic var catalogView: OPNGameCatalogView?
-    @objc dynamic var settingsView: OPNSettingsView?
-    @objc dynamic var storeView: OPNGameCatalogView?
+    @objc dynamic var rootView: NSView?
+    @objc dynamic var catalogView: NSView?
+    @objc dynamic var settingsView: NSView?
+    @objc dynamic var storeView: NSView?
     @objc dynamic var streamingController: OPNStreamViewController?
-    @objc dynamic var sessionReportView: OPNSessionReportView?
+    @objc dynamic var sessionReportView: NSView?
     @objc dynamic var currentStreamTitle = ""
     @objc dynamic var activeStreamReturnScreen: Int32 = OPNDesktopScreen.store.rawValue
     @objc dynamic var streamDashboardHomeVisible = false
@@ -187,7 +187,7 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
     @objc dynamic var activeSessionDeleteHandler: (() -> Void)?
     @objc dynamic var activeSessionPromptControllerTimer: Timer?
     @objc dynamic var activeSessionPromptPreviousButtons: UInt16 = 0
-    @objc dynamic var cloudmatchServerPickerView: OPNCloudmatchServerPickerView?
+    @objc dynamic var cloudmatchServerPickerView: NSView?
     @objc dynamic var cloudmatchServerPickerGeneration: Int = 0
     @objc dynamic var gameLaunchGeneration: Int = 0
     @objc dynamic var desktopTopChromeView: NSView?
@@ -599,7 +599,7 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
             desktopBrandLabel = nil
         }
         if desktopTopChromeView == nil {
-            let chrome = OPNDesktopChromeView(frame: .zero)
+            guard let chrome = OPNAppViewBridge.view(named: "OPNDesktopChromeView", frame: .zero) else { return }
             chrome.autoresizingMask = [.width]
             chrome.onAccountSelected = { [weak self] identifier in self?.switchToAccountIdentifier(identifier) }
             chrome.onAddAccountSelected = { [weak self] in self?.addAccount() }
@@ -641,7 +641,7 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
         installDesktopTopChromeIfNeeded()
         updateDesktopAccountSwitcher()
         updateDesktopSettingsPill()
-        guard let chrome = desktopTopChromeView as? OPNDesktopChromeView else { return }
+        guard let chrome = desktopTopChromeView else { return }
         let visible = OPNAppDelegateSupport.supportsDesktopNavigation(forScreen: Int(currentScreen))
         chrome.visible = visible
         chrome.isHidden = !visible
@@ -650,7 +650,7 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
 
     @objc func updateDesktopAccountSwitcher() {
         installDesktopAccountSwitcherIfNeeded()
-        guard let chrome = desktopTopChromeView as? OPNDesktopChromeView else { return }
+        guard let chrome = desktopTopChromeView else { return }
         let visible = OPNAppDelegateSupport.supportsDesktopNavigation(forScreen: Int(currentScreen))
         chrome.visible = visible
         chrome.isHidden = !visible
@@ -665,7 +665,7 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
 
     @objc func updateDesktopSettingsPill() {
         installDesktopSettingsPillIfNeeded()
-        guard let chrome = desktopTopChromeView as? OPNDesktopChromeView else { return }
+        guard let chrome = desktopTopChromeView else { return }
         let visible = OPNAppDelegateSupport.supportsDesktopNavigation(forScreen: Int(currentScreen))
         chrome.visible = visible
         chrome.isHidden = !visible

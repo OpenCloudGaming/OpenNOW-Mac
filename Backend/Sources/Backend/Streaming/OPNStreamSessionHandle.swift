@@ -1,7 +1,5 @@
 import Foundation
 
-import Backend
-
 @objc(OPNStreamSessionHandle)
 final class OPNStreamSessionHandle: NSObject {
     private(set) var session: OPNLibWebRTCStreamSession?

@@ -1,4 +1,6 @@
+import Backend
 import Foundation
+import SwiftUI
 
 @objc(OPNGameCatalogSearchSupport)
 final class OPNGameCatalogSearchSupport: NSObject {

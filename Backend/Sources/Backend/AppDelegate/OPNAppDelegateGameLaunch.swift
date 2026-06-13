@@ -343,7 +343,7 @@ extension NSObject {
     func showOwnershipSyncProgress(gameTitle: String, storeName: String) {
         guard let parentView = opnGameLaunchGet(self, "window", as: NSWindow.self)?.contentView else { return }
         if opnGameLaunchGet(self, "ownershipSyncOverlayView", as: NSView.self) == nil {
-            let overlay = OPNOwnershipSyncProgressView(frame: parentView.bounds)
+            guard let overlay = OPNAppViewBridge.view(named: "OPNOwnershipSyncProgressView", frame: parentView.bounds) else { return }
             overlay.autoresizingMask = [.width, .height]
             opnGameLaunchSet(self, "ownershipSyncOverlayView", overlay)
             OPNUIHelpers.disableFocusHighlights(overlay)
@@ -363,17 +363,17 @@ extension NSObject {
 
     @objc(updateOwnershipSyncProgressTitle:)
     func updateOwnershipSyncProgressTitle(_ title: String) {
-        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: OPNOwnershipSyncProgressView.self)?.titleText = title.isEmpty ? "Syncing Store Library" : title
+        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: NSView.self)?.titleText = title.isEmpty ? "Syncing Store Library" : title
     }
 
     @objc(updateOwnershipSyncProgressMessage:)
     func updateOwnershipSyncProgressMessage(_ message: String) {
-        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: OPNOwnershipSyncProgressView.self)?.messageText = message.isEmpty ? "Syncing your store library..." : message
+        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: NSView.self)?.messageText = message.isEmpty ? "Syncing your store library..." : message
     }
 
     @objc(updateOwnershipSyncProgressFooter:)
     func updateOwnershipSyncProgressFooter(_ footer: String) {
-        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: OPNOwnershipSyncProgressView.self)?.footerText = footer.isEmpty ? "Waiting for GeForce NOW library updates." : footer
+        opnGameLaunchGet(self, "ownershipSyncOverlayView", as: NSView.self)?.footerText = footer.isEmpty ? "Waiting for GeForce NOW library updates." : footer
     }
 
     @objc func dismissOwnershipSyncProgress() {

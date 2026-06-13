@@ -1,16 +1,15 @@
 import AppKit
 
+import Backend
 import SwiftUI
 
 @main
 struct OpenNOWApp: App {
     @NSApplicationDelegateAdaptor(OPNAppDelegate.self) private var appDelegate
-    @State private var appModel = OpenNOWAppModel()
 
     var body: some Scene {
         Settings {
             OpenNOWSettingsScenePlaceholder()
-                .environment(appModel)
         }
     }
 }

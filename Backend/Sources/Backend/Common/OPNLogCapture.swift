@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 @objc(OPNLogCapture)
-final class OPNLogCapture: NSObject {
+public final class OPNLogCapture: NSObject {
     private static let queue = DispatchQueue(label: "io.opencg.opennow.log-capture")
     nonisolated(unsafe) private static var events: [String] = []
     nonisolated(unsafe) private static var logFilePath: String?
@@ -14,7 +14,7 @@ final class OPNLogCapture: NSObject {
     }
 
     @objc(appendEvent:)
-    static func appendEvent(_ message: String) {
+    public static func appendEvent(_ message: String) {
         guard !message.isEmpty else { return }
         let line = "\(Date()) \(redactedLogLine(message))"
         queue.sync {
@@ -39,7 +39,7 @@ final class OPNLogCapture: NSObject {
         NSLog("[LogCapture] Copied diagnostics to clipboard (\(clipboardText.count) chars)")
     }
 
-    @objc static func capturedLogPath() -> String {
+    @objc public static func capturedLogPath() -> String {
         queue.sync { capturePathLocked() ?? "" }
     }
 

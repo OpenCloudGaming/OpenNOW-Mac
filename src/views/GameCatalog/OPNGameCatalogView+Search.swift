@@ -1,4 +1,6 @@
 import AppKit
+import Backend
+import SwiftUI
 
 extension OPNGameCatalogView: NSSearchFieldDelegate {
     public func controlTextDidChange(_ notification: Notification) {

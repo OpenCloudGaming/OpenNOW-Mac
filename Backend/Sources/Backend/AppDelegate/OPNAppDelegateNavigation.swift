@@ -138,7 +138,7 @@ extension NSObject {
         var rootView = opnNavGet(self, "rootView", as: OPNBackdropView.self)
         if rootView == nil || window.contentView !== rootView {
             window.contentViewController = nil
-            let root = OPNBackdropView(frame: contentView.bounds)
+            guard let root = OPNAppViewBridge.view(named: "OPNBackdropView", frame: contentView.bounds) else { return }
             root.wantsLayer = true
             root.layer?.isOpaque = false
             root.autoresizingMask = [.width, .height]
@@ -277,7 +277,7 @@ extension NSObject {
     }
 
     private func showEmailEntry(in container: NSView, bounds: NSRect) {
-        let view = OPNEmailEntryView(frame: bounds)
+        guard let view = OPNAppViewBridge.view(named: "OPNEmailEntryView", frame: bounds) else { return }
         view.autoresizingMask = [.width, .height]
         let selfBox = OPNNavigationWeakObject(self)
         let viewBox = OPNNavigationWeakObject(view)
@@ -318,7 +318,8 @@ extension NSObject {
         opnNavSet(self, "catalogView", nil)
         let restoring = opnNavGet(self, "storeView", as: OPNGameCatalogView.self) != nil
         updateAccountChrome()
-        let store = opnNavGet(self, "storeView", as: OPNGameCatalogView.self) ?? OPNGameCatalogView(frame: bounds)
+        let store = opnNavGet(self, "storeView", as: OPNGameCatalogView.self) ?? OPNAppViewBridge.view(named: "OPNGameCatalogView", frame: bounds)
+        guard let store else { return }
         store.frame = bounds
         store.autoresizingMask = [.width, .height]
         opnNavSet(self, "storeView", store)
@@ -378,7 +379,7 @@ extension NSObject {
         opnNavConfigureLibraryWindow(opnNavGet(self, "window", as: NSWindow.self))
         opnNavSet(self, "storeView", nil)
         opnNavSet(self, "settingsView", nil)
-        let catalog = OPNGameCatalogView(frame: bounds)
+        guard let catalog = OPNAppViewBridge.view(named: "OPNGameCatalogView", frame: bounds) else { return }
         catalog.autoresizingMask = [.width, .height]
         opnNavSet(self, "catalogView", catalog)
         configureCatalogCallbacks(catalog)
@@ -445,7 +446,7 @@ extension NSObject {
     private func showSettings(in container: NSView, bounds: NSRect, previousSubviews: [NSView], animated: Bool, forward: Bool) {
         opnNavConfigureLibraryWindow(opnNavGet(self, "window", as: NSWindow.self))
         updateAccountChrome()
-        let settings = OPNSettingsView(frame: bounds, selectedSectionName: nil)
+        guard let settings = OPNAppViewBridge.view(named: "OPNSettingsView", frame: bounds, string: "") else { return }
         settings.autoresizingMask = [.width, .height]
         let selfBox = OPNNavigationWeakObject(self)
         settings.onBackRequested = { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
@@ -668,7 +669,7 @@ extension NSObject {
         opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.auth.rawValue
         guard let container = opnNavGet(self, "contentContainer", as: NSView.self) else { return }
         container.subviews.forEach { $0.removeFromSuperview() }
-        let overlay = OPNAuthenticatingView(frame: container.bounds, message: message)
+        guard let overlay = OPNAppViewBridge.view(named: "OPNAuthenticatingView", frame: container.bounds, string: message) else { return }
         container.addSubview(overlay)
         opnNavSet(self, "currentScreen", NSNumber(value: OPNNavigationScreen.authenticating.rawValue))
     }
@@ -685,7 +686,7 @@ extension NSObject {
         OPNLogCapture.appendEvent("[AppDelegate] Presenting error: \(message)")
         OPNLogCapture.copyCapturedLogToClipboard(message)
         message += "\n\nFull log copied to clipboard."
-        let view = OPNErrorView(frame: container.bounds, message: message, canRetry: canRetry)
+        guard let view = OPNAppViewBridge.errorView(frame: container.bounds, message: message, canRetry: canRetry) else { return }
         let selfBox = OPNNavigationWeakObject(self)
         view.onRetry = { selfBox.value?.transitionToScreen(retryScreen.rawValue) }
         view.onBackToEmail = {

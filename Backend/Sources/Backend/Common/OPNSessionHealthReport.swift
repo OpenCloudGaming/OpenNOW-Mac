@@ -1,6 +1,4 @@
 import Foundation
-import Backend
-
 private enum OPNSessionReportDisplayMode: Int {
     case automatic = 0
     case always = 1
