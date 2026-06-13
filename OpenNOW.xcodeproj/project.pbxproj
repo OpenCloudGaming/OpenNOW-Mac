@@ -34,7 +34,6 @@
 		A0000000000000000000010A /* DeviceIdentity in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020A /* DeviceIdentity */; };
 		A0000000000000000000010B /* ProtocolDebug in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020B /* ProtocolDebug */; };
 		A0000000000000000000010C /* GFNErrorMapping in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020C /* GFNErrorMapping */; };
-		A0000000000000000000010D /* AppPreferenceStorage in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020D /* AppPreferenceStorage */; };
 		A0000000000000000000010E /* AppPreferences in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020E /* AppPreferences */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
@@ -248,7 +247,6 @@
 				A0000000000000000000010A /* DeviceIdentity in Frameworks */,
 				A0000000000000000000010B /* ProtocolDebug in Frameworks */,
 				A0000000000000000000010C /* GFNErrorMapping in Frameworks */,
-				A0000000000000000000010D /* AppPreferenceStorage in Frameworks */,
 				A0000000000000000000010E /* AppPreferences in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
@@ -489,7 +487,6 @@
 				A0000000000000000000020A /* DeviceIdentity */,
 				A0000000000000000000020B /* ProtocolDebug */,
 				A0000000000000000000020C /* GFNErrorMapping */,
-				A0000000000000000000020D /* AppPreferenceStorage */,
 				A0000000000000000000020E /* AppPreferences */,
 			);
 			productName = OpenNOW;
@@ -537,7 +534,6 @@
 				A0000000000000000000030A /* XCLocalSwiftPackageReference "DeviceIdentity" */,
 				A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */,
 				A0000000000000000000030C /* XCLocalSwiftPackageReference "GFNErrorMapping" */,
-				A0000000000000000000030D /* XCLocalSwiftPackageReference "AppPreferenceStorage" */,
 				A0000000000000000000030E /* XCLocalSwiftPackageReference "AppPreferences" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
@@ -875,10 +871,6 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = GFNErrorMapping;
 		};
-		A0000000000000000000030D /* XCLocalSwiftPackageReference "AppPreferenceStorage" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = AppPreferenceStorage;
-		};
 		A0000000000000000000030E /* XCLocalSwiftPackageReference "AppPreferences" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = AppPreferences;
@@ -976,11 +968,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A0000000000000000000030C /* XCLocalSwiftPackageReference "GFNErrorMapping" */;
 			productName = GFNErrorMapping;
-		};
-		A0000000000000000000020D /* AppPreferenceStorage */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000030D /* XCLocalSwiftPackageReference "AppPreferenceStorage" */;
-			productName = AppPreferenceStorage;
 		};
 		A0000000000000000000020E /* AppPreferences */ = {
 			isa = XCSwiftPackageProductDependency;

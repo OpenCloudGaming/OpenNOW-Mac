@@ -9,14 +9,13 @@ let package = Package(
         .library(name: "AppPreferences", targets: ["AppPreferences"]),
     ],
     dependencies: [
-        .package(path: "../AppPreferenceStorage"),
         .package(path: "../DeviceIdentity"),
         .package(path: "../ProtocolDebug"),
     ],
     targets: [
         .target(
             name: "AppPreferences",
-            dependencies: ["AppPreferenceStorage", "DeviceIdentity", "ProtocolDebug"]
+            dependencies: ["DeviceIdentity", "ProtocolDebug"]
         ),
     ],
     swiftLanguageModes: [.v6]
