@@ -199,6 +199,9 @@ final class OPNGameCatalogView: NSView {
     func setGameObjects(_ games: [OPNCatalogGameObject]) {
         libraryGameObjects = games
         ownedLibraryGameObjects = games
+        heroLibraryGameObjects = libraryGameObjects
+        heroOwnedLibraryGameObjects = ownedLibraryGameObjects
+        renderingVisibleLibraryGameObjects = Self.visibleLibraryGames(from: ownedLibraryGameObjects)
         hasLibraryState = true
         let panels = Self.catalogPanels(for: games)
         onGameCountChanged?(panels.reduce(0) { total, panel in total + panel.sections.reduce(0) { $0 + $1.games.count } })
