@@ -32,6 +32,7 @@
 		A00000000000000000000108 /* OpenNOWNetwork in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* OpenNOWNetwork */; };
 		A00000000000000000000109 /* InputProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* InputProtocol */; };
 		A0000000000000000000010A /* DeviceIdentity in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020A /* DeviceIdentity */; };
+		A0000000000000000000010B /* ProtocolDebug in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020B /* ProtocolDebug */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
 		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
@@ -76,7 +77,6 @@
 		E0000000000000000000000F /* OPNLocale.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000001F /* OPNLocale.swift */; };
 		E00000000000000000000020 /* OPNGameRemediation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000021 /* OPNGameRemediation.swift */; };
 		E00000000000000000000022 /* OPNGFNError.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000023 /* OPNGFNError.swift */; };
-		E00000000000000000000024 /* OPNProtocolDebug.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000025 /* OPNProtocolDebug.swift */; };
 		E00000000000000000000026 /* OPNStreamPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000027 /* OPNStreamPreferences.swift */; };
 		E00000000000000000000028 /* OPNSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000029 /* OPNSettingsView.swift */; };
 		E0000000000000000000002A /* OPNGameCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002B /* OPNGameCardView.swift */; };
@@ -188,7 +188,6 @@
 		E0000000000000000000001F /* OPNLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLocale.swift; path = src/common/OPNLocale.swift; sourceTree = "<group>"; };
 		E00000000000000000000021 /* OPNGameRemediation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameRemediation.swift; path = src/common/OPNGameRemediation.swift; sourceTree = "<group>"; };
 		E00000000000000000000023 /* OPNGFNError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGFNError.swift; path = src/common/OPNGFNError.swift; sourceTree = "<group>"; };
-		E00000000000000000000025 /* OPNProtocolDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNProtocolDebug.swift; path = src/common/OPNProtocolDebug.swift; sourceTree = "<group>"; };
 		E00000000000000000000027 /* OPNStreamPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamPreferences.swift; path = src/streaming/OPNStreamPreferences.swift; sourceTree = "<group>"; };
 		E00000000000000000000029 /* OPNSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSettingsView.swift; path = src/views/OPNSettingsView.swift; sourceTree = "<group>"; };
 		E0000000000000000000002B /* OPNGameCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCardView.swift; path = src/views/OPNGameCardView.swift; sourceTree = "<group>"; };
@@ -248,6 +247,7 @@
 				A00000000000000000000108 /* OpenNOWNetwork in Frameworks */,
 				A00000000000000000000109 /* InputProtocol in Frameworks */,
 				A0000000000000000000010A /* DeviceIdentity in Frameworks */,
+				A0000000000000000000010B /* ProtocolDebug in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
 				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
@@ -302,7 +302,6 @@
 				E00000000000000000000021 /* OPNGameRemediation.swift */,
 				E00000000000000000000023 /* OPNGFNError.swift */,
 				E0000000000000000000003F /* OPNHTTP.swift */,
-				E00000000000000000000025 /* OPNProtocolDebug.swift */,
 				E00000000000000000000098 /* OPNDiscordPresence.swift */,
 				E00000000000000000000043 /* OPNGitHubUpdater.swift */,
 				E0000000000000000000009A /* OPNLogCapture.swift */,
@@ -488,6 +487,7 @@
 				A00000000000000000000208 /* OpenNOWNetwork */,
 				A00000000000000000000209 /* InputProtocol */,
 				A0000000000000000000020A /* DeviceIdentity */,
+				A0000000000000000000020B /* ProtocolDebug */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -532,6 +532,7 @@
 				A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */,
 				A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */,
 				A0000000000000000000030A /* XCLocalSwiftPackageReference "DeviceIdentity" */,
+				A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
 			projectDirPath = "";
@@ -574,7 +575,6 @@
 				E0000000000000000000000F /* OPNLocale.swift in Sources */,
 				E00000000000000000000020 /* OPNGameRemediation.swift in Sources */,
 				E00000000000000000000022 /* OPNGFNError.swift in Sources */,
-				E00000000000000000000024 /* OPNProtocolDebug.swift in Sources */,
 				E0000000000000000000009B /* OPNLogCapture.swift in Sources */,
 				4C3E83E448564D2B9FBD3A10 /* OPNSentry.swift in Sources */,
 				3BC225D2A5926453B554382C /* OPNUIHelpers.swift in Sources */,
@@ -863,6 +863,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = DeviceIdentity;
 		};
+		A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ProtocolDebug;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -946,6 +950,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A0000000000000000000030A /* XCLocalSwiftPackageReference "DeviceIdentity" */;
 			productName = DeviceIdentity;
+		};
+		A0000000000000000000020B /* ProtocolDebug */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */;
+			productName = ProtocolDebug;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -3,6 +3,7 @@ import CoreAudio
 import CoreMedia
 import DeviceIdentity
 import Foundation
+import ProtocolDebug
 import VideoToolbox
 
 struct OPNStreamAspectOption: Equatable, Sendable {

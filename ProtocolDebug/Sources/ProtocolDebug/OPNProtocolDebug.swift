@@ -1,5 +1,7 @@
 import Foundation
 
+import Foundation
+
 enum OPNProtocolDebugMapper {
     private static let sequence = ProtocolCaptureSequence()
 
@@ -28,7 +30,7 @@ enum OPNProtocolDebugMapper {
     }
 
     static func captureFilename(label: String?, sequence: UInt) -> String {
-        let raw = label?.isEmpty == false ? label!.lowercased() : "payload"
+        let raw = label.flatMap { $0.isEmpty ? nil : $0.lowercased() } ?? "payload"
         var safe = ""
         var previousDash = false
         for scalar in raw.unicodeScalars {
@@ -133,34 +135,34 @@ enum OPNProtocolDebugMapper {
 }
 
 @objc(OPNProtocolDebug)
-final class OPNProtocolDebug: NSObject {
+public final class OPNProtocolDebug: NSObject {
     @objc(loggingEnabled)
-    static func loggingEnabled() -> Bool {
+    public static func loggingEnabled() -> Bool {
         OPNProtocolDebugMapper.loggingEnabled()
     }
 
     @objc(sanitizedJSONStringFromJSONObject:)
-    static func sanitizedJSONString(fromJSONObject object: Any?) -> String {
+    public static func sanitizedJSONString(fromJSONObject object: Any?) -> String {
         OPNProtocolDebugMapper.sanitizedJSONString(fromJSONObject: object)
     }
 
     @objc(sanitizedJSONStringFromData:)
-    static func sanitizedJSONString(from data: Data?) -> String {
+    public static func sanitizedJSONString(from data: Data?) -> String {
         OPNProtocolDebugMapper.sanitizedJSONString(from: data)
     }
 
     @objc(captureFilenameWithLabel:sequence:)
-    static func captureFilename(label: String?, sequence: UInt) -> String {
+    public static func captureFilename(label: String?, sequence: UInt) -> String {
         OPNProtocolDebugMapper.captureFilename(label: label, sequence: sequence)
     }
 
     @objc(logJSONObjectWithLabel:object:)
-    static func logJSONObject(label: String?, object: Any?) {
+    public static func logJSONObject(label: String?, object: Any?) {
         OPNProtocolDebugMapper.logJSONObject(label: label, object: object)
     }
 
     @objc(logJSONDataWithLabel:data:)
-    static func logJSONData(label: String?, data: Data?) {
+    public static func logJSONData(label: String?, data: Data?) {
         OPNProtocolDebugMapper.logJSONData(label: label, data: data)
     }
 }
