@@ -12,7 +12,6 @@
 		3B4CCDD106825E705E33C838 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3351CF6EEB747A30AA91CDE3 /* AuthenticationServices.framework */; };
 		428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F1CB59A202D1743D348CB6E2 /* Metal.framework */; };
 		4A06F3F6B2094450A5049F2A /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework */; };
-		4C3E83E448564D2B9FBD3A12 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 4C3E83E448564D2B9FBD3A13 /* Sentry */; };
 		4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2725E7B4151D930B8EEC76B0 /* Cocoa.framework */; };
 		56330183F7065F54C2D88C7F /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */; };
 		57557463BAE573CB78603B2B /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F7F59E351286CF299470CD20 /* OpenGL.framework */; };
@@ -133,7 +132,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C3E83E448564D2B9FBD3A12 /* Sentry in Frameworks */,
 				E57A113BFF3CA1175BCB810D /* WebRTC.framework in Frameworks */,
 				4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */,
 				7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */,
@@ -328,7 +326,6 @@
 			);
 			name = OpenNOW;
 			packageProductDependencies = (
-				4C3E83E448564D2B9FBD3A13 /* Sentry */,
 				7778758B2FDCA4F900B177D8 /* Jarvis */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
 				777875912FDCA4F900B177D8 /* NesAuth */,
@@ -371,7 +368,6 @@
 			);
 			mainGroup = F3C5A43586F71EF5B9F29AFA /* OpenNOW */;
 			packageReferences = (
-				4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */,
 				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */,
@@ -667,23 +663,7 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.17.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
-		4C3E83E448564D2B9FBD3A13 /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4C3E83E448564D2B9FBD3A14 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
 		7778758B2FDCA4F900B177D8 /* Jarvis */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */;
