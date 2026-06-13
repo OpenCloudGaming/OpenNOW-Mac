@@ -523,6 +523,7 @@ struct OPNGameCatalogSwiftUIView: View {
                 catalogSearch(viewportSize: viewport.size)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, searchTopPadding(for: viewport.size))
+                    .ignoresSafeArea(.container, edges: .top)
                 controllerHints
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, 18)
@@ -557,6 +558,8 @@ struct OPNGameCatalogSwiftUIView: View {
 
     private func catalogSections(viewportSize: CGSize) -> some View {
         let contentInset = horizontalInset(forWidth: viewportSize.width)
+        let railWidth = max(320, max(980, viewportSize.width) - contentInset * 2)
+        let tileSize = OPNGameCatalogLayoutSupport.tileMetrics(forRailWidth: railWidth)
         let rowOuterInset = max(12, contentInset - 18)
         return VStack(spacing: 28) {
             ForEach(Array(model.sections.enumerated()), id: \.element.id) { rowIndex, section in
@@ -597,10 +600,9 @@ struct OPNGameCatalogSwiftUIView: View {
                                         }
                                     )
                                     .id(item.id)
-                                    .frame(width: OPNGameCatalogLayoutSupport.storeTileWidth, height: OPNGameCatalogLayoutSupport.storeTileHeight)
+                                    .frame(width: tileSize.width, height: tileSize.height)
                                 }
                             }
-                            .padding(.leading, 18)
                             .padding(.trailing, 24)
                             .padding(.top, 10)
                             .padding(.bottom, 20)
@@ -611,6 +613,7 @@ struct OPNGameCatalogSwiftUIView: View {
                         }
                     }
                     .frame(height: OPNGameCatalogLayoutSupport.storeTileHeight + 30)
+                    .padding(.horizontal, 18)
                     .background(Color.white.opacity(0.032), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.055), lineWidth: 1))
                     .padding(.horizontal, rowOuterInset)
