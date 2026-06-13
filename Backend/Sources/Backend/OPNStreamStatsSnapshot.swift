@@ -1,5 +1,7 @@
 import Foundation
 
+import Foundation
+
 @objc(OPNStreamStatsSnapshot)
 public final class OPNStreamStatsSnapshot: NSObject {
     @objc public let available: Bool

@@ -1,6 +1,6 @@
 import Foundation
 
-import AppPreferences
+import Common
 
 private final class OPNCatalogWeakObject<T: AnyObject>: @unchecked Sendable {
     weak var value: T?

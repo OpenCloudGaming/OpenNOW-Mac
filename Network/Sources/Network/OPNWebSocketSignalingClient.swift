@@ -1,5 +1,7 @@
 import Foundation
 
+import Foundation
+
 @objcMembers
 @objc(OPNWebSocketSignalingClient)
 public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {

@@ -1,6 +1,6 @@
 import AppKit
 
-import AppPreferences
+import Common
 
 private enum OPNGameLaunchScreen: Int32 {
     case emailEntry = 0

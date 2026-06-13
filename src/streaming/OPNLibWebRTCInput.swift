@@ -1,5 +1,5 @@
 import Foundation
-import InputProtocol
+import Backend
 @preconcurrency import WebRTC
 
 @objc(OPNLibWebRTCInput)

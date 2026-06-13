@@ -1,7 +1,6 @@
 import Foundation
 
-import AppPreferences
-import DeviceIdentity
+import Common
 
 @objc(OPNActiveSessionObject)
 @objcMembers

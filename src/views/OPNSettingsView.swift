@@ -1,6 +1,6 @@
 import SwiftUI
 
-import AppPreferences
+import Common
 
 @MainActor
 private final class OPNSettingsModel: ObservableObject {

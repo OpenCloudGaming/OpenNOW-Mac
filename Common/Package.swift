@@ -3,13 +3,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "InputProtocol",
+    name: "Common",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "InputProtocol", targets: ["InputProtocol"]),
+        .library(name: "Common", targets: ["Common"]),
     ],
     targets: [
-        .target(name: "InputProtocol"),
+        .target(name: "Common"),
     ],
     swiftLanguageModes: [.v6]
 )

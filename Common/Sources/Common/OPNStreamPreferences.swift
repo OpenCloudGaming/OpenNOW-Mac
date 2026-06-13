@@ -2,9 +2,7 @@ import AppKit
 import AppKit
 import CoreAudio
 import CoreMedia
-import DeviceIdentity
 import Foundation
-import ProtocolDebug
 import VideoToolbox
 
 public struct OPNStreamAspectOption: Equatable, Sendable {

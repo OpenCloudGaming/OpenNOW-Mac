@@ -1,5 +1,5 @@
 import AppKit
-import AppPreferences
+import Common
 import GameController
 import QuartzCore
 

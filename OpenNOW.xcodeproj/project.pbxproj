@@ -28,13 +28,9 @@
 		A00000000000000000000104 /* Ragnarok in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000204 /* Ragnarok */; };
 		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
-		A00000000000000000000107 /* StreamingClient in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* StreamingClient */; };
+		A00000000000000000000107 /* Backend in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* Backend */; };
 		A00000000000000000000108 /* OpenNOWNetwork in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* OpenNOWNetwork */; };
-		A00000000000000000000109 /* InputProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* InputProtocol */; };
-		A0000000000000000000010A /* DeviceIdentity in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020A /* DeviceIdentity */; };
-		A0000000000000000000010B /* ProtocolDebug in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020B /* ProtocolDebug */; };
-		A0000000000000000000010C /* GFNErrorMapping in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020C /* GFNErrorMapping */; };
-		A0000000000000000000010E /* AppPreferences in Frameworks */ = {isa = PBXBuildFile; productRef = A0000000000000000000020E /* AppPreferences */; };
+		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
 		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
@@ -241,13 +237,9 @@
 				A00000000000000000000104 /* Ragnarok in Frameworks */,
 				A00000000000000000000105 /* UDS in Frameworks */,
 				A00000000000000000000106 /* NetworkTest in Frameworks */,
-				A00000000000000000000107 /* StreamingClient in Frameworks */,
+				A00000000000000000000107 /* Backend in Frameworks */,
 				A00000000000000000000108 /* OpenNOWNetwork in Frameworks */,
-				A00000000000000000000109 /* InputProtocol in Frameworks */,
-				A0000000000000000000010A /* DeviceIdentity in Frameworks */,
-				A0000000000000000000010B /* ProtocolDebug in Frameworks */,
-				A0000000000000000000010C /* GFNErrorMapping in Frameworks */,
-				A0000000000000000000010E /* AppPreferences in Frameworks */,
+				A00000000000000000000109 /* Common in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
 				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
@@ -481,13 +473,9 @@
 				A00000000000000000000204 /* Ragnarok */,
 				A00000000000000000000205 /* UDS */,
 				A00000000000000000000206 /* NetworkTest */,
-				A00000000000000000000207 /* StreamingClient */,
+				A00000000000000000000207 /* Backend */,
 				A00000000000000000000208 /* OpenNOWNetwork */,
-				A00000000000000000000209 /* InputProtocol */,
-				A0000000000000000000020A /* DeviceIdentity */,
-				A0000000000000000000020B /* ProtocolDebug */,
-				A0000000000000000000020C /* GFNErrorMapping */,
-				A0000000000000000000020E /* AppPreferences */,
+				A00000000000000000000209 /* Common */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -528,13 +516,9 @@
 				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
 				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
 				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
-				A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */,
-				A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */,
-				A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */,
-				A0000000000000000000030A /* XCLocalSwiftPackageReference "DeviceIdentity" */,
-				A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */,
-				A0000000000000000000030C /* XCLocalSwiftPackageReference "GFNErrorMapping" */,
-				A0000000000000000000030E /* XCLocalSwiftPackageReference "AppPreferences" */,
+				A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "Network" */,
+				A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
 			projectDirPath = "";
@@ -847,33 +831,17 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = NetworkTest;
 		};
-		A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */ = {
+		A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = StreamingClient;
+			relativePath = Backend;
 		};
-		A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */ = {
+		A00000000000000000000308 /* XCLocalSwiftPackageReference "Network" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = OpenNOWNetwork;
+			relativePath = Network;
 		};
-		A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */ = {
+		A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = InputProtocol;
-		};
-		A0000000000000000000030A /* XCLocalSwiftPackageReference "DeviceIdentity" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = DeviceIdentity;
-		};
-		A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ProtocolDebug;
-		};
-		A0000000000000000000030C /* XCLocalSwiftPackageReference "GFNErrorMapping" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = GFNErrorMapping;
-		};
-		A0000000000000000000030E /* XCLocalSwiftPackageReference "AppPreferences" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = AppPreferences;
+			relativePath = Common;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -939,40 +907,20 @@
 			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */;
 			productName = NetworkTest;
 		};
-		A00000000000000000000207 /* StreamingClient */ = {
+		A00000000000000000000207 /* Backend */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */;
-			productName = StreamingClient;
+			package = A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */;
+			productName = Backend;
 		};
 		A00000000000000000000208 /* OpenNOWNetwork */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */;
+			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "Network" */;
 			productName = OpenNOWNetwork;
 		};
-		A00000000000000000000209 /* InputProtocol */ = {
+		A00000000000000000000209 /* Common */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */;
-			productName = InputProtocol;
-		};
-		A0000000000000000000020A /* DeviceIdentity */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000030A /* XCLocalSwiftPackageReference "DeviceIdentity" */;
-			productName = DeviceIdentity;
-		};
-		A0000000000000000000020B /* ProtocolDebug */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000030B /* XCLocalSwiftPackageReference "ProtocolDebug" */;
-			productName = ProtocolDebug;
-		};
-		A0000000000000000000020C /* GFNErrorMapping */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000030C /* XCLocalSwiftPackageReference "GFNErrorMapping" */;
-			productName = GFNErrorMapping;
-		};
-		A0000000000000000000020E /* AppPreferences */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000030E /* XCLocalSwiftPackageReference "AppPreferences" */;
-			productName = AppPreferences;
+			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */;
+			productName = Common;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

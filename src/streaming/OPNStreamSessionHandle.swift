@@ -1,6 +1,6 @@
 import Foundation
 
-import StreamingClient
+import Backend
 
 @objc(OPNStreamSessionHandle)
 final class OPNStreamSessionHandle: NSObject {

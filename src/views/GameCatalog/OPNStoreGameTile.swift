@@ -1,5 +1,5 @@
 import AppKit
-import AppPreferences
+import Common
 import Combine
 import QuartzCore
 import SwiftUI

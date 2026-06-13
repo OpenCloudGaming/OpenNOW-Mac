@@ -3,13 +3,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "ProtocolDebug",
+    name: "Backend",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "ProtocolDebug", targets: ["ProtocolDebug"]),
+        .library(name: "Backend", targets: ["Backend"]),
     ],
     targets: [
-        .target(name: "ProtocolDebug"),
+        .target(name: "Backend"),
     ],
     swiftLanguageModes: [.v6]
 )
