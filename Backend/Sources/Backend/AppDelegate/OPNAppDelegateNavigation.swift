@@ -143,15 +143,15 @@ extension NSObject {
             root.layer?.isOpaque = false
             root.autoresizingMask = [.width, .height]
             let selfBox = OPNNavigationWeakObject(self)
-            root.onHomeSelected = { if let self = selfBox.value { if opnNavInt(self, "currentScreen") != OPNNavigationScreen.catalog.rawValue { self.transitionToScreen(OPNNavigationScreen.catalog.rawValue) }; opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.library.rawValue } }
-            root.onStoreSelected = { if let self = selfBox.value, opnNavInt(self, "currentScreen") != OPNNavigationScreen.store.rawValue { self.transitionToScreen(OPNNavigationScreen.store.rawValue) } }
-            root.onLibrarySelected = { if let self = selfBox.value { if opnNavInt(self, "currentScreen") != OPNNavigationScreen.catalog.rawValue { self.transitionToScreen(OPNNavigationScreen.catalog.rawValue) }; opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.library.rawValue } }
-            root.onSearchSelected = { if let self = selfBox.value { if opnNavInt(self, "currentScreen") != OPNNavigationScreen.catalog.rawValue { self.transitionToScreen(OPNNavigationScreen.catalog.rawValue) }; opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.library.rawValue } }
-            root.onSettingsSelected = { if let self = selfBox.value, opnNavInt(self, "currentScreen") != OPNNavigationScreen.settings.rawValue { self.transitionToScreen(OPNNavigationScreen.settings.rawValue) } }
-            root.onAccountSelected = { identifier in selfBox.value?.switchToAccountIdentifier(identifier) }
-            root.onAddAccountSelected = { selfBox.value?.addAccount() }
-            root.onSignOutSelected = { selfBox.value?.performServerLogout() }
-            root.onExitSelected = { NSApp.terminate(nil) }
+            root.assignOnHomeSelected { if let self = selfBox.value { if opnNavInt(self, "currentScreen") != OPNNavigationScreen.catalog.rawValue { self.transitionToScreen(OPNNavigationScreen.catalog.rawValue) }; opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.library.rawValue } }
+            root.assignOnStoreSelected { if let self = selfBox.value, opnNavInt(self, "currentScreen") != OPNNavigationScreen.store.rawValue { self.transitionToScreen(OPNNavigationScreen.store.rawValue) } }
+            root.assignOnLibrarySelected { if let self = selfBox.value { if opnNavInt(self, "currentScreen") != OPNNavigationScreen.catalog.rawValue { self.transitionToScreen(OPNNavigationScreen.catalog.rawValue) }; opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.library.rawValue } }
+            root.assignOnSearchSelected { if let self = selfBox.value { if opnNavInt(self, "currentScreen") != OPNNavigationScreen.catalog.rawValue { self.transitionToScreen(OPNNavigationScreen.catalog.rawValue) }; opnNavGet(self, "rootView", as: OPNBackdropView.self)?.mode = OPNNavigationBackdropMode.library.rawValue } }
+            root.assignOnSettingsSelected { if let self = selfBox.value, opnNavInt(self, "currentScreen") != OPNNavigationScreen.settings.rawValue { self.transitionToScreen(OPNNavigationScreen.settings.rawValue) } }
+            root.assignOnAccountSelected { identifier in selfBox.value?.switchToAccountIdentifier(identifier) }
+            root.assignOnAddAccountSelected { selfBox.value?.addAccount() }
+            root.assignOnSignOutSelected { selfBox.value?.performServerLogout() }
+            root.assignOnExitSelected { NSApp.terminate(nil) }
             window.contentView = root
             opnNavConfigureLibraryWindow(window)
             OPNUIHelpers.disableFocusHighlights(root)
@@ -281,7 +281,7 @@ extension NSObject {
         view.autoresizingMask = [.width, .height]
         let selfBox = OPNNavigationWeakObject(self)
         let viewBox = OPNNavigationWeakObject(view)
-        view.onSignInWithBrowser = {
+        view.assignOnSignInWithBrowser {
             guard let self = selfBox.value, let signInView = viewBox.value else { return }
             let selected = signInView.selectedProviderIdentifier()
             opnNavSet(self, "pendingProviderIdpId", selected.isEmpty ? "PDiAhv2kJTFeQ7WOPqiQ2tRZ7lGhR2X11dXvM4TZSxg" : selected)
@@ -336,10 +336,10 @@ extension NSObject {
 
     private func configureStoreCallbacks(_ store: OPNGameCatalogView) {
         let selfBox = OPNNavigationWeakObject(self)
-        store.onSelectGame = { game, variantIndex in if let self = selfBox.value { opnNavLaunchGame(self, game: game, variantIndex: variantIndex, returnScreen: .store) } }
-        store.onBuyGame = { game, variantIndex, purchaseURL in if let self = selfBox.value { opnNavOpenPurchaseURL(self, purchaseURL: purchaseURL, game: game, variantIndex: variantIndex) } }
-        store.onMarkGameUnowned = { game, variantIndex in if let self = selfBox.value { opnNavMarkVariantUnowned(self, game: game, variantIndex: variantIndex) } }
-        store.onBackRequested = { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
+        store.assignOnSelectGame { game, variantIndex in if let self = selfBox.value { opnNavLaunchGame(self, game: game, variantIndex: variantIndex, returnScreen: .store) } }
+        store.assignOnBuyGame { game, variantIndex, purchaseURL in if let self = selfBox.value { opnNavOpenPurchaseURL(self, purchaseURL: purchaseURL, game: game, variantIndex: variantIndex) } }
+        store.assignOnMarkGameUnowned { game, variantIndex in if let self = selfBox.value { opnNavMarkVariantUnowned(self, game: game, variantIndex: variantIndex) } }
+        store.assignOnBackRequested { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
     }
 
     private func loadStoreContent(for store: OPNGameCatalogView, refreshOnly: Bool) {
@@ -418,18 +418,18 @@ extension NSObject {
 
     private func configureCatalogCallbacks(_ catalog: OPNGameCatalogView) {
         let selfBox = OPNNavigationWeakObject(self)
-        catalog.onSignOut = { selfBox.value?.performServerLogout() }
-        catalog.onGameCountChanged = { count in
+        catalog.assignOnSignOut { selfBox.value?.performServerLogout() }
+        catalog.assignOnGameCountChanged { count in
             guard let self = selfBox.value, let root = opnNavGet(self, "rootView", as: OPNBackdropView.self) else { return }
             root.gameCountText = "\(count) \(count == 1 ? "game" : "games")"
         }
-        catalog.onInterfaceSettingsRequested = { selfBox.value?.transitionToScreen(OPNNavigationScreen.settings.rawValue) }
-        catalog.onStoreRequested = { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
-        catalog.onExitRequested = { NSApp.terminate(nil) }
-        catalog.onRestartRequested = { if let self = selfBox.value { opnNavPerform(self, "restartApplication") } }
-        catalog.onSelectGame = { game, variantIndex in if let self = selfBox.value { opnNavLaunchGame(self, game: game, variantIndex: variantIndex, returnScreen: .catalog) } }
-        catalog.onMarkGameUnowned = { game, variantIndex in if let self = selfBox.value { opnNavMarkVariantUnowned(self, game: game, variantIndex: variantIndex) } }
-        catalog.onCatalogBrowseRequested = { [weak catalog] searchQuery, sortId, filterIds in
+        catalog.assignOnInterfaceSettingsRequested { selfBox.value?.transitionToScreen(OPNNavigationScreen.settings.rawValue) }
+        catalog.assignOnStoreRequested { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
+        catalog.assignOnExitRequested { NSApp.terminate(nil) }
+        catalog.assignOnRestartRequested { if let self = selfBox.value { opnNavPerform(self, "restartApplication") } }
+        catalog.assignOnSelectGame { game, variantIndex in if let self = selfBox.value { opnNavLaunchGame(self, game: game, variantIndex: variantIndex, returnScreen: .catalog) } }
+        catalog.assignOnMarkGameUnowned { game, variantIndex in if let self = selfBox.value { opnNavMarkVariantUnowned(self, game: game, variantIndex: variantIndex) } }
+        catalog.assignOnCatalogBrowseRequested { [weak catalog] searchQuery, sortId, filterIds in
             guard let self = selfBox.value, let catalog, opnNavGet(self, "catalogView", as: OPNGameCatalogView.self) === catalog else { return }
             (self as? OPNAppDelegateLegacy)?.browseCatalog(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, canRetry: true, retryAttempt: 0)
         }
@@ -449,8 +449,8 @@ extension NSObject {
         guard let settings = OPNAppViewBridge.view(named: "OPNSettingsView", frame: bounds, string: "") else { return }
         settings.autoresizingMask = [.width, .height]
         let selfBox = OPNNavigationWeakObject(self)
-        settings.onBackRequested = { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
-        settings.onCheckForUpdatesRequested = { if let self = selfBox.value { opnNavPerform(self, "checkForApplicationUpdates") } }
+        settings.assignOnBackRequested { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
+        settings.assignOnCheckForUpdatesRequested { if let self = selfBox.value { opnNavPerform(self, "checkForApplicationUpdates") } }
         opnNavSet(self, "settingsView", settings)
         container.addSubview(settings)
         completeContentTransition(fromSubviews: previousSubviews, to: settings, animated: animated, forward: forward)
@@ -688,8 +688,8 @@ extension NSObject {
         message += "\n\nFull log copied to clipboard."
         guard let view = OPNAppViewBridge.errorView(frame: container.bounds, message: message, canRetry: canRetry) else { return }
         let selfBox = OPNNavigationWeakObject(self)
-        view.onRetry = { selfBox.value?.transitionToScreen(retryScreen.rawValue) }
-        view.onBackToEmail = {
+        view.assignOnRetry { selfBox.value?.transitionToScreen(retryScreen.rawValue) }
+        view.assignOnBackToEmail {
             guard let self = selfBox.value else { return }
             opnNavSet(self, "pendingProviderIdpId", "PDiAhv2kJTFeQ7WOPqiQ2tRZ7lGhR2X11dXvM4TZSxg")
             opnNavSet(self, "pendingStayLoggedIn", OPNAuthServiceDirect.shared.getStayLoggedIn())

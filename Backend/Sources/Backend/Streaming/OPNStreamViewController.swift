@@ -195,8 +195,8 @@ final class OPNStreamViewController: NSViewController {
         }
         guard let overlay = OPNAppViewBridge.view(named: "OPNQuitGameOverlayView", frame: view.bounds) else { return }
         overlay.autoresizingMask = [.width, .height]
-        overlay.onCancel = { [weak self] in self?.dismissQuitGameOverlayAndRefocus(true) }
-        overlay.onQuit = { [weak self] in self?.endStreamFromUserQuit() }
+        overlay.assignOnCancel { [weak self] in self?.dismissQuitGameOverlayAndRefocus(true) }
+        overlay.assignOnQuit { [weak self] in self?.endStreamFromUserQuit() }
         quitOverlay = overlay
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
         view.window?.makeFirstResponder(overlay)
@@ -640,7 +640,7 @@ final class OPNStreamViewController: NSViewController {
         loading.startAnimating()
         loadingView = loading
         statusLabel = loading.messageLabel
-        loading.adPlaybackEventHandler = { [weak self] (adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String) in
+            loading.assignAdPlaybackEventHandler { [weak self] (adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String) in
             guard let self, self.hasActiveSessionInfo else { return }
             OPNSessionManager.shared.reportSessionAd(session: self.activeSessionInfo, adId: adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: pausedTimeInMs, cancelReason: cancelReason) { [weak self] success, updatedInfo, _ in
                 DispatchQueue.main.async {

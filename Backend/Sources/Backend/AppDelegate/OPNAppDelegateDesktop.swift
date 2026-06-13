@@ -601,10 +601,10 @@ final class OPNAppDelegateLegacy: NSObject, NSApplicationDelegate, NSMenuItemVal
         if desktopTopChromeView == nil {
             guard let chrome = OPNAppViewBridge.view(named: "OPNDesktopChromeView", frame: .zero) else { return }
             chrome.autoresizingMask = [.width]
-            chrome.onAccountSelected = { [weak self] identifier in self?.switchToAccountIdentifier(identifier) }
-            chrome.onAddAccountSelected = { [weak self] in self?.addAccount() }
-            chrome.onManageAccountSelected = { [weak self] in self?.desktopAccountTypePillClicked(nil) }
-            chrome.onSettingsSelected = { [weak self] in self?.desktopSettingsPillClicked(nil) }
+            chrome.assignOnAccountSelected { [weak self] identifier in self?.switchToAccountIdentifier(identifier) }
+            chrome.assignOnAddAccountSelected { [weak self] in self?.addAccount() }
+            chrome.assignOnManageAccountSelected { [weak self] in self?.desktopAccountTypePillClicked(nil) }
+            chrome.assignOnSettingsSelected { [weak self] in self?.desktopSettingsPillClicked(nil) }
             desktopTopChromeView = chrome
             rootView.addSubview(chrome, positioned: .above, relativeTo: contentContainer)
         }
