@@ -715,28 +715,43 @@ private struct OPNCatalogStoreTileView: NSViewRepresentable {
 
     final class Coordinator {
         var appliedFocusScrollRequestToken = 0
+        var pendingStateToken = 0
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> OPNStoreGameTile {
         let tile = OPNStoreGameTile(frame: .zero, gameObject: item.gameObject, prominent: false)
-        configure(tile)
+        configureCallbacks(tile)
+        scheduleStateUpdate(for: tile, context: context)
         return tile
     }
 
     func updateNSView(_ nsView: OPNStoreGameTile, context: Context) {
-        configure(nsView)
-        if focusScrollRequestToken > 0 && context.coordinator.appliedFocusScrollRequestToken != focusScrollRequestToken {
-            context.coordinator.appliedFocusScrollRequestToken = focusScrollRequestToken
-            nsView.scrollIntoListingPosition()
+        configureCallbacks(nsView)
+        scheduleStateUpdate(for: nsView, context: context)
+    }
+
+    private func scheduleStateUpdate(for tile: OPNStoreGameTile, context: Context) {
+        let selectedVariantIndex = item.selectedVariantIndex
+        let isFocused = focused
+        let requestToken = focusScrollRequestToken
+        let coordinator = context.coordinator
+        coordinator.pendingStateToken += 1
+        let pendingStateToken = coordinator.pendingStateToken
+        DispatchQueue.main.async { [weak tile, weak coordinator] in
+            guard let tile, let coordinator, coordinator.pendingStateToken == pendingStateToken else { return }
+            tile.selectedVariantIndex = selectedVariantIndex
+            tile.setStoreFocused(isFocused)
+            tile.ensureImageLoaded()
+            if requestToken > 0 && coordinator.appliedFocusScrollRequestToken != requestToken {
+                coordinator.appliedFocusScrollRequestToken = requestToken
+                tile.scrollIntoListingPosition()
+            }
         }
     }
 
-    private func configure(_ tile: OPNStoreGameTile) {
-        tile.selectedVariantIndex = item.selectedVariantIndex
-        tile.setStoreFocused(focused)
-        tile.ensureImageLoaded()
+    private func configureCallbacks(_ tile: OPNStoreGameTile) {
         tile.onSelect = { [weak tile] in
             onSelect(tile?.selectedVariantIndex ?? item.selectedVariantIndex)
         }
