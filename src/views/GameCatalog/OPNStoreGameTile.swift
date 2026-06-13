@@ -105,7 +105,7 @@ final class OPNStoreGameTile: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
-    deinit {
+    isolated deinit {
         fallbackInertiaTimer?.invalidate()
         imageLoadToken?.cancel()
     }
