@@ -29,6 +29,8 @@
 		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
 		A00000000000000000000107 /* StreamingClient in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* StreamingClient */; };
+		A00000000000000000000108 /* OpenNOWNetwork in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* OpenNOWNetwork */; };
+		A00000000000000000000109 /* InputProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* InputProtocol */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
 		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
@@ -90,7 +92,6 @@
 		E00000000000000000000059 /* OPNSentryTransactionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000005A /* OPNSentryTransactionBridge.swift */; };
 		E0000000000000000000007F /* OPNStreamSessionHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000080 /* OPNStreamSessionHandle.swift */; };
 		E00000000000000000000081 /* OPNStreamSessionHandleSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000082 /* OPNStreamSessionHandleSurface.swift */; };
-		E00000000000000000000088 /* OPNStreamStatsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */; };
 		E0000000000000000000008A /* OPNStreamViewControllerOverlays.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */; };
 		E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */; };
 		E00000000000000000000099 /* OPNDiscordPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000098 /* OPNDiscordPresence.swift */; };
@@ -204,7 +205,6 @@
 		E0000000000000000000005A /* OPNSentryTransactionBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSentryTransactionBridge.swift; path = src/common/OPNSentryTransactionBridge.swift; sourceTree = "<group>"; };
 		E00000000000000000000080 /* OPNStreamSessionHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandle.swift; path = src/streaming/OPNStreamSessionHandle.swift; sourceTree = "<group>"; };
 		E00000000000000000000082 /* OPNStreamSessionHandleSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamSessionHandleSurface.swift; path = src/streaming/OPNStreamSessionHandleSurface.swift; sourceTree = "<group>"; };
-		E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamStatsSnapshot.swift; path = src/streaming/OPNStreamStatsSnapshot.swift; sourceTree = "<group>"; };
 		E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewControllerOverlays.swift; path = src/streaming/OPNStreamViewControllerOverlays.swift; sourceTree = "<group>"; };
 		E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAudioDeviceMonitorContext.swift; path = src/streaming/OPNAudioDeviceMonitorContext.swift; sourceTree = "<group>"; };
 		E00000000000000000000098 /* OPNDiscordPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDiscordPresence.swift; path = src/common/OPNDiscordPresence.swift; sourceTree = "<group>"; };
@@ -246,6 +246,8 @@
 				A00000000000000000000105 /* UDS in Frameworks */,
 				A00000000000000000000106 /* NetworkTest in Frameworks */,
 				A00000000000000000000107 /* StreamingClient in Frameworks */,
+				A00000000000000000000108 /* OpenNOWNetwork in Frameworks */,
+				A00000000000000000000109 /* InputProtocol in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
 				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
@@ -332,7 +334,6 @@
 				E000000000000000000000C3 /* OPNSessionManager.swift */,
 				E00000000000000000000080 /* OPNStreamSessionHandle.swift */,
 				E00000000000000000000082 /* OPNStreamSessionHandleSurface.swift */,
-				E00000000000000000000089 /* OPNStreamStatsSnapshot.swift */,
 				E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */,
 				E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */,
 				E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */,
@@ -485,6 +486,8 @@
 				A00000000000000000000205 /* UDS */,
 				A00000000000000000000206 /* NetworkTest */,
 				A00000000000000000000207 /* StreamingClient */,
+				A00000000000000000000208 /* OpenNOWNetwork */,
+				A00000000000000000000209 /* InputProtocol */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -526,6 +529,8 @@
 				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
 				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
 				A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */,
+				A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
 			projectDirPath = "";
@@ -588,7 +593,6 @@
 				E000000000000000000000C0 /* OPNLibWebRTCSessionSurface.swift in Sources */,
 				E0000000000000000000007F /* OPNStreamSessionHandle.swift in Sources */,
 				E00000000000000000000081 /* OPNStreamSessionHandleSurface.swift in Sources */,
-				E00000000000000000000088 /* OPNStreamStatsSnapshot.swift in Sources */,
 				E000000000000000000000C4 /* OPNLibWebRTCStreamSession.swift in Sources */,
 				A00000000000000000000024 /* OPNSessionHealthReport.swift in Sources */,
 				E000000000000000000000C2 /* OPNSessionManager.swift in Sources */,
@@ -847,6 +851,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = StreamingClient;
 		};
+		A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OpenNOWNetwork;
+		};
+		A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = InputProtocol;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -915,6 +927,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */;
 			productName = StreamingClient;
+		};
+		A00000000000000000000208 /* OpenNOWNetwork */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "OpenNOWNetwork" */;
+			productName = OpenNOWNetwork;
+		};
+		A00000000000000000000209 /* InputProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "InputProtocol" */;
+			productName = InputProtocol;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

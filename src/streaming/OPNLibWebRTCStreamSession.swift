@@ -1,6 +1,7 @@
 import AppKit
 import CoreVideo
 import Foundation
+import StreamingClient
 @preconcurrency import WebRTC
 
 typealias OPNLibWebRTCAnswerHandler = @convention(block) (NSString, NSString) -> Void

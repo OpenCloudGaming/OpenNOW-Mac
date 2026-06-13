@@ -1,4 +1,5 @@
 import Foundation
+import StreamingClient
 
 private enum OPNSessionReportDisplayMode: Int {
     case automatic = 0

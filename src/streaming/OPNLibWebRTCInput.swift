@@ -1,5 +1,5 @@
 import Foundation
-import StreamingClient
+import InputProtocol
 @preconcurrency import WebRTC
 
 @objc(OPNLibWebRTCInput)
