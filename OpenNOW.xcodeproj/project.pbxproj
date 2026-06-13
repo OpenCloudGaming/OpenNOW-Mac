@@ -28,6 +28,7 @@
 		A00000000000000000000104 /* Ragnarok in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000204 /* Ragnarok */; };
 		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
+		A00000000000000000000107 /* StreamingClient in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* StreamingClient */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
 		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
@@ -79,7 +80,6 @@
 		E0000000000000000000002A /* OPNGameCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002B /* OPNGameCardView.swift */; };
 		E0000000000000000000002C /* OPNLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002D /* OPNLoadingView.swift */; };
 		E0000000000000000000002E /* OPNEmailEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000002F /* OPNEmailEntryView.swift */; };
-		E00000000000000000000030 /* OPNWebSocketSignalingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */; };
 		E00000000000000000000033 /* OPNSessionReportPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000034 /* OPNSessionReportPayload.swift */; };
 		E00000000000000000000036 /* OPNAuthenticatingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000037 /* OPNAuthenticatingView.swift */; };
 		E00000000000000000000038 /* OPNCloudmatchServerPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */; };
@@ -194,7 +194,6 @@
 		E0000000000000000000002B /* OPNGameCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCardView.swift; path = src/views/OPNGameCardView.swift; sourceTree = "<group>"; };
 		E0000000000000000000002D /* OPNLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLoadingView.swift; path = src/views/OPNLoadingView.swift; sourceTree = "<group>"; };
 		E0000000000000000000002F /* OPNEmailEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNEmailEntryView.swift; path = src/views/OPNEmailEntryView.swift; sourceTree = "<group>"; };
-		E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNWebSocketSignalingClient.swift; path = src/streaming/OPNWebSocketSignalingClient.swift; sourceTree = "<group>"; };
 		E00000000000000000000034 /* OPNSessionReportPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportPayload.swift; path = src/common/OPNSessionReportPayload.swift; sourceTree = "<group>"; };
 		E00000000000000000000037 /* OPNAuthenticatingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAuthenticatingView.swift; path = src/views/OPNAuthenticatingView.swift; sourceTree = "<group>"; };
 		E00000000000000000000039 /* OPNCloudmatchServerPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCloudmatchServerPickerView.swift; path = src/views/OPNCloudmatchServerPickerView.swift; sourceTree = "<group>"; };
@@ -246,6 +245,7 @@
 				A00000000000000000000104 /* Ragnarok in Frameworks */,
 				A00000000000000000000105 /* UDS in Frameworks */,
 				A00000000000000000000106 /* NetworkTest in Frameworks */,
+				A00000000000000000000107 /* StreamingClient in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
 				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
@@ -321,7 +321,6 @@
 				E00000000000000000000014 /* OPNVideoSurfaceView.swift */,
 				C00000000000000000000048 /* OPNActiveSessionService.swift */,
 				E00000000000000000000027 /* OPNStreamPreferences.swift */,
-				E00000000000000000000031 /* OPNWebSocketSignalingClient.swift */,
 				E000000000000000000000AB /* OPNInputProtocol.swift */,
 				E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */,
 				E000000000000000000000B7 /* OPNMetalVideoView.swift */,
@@ -485,6 +484,7 @@
 				A00000000000000000000204 /* Ragnarok */,
 				A00000000000000000000205 /* UDS */,
 				A00000000000000000000206 /* NetworkTest */,
+				A00000000000000000000207 /* StreamingClient */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -525,6 +525,7 @@
 				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
 				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
 				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
+				A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
 			projectDirPath = "";
@@ -591,7 +592,6 @@
 				E000000000000000000000C4 /* OPNLibWebRTCStreamSession.swift in Sources */,
 				A00000000000000000000024 /* OPNSessionHealthReport.swift in Sources */,
 				E000000000000000000000C2 /* OPNSessionManager.swift in Sources */,
-				E00000000000000000000030 /* OPNWebSocketSignalingClient.swift in Sources */,
 				E00000000000000000000033 /* OPNSessionReportPayload.swift in Sources */,
 				13182ACD531F1FAD11E51698 /* OPNStreamRecordingManager.swift in Sources */,
 				FE6A155D74A6768A507DF3AB /* OPNStreamView.swift in Sources */,
@@ -843,6 +843,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = NetworkTest;
 		};
+		A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = StreamingClient;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -906,6 +910,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */;
 			productName = NetworkTest;
+		};
+		A00000000000000000000207 /* StreamingClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000307 /* XCLocalSwiftPackageReference "StreamingClient" */;
+			productName = StreamingClient;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

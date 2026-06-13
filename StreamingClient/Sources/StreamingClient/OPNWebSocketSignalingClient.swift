@@ -1,13 +1,11 @@
-@preconcurrency import Foundation
-
 import Foundation
 
 @objcMembers
 @objc(OPNWebSocketSignalingClient)
-final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
-    var onOffer: ((String) -> Void)?
-    var onIceCandidate: ((NSDictionary) -> Void)?
-    var onClosed: ((Bool, String) -> Void)?
+public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+    public var onOffer: ((String) -> Void)?
+    public var onIceCandidate: ((NSDictionary) -> Void)?
+    public var onClosed: ((Bool, String) -> Void)?
 
     private let signalingServer: String
     private let sessionId: String
@@ -25,24 +23,24 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
     private var connectCompletion: ((Bool, String) -> Void)?
     private var activeURL: URL?
 
-    init(signalingServer: String, sessionId: String, signalingUrl: String) {
+    public init(signalingServer: String, sessionId: String, signalingUrl: String) {
         self.signalingServer = signalingServer
         self.sessionId = sessionId
         self.signalingUrl = signalingUrl
         super.init()
     }
 
-    var isConnected: Bool {
+    public var isConnected: Bool {
         webSocketTask?.state == .running
     }
 
-    func setPeerResolution(_ resolution: String) {
+    public func setPeerResolution(_ resolution: String) {
         if !resolution.isEmpty {
             peerResolution = resolution
         }
     }
 
-    func connect(_ completion: @escaping (Bool, String) -> Void) {
+    public func connect(_ completion: @escaping (Bool, String) -> Void) {
         if webSocketTask != nil {
             completion(true, "")
             return
@@ -83,7 +81,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         }
     }
 
-    func disconnect() {
+    public func disconnect() {
         connectionGeneration += 1
         clearHeartbeat()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
@@ -93,7 +91,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         connectCompletion = nil
     }
 
-    func sendAnswerSdp(_ sdp: String, nvstSdp: String) {
+    public func sendAnswerSdp(_ sdp: String, nvstSdp: String) {
         var answer: [String: Any] = [
             "type": "answer",
             "sdp": sdp,
@@ -104,7 +102,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         sendPeerMessage(answer)
     }
 
-    func sendIceCandidate(_ candidate: NSDictionary) {
+    public func sendIceCandidate(_ candidate: NSDictionary) {
         var payload: [String: Any] = [
             "candidate": candidate["candidate"] as? String ?? "",
             "sdpMLineIndex": candidate["sdpMLineIndex"] as? Int ?? 0,
@@ -120,7 +118,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         sendPeerMessage(payload)
     }
 
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
@@ -133,7 +131,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -157,7 +155,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
         }
     }
 
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -274,7 +272,7 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
                 "version": 2,
             ],
         ]
-        sendJSONObject(info, ackId: ackCounter)
+        sendJSONObject(info)
     }
 
     private func handleMessage(_ text: String) {
@@ -348,10 +346,10 @@ final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, 
             ],
             "ackid": ackCounter,
         ]
-        sendJSONObject(peerMessage, ackId: ackCounter)
+        sendJSONObject(peerMessage)
     }
 
-    private func sendJSONObject(_ object: [String: Any], ackId: Int? = nil) {
+    private func sendJSONObject(_ object: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let text = String(data: data, encoding: .utf8) else { return }
         sendJson(text)

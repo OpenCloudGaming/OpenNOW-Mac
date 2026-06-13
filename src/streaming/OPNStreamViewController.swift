@@ -4,6 +4,7 @@ import AVFoundation
 import Foundation
 import GameController
 import QuartzCore
+import StreamingClient
 
 private typealias OPNStreamSessionAnswerHandler = @convention(block) (NSString, NSString) -> Void
 private typealias OPNStreamSessionLocalIceCandidateHandler = @convention(block) (NSDictionary) -> Void
