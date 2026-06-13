@@ -26,7 +26,7 @@
 		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
 		A00000000000000000000107 /* Backend in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* Backend */; };
-		A00000000000000000000108 /* OpenNOWNetwork in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* OpenNOWNetwork */; };
+		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
 		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
@@ -148,7 +148,7 @@
 				A00000000000000000000105 /* UDS in Frameworks */,
 				A00000000000000000000106 /* NetworkTest in Frameworks */,
 				A00000000000000000000107 /* Backend in Frameworks */,
-				A00000000000000000000108 /* OpenNOWNetwork in Frameworks */,
+				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
 				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
 				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
@@ -339,7 +339,7 @@
 				A00000000000000000000205 /* UDS */,
 				A00000000000000000000206 /* NetworkTest */,
 				A00000000000000000000207 /* Backend */,
-				A00000000000000000000208 /* OpenNOWNetwork */,
+				A00000000000000000000208 /* SignalLinkKit */,
 				A00000000000000000000209 /* Common */,
 			);
 			productName = OpenNOW;
@@ -382,7 +382,7 @@
 				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
 				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
 				A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */,
-				A00000000000000000000308 /* XCLocalSwiftPackageReference "Network" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */,
 				A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */,
 			);
 			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
@@ -531,6 +531,7 @@
 					"$(inherited)",
 				);
 				LIBRARY_SEARCH_PATHS = "$(inherited)";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.3;
 				OTHER_CFLAGS = (
 					"-DOPN_HAVE_LIBWEBRTC=1",
@@ -574,6 +575,7 @@
 					"$(inherited)",
 				);
 				LIBRARY_SEARCH_PATHS = "$(inherited)";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.3;
 				OTHER_CFLAGS = (
 					"-DOPN_HAVE_LIBWEBRTC=1",
@@ -655,9 +657,9 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Backend;
 		};
-		A00000000000000000000308 /* XCLocalSwiftPackageReference "Network" */ = {
+		A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Network;
+			relativePath = SignalLinkKit;
 		};
 		A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -732,10 +734,10 @@
 			package = A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */;
 			productName = Backend;
 		};
-		A00000000000000000000208 /* OpenNOWNetwork */ = {
+		A00000000000000000000208 /* SignalLinkKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "Network" */;
-			productName = OpenNOWNetwork;
+			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */;
+			productName = SignalLinkKit;
 		};
 		A00000000000000000000209 /* Common */ = {
 			isa = XCSwiftPackageProductDependency;

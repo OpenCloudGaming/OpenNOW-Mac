@@ -3,13 +3,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "Network",
+    name: "SignalLinkKit",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "OpenNOWNetwork", targets: ["OpenNOWNetwork"]),
+        .library(name: "SignalLinkKit", targets: ["SignalLinkKit"]),
     ],
     targets: [
-        .target(name: "OpenNOWNetwork", path: "Sources/Network"),
+        .target(name: "SignalLinkKit", path: "Sources/SignalLinkKit"),
     ],
     swiftLanguageModes: [.v6]
 )

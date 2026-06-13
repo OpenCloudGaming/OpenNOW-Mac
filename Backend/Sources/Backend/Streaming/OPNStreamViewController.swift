@@ -4,7 +4,7 @@ import Common
 import AVFoundation
 import Foundation
 import GameController
-import OpenNOWNetwork
+import SignalLinkKit
 import QuartzCore
 
 private typealias OPNStreamSessionAnswerHandler = @convention(block) (NSString, NSString) -> Void

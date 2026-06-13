@@ -10,7 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../Common"),
-        .package(path: "../Network"),
+        .package(path: "../SignalLinkKit"),
         .package(path: "../jarvis"),
         .package(path: "../starfleet"),
         .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.17.1"),
@@ -20,7 +20,7 @@ let package = Package(
             name: "Backend",
             dependencies: [
                 "Common",
-                .product(name: "OpenNOWNetwork", package: "Network"),
+                .product(name: "SignalLinkKit", package: "SignalLinkKit"),
                 .product(name: "Jarvis", package: "jarvis"),
                 .product(name: "Starfleet", package: "starfleet"),
                 .product(name: "Sentry", package: "sentry-cocoa"),
