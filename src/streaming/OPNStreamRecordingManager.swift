@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AppPreferences
 import AppKit
 @preconcurrency import Accelerate
 import CoreImage

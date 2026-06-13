@@ -1,5 +1,6 @@
 @preconcurrency import Foundation
 
+import AppPreferences
 import DeviceIdentity
 import ProtocolDebug
 

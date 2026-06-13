@@ -1,5 +1,7 @@
 import SwiftUI
 
+import AppPreferences
+
 @MainActor
 private final class OPNSettingsModel: ObservableObject {
     let sectionNames = ["Stream", "Video", "Audio", "Input", "Interface", "About", "Thanks"]

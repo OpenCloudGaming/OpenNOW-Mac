@@ -1,5 +1,6 @@
 import Foundation
 
+import AppPreferences
 import DeviceIdentity
 
 @objc(OPNActiveSessionObject)

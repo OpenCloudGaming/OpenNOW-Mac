@@ -1,4 +1,5 @@
 import AppKit
+import AppPreferences
 import GFNErrorMapping
 import QuartzCore
 

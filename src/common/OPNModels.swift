@@ -414,39 +414,6 @@ final class OPNCatalogBrowseResultObject: NSObject {
     }
 }
 
-struct OPNStreamSettings: Equatable, Sendable {
-    var resolution = "1920x1080"
-    var fps = 60
-    var codec = "H264"
-    var colorQuality = "8bit_420"
-    var maxBitrateMbps = 50
-    var prefilterMode = 0
-    var prefilterSharpness = 0
-    var prefilterDenoise = 0
-    var prefilterModel = 0
-    var enableCloudGsync = false
-    var enableL4S = false
-    var enableReflex = true
-    var lowLatencyMode = false
-    var enableHdr = false
-    var microphoneMode = "disabled"
-    var microphoneDeviceId = ""
-    var microphonePushToTalkKeyCode = 9
-    var microphonePushToTalkModifierMask = 0
-    var gameVolume = 1.0
-    var microphoneVolume = 1.0
-    var keyboardLayout = "us"
-    var gameLanguage = "en_US"
-    var accountLinked = true
-    var selectedStore = ""
-    var networkTestSessionId = ""
-    var networkType = "Unknown"
-    var networkLatencyMs = -1
-    var remoteControllersBitmap: UInt32 = 0
-    var supportedHidDevices: UInt32 = 0
-    var availableSupportedControllers: [String] = []
-}
-
 struct OPNIceServer: Equatable, Sendable {
     var urls: [String] = []
     var username = ""

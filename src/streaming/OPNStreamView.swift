@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import AppPreferences
 import AudioToolbox
 import CoreVideo
 import GameController

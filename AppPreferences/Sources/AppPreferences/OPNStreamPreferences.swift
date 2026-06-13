@@ -1,4 +1,6 @@
 import AppKit
+import AppKit
+import AppPreferenceStorage
 import CoreAudio
 import CoreMedia
 import DeviceIdentity
@@ -6,224 +8,292 @@ import Foundation
 import ProtocolDebug
 import VideoToolbox
 
-struct OPNStreamAspectOption: Equatable, Sendable {
-    var label: String
-    var widthRatio: Int
-    var heightRatio: Int
+public struct OPNStreamAspectOption: Equatable, Sendable {
+    public var label: String
+    public var widthRatio: Int
+    public var heightRatio: Int
+
+    public init(label: String, widthRatio: Int, heightRatio: Int) {
+        self.label = label
+        self.widthRatio = widthRatio
+        self.heightRatio = heightRatio
+    }
 }
 
-struct OPNStreamResolutionOption: Equatable, Sendable {
-    var width: Int
-    var height: Int
+public struct OPNStreamResolutionOption: Equatable, Sendable {
+    public var width: Int
+    public var height: Int
 
-    var value: String { "\(width)x\(height)" }
-    var label: String { "\(width) x \(height)" }
+    public var value: String { "\(width)x\(height)" }
+    public var label: String { "\(width) x \(height)" }
+
+    public init(width: Int, height: Int) {
+        self.width = width
+        self.height = height
+    }
 }
 
-struct OPNStreamRegionOption: Equatable, Sendable {
-    var name: String
-    var url: String
-    var latencyMs: Int = -1
-    var automatic = false
+public struct OPNStreamRegionOption: Equatable, Sendable {
+    public var name: String
+    public var url: String
+    public var latencyMs: Int = -1
+    public var automatic = false
 
-    var label: String {
+    public var label: String {
         if automatic { return "Automatic" }
         if latencyMs >= 0 { return "\(name) (\(latencyMs) ms)" }
         return name
     }
-}
 
-struct OPNStreamCodecOption: Equatable, Sendable {
-    var label: String
-    var value: String
-}
-
-struct OPNStreamBitrateOption: Equatable, Sendable {
-    var label: String
-    var mbps: Int
-}
-
-struct OPNStreamColorQualityOption: Equatable, Sendable {
-    var label: String
-    var value: String
-}
-
-struct OPNStreamPrefilterModeOption: Equatable, Sendable {
-    var label: String
-    var value: Int
-}
-
-struct OPNStreamUpscalingModeOption: Equatable, Sendable {
-    var label: String
-    var value: Int
-}
-
-struct OPNStreamUpscalingTargetOption: Equatable, Sendable {
-    var label: String
-    var height: Int
-}
-
-struct OPNStreamMicrophoneModeOption: Equatable, Sendable {
-    var label: String
-    var value: String
-}
-
-struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
-    var label: String
-    var uniqueId: String
-    var automatic = false
-}
-
-struct OPNStreamNetworkPreflightResult: Equatable, Sendable {
-    var streamingBaseUrl = ""
-    var networkTestSessionId = ""
-    var networkType = "Unknown"
-    var latencyMs = -1
-    var measuredBandwidthMbps = 0.0
-    var packetLossPercent = -1.0
-    var jitterMs = -1
-    var recommendedMaxBitrateMbps = 0
-    var serverReportedWarning = false
-    var continueRecommended = true
-    var usedAutomaticRegion = false
-    var warningMessage = ""
-}
-
-struct OPNStreamCloudVariables: Equatable, Sendable {
-    var fetched = false
-    var allowH265 = true
-    var allowAV1 = true
-    var allowHDR = true
-    var allowL4S = true
-    var allowReflex = true
-    var allowPrefilter = true
-    var maxBitrateMbps = 0
-    var maxSupportedPrefilterMode = 2
-    var supportedPrefilterModes: [Int] = []
-    var refreshIntervalSeconds = 3600
-    var gpuName = ""
-}
-
-struct OPNStreamDeviceCapabilities: Equatable, Sendable {
-    var h264HardwareDecodeSupported = true
-    var h265HardwareDecodeSupported = false
-    var av1HardwareDecodeSupported = false
-    var hdrDisplaySupported = false
-    var maxDisplayWidth = 0
-    var maxDisplayHeight = 0
-    var maxDisplayRefreshRate = 0
-    var displayDpi = 100
-}
-
-struct OPNStreamPreferenceProfile: Equatable, Sendable {
-    var aspectIndex = 1
-    var resolutionIndex = 2
-    var fpsIndex = 1
-    var codecIndex = 0
-    var bitrateIndex = 2
-    var colorQualityIndex = 0
-    var fps = 60
-    var maxBitrateMbps = 50
-    var prefilterModeIndex = 0
-    var prefilterMode = 0
-    var prefilterSharpness = 0
-    var prefilterDenoise = 0
-    var prefilterModel = 0
-    var upscalingModeIndex = 1
-    var upscalingMode = 1
-    var upscalingTargetIndex = 1
-    var upscalingTargetHeight = 2160
-    var upscalingSharpness = 4
-    var upscalingDenoise = 0
-    var recordingVideoBitrateMbps = 0
-    var recordingAudioBitrateKbps = 160
-    var recordingEnhancedVideoEnabled = true
-    var enableL4S = false
-    var enableHdr = false
-    var lowLatencyMode = false
-    var enablePowerSaver = false
-    var suppressInputWhenInactive = true
-    var directMouseInput = true
-    var gameVolume = 1.0
-    var microphoneVolume = 1.0
-    var microphoneMode = "disabled"
-    var microphoneDeviceId = ""
-    var microphonePushToTalkKeyCode = 9
-    var microphonePushToTalkModifierMask = 0
-    var microphonePushToTalkKeyLabel = "V"
-    var microphonePushToTalkComboLabel = "V"
-    var selectedRegionUrl = ""
-    var aspect = OPNStreamPreferences.aspectOptions[1]
-    var resolution = OPNStreamResolutionOption(width: 1920, height: 1200)
-    var codec = OPNStreamPreferences.codecOptions[0]
-    var bitrate = OPNStreamPreferences.bitrateOptions[2]
-    var colorQuality = OPNStreamPreferences.colorQualityOptions[0]
-    var prefilterModeOption = OPNStreamPreferences.prefilterModeOptions[0]
-    var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
-    var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
-
-    var aspectRatio: Double {
-        aspect.heightRatio > 0 ? Double(aspect.widthRatio) / Double(aspect.heightRatio) : 16.0 / 9.0
+    public init(name: String, url: String, latencyMs: Int = -1, automatic: Bool = false) {
+        self.name = name
+        self.url = url
+        self.latencyMs = latencyMs
+        self.automatic = automatic
     }
 }
 
-enum OPNStreamPreferences {
-    static let defaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/"
-    static let aspectOptions = [
+public struct OPNStreamCodecOption: Equatable, Sendable {
+    public var label: String
+    public var value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamBitrateOption: Equatable, Sendable {
+    public var label: String
+    public var mbps: Int
+
+    public init(label: String, mbps: Int) {
+        self.label = label
+        self.mbps = mbps
+    }
+}
+
+public struct OPNStreamColorQualityOption: Equatable, Sendable {
+    public var label: String
+    public var value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamPrefilterModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamUpscalingModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamUpscalingTargetOption: Equatable, Sendable {
+    public var label: String
+    public var height: Int
+
+    public init(label: String, height: Int) {
+        self.label = label
+        self.height = height
+    }
+}
+
+public struct OPNStreamMicrophoneModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
+    public var label: String
+    public var uniqueId: String
+    public var automatic = false
+
+    public init(label: String, uniqueId: String, automatic: Bool = false) {
+        self.label = label
+        self.uniqueId = uniqueId
+        self.automatic = automatic
+    }
+}
+
+public struct OPNStreamNetworkPreflightResult: Equatable, Sendable {
+    public var streamingBaseUrl = ""
+    public var networkTestSessionId = ""
+    public var networkType = "Unknown"
+    public var latencyMs = -1
+    public var measuredBandwidthMbps = 0.0
+    public var packetLossPercent = -1.0
+    public var jitterMs = -1
+    public var recommendedMaxBitrateMbps = 0
+    public var serverReportedWarning = false
+    public var continueRecommended = true
+    public var usedAutomaticRegion = false
+    public var warningMessage = ""
+
+    public init() {}
+}
+
+public struct OPNStreamCloudVariables: Equatable, Sendable {
+    public var fetched = false
+    public var allowH265 = true
+    public var allowAV1 = true
+    public var allowHDR = true
+    public var allowL4S = true
+    public var allowReflex = true
+    public var allowPrefilter = true
+    public var maxBitrateMbps = 0
+    public var maxSupportedPrefilterMode = 2
+    public var supportedPrefilterModes: [Int] = []
+    public var refreshIntervalSeconds = 3600
+    public var gpuName = ""
+
+    public init() {}
+}
+
+public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
+    public var h264HardwareDecodeSupported = true
+    public var h265HardwareDecodeSupported = false
+    public var av1HardwareDecodeSupported = false
+    public var hdrDisplaySupported = false
+    public var maxDisplayWidth = 0
+    public var maxDisplayHeight = 0
+    public var maxDisplayRefreshRate = 0
+    public var displayDpi = 100
+
+    public init() {}
+}
+
+public struct OPNStreamPreferenceProfile: Equatable, Sendable {
+    public var aspectIndex = 1
+    public var resolutionIndex = 2
+    public var fpsIndex = 1
+    public var codecIndex = 0
+    public var bitrateIndex = 2
+    public var colorQualityIndex = 0
+    public var fps = 60
+    public var maxBitrateMbps = 50
+    public var prefilterModeIndex = 0
+    public var prefilterMode = 0
+    public var prefilterSharpness = 0
+    public var prefilterDenoise = 0
+    public var prefilterModel = 0
+    public var upscalingModeIndex = 1
+    public var upscalingMode = 1
+    public var upscalingTargetIndex = 1
+    public var upscalingTargetHeight = 2160
+    public var upscalingSharpness = 4
+    public var upscalingDenoise = 0
+    public var recordingVideoBitrateMbps = 0
+    public var recordingAudioBitrateKbps = 160
+    public var recordingEnhancedVideoEnabled = true
+    public var enableL4S = false
+    public var enableHdr = false
+    public var lowLatencyMode = false
+    public var enablePowerSaver = false
+    public var suppressInputWhenInactive = true
+    public var directMouseInput = true
+    public var gameVolume = 1.0
+    public var microphoneVolume = 1.0
+    public var microphoneMode = "disabled"
+    public var microphoneDeviceId = ""
+    public var microphonePushToTalkKeyCode = 9
+    public var microphonePushToTalkModifierMask = 0
+    public var microphonePushToTalkKeyLabel = "V"
+    public var microphonePushToTalkComboLabel = "V"
+    public var selectedRegionUrl = ""
+    public var aspect = OPNStreamPreferences.aspectOptions[1]
+    public var resolution = OPNStreamResolutionOption(width: 1920, height: 1200)
+    public var codec = OPNStreamPreferences.codecOptions[0]
+    public var bitrate = OPNStreamPreferences.bitrateOptions[2]
+    public var colorQuality = OPNStreamPreferences.colorQualityOptions[0]
+    public var prefilterModeOption = OPNStreamPreferences.prefilterModeOptions[0]
+    public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
+    public var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
+
+    public var aspectRatio: Double {
+        aspect.heightRatio > 0 ? Double(aspect.widthRatio) / Double(aspect.heightRatio) : 16.0 / 9.0
+    }
+
+    public init() {}
+}
+
+public enum OPNStreamPreferences {
+    private static let storage = OPNAppPreferenceStorage.standard
+
+    public static let defaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/"
+    public static let aspectOptions = [
         OPNStreamAspectOption(label: "16:9", widthRatio: 16, heightRatio: 9),
         OPNStreamAspectOption(label: "16:10", widthRatio: 16, heightRatio: 10),
         OPNStreamAspectOption(label: "21:9", widthRatio: 21, heightRatio: 9),
         OPNStreamAspectOption(label: "32:9", widthRatio: 32, heightRatio: 9)
     ]
-    static let fpsOptions = [30, 60, 120, 240]
-    static let codecOptions = [
+    public static let fpsOptions = [30, 60, 120, 240]
+    public static let codecOptions = [
         OPNStreamCodecOption(label: "H264  Low Latency", value: "H264"),
         OPNStreamCodecOption(label: "H265  Quality", value: "H265"),
         OPNStreamCodecOption(label: "AV1  CPU", value: "AV1"),
         OPNStreamCodecOption(label: "Auto", value: "auto")
     ]
-    static let bitrateOptions = [
+    public static let bitrateOptions = [
         OPNStreamBitrateOption(label: "15 Mbps", mbps: 15),
         OPNStreamBitrateOption(label: "25 Mbps", mbps: 25),
         OPNStreamBitrateOption(label: "50 Mbps", mbps: 50),
         OPNStreamBitrateOption(label: "75 Mbps", mbps: 75),
         OPNStreamBitrateOption(label: "100 Mbps", mbps: 100)
     ]
-    static let colorQualityOptions = [
+    public static let colorQualityOptions = [
         OPNStreamColorQualityOption(label: "8-bit 4:2:0", value: "8bit_420"),
         OPNStreamColorQualityOption(label: "8-bit 4:4:4", value: "8bit_444"),
         OPNStreamColorQualityOption(label: "10-bit 4:2:0", value: "10bit_420"),
         OPNStreamColorQualityOption(label: "10-bit 4:4:4", value: "10bit_444")
     ]
-    static let prefilterModeOptions = [
+    public static let prefilterModeOptions = [
         OPNStreamPrefilterModeOption(label: "Off", value: 0),
         OPNStreamPrefilterModeOption(label: "Auto", value: 1),
         OPNStreamPrefilterModeOption(label: "Custom", value: 2)
     ]
-    static let upscalingModeOptions = [
+    public static let upscalingModeOptions = [
         OPNStreamUpscalingModeOption(label: "Off", value: 0),
         OPNStreamUpscalingModeOption(label: "Auto", value: 1),
         OPNStreamUpscalingModeOption(label: "Spatial", value: 2),
         OPNStreamUpscalingModeOption(label: "MetalFX", value: 3),
         OPNStreamUpscalingModeOption(label: "Temporal", value: 4)
     ]
-    static let upscalingTargetOptions = [
+    public static let upscalingTargetOptions = [
         OPNStreamUpscalingTargetOption(label: "2K", height: 1440),
         OPNStreamUpscalingTargetOption(label: "4K", height: 2160)
     ]
-    static let microphoneModeOptions = [
+    public static let microphoneModeOptions = [
         OPNStreamMicrophoneModeOption(label: "Disabled", value: "disabled"),
         OPNStreamMicrophoneModeOption(label: "Push-to-Talk", value: "push-to-talk"),
         OPNStreamMicrophoneModeOption(label: "Open Mic", value: "voice-activity")
     ]
 
-    private static let defaultsDomain = "io.github.opencloudgaming.opennow"
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
     private static let defaultUpscalingTargetIndex = 1
     private static let k = Keys.self
 
-    static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
+    public static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
         switch aspectIndex {
         case 0: return [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)].map(OPNStreamResolutionOption.init)
         case 1: return [(1280, 800), (1440, 900), (1680, 1050), (1920, 1200), (2560, 1600), (2880, 1800)].map(OPNStreamResolutionOption.init)
@@ -233,7 +303,7 @@ enum OPNStreamPreferences {
         }
     }
 
-    static func loadMicrophoneDeviceOptions() -> [OPNStreamMicrophoneDeviceOption] {
+    public static func loadMicrophoneDeviceOptions() -> [OPNStreamMicrophoneDeviceOption] {
         var devices = [OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
@@ -259,7 +329,7 @@ enum OPNStreamPreferences {
         return devices
     }
 
-    static func loadDeviceCapabilities() -> OPNStreamDeviceCapabilities {
+    public static func loadDeviceCapabilities() -> OPNStreamDeviceCapabilities {
         var capabilities = OPNStreamDeviceCapabilities()
         capabilities.h264HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
         capabilities.h265HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
@@ -292,7 +362,7 @@ enum OPNStreamPreferences {
         return capabilities
     }
 
-    static func codecSupported(_ codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {
+    public static func codecSupported(_ codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {
         switch (codec.value.isEmpty ? "H264" : codec.value).uppercased() {
         case "AUTO", "H264": return true
         case "H265", "HEVC": return capabilities.h265HardwareDecodeSupported
@@ -301,13 +371,13 @@ enum OPNStreamPreferences {
         }
     }
 
-    static func fpsSupported(_ fps: Int, capabilities: OPNStreamDeviceCapabilities) -> Bool {
+    public static func fpsSupported(_ fps: Int, capabilities: OPNStreamDeviceCapabilities) -> Bool {
         if fps <= 60 { return true }
         if capabilities.maxDisplayRefreshRate <= 0 { return true }
         return fps <= max(60, capabilities.maxDisplayRefreshRate)
     }
 
-    static func colorQualitySupported(_ colorQuality: OPNStreamColorQualityOption, codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {
+    public static func colorQualitySupported(_ colorQuality: OPNStreamColorQualityOption, codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {
         guard codecSupported(codec, capabilities: capabilities) else { return false }
         if !colorQuality.value.uppercased().hasPrefix("10BIT") { return true }
         switch (codec.value.isEmpty ? "H264" : codec.value).uppercased() {
@@ -318,7 +388,7 @@ enum OPNStreamPreferences {
         }
     }
 
-    static func effectiveProfile(_ profile: OPNStreamPreferenceProfile, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamPreferenceProfile {
+    public static func effectiveProfile(_ profile: OPNStreamPreferenceProfile, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamPreferenceProfile {
         var result = profile
         if result.codecIndex < 0 || result.codecIndex >= codecOptions.count || !codecSupported(result.codec, capabilities: capabilities) {
             result.codecIndex = firstSupportedCodecIndex(capabilities)
@@ -335,7 +405,7 @@ enum OPNStreamPreferences {
         return result
     }
 
-    static func resolveCodec(profile: OPNStreamPreferenceProfile, resolution: OPNStreamResolutionOption, capabilities: OPNStreamDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
+    public static func resolveCodec(profile: OPNStreamPreferenceProfile, resolution: OPNStreamResolutionOption, capabilities: OPNStreamDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
         let requested = (profile.codec.value.isEmpty ? "H264" : profile.codec.value).uppercased()
         if requested != "AUTO" { return codecSupported(profile.codec, capabilities: capabilities) ? requested : "H264" }
         if !libWebRTCAvailable { return "H264" }
@@ -349,50 +419,50 @@ enum OPNStreamPreferences {
         return "H264"
     }
 
-    static func loadProfile() -> OPNStreamPreferenceProfile {
+    public static func loadProfile() -> OPNStreamPreferenceProfile {
         profile(from: nil)
     }
 
-    static func loadProfile(forGame appId: String) -> OPNStreamPreferenceProfile? {
+    public static func loadProfile(forGame appId: String) -> OPNStreamPreferenceProfile? {
         guard let dictionary = gameProfileDictionary(for: appId), bool(dictionary[k.gameProfileEnabled], false) else { return nil }
         return profile(from: dictionary)
     }
 
-    static func saveProfile(forGame appId: String, profile: OPNStreamPreferenceProfile) {
+    public static func saveProfile(forGame appId: String, profile: OPNStreamPreferenceProfile) {
         guard !appId.isEmpty else { return }
         var profiles = mutableGameProfilesDictionary()
         profiles[appId] = dictionary(from: profile, enabled: true)
-        UserDefaults.standard.set(profiles, forKey: k.gameProfiles)
-        UserDefaults.standard.synchronize()
+        storage.set(profiles, forKey: k.gameProfiles)
+        storage.synchronize()
     }
 
-    static func deleteProfile(forGame appId: String) {
+    public static func deleteProfile(forGame appId: String) {
         guard !appId.isEmpty else { return }
         var profiles = mutableGameProfilesDictionary()
         profiles.removeValue(forKey: appId)
-        UserDefaults.standard.set(profiles, forKey: k.gameProfiles)
-        UserDefaults.standard.synchronize()
+        storage.set(profiles, forKey: k.gameProfiles)
+        storage.synchronize()
     }
 
-    static func profileExists(forGame appId: String) -> Bool {
+    public static func profileExists(forGame appId: String) -> Bool {
         gameProfileDictionary(for: appId) != nil
     }
 
-    static func profileEnabled(forGame appId: String) -> Bool {
+    public static func profileEnabled(forGame appId: String) -> Bool {
         guard let dictionary = gameProfileDictionary(for: appId) else { return false }
         return bool(dictionary[k.gameProfileEnabled], false)
     }
 
-    static func setProfileEnabled(forGame appId: String, enabled: Bool) {
+    public static func setProfileEnabled(forGame appId: String, enabled: Bool) {
         guard !appId.isEmpty, var profile = gameProfileDictionary(for: appId) else { return }
         profile[k.gameProfileEnabled] = enabled
         var profiles = mutableGameProfilesDictionary()
         profiles[appId] = profile
-        UserDefaults.standard.set(profiles, forKey: k.gameProfiles)
-        UserDefaults.standard.synchronize()
+        storage.set(profiles, forKey: k.gameProfiles)
+        storage.synchronize()
     }
 
-    static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int) -> Int {
+    public static func recommendedBitrate(requestedMaxBitrateMbps: Int, latencyMs: Int, measuredBandwidthMbps: Double, packetLossPercent: Double, jitterMs: Int) -> Int {
         let requested = max(1, requestedMaxBitrateMbps)
         var recommended = requested
         if measuredBandwidthMbps > 1.0, measuredBandwidthMbps.isFinite {
@@ -410,23 +480,23 @@ enum OPNStreamPreferences {
         return recommended
     }
 
-    static func loadSelectedRegionUrl() -> String {
-        UserDefaults.standard.string(forKey: k.selectedRegionUrl) ?? ""
+    public static func loadSelectedRegionUrl() -> String {
+        storage.string(forKey: k.selectedRegionUrl) ?? ""
     }
 
-    static func loadSelectedStreamingBaseUrl() -> String {
+    public static func loadSelectedStreamingBaseUrl() -> String {
         let selected = loadSelectedRegionUrl()
         if !selected.isEmpty { return normalizedBaseUrl(selected) }
         let best = loadCachedRegions().first { !$0.url.isEmpty && $0.latencyMs >= 0 }
         return best.map { normalizedBaseUrl($0.url) } ?? defaultStreamingBaseUrl
     }
 
-    static func loadSelectedRegionUrl(forGame appId: String) -> String {
+    public static func loadSelectedRegionUrl(forGame appId: String) -> String {
         guard let dictionary = gameProfileDictionary(for: appId), bool(dictionary[k.gameProfileEnabled], false) else { return loadSelectedRegionUrl() }
         return normalizedHTTPSBaseUrlOrEmpty(string(dictionary[k.selectedRegionUrl], ""))
     }
 
-    static func loadSelectedStreamingBaseUrl(forGame appId: String) -> String {
+    public static func loadSelectedStreamingBaseUrl(forGame appId: String) -> String {
         if let dictionary = gameProfileDictionary(for: appId), bool(dictionary[k.gameProfileEnabled], false) {
             let selected = string(dictionary[k.selectedRegionUrl], "")
             if !selected.isEmpty { return normalizedBaseUrl(selected) }
@@ -434,15 +504,15 @@ enum OPNStreamPreferences {
         return loadSelectedStreamingBaseUrl()
     }
 
-    static func saveSelectedRegionUrl(_ url: String) {
+    public static func saveSelectedRegionUrl(_ url: String) {
         let normalized = normalizedHTTPSBaseUrlOrEmpty(url)
-        if normalized.isEmpty { UserDefaults.standard.removeObject(forKey: k.selectedRegionUrl) }
-        else { UserDefaults.standard.set(normalized, forKey: k.selectedRegionUrl) }
-        UserDefaults.standard.synchronize()
+        if normalized.isEmpty { storage.removeObject(forKey: k.selectedRegionUrl) }
+        else { storage.set(normalized, forKey: k.selectedRegionUrl) }
+        storage.synchronize()
     }
 
-    static func loadCachedRegions() -> [OPNStreamRegionOption] {
-        guard let items = UserDefaults.standard.array(forKey: k.cachedRegions) as? [[String: Any]] else { return [] }
+    public static func loadCachedRegions() -> [OPNStreamRegionOption] {
+        guard let items = storage.array(forKey: k.cachedRegions) as? [[String: Any]] else { return [] }
         return items.compactMap { item in
             guard let name = item["name"] as? String, let url = item["url"] as? String, !name.isEmpty, !url.isEmpty else { return nil }
             let normalizedURL = normalizedHTTPSBaseUrlOrEmpty(url)
@@ -451,7 +521,7 @@ enum OPNStreamPreferences {
         }
     }
 
-    static func saveCachedRegions(_ regions: [OPNStreamRegionOption]) {
+    public static func saveCachedRegions(_ regions: [OPNStreamRegionOption]) {
         let items: [[String: Any]] = regions.compactMap { region in
             guard !region.automatic, !region.name.isEmpty, !region.url.isEmpty else { return nil }
             let normalizedURL = normalizedHTTPSBaseUrlOrEmpty(region.url)
@@ -460,11 +530,11 @@ enum OPNStreamPreferences {
             if region.latencyMs >= 0 { item["latencyMs"] = region.latencyMs }
             return item
         }
-        UserDefaults.standard.set(items, forKey: k.cachedRegions)
-        UserDefaults.standard.synchronize()
+        storage.set(items, forKey: k.cachedRegions)
+        storage.synchronize()
     }
 
-    static func networkPreflightResult(from jsonText: String, seed: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> OPNStreamNetworkPreflightResult {
+    public static func networkPreflightResult(from jsonText: String, seed: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> OPNStreamNetworkPreflightResult {
         guard let json = jsonValue(from: jsonText) else {
             var result = seed
             result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: seed.latencyMs, measuredBandwidthMbps: seed.measuredBandwidthMbps, packetLossPercent: seed.packetLossPercent, jitterMs: seed.jitterMs)
@@ -488,7 +558,7 @@ enum OPNStreamPreferences {
         return result
     }
 
-    static func cloudVariables(from jsonText: String) -> OPNStreamCloudVariables {
+    public static func cloudVariables(from jsonText: String) -> OPNStreamCloudVariables {
         var variables = OPNStreamCloudVariables()
         guard let json = jsonValue(from: jsonText) else { return variables }
         variables.fetched = true
@@ -506,7 +576,7 @@ enum OPNStreamPreferences {
         return variables
     }
 
-    static func settingsByApplyingCloudVariables(_ settings: OPNStreamSettings, variables: OPNStreamCloudVariables, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamSettings {
+    public static func settingsByApplyingCloudVariables(_ settings: OPNStreamSettings, variables: OPNStreamCloudVariables, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamSettings {
         var result = settings
         if !variables.allowH265, result.codec == "H265" { result.codec = "H264" }
         if !variables.allowAV1, result.codec == "AV1" { result.codec = "H264" }
@@ -522,23 +592,23 @@ enum OPNStreamPreferences {
         return result
     }
 
-    static func loadCachedCloudVariables() -> OPNStreamCloudVariables {
-        guard let json = UserDefaults.standard.string(forKey: k.cachedCloudVariablesJSON), !json.isEmpty else { return OPNStreamCloudVariables() }
+    public static func loadCachedCloudVariables() -> OPNStreamCloudVariables {
+        guard let json = storage.string(forKey: k.cachedCloudVariablesJSON), !json.isEmpty else { return OPNStreamCloudVariables() }
         var variables = cloudVariables(from: json)
         variables.fetched = variables.fetched && variables.refreshIntervalSeconds > 0
         return variables
     }
 
-    static func saveCachedCloudVariables(_ variables: OPNStreamCloudVariables, rawJSON: String) {
+    public static func saveCachedCloudVariables(_ variables: OPNStreamCloudVariables, rawJSON: String) {
         guard variables.fetched, !rawJSON.isEmpty else { return }
-        UserDefaults.standard.set(rawJSON, forKey: k.cachedCloudVariablesJSON)
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: k.cachedCloudVariablesTimestamp)
-        UserDefaults.standard.synchronize()
+        storage.set(rawJSON, forKey: k.cachedCloudVariablesJSON)
+        storage.set(Date().timeIntervalSince1970, forKey: k.cachedCloudVariablesTimestamp)
+        storage.synchronize()
     }
 
-    static func fetchCloudVariables(token: String, completion: @escaping @Sendable (OPNStreamCloudVariables) -> Void) {
+    public static func fetchCloudVariables(token: String, completion: @escaping @Sendable (OPNStreamCloudVariables) -> Void) {
         let cached = loadCachedCloudVariables()
-        let cachedAt = UserDefaults.standard.double(forKey: k.cachedCloudVariablesTimestamp)
+        let cachedAt = storage.double(forKey: k.cachedCloudVariablesTimestamp)
         if cached.fetched, cachedAt > 0, Date().timeIntervalSince1970 - cachedAt < Double(cached.refreshIntervalSeconds) {
             DispatchQueue.main.async { completion(cached) }
             return
@@ -564,7 +634,7 @@ enum OPNStreamPreferences {
         }.resume()
     }
 
-    static func fetchRegions(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {
+    public static func fetchRegions(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {
         let baseUrl = providerStreamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : providerStreamingBaseUrl
         var request = serverInfoRequest(baseUrl: baseUrl, token: token)
         request.timeoutInterval = 4
@@ -587,7 +657,7 @@ enum OPNStreamPreferences {
         }.resume()
     }
 
-    static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
+    public static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
         var initial = OPNStreamNetworkPreflightResult()
         initial.streamingBaseUrl = loadSelectedStreamingBaseUrl()
         initial.networkType = currentNetworkType()
@@ -619,49 +689,49 @@ enum OPNStreamPreferences {
         }
     }
 
-    static func saveAspectIndex(_ aspectIndex: Int) {
+    public static func saveAspectIndex(_ aspectIndex: Int) {
         let clamped = clamp(aspectIndex, 0, aspectOptions.count - 1)
-        UserDefaults.standard.set(clamped, forKey: k.aspectIndex)
+        storage.set(clamped, forKey: k.aspectIndex)
         let resolutions = resolutionOptions(forAspect: clamped)
         let currentResolution = clampedStoredInt(k.resolutionIndex, clamped == 1 ? 2 : 0, resolutions.count)
-        UserDefaults.standard.set(currentResolution, forKey: k.resolutionIndex)
+        storage.set(currentResolution, forKey: k.resolutionIndex)
     }
 
-    static func saveResolutionIndex(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, resolutionOptions(forAspect: loadProfile().aspectIndex).count - 1), forKey: k.resolutionIndex) }
-    static func saveFpsIndex(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, fpsOptions.count - 1), forKey: k.fpsIndex) }
-    static func saveCodecIndex(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, codecOptions.count - 1), forKey: k.codecIndex) }
-    static func saveBitrateIndex(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex) }
-    static func saveColorQualityIndex(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex) }
-    static func savePrefilterModeIndex(_ value: Int) { saveCanonicalInt(k.prefilterModeIndex, clamp(value, 0, prefilterModeOptions.count - 1)) }
-    static func savePrefilterSharpness(_ value: Int) { saveCanonicalInt(k.prefilterSharpness, clamp(value, 0, 10)) }
-    static func savePrefilterDenoise(_ value: Int) { saveCanonicalInt(k.prefilterDenoise, clamp(value, 0, 10)) }
-    static func saveUpscalingModeIndex(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, upscalingModeOptions.count - 1), forKey: k.upscalingModeIndex) }
-    static func saveUpscalingTargetIndex(_: Int) { UserDefaults.standard.set(defaultUpscalingTargetIndex, forKey: k.upscalingTargetIndex) }
-    static func saveUpscalingSharpness(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, 40), forKey: k.upscalingSharpness) }
-    static func saveUpscalingDenoise(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, 20), forKey: k.upscalingDenoise) }
-    static func saveRecordingVideoBitrateMbps(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, 200), forKey: k.recordingVideoBitrateMbps) }
-    static func saveRecordingAudioBitrateKbps(_ value: Int) { UserDefaults.standard.set(clamp(value, 64, 320), forKey: k.recordingAudioBitrateKbps) }
-    static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.recordingEnhancedVideoEnabled) }
-    static func saveL4SEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.l4sEnabled) }
-    static func saveHDREnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.hdrEnabled) }
-    static func saveLowLatencyModeEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.lowLatencyModeEnabled) }
-    static func savePowerSaverEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.powerSaverEnabled) }
-    static func saveSuppressInputWhenInactive(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.suppressInputWhenInactive) }
-    static func saveDirectMouseInputEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.directMouseInput) }
-    static func saveGameVolume(_ value: Double) { UserDefaults.standard.set(min(max(value, 0.0), 1.0), forKey: k.gameVolume) }
-    static func saveMicrophoneVolume(_ value: Double) { UserDefaults.standard.set(min(max(value, 0.0), 1.0), forKey: k.microphoneVolume) }
-    static func loadMicrophoneShortcutEnabled() -> Bool { bool(UserDefaults.standard.object(forKey: k.microphoneShortcutEnabled), true) }
-    static func saveMicrophoneShortcutEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: k.microphoneShortcutEnabled) }
-    static func saveMicrophoneMode(_ mode: String) { UserDefaults.standard.set(microphoneModeOptions.contains { $0.value == mode } ? mode : microphoneModeOptions[0].value, forKey: k.microphoneMode) }
-    static func saveMicrophoneDeviceId(_ deviceId: String) { deviceId.isEmpty ? UserDefaults.standard.removeObject(forKey: k.microphoneDeviceId) : UserDefaults.standard.set(deviceId, forKey: k.microphoneDeviceId) }
-    static func saveMicrophonePushToTalkKeyCode(_ value: Int) { UserDefaults.standard.set(clamp(value, 0, 127), forKey: k.microphonePushToTalkKeyCode) }
-    static func saveMicrophonePushToTalkModifierMask(_ value: Int) { UserDefaults.standard.set(sanitizedPushToTalkModifierMask(value), forKey: k.microphonePushToTalkModifierMask) }
+    public static func saveResolutionIndex(_ value: Int) { storage.set(clamp(value, 0, resolutionOptions(forAspect: loadProfile().aspectIndex).count - 1), forKey: k.resolutionIndex) }
+    public static func saveFpsIndex(_ value: Int) { storage.set(clamp(value, 0, fpsOptions.count - 1), forKey: k.fpsIndex) }
+    public static func saveCodecIndex(_ value: Int) { storage.set(clamp(value, 0, codecOptions.count - 1), forKey: k.codecIndex) }
+    public static func saveBitrateIndex(_ value: Int) { storage.set(clamp(value, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex) }
+    public static func saveColorQualityIndex(_ value: Int) { storage.set(clamp(value, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex) }
+    public static func savePrefilterModeIndex(_ value: Int) { saveCanonicalInt(k.prefilterModeIndex, clamp(value, 0, prefilterModeOptions.count - 1)) }
+    public static func savePrefilterSharpness(_ value: Int) { saveCanonicalInt(k.prefilterSharpness, clamp(value, 0, 10)) }
+    public static func savePrefilterDenoise(_ value: Int) { saveCanonicalInt(k.prefilterDenoise, clamp(value, 0, 10)) }
+    public static func saveUpscalingModeIndex(_ value: Int) { storage.set(clamp(value, 0, upscalingModeOptions.count - 1), forKey: k.upscalingModeIndex) }
+    public static func saveUpscalingTargetIndex(_: Int) { storage.set(defaultUpscalingTargetIndex, forKey: k.upscalingTargetIndex) }
+    public static func saveUpscalingSharpness(_ value: Int) { storage.set(clamp(value, 0, 40), forKey: k.upscalingSharpness) }
+    public static func saveUpscalingDenoise(_ value: Int) { storage.set(clamp(value, 0, 20), forKey: k.upscalingDenoise) }
+    public static func saveRecordingVideoBitrateMbps(_ value: Int) { storage.set(clamp(value, 0, 200), forKey: k.recordingVideoBitrateMbps) }
+    public static func saveRecordingAudioBitrateKbps(_ value: Int) { storage.set(clamp(value, 64, 320), forKey: k.recordingAudioBitrateKbps) }
+    public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
+    public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
+    public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
+    public static func saveLowLatencyModeEnabled(_ value: Bool) { storage.set(value, forKey: k.lowLatencyModeEnabled) }
+    public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
+    public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
+    public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
+    public static func saveGameVolume(_ value: Double) { storage.set(min(max(value, 0.0), 1.0), forKey: k.gameVolume) }
+    public static func saveMicrophoneVolume(_ value: Double) { storage.set(min(max(value, 0.0), 1.0), forKey: k.microphoneVolume) }
+    public static func loadMicrophoneShortcutEnabled() -> Bool { bool(storage.object(forKey: k.microphoneShortcutEnabled), true) }
+    public static func saveMicrophoneShortcutEnabled(_ value: Bool) { storage.set(value, forKey: k.microphoneShortcutEnabled) }
+    public static func saveMicrophoneMode(_ mode: String) { storage.set(microphoneModeOptions.contains { $0.value == mode } ? mode : microphoneModeOptions[0].value, forKey: k.microphoneMode) }
+    public static func saveMicrophoneDeviceId(_ deviceId: String) { deviceId.isEmpty ? storage.removeObject(forKey: k.microphoneDeviceId) : storage.set(deviceId, forKey: k.microphoneDeviceId) }
+    public static func saveMicrophonePushToTalkKeyCode(_ value: Int) { storage.set(clamp(value, 0, 127), forKey: k.microphonePushToTalkKeyCode) }
+    public static func saveMicrophonePushToTalkModifierMask(_ value: Int) { storage.set(sanitizedPushToTalkModifierMask(value), forKey: k.microphonePushToTalkModifierMask) }
 
-    static func microphonePushToTalkKeyLabel(_ keyCode: Int) -> String {
+    public static func microphonePushToTalkKeyLabel(_ keyCode: Int) -> String {
         keyLabels[keyCode] ?? "Key \(keyCode)"
     }
 
-    static func microphonePushToTalkComboLabel(keyCode: Int, modifierMask: Int) -> String {
+    public static func microphonePushToTalkComboLabel(keyCode: Int, modifierMask: Int) -> String {
         let keyBit = pushToTalkModifierBit(forKeyCode: keyCode)
         let visible = sanitizedPushToTalkModifierMask(modifierMask) & ~keyBit
         var parts: [String] = []
@@ -783,29 +853,21 @@ enum OPNStreamPreferences {
     }
 
     private static func storedPreferenceValue(_ key: String) -> Any? {
-        let defaults = UserDefaults.standard
         let prefilterKey = key == k.prefilterModeIndex || key == k.prefilterSharpness || key == k.prefilterDenoise
-        if prefilterKey, let canonical = defaults.persistentDomain(forName: defaultsDomain)?[key] { return canonical }
-        if let value = defaults.object(forKey: key) { return value }
-        if let value = defaults.persistentDomain(forName: defaultsDomain)?[key] { return value }
-        return defaults.persistentDomain(forName: UserDefaults.globalDomain)?[key]
+        return storage.storedValue(forKey: key, preferCanonicalDomain: prefilterKey)
     }
 
     private static func saveCanonicalInt(_ key: String, _ value: Int) {
-        let defaults = UserDefaults.standard
-        defaults.set(value, forKey: key)
-        var domain = defaults.persistentDomain(forName: defaultsDomain) ?? [:]
-        domain[key] = value
-        defaults.setPersistentDomain(domain, forName: defaultsDomain)
+        storage.setCanonicalInt(value, forKey: key)
     }
 
     private static func gameProfileDictionary(for appId: String) -> [String: Any]? {
-        guard !appId.isEmpty, let profiles = UserDefaults.standard.dictionary(forKey: k.gameProfiles) else { return nil }
+        guard !appId.isEmpty, let profiles = storage.dictionary(forKey: k.gameProfiles) else { return nil }
         return profiles[appId] as? [String: Any]
     }
 
     private static func mutableGameProfilesDictionary() -> [String: [String: Any]] {
-        let profiles = UserDefaults.standard.dictionary(forKey: k.gameProfiles) ?? [:]
+        let profiles = storage.dictionary(forKey: k.gameProfiles) ?? [:]
         var result: [String: [String: Any]] = [:]
         for (key, value) in profiles {
             if let dictionary = value as? [String: Any] { result[key] = dictionary }
@@ -1177,21 +1239,21 @@ enum OPNStreamPreferences {
 }
 
 @objc(OPNStreamViewPreferenceSnapshot)
-final class OPNStreamViewPreferenceSnapshot: NSObject {
-    @objc let directMouseInput: Bool
-    @objc let microphoneShortcutEnabled: Bool
-    @objc let gameVolume: Double
-    @objc let microphoneVolume: Double
-    @objc let maxBitrateMbps: Int
-    @objc let lowLatencyMode: Bool
-    @objc let upscalingModeIndex: Int
-    @objc let upscalingMode: Int
-    @objc let upscalingTargetHeight: Int
-    @objc let upscalingSharpness: Int
-    @objc let upscalingDenoise: Int
-    @objc let streamWidth: Int
-    @objc let streamHeight: Int
-    @objc let recordingEnhancedVideoEnabled: Bool
+public final class OPNStreamViewPreferenceSnapshot: NSObject {
+    @objc public let directMouseInput: Bool
+    @objc public let microphoneShortcutEnabled: Bool
+    @objc public let gameVolume: Double
+    @objc public let microphoneVolume: Double
+    @objc public let maxBitrateMbps: Int
+    @objc public let lowLatencyMode: Bool
+    @objc public let upscalingModeIndex: Int
+    @objc public let upscalingMode: Int
+    @objc public let upscalingTargetHeight: Int
+    @objc public let upscalingSharpness: Int
+    @objc public let upscalingDenoise: Int
+    @objc public let streamWidth: Int
+    @objc public let streamHeight: Int
+    @objc public let recordingEnhancedVideoEnabled: Bool
 
     init(profile: OPNStreamPreferenceProfile) {
         directMouseInput = profile.directMouseInput
@@ -1213,42 +1275,42 @@ final class OPNStreamViewPreferenceSnapshot: NSObject {
 }
 
 @objc(OPNStreamViewPreferences)
-final class OPNStreamViewPreferences: NSObject {
-    @objc static func loadViewPreferenceSnapshot() -> OPNStreamViewPreferenceSnapshot {
+public final class OPNStreamViewPreferences: NSObject {
+    @objc public static func loadViewPreferenceSnapshot() -> OPNStreamViewPreferenceSnapshot {
         OPNStreamViewPreferenceSnapshot(profile: OPNStreamPreferences.loadProfile())
     }
 
-    @objc static func upscalingModeLabels() -> [String] {
+    @objc public static func upscalingModeLabels() -> [String] {
         OPNStreamPreferences.upscalingModeOptions.map(\.label)
     }
 
     @objc(upscalingModeValueAtIndex:)
-    static func upscalingModeValue(at index: Int) -> Int {
+    public static func upscalingModeValue(at index: Int) -> Int {
         let clamped = min(max(index, 0), OPNStreamPreferences.upscalingModeOptions.count - 1)
         return OPNStreamPreferences.upscalingModeOptions[clamped].value
     }
 
-    @objc static func saveMicrophoneShortcutEnabled(_ enabled: Bool) {
+    @objc public static func saveMicrophoneShortcutEnabled(_ enabled: Bool) {
         OPNStreamPreferences.saveMicrophoneShortcutEnabled(enabled)
     }
 
-    @objc static func saveGameVolume(_ value: Double) {
+    @objc public static func saveGameVolume(_ value: Double) {
         OPNStreamPreferences.saveGameVolume(value)
     }
 
-    @objc static func saveMicrophoneVolume(_ value: Double) {
+    @objc public static func saveMicrophoneVolume(_ value: Double) {
         OPNStreamPreferences.saveMicrophoneVolume(value)
     }
 
-    @objc static func saveUpscalingModeIndex(_ index: Int) {
+    @objc public static func saveUpscalingModeIndex(_ index: Int) {
         OPNStreamPreferences.saveUpscalingModeIndex(index)
     }
 
-    @objc static func saveUpscalingSharpness(_ sharpness: Int) {
+    @objc public static func saveUpscalingSharpness(_ sharpness: Int) {
         OPNStreamPreferences.saveUpscalingSharpness(sharpness)
     }
 
-    @objc static func saveUpscalingDenoise(_ denoise: Int) {
+    @objc public static func saveUpscalingDenoise(_ denoise: Int) {
         OPNStreamPreferences.saveUpscalingDenoise(denoise)
     }
 }

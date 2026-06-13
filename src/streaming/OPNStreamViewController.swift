@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import AppPreferences
 import AVFoundation
 import Foundation
 import GFNErrorMapping
