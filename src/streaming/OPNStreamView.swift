@@ -4,6 +4,7 @@ import AudioToolbox
 import CoreVideo
 import GameController
 import QuartzCore
+import StreamingClient
 
 typealias OPNStreamInputReadyProvider = @convention(block) () -> Bool
 typealias OPNStreamBooleanHandler = @convention(block) (Bool) -> Void

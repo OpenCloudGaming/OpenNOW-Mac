@@ -2,7 +2,7 @@ import Foundation
 
 @objcMembers
 @objc(OPNInputProtocolEncoder)
-final class OPNInputProtocolEncoder: NSObject {
+public final class OPNInputProtocolEncoder: NSObject {
     private enum EventType {
         static let heartbeat: UInt32 = 2
         static let keyDown: UInt32 = 3
@@ -21,17 +21,21 @@ final class OPNInputProtocolEncoder: NSObject {
     nonisolated(unsafe) private static var startNanoseconds: UInt64 = 0
     nonisolated(unsafe) private static var lastTimestampUs: UInt64 = 0
 
-    func setProtocolVersion(_ version: UInt16) {
+    public override init() {
+        super.init()
+    }
+
+    public func setProtocolVersion(_ version: UInt16) {
         protocolVersion = version == 0 ? 2 : version
     }
 
-    func encodeHeartbeat() -> Data {
+    public func encodeHeartbeat() -> Data {
         var bytes = Data(count: 4)
         bytes.writeUInt32LE(EventType.heartbeat, at: 0)
         return bytes
     }
 
-    func encodeKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, timestampUs: UInt64, down: Bool) -> Data {
+    public func encodeKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, timestampUs: UInt64, down: Bool) -> Data {
         var bytes = Data(count: 18)
         bytes.writeUInt32LE(down ? EventType.keyDown : EventType.keyUp, at: 0)
         bytes.writeUInt16BE(keycode, at: 4)
@@ -41,7 +45,7 @@ final class OPNInputProtocolEncoder: NSObject {
         return wrapSingleEvent(bytes)
     }
 
-    func encodeMouseMove(dx: Int16, dy: Int16, timestampUs: UInt64) -> Data {
+    public func encodeMouseMove(dx: Int16, dy: Int16, timestampUs: UInt64) -> Data {
         if protocolVersion <= 2 {
             var bytes = Data(count: 22)
             bytes.writeUInt32LE(EventType.mouseRelative, at: 0)
@@ -63,7 +67,7 @@ final class OPNInputProtocolEncoder: NSObject {
         return bytes
     }
 
-    func encodeMouseButton(button: UInt8, timestampUs: UInt64, down: Bool) -> Data {
+    public func encodeMouseButton(button: UInt8, timestampUs: UInt64, down: Bool) -> Data {
         var bytes = Data(count: 18)
         bytes.writeUInt32LE(down ? EventType.mouseButtonDown : EventType.mouseButtonUp, at: 0)
         bytes[4] = button
@@ -71,7 +75,7 @@ final class OPNInputProtocolEncoder: NSObject {
         return wrapSingleEvent(bytes)
     }
 
-    func encodeMouseWheel(delta: Int16, timestampUs: UInt64) -> Data {
+    public func encodeMouseWheel(delta: Int16, timestampUs: UInt64) -> Data {
         var bytes = Data(count: 22)
         bytes.writeUInt32LE(EventType.mouseWheel, at: 0)
         bytes.writeInt16BE(delta, at: 6)
@@ -79,7 +83,7 @@ final class OPNInputProtocolEncoder: NSObject {
         return wrapSingleEvent(bytes)
     }
 
-    func encodeUtf8Text(_ text: String) -> Data {
+    public func encodeUtf8Text(_ text: String) -> Data {
         guard let textData = text.data(using: .utf8), !textData.isEmpty else { return Data() }
         var bytes = Data(count: 8)
         bytes.writeUInt32LE(EventType.utf8Text, at: 0)
@@ -88,17 +92,17 @@ final class OPNInputProtocolEncoder: NSObject {
         return wrapSingleEvent(bytes)
     }
 
-    func encodeGamepadState(controllerId: UInt16,
-                            buttons: UInt16,
-                            leftTrigger: UInt8,
-                            rightTrigger: UInt8,
-                            leftStickX: Int16,
-                            leftStickY: Int16,
-                            rightStickX: Int16,
-                            rightStickY: Int16,
-                            timestampUs: UInt64,
-                            bitmap: UInt16,
-                            partiallyReliable: Bool) -> Data {
+    public func encodeGamepadState(controllerId: UInt16,
+                                   buttons: UInt16,
+                                   leftTrigger: UInt8,
+                                   rightTrigger: UInt8,
+                                   leftStickX: Int16,
+                                   leftStickY: Int16,
+                                   rightStickX: Int16,
+                                   rightStickY: Int16,
+                                   timestampUs: UInt64,
+                                   bitmap: UInt16,
+                                   partiallyReliable: Bool) -> Data {
         var bytes = Data(count: 38)
         bytes.writeUInt32LE(EventType.gamepad, at: 0)
         bytes.writeUInt16LE(26, at: 4)
@@ -120,7 +124,7 @@ final class OPNInputProtocolEncoder: NSObject {
         return wrapGamepadReliable(bytes)
     }
 
-    class func timestampUs() -> UInt64 {
+    public class func timestampUs() -> UInt64 {
         let now = DispatchTime.now().uptimeNanoseconds
         return timestampLock.withLock {
             if startNanoseconds == 0 || now < startNanoseconds {

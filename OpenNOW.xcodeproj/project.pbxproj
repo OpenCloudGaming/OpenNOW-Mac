@@ -95,7 +95,6 @@
 		E0000000000000000000008C /* OPNAudioDeviceMonitorContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */; };
 		E00000000000000000000099 /* OPNDiscordPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000098 /* OPNDiscordPresence.swift */; };
 		E0000000000000000000009B /* OPNLogCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0000000000000000000009A /* OPNLogCapture.swift */; };
-		E000000000000000000000AA /* OPNInputProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AB /* OPNInputProtocol.swift */; };
 		E000000000000000000000AE /* OPNStreamViewControllerSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */; };
 		E000000000000000000000B0 /* OPNStreamViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B1 /* OPNStreamViewController.swift */; };
 		E000000000000000000000B4 /* OPNWebRTCCodecSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */; };
@@ -210,7 +209,6 @@
 		E0000000000000000000008D /* OPNAudioDeviceMonitorContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNAudioDeviceMonitorContext.swift; path = src/streaming/OPNAudioDeviceMonitorContext.swift; sourceTree = "<group>"; };
 		E00000000000000000000098 /* OPNDiscordPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNDiscordPresence.swift; path = src/common/OPNDiscordPresence.swift; sourceTree = "<group>"; };
 		E0000000000000000000009A /* OPNLogCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNLogCapture.swift; path = src/common/OPNLogCapture.swift; sourceTree = "<group>"; };
-		E000000000000000000000AB /* OPNInputProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNInputProtocol.swift; path = src/streaming/OPNInputProtocol.swift; sourceTree = "<group>"; };
 		E000000000000000000000AF /* OPNStreamViewControllerSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewControllerSupport.swift; path = src/streaming/OPNStreamViewControllerSupport.swift; sourceTree = "<group>"; };
 		E000000000000000000000B1 /* OPNStreamViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewController.swift; path = src/streaming/OPNStreamViewController.swift; sourceTree = "<group>"; };
 		E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNWebRTCCodecSupport.swift; path = src/streaming/OPNWebRTCCodecSupport.swift; sourceTree = "<group>"; };
@@ -323,7 +321,6 @@
 				E00000000000000000000014 /* OPNVideoSurfaceView.swift */,
 				C00000000000000000000048 /* OPNActiveSessionService.swift */,
 				E00000000000000000000027 /* OPNStreamPreferences.swift */,
-				E000000000000000000000AB /* OPNInputProtocol.swift */,
 				E000000000000000000000B5 /* OPNWebRTCCodecSupport.swift */,
 				E000000000000000000000B7 /* OPNMetalVideoView.swift */,
 				E000000000000000000000B9 /* OPNLibWebRTCSessionImpl.swift */,
@@ -582,7 +579,6 @@
 				E00000000000000000000059 /* OPNSentryTransactionBridge.swift in Sources */,
 				E00000000000000000000042 /* OPNGitHubUpdater.swift in Sources */,
 				E0000000000000000000003E /* OPNHTTP.swift in Sources */,
-				E000000000000000000000AA /* OPNInputProtocol.swift in Sources */,
 				E000000000000000000000B4 /* OPNWebRTCCodecSupport.swift in Sources */,
 				E000000000000000000000B6 /* OPNMetalVideoView.swift in Sources */,
 				E000000000000000000000B8 /* OPNLibWebRTCSessionImpl.swift in Sources */,
