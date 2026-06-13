@@ -570,33 +570,39 @@ struct OPNGameCatalogSwiftUIView: View {
                     }
                     .padding(.horizontal, horizontalInset)
 
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: OPNGameCatalogLayoutSupport.storeCardSpacing) {
-                            ForEach(Array(section.games.enumerated()), id: \.element.id) { columnIndex, item in
-                                OPNCatalogStoreTileView(
-                                    item: item,
-                                    focused: model.focusedRowIndex == rowIndex && model.focusedColumnIndex == columnIndex,
-                                    focusScrollRequestToken: model.focusScrollRequestItemID == item.id ? model.focusScrollRequestToken : 0,
-                                    onSelect: { selectedVariantIndex in
-                                        model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
-                                        onSelect(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
-                                    },
-                                    onHover: {
-                                        model.focusedRowIndex = rowIndex
-                                        model.focusedColumnIndex = columnIndex
-                                    },
-                                    onMarkUnowned: { selectedVariantIndex in
-                                        model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
-                                        onMarkUnowned(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
-                                    }
-                                )
-                                .id(item.id)
-                                .frame(width: OPNGameCatalogLayoutSupport.storeTileWidth, height: OPNGameCatalogLayoutSupport.storeTileHeight)
+                    ScrollViewReader { rowProxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(spacing: OPNGameCatalogLayoutSupport.storeCardSpacing) {
+                                ForEach(Array(section.games.enumerated()), id: \.element.id) { columnIndex, item in
+                                    OPNCatalogStoreTileView(
+                                        item: item,
+                                        focused: model.focusedRowIndex == rowIndex && model.focusedColumnIndex == columnIndex,
+                                        focusScrollRequestToken: model.focusScrollRequestItemID == item.id ? model.focusScrollRequestToken : 0,
+                                        onSelect: { selectedVariantIndex in
+                                            model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
+                                            onSelect(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
+                                        },
+                                        onHover: {
+                                            model.focusedRowIndex = rowIndex
+                                            model.focusedColumnIndex = columnIndex
+                                        },
+                                        onMarkUnowned: { selectedVariantIndex in
+                                            model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
+                                            onMarkUnowned(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
+                                        }
+                                    )
+                                    .id(item.id)
+                                    .frame(width: OPNGameCatalogLayoutSupport.storeTileWidth, height: OPNGameCatalogLayoutSupport.storeTileHeight)
+                                }
                             }
+                            .padding(.horizontal, horizontalInset)
+                            .padding(.top, 10)
+                            .padding(.bottom, 20)
                         }
-                        .padding(.horizontal, horizontalInset)
-                        .padding(.top, 10)
-                        .padding(.bottom, 20)
+                        .onChange(of: model.focusScrollRequestToken) { _, _ in
+                            guard let itemID = model.focusScrollRequestItemID, section.games.contains(where: { $0.id == itemID }) else { return }
+                            rowProxy.scrollTo(itemID, anchor: .center)
+                        }
                     }
                     .frame(height: OPNGameCatalogLayoutSupport.storeTileHeight + 30)
                     .background(Color.white.opacity(0.032), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
