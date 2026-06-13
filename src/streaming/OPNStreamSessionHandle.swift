@@ -75,13 +75,6 @@ final class OPNStreamSessionHandle: NSObject {
         session?.injectManualIceCandidate(sessionInfo: sessionInfo as? [String: Any] ?? [:], offerSdp: offerSdp, serverIceUfrag: serverIceUfrag)
     }
 
-    @MainActor func configureSurface(streamView: OPNStreamView?, recordingManager: OPNStreamRecordingManager?) {
-        session?.configureSurface(streamView: streamView, recordingManager: recordingManager)
-    }
-
-    @MainActor func clearSurfaceCallbacks(streamView: OPNStreamView?) {
-        session?.clearSurfaceCallbacks(streamView: streamView)
-    }
 }
 
 extension OPNStreamSessionHandle: @unchecked Sendable {}
