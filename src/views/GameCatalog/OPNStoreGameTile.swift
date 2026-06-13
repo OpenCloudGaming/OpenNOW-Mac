@@ -167,6 +167,13 @@ final class OPNStoreGameTile: NSView {
 
     func activate() { selectPressed() }
 
+    func scrollIntoListingPosition() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.scrollIntoListingPositionNow()
+        }
+    }
+
     func imageCandidates() -> [String] { Self.imageCandidates(gameObject: gameObject, prominent: prominent) }
 
     func ensureImageLoaded() {
@@ -350,6 +357,24 @@ final class OPNStoreGameTile: NSView {
         }
         scrollStandardRail(scrollView, byDelta: fallbackDragScrollVelocity * CGFloat(elapsed))
         fallbackDragScrollVelocity *= pow(OPNGameCatalogLayoutSupport.storeRailInertiaResistancePerSecond, CGFloat(elapsed))
+    }
+
+    private func scrollIntoListingPositionNow() {
+        let rowScrollView = enclosingScrollView
+        if let outerScrollView = outerListingScrollView(after: rowScrollView), let documentView = outerScrollView.documentView {
+            let documentRect = convert(bounds, to: documentView).insetBy(dx: -28.0, dy: -46.0)
+            documentView.scrollToVisible(documentRect)
+        }
+        scrollToVisible(bounds.insetBy(dx: -24.0, dy: -12.0))
+    }
+
+    private func outerListingScrollView(after rowScrollView: NSScrollView?) -> NSScrollView? {
+        var view = rowScrollView?.superview ?? superview
+        while let currentView = view {
+            if let scrollView = currentView as? NSScrollView, scrollView !== rowScrollView { return scrollView }
+            view = currentView.superview
+        }
+        return nil
     }
 
     override func mouseEntered(with event: NSEvent) {

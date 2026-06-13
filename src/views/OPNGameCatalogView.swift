@@ -148,12 +148,13 @@ final class OPNGameCatalogView: NSView {
     }
 
     func scrollFocusedTileIntoView() {
-        catalogModel.focusedTileID = catalogModel.focusedItem?.id
+        catalogModel.requestScrollForFocusedItem()
     }
 
     func moveGamepadFocusByRows(_ rowDelta: Int, columns columnDelta: Int) {
-        catalogModel.moveFocus(rowDelta: rowDelta, columnDelta: columnDelta)
-        scrollFocusedTileIntoView()
+        if catalogModel.moveFocus(rowDelta: rowDelta, columnDelta: columnDelta) {
+            scrollFocusedTileIntoView()
+        }
     }
 
     func moveGamepadFocus(by delta: Int) { moveGamepadFocusByRows(0, columns: delta) }
@@ -376,6 +377,8 @@ final class OPNGameCatalogModel: ObservableObject {
     @Published var focusedRowIndex = 0
     @Published var focusedColumnIndex = 0
     @Published var focusedTileID: String?
+    @Published var focusScrollRequestItemID: String?
+    @Published var focusScrollRequestToken = 0
 
     var focusedItem: OPNGameCatalogItemModel? {
         guard focusedRowIndex >= 0, focusedRowIndex < sections.count else { return nil }
@@ -402,15 +405,25 @@ final class OPNGameCatalogModel: ObservableObject {
         focusedTileID = games[focusedColumnIndex].id
     }
 
-    func moveFocus(rowDelta: Int, columnDelta: Int) {
-        guard !sections.isEmpty else { return }
+    @discardableResult
+    func moveFocus(rowDelta: Int, columnDelta: Int) -> Bool {
+        guard !sections.isEmpty else { return false }
         let nextRow = OPNGameCatalogLayoutSupport.clampedIndex(index: focusedRowIndex + rowDelta, count: sections.count)
-        guard !sections[nextRow].games.isEmpty else { return }
+        guard !sections[nextRow].games.isEmpty else { return false }
         var nextColumn = focusedColumnIndex + columnDelta
         if nextRow != focusedRowIndex && columnDelta == 0 { nextColumn = min(nextColumn, sections[nextRow].games.count - 1) }
+        let clampedColumn = OPNGameCatalogLayoutSupport.clampedIndex(index: nextColumn, count: sections[nextRow].games.count)
+        guard nextRow != focusedRowIndex || clampedColumn != focusedColumnIndex else { return false }
         focusedRowIndex = nextRow
-        focusedColumnIndex = OPNGameCatalogLayoutSupport.clampedIndex(index: nextColumn, count: sections[nextRow].games.count)
+        focusedColumnIndex = clampedColumn
         focusedTileID = sections[focusedRowIndex].games[focusedColumnIndex].id
+        return true
+    }
+
+    func requestScrollForFocusedItem() {
+        guard let focusedItem else { return }
+        focusScrollRequestItemID = focusedItem.id
+        focusScrollRequestToken += 1
     }
 
     func cycleFocusedVariant() {
@@ -482,37 +495,31 @@ struct OPNGameCatalogSwiftUIView: View {
         GeometryReader { viewport in
             ZStack {
                 Color.clear
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 0) {
-                            if model.isLoading {
-                                loadingState
-                                    .padding(.top, 88)
-                            } else if !model.errorMessage.isEmpty {
-                                errorState
-                                    .padding(.top, 88)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        if model.isLoading {
+                            loadingState
+                                .padding(.top, 88)
+                        } else if !model.errorMessage.isEmpty {
+                            errorState
+                                .padding(.top, 88)
+                        } else {
+                            if let heroGame = model.heroGame {
+                                heroView(heroGame, viewportSize: viewport.size)
+                                    .padding(.bottom, OPNGameCatalogLayoutSupport.storeHeroFirstRowSpacing)
                             } else {
-                                if let heroGame = model.heroGame {
-                                    heroView(heroGame, viewportSize: viewport.size)
-                                        .padding(.bottom, OPNGameCatalogLayoutSupport.storeHeroFirstRowSpacing)
-                                } else {
-                                    Color.clear.frame(height: 88)
-                                }
-                                if model.sections.isEmpty {
-                                    emptyState
-                                } else {
-                                    catalogSections(proxy: proxy)
-                                }
+                                Color.clear.frame(height: 88)
+                            }
+                            if model.sections.isEmpty {
+                                emptyState
+                            } else {
+                                catalogSections()
                             }
                         }
-                        .padding(.bottom, 88)
                     }
-                    .ignoresSafeArea(.container, edges: .top)
-                    .onChange(of: model.focusedTileID) { _, tileID in
-                        guard let tileID else { return }
-                        withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(tileID, anchor: .center) }
-                    }
+                    .padding(.bottom, 88)
                 }
+                .ignoresSafeArea(.container, edges: .top)
                 catalogSearch
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, searchTopPadding(for: viewport.size))
@@ -545,7 +552,7 @@ struct OPNGameCatalogSwiftUIView: View {
             .frame(height: OPNGameCatalogLayoutSupport.heroHeight(forWidth: viewportSize.width, viewportHeight: viewportSize.height))
     }
 
-    private func catalogSections(proxy: ScrollViewProxy) -> some View {
+    private func catalogSections() -> some View {
         VStack(spacing: 28) {
             ForEach(Array(model.sections.enumerated()), id: \.element.id) { rowIndex, section in
                 VStack(alignment: .leading, spacing: 14) {
@@ -564,11 +571,12 @@ struct OPNGameCatalogSwiftUIView: View {
                     .padding(.horizontal, horizontalInset)
 
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: OPNGameCatalogLayoutSupport.storeCardSpacing) {
+                        HStack(spacing: OPNGameCatalogLayoutSupport.storeCardSpacing) {
                             ForEach(Array(section.games.enumerated()), id: \.element.id) { columnIndex, item in
                                 OPNCatalogStoreTileView(
                                     item: item,
                                     focused: model.focusedRowIndex == rowIndex && model.focusedColumnIndex == columnIndex,
+                                    focusScrollRequestToken: model.focusScrollRequestItemID == item.id ? model.focusScrollRequestToken : 0,
                                     onSelect: { selectedVariantIndex in
                                         model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
                                         onSelect(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
@@ -675,9 +683,16 @@ struct OPNGameCatalogSwiftUIView: View {
 private struct OPNCatalogStoreTileView: NSViewRepresentable {
     let item: OPNGameCatalogItemModel
     let focused: Bool
+    let focusScrollRequestToken: Int
     let onSelect: (Int32) -> Void
     let onHover: () -> Void
     let onMarkUnowned: (Int32) -> Void
+
+    final class Coordinator {
+        var appliedFocusScrollRequestToken = 0
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> OPNStoreGameTile {
         let tile = OPNStoreGameTile(frame: .zero, gameObject: item.gameObject, prominent: false)
@@ -687,6 +702,10 @@ private struct OPNCatalogStoreTileView: NSViewRepresentable {
 
     func updateNSView(_ nsView: OPNStoreGameTile, context: Context) {
         configure(nsView)
+        if focusScrollRequestToken > 0 && context.coordinator.appliedFocusScrollRequestToken != focusScrollRequestToken {
+            context.coordinator.appliedFocusScrollRequestToken = focusScrollRequestToken
+            nsView.scrollIntoListingPosition()
+        }
     }
 
     private func configure(_ tile: OPNStoreGameTile) {
