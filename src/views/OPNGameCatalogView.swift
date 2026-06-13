@@ -513,14 +513,14 @@ struct OPNGameCatalogSwiftUIView: View {
                             if model.sections.isEmpty {
                                 emptyState
                             } else {
-                                catalogSections()
+                                catalogSections(viewportSize: viewport.size)
                             }
                         }
                     }
                     .padding(.bottom, 88)
                 }
                 .ignoresSafeArea(.container, edges: .top)
-                catalogSearch
+                catalogSearch(viewportSize: viewport.size)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, searchTopPadding(for: viewport.size))
                 controllerHints
@@ -530,19 +530,22 @@ struct OPNGameCatalogSwiftUIView: View {
         }
     }
 
-    private var catalogSearch: some View {
-        HStack(spacing: 10) {
+    private func catalogSearch(viewportSize: CGSize) -> some View {
+        let panelSize = searchPanelSize(for: viewportSize)
+        return HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 1)))
+                .frame(height: 30)
             TextField("Search library and store titles", text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
+                .frame(height: 30)
                 .onChange(of: model.searchText) { _, query in onSearchChanged(query) }
         }
         .padding(.horizontal, 15)
-        .frame(width: 420, height: 44)
+        .frame(width: panelSize.width, height: panelSize.height)
         .background(Color.black.opacity(0.64), in: Capsule())
         .overlay(Capsule().stroke(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.34)), lineWidth: 1))
     }
@@ -552,8 +555,10 @@ struct OPNGameCatalogSwiftUIView: View {
             .frame(height: OPNGameCatalogLayoutSupport.heroHeight(forWidth: viewportSize.width, viewportHeight: viewportSize.height))
     }
 
-    private func catalogSections() -> some View {
-        VStack(spacing: 28) {
+    private func catalogSections(viewportSize: CGSize) -> some View {
+        let contentInset = horizontalInset(forWidth: viewportSize.width)
+        let rowOuterInset = max(12, contentInset - 18)
+        return VStack(spacing: 28) {
             ForEach(Array(model.sections.enumerated()), id: \.element.id) { rowIndex, section in
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .firstTextBaseline) {
@@ -568,7 +573,7 @@ struct OPNGameCatalogSwiftUIView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x787A82, alpha: 1)))
                     }
-                    .padding(.horizontal, horizontalInset)
+                    .padding(.horizontal, contentInset)
 
                     ScrollViewReader { rowProxy in
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -595,7 +600,8 @@ struct OPNGameCatalogSwiftUIView: View {
                                     .frame(width: OPNGameCatalogLayoutSupport.storeTileWidth, height: OPNGameCatalogLayoutSupport.storeTileHeight)
                                 }
                             }
-                            .padding(.horizontal, horizontalInset)
+                            .padding(.leading, 18)
+                            .padding(.trailing, 24)
                             .padding(.top, 10)
                             .padding(.bottom, 20)
                         }
@@ -607,7 +613,7 @@ struct OPNGameCatalogSwiftUIView: View {
                     .frame(height: OPNGameCatalogLayoutSupport.storeTileHeight + 30)
                     .background(Color.white.opacity(0.032), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.055), lineWidth: 1))
-                    .padding(.horizontal, max(12, horizontalInset - 18))
+                    .padding(.horizontal, rowOuterInset)
                 }
             }
         }
@@ -677,11 +683,21 @@ struct OPNGameCatalogSwiftUIView: View {
         }
     }
 
-    private var horizontalInset: CGFloat { OPNGameCatalogLayoutSupport.storeHeroMaxContentInset }
+    private func horizontalInset(forWidth width: CGFloat) -> CGFloat {
+        OPNGameCatalogLayoutSupport.heroContentInset(forWidth: max(980.0, width))
+    }
+
+    private func searchPanelSize(for viewportSize: CGSize) -> CGSize {
+        let scale = viewportSize.height <= 760 ? 0.82 : (viewportSize.height < 900 ? 0.92 : 1.0)
+        let panelHeight = floor(44 * scale)
+        let availableWidth = max(OPNGameCatalogLayoutSupport.storeSearchPanelMinWidth, viewportSize.width - 48)
+        let panelWidth = min(OPNGameCatalogLayoutSupport.storeSearchPanelMaxWidth, availableWidth)
+        return CGSize(width: panelWidth, height: panelHeight)
+    }
 
     private func searchTopPadding(for viewportSize: CGSize) -> CGFloat {
         let scale = viewportSize.height <= 760 ? 0.82 : (viewportSize.height < 900 ? 0.92 : 1.0)
-        return floor((140 * scale - 44 * scale) * 0.5)
+        return floor((140 * scale - searchPanelSize(for: viewportSize).height) * 0.5)
     }
 
 }
