@@ -573,7 +573,6 @@ struct OPNGameCatalogSwiftUIView: View {
                                     onHover: {
                                         model.focusedRowIndex = rowIndex
                                         model.focusedColumnIndex = columnIndex
-                                        model.focusedTileID = item.id
                                     },
                                     onMarkUnowned: { selectedVariantIndex in
                                         model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)

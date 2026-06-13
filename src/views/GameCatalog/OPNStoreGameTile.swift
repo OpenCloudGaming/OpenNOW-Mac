@@ -80,6 +80,11 @@ final class OPNStoreGameTile: NSView {
     private var pendingMouseSelection = false
     private var draggingRail = false
     private var lastDragLocationInWindow = NSPoint.zero
+    private var fallbackDragScrollVelocity: CGFloat = 0.0
+    private var fallbackLastDragScrollTimestamp: TimeInterval = 0.0
+    private var fallbackInertiaTimer: Timer?
+    private var fallbackLastInertiaTimestamp: TimeInterval = 0.0
+    private weak var fallbackInertiaScrollView: NSScrollView?
     private var imageLoadRequested = false
     private var imageLoadGeneration = 0
     private var imageLoadToken: OpnImageLoadToken?
@@ -100,7 +105,10 @@ final class OPNStoreGameTile: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
-    deinit { imageLoadToken?.cancel() }
+    deinit {
+        fallbackInertiaTimer?.invalidate()
+        imageLoadToken?.cancel()
+    }
 
     override var isFlipped: Bool { true }
 
@@ -235,10 +243,7 @@ final class OPNStoreGameTile: NSView {
         }
         pendingMouseSelection = true
         lastDragLocationInWindow = event.locationInWindow
-        let selector = #selector(OPNStoreRailScrollView.beginDragScrolling(atTime:))
-        if let scrollView = enclosingScrollView, scrollView.responds(to: selector) {
-            scrollView.perform(selector, with: event.timestamp as NSNumber)
-        }
+        beginRailDrag(atTime: event.timestamp)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -254,10 +259,7 @@ final class OPNStoreGameTile: NSView {
         guard dragThresholdReached else { return }
         pendingMouseSelection = false
         draggingRail = true
-        let selector = #selector(OPNStoreRailScrollView.dragScrollHorizontally(byDelta:timestamp:))
-        if let scrollView = enclosingScrollView, scrollView.responds(to: selector) {
-            scrollView.perform(selector, with: deltaX as NSNumber, with: event.timestamp as NSNumber)
-        }
+        dragRailHorizontally(byDelta: deltaX, timestamp: event.timestamp)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -265,11 +267,89 @@ final class OPNStoreGameTile: NSView {
         let shouldContinueScroll = draggingRail
         pendingMouseSelection = false
         draggingRail = false
-        let selector = #selector(OPNStoreRailScrollView.endDragScrollingWithInertia)
-        if shouldContinueScroll, let scrollView = enclosingScrollView, scrollView.responds(to: selector) {
-            scrollView.perform(selector)
-        }
+        if shouldContinueScroll { endRailDragWithInertia() }
         if shouldSelect { selectPressed() }
+    }
+
+    private func beginRailDrag(atTime timestamp: TimeInterval) {
+        if let railScrollView = enclosingScrollView as? OPNStoreRailScrollView {
+            railScrollView.beginDragScrolling(atTime: timestamp)
+            return
+        }
+        fallbackInertiaTimer?.invalidate()
+        fallbackInertiaTimer = nil
+        fallbackInertiaScrollView = enclosingScrollView
+        fallbackDragScrollVelocity = 0.0
+        fallbackLastDragScrollTimestamp = timestamp
+    }
+
+    private func dragRailHorizontally(byDelta deltaX: CGFloat, timestamp: TimeInterval) {
+        if let railScrollView = enclosingScrollView as? OPNStoreRailScrollView {
+            railScrollView.dragScrollHorizontally(byDelta: deltaX, timestamp: timestamp)
+            return
+        }
+        guard let scrollView = fallbackInertiaScrollView ?? enclosingScrollView else { return }
+        let elapsed = timestamp - fallbackLastDragScrollTimestamp
+        if elapsed > 0.001 {
+            let sampledVelocity = deltaX / CGFloat(elapsed)
+            fallbackDragScrollVelocity = fallbackDragScrollVelocity == 0.0 ? sampledVelocity : (fallbackDragScrollVelocity * 0.55 + sampledVelocity * 0.45)
+        }
+        fallbackLastDragScrollTimestamp = timestamp
+        scrollStandardRail(scrollView, byDelta: deltaX)
+    }
+
+    private func endRailDragWithInertia() {
+        if let railScrollView = enclosingScrollView as? OPNStoreRailScrollView {
+            railScrollView.endDragScrollingWithInertia()
+            return
+        }
+        fallbackInertiaTimer?.invalidate()
+        fallbackInertiaTimer = nil
+        guard abs(fallbackDragScrollVelocity) >= OPNGameCatalogLayoutSupport.storeRailInertiaMinimumVelocity else {
+            fallbackDragScrollVelocity = 0.0
+            return
+        }
+        fallbackLastInertiaTimestamp = CACurrentMediaTime()
+        fallbackInertiaTimer = Timer.scheduledTimer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(fallbackInertiaTimerFired), userInfo: nil, repeats: true)
+    }
+
+    private func scrollStandardRail(_ scrollView: NSScrollView, byDelta deltaX: CGFloat) {
+        guard let documentView = scrollView.documentView else { return }
+        let maxX = max(0.0, documentView.frame.width - scrollView.contentView.bounds.width)
+        var origin = scrollView.contentView.bounds.origin
+        origin.x = min(maxX, max(0.0, origin.x + deltaX))
+        scrollView.contentView.scroll(to: origin)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func canScrollStandardRail(_ scrollView: NSScrollView, byDelta deltaX: CGFloat) -> Bool {
+        guard let documentView = scrollView.documentView else { return false }
+        let maxX = max(0.0, documentView.frame.width - scrollView.contentView.bounds.width)
+        let currentX = scrollView.contentView.bounds.origin.x
+        if maxX <= 0.5 { return false }
+        if deltaX < 0.0 { return currentX > 0.5 }
+        if deltaX > 0.0 { return currentX < maxX - 0.5 }
+        return false
+    }
+
+    @objc private func fallbackInertiaTimerFired() {
+        guard let scrollView = fallbackInertiaScrollView else {
+            fallbackInertiaTimer?.invalidate()
+            fallbackInertiaTimer = nil
+            fallbackDragScrollVelocity = 0.0
+            return
+        }
+        let now = CACurrentMediaTime()
+        let elapsed = max(0.001, now - fallbackLastInertiaTimestamp)
+        fallbackLastInertiaTimestamp = now
+        if abs(fallbackDragScrollVelocity) < OPNGameCatalogLayoutSupport.storeRailInertiaMinimumVelocity || !canScrollStandardRail(scrollView, byDelta: fallbackDragScrollVelocity > 0.0 ? 1.0 : -1.0) {
+            fallbackInertiaTimer?.invalidate()
+            fallbackInertiaTimer = nil
+            fallbackDragScrollVelocity = 0.0
+            return
+        }
+        scrollStandardRail(scrollView, byDelta: fallbackDragScrollVelocity * CGFloat(elapsed))
+        fallbackDragScrollVelocity *= pow(OPNGameCatalogLayoutSupport.storeRailInertiaResistancePerSecond, CGFloat(elapsed))
     }
 
     override func mouseEntered(with event: NSEvent) {
