@@ -1,12 +1,12 @@
 import Foundation
 
 @objc(OPNDeviceIdentity)
-final class OPNDeviceIdentity: NSObject {
+public final class OPNDeviceIdentity: NSObject {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cachedCloudmatchDeviceId = ""
 
     @objc(stableCloudmatchDeviceId)
-    static func stableCloudmatchDeviceId() -> String {
+    public static func stableCloudmatchDeviceId() -> String {
         lock.lock()
         defer { lock.unlock() }
 
@@ -19,7 +19,12 @@ final class OPNDeviceIdentity: NSObject {
         let legacyPath = ("~/Library/Application Support/com.nvidia.gfn-device-id" as NSString).expandingTildeInPath
         let existing = NSDictionary(contentsOfFile: path) ?? NSDictionary(contentsOfFile: legacyPath)
         let storedDeviceId = existing?["deviceId"] as? String
-        let deviceId = storedDeviceId?.isEmpty == false ? storedDeviceId! : UUID().uuidString.lowercased()
+        let deviceId: String
+        if let storedDeviceId, !storedDeviceId.isEmpty {
+            deviceId = storedDeviceId
+        } else {
+            deviceId = UUID().uuidString.lowercased()
+        }
 
         let directoryAttributes: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
         try? FileManager.default.createDirectory(

@@ -1,6 +1,7 @@
 import AppKit
 import CoreAudio
 import CoreMedia
+import DeviceIdentity
 import Foundation
 import VideoToolbox
 

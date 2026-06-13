@@ -1,5 +1,7 @@
 import Foundation
 
+import DeviceIdentity
+
 @objc(OPNActiveSessionObject)
 @objcMembers
 final class OPNActiveSessionObject: NSObject {

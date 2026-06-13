@@ -1,5 +1,7 @@
 @preconcurrency import Foundation
 
+import DeviceIdentity
+
 final class OPNSessionManager: NSObject, @unchecked Sendable {
     static let shared = OPNSessionManager()
 
