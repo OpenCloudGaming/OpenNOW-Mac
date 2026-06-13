@@ -31,8 +31,10 @@ final class OPNJarvisSessionStore: JarvisSessionStore, @unchecked Sendable {
     }
 
     func saveUserInfo(_ userInfo: JarvisUserInfo) async throws {
-        _ = userInfo
+        OPNAuthService.shared.saveUserInfo(userInfo)
     }
 
-    func clearUserInfo() async throws {}
+    func clearUserInfo() async throws {
+        OPNAuthService.shared.clearUserInfo()
+    }
 }

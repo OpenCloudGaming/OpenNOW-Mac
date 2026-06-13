@@ -235,6 +235,10 @@ final class OPNAuthService: @unchecked Sendable {
     }
 
     func saveSession(_ session: OPNAuthSession) {
+        saveSession(session, replacingIdentity: nil)
+    }
+
+    private func saveSession(_ session: OPNAuthSession, replacingIdentity: String?) {
         guard session.isAuthenticated, !session.accessToken.isEmpty else { return }
         guard let identity = sessionIdentity(from: session), !identity.isEmpty else { return }
 
@@ -244,7 +248,10 @@ final class OPNAuthService: @unchecked Sendable {
         }
 
         let existing = loadAccountDictionaries(activeUserId: nil)
-        var accounts = existing.filter { sessionIdentity(from: $0) != identity }
+        var accounts = existing.filter {
+            let existingIdentity = sessionIdentity(from: $0)
+            return existingIdentity != identity && existingIdentity != replacingIdentity
+        }
         accounts.insert(dictionary(from: session), at: 0)
         saveAccountDictionaries(accounts, activeUserId: identity)
 
@@ -252,6 +259,33 @@ final class OPNAuthService: @unchecked Sendable {
         defaults.set(true, forKey: "OPN_HasSavedSession")
         defaults.set(identity, forKey: "OPN_ActiveUserId")
         defaults.synchronize()
+    }
+
+    func saveUserInfo(_ userInfo: JarvisUserInfo) {
+        guard userInfo.isAuthenticated else {
+            clearUserInfo()
+            return
+        }
+        var session = loadSavedSession()
+        guard session.isAuthenticated else { return }
+        let oldIdentity = sessionIdentity(from: session)
+        if !userInfo.userId.isEmpty { session.userId = userInfo.userId }
+        if !userInfo.displayName.isEmpty { session.displayName = userInfo.displayName }
+        else if !userInfo.preferredUsername.isEmpty { session.displayName = userInfo.preferredUsername }
+        if !userInfo.email.isEmpty { session.email = userInfo.email }
+        if !userInfo.idpId.isEmpty { session.idpId = userInfo.idpId }
+        saveSession(session, replacingIdentity: oldIdentity)
+    }
+
+    func clearUserInfo() {
+        var session = loadSavedSession()
+        guard session.isAuthenticated else { return }
+        let oldIdentity = sessionIdentity(from: session)
+        session.userId = ""
+        session.displayName = ""
+        session.email = ""
+        session.idpId = Self.defaultIdpId
+        saveSession(session, replacingIdentity: oldIdentity)
     }
 
     func loadSavedSession() -> OPNAuthSession {

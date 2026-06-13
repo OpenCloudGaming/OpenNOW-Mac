@@ -5,8 +5,13 @@ import Foundation
 final class OPNLogCapture: NSObject {
     private static let queue = DispatchQueue(label: "io.opencg.opennow.log-capture")
     nonisolated(unsafe) private static var events: [String] = []
+    nonisolated(unsafe) private static var logFilePath: String?
 
-    @objc static func start() {}
+    @objc static func start() {
+        queue.sync {
+            _ = capturePathLocked()
+        }
+    }
 
     @objc(appendEvent:)
     static func appendEvent(_ message: String) {
@@ -15,6 +20,7 @@ final class OPNLogCapture: NSObject {
         queue.sync {
             events.append(line)
             if events.count > 200 { events.removeFirst(events.count - 200) }
+            appendLineToFileLocked(line)
         }
     }
 
@@ -33,7 +39,44 @@ final class OPNLogCapture: NSObject {
         NSLog("[LogCapture] Copied diagnostics to clipboard (\(clipboardText.count) chars)")
     }
 
-    @objc static func capturedLogPath() -> String { "" }
+    @objc static func capturedLogPath() -> String {
+        queue.sync { capturePathLocked() ?? "" }
+    }
+
+    private static func capturePathLocked() -> String? {
+        if let logFilePath { return logFilePath }
+        let fileManager = FileManager.default
+        let directory: URL
+        if let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            directory = applicationSupport.appendingPathComponent("OpenNOW", isDirectory: true)
+        } else {
+            directory = fileManager.temporaryDirectory.appendingPathComponent("OpenNOW", isDirectory: true)
+        }
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let url = directory.appendingPathComponent("OpenNOW-Diagnostics.log", isDirectory: false)
+            if !fileManager.fileExists(atPath: url.path) {
+                fileManager.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
+            }
+            logFilePath = url.path
+            return url.path
+        } catch {
+            NSLog("[LogCapture] Failed to prepare diagnostics log: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func appendLineToFileLocked(_ line: String) {
+        guard let path = capturePathLocked(), let data = (line + "\n").data(using: .utf8) else { return }
+        guard let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) else { return }
+        defer { try? handle.close() }
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+        } catch {
+            NSLog("[LogCapture] Failed to append diagnostics log: \(error.localizedDescription)")
+        }
+    }
 
     private static func redactedLogLine(_ line: String) -> String {
         var redacted = line

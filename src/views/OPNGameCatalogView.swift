@@ -195,7 +195,12 @@ final class OPNGameCatalogView: NSView {
     }
 
     func setUserName(_ name: String?) {}
-    func setActiveSessionAppIds(_ appIds: [NSNumber]) {}
+
+    func setActiveSessionAppIds(_ appIds: [NSNumber]) {
+        let activeIds = Set(appIds.map { $0.stringValue }.filter { !$0.isEmpty })
+        guard catalogModel.activeSessionAppIds != activeIds else { return }
+        catalogModel.activeSessionAppIds = activeIds
+    }
 
     func setGameObjects(_ games: [OPNCatalogGameObject]) {
         libraryGameObjects = games
@@ -379,6 +384,7 @@ final class OPNGameCatalogModel: ObservableObject {
     @Published var focusedTileID: String?
     @Published var focusScrollRequestItemID: String?
     @Published var focusScrollRequestToken = 0
+    @Published var activeSessionAppIds: Set<String> = []
 
     var focusedItem: OPNGameCatalogItemModel? {
         guard focusedRowIndex >= 0, focusedRowIndex < sections.count else { return nil }
@@ -452,6 +458,13 @@ final class OPNGameCatalogModel: ObservableObject {
             if let item = section.games.first(where: { $0.id == id }) { return item }
         }
         return nil
+    }
+
+    func hasActiveSession(for item: OPNGameCatalogItemModel) -> Bool {
+        guard !activeSessionAppIds.isEmpty else { return false }
+        let game = item.gameObject
+        if activeSessionAppIds.contains(game.id) || activeSessionAppIds.contains(game.launchAppId) { return true }
+        return game.variants.contains { !$0.id.isEmpty && activeSessionAppIds.contains($0.id) }
     }
 }
 
@@ -584,6 +597,7 @@ struct OPNGameCatalogSwiftUIView: View {
                                 ForEach(Array(section.games.enumerated()), id: \.element.id) { columnIndex, item in
                                     OPNCatalogStoreTileView(
                                         item: item,
+                                        activeSession: model.hasActiveSession(for: item),
                                         focused: model.focusedRowIndex == rowIndex && model.focusedColumnIndex == columnIndex,
                                         focusScrollRequestToken: model.focusScrollRequestItemID == item.id ? model.focusScrollRequestToken : 0,
                                         onSelect: { selectedVariantIndex in
@@ -707,6 +721,7 @@ struct OPNGameCatalogSwiftUIView: View {
 
 private struct OPNCatalogStoreTileView: NSViewRepresentable {
     let item: OPNGameCatalogItemModel
+    let activeSession: Bool
     let focused: Bool
     let focusScrollRequestToken: Int
     let onSelect: (Int32) -> Void
@@ -742,6 +757,7 @@ private struct OPNCatalogStoreTileView: NSViewRepresentable {
         DispatchQueue.main.async { [weak tile, weak coordinator] in
             guard let tile, let coordinator, coordinator.pendingStateToken == pendingStateToken else { return }
             tile.selectedVariantIndex = selectedVariantIndex
+            tile.setActiveSession(activeSession)
             tile.setStoreFocused(isFocused)
             tile.ensureImageLoaded()
             if requestToken > 0 && coordinator.appliedFocusScrollRequestToken != requestToken {

@@ -12,6 +12,7 @@ private final class OPNStoreGameTileModel: ObservableObject {
     @Published var availabilityTitle = "Cloud ready"
     @Published var actionTitle = "Play"
     @Published var selectedVariantIndex: Int32
+    @Published var activeSession = false
     @Published var storeFocused = false
     @Published var mouseHovering = false
     @Published var artwork: NSImage
@@ -45,11 +46,7 @@ final class OPNStoreGameTile: NSView {
             if !gameObject.variants.isEmpty {
                 selectedVariantIndex = Int32(max(0, min(gameObject.variants.count - 1, Int(selectedVariantIndex))))
             }
-            availabilityLabel.stringValue = Self.availabilityTitle(gameObject: gameObject, variantIndex: Int(selectedVariantIndex))
-            playButton.title = Self.primaryActionTitle(gameObject: gameObject, variantIndex: Int(selectedVariantIndex), prominent: prominent)
-            model.selectedVariantIndex = selectedVariantIndex
-            model.availabilityTitle = availabilityLabel.stringValue
-            model.actionTitle = playButton.title
+            refreshSelectedVariantPresentation()
             updateStoreIconSelection()
         }
     }
@@ -156,6 +153,12 @@ final class OPNStoreGameTile: NSView {
         layer?.transform = CATransform3DIdentity
         CATransaction.commit()
         playButton.isHidden = !(prominent || focused)
+    }
+
+    func setActiveSession(_ active: Bool) {
+        guard model.activeSession != active else { return }
+        model.activeSession = active
+        refreshSelectedVariantPresentation()
     }
 
     func cycleSelectedVariant() {
@@ -538,7 +541,8 @@ final class OPNStoreGameTile: NSView {
         metaLabel.frame = .zero
         titleLabel.frame = .zero
         featureLabel.frame = .zero
-        playButton.frame = NSRect(x: width - 64, y: height - 48, width: 50, height: 28)
+        let buttonWidth: CGFloat = model.activeSession ? 68 : 50
+        playButton.frame = NSRect(x: width - buttonWidth - 14, y: height - 48, width: buttonWidth, height: 28)
         playButton.layer?.cornerRadius = 14
     }
 
@@ -584,12 +588,24 @@ final class OPNStoreGameTile: NSView {
     }
 
     private func refreshSelectedVariantPresentation() {
+        let variantIndex: Int
         if !gameObject.variants.isEmpty {
-            selectedVariantIndex = Int32(max(0, min(gameObject.variants.count - 1, Int(selectedVariantIndex))))
+            let clampedIndex = max(0, min(gameObject.variants.count - 1, Int(selectedVariantIndex)))
+            if Int(selectedVariantIndex) != clampedIndex {
+                selectedVariantIndex = Int32(clampedIndex)
+                return
+            }
+            variantIndex = clampedIndex
+        } else {
+            variantIndex = Int(selectedVariantIndex)
         }
-        availabilityLabel.stringValue = Self.availabilityTitle(gameObject: gameObject, variantIndex: Int(selectedVariantIndex))
-        playButton.title = Self.primaryActionTitle(gameObject: gameObject, variantIndex: Int(selectedVariantIndex), prominent: prominent)
+        availabilityLabel.stringValue = Self.availabilityTitle(gameObject: gameObject, variantIndex: variantIndex, activeSession: model.activeSession)
+        playButton.title = Self.primaryActionTitle(gameObject: gameObject, variantIndex: variantIndex, prominent: prominent, activeSession: model.activeSession)
+        model.selectedVariantIndex = selectedVariantIndex
+        model.availabilityTitle = availabilityLabel.stringValue
+        model.actionTitle = playButton.title
         updateStoreIconSelection()
+        needsLayout = true
     }
 
     private func loadImage() {
@@ -756,8 +772,9 @@ final class OPNStoreGameTile: NSView {
         return gameObject.variants.contains { !variantIsOwned($0) }
     }
 
-    private static func primaryActionTitle(gameObject: OPNCatalogGameObject, variantIndex: Int, prominent: Bool) -> String {
-        OPNGameCatalogMetadataSupport.primaryActionTitle(needsPurchase: gameNeedsPurchase(gameObject: gameObject, variantIndex: variantIndex), prominent: prominent)
+    private static func primaryActionTitle(gameObject: OPNCatalogGameObject, variantIndex: Int, prominent: Bool, activeSession: Bool = false) -> String {
+        if activeSession { return prominent ? "Resume Session" : "Resume" }
+        return OPNGameCatalogMetadataSupport.primaryActionTitle(needsPurchase: gameNeedsPurchase(gameObject: gameObject, variantIndex: variantIndex), prominent: prominent)
     }
 
     private static func gameProfileAppId(gameObject: OPNCatalogGameObject, variantIndex: Int) -> String {
@@ -766,7 +783,8 @@ final class OPNStoreGameTile: NSView {
         return gameObject.id
     }
 
-    private static func availabilityTitle(gameObject: OPNCatalogGameObject, variantIndex: Int) -> String {
+    private static func availabilityTitle(gameObject: OPNCatalogGameObject, variantIndex: Int, activeSession: Bool = false) -> String {
+        if activeSession { return "Active session" }
         let appId = gameProfileAppId(gameObject: gameObject, variantIndex: variantIndex)
         let profileEnabled = !appId.isEmpty && OPNStreamPreferences.profileEnabled(forGame: appId)
         let storeCount = max(gameObject.availableStores.count, gameObject.variants.count)
@@ -859,7 +877,7 @@ private struct OPNStoreGameTileSwiftUIView: View {
         Text(model.actionTitle.uppercased())
             .font(.system(size: model.prominent ? 14 : 11, weight: .black))
             .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x06140A, alpha: 1)))
-            .frame(width: model.prominent ? 112 : 50, height: model.prominent ? 42 : 28)
+            .frame(width: actionPillWidth, height: model.prominent ? 42 : 28)
             .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.98)), in: Capsule())
             .shadow(color: model.prominent ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.42)) : .clear, radius: model.prominent ? 24 : 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -881,6 +899,11 @@ private struct OPNStoreGameTileSwiftUIView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
+    }
+
+    private var actionPillWidth: CGFloat {
+        if model.prominent { return model.activeSession ? 146 : 112 }
+        return model.activeSession ? 68 : 50
     }
 
     private func iconBackground(_ icon: OPNStoreGameTileIcon) -> Color {
