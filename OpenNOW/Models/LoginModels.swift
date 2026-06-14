@@ -17,8 +17,8 @@ final class LoginAccount {
     var membershipTier: String
     var authorizationState: String
     var authStatus: String
-    var userId: String
-    var externalUserId: String
+    var userId: String = ""
+    var externalUserId: String = ""
     var preferredRegion: String
     var createdAt: Date
     var lastLoginAt: Date
@@ -66,9 +66,9 @@ final class LoginSession {
     var accessToken: String
     var clientToken: String
     var idToken: String
-    var refreshToken: String
-    var userId: String
-    var idpId: String
+    var refreshToken: String = ""
+    var userId: String = ""
+    var idpId: String = ""
     var deviceId: String
     var issuedAt: Date
     var expiresAt: Date
@@ -120,10 +120,10 @@ final class LoginDeviceRegistration {
     @Attribute(.unique) var id: String
     var deviceId: String
     var displayName: String
-    var pendingOAuthState: String
-    var pendingOAuthCodeVerifier: String
-    var pendingOAuthProviderIdpId: String
-    var pendingOAuthRedirectURI: String
+    var pendingOAuthState: String = ""
+    var pendingOAuthCodeVerifier: String = ""
+    var pendingOAuthProviderIdpId: String = ""
+    var pendingOAuthRedirectURI: String = ""
     var createdAt: Date
     var lastUsedAt: Date
 

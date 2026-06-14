@@ -164,7 +164,7 @@ final class LoginViewModel: ObservableObject {
             primaryDevice.lastUsedAt = Date()
             currentAuthorizationURL = request.url.absoluteString
             trySave()
-            await jarvisAuthService.sameTabAuthStarted()
+            _ = await jarvisAuthService.sameTabAuthStarted()
             NSWorkspace.shared.open(request.url)
             validationMessage = "Finish NVIDIA sign-in in the browser. OpenNOW will continue automatically when the callback returns."
         } catch {
@@ -207,10 +207,10 @@ final class LoginViewModel: ObservableObject {
             oauthCallbackText = ""
             currentAuthorizationURL = ""
             trySave()
-            await jarvisAuthService.finishLogin(success: true)
+            _ = await jarvisAuthService.finishLogin(success: true)
             successMessage = "NVIDIA account connected. Client token and session metadata are ready."
         } catch {
-            await jarvisAuthService.finishLogin(success: false)
+            _ = await jarvisAuthService.finishLogin(success: false)
             validationMessage = Self.userFacingError(error)
             requestedFocus = .callback
         }
