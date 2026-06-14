@@ -176,8 +176,6 @@ extension OPNGameCatalogView {
 
         let artwork = OPNHeroArtworkView(frame: container.bounds)
         artwork.autoresizingMask = [.width, .height]
-        artwork.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: container.bounds)
-        artwork.imageEdgeFadeFraction = 0.22
         let fallbackArtwork = OPNUIHelpers.fallbackHeroArtworkImage()
         artwork.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackArtwork)
         artwork.image = fallbackArtwork
@@ -232,8 +230,6 @@ extension OPNGameCatalogView {
         desktopHeroArtworkTransitionView?.removeFromSuperview()
         let transitionView = OPNHeroArtworkView(frame: artworkView.frame)
         transitionView.autoresizingMask = [.width, .height]
-        transitionView.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: container.bounds)
-        transitionView.imageEdgeFadeFraction = 0.22
         transitionView.fadeColor = fadeColor
         transitionView.image = image
         transitionView.alphaValue = 0.0
@@ -376,10 +372,6 @@ extension OPNGameCatalogView {
     @objc func updateDesktopHeroLogoFrame() {
         guard let container = desktopHeroContainer, let artworkView = desktopHeroArtworkView, let titleFallback = desktopHeroTitleFallback, let logoView = desktopHeroLogoView else { return }
         let artworkImage = artworkView.image
-        artworkView.frame = container.bounds
-        artworkView.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: container.bounds)
-        desktopHeroArtworkTransitionView?.frame = container.bounds
-        desktopHeroArtworkTransitionView?.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: container.bounds)
         titleFallback.frame = OPNGameCatalogArtworkSupport.heroLogoFallbackFrame(container.bounds, artworkImage: artworkImage)
         logoView.frame = logoView.image.map { OPNGameCatalogArtworkSupport.heroLogoFrame(for: $0, bounds: container.bounds, artworkImage: artworkImage) } ?? OPNGameCatalogArtworkSupport.heroLogoFallbackFrame(container.bounds, artworkImage: artworkImage)
         if let transitionImage = desktopHeroLogoTransitionView?.image {

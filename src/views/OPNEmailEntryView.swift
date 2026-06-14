@@ -116,39 +116,23 @@ private struct OPNEmailEntrySwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: OPNUIHelpers.color(rgb: 0x191919, alpha: 1.0))
-                .ignoresSafeArea()
-            LinearGradient(colors: [.black.opacity(0.50), .black.opacity(0.0)], startPoint: .leading, endPoint: .trailing)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 0) {
-                Text("GEFORCE NOW")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
-                    .tracking(1.4)
-
-                Text("Sign In")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundStyle(Color.white)
-                    .padding(.top, 12)
-
-                Text("Access your cloud gaming library with your NVIDIA account.")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.68))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 10)
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.24))
-                    .frame(height: 1)
-                    .padding(.top, 26)
+            Color.clear
+            VStack(spacing: 18) {
+                Text("OpenNOW")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.primary)
 
                 VStack(alignment: .leading, spacing: 22) {
+                    Text("Access your cloud gaming library with your NVIDIA account.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Sign-in provider")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(Color.white.opacity(0.62))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
                         Picker("Sign-in provider", selection: $model.selectedProviderId) {
                             ForEach(model.providers) { provider in
                                 Text(provider.label).tag(provider.id)
@@ -161,40 +145,31 @@ private struct OPNEmailEntrySwiftUIView: View {
 
                     Toggle("Keep me signed in", isOn: $model.stayLoggedIn)
                         .toggleStyle(.switch)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.82))
-                        .tint(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                        .font(.system(size: 13, weight: .medium))
 
                     Button(action: onContinue) {
                         Text("Continue with Browser")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 14, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
-                    .buttonStyle(OPNEmailEntryActionButtonStyle())
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.204, green: 0.780, blue: 0.349))
                 }
-                .padding(.top, 26)
+                .padding(.horizontal, 56)
+                .padding(.vertical, 46)
+                .frame(width: 400, height: 372)
+                .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(.white.opacity(0.10), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.26), radius: 24, y: 14)
 
-                Spacer(minLength: 0)
-
-                Text("OpenNOW for macOS")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.48))
+                Text("Open-source cloud gaming client for macOS")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 48)
-            .padding(.vertical, 42)
-            .frame(width: 456, height: 438, alignment: .topLeading)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.96)))
-            .overlay(Rectangle().stroke(Color.white.opacity(0.20), lineWidth: 1))
-            .shadow(color: .black.opacity(0.48), radius: 28, y: 16)
+            .frame(width: 480, height: 500)
         }
-    }
-}
-
-private struct OPNEmailEntryActionButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color.black)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: configuration.isPressed ? 0.78 : 1.0)))
-            .overlay(Rectangle().stroke(Color(nsColor: OPNUIHelpers.color(rgb: 0x8FD127, alpha: 0.75)), lineWidth: 1))
     }
 }

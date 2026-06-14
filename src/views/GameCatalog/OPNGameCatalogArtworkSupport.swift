@@ -185,26 +185,17 @@ final class OPNGameCatalogArtworkSupport: NSObject {
         return result
     }
 
-    @MainActor
-    static func heroArtworkFrame(in bounds: NSRect) -> NSRect {
-        let leadingEdge = min(bounds.width - 1.0, OPNGameCatalogLayoutSupport.heroImageLeadingEdge(forWidth: bounds.width))
-        let imageHeight = min(bounds.height, OPNGameCatalogLayoutSupport.heroImageHeight(forWidth: bounds.width))
-        return NSRect(x: leadingEdge, y: 0.0, width: max(1.0, bounds.width - leadingEdge), height: max(1.0, imageHeight))
-    }
-
-    @MainActor
-    static func heroOverlayFrame(in bounds: NSRect) -> NSRect {
-        let x = OPNGameCatalogLayoutSupport.storeHeroCornerColumn + OPNGameCatalogLayoutSupport.storeHeroOverlayLeadingPadding
-        let width = max(160.0, bounds.width * (OPNGameCatalogLayoutSupport.storeHeroTextColumnRatio + OPNGameCatalogLayoutSupport.storeHeroThirdColumnRatio) - OPNGameCatalogLayoutSupport.storeHeroOverlayLeadingPadding)
-        let imageHeight = min(bounds.height, OPNGameCatalogLayoutSupport.heroImageHeight(forWidth: bounds.width))
-        return NSRect(x: x, y: 0.0, width: min(width, max(1.0, bounds.width - x)), height: max(1.0, imageHeight))
+    static func heroVisibleArtworkRect(for image: NSImage?, bounds: NSRect) -> NSRect {
+        guard let image, image.size.width > 0, image.size.height > 0 else { return bounds }
+        return bounds
     }
 
     @MainActor
     static func heroLogoFrame(for image: NSImage?, bounds: NSRect, artworkImage: NSImage?) -> NSRect {
-        let overlayRect = heroOverlayFrame(in: bounds)
-        let maxWidth = min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxWidth, max(120, overlayRect.width))
-        let maxHeight = min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxHeight, overlayRect.height * 0.44)
+        let artworkRect = heroVisibleArtworkRect(for: artworkImage, bounds: bounds)
+        let horizontalInset = min(OPNGameCatalogLayoutSupport.heroContentInset(forWidth: bounds.width), max(24, artworkRect.width * 0.08))
+        let maxWidth = min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxWidth, max(120, artworkRect.width - horizontalInset * 2))
+        let maxHeight = min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxHeight, artworkRect.height * 0.44)
         var width = maxWidth
         var height = maxHeight
         if let image, image.size.width > 0, image.size.height > 0 {
@@ -217,17 +208,16 @@ final class OPNGameCatalogArtworkSupport: NSObject {
                 height = floor(width / aspect)
             }
         }
-        let y = overlayRect.minY + floor((overlayRect.height - height - OPNGameCatalogLayoutSupport.storeHeroOverlayBottomPadding) * 0.5)
-        return NSRect(x: overlayRect.minX, y: y, width: width, height: height)
+        return NSRect(x: artworkRect.minX + horizontalInset, y: artworkRect.minY + floor((artworkRect.height - height) * 0.5), width: width, height: height)
     }
 
     @MainActor
     static func heroLogoFallbackFrame(_ bounds: NSRect, artworkImage: NSImage?) -> NSRect {
-        let overlayRect = heroOverlayFrame(in: bounds)
-        let width = min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxWidth, max(160, overlayRect.width))
-        let height = min(108, max(56, overlayRect.height * 0.22))
-        let y = overlayRect.minY + floor((overlayRect.height - height - OPNGameCatalogLayoutSupport.storeHeroOverlayBottomPadding) * 0.5)
-        return NSRect(x: overlayRect.minX, y: y, width: width, height: height)
+        let artworkRect = heroVisibleArtworkRect(for: artworkImage, bounds: bounds)
+        let horizontalInset = min(OPNGameCatalogLayoutSupport.heroContentInset(forWidth: bounds.width), max(24, artworkRect.width * 0.08))
+        let width = min(OPNGameCatalogLayoutSupport.storeHeroLogoMaxWidth, max(160, artworkRect.width - horizontalInset * 2))
+        let height = min(108, max(56, artworkRect.height * 0.22))
+        return NSRect(x: artworkRect.minX + horizontalInset, y: artworkRect.minY + floor((artworkRect.height - height) * 0.5), width: width, height: height)
     }
 
     static func bringHeroLogoToFront(container: NSView?, titleFallback: NSTextField?, logoView: NSImageView?) {

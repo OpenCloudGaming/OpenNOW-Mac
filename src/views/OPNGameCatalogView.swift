@@ -500,28 +500,15 @@ struct OPNGameCatalogItemModel: Identifiable, Equatable {
 
 struct OPNGameCatalogSwiftUIView: View {
     @ObservedObject var model: OPNGameCatalogModel
-    @State private var selectedDetailItemID = ""
-    @State private var favoriteDetailItemIDs: Set<String> = []
 
     let onSearchChanged: (String) -> Void
     let onSelect: (OPNGameCatalogItemModel) -> Void
     let onMarkUnowned: (OPNGameCatalogItemModel) -> Void
 
-    private let topNavHeight: CGFloat = 64.0
-
     var body: some View {
         GeometryReader { viewport in
             ZStack {
-                Color(nsColor: OPNUIHelpers.color(rgb: 0x141414, alpha: 1.0))
-                    .ignoresSafeArea()
-                LinearGradient(
-                    colors: [Color.black.opacity(0.42), Color.black.opacity(0.0)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: min(634.0, viewport.size.width * 0.42))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .ignoresSafeArea()
+                Color.clear
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
                         if model.isLoading {
@@ -533,10 +520,9 @@ struct OPNGameCatalogSwiftUIView: View {
                         } else {
                             if let heroGame = model.heroGame {
                                 heroView(heroGame, viewportSize: viewport.size)
-                                    .padding(.top, topNavHeight)
-                                    .padding(.bottom, OPNGameCatalogLayoutSupport.heroFirstRowSpacing(forWidth: viewport.size.width))
+                                    .padding(.bottom, OPNGameCatalogLayoutSupport.storeHeroFirstRowSpacing)
                             } else {
-                                Color.clear.frame(height: topNavHeight + 88)
+                                Color.clear.frame(height: 88)
                             }
                             if model.sections.isEmpty {
                                 emptyState
@@ -545,143 +531,67 @@ struct OPNGameCatalogSwiftUIView: View {
                             }
                         }
                     }
-                    .padding(.bottom, 118)
+                    .padding(.bottom, 88)
                 }
                 .ignoresSafeArea(.container, edges: .top)
-                topNavigationBar(viewportSize: viewport.size)
+                catalogSearch(viewportSize: viewport.size)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, searchTopPadding(for: viewport.size))
                     .ignoresSafeArea(.container, edges: .top)
                 controllerHints
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 18)
             }
         }
-    }
-
-    private func topNavigationBar(viewportSize: CGSize) -> some View {
-        ZStack {
-            Color(nsColor: OPNUIHelpers.color(rgb: 0x333333, alpha: 1.0))
-            HStack(spacing: 0) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .frame(width: 68, height: topNavHeight)
-                Text("Games")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.94))
-                Spacer(minLength: 0)
-            }
-            catalogSearch(viewportSize: viewportSize)
-        }
-        .frame(height: topNavHeight)
-        .overlay(Rectangle().fill(Color.black.opacity(0.28)).frame(height: 1), alignment: .bottom)
     }
 
     private func catalogSearch(viewportSize: CGSize) -> some View {
         let panelSize = searchPanelSize(for: viewportSize)
         return HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.72))
-                .frame(width: 18, height: 30)
-            TextField("Search games, stores, or genres", text: $model.searchText)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 1)))
+                .frame(height: 30)
+            TextField("Search library and store titles", text: $model.searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.88))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
                 .frame(height: 30)
                 .onChange(of: model.searchText) { _, query in onSearchChanged(query) }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 15)
         .frame(width: panelSize.width, height: panelSize.height)
-        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.92)))
-        .overlay(Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 1))
+        .background(Color.black.opacity(0.64), in: Capsule())
+        .overlay(Capsule().stroke(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 0.34)), lineWidth: 1))
     }
 
     private func heroView(_ item: OPNGameCatalogItemModel, viewportSize: CGSize) -> some View {
-        let height = OPNGameCatalogLayoutSupport.heroHeight(forWidth: viewportSize.width, viewportHeight: viewportSize.height)
-        return ZStack(alignment: .topLeading) {
-            OPNCatalogHeroStageView(item: item)
-            heroRibbon
-            heroDetails(item)
-            heroDots
-        }
-        .frame(height: height)
-    }
-
-    private var heroRibbon: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
-                .frame(width: 12)
-                .rotationEffect(.degrees(14))
-                .offset(x: -5)
-            Text("New Season")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.95))
-                .padding(.leading, 8)
-                .padding(.trailing, 16)
-        }
-        .frame(height: 28)
-        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x333333, alpha: 0.86)))
-        .padding(.top, 12)
-    }
-
-    private func heroDetails(_ item: OPNGameCatalogItemModel) -> some View {
-        VStack(spacing: 18) {
-            Text(heroStoreLabel(for: item))
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.80))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            Button("VIEW DETAILS") { toggleDetail(for: item) }
-                .buttonStyle(OPNCatalogHeroActionButtonStyle())
-                .frame(width: 146, height: 42)
-        }
-        .frame(width: 210)
-        .padding(.leading, 226)
-        .padding(.top, 285)
-    }
-
-    private var heroDots: some View {
-        HStack(spacing: 16) {
-            ForEach(0..<6, id: \.self) { index in
-                Circle()
-                    .fill(index == 4 ? Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)) : Color.white.opacity(0.58))
-                    .frame(width: index == 4 ? 14 : 9, height: index == 4 ? 14 : 9)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.bottom, 34)
-    }
-
-    private func heroStoreLabel(for item: OPNGameCatalogItemModel) -> String {
-        let stores = item.gameObject.availableStores.map { OPNGameCatalogArtworkSupport.displayLabel($0) }.filter { !$0.isEmpty }
-        let variantStore = variant(at: item.selectedVariantIndex, in: item.gameObject).map { OPNGameCatalogArtworkSupport.displayLabel($0.appStore) } ?? ""
-        let store = stores.first ?? variantStore
-        return "\(store.isEmpty ? "Cloud" : store)\nRating: \(contentRatingLabel(item.gameObject))"
+        OPNCatalogHeroStageView(item: item)
+            .frame(height: OPNGameCatalogLayoutSupport.heroHeight(forWidth: viewportSize.width, viewportHeight: viewportSize.height))
     }
 
     private func catalogSections(viewportSize: CGSize) -> some View {
-        let headerLeft = OPNGameCatalogLayoutSupport.storeSectionHeaderMargin
-        let headerRight = OPNGameCatalogLayoutSupport.storeSectionHeaderRightMargin
-        let railWidth = max(320, max(980, viewportSize.width))
+        let contentInset = horizontalInset(forWidth: viewportSize.width)
+        let railWidth = max(320, max(980, viewportSize.width) - contentInset * 2)
         let tileSize = OPNGameCatalogLayoutSupport.tileMetrics(forRailWidth: railWidth)
-        let rowHeight = tileSize.height + OPNGameCatalogLayoutSupport.storeTileTopMargin + OPNGameCatalogLayoutSupport.storeTileScrimHeight
-        return VStack(spacing: 12) {
+        let rowOuterInset = max(12, contentInset - 18)
+        return VStack(spacing: 28) {
             ForEach(Array(model.sections.enumerated()), id: \.element.id) { rowIndex, section in
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(displayTitle(for: section.title))
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(Color.white)
+                        Text(String(format: "%02d", rowIndex + 1))
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.brandGreen, alpha: 1)))
+                        Text(section.title)
+                            .font(.system(size: 23, weight: .bold))
+                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 1)))
                         Spacer()
-                        Text("SEE ALL")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Color.white.opacity(0.92))
+                        Text("\(section.games.count) games")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x787A82, alpha: 1)))
                     }
-                    .frame(height: OPNGameCatalogLayoutSupport.storeSectionTitleHeight)
-                    .padding(.leading, headerLeft)
-                    .padding(.trailing, headerRight)
+                    .padding(.horizontal, contentInset)
+
                     ScrollViewReader { rowProxy in
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: OPNGameCatalogLayoutSupport.storeCardSpacing) {
@@ -693,7 +603,7 @@ struct OPNGameCatalogSwiftUIView: View {
                                         focusScrollRequestToken: model.focusScrollRequestItemID == item.id ? model.focusScrollRequestToken : 0,
                                         onSelect: { selectedVariantIndex in
                                             model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
-                                            toggleDetail(for: model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
+                                            onSelect(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
                                         },
                                         onHover: {
                                             model.focusedRowIndex = rowIndex
@@ -708,376 +618,23 @@ struct OPNGameCatalogSwiftUIView: View {
                                     .frame(width: tileSize.width, height: tileSize.height)
                                 }
                             }
-                            .padding(.leading, headerLeft - OPNGameCatalogLayoutSupport.storeTileHorizontalMargin)
-                            .padding(.trailing, headerRight - OPNGameCatalogLayoutSupport.storeTileHorizontalMargin)
-                            .padding(.top, OPNGameCatalogLayoutSupport.storeTileTopMargin)
-                            .padding(.bottom, OPNGameCatalogLayoutSupport.storeTileScrimHeight)
+                            .padding(.trailing, 24)
+                            .padding(.top, 10)
+                            .padding(.bottom, 20)
                         }
                         .onChange(of: model.focusScrollRequestToken) { _, _ in
                             guard let itemID = model.focusScrollRequestItemID, section.games.contains(where: { $0.id == itemID }) else { return }
                             rowProxy.scrollTo(itemID, anchor: .center)
                         }
                     }
-                    .frame(height: rowHeight)
-                    if let selectedItem = selectedDetailItem(in: section) {
-                        activeGameDetail(selectedItem, viewportSize: viewportSize)
-                    }
+                    .frame(height: OPNGameCatalogLayoutSupport.storeTileHeight + 30)
+                    .padding(.horizontal, 18)
+                    .background(Color.white.opacity(0.032), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.055), lineWidth: 1))
+                    .padding(.horizontal, rowOuterInset)
                 }
             }
         }
-        .padding(.top, 18)
-        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x141414, alpha: 1.0)))
-    }
-
-    private func displayTitle(for title: String) -> String {
-        title.caseInsensitiveCompare("Library") == .orderedSame ? "My Library" : title
-    }
-
-    private func selectedDetailItem(in section: OPNGameCatalogSectionModel) -> OPNGameCatalogItemModel? {
-        guard !selectedDetailItemID.isEmpty else { return nil }
-        return section.games.first { $0.id == selectedDetailItemID }
-    }
-
-    private func toggleDetail(for item: OPNGameCatalogItemModel) {
-        selectedDetailItemID = selectedDetailItemID == item.id ? "" : item.id
-    }
-
-    private func activeGameDetail(_ item: OPNGameCatalogItemModel, viewportSize: CGSize) -> some View {
-        let height = min(580.0, max(430.0, viewportSize.height * 0.54))
-        let leftWidth = min(760.0, max(520.0, viewportSize.width * 0.45))
-        return ZStack(alignment: .topLeading) {
-            Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 1.0))
-            HStack(spacing: 0) {
-                Spacer(minLength: leftWidth)
-                OPNCatalogArtworkView(urlStrings: activeGameArtworkCandidates(for: item.gameObject), contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .overlay(LinearGradient(colors: [Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 1.0)), Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 0.70)), .clear], startPoint: .leading, endPoint: .trailing))
-                    .overlay(LinearGradient(colors: [.clear, Color.black.opacity(0.34)], startPoint: .top, endPoint: .bottom))
-            }
-            activeGameInfo(item, leftWidth: leftWidth, height: height)
-            Button { selectedDetailItemID = "" } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .frame(width: 52, height: 52)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(.top, 8)
-            .padding(.trailing, 28)
-            activeGameLogo(item.gameObject)
-            activeGameDots
-        }
-        .frame(height: height)
-    }
-
-    private func activeGameInfo(_ item: OPNGameCatalogItemModel, leftWidth: CGFloat, height: CGFloat) -> some View {
-        let isFavorite = favoriteDetailItemIDs.contains(item.id)
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(item.gameObject.title.isEmpty ? "Selected Game" : item.gameObject.title)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.96))
-                        .lineLimit(1)
-                    detailMetadata(item.gameObject)
-                    detailBadges(item.gameObject)
-                    detailStoreRow(item)
-                    HStack(spacing: 18) {
-                        Button(primaryActionTitle(item).uppercased()) { onSelect(item) }
-                            .buttonStyle(OPNCatalogDetailPlayButtonStyle())
-                            .frame(width: 74, height: 41)
-                        Menu {
-                            if variantCanBeMarkedUnowned(item) {
-                                Button("Mark as Unowned") { onMarkUnowned(item) }
-                            } else {
-                                Button("Game Options") {}
-                                    .disabled(true)
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(Color.white.opacity(0.92))
-                                .frame(width: 38, height: 38)
-                        }
-                        .menuStyle(.button)
-                        .buttonStyle(.plain)
-                    }
-                    HStack(spacing: 0) {
-                        Text(detailAccessMessage(item))
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(Color.white.opacity(0.70))
-                        Text("Learn more")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
-                            .underline()
-                    }
-                    Text(detailDescription(item.gameObject))
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.90))
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    detailCapabilities(item.gameObject)
-                    detailRating(item.gameObject)
-                    HStack(spacing: 6) {
-                        Text("READ MORE")
-                            .font(.system(size: 15, weight: .bold))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .padding(.top, 20)
-                }
-                Spacer(minLength: 20)
-                Button {
-                    if isFavorite { favoriteDetailItemIDs.remove(item.id) } else { favoriteDetailItemIDs.insert(item.id) }
-                } label: {
-                    Image(systemName: isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .frame(width: 52, height: 52)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.leading, OPNGameCatalogLayoutSupport.storeSectionHeaderMargin)
-        .padding(.top, 24)
-        .frame(width: leftWidth, height: height, alignment: .topLeading)
-        .clipped()
-    }
-
-    private func detailMetadata(_ game: OPNCatalogGameObject) -> some View {
-        HStack(spacing: 11) {
-            Text(contentRatingLabel(game))
-                .font(.system(size: 12, weight: .bold))
-            if let playerLabel = detailPlayerLabel(game) {
-                Image(systemName: "person.3.fill")
-                Text(playerLabel)
-            }
-            ForEach(detailControlIcons(game), id: \.self) { icon in
-                Image(systemName: icon)
-            }
-            Text("·")
-            Text(detailGenreLabel(game))
-                .lineLimit(1)
-        }
-        .font(.system(size: 12, weight: .bold))
-        .foregroundStyle(Color.white.opacity(0.82))
-    }
-
-    @ViewBuilder
-    private func detailBadges(_ game: OPNCatalogGameObject) -> some View {
-        let badges = detailBadgeLabels(game)
-        if !badges.isEmpty {
-            HStack(spacing: 4) {
-                ForEach(Array(badges.enumerated()), id: \.offset) { index, label in
-                    detailBadge(index == 0 && !game.membershipTierLabel.isEmpty ? "checkmark.circle.fill" : nil, label, highlighted: index == 0 && !game.membershipTierLabel.isEmpty)
-                }
-            }
-        }
-    }
-
-    private func detailBadgeLabels(_ game: OPNCatalogGameObject) -> [String] {
-        var labels: [String] = []
-        let membership = membershipBadgeLabel(game)
-        if !membership.isEmpty { labels.append(membership) }
-        for tech in game.nvidiaTech {
-            let label = OPNGameCatalogMetadataSupport.displayString(tech, fallback: "")
-            if !label.isEmpty && !labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { labels.append(label) }
-            if labels.count >= 4 { break }
-        }
-        if labels.count < 4 {
-            for feature in game.featureLabels {
-                let label = OPNGameCatalogMetadataSupport.displayString(feature, fallback: "")
-                if !label.isEmpty && !labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { labels.append(label) }
-                if labels.count >= 4 { break }
-            }
-        }
-        return labels
-    }
-
-    private func membershipBadgeLabel(_ game: OPNCatalogGameObject) -> String {
-        let tier = OPNGameCatalogMetadataSupport.displayString(game.membershipTierLabel, fallback: "")
-        guard !tier.isEmpty else { return "" }
-        return tier.range(of: "member", options: .caseInsensitive) == nil ? "For \(tier) Members" : tier
-    }
-
-    private func detailPlayerLabel(_ game: OPNCatalogGameObject) -> String? {
-        if game.maxOnlinePlayers > 1 { return "\(game.maxOnlinePlayers)" }
-        if game.maxLocalPlayers > 1 { return "\(game.maxLocalPlayers)" }
-        return nil
-    }
-
-    private func detailControlIcons(_ game: OPNCatalogGameObject) -> [String] {
-        var icons: [String] = []
-        let controls = game.supportedControls.map { $0.uppercased() }
-        func append(_ icon: String) {
-            if !icons.contains(icon) { icons.append(icon) }
-        }
-        if controls.contains(where: { $0.contains("KEYBOARD") || $0.contains("MOUSE") }) { append("keyboard") }
-        if controls.contains(where: { $0.contains("GAMEPAD") || $0.contains("CONTROLLER") }) { append("gamecontroller.fill") }
-        if controls.contains(where: { $0.contains("TOUCH") }) { append("hand.tap.fill") }
-        if icons.isEmpty {
-            append("keyboard")
-            append("gamecontroller.fill")
-        }
-        return icons
-    }
-
-    private func detailAccessMessage(_ item: OPNGameCatalogItemModel) -> String {
-        if gameNeedsPurchase(item) { return "Game ownership is required before streaming this title. " }
-        if !item.gameObject.membershipTierLabel.isEmpty { return "Access unlocked with your membership. " }
-        return "Ready to stream from your cloud gaming library. "
-    }
-
-    private func detailStoreRow(_ item: OPNGameCatalogItemModel) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "cloud.fill")
-                .font(.system(size: 13, weight: .bold))
-            Text(detailStoreLabel(item))
-                .font(.system(size: 14, weight: .bold))
-            detailBadge(nil, gameNeedsPurchase(item) ? "Required" : "Owned", highlighted: false)
-        }
-        .foregroundStyle(Color.white.opacity(0.88))
-        .padding(.top, 12)
-    }
-
-    private func detailBadge(_ icon: String?, _ text: String, highlighted: Bool) -> some View {
-        HStack(spacing: 4) {
-            if let icon {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-            }
-            Text(text)
-                .font(.system(size: 12, weight: .bold))
-        }
-        .foregroundStyle(Color.white.opacity(highlighted ? 0.94 : 0.70))
-        .padding(.horizontal, 10)
-        .frame(height: 23)
-        .background(Color.white.opacity(highlighted ? 0.18 : 0.08))
-    }
-
-    @ViewBuilder
-    private func detailCapabilities(_ game: OPNCatalogGameObject) -> some View {
-        let capabilities = detailCapabilityLabels(game)
-        if !capabilities.isEmpty {
-            VStack(spacing: 0) {
-                Divider().background(Color.white.opacity(0.22))
-                ForEach(capabilities, id: \.self) { capability in
-                    detailCapabilityRow(icon: "checkmark.circle.fill", title: capability, subtitle: "Available for this game")
-                }
-                Divider().background(Color.white.opacity(0.22))
-            }
-            .padding(.top, 2)
-        }
-    }
-
-    private func detailCapabilityLabels(_ game: OPNCatalogGameObject) -> [String] {
-        var labels: [String] = []
-        for value in game.nvidiaTech + game.featureLabels {
-            let label = OPNGameCatalogMetadataSupport.displayString(value, fallback: "")
-            guard !label.isEmpty, !labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) else { continue }
-            labels.append(label)
-            if labels.count >= 3 { break }
-        }
-        return labels
-    }
-
-    private func detailCapabilityRow(icon: String, title: String, subtitle: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .frame(width: 18)
-            Text(title)
-                .font(.system(size: 15, weight: .bold))
-                .frame(width: 118, alignment: .leading)
-            Text(subtitle)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.70))
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(Color.white.opacity(0.88))
-        .frame(height: 31)
-    }
-
-    private func detailRating(_ game: OPNCatalogGameObject) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(spacing: 0) {
-                Text(String(contentRatingLabel(game).prefix(1)))
-                    .font(.system(size: 38, weight: .black))
-                    .foregroundStyle(Color.black)
-                    .frame(width: 52, height: 52)
-                    .background(Color.white)
-                Text("ESRB")
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(Color.white)
-                    .frame(width: 52, height: 12)
-                    .background(Color.black)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(contentRatingLabel(game))
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.90))
-                ForEach(detailRatingNotes(game), id: \.self) { note in
-                    Text(note)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.64))
-                }
-            }
-        }
-        .padding(.top, 18)
-    }
-
-    private var activeGameDots: some View {
-        HStack(spacing: 12) {
-            ForEach(0..<7, id: \.self) { index in
-                Circle()
-                    .fill(index == 0 ? Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)) : Color.white.opacity(0.52))
-                    .frame(width: 9, height: 9)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.bottom, 42)
-    }
-
-    private func activeGameLogo(_ game: OPNCatalogGameObject) -> some View {
-        OPNCatalogArtworkView(urlStrings: logoCandidates(for: game), contentMode: .fit)
-            .frame(width: 200, height: 74)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            .padding(.trailing, 40)
-            .padding(.bottom, 38)
-    }
-
-    private func activeGameArtworkCandidates(for game: OPNCatalogGameObject) -> [String] {
-        imageCandidates(for: game, preferredTypes: ["SCREENSHOT", "FEATURE_IMAGE", "HERO_IMAGE", "MARQUEE_HERO_IMAGE", "TV_BANNER", "KEY_ART", "GAME_BOX_ART"], includeScreenshots: true)
-    }
-
-    private func detailDescription(_ game: OPNCatalogGameObject) -> String {
-        let trimmed = game.gameDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return trimmed }
-        return "\(game.title.isEmpty ? "This game" : game.title) is ready to stream on GeForce NOW. Launch instantly from your cloud gaming library."
-    }
-
-    private func detailGenreLabel(_ game: OPNCatalogGameObject) -> String {
-        let labels = game.genres.prefix(2).map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") }.filter { !$0.isEmpty }
-        return labels.isEmpty ? primaryGenre(game) : labels.joined(separator: ", ")
-    }
-
-    private func detailStoreLabel(_ item: OPNGameCatalogItemModel) -> String {
-        variant(at: item.selectedVariantIndex, in: item.gameObject).map { OPNGameCatalogArtworkSupport.displayLabel($0.appStore) }.flatMap { $0.isEmpty ? nil : $0 } ?? variantStores(item.gameObject).first ?? "Cloud"
-    }
-
-    private func contentRatingLabel(_ game: OPNCatalogGameObject) -> String {
-        let rating = game.contentRatings.first.map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") } ?? ""
-        return rating.isEmpty ? "UNRATED" : rating.uppercased()
-    }
-
-    private func detailRatingNotes(_ game: OPNCatalogGameObject) -> [String] {
-        var notes = game.contentRatings.dropFirst().map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") }.filter { !$0.isEmpty }
-        if notes.isEmpty && !game.publisherName.isEmpty { notes.append("Publisher: \(game.publisherName)") }
-        if notes.isEmpty && !game.developerName.isEmpty { notes.append("Developer: \(game.developerName)") }
-        return notes
     }
 
     private var loadingState: some View {
@@ -1128,20 +685,19 @@ struct OPNGameCatalogSwiftUIView: View {
                 hint("Y", "Variant")
             }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 34)
-        .background(Color.black.opacity(0.56))
-        .overlay(Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1))
+        .padding(.horizontal, 20)
+        .frame(height: 40)
+        .background(Color.black.opacity(0.50), in: Capsule())
     }
 
     private func hint(_ key: String, _ label: String) -> some View {
         HStack(spacing: 6) {
             Text(key)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.90))
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 0.92)))
             Text(label)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.68))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textSecondary, alpha: 1)))
         }
     }
 
@@ -1151,9 +707,9 @@ struct OPNGameCatalogSwiftUIView: View {
 
     private func searchPanelSize(for viewportSize: CGSize) -> CGSize {
         let scale = viewportSize.height <= 760 ? 0.82 : (viewportSize.height < 900 ? 0.92 : 1.0)
-        let panelHeight = floor(46 * scale)
+        let panelHeight = floor(44 * scale)
         let availableWidth = max(OPNGameCatalogLayoutSupport.storeSearchPanelMinWidth, viewportSize.width - 48)
-        let panelWidth = min(540.0, availableWidth)
+        let panelWidth = min(OPNGameCatalogLayoutSupport.storeSearchPanelMaxWidth, availableWidth)
         return CGSize(width: panelWidth, height: panelHeight)
     }
 
@@ -1162,26 +718,6 @@ struct OPNGameCatalogSwiftUIView: View {
         return floor((140 * scale - searchPanelSize(for: viewportSize).height) * 0.5)
     }
 
-}
-
-private struct OPNCatalogHeroActionButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(Color.black.opacity(0.92))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: configuration.isPressed ? 0.76 : 1.0)))
-    }
-}
-
-private struct OPNCatalogDetailPlayButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .black))
-            .foregroundStyle(Color.black.opacity(0.92))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: configuration.isPressed ? 0.76 : 1.0)))
-    }
 }
 
 private struct OPNCatalogStoreTileView: NSViewRepresentable {
@@ -1304,7 +840,6 @@ private final class OPNCatalogHeroStageNSView: NSView {
         layer?.masksToBounds = true
         let fallbackArtwork = OPNUIHelpers.fallbackHeroArtworkImage()
         artworkView.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackArtwork)
-        artworkView.imageEdgeFadeFraction = 0.22
         artworkView.image = fallbackArtwork
         addSubview(artworkView, positioned: .below, relativeTo: nil)
         titleFallback.maximumNumberOfLines = 2
@@ -1330,9 +865,7 @@ private final class OPNCatalogHeroStageNSView: NSView {
     override func layout() {
         super.layout()
         artworkView.frame = bounds
-        artworkView.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: bounds)
         artworkTransitionView?.frame = bounds
-        artworkTransitionView?.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: bounds)
         updateLogoFrame()
     }
 
@@ -1427,8 +960,6 @@ private final class OPNCatalogHeroStageNSView: NSView {
         artworkTransitionView?.removeFromSuperview()
         let transitionView = OPNHeroArtworkView(frame: artworkView.frame)
         transitionView.autoresizingMask = [.width, .height]
-        transitionView.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: bounds)
-        transitionView.imageEdgeFadeFraction = 0.22
         transitionView.fadeColor = fadeColor
         transitionView.image = image
         transitionView.alphaValue = 0.0

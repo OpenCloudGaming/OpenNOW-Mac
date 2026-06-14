@@ -61,29 +61,30 @@ private struct OPNAuthenticatingSwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: OPNUIHelpers.color(rgb: 0x191919, alpha: 1.0))
-                .ignoresSafeArea()
+            Color.black.opacity(0.94)
             VStack(spacing: 22) {
                 ZStack {
-                    Rectangle()
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                    Circle()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 5)
+                    Circle()
+                        .trim(from: 0.12, to: 0.86)
+                        .stroke(Color(red: 0.204, green: 0.780, blue: 0.349), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .rotationEffect(.degrees(28))
                 }
-                .frame(width: 72, height: 72)
+                .frame(width: 82, height: 82)
 
                 Text(model.message)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.86))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
             }
             .padding(36)
-            .frame(width: 420, height: 220)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.96)))
-            .overlay(Rectangle().stroke(Color.white.opacity(0.20), lineWidth: 1))
-            .shadow(color: .black.opacity(0.42), radius: 24, y: 14)
+            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(.white.opacity(0.10), lineWidth: 1)
+            )
         }
     }
 }
