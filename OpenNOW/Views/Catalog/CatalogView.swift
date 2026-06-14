@@ -5,6 +5,7 @@
 //
 
 import Backend
+import Combine
 import SwiftUI
 
 struct CatalogView: View {
@@ -79,7 +80,8 @@ private struct CatalogSidebar: View {
             .padding(.bottom, 24)
         }
         .padding(.horizontal, 22)
-        .frame(width: 210, maxHeight: .infinity, alignment: .topLeading)
+        .frame(width: 210, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .background(Color(red: 0.055, green: 0.055, blue: 0.055))
         .overlay(alignment: .trailing) { Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1) }
     }

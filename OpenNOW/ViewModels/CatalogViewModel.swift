@@ -6,6 +6,7 @@
 
 import AppKit
 import Backend
+import Combine
 import Foundation
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
@@ -17,9 +18,9 @@ private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
 }
 
 private final class CatalogSendableValue<T>: @unchecked Sendable {
-    let value: T
+    nonisolated(unsafe) let value: T
 
-    init(_ value: T) {
+    nonisolated init(_ value: T) {
         self.value = value
     }
 }

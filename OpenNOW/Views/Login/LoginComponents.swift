@@ -5,32 +5,13 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct LoginBackdrop: View {
     var body: some View {
         Color.black
         .ignoresSafeArea()
-    }
-}
-
-struct GFNWordmark: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Color.openNowGreen
-                Image(systemName: "eye.fill")
-                    .font(.system(size: 16, weight: .black))
-                    .foregroundStyle(.black)
-            }
-            .frame(width: 36, height: 24)
-
-            Text("GEFORCE NOW")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.white)
-                .tracking(0.8)
-        }
     }
 }
 
@@ -104,91 +85,6 @@ struct GFNHeroArtwork: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
         }
-    }
-}
-
-struct LoginStatCard: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.gfnTextTertiary)
-            Text(value)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.gfnPanel.opacity(0.92))
-        .overlay {
-            Rectangle()
-                .stroke(Color.gfnStroke, lineWidth: 1)
-        }
-    }
-}
-
-struct LoginChecklistItem: View {
-    let icon: String
-    let title: String
-    let detail: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(Color.openNowGreen)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.semibold))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.58))
-            }
-        }
-    }
-}
-
-struct SessionMetric: View {
-    let title: String
-    let value: String
-    let symbol: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(Color.openNowGreen)
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.headline)
-                .lineLimit(1)
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-}
-
-struct DetailRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: 112, alignment: .leading)
-            Text(value)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(.callout)
     }
 }
 
