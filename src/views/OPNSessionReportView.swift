@@ -56,6 +56,10 @@ final class OPNSessionReportView: NSView {
 
     private func reportTextForExport() -> String {
         var text = report.copyText
+        let diagnostics = OPNLogCapture.recentLogText(maximumLines: 160)
+        if !diagnostics.isEmpty {
+            text += "\n\n## Captured Diagnostics\n```text\n\(diagnostics)\n```\n"
+        }
         let logPath = OPNLogCapture.capturedLogPath()
         if !logPath.isEmpty { text += "\n\nCaptured log: \(logPath)\n" }
         return text

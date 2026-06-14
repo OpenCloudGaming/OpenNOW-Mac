@@ -71,6 +71,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         extractIceUfrag(from: offerSdp)
     }
 
+    static func sdpMediaSummary(_ sdp: String, label: String) -> String {
+        buildSdpMediaSummary(sdp, label: label)
+    }
+
     func start(sessionInfo: [String: Any], offerSdp: String, settings: [String: Any], answerHandler: @escaping OPNLibWebRTCAnswerHandler, localIceCandidateHandler: @escaping OPNLibWebRTCIceCandidateHandler, stateHandler: @escaping OPNLibWebRTCStateHandler) {
         onAnswer = { sdp, nvstSdp in answerHandler(sdp as NSString, nvstSdp as NSString) }
         onIceCandidate = { candidate in localIceCandidateHandler(candidate as NSDictionary) }
@@ -140,6 +144,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         var processedOfferSdp = offerSdp
         let requestedCodec = normalizedCodec(string(settings["codec"]))
         let requestedCodecSupported = OPNWebRTCCodecSupport.supportsCodec(factory: factory, normalizedCodec: requestedCodec)
+        OPNLogCapture.appendEvent("[LibWebRTC] Start settings resolution=\(string(settings["resolution"], fallback: "unknown")) fps=\(int(settings["fps"])) codec=\(requestedCodec.isEmpty ? "unknown" : requestedCodec) requestedCodecSupported=\(requestedCodecSupported ? "yes" : "no") bitrate=\(int(settings["maxBitrateMbps"]))Mbps h265Rewrite=\(envFlagEnabled("OPN_ENABLE_LIBWEBRTC_H265_OFFER_REWRITE", defaultValue: true) ? "on" : "off") codecFilter=\(envFlagEnabled("OPN_ENABLE_LIBWEBRTC_CODEC_FILTER", defaultValue: false) ? "on" : "off") answerMunge=\(envFlagEnabled("OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE", defaultValue: false) ? "on" : "off") receiverCapabilities=\(OPNWebRTCCodecSupport.receiverCapabilitiesSummary(factory: factory))")
         if requestedCodec == "H265", requestedCodecSupported, envFlagEnabled("OPN_ENABLE_LIBWEBRTC_H265_OFFER_REWRITE", defaultValue: true) {
             let support = OPNWebRTCCodecSupport.h265ReceiverSupport(factory: factory)
             processedOfferSdp = rewriteH265OfferForReceiver(processedOfferSdp, maxMainLevelId: int(support["maxMainLevelId"]), maxMain10LevelId: int(support["maxMain10LevelId"]), supportsHighTier: bool(support["supportsHighTier"]))
@@ -189,6 +194,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                             createAndSendAnswer(retriedWithoutCodecPreference: true)
                             return
                         }
+                        OPNLogCapture.appendEvent("[LibWebRTC] createAnswer produced no video codec failureContext retriedWithoutCodecPreference=\(retriedWithoutCodecPreference ? "yes" : "no") codecPreferenceApplied=\(codecPreferenceApplied ? "yes" : "no") offer=\(buildSdpMediaSummary(remoteOfferSdp, label: "failure-offer")) answer=\(buildSdpMediaSummary(answerSdp, label: "failure-answer"))")
                         self.handleConnectionState(false, error: "createAnswer produced no negotiated video media codec")
                         return
                     }
@@ -979,11 +985,46 @@ private func videoSdpHasMediaCodec(_ sdp: String) -> Bool {
 }
 
 private func logVideoSdpSummary(_ label: String, _ sdp: String) {
-    let videoLines = sdp.components(separatedBy: .newlines).filter { $0.hasPrefix("m=video") || $0.hasPrefix("a=rtpmap:") }
-    let codecs = videoCodecDescriptions(in: sdp).joined(separator: ",")
-    let message = "[LibWebRTC] \(label) lines=\(videoLines.count) codecs=\(codecs.isEmpty ? "none" : codecs)"
+    let message = "[LibWebRTC] \(buildSdpMediaSummary(sdp, label: label))"
     NSLog("%@", message)
     OPNLogCapture.appendEvent(message)
+}
+
+private func buildSdpMediaSummary(_ sdp: String, label: String) -> String {
+    var mediaLines: [String] = []
+    var videoLines: [String] = []
+    var inVideo = false
+    for line in sdpLines(sdp) {
+        if line.hasPrefix("m=") {
+            mediaLines.append(line)
+            inVideo = line.hasPrefix("m=video")
+            if inVideo { videoLines.append(line) }
+            continue
+        }
+        guard inVideo else { continue }
+        if line.hasPrefix("a=mid:") || line == "a=sendrecv" || line == "a=sendonly" || line == "a=recvonly" || line == "a=inactive" || line.hasPrefix("a=rtpmap:") || line.hasPrefix("a=fmtp:") || line.hasPrefix("a=rtcp-fb:") {
+            videoLines.append(line)
+        }
+    }
+    let codecs = videoCodecDescriptions(in: sdp).joined(separator: ",")
+    let media = mediaLines.isEmpty ? "none" : mediaLines.joined(separator: " | ")
+    let video = limitedDiagnosticText(videoLines.isEmpty ? "none" : videoLines.joined(separator: " | "), limit: 1400)
+    return "\(label) hash=\(sdpStableHash(sdp)) bytes=\(sdp.utf8.count) media=\(media) videoCodecs=\(codecs.isEmpty ? "none" : codecs) video=\(video)"
+}
+
+private func limitedDiagnosticText(_ text: String, limit: Int) -> String {
+    guard text.count > limit else { return text }
+    let end = text.index(text.startIndex, offsetBy: limit)
+    return String(text[..<end]) + "...[truncated]"
+}
+
+private func sdpStableHash(_ sdp: String) -> String {
+    var hash: UInt64 = 14_695_981_039_346_656_037
+    for byte in sdp.utf8 {
+        hash ^= UInt64(byte)
+        hash &*= 1_099_511_628_211
+    }
+    return String(format: "%016llx", hash)
 }
 
 private func videoCodecDescriptions(in sdp: String) -> [String] {
@@ -1049,6 +1090,7 @@ private func array(_ value: Any?) -> [Any] { value as? [Any] ?? [] }
 private func stringArray(_ value: Any?) -> [String] { if let value = value as? String { return value.isEmpty ? [] : [value] }; if let value = value as? [String] { return value }; return (value as? NSArray)?.compactMap { string($0) }.filter { !$0.isEmpty } ?? [] }
 private func emptyNil(_ value: String) -> String? { value.isEmpty ? nil : value }
 private func string(_ value: Any?) -> String { if let value = value as? String { return value }; if let value = value as? NSString { return value as String }; if let value = value as? NSNumber { return value.stringValue }; return "" }
+private func string(_ value: Any?, fallback: String) -> String { let text = string(value); return text.isEmpty ? fallback : text }
 private func int(_ value: Any?, fallback: Int = 0) -> Int { if let value = value as? Int { return value }; if let value = value as? NSNumber { return value.intValue }; if let value = value as? String { return Int(value) ?? fallback }; return fallback }
 private func int64(_ value: Any?) -> Int64 { if let value = value as? Int64 { return value }; if let value = value as? NSNumber { return value.int64Value }; if let value = value as? String { return Int64(value) ?? 0 }; return 0 }
 private func uint64(_ value: Any?) -> UInt64 { if let value = value as? UInt64 { return value }; if let value = value as? NSNumber { return value.uint64Value }; if let value = value as? String { return UInt64(value) ?? 0 }; return 0 }

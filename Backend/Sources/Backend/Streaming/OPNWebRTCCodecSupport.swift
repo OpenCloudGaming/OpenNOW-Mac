@@ -3,6 +3,23 @@ import WebRTC
 
 @objc(OPNWebRTCCodecSupport)
 final class OPNWebRTCCodecSupport: NSObject {
+    @objc(receiverCapabilitiesSummary)
+    static func receiverCapabilitiesSummary() -> String {
+        let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
+        return receiverCapabilitiesSummary(factory: factory)
+    }
+
+    @objc(receiverCapabilitiesSummaryWithFactory:)
+    static func receiverCapabilitiesSummary(factory: RTCPeerConnectionFactory?) -> String {
+        guard let factory else { return "factory=unavailable" }
+        let capabilities = factory.rtpReceiverCapabilities(forKind: kRTCMediaStreamTrackKindVideo)
+        let codecs = capabilities.codecs.map { codec in
+            let parameters = codec.parameters.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ";")
+            return parameters.isEmpty ? "\(codec.name)/\(codec.mimeType)" : "\(codec.name)/\(codec.mimeType)(\(parameters))"
+        }
+        return codecs.isEmpty ? "none" : codecs.joined(separator: ", ")
+    }
+
     @objc(compatibleCodecForRequestedCodec:)
     static func compatibleCodec(requestedCodec: String) -> String {
         let requested = normalizedCodec(requestedCodec)

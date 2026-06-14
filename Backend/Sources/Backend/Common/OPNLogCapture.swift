@@ -19,8 +19,16 @@ public final class OPNLogCapture: NSObject {
         let line = "\(Date()) \(redactedLogLine(message))"
         queue.sync {
             events.append(line)
-            if events.count > 200 { events.removeFirst(events.count - 200) }
+            if events.count > 500 { events.removeFirst(events.count - 500) }
             appendLineToFileLocked(line)
+        }
+    }
+
+    @objc(recentLogTextWithMaximumLines:)
+    public static func recentLogText(maximumLines: Int) -> String {
+        queue.sync {
+            let limit = max(1, maximumLines)
+            return events.suffix(limit).joined(separator: "\n")
         }
     }
 

@@ -227,8 +227,11 @@ final class OPNStreamViewController: NSViewController {
         streamLaunchTrace?.setTag("backend", value: webRTCBackendName)
         healthReport.reset(gameTitle: gameTitle, appId: appId, backend: webRTCBackendName, now: CACurrentMediaTime())
         healthReportStarted = true
+        OPNLogCapture.appendEvent("[StreamLaunch] Begin game=\(gameTitle.isEmpty ? "Unknown" : gameTitle) appId=\(appId) backend=\(webRTCBackendName) resume=\(resumeExistingSession ? "yes" : "no")")
 
         let settings = streamSettingsDictionary()
+        healthReport.setRequested(resolution: string(settings["resolution"]), fps: int(settings["fps"]), codec: string(settings["codec"]), bitrateMbps: int(settings["maxBitrateMbps"]))
+        OPNLogCapture.appendEvent("[StreamLaunch] Initial settings \(streamSettingsSummary(settings)) receiverCapabilities=\(OPNStreamSessionHandle.videoReceiverCapabilitiesSummary())")
         guard ensureMicrophonePermissionIfNeeded(settings: settings, generation: generation) else { return }
         OPNSessionManager.shared.setAccessToken(apiToken)
         let selectedStreamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
@@ -238,11 +241,14 @@ final class OPNStreamViewController: NSViewController {
         let settingsBox = OPNStreamSendableValue(settings)
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"], fallback: 50)
         let providerStreamingBaseUrl = OPNGameService.shared.providerStreamingBaseURL()
+        healthReport.markPhase("Check network route", now: CACurrentMediaTime())
         OPNStreamPreferences.fetchCloudVariables(token: apiToken) { [weak self] cloudVariables in
             guard let self else { return }
             OPNStreamPreferences.runNetworkPreflight(token: self.apiToken, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps) { [weak self] preflight in
                 DispatchQueue.main.async {
                     guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+                    self.healthReport.setNetwork(streamingBaseUrl: preflight.streamingBaseUrl, networkType: preflight.networkType, latencyMs: preflight.latencyMs, measuredBandwidthMbps: preflight.measuredBandwidthMbps, packetLossPercent: preflight.packetLossPercent, jitterMs: preflight.jitterMs, usedAutomaticRegion: preflight.usedAutomaticRegion, region: self.launchStreamingBaseUrl)
+                    OPNLogCapture.appendEvent("[StreamLaunch] Network preflight type=\(preflight.networkType.isEmpty ? "Unknown" : preflight.networkType) latency=\(preflight.latencyMs)ms jitter=\(preflight.jitterMs)ms bandwidth=\(String(format: "%.1f", preflight.measuredBandwidthMbps))Mbps loss=\(String(format: "%.2f", preflight.packetLossPercent))% recommendedBitrate=\(preflight.recommendedMaxBitrateMbps)Mbps baseUrl=\(preflight.streamingBaseUrl.isEmpty ? self.launchStreamingBaseUrl : preflight.streamingBaseUrl)")
                     var launchSettings = self.settingsByApplyingCloudVariables(settingsBox.value, variables: cloudVariables)
                     launchSettings["networkTestSessionId"] = preflight.networkTestSessionId
                     launchSettings["networkType"] = preflight.networkType
@@ -255,6 +261,8 @@ final class OPNStreamViewController: NSViewController {
                         OPNSessionManager.shared.setStreamingBaseUrl(preflight.streamingBaseUrl)
                     }
                     guard self.confirmNetworkPreflightIfNeeded(preflight) else { return }
+                    self.healthReport.setFinal(resolution: self.string(launchSettings["resolution"]), fps: self.int(launchSettings["fps"]), codec: self.string(launchSettings["codec"]), bitrateMbps: self.int(launchSettings["maxBitrateMbps"]))
+                    OPNLogCapture.appendEvent("[StreamLaunch] Launch settings \(self.streamSettingsSummary(launchSettings))")
                     self.apply(settings: launchSettings)
                     if self.resumeExistingSession {
                         self.claimSession(settings: launchSettings, generation: generation)
@@ -268,6 +276,8 @@ final class OPNStreamViewController: NSViewController {
 
     private func launchFreshSession(settings: [String: Any], generation: UInt) {
         setStatus("Allocating cloud session...")
+        healthReport.markPhase("Allocate cloud session", now: CACurrentMediaTime())
+        OPNLogCapture.appendEvent("[StreamLaunch] Launching fresh session \(streamSettingsSummary(settings))")
         let settingsBox = OPNStreamSendableValue(settings)
         OPNGameService.shared.setAccessToken(apiToken)
         let streamingBaseUrl = launchStreamingBaseUrl.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId) : launchStreamingBaseUrl
@@ -295,6 +305,8 @@ final class OPNStreamViewController: NSViewController {
 
     private func createSession(settings: [String: Any], generation: UInt) {
         setStatus("Allocating cloud session...")
+        healthReport.markPhase("Allocate cloud session", now: CACurrentMediaTime())
+        OPNLogCapture.appendEvent("[StreamLaunch] Creating session \(streamSettingsSummary(settings))")
         OPNSessionManager.shared.createSession(appId: appId, internalTitle: gameTitle.isEmpty ? "OpenNOW" : gameTitle, settings: settings) { [weak self] success, sessionInfo, error in
             DispatchQueue.main.async {
                 guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
@@ -309,6 +321,8 @@ final class OPNStreamViewController: NSViewController {
 
     private func claimSession(settings: [String: Any], generation: UInt) {
         setStatus("Resuming session...")
+        healthReport.markPhase("Allocate cloud session", now: CACurrentMediaTime())
+        OPNLogCapture.appendEvent("[StreamLaunch] Claiming session \(streamSettingsSummary(settings))")
         OPNSessionManager.shared.claimSession(sessionId: resumeSessionId, serverIp: resumeServer, appId: appId, settings: settings, recoveryMode: recovering) { [weak self] success, sessionInfo, error in
             DispatchQueue.main.async {
                 guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
@@ -416,6 +430,9 @@ final class OPNStreamViewController: NSViewController {
         activeSessionInfo = sessionInfo as? [String: Any] ?? [:]
         hasActiveSessionInfo = true
         let negotiatedSettings = settingsByApplyingNegotiatedProfile(settings: settings, sessionInfo: sessionInfo)
+        healthReport.setSession(zone: string(sessionInfo["zone"]), gpuType: string(sessionInfo["gpuType"]), negotiatedResolution: string(negotiatedSettings["resolution"]), negotiatedFps: int(negotiatedSettings["fps"]), negotiatedCodec: string(negotiatedSettings["codec"]))
+        healthReport.setFinal(resolution: string(negotiatedSettings["resolution"]), fps: int(negotiatedSettings["fps"]), codec: string(negotiatedSettings["codec"]), bitrateMbps: int(negotiatedSettings["maxBitrateMbps"]))
+        OPNLogCapture.appendEvent("[StreamLaunch] Connecting session \(sessionSummary(sessionInfo)) negotiated=\(streamSettingsSummary(negotiatedSettings))")
         setStatus("Connecting to stream...")
         let signaling = OPNWebSocketSignalingClient(signalingServer: string(sessionInfo["signalingServer"]), sessionId: string(sessionInfo["sessionId"]), signalingUrl: string(sessionInfo["signalingUrl"]))
         signaling.setPeerResolution(negotiatedSettings["resolution"] as? String ?? "1920x1080")
@@ -423,10 +440,13 @@ final class OPNStreamViewController: NSViewController {
 
         signaling.onOffer = { [weak self] offer in
             guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
+            self.healthReport.markPhase("Receive stream offer", now: CACurrentMediaTime())
+            OPNLogCapture.appendEvent("[StreamLaunch] Received WebRTC offer bytes=\(offer.utf8.count) summary=\(OPNStreamSessionHandle.sdpMediaSummary(offer, label: "remote-offer"))")
             self.session.setNativeWindow(Unmanaged.passUnretained(self.streamView?.nativeVideoView() ?? self.view).toOpaque())
             let serverIceUfrag = OPNStreamSessionHandle.iceUfrag(fromOfferSdp: offer)
             self.remoteIceReceived = false
             self.startRemoteIceGraceTimer(generation: generation)
+            self.healthReport.markPhase("Negotiate WebRTC", now: CACurrentMediaTime())
             self.session.start(sessionInfo: sessionInfo, offerSdp: offer, settings: negotiatedSettings as NSDictionary, answerHandler: { [weak self] sdp, nvstSdp in
                 DispatchQueue.main.async { self?.signaling?.sendAnswerSdp(sdp as String, nvstSdp: nvstSdp as String) }
             }, localIceCandidateHandler: { [weak self] candidate in
@@ -622,6 +642,32 @@ final class OPNStreamViewController: NSViewController {
         OPNSentry.logInfoMessage(message)
         OPNLogCapture.appendEvent(message)
         return result
+    }
+
+    private func streamSettingsSummary(_ settings: [String: Any]) -> String {
+        let resolution = string(settings["resolution"], fallback: "unknown")
+        let fps = int(settings["fps"])
+        let codec = string(settings["codec"], fallback: "unknown")
+        let color = string(settings["colorQuality"], fallback: "unknown")
+        let bitrate = int(settings["maxBitrateMbps"])
+        let hdr = bool(settings["enableHdr"]) ? "on" : "off"
+        let l4s = bool(settings["enableL4S"]) ? "on" : "off"
+        let lowLatency = bool(settings["lowLatencyMode"]) ? "on" : "off"
+        let microphone = string(settings["microphoneMode"], fallback: "unknown")
+        return "resolution=\(resolution) fps=\(fps) codec=\(codec) color=\(color) bitrate=\(bitrate)Mbps hdr=\(hdr) l4s=\(l4s) lowLatency=\(lowLatency) microphone=\(microphone)"
+    }
+
+    private func sessionSummary(_ sessionInfo: NSDictionary) -> String {
+        let status = int(sessionInfo["status"])
+        let sessionId = string(sessionInfo["sessionId"], fallback: "unknown")
+        let serverIp = string(sessionInfo["serverIp"], fallback: "unknown")
+        let signalingServer = string(sessionInfo["signalingServer"], fallback: "unknown")
+        let signalingUrl = string(sessionInfo["signalingUrl"], fallback: "unknown")
+        let negotiated = sessionInfo["negotiatedStreamProfile"] as? [String: Any] ?? [:]
+        let negotiatedCodec = string(negotiated["codec"], fallback: "unknown")
+        let negotiatedResolution = string(negotiated["resolution"], fallback: "unknown")
+        let negotiatedFps = int(negotiated["fps"])
+        return "status=\(status) sessionId=\(sessionId) serverIp=\(serverIp) signalingServer=\(signalingServer) signalingUrl=\(signalingUrl) negotiatedResolution=\(negotiatedResolution) negotiatedFps=\(negotiatedFps) negotiatedCodec=\(negotiatedCodec)"
     }
 
     private func confirmNetworkPreflightIfNeeded(_ preflight: OPNStreamNetworkPreflightResult) -> Bool {
@@ -889,6 +935,7 @@ final class OPNStreamViewController: NSViewController {
             return
         }
         let displayError = success ? "" : errorMessage
+        if !success { OPNLogCapture.appendEvent("[StreamLaunch] Ending with error: \(displayError)") }
         healthReport.addStatsSnapshot(session.latestStatsSnapshot())
         let report = healthReport.finalize(success: success, terminalError: displayError, now: CACurrentMediaTime())
         cleanup()
