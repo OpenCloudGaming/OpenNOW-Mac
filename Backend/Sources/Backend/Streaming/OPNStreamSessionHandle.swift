@@ -24,6 +24,11 @@ final class OPNStreamSessionHandle: NSObject {
         OPNLibWebRTCStreamSession.iceUfrag(fromOfferSdp: offerSdp)
     }
 
+    @objc(compatibleVideoCodecForCodec:)
+    static func compatibleVideoCodec(for codec: String) -> String {
+        OPNWebRTCCodecSupport.compatibleCodec(requestedCodec: codec)
+    }
+
     @objc override init() {
         session = OPNLibWebRTCStreamSession()
         super.init()

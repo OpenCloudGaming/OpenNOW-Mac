@@ -500,7 +500,7 @@ final class OPNStreamViewController: NSViewController {
             resolution = OPNStreamResolutionOption(width: width, height: height)
         }
         let codec = OPNStreamPreferences.resolveCodec(profile: profile, resolution: resolution, capabilities: capabilities, libWebRTCAvailable: OPNStreamSessionHandle.isBackendAvailable())
-        return [
+        let settings: [String: Any] = [
             "resolution": resolution.value,
             "fps": profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
             "codec": codec,
@@ -532,6 +532,7 @@ final class OPNStreamViewController: NSViewController {
             "remoteControllersBitmap": connectedControllerBitmap(),
             "availableSupportedControllers": [],
         ]
+        return settingsByApplyingWebRTCCodecCapabilities(settings)
     }
 
     private func ensureMicrophonePermissionIfNeeded(settings: [String: Any], generation: UInt) -> Bool {
@@ -604,6 +605,22 @@ final class OPNStreamViewController: NSViewController {
         result["enableL4S"] = applied.enableL4S
         result["enableHdr"] = applied.enableHdr
         result["enableReflex"] = applied.enableReflex
+        return settingsByApplyingWebRTCCodecCapabilities(result)
+    }
+
+    private func settingsByApplyingWebRTCCodecCapabilities(_ settings: [String: Any]) -> [String: Any] {
+        let requestedCodec = string(settings["codec"])
+        let compatibleCodec = OPNStreamSessionHandle.compatibleVideoCodec(for: requestedCodec)
+        guard !compatibleCodec.isEmpty, compatibleCodec != requestedCodec.uppercased() else { return settings }
+        var result = settings
+        result["codec"] = compatibleCodec
+        if compatibleCodec == "H264" {
+            result["colorQuality"] = "8bit_420"
+            result["enableHdr"] = false
+        }
+        let message = "[StreamVC] Falling back from requested codec \(requestedCodec.isEmpty ? "unknown" : requestedCodec) to WebRTC-compatible \(compatibleCodec)"
+        OPNSentry.logInfoMessage(message)
+        OPNLogCapture.appendEvent(message)
         return result
     }
 

@@ -3,6 +3,16 @@ import WebRTC
 
 @objc(OPNWebRTCCodecSupport)
 final class OPNWebRTCCodecSupport: NSObject {
+    @objc(compatibleCodecForRequestedCodec:)
+    static func compatibleCodec(requestedCodec: String) -> String {
+        let requested = normalizedCodec(requestedCodec)
+        let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
+        let supportedCodecs = supportedVideoCodecs(factory: factory)
+        if supportedCodecs.contains(requested) { return requested }
+        if supportedCodecs.contains("H264") { return "H264" }
+        return requested.isEmpty ? "H264" : requested
+    }
+
     @objc(supportsCodecWithFactory:normalizedCodec:)
     static func supportsCodec(factory: RTCPeerConnectionFactory?, normalizedCodec: String) -> Bool {
         guard let factory, isSupportedCodecPreference(normalizedCodec) else { return false }
@@ -78,6 +88,40 @@ final class OPNWebRTCCodecSupport: NSObject {
             }
         }
         return applied
+    }
+
+    @objc(resetVideoCodecPreferencesWithPeerConnection:)
+    static func resetVideoCodecPreferences(peerConnection: RTCPeerConnection?) -> Bool {
+        guard let peerConnection else { return false }
+        var reset = false
+        for transceiver in peerConnection.transceivers where transceiver.mediaType == .video && !transceiver.isStopped {
+            do {
+                try transceiver.setCodecPreferences([], error: ())
+                reset = true
+                NSLog("[LibWebRTC] Reset video codec preferences for transceiver mid=%@", transceiver.mid)
+            } catch {
+                NSLog("[LibWebRTC] Failed to reset video codec preferences for transceiver mid=%@: %@", transceiver.mid, error.localizedDescription)
+            }
+        }
+        return reset
+    }
+
+    private static func supportedVideoCodecs(factory: RTCPeerConnectionFactory) -> Set<String> {
+        let capabilities = factory.rtpReceiverCapabilities(forKind: kRTCMediaStreamTrackKindVideo)
+        var result = Set<String>()
+        for codec in capabilities.codecs {
+            if codecCapability(codec, matches: "H264") { result.insert("H264") }
+            if codecCapability(codec, matches: "H265") { result.insert("H265") }
+            if codecCapability(codec, matches: "AV1") { result.insert("AV1") }
+        }
+        return result
+    }
+
+    private static func normalizedCodec(_ codec: String) -> String {
+        let upper = codec.uppercased()
+        if upper == "HEVC" { return "H265" }
+        if ["H264", "H265", "AV1"].contains(upper) { return upper }
+        return ""
     }
 
     private static func isSupportedCodecPreference(_ codec: String) -> Bool {

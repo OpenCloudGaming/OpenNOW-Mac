@@ -156,39 +156,56 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         @Sendable func handleRemoteDescriptionSet(impl: OPNLibWebRTCSessionImpl, peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
             self.prepareMicrophoneIfNeeded(impl: impl, factory: factory)
             let answerCodec = normalizedCodec(string(self.settings["codec"]))
+            let codecPreferenceApplied: Bool
             if !answerCodec.isEmpty {
                 if videoSdpContainsCodec(remoteOfferSdp, normalizedCodec: answerCodec) {
-                    if !OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec) {
+                    codecPreferenceApplied = OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec)
+                    if !codecPreferenceApplied {
                         NSLog("[LibWebRTC] No video transceiver accepted %@ codec preference before answer", answerCodec)
                     }
                 } else {
                     NSLog("[LibWebRTC] Skipping %@ codec preference because remote offer does not include it", answerCodec)
+                    codecPreferenceApplied = false
                 }
+            } else {
+                codecPreferenceApplied = false
             }
-            peerConnection.answer(for: constraints) { [weak self, weak impl] answer, answerError in
-                guard let self, self.callbackGeneration == generation else { return }
-                guard let impl, let peerConnection = impl.peerConnection, let answer else {
-                    self.handleConnectionState(false, error: "createAnswer failed: \(answerError?.localizedDescription ?? "unknown")")
-                    return
-                }
-                let mungedAnswer = envFlagEnabled("OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE", defaultValue: false) ? mungeAnswerSdp(answer.sdp, maxBitrateKbps: max(1000, int(self.settings["maxBitrateMbps"], fallback: 50) * 1000)) : answer.sdp
-                let answerSdp = alignH265AnswerFmtpToOffer(mungedAnswer, offerSdp: remoteOfferSdp)
-                logVideoSdpSummary("answer-video", answerSdp)
-                guard videoSdpHasMediaCodec(answerSdp) else {
-                    self.handleConnectionState(false, error: "createAnswer produced no negotiated video media codec")
-                    return
-                }
-                let localAnswer = RTCSessionDescription(type: .answer, sdp: answerSdp)
-                peerConnection.setLocalDescription(localAnswer) { [weak self] localError in
+
+            @Sendable func createAndSendAnswer(retriedWithoutCodecPreference: Bool) {
+                peerConnection.answer(for: constraints) { [weak self, weak impl] answer, answerError in
                     guard let self, self.callbackGeneration == generation else { return }
-                    if let localError {
-                        self.handleConnectionState(false, error: "setLocalDescription failed: \(localError.localizedDescription)")
+                    guard let impl, let peerConnection = impl.peerConnection, let answer else {
+                        self.handleConnectionState(false, error: "createAnswer failed: \(answerError?.localizedDescription ?? "unknown")")
                         return
                     }
-                    self.statsLock.withLock { self.latestStats.videoPipelineMode = "libwebrtc answer sent" }
-                    self.onAnswer?(answerSdp, buildNvstSdp(settings: self.settings, credentials: extractIceCredentials(from: answerSdp)))
+                    let mungedAnswer = envFlagEnabled("OPN_ENABLE_LIBWEBRTC_ANSWER_MUNGE", defaultValue: false) ? mungeAnswerSdp(answer.sdp, maxBitrateKbps: max(1000, int(self.settings["maxBitrateMbps"], fallback: 50) * 1000)) : answer.sdp
+                    let answerSdp = alignH265AnswerFmtpToOffer(mungedAnswer, offerSdp: remoteOfferSdp)
+                    logVideoSdpSummary("answer-video", answerSdp)
+                    guard videoSdpHasMediaCodec(answerSdp) else {
+                        if codecPreferenceApplied, !retriedWithoutCodecPreference, OPNWebRTCCodecSupport.resetVideoCodecPreferences(peerConnection: peerConnection) {
+                            let message = "[LibWebRTC] createAnswer rejected video after codec preference; retrying with default codec preferences"
+                            NSLog("%@", message)
+                            OPNLogCapture.appendEvent(message)
+                            createAndSendAnswer(retriedWithoutCodecPreference: true)
+                            return
+                        }
+                        self.handleConnectionState(false, error: "createAnswer produced no negotiated video media codec")
+                        return
+                    }
+                    let localAnswer = RTCSessionDescription(type: .answer, sdp: answerSdp)
+                    peerConnection.setLocalDescription(localAnswer) { [weak self] localError in
+                        guard let self, self.callbackGeneration == generation else { return }
+                        if let localError {
+                            self.handleConnectionState(false, error: "setLocalDescription failed: \(localError.localizedDescription)")
+                            return
+                        }
+                        self.statsLock.withLock { self.latestStats.videoPipelineMode = "libwebrtc answer sent" }
+                        self.onAnswer?(answerSdp, buildNvstSdp(settings: self.settings, credentials: extractIceCredentials(from: answerSdp)))
+                    }
                 }
             }
+
+            createAndSendAnswer(retriedWithoutCodecPreference: false)
         }
 
         let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
@@ -964,7 +981,9 @@ private func videoSdpHasMediaCodec(_ sdp: String) -> Bool {
 private func logVideoSdpSummary(_ label: String, _ sdp: String) {
     let videoLines = sdp.components(separatedBy: .newlines).filter { $0.hasPrefix("m=video") || $0.hasPrefix("a=rtpmap:") }
     let codecs = videoCodecDescriptions(in: sdp).joined(separator: ",")
-    NSLog("[LibWebRTC] %@ lines=%d codecs=%@", label, videoLines.count, codecs.isEmpty ? "none" : codecs)
+    let message = "[LibWebRTC] \(label) lines=\(videoLines.count) codecs=\(codecs.isEmpty ? "none" : codecs)"
+    NSLog("%@", message)
+    OPNLogCapture.appendEvent(message)
 }
 
 private func videoCodecDescriptions(in sdp: String) -> [String] {
