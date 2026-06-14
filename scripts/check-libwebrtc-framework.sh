@@ -12,7 +12,7 @@ if [[ ! -d "$framework_path" ]]; then
     printf 'Missing %s\n' "$framework_path" >&2
     printf 'Also checked %s\n' "$xcframework_path" >&2
     printf 'Provide a macOS arm64 WebRTC.framework or WebRTC.xcframework and run:\n' >&2
-    printf '  make WEBRTC_FRAMEWORK_DIR=%s\n' "$framework_dir" >&2
+    printf '  xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug build\n' >&2
     exit 1
   fi
 fi

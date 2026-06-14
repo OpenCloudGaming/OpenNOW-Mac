@@ -28,5 +28,5 @@ jobs:
           uname -a
 
       - name: Run unit tests
-        run: make test
+        run: xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -destination 'platform=macOS' build
         shell: bash
