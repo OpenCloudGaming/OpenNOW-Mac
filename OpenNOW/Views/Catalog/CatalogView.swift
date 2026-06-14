@@ -290,54 +290,61 @@ private struct CatalogContentView: View {
         let heroes = heroGames
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                if hero != nil {
-                    CatalogHeroView(
-                        viewModel: viewModel,
-                        games: heroes,
-                        activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
-                        onSelectSlide: { index in
-                            heroAutoScrollEnabled = false
-                            heroIndex = index
-                        },
-                        onPreviousSlide: {
-                            guard !heroes.isEmpty else { return }
-                            heroAutoScrollEnabled = false
-                            heroIndex = max(heroIndex - 1, 0)
-                        },
-                        onNextSlide: {
-                            guard !heroes.isEmpty else { return }
-                            heroAutoScrollEnabled = false
-                            heroIndex = min(heroIndex + 1, heroes.count - 1)
-                        }
-                    )
-                }
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 26) {
+                    if hero != nil {
+                        CatalogHeroView(
+                            viewModel: viewModel,
+                            games: heroes,
+                            activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
+                            onSelectSlide: { index in
+                                heroAutoScrollEnabled = false
+                                heroIndex = index
+                            },
+                            onPreviousSlide: {
+                                guard !heroes.isEmpty else { return }
+                                heroAutoScrollEnabled = false
+                                heroIndex = max(heroIndex - 1, 0)
+                            },
+                            onNextSlide: {
+                                guard !heroes.isEmpty else { return }
+                                heroAutoScrollEnabled = false
+                                heroIndex = min(heroIndex + 1, heroes.count - 1)
+                            }
+                        )
+                    }
 
-                if !viewModel.errorMessage.isEmpty {
-                    CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                }
-                if viewModel.isBrowseMode {
-                    CatalogBrowseControlsView(viewModel: viewModel)
-                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                }
-                if viewModel.isLoading || viewModel.isLoadingPanels {
-                    CatalogLoadingStrip()
-                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                }
-
-                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                    CatalogRailView(viewModel: viewModel, section: section)
-                    if shouldShowDetail(afterSectionAt: index, sections: sections) {
-                        GameDetailPanel(viewModel: viewModel)
+                    if !viewModel.errorMessage.isEmpty {
+                        CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
                             .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                            .padding(.top, -CatalogVendorLayout.cardTrayHeight)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                    if viewModel.isBrowseMode {
+                        CatalogBrowseControlsView(viewModel: viewModel)
+                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                    }
+                    if (viewModel.isLoading || viewModel.isLoadingPanels) && !sections.isEmpty {
+                        CatalogLoadingStrip()
+                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                    }
+
+                    ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                        CatalogRailView(viewModel: viewModel, section: section)
+                        if shouldShowDetail(afterSectionAt: index, sections: sections) {
+                            GameDetailPanel(viewModel: viewModel)
+                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                                .padding(.top, -CatalogVendorLayout.cardTrayHeight)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
                     }
                 }
+                .padding(.bottom, 44)
             }
-            .padding(.bottom, 44)
+
+            if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
+                VendorSplashLoadingView()
+                    .transition(.opacity)
+            }
         }
         .background(Color.black)
         .onReceive(heroTimer) { _ in
@@ -1431,11 +1438,12 @@ private struct CatalogMessageView: View {
 
 private struct CatalogLoadingStrip: View {
     var body: some View {
-        HStack(spacing: 12) {
-            ProgressView().controlSize(.small)
+        VStack(alignment: .leading, spacing: 10) {
             Text("Loading GeForce NOW catalog")
                 .font(.nvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.62))
+            VendorIndeterminateProgressBar()
+                .frame(width: 260, height: 4)
         }
         .padding(12)
         .background(Color.white.opacity(0.055))

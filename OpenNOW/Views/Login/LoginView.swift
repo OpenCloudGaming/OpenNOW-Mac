@@ -33,6 +33,12 @@ struct LoginView: View {
                 loginWindow
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+
+            if viewModel.isLaunchingOAuth || viewModel.isAuthenticating {
+                VendorSplashLoadingView(message: "Connecting to GeForce NOW")
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }
         .preferredColorScheme(.dark)

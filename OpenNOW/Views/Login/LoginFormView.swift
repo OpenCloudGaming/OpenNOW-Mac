@@ -67,13 +67,7 @@ struct LoginFormView: View {
                 .padding(.bottom, 32)
 
                 Button(action: startVendorLogin) {
-                    HStack(spacing: 10) {
-                        if viewModel.isLaunchingOAuth || viewModel.isAuthenticating {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                        Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
-                    }
+                    Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
                 }
                 .buttonStyle(VendorGetInButtonStyle())
                 .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)

@@ -39,6 +39,91 @@ struct VendorResourceImage: View {
     }
 }
 
+struct VendorSplashLoadingView: View {
+    var message = "Loading GeForce NOW catalog"
+    var showsMessage = true
+
+    var body: some View {
+        GeometryReader { proxy in
+            let isCompact = min(proxy.size.width, proxy.size.height) < 600
+            ZStack {
+                Color.black
+
+                RadialGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.20), location: 0.00),
+                        .init(color: .white.opacity(0.05), location: 0.50),
+                        .init(color: .white.opacity(0.00), location: 1.00)
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.72
+                )
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.80), location: 0.00),
+                        .init(color: .black.opacity(0.40), location: 0.25),
+                        .init(color: .black.opacity(0.20), location: 0.35),
+                        .init(color: .black.opacity(0.20), location: 0.65),
+                        .init(color: .black.opacity(0.40), location: 0.75),
+                        .init(color: .black.opacity(0.80), location: 1.00)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                Color.black.opacity(0.18)
+
+                VStack(spacing: isCompact ? 16 : 24) {
+                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                        .scaledToFit()
+                        .frame(width: isCompact ? 84 : 174, height: isCompact ? 64 : 131)
+
+                    if showsMessage {
+                        VStack(spacing: 14) {
+                            VendorIndeterminateProgressBar()
+                                .frame(width: isCompact ? 188 : 260, height: 4)
+                            Text(message)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .background(.black)
+    }
+}
+
+struct VendorIndeterminateProgressBar: View {
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(.white.opacity(0.24))
+                Rectangle()
+                    .fill(Color.openNowGreen)
+                    .frame(width: max(width * 0.34, 72))
+                    .offset(x: phase * width)
+            }
+            .clipped()
+            .onAppear {
+                phase = -0.36
+                withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) {
+                    phase = 1.04
+                }
+            }
+        }
+    }
+}
+
 struct GFNHeroArtwork: View {
     var body: some View {
         GeometryReader { proxy in
