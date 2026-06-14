@@ -48,6 +48,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var accountStores: [CatalogStoreAccount] = []
     @Published var storeDefinitions: [CatalogStoreDefinition] = []
     @Published var selectedGame: OPNCatalogGameObject?
+    @Published var selectedSectionId = ""
     @Published var selectedVariantIndex = -1
 
     let account: LoginAccount
@@ -222,7 +223,17 @@ final class CatalogViewModel: ObservableObject {
     func selectGame(_ game: OPNCatalogGameObject?) {
         let resolvedGame = game.flatMap(resolveGameForDetails) ?? game
         selectedGame = resolvedGame
+        selectedSectionId = ""
         selectedVariantIndex = resolvedGame.map { Self.preferredVariantIndex(for: $0) } ?? -1
+        launchMessage = ""
+        actionMessage = ""
+    }
+
+    func selectGame(_ game: OPNCatalogGameObject, inSection sectionId: String) {
+        let resolvedGame = resolveGameForDetails(game, preferredSectionId: sectionId)
+        selectedGame = resolvedGame
+        selectedSectionId = sectionId
+        selectedVariantIndex = Self.preferredVariantIndex(for: resolvedGame)
         launchMessage = ""
         actionMessage = ""
     }
@@ -532,6 +543,15 @@ final class CatalogViewModel: ObservableObject {
     }
 
     private func resolveGameForDetails(_ game: OPNCatalogGameObject) -> OPNCatalogGameObject {
+        resolveGameForDetails(game, preferredSectionId: "")
+    }
+
+    private func resolveGameForDetails(_ game: OPNCatalogGameObject, preferredSectionId: String) -> OPNCatalogGameObject {
+        if !preferredSectionId.isEmpty,
+           let section = catalogSections.first(where: { $0.id == preferredSectionId }),
+           let sectionGame = section.games.first(where: { Self.looseIdentityMatches($0, game) }) {
+            return sectionGame
+        }
         for section in catalogSections {
             if let sectionGame = section.games.first(where: { Self.looseIdentityMatches($0, game) }) {
                 return sectionGame

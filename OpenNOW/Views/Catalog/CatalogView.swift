@@ -24,6 +24,8 @@ private enum CatalogVendorLayout {
     static let wideTileWidth: CGFloat = 272
     static let wideTileHeight: CGFloat = 153
     static let tileScaleFactor: CGFloat = 1.12
+    static let heroHeight: CGFloat = 500
+    static let detailPanelHeight: CGFloat = 548
 }
 
 private enum CatalogVendorFont {
@@ -289,7 +291,7 @@ private struct CatalogContentView: View {
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
         ScrollView {
-            VStack(alignment: .leading, spacing: 34) {
+            VStack(alignment: .leading, spacing: 26) {
                 if hero != nil {
                     CatalogHeroView(
                         viewModel: viewModel,
@@ -365,6 +367,9 @@ private struct CatalogContentView: View {
 
     private func shouldShowDetail(afterSectionAt index: Int, sections: [CatalogSectionModel]) -> Bool {
         guard let selectedGame = viewModel.selectedGame else { return false }
+        if !viewModel.selectedSectionId.isEmpty {
+            return sections[index].id == viewModel.selectedSectionId && sections[index].games.contains(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) })
+        }
         guard sections[index].games.contains(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else {
             return false
         }
@@ -389,68 +394,70 @@ private struct CatalogHeroView: View {
 
     var body: some View {
         if let game {
-            ZStack(alignment: .bottom) {
-                CatalogHeroVendorBackgroundScrim(color: scrimColor)
-                CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill) { color in
-                    scrimColor = color
-                }
-                    .frame(maxWidth: .infinity, minHeight: 486, maxHeight: 486)
+            GeometryReader { proxy in
+                ZStack(alignment: .bottom) {
+                    CatalogHeroVendorBackgroundScrim(color: scrimColor)
+                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill) { color in
+                        scrimColor = color
+                    }
+                    .frame(width: proxy.size.width, height: CatalogVendorLayout.heroHeight)
                     .clipped()
                     .id(game.catalogIdentity)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                CatalogHeroVendorForegroundScrim()
+                    CatalogHeroVendorForegroundScrim()
 
-                VStack(spacing: 26) {
-                    Spacer(minLength: 108)
-                    CatalogHeroTitleView(viewModel: viewModel, game: game, scrimColor: scrimColor)
-                    Spacer(minLength: 42)
-                    VStack(spacing: 2) {
-                        Text(game.primaryStoreLabel)
-                            .font(.nvidia(size: 13, weight: .bold))
-                        Text(game.ratingLabel)
-                            .font(.nvidia(size: 13, weight: .bold))
-                    }
-                    .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
-                    Button { viewModel.selectGameFromHero(game) } label: {
-                        Text("VIEW DETAILS")
-                            .font(.nvidia(size: 14, weight: .bold))
-                            .frame(width: 142, height: 41)
-                    }
-                    .buttonStyle(VendorGetInButtonStyle())
-                    Spacer(minLength: 58)
-                }
-                .frame(width: 470)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 38)
-
-                HStack {
-                    if activeIndex > 0 {
-                        CatalogMarqueeArrow(name: "lt_arrow", action: onPreviousSlide)
-                    } else {
-                        Color.clear.frame(width: 48, height: 48)
-                    }
-                    Spacer()
-                    if activeIndex < games.count - 1 {
-                        CatalogMarqueeArrow(name: "rt_arrow", action: onNextSlide)
-                    } else {
-                        Color.clear.frame(width: 48, height: 48)
-                    }
-                }
-                .padding(.horizontal, 16)
-
-                HStack(spacing: 8) {
-                    ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
-                        Button { onSelectSlide(index) } label: {
-                            Circle()
-                                .fill(index == activeIndex ? Color.openNowGreen : Color.white.opacity(0.58))
-                                .frame(width: index == activeIndex ? 12 : 9, height: index == activeIndex ? 12 : 9)
+                    VStack(spacing: 24) {
+                        CatalogHeroTitleView(viewModel: viewModel, game: game, scrimColor: scrimColor)
+                        VStack(spacing: 2) {
+                            Text(game.primaryStoreLabel)
+                                .font(.nvidia(size: 13, weight: .bold))
+                            Text(game.ratingLabel)
+                                .font(.nvidia(size: 13, weight: .bold))
                         }
-                        .buttonStyle(.plain)
+                        .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
+                        Button { viewModel.selectGameFromHero(game) } label: {
+                            Text("VIEW DETAILS")
+                                .font(.nvidia(size: 14, weight: .bold))
+                                .frame(width: 142, height: 41)
+                        }
+                        .buttonStyle(VendorGetInButtonStyle())
                     }
+                    .frame(width: 470)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 102)
+                    .padding(.leading, 108)
+
+                    HStack {
+                        if activeIndex > 0 {
+                            CatalogMarqueeArrow(name: "lt_arrow", action: onPreviousSlide)
+                        } else {
+                            Color.clear.frame(width: 48, height: 48)
+                        }
+                        Spacer()
+                        if activeIndex < games.count - 1 {
+                            CatalogMarqueeArrow(name: "rt_arrow", action: onNextSlide)
+                        } else {
+                            Color.clear.frame(width: 48, height: 48)
+                        }
+                    }
+                    .frame(height: CatalogVendorLayout.heroHeight, alignment: .center)
+                    .padding(.horizontal, 16)
+
+                    HStack(spacing: 8) {
+                        ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
+                            Button { onSelectSlide(index) } label: {
+                                Circle()
+                                    .fill(index == activeIndex ? Color.openNowGreen : Color.white.opacity(0.58))
+                                    .frame(width: index == activeIndex ? 12 : 9, height: index == activeIndex ? 12 : 9)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 34)
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 34)
             }
+            .frame(height: CatalogVendorLayout.heroHeight)
             .clipShape(Rectangle())
         }
     }
@@ -634,7 +641,7 @@ private struct CatalogRailView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(alignment: .top, spacing: 0) {
                             ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                                CatalogGameTile(viewModel: viewModel, game: game)
+                                CatalogGameTile(viewModel: viewModel, game: game, sectionId: section.id)
                                     .id(game.catalogIdentity)
                             }
                             if section.games.count > games.count {
@@ -719,11 +726,13 @@ private struct CatalogSeeMoreTile: View {
 private struct CatalogGameTile: View {
     @ObservedObject var viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
+    let sectionId: String
     @State private var isHovering = false
 
     private var isSelected: Bool {
         guard let selectedGame = viewModel.selectedGame else { return false }
-        return CatalogViewModel.identity(for: selectedGame) == game.catalogIdentity
+        if !viewModel.selectedSectionId.isEmpty, viewModel.selectedSectionId != sectionId { return false }
+        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
     }
 
     private var shouldDim: Bool {
@@ -731,7 +740,7 @@ private struct CatalogGameTile: View {
     }
 
     var body: some View {
-        Button { viewModel.selectGame(game) } label: {
+        Button { viewModel.selectGame(game, inSection: sectionId) } label: {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
@@ -811,19 +820,25 @@ private struct GameDetailPanel: View {
 
     var body: some View {
         if let game = viewModel.selectedGame {
-            ZStack(alignment: .topTrailing) {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill)
-                    .frame(maxWidth: .infinity, minHeight: 430, maxHeight: 430)
-                    .clipped()
-                LinearGradient(colors: [.black.opacity(0.98), .black.opacity(0.72), .black.opacity(0.22)], startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, .black.opacity(0.92)], startPoint: .top, endPoint: .bottom)
-
-                HStack(alignment: .top, spacing: 28) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestTileImageURL, width: 460), contentMode: .fill)
-                        .frame(width: 180, height: 254)
+            GeometryReader { proxy in
+                ZStack(alignment: .topTrailing) {
+                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1600), contentMode: .fill)
+                        .frame(width: proxy.size.width, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.96), location: 0.00),
+                            .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.88), location: 0.36),
+                            .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.50), location: 0.54),
+                            .init(color: .black.opacity(0.08), location: 0.74),
+                            .init(color: .clear, location: 1.00)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    LinearGradient(colors: [.black.opacity(0.06), .black.opacity(0.46)], startPoint: .top, endPoint: .bottom)
 
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 15) {
                         Text(game.title.isEmpty ? "Selected Game" : game.title)
                             .font(.nvidia(size: 34, weight: .bold))
                             .lineLimit(2)
@@ -897,26 +912,41 @@ private struct GameDetailPanel: View {
 
                         detailRows(game: game)
                     }
+                    .frame(width: min(proxy.size.width * 0.47, 760), alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 34)
+                    .padding(.leading, 40)
+                    .padding(.trailing, 54)
 
-                    Spacer(minLength: 0)
+                    Button { viewModel.selectGame(nil) } label: {
+                        Image(systemName: "xmark")
+                            .font(.nvidia(size: 22, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.90))
+                            .frame(width: 40, height: 40)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(18)
                 }
-                .padding(28)
-                .padding(.trailing, 54)
-
-                Button { viewModel.selectGame(nil) } label: {
-                    Image(systemName: "xmark")
-                        .font(.nvidia(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(.black.opacity(0.62))
+                .overlay(alignment: .bottomTrailing) {
+                    if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 300) {
+                        AsyncImage(url: logoURL) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFit()
+                            default:
+                                EmptyView()
+                            }
+                        }
+                        .frame(width: 160, height: 70, alignment: .bottomTrailing)
+                        .padding(.trailing, 42)
+                        .padding(.bottom, 28)
+                        .opacity(0.94)
+                    }
                 }
-                .buttonStyle(.plain)
-                .padding(18)
             }
-            .frame(maxWidth: .infinity, minHeight: 430, maxHeight: 430)
-            .background(CatalogVendorLayout.mallSurface)
+            .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
+            .background(Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255))
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.42), radius: 22, x: 0, y: 18)
         }
     }
 
@@ -1414,7 +1444,7 @@ private extension OPNCatalogGameObject {
     }
 
     var bestLogoImageURL: String {
-        for key in ["GAME_LOGO"] {
+        for key in ["GAME_LOGO", "LOGO", "TITLE_LOGO"] {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
             if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
         }
@@ -1435,6 +1465,15 @@ private extension OPNCatalogGameObject {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
         }
         return ""
+    }
+
+    var bestDetailImageURL: String {
+        for key in ["HERO_IMAGE", "MARQUEE_HERO_IMAGE", "FEATURE_IMAGE", "KEY_ART", "TV_BANNER"] {
+            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
+        }
+        if !heroImageUrl.isEmpty { return heroImageUrl }
+        if let value = screenshotUrls.first, !value.isEmpty { return value }
+        return imageUrl
     }
 
     var mallDisplayTitle: String {
