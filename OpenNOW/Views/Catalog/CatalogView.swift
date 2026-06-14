@@ -130,7 +130,7 @@ private struct CatalogTopBar: View {
                 .foregroundStyle(.white)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
-                Button { viewModel.searchQuery = ""; viewModel.browseCatalog() } label: {
+                Button { viewModel.searchQuery = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
@@ -172,13 +172,15 @@ private struct CatalogContentView: View {
                     CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
                         .padding(.horizontal, 56)
                 }
+                CatalogBrowseControlsView(viewModel: viewModel)
+                    .padding(.horizontal, 44)
                 if viewModel.isLoading || viewModel.isLoadingPanels {
                     CatalogLoadingStrip()
                         .padding(.horizontal, 56)
                 }
 
                 ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                    CatalogRailView(viewModel: viewModel, title: section.title, games: section.games)
+                    CatalogRailView(viewModel: viewModel, section: section)
                     if shouldShowDetail(afterSectionAt: index, sections: sections) {
                         GameDetailPanel(viewModel: viewModel)
                             .padding(.horizontal, 44)
@@ -214,7 +216,7 @@ private struct CatalogContentView: View {
         heroGames.map { CatalogViewModel.identity(for: $0) }
     }
 
-    private func shouldShowDetail(afterSectionAt index: Int, sections: [(title: String, games: [OPNCatalogGameObject])]) -> Bool {
+    private func shouldShowDetail(afterSectionAt index: Int, sections: [CatalogSectionModel]) -> Bool {
         guard let selectedGame = viewModel.selectedGame else { return false }
         let selectedIdentity = CatalogViewModel.identity(for: selectedGame)
         guard sections[index].games.contains(where: { CatalogViewModel.identity(for: $0) == selectedIdentity }) else {
@@ -295,34 +297,207 @@ private struct CatalogHeroView: View {
     }
 }
 
+private struct CatalogBrowseControlsView: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                if !viewModel.resultSummary.isEmpty {
+                    Text(viewModel.resultSummary.uppercased())
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+                if viewModel.hasMoreCatalogResults {
+                    Text("SHOWING TOP RESULTS")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(Color.openNowGreen.opacity(0.88))
+                }
+                Spacer()
+                if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
+                    Button("CLEAR") { viewModel.clearSearchAndFilters() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(.white.opacity(0.84))
+                }
+                Menu {
+                    ForEach(viewModel.sortOptions, id: \.id) { option in
+                        Button(option.label.isEmpty ? option.id : option.label) { viewModel.setSort(option.id) }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
+                        Image(systemName: "chevron.down")
+                    }
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .frame(height: 34)
+                    .background(Color.white.opacity(0.08))
+                }
+                .menuStyle(.button)
+                .disabled(viewModel.sortOptions.isEmpty)
+            }
+
+            if !viewModel.visibleFilterGroups.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(viewModel.visibleFilterGroups, id: \.id) { group in
+                            Menu {
+                                ForEach(group.options, id: \.id) { option in
+                                    Button(filterTitle(option: option)) { viewModel.toggleFilter(option.id) }
+                                }
+                            } label: {
+                                HStack(spacing: 7) {
+                                    Text((group.label.isEmpty ? group.id : group.label).uppercased())
+                                    Image(systemName: "slider.horizontal.3")
+                                }
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundStyle(.white.opacity(0.82))
+                                .padding(.horizontal, 11)
+                                .frame(height: 32)
+                                .background(Color.white.opacity(0.075))
+                                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                            }
+                            .menuStyle(.button)
+                        }
+                        ForEach(selectedFilterOptions, id: \.id) { option in
+                            Button { viewModel.toggleFilter(option.id) } label: {
+                                HStack(spacing: 7) {
+                                    Text(option.label.uppercased())
+                                    Image(systemName: "xmark")
+                                }
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundStyle(.black.opacity(0.88))
+                                .padding(.horizontal, 11)
+                                .frame(height: 32)
+                                .background(Color.openNowGreen)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var selectedFilterOptions: [OPNCatalogFilterOptionObject] {
+        viewModel.visibleFilterGroups.flatMap(\.options).filter { viewModel.selectedFilterIds.contains($0.id) }
+    }
+
+    private func filterTitle(option: OPNCatalogFilterOptionObject) -> String {
+        let selectedPrefix = viewModel.selectedFilterIds.contains(option.id) ? "✓ " : ""
+        return selectedPrefix + (option.label.isEmpty ? option.id : option.label)
+    }
+}
+
 private struct CatalogRailView: View {
     @ObservedObject var viewModel: CatalogViewModel
-    let title: String
-    let games: [OPNCatalogGameObject]
+    let section: CatalogSectionModel
+    @State private var scrollIndex = 0
+
+    private var isExpanded: Bool { viewModel.expandedSectionIds.contains(section.id) }
+    private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: isExpanded) }
+    private var canSeeAll: Bool { section.games.count > games.count || isExpanded }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(title)
+                Text(section.title)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(.white.opacity(0.96))
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("SEE ALL") {}
-                    .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(.white.opacity(0.92))
+                if canSeeAll {
+                    Button(isExpanded ? "SHOW LESS" : "SEE ALL") { viewModel.toggleSectionExpansion(section.id) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
             }
             .padding(.horizontal, 44)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 18) {
-                    ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                        CatalogGameTile(viewModel: viewModel, game: game)
+
+            ScrollViewReader { proxy in
+                ZStack {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 18) {
+                            ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
+                                CatalogGameTile(viewModel: viewModel, game: game)
+                                    .id(game.catalogIdentity)
+                            }
+                            if section.games.count > games.count {
+                                CatalogSeeMoreTile(title: "See All") { viewModel.toggleSectionExpansion(section.id) }
+                            }
+                        }
+                        .padding(.horizontal, 44)
+                        .padding(.bottom, 4)
+                    }
+                    if games.count > 3 {
+                        HStack {
+                            CatalogRailArrow(systemName: "chevron.left") {
+                                moveRail(proxy: proxy, delta: -3)
+                            }
+                            Spacer()
+                            CatalogRailArrow(systemName: "chevron.right") {
+                                moveRail(proxy: proxy, delta: 3)
+                            }
+                        }
+                        .padding(.horizontal, 8)
                     }
                 }
-                .padding(.horizontal, 44)
-                .padding(.bottom, 4)
             }
         }
+    }
+
+    private func moveRail(proxy: ScrollViewProxy, delta: Int) {
+        guard !games.isEmpty else { return }
+        scrollIndex = min(max(scrollIndex + delta, 0), max(games.count - 1, 0))
+        withAnimation(.easeInOut(duration: 0.22)) {
+            proxy.scrollTo(games[scrollIndex].catalogIdentity, anchor: .leading)
+        }
+    }
+}
+
+private struct CatalogRailArrow: View {
+    let systemName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 20, weight: .black))
+                .foregroundStyle(.white.opacity(0.95))
+                .frame(width: 42, height: 82)
+                .background(Color.black.opacity(0.54))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct CatalogSeeMoreTile: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 12) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 34, weight: .black))
+                    .foregroundStyle(.white.opacity(0.82))
+                Text(title.uppercased())
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white.opacity(0.88))
+            }
+            .frame(width: 304, height: 171)
+            .background(Color.white.opacity(isHovering ? 0.13 : 0.08))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
+            .scaleEffect(isHovering ? 1.06 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("See all")
     }
 }
 
@@ -331,24 +506,76 @@ private struct CatalogGameTile: View {
     let game: OPNCatalogGameObject
     @State private var isHovering = false
 
+    private var isSelected: Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        return CatalogViewModel.identity(for: selectedGame) == game.catalogIdentity
+    }
+
+    private var shouldDim: Bool {
+        viewModel.selectedGame != nil && !isSelected
+    }
+
     var body: some View {
         Button { viewModel.selectGame(game) } label: {
-            ZStack(alignment: .topLeading) {
-                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
-                    .frame(width: 304, height: 171)
-                    .clipped()
-                if game.isInLibrary {
-                    MallRibbonShape()
-                        .fill(Color.openNowGreen)
-                        .frame(width: 7, height: 24)
+            VStack(spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
+                        .frame(width: 304, height: 171)
+                        .clipped()
+                    if shouldDim {
+                        Color.black.opacity(0.50)
+                    }
+                    if isHovering || isSelected {
+                        LinearGradient(colors: [.clear, .black.opacity(0.64)], startPoint: .center, endPoint: .bottom)
+                    }
+                    if game.isInLibrary {
+                        MallRibbonShape()
+                            .fill(Color.openNowGreen)
+                            .frame(width: 7, height: 24)
+                    }
+                    if isSelected {
+                        Rectangle()
+                            .stroke(Color.openNowGreen, lineWidth: 3)
+                    }
+                }
+                if isHovering || isSelected {
+                    HStack(spacing: 8) {
+                        Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                            .font(.system(size: 12, weight: .bold))
+                            .lineLimit(1)
+                            .foregroundStyle(.white.opacity(0.94))
+                        Spacer(minLength: 0)
+                        Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(.white.opacity(0.76))
+                    }
+                    .frame(width: 284, height: 34)
+                    .padding(.horizontal, 10)
+                    .background(Color(red: 0.12, green: 0.12, blue: 0.12))
                 }
             }
-            .scaleEffect(isHovering ? 1.08 : 1.0)
+            .frame(width: 304, alignment: .top)
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    Rectangle()
+                        .fill(Color.openNowGreen)
+                        .frame(width: 34, height: 4)
+                        .offset(y: 171)
+                }
+            }
+            .scaleEffect(isHovering && !viewModel.selectedGameExists ? 1.08 : 1.0)
             .animation(.easeOut(duration: 0.15), value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(isSelected ? "Details open" : "")
     }
+}
+
+private extension CatalogViewModel {
+    var selectedGameExists: Bool { selectedGame != nil }
 }
 
 private struct MallRibbonShape: Shape {
@@ -397,8 +624,8 @@ private struct GameDetailPanel: View {
                             .frame(maxWidth: 640, alignment: .leading)
 
                         HStack(spacing: 14) {
-                            Button { viewModel.launchSelectedGame() } label: {
-                                Text("PLAY")
+                            Button { primaryAction(game: game) } label: {
+                                Text(primaryActionTitle(game: game))
                                     .font(.system(size: 15, weight: .black))
                                     .frame(width: 152, height: 42)
                             }
@@ -408,20 +635,47 @@ private struct GameDetailPanel: View {
                                 .buttonStyle(SecondaryLoginButtonStyle(compact: true))
                                 .opacity(game.variants.isEmpty ? 0.5 : 1)
                                 .disabled(game.variants.isEmpty)
+
+                            Menu {
+                                Button("Share") { viewModel.shareSelectedGame() }
+                                if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
+                                    Button("Remove from Library", role: .destructive) { viewModel.removeSelectedVariantOwned() }
+                                } else if selectedVariant != nil {
+                                    Button("Mark as Owned") { viewModel.markSelectedVariantOwned() }
+                                }
+                                if selectedVariant?.appStore.isEmpty == false {
+                                    Button("Sync \(viewModel.displayName(forStore: selectedVariant?.appStore ?? ""))") { viewModel.syncSelectedStoreAccount() }
+                                    Button("Connect \(viewModel.displayName(forStore: selectedVariant?.appStore ?? ""))") { viewModel.linkSelectedStoreAccount() }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.vertical")
+                                    .font(.system(size: 16, weight: .black))
+                                    .frame(width: 42, height: 42)
+                            }
+                            .menuStyle(.button)
                         }
 
                         if !game.variants.isEmpty {
-                            Picker("Store", selection: $viewModel.selectedVariantIndex) {
+                            Picker("Store", selection: selectedVariantBinding(game: game)) {
                                 ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
-                                    Text(variant.appStore.isEmpty ? "GeForce NOW" : variant.appStore.uppercased()).tag(index)
+                                    Text(storePickerTitle(variant: variant)).tag(index)
                                 }
                             }
                             .pickerStyle(.segmented)
                             .frame(maxWidth: 360)
                         }
 
+                        if let selectedVariant, !selectedVariant.appStore.isEmpty {
+                            storeAccountStatus(store: selectedVariant.appStore)
+                        }
+
                         if !viewModel.launchMessage.isEmpty {
                             CatalogMessageView(message: viewModel.launchMessage, systemImage: "play.circle.fill")
+                                .frame(maxWidth: 520)
+                        }
+
+                        if !viewModel.actionMessage.isEmpty {
+                            CatalogMessageView(message: viewModel.actionMessage, systemImage: "checkmark.circle.fill")
                                 .frame(maxWidth: 520)
                         }
 
@@ -462,6 +716,65 @@ private struct GameDetailPanel: View {
                     .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
             }
         }
+    }
+
+    private var selectedVariant: OPNCatalogGameVariantObject? {
+        viewModel.selectedVariant(in: viewModel.selectedGame)
+    }
+
+    private func primaryActionTitle(game: OPNCatalogGameObject) -> String {
+        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true { return "PLAY" }
+        if selectedVariant != nil { return "MARK OWNED" }
+        return "PLAY"
+    }
+
+    private func primaryAction(game: OPNCatalogGameObject) {
+        if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
+            viewModel.launchSelectedGame()
+        } else {
+            viewModel.markSelectedVariantOwned()
+        }
+    }
+
+    private func selectedVariantBinding(game: OPNCatalogGameObject) -> Binding<Int> {
+        Binding(
+            get: { viewModel.selectedVariantIndex },
+            set: { index in
+                viewModel.selectedVariantIndex = index
+                guard index >= 0, index < game.variants.count else { return }
+                let variant = game.variants[index]
+                if variant.inLibrary || variant.librarySelected { viewModel.selectOwnedVariant(variant) }
+            }
+        )
+    }
+
+    private func storePickerTitle(variant: OPNCatalogGameVariantObject) -> String {
+        let store = variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
+        if variant.librarySelected { return "✓ \(store)" }
+        if variant.inLibrary { return "• \(store)" }
+        return store
+    }
+
+    private func storeAccountStatus(store: String) -> some View {
+        let account = viewModel.accountStatus(forStore: store)
+        let storeName = viewModel.displayName(forStore: store)
+        return HStack(spacing: 8) {
+            Image(systemName: account?.hasAccountLinkingData == true ? "link.circle.fill" : "link.circle")
+                .foregroundStyle(Color.openNowGreen)
+            Text(accountStatusText(account: account, storeName: storeName))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.70))
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: 520)
+    }
+
+    private func accountStatusText(account: CatalogStoreAccount?, storeName: String) -> String {
+        guard let account else { return "Connect \(storeName) to sync owned games." }
+        if !account.userDisplayName.isEmpty { return "Connected to \(storeName) as \(account.userDisplayName)." }
+        if account.totalSyncedGames > 0 { return "\(account.totalSyncedGames) \(storeName) games synced." }
+        if !account.syncState.isEmpty { return "\(storeName) sync state: \(account.syncState)." }
+        return "\(storeName) account connected."
     }
 
     private func detailRows(game: OPNCatalogGameObject) -> some View {
@@ -874,13 +1187,8 @@ private extension OPNCatalogGameObject {
     }
 
     var mallDisplayTitle: String {
-        let fallbackTitle = title.isEmpty ? "Featured Game" : title
-        let split = fallbackTitle.replacingOccurrences(
-            of: "([a-z])([A-Z])",
-            with: "$1|$2",
-            options: .regularExpression
-        )
-        return split.uppercased()
+        let displayTitle = shortName.isEmpty ? title : shortName
+        return displayTitle.isEmpty ? "GEFORCE NOW" : displayTitle.uppercased()
     }
 
     var primaryStoreLabel: String {
@@ -890,10 +1198,9 @@ private extension OPNCatalogGameObject {
     }
 
     var ratingLabel: String {
-        for chip in detailChips where chip.localizedCaseInsensitiveContains("rating") || chip.localizedCaseInsensitiveContains("ages") {
-            return chip.capitalized
-        }
-        return "Rating: Ages 16+"
+        if let rating = contentRatings.first, !rating.isEmpty { return rating }
+        if !playType.isEmpty { return playType }
+        return primaryStoreLabel
     }
 
     var genreLine: String { genres.prefix(3).joined(separator: " / ") }

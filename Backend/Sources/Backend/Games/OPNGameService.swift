@@ -1717,41 +1717,41 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     @objc(fetchUserAccountDictionaryWithCompletion:)
-    static func fetchUserAccountDictionary(completion: @escaping @Sendable (Bool, NSDictionary, String) -> Void) {
+    public static func fetchUserAccountDictionary(completion: @escaping @Sendable (Bool, NSDictionary, String) -> Void) {
         OPNGameService.shared.fetchUserAccount { success, account, error in
             completion(success, userAccountDictionary(account), error)
         }
     }
 
     @objc(fetchStoreDefinitionDictionariesWithCompletion:)
-    static func fetchStoreDefinitionDictionaries(completion: @escaping @Sendable (Bool, [NSDictionary], String) -> Void) {
+    public static func fetchStoreDefinitionDictionaries(completion: @escaping @Sendable (Bool, [NSDictionary], String) -> Void) {
         OPNGameService.shared.fetchStoreDefinitions { success, definitions, error in
             completion(success, definitions.map(storeDefinitionDictionary), error)
         }
     }
 
     @objc(addOwnedVariant:completion:)
-    static func addOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func addOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.addOwnedVariant(variantId, completion: completion)
     }
 
     @objc(removeOwnedVariant:completion:)
-    static func removeOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func removeOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.removeOwnedVariant(variantId, completion: completion)
     }
 
     @objc(selectOwnedVariant:completion:)
-    static func selectOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func selectOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.selectOwnedVariant(variantId, completion: completion)
     }
 
     @objc(syncAccountProviderWithStore:completion:)
-    static func syncAccountProvider(store: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func syncAccountProvider(store: String, completion: @escaping @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.syncAccountProvider(store: store, completion: completion)
     }
 
     @objc(startAccountLinkingWithStore:completion:)
-    static func startAccountLinking(store: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+    public static func startAccountLinking(store: String, completion: @escaping @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.startAccountLinking(store: store, completion: completion)
     }
 

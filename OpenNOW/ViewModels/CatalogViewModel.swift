@@ -29,14 +29,24 @@ private final class CatalogSendableValue<T>: @unchecked Sendable {
 final class CatalogViewModel: ObservableObject {
     @Published var searchQuery = ""
     @Published var selectedSortId = "last_played"
+    @Published var selectedFilterIds: [String] = []
     @Published var isLoading = false
     @Published var isLoadingPanels = false
     @Published var errorMessage = ""
     @Published var launchMessage = ""
+    @Published var actionMessage = ""
     @Published var marqueePanels: [OPNCatalogPanelObject] = []
     @Published var mainPanels: [OPNCatalogPanelObject] = []
     @Published var catalogGames: [OPNCatalogGameObject] = []
     @Published var libraryGames: [OPNCatalogGameObject] = []
+    @Published var filterGroups: [OPNCatalogFilterGroupObject] = []
+    @Published var sortOptions: [OPNCatalogSortOptionObject] = []
+    @Published var totalCatalogCount = 0
+    @Published var supportedCatalogCount = 0
+    @Published var hasMoreCatalogResults = false
+    @Published var expandedSectionIds: Set<String> = []
+    @Published var accountStores: [CatalogStoreAccount] = []
+    @Published var storeDefinitions: [CatalogStoreDefinition] = []
     @Published var selectedGame: OPNCatalogGameObject?
     @Published var selectedVariantIndex = -1
 
@@ -47,11 +57,18 @@ final class CatalogViewModel: ObservableObject {
     private var hasLoaded = false
     private var browseGeneration = 0
     private var authRefreshInFlight = false
+    private var cancellables = Set<AnyCancellable>()
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
         self.session = session
         self.onRefreshAuth = onRefreshAuth
+        $searchQuery
+            .dropFirst()
+            .removeDuplicates()
+            .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.browseCatalog() }
+            .store(in: &cancellables)
     }
 
     var featuredGames: [OPNCatalogGameObject] {
@@ -70,8 +87,8 @@ final class CatalogViewModel: ObservableObject {
         return Array(games.prefix(8))
     }
 
-    var catalogSections: [(title: String, games: [OPNCatalogGameObject])] {
-        var sections: [(String, [OPNCatalogGameObject])] = []
+    var catalogSections: [CatalogSectionModel] {
+        var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
         for panel in mainPanels {
             for section in panel.sections where !section.games.isEmpty {
@@ -79,17 +96,34 @@ final class CatalogViewModel: ObservableObject {
                 let resolvedTitle = title.isEmpty ? "Featured Games" : title
                 guard !seenTitles.contains(resolvedTitle) else { continue }
                 seenTitles.insert(resolvedTitle)
-                sections.append((resolvedTitle, Array(section.games.prefix(18))))
+                sections.append(CatalogSectionModel(id: section.sectionIdentity(fallbackPanelId: panel.id), title: resolvedTitle, games: section.games, kind: .panel))
             }
         }
         if !catalogGames.isEmpty {
-            sections.insert((searchQuery.trimmed.isEmpty ? "My Favorites" : "Search Results", catalogGames), at: 0)
+            sections.insert(CatalogSectionModel(id: "catalog-results", title: searchQuery.trimmed.isEmpty ? "My Favorites" : "Search Results", games: catalogGames, kind: .catalog), at: 0)
         }
         if searchQuery.trimmed.isEmpty, !libraryGames.isEmpty {
             let insertionIndex = min(sections.count, catalogGames.isEmpty ? 0 : 1)
-            sections.insert(("My Library", libraryGames), at: insertionIndex)
+            sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library), at: insertionIndex)
         }
-        return Array(sections.prefix(8))
+        return Array(sections.prefix(10))
+    }
+
+    var selectedSortLabel: String {
+        sortOptions.first { $0.id == selectedSortId }?.label ?? "Recently Played"
+    }
+
+    var visibleFilterGroups: [OPNCatalogFilterGroupObject] {
+        filterGroups.filter { !$0.options.isEmpty }
+    }
+
+    var selectedFilterCount: Int { selectedFilterIds.count }
+
+    var resultSummary: String {
+        let total = totalCatalogCount > 0 ? totalCatalogCount : catalogGames.count
+        if searchQuery.trimmed.isEmpty, selectedFilterIds.isEmpty { return "" }
+        if total == 1 { return "1 result" }
+        return "\(total) results"
     }
 
     func loadIfNeeded() {
@@ -98,6 +132,7 @@ final class CatalogViewModel: ObservableObject {
         configureCatalogService()
         loadPanels()
         loadLibrary()
+        loadAccountAndStores()
         browseCatalog()
     }
 
@@ -105,6 +140,7 @@ final class CatalogViewModel: ObservableObject {
         configureCatalogService()
         loadPanels()
         loadLibrary()
+        loadAccountAndStores()
         browseCatalog()
     }
 
@@ -119,7 +155,7 @@ final class CatalogViewModel: ObservableObject {
         OPNGameServiceSwiftAdapter.browseCatalogObject(
             searchQuery: query,
             sortId: selectedSortId.isEmpty ? "last_played" : selectedSortId,
-            filterIds: [],
+            filterIds: selectedFilterIds,
             fetchCount: 96
         ) { success, result, error in
             let resultBox = CatalogSendableValue(result)
@@ -131,8 +167,51 @@ final class CatalogViewModel: ObservableObject {
                     self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
                     return
                 }
-                self.catalogGames = resultBox.value.games
+                let browseResult = resultBox.value
+                self.catalogGames = browseResult.games
+                self.totalCatalogCount = browseResult.totalCount
+                self.supportedCatalogCount = browseResult.numberSupported
+                self.hasMoreCatalogResults = browseResult.hasNextPage
+                self.filterGroups = browseResult.filterGroups
+                self.sortOptions = browseResult.sortOptions
+                if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
+                self.selectedFilterIds = browseResult.selectedFilterIds
             }
+        }
+    }
+
+    func setSort(_ sortId: String) {
+        guard selectedSortId != sortId else { return }
+        selectedSortId = sortId
+        browseCatalog()
+    }
+
+    func toggleFilter(_ filterId: String) {
+        if selectedFilterIds.contains(filterId) {
+            selectedFilterIds.removeAll { $0 == filterId }
+        } else {
+            selectedFilterIds.append(filterId)
+        }
+        browseCatalog()
+    }
+
+    func clearFilters() {
+        guard !selectedFilterIds.isEmpty else { return }
+        selectedFilterIds = []
+        browseCatalog()
+    }
+
+    func clearSearchAndFilters() {
+        searchQuery = ""
+        selectedFilterIds = []
+        browseCatalog()
+    }
+
+    func toggleSectionExpansion(_ sectionId: String) {
+        if expandedSectionIds.contains(sectionId) {
+            expandedSectionIds.remove(sectionId)
+        } else {
+            expandedSectionIds.insert(sectionId)
         }
     }
 
@@ -140,6 +219,7 @@ final class CatalogViewModel: ObservableObject {
         selectedGame = game
         selectedVariantIndex = game.map { Self.preferredVariantIndex(for: $0) } ?? -1
         launchMessage = ""
+        actionMessage = ""
     }
 
     func launchSelectedGame() {
@@ -183,6 +263,131 @@ final class CatalogViewModel: ObservableObject {
                 NSWorkspace.shared.open(url)
             }
         }
+    }
+
+    func shareSelectedGame() {
+        guard let selectedGame else { return }
+        let title = selectedGame.title.isEmpty ? "GeForce NOW game" : selectedGame.title
+        let url = selectedGame.primaryStoreURL ?? URL(string: "https://play.geforcenow.com/")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString([title, url?.absoluteString].compactMap { $0 }.joined(separator: "\n"), forType: .string)
+        actionMessage = "Copied share details."
+    }
+
+    func markSelectedVariantOwned() {
+        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
+        let gameIdentity = Self.identity(for: selectedGame)
+        let variantId = variant.id
+        let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
+        let selfBox = CatalogWeakObject(self)
+        setActionMessage("Adding \(title) to library...")
+        OPNGameServiceSwiftAdapter.addOwnedVariant(variantId) { success, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
+                    self.actionMessage = "Added to library."
+                    self.refreshCatalogAfterOwnershipChange()
+                } else {
+                    self.errorMessage = error.isEmpty ? "Unable to add this game to your library." : error
+                }
+            }
+        }
+    }
+
+    func removeSelectedVariantOwned() {
+        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
+        let gameIdentity = Self.identity(for: selectedGame)
+        let variantId = variant.id
+        let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
+        let selfBox = CatalogWeakObject(self)
+        setActionMessage("Removing \(title) from library...")
+        OPNGameServiceSwiftAdapter.removeOwnedVariant(variantId) { success, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: false)
+                    self.actionMessage = "Removed from library."
+                    self.refreshCatalogAfterOwnershipChange()
+                } else {
+                    self.errorMessage = error.isEmpty ? "Unable to remove this game from your library." : error
+                }
+            }
+        }
+    }
+
+    func selectOwnedVariant(_ variant: OPNCatalogGameVariantObject) {
+        guard !variant.id.isEmpty else { return }
+        let variantId = variant.id
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.selectOwnedVariant(variantId) { success, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.selectedGame?.variants.forEach { $0.librarySelected = $0.id == variantId }
+                    self.actionMessage = "Store selection updated."
+                    self.refreshCatalogAfterOwnershipChange()
+                } else {
+                    self.errorMessage = error.isEmpty ? "Unable to update store selection." : error
+                }
+            }
+        }
+    }
+
+    func syncSelectedStoreAccount() {
+        guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        let selfBox = CatalogWeakObject(self)
+        setActionMessage("Syncing \(displayName(forStore: store)) account...")
+        OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { success, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.actionMessage = "Store sync started."
+                    self.loadAccountAndStores()
+                    self.loadLibrary()
+                    self.browseCatalog()
+                } else {
+                    self.errorMessage = error.isEmpty ? "Unable to sync this store account." : error
+                }
+            }
+        }
+    }
+
+    func linkSelectedStoreAccount() {
+        guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        let selfBox = CatalogWeakObject(self)
+        setActionMessage("Opening \(displayName(forStore: store)) account linking...")
+        OPNGameServiceSwiftAdapter.startAccountLinking(store: store) { success, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.actionMessage = "Account linked."
+                    self.loadAccountAndStores()
+                    self.loadLibrary()
+                    self.browseCatalog()
+                } else {
+                    self.errorMessage = error.isEmpty ? "Unable to link this store account." : error
+                }
+            }
+        }
+    }
+
+    func selectedVariant(in game: OPNCatalogGameObject?) -> OPNCatalogGameVariantObject? {
+        guard let game else { return nil }
+        let index = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: game)
+        guard index >= 0, index < game.variants.count else { return nil }
+        return game.variants[index]
+    }
+
+    func displayName(forStore store: String) -> String {
+        if let definition = storeDefinitions.first(where: { $0.store.caseInsensitiveCompare(store) == .orderedSame }), !definition.label.isEmpty {
+            return definition.label
+        }
+        return store.isEmpty ? "Store" : store.uppercased()
+    }
+
+    func accountStatus(forStore store: String) -> CatalogStoreAccount? {
+        accountStores.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
     }
 
     func optimizedImageURL(_ rawValue: String, width: Int) -> URL? {
@@ -241,6 +446,53 @@ final class CatalogViewModel: ObservableObject {
         }
     }
 
+    private func loadAccountAndStores() {
+        configureCatalogService()
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.fetchUserAccountDictionary { success, account, error in
+            let accountBox = CatalogSendableValue(account)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.accountStores = Self.parseStoreAccounts(accountBox.value)
+                } else if self.refreshAuthIfNeeded(error: error) {
+                    self.accountStores = []
+                }
+            }
+        }
+        OPNGameServiceSwiftAdapter.fetchStoreDefinitionDictionaries { success, definitions, _ in
+            let definitionsBox = CatalogSendableValue(definitions)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success { self.storeDefinitions = definitionsBox.value.map(Self.parseStoreDefinition) }
+            }
+        }
+    }
+
+    private func refreshCatalogAfterOwnershipChange() {
+        loadLibrary()
+        browseCatalog()
+        if let selectedGame {
+            let selectedIdentity = Self.identity(for: selectedGame)
+            let refreshedGame = (libraryGames + catalogGames).first { Self.identity(for: $0) == selectedIdentity }
+            if let refreshedGame { selectGame(refreshedGame) }
+        }
+    }
+
+    private func updateSelectedGameOwnership(gameIdentity: String, variantId: String, inLibrary: Bool) {
+        guard let selectedGame, Self.identity(for: selectedGame) == gameIdentity else { return }
+        selectedGame.isInLibrary = inLibrary
+        for variant in selectedGame.variants where variant.id == variantId {
+            variant.inLibrary = inLibrary
+            variant.librarySelected = inLibrary
+        }
+    }
+
+    private func setActionMessage(_ message: String) {
+        actionMessage = message
+        errorMessage = ""
+    }
+
     private func configureCatalogService() {
         let userId = session.userId.isEmpty ? account.userId : session.userId
         OPNGameServiceSwiftAdapter.configureCatalogSession(accessToken: session.accessToken, idToken: session.idToken, userId: userId)
@@ -267,5 +519,89 @@ final class CatalogViewModel: ObservableObject {
         if let index = game.variants.firstIndex(where: { $0.librarySelected }) { return index }
         if let index = game.variants.firstIndex(where: { $0.inLibrary }) { return index }
         return game.variants.isEmpty ? -1 : 0
+    }
+
+    private static func parseStoreAccounts(_ account: NSDictionary) -> [CatalogStoreAccount] {
+        guard let stores = account["stores"] as? [NSDictionary] else { return [] }
+        return stores.map { store in
+            let syncing = store["syncing"] as? NSDictionary
+            return CatalogStoreAccount(
+                store: store["store"] as? String ?? "",
+                userDisplayName: store["userDisplayName"] as? String ?? "",
+                expiresIn: store["expiresIn"] as? String ?? "",
+                userIdentifier: store["userIdentifier"] as? String ?? "",
+                hasAccountLinkingData: store["hasAccountLinkingData"] as? Bool ?? false,
+                hasAccountSyncingData: store["hasAccountSyncingData"] as? Bool ?? false,
+                totalSyncedGames: syncing?["totalNumberOfSyncedGfnGames"] as? Int ?? 0,
+                syncState: syncing?["syncState"] as? String ?? "",
+                syncDate: syncing?["syncDate"] as? String ?? ""
+            )
+        }
+    }
+
+    private static func parseStoreDefinition(_ definition: NSDictionary) -> CatalogStoreDefinition {
+        let metadata = definition["accountLinkingMetadata"] as? NSDictionary
+        return CatalogStoreDefinition(
+            store: definition["store"] as? String ?? "",
+            label: definition["label"] as? String ?? "",
+            smallImageUrl: definition["smallImageUrl"] as? String ?? "",
+            isAccountLinkingSupported: metadata?["isSupported"] as? Bool ?? false,
+            isAccountLinkingRequired: metadata?["isRequired"] as? Bool ?? false,
+            accountLinkingLabel: metadata?["label"] as? String ?? ""
+        )
+    }
+}
+
+struct CatalogSectionModel: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case catalog
+        case library
+        case panel
+    }
+
+    let id: String
+    let title: String
+    let games: [OPNCatalogGameObject]
+    let kind: Kind
+
+    func visibleGames(expanded: Bool) -> [OPNCatalogGameObject] {
+        expanded ? games : Array(games.prefix(18))
+    }
+}
+
+struct CatalogStoreAccount: Identifiable, Equatable {
+    var id: String { store }
+    let store: String
+    let userDisplayName: String
+    let expiresIn: String
+    let userIdentifier: String
+    let hasAccountLinkingData: Bool
+    let hasAccountSyncingData: Bool
+    let totalSyncedGames: Int
+    let syncState: String
+    let syncDate: String
+}
+
+struct CatalogStoreDefinition: Identifiable, Equatable {
+    var id: String { store }
+    let store: String
+    let label: String
+    let smallImageUrl: String
+    let isAccountLinkingSupported: Bool
+    let isAccountLinkingRequired: Bool
+    let accountLinkingLabel: String
+}
+
+private extension OPNCatalogPanelSectionObject {
+    func sectionIdentity(fallbackPanelId: String) -> String {
+        if !id.isEmpty { return id }
+        let titlePart = title.isEmpty ? "section" : title
+        return [fallbackPanelId, titlePart].filter { !$0.isEmpty }.joined(separator: ":")
+    }
+}
+
+private extension OPNCatalogGameObject {
+    var primaryStoreURL: URL? {
+        variants.compactMap { URL(string: $0.storeUrl) }.first
     }
 }

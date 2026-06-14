@@ -181,6 +181,79 @@ public struct OPNCatalogBrowseResult: Equatable, Sendable {
     public var sortOptions: [OPNCatalogSortOption] = []
 }
 
+@objc(OPNCatalogFilterOptionObject)
+@objcMembers
+public final class OPNCatalogFilterOptionObject: NSObject {
+    public var id: String
+    public var rawId: String
+    public var label: String
+    public var groupId: String
+    public var groupLabel: String
+
+    public override convenience init() {
+        self.init(option: OPNCatalogFilterOption())
+    }
+
+    public init(option: OPNCatalogFilterOption) {
+        id = option.id
+        rawId = option.rawId
+        label = option.label
+        groupId = option.groupId
+        groupLabel = option.groupLabel
+        super.init()
+    }
+
+    public var swiftValue: OPNCatalogFilterOption {
+        OPNCatalogFilterOption(id: id, rawId: rawId, label: label, groupId: groupId, groupLabel: groupLabel)
+    }
+}
+
+@objc(OPNCatalogFilterGroupObject)
+@objcMembers
+public final class OPNCatalogFilterGroupObject: NSObject {
+    public var id: String
+    public var label: String
+    public var options: [OPNCatalogFilterOptionObject]
+
+    public override convenience init() {
+        self.init(group: OPNCatalogFilterGroup())
+    }
+
+    public init(group: OPNCatalogFilterGroup) {
+        id = group.id
+        label = group.label
+        options = group.options.map(OPNCatalogFilterOptionObject.init)
+        super.init()
+    }
+
+    public var swiftValue: OPNCatalogFilterGroup {
+        OPNCatalogFilterGroup(id: id, label: label, options: options.map(\.swiftValue))
+    }
+}
+
+@objc(OPNCatalogSortOptionObject)
+@objcMembers
+public final class OPNCatalogSortOptionObject: NSObject {
+    public var id: String
+    public var label: String
+    public var orderBy: String
+
+    public override convenience init() {
+        self.init(option: OPNCatalogSortOption())
+    }
+
+    public init(option: OPNCatalogSortOption) {
+        id = option.id
+        label = option.label
+        orderBy = option.orderBy
+        super.init()
+    }
+
+    public var swiftValue: OPNCatalogSortOption {
+        OPNCatalogSortOption(id: id, label: label, orderBy: orderBy)
+    }
+}
+
 public struct OPNGameProviderEndpoint: Equatable, Sendable {
     public var loginProvider = ""
     public var loginProviderCode = ""
@@ -395,6 +468,8 @@ public final class OPNCatalogBrowseResultObject: NSObject {
     public var searchQuery: String
     public var selectedSortId: String
     public var selectedFilterIds: [String]
+    public var filterGroups: [OPNCatalogFilterGroupObject]
+    public var sortOptions: [OPNCatalogSortOptionObject]
 
     public override convenience init() {
         self.init(result: OPNCatalogBrowseResult())
@@ -410,6 +485,8 @@ public final class OPNCatalogBrowseResultObject: NSObject {
         searchQuery = result.searchQuery
         selectedSortId = result.selectedSortId
         selectedFilterIds = result.selectedFilterIds
+        filterGroups = result.filterGroups.map(OPNCatalogFilterGroupObject.init)
+        sortOptions = result.sortOptions.map(OPNCatalogSortOptionObject.init)
         super.init()
     }
 
@@ -424,6 +501,8 @@ public final class OPNCatalogBrowseResultObject: NSObject {
         result.searchQuery = searchQuery
         result.selectedSortId = selectedSortId
         result.selectedFilterIds = selectedFilterIds
+        result.filterGroups = filterGroups.map(\.swiftValue)
+        result.sortOptions = sortOptions.map(\.swiftValue)
         return result
     }
 }
