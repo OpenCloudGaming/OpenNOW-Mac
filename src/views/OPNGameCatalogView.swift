@@ -658,7 +658,7 @@ struct OPNGameCatalogSwiftUIView: View {
         let stores = item.gameObject.availableStores.map { OPNGameCatalogArtworkSupport.displayLabel($0) }.filter { !$0.isEmpty }
         let variantStore = variant(at: item.selectedVariantIndex, in: item.gameObject).map { OPNGameCatalogArtworkSupport.displayLabel($0.appStore) } ?? ""
         let store = stores.first ?? variantStore
-        return "\(store.isEmpty ? "Cloud" : store)\nESRB: TEEN"
+        return "\(store.isEmpty ? "Cloud" : store)\nRating: \(contentRatingLabel(item.gameObject))"
     }
 
     private func catalogSections(viewportSize: CGSize) -> some View {
@@ -755,7 +755,7 @@ struct OPNGameCatalogSwiftUIView: View {
                     .overlay(LinearGradient(colors: [Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 1.0)), Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 0.70)), .clear], startPoint: .leading, endPoint: .trailing))
                     .overlay(LinearGradient(colors: [.clear, Color.black.opacity(0.34)], startPoint: .top, endPoint: .bottom))
             }
-            activeGameInfo(item, leftWidth: leftWidth)
+            activeGameInfo(item, leftWidth: leftWidth, height: height)
             Button { selectedDetailItemID = "" } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 22, weight: .medium))
@@ -772,7 +772,7 @@ struct OPNGameCatalogSwiftUIView: View {
         .frame(height: height)
     }
 
-    private func activeGameInfo(_ item: OPNGameCatalogItemModel, leftWidth: CGFloat) -> some View {
+    private func activeGameInfo(_ item: OPNGameCatalogItemModel, leftWidth: CGFloat, height: CGFloat) -> some View {
         let isFavorite = favoriteDetailItemIDs.contains(item.id)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
@@ -782,7 +782,7 @@ struct OPNGameCatalogSwiftUIView: View {
                         .foregroundStyle(Color.white.opacity(0.96))
                         .lineLimit(1)
                     detailMetadata(item.gameObject)
-                    detailBadges()
+                    detailBadges(item.gameObject)
                     detailStoreRow(item)
                     HStack(spacing: 18) {
                         Button(primaryActionTitle(item).uppercased()) { onSelect(item) }
@@ -805,7 +805,7 @@ struct OPNGameCatalogSwiftUIView: View {
                         .buttonStyle(.plain)
                     }
                     HStack(spacing: 0) {
-                        Text("Access unlocked with your membership. Game ownership required to play. ")
+                        Text(detailAccessMessage(item))
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(Color.white.opacity(0.70))
                         Text("Learn more")
@@ -818,7 +818,7 @@ struct OPNGameCatalogSwiftUIView: View {
                         .foregroundStyle(Color.white.opacity(0.90))
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
-                    detailCapabilities()
+                    detailCapabilities(item.gameObject)
                     detailRating(item.gameObject)
                     HStack(spacing: 6) {
                         Text("READ MORE")
@@ -843,16 +843,21 @@ struct OPNGameCatalogSwiftUIView: View {
         }
         .padding(.leading, OPNGameCatalogLayoutSupport.storeSectionHeaderMargin)
         .padding(.top, 24)
-        .frame(width: leftWidth, alignment: .topLeading)
+        .frame(width: leftWidth, height: height, alignment: .topLeading)
+        .clipped()
     }
 
     private func detailMetadata(_ game: OPNCatalogGameObject) -> some View {
         HStack(spacing: 11) {
             Text(contentRatingLabel(game))
                 .font(.system(size: 12, weight: .bold))
-            Image(systemName: "person.3.fill")
-            Image(systemName: "keyboard")
-            Image(systemName: "gamecontroller.fill")
+            if let playerLabel = detailPlayerLabel(game) {
+                Image(systemName: "person.3.fill")
+                Text(playerLabel)
+            }
+            ForEach(detailControlIcons(game), id: \.self) { icon in
+                Image(systemName: icon)
+            }
             Text("·")
             Text(detailGenreLabel(game))
                 .lineLimit(1)
@@ -861,12 +866,69 @@ struct OPNGameCatalogSwiftUIView: View {
         .foregroundStyle(Color.white.opacity(0.82))
     }
 
-    private func detailBadges() -> some View {
-        HStack(spacing: 4) {
-            detailBadge("checkmark.circle.fill", "For Premium Members", highlighted: true)
-            detailBadge(nil, "RTX", highlighted: false)
-            detailBadge(nil, "Reflex", highlighted: false)
+    @ViewBuilder
+    private func detailBadges(_ game: OPNCatalogGameObject) -> some View {
+        let badges = detailBadgeLabels(game)
+        if !badges.isEmpty {
+            HStack(spacing: 4) {
+                ForEach(Array(badges.enumerated()), id: \.offset) { index, label in
+                    detailBadge(index == 0 && !game.membershipTierLabel.isEmpty ? "checkmark.circle.fill" : nil, label, highlighted: index == 0 && !game.membershipTierLabel.isEmpty)
+                }
+            }
         }
+    }
+
+    private func detailBadgeLabels(_ game: OPNCatalogGameObject) -> [String] {
+        var labels: [String] = []
+        let membership = membershipBadgeLabel(game)
+        if !membership.isEmpty { labels.append(membership) }
+        for tech in game.nvidiaTech {
+            let label = OPNGameCatalogMetadataSupport.displayString(tech, fallback: "")
+            if !label.isEmpty && !labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { labels.append(label) }
+            if labels.count >= 4 { break }
+        }
+        if labels.count < 4 {
+            for feature in game.featureLabels {
+                let label = OPNGameCatalogMetadataSupport.displayString(feature, fallback: "")
+                if !label.isEmpty && !labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { labels.append(label) }
+                if labels.count >= 4 { break }
+            }
+        }
+        return labels
+    }
+
+    private func membershipBadgeLabel(_ game: OPNCatalogGameObject) -> String {
+        let tier = OPNGameCatalogMetadataSupport.displayString(game.membershipTierLabel, fallback: "")
+        guard !tier.isEmpty else { return "" }
+        return tier.range(of: "member", options: .caseInsensitive) == nil ? "For \(tier) Members" : tier
+    }
+
+    private func detailPlayerLabel(_ game: OPNCatalogGameObject) -> String? {
+        if game.maxOnlinePlayers > 1 { return "\(game.maxOnlinePlayers)" }
+        if game.maxLocalPlayers > 1 { return "\(game.maxLocalPlayers)" }
+        return nil
+    }
+
+    private func detailControlIcons(_ game: OPNCatalogGameObject) -> [String] {
+        var icons: [String] = []
+        let controls = game.supportedControls.map { $0.uppercased() }
+        func append(_ icon: String) {
+            if !icons.contains(icon) { icons.append(icon) }
+        }
+        if controls.contains(where: { $0.contains("KEYBOARD") || $0.contains("MOUSE") }) { append("keyboard") }
+        if controls.contains(where: { $0.contains("GAMEPAD") || $0.contains("CONTROLLER") }) { append("gamecontroller.fill") }
+        if controls.contains(where: { $0.contains("TOUCH") }) { append("hand.tap.fill") }
+        if icons.isEmpty {
+            append("keyboard")
+            append("gamecontroller.fill")
+        }
+        return icons
+    }
+
+    private func detailAccessMessage(_ item: OPNGameCatalogItemModel) -> String {
+        if gameNeedsPurchase(item) { return "Game ownership is required before streaming this title. " }
+        if !item.gameObject.membershipTierLabel.isEmpty { return "Access unlocked with your membership. " }
+        return "Ready to stream from your cloud gaming library. "
     }
 
     private func detailStoreRow(_ item: OPNGameCatalogItemModel) -> some View {
@@ -896,14 +958,30 @@ struct OPNGameCatalogSwiftUIView: View {
         .background(Color.white.opacity(highlighted ? 0.18 : 0.08))
     }
 
-    private func detailCapabilities() -> some View {
-        VStack(spacing: 0) {
-            Divider().background(Color.white.opacity(0.22))
-            detailCapabilityRow(icon: "checkmark.circle.fill", title: "RTX", subtitle: "Ready - You may need to turn this on in-game")
-            detailCapabilityRow(icon: "lock.fill", title: "Reflex", subtitle: "Upgrade your membership to unlock")
-            Divider().background(Color.white.opacity(0.22))
+    @ViewBuilder
+    private func detailCapabilities(_ game: OPNCatalogGameObject) -> some View {
+        let capabilities = detailCapabilityLabels(game)
+        if !capabilities.isEmpty {
+            VStack(spacing: 0) {
+                Divider().background(Color.white.opacity(0.22))
+                ForEach(capabilities, id: \.self) { capability in
+                    detailCapabilityRow(icon: "checkmark.circle.fill", title: capability, subtitle: "Available for this game")
+                }
+                Divider().background(Color.white.opacity(0.22))
+            }
+            .padding(.top, 2)
         }
-        .padding(.top, 2)
+    }
+
+    private func detailCapabilityLabels(_ game: OPNCatalogGameObject) -> [String] {
+        var labels: [String] = []
+        for value in game.nvidiaTech + game.featureLabels {
+            let label = OPNGameCatalogMetadataSupport.displayString(value, fallback: "")
+            guard !label.isEmpty, !labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) else { continue }
+            labels.append(label)
+            if labels.count >= 3 { break }
+        }
+        return labels
     }
 
     private func detailCapabilityRow(icon: String, title: String, subtitle: String) -> some View {
@@ -913,7 +991,7 @@ struct OPNGameCatalogSwiftUIView: View {
                 .frame(width: 18)
             Text(title)
                 .font(.system(size: 15, weight: .bold))
-                .frame(width: 58, alignment: .leading)
+                .frame(width: 118, alignment: .leading)
             Text(subtitle)
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Color.white.opacity(0.70))
@@ -941,13 +1019,11 @@ struct OPNGameCatalogSwiftUIView: View {
                 Text(contentRatingLabel(game))
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.white.opacity(0.90))
-                Text("Blood, Violence")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.64))
-                Divider().background(Color.white.opacity(0.22))
-                Text("In-Game Purchases, Users Interact")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.64))
+                ForEach(detailRatingNotes(game), id: \.self) { note in
+                    Text(note)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.64))
+                }
             }
         }
         .padding(.top, 18)
@@ -978,7 +1054,7 @@ struct OPNGameCatalogSwiftUIView: View {
     }
 
     private func detailDescription(_ game: OPNCatalogGameObject) -> String {
-        let trimmed = game.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = game.gameDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         return "\(game.title.isEmpty ? "This game" : game.title) is ready to stream on GeForce NOW. Launch instantly from your cloud gaming library."
     }
@@ -994,7 +1070,14 @@ struct OPNGameCatalogSwiftUIView: View {
 
     private func contentRatingLabel(_ game: OPNCatalogGameObject) -> String {
         let rating = game.contentRatings.first.map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") } ?? ""
-        return rating.isEmpty ? "TEEN" : rating.uppercased()
+        return rating.isEmpty ? "UNRATED" : rating.uppercased()
+    }
+
+    private func detailRatingNotes(_ game: OPNCatalogGameObject) -> [String] {
+        var notes = game.contentRatings.dropFirst().map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") }.filter { !$0.isEmpty }
+        if notes.isEmpty && !game.publisherName.isEmpty { notes.append("Publisher: \(game.publisherName)") }
+        if notes.isEmpty && !game.developerName.isEmpty { notes.append("Developer: \(game.developerName)") }
+        return notes
     }
 
     private var loadingState: some View {
