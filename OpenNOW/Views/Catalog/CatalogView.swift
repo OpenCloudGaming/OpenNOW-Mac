@@ -37,14 +37,7 @@ struct CatalogView: View {
     var body: some View {
         VStack(spacing: 0) {
             CatalogTopBar(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-            ZStack(alignment: .trailing) {
-                CatalogContentView(viewModel: viewModel)
-                if viewModel.selectedGame != nil {
-                    GameDetailPanel(viewModel: viewModel)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
-            }
-            .clipped()
+            CatalogContentView(viewModel: viewModel)
         }
         .background(Color.black)
         .task { viewModel.loadIfNeeded() }
@@ -153,9 +146,11 @@ private struct CatalogContentView: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
+        let hero = viewModel.featuredGames.first ?? viewModel.catalogGames.first
+        let sections = viewModel.catalogSections
         ScrollView {
             VStack(alignment: .leading, spacing: 34) {
-                if let hero = viewModel.featuredGames.first ?? viewModel.catalogGames.first {
+                if let hero {
                     CatalogHeroView(viewModel: viewModel, game: hero)
                 }
 
@@ -168,13 +163,29 @@ private struct CatalogContentView: View {
                         .padding(.horizontal, 56)
                 }
 
-                ForEach(Array(viewModel.catalogSections.enumerated()), id: \.offset) { _, section in
+                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
                     CatalogRailView(viewModel: viewModel, title: section.title, games: section.games)
+                    if shouldShowDetail(afterSectionAt: index, sections: sections) {
+                        GameDetailPanel(viewModel: viewModel)
+                            .padding(.horizontal, 44)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
                 }
             }
             .padding(.bottom, 44)
         }
         .background(Color.black)
+    }
+
+    private func shouldShowDetail(afterSectionAt index: Int, sections: [(title: String, games: [OPNCatalogGameObject])]) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        let selectedIdentity = CatalogViewModel.identity(for: selectedGame)
+        guard sections[index].games.contains(where: { CatalogViewModel.identity(for: $0) == selectedIdentity }) else {
+            return false
+        }
+        return !sections.prefix(index).contains { section in
+            section.games.contains { CatalogViewModel.identity(for: $0) == selectedIdentity }
+        }
     }
 }
 
@@ -268,7 +279,7 @@ private struct CatalogGameTile: View {
     @State private var isHovering = false
 
     var body: some View {
-        Button { viewModel.launch(game: game) } label: {
+        Button { viewModel.selectGame(game) } label: {
             ZStack(alignment: .topLeading) {
                 CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
                     .frame(width: 304, height: 171)
@@ -304,34 +315,47 @@ private struct GameDetailPanel: View {
 
     var body: some View {
         if let game = viewModel.selectedGame {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topTrailing) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 760), contentMode: .fill)
-                        .frame(height: 224)
+            ZStack(alignment: .topTrailing) {
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill)
+                    .frame(maxWidth: .infinity, minHeight: 430, maxHeight: 430)
+                    .clipped()
+                LinearGradient(colors: [.black.opacity(0.98), .black.opacity(0.72), .black.opacity(0.22)], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(colors: [.clear, .black.opacity(0.92)], startPoint: .top, endPoint: .bottom)
+
+                HStack(alignment: .top, spacing: 28) {
+                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestTileImageURL, width: 460), contentMode: .fill)
+                        .frame(width: 180, height: 254)
                         .clipped()
-                    LinearGradient(colors: [.clear, .black.opacity(0.95)], startPoint: .top, endPoint: .bottom)
-                    Button { viewModel.selectGame(nil) } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .black))
-                            .foregroundStyle(.white)
-                            .frame(width: 30, height: 30)
-                            .background(.black.opacity(0.62))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(16)
-                }
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text(game.title.isEmpty ? "Selected Game" : game.title)
-                            .font(.system(size: 32, weight: .black))
-                            .lineLimit(3)
-                        Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineSpacing(3)
+                            .font(.system(size: 34, weight: .black))
+                            .lineLimit(2)
 
-                        detailChips(game: game)
+                        if !game.detailChips.isEmpty {
+                            detailChips(game: game)
+                        }
+
+                        Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.76))
+                            .lineSpacing(4)
+                            .lineLimit(5)
+                            .frame(maxWidth: 640, alignment: .leading)
+
+                        HStack(spacing: 14) {
+                            Button { viewModel.launchSelectedGame() } label: {
+                                Text("PLAY")
+                                    .font(.system(size: 15, weight: .black))
+                                    .frame(width: 152, height: 42)
+                            }
+                            .buttonStyle(VendorGetInButtonStyle())
+
+                            Button("Open Store") { viewModel.openStoreForSelectedVariant() }
+                                .buttonStyle(SecondaryLoginButtonStyle(compact: true))
+                                .opacity(game.variants.isEmpty ? 0.5 : 1)
+                                .disabled(game.variants.isEmpty)
+                        }
 
                         if !game.variants.isEmpty {
                             Picker("Store", selection: $viewModel.selectedVariantIndex) {
@@ -340,34 +364,36 @@ private struct GameDetailPanel: View {
                                 }
                             }
                             .pickerStyle(.segmented)
+                            .frame(maxWidth: 360)
                         }
-
-                        Button { viewModel.launchSelectedGame() } label: {
-                            Text("PLAY")
-                                .font(.system(size: 15, weight: .black))
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(VendorGetInButtonStyle())
-
-                        Button("Open Store") { viewModel.openStoreForSelectedVariant() }
-                            .buttonStyle(SecondaryLoginButtonStyle(compact: true))
-                            .opacity(game.variants.isEmpty ? 0.5 : 1)
-                            .disabled(game.variants.isEmpty)
 
                         if !viewModel.launchMessage.isEmpty {
                             CatalogMessageView(message: viewModel.launchMessage, systemImage: "play.circle.fill")
+                                .frame(maxWidth: 520)
                         }
 
                         detailRows(game: game)
                     }
-                    .padding(24)
+
+                    Spacer(minLength: 0)
                 }
+                .padding(28)
+                .padding(.trailing, 54)
+
+                Button { viewModel.selectGame(nil) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(.black.opacity(0.62))
+                }
+                .buttonStyle(.plain)
+                .padding(18)
             }
-            .frame(width: 390)
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 430, maxHeight: 430)
             .background(Color(red: 0.075, green: 0.075, blue: 0.075))
-            .overlay(alignment: .leading) { Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1) }
-            .shadow(color: .black.opacity(0.52), radius: 26, x: -18, y: 0)
+            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+            .shadow(color: .black.opacity(0.42), radius: 22, x: 0, y: 18)
         }
     }
 
