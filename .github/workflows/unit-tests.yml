@@ -15,8 +15,24 @@ permissions:
 
 jobs:
   test:
-    name: Run Backend Unit Tests
+    name: Run Package Unit Tests
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - Backend
+          - CloudMatch
+          - Common
+          - GDN
+          - Jarvis
+          - LCARS
+          - NesAuth
+          - NetworkTest
+          - Ragnarok
+          - SignalLinkKit
+          - Starfleet
+          - UDS
 
     steps:
       - name: Checkout repository
@@ -28,5 +44,11 @@ jobs:
           uname -a
 
       - name: Run unit tests
-        run: xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -destination 'platform=macOS' build
+        run: |
+          set -euo pipefail
+          if [[ -d "${{ matrix.package }}/Tests" ]]; then
+            swift test --package-path "${{ matrix.package }}"
+          else
+            swift build --package-path "${{ matrix.package }}"
+          fi
         shell: bash
