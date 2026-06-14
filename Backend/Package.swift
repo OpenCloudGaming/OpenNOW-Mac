@@ -1,6 +1,13 @@
 // swift-tools-version: 6.0
 
 import PackageDescription
+import Foundation
+
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+let webRTCFrameworkSearchPath = packageRoot
+    .appendingPathComponent("../third_party/webrtc-official")
+    .standardizedFileURL
+    .path
 
 let package = Package(
     name: "Backend",
@@ -26,10 +33,10 @@ let package = Package(
                 .product(name: "Sentry", package: "sentry-cocoa"),
             ],
             swiftSettings: [
-                .unsafeFlags(["-F", "../third_party/webrtc-official"]),
+                .unsafeFlags(["-F", webRTCFrameworkSearchPath]),
             ],
             linkerSettings: [
-                .unsafeFlags(["-F", "../third_party/webrtc-official", "-framework", "WebRTC"]),
+                .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-framework", "WebRTC"]),
             ]
         ),
     ],
