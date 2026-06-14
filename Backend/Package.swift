@@ -11,8 +11,8 @@ let package = Package(
     dependencies: [
         .package(path: "../Common"),
         .package(path: "../SignalLinkKit"),
-        .package(path: "../jarvis"),
-        .package(path: "../starfleet"),
+        .package(path: "../Jarvis"),
+        .package(path: "../Starfleet"),
         .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.17.1"),
     ],
     targets: [
@@ -21,8 +21,8 @@ let package = Package(
             dependencies: [
                 "Common",
                 .product(name: "SignalLinkKit", package: "SignalLinkKit"),
-                .product(name: "Jarvis", package: "jarvis"),
-                .product(name: "Starfleet", package: "starfleet"),
+                .product(name: "Jarvis", package: "Jarvis"),
+                .product(name: "Starfleet", package: "Starfleet"),
                 .product(name: "Sentry", package: "sentry-cocoa"),
             ],
             swiftSettings: [

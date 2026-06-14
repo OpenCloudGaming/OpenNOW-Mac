@@ -8,16 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		20E194CFFBA3687D0A48D383 /* OPNPremiumBackdrop.metal in Sources */ = {isa = PBXBuildFile; fileRef = 56C01BA183847B38981C01FD /* OPNPremiumBackdrop.metal */; };
-		2EF04056FF33CDBD1E80741E /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA8C15C5E2D0BC2B518A5122 /* ScreenCaptureKit.framework */; };
-		3B4CCDD106825E705E33C838 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3351CF6EEB747A30AA91CDE3 /* AuthenticationServices.framework */; };
-		428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F1CB59A202D1743D348CB6E2 /* Metal.framework */; };
-		4A06F3F6B2094450A5049F2A /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework */; };
-		4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2725E7B4151D930B8EEC76B0 /* Cocoa.framework */; };
-		56330183F7065F54C2D88C7F /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */; };
-		57557463BAE573CB78603B2B /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F7F59E351286CF299470CD20 /* OpenGL.framework */; };
 		7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758B2FDCA4F900B177D8 /* Jarvis */; };
 		7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758E2FDCA4F900B177D8 /* Starfleet */; };
 		777875922FDCA4F900B177D8 /* NesAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 777875912FDCA4F900B177D8 /* NesAuth */; };
+		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
 		A00000000000000000000101 /* CloudMatch in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000201 /* CloudMatch */; };
 		A00000000000000000000102 /* LCARS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000202 /* LCARS */; };
 		A00000000000000000000103 /* GDN in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000203 /* GDN */; };
@@ -27,14 +21,6 @@
 		A00000000000000000000107 /* Backend in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* Backend */; };
 		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
-		7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */; };
-		8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DC921A46254106F27A61389 /* AVKit.framework */; };
-		8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */; };
-		9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5BCB75964D40550D1FBD77B5 /* MetalKit.framework */; };
-		9AFDB0810ACB8B82728142E5 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2847DD23C73CB01927B8B6D /* CoreMedia.framework */; };
-		A00000000000000000000011 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000021 /* AudioUnit.framework */; };
-		A750DCB728A12BBBBF23C682 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EE996F149E2BE5CD1D7B96C5 /* CoreAudio.framework */; };
-		B7F49677C78ABB1ED6E07C13 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 69C67B7CFDCBD4BFA8A4BDDB /* AVFoundation.framework */; };
 		B9D4D385ED2A4B1F9E1E24BA /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 71540FEB572BA7ADB70C4D69 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		D00000000000000000000032 /* OPNGameCatalogArtworkSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */; };
 		D00000000000000000000033 /* OPNGameCatalogMetadataSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */; };
@@ -45,7 +31,6 @@
 		D00000000000000000000039 /* OPNGameCatalogView+Rendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000000000000000000049 /* OPNGameCatalogView+Rendering.swift */; };
 		D0000000000000000000003B /* OPNGameCatalogSearchSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */; };
 		D0000000000000000000003C /* OPNGameCatalogLayoutSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */; };
-		D4D1FDD046EF74604BF789F3 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */; };
 		E00000000000000000000005 /* OPNBackdropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000015 /* OPNBackdropView.swift */; };
 		E00000000000000000000006 /* OPNCarouselFocusLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000016 /* OPNCarouselFocusLayout.swift */; };
 		E00000000000000000000007 /* OPNErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00000000000000000000017 /* OPNErrorView.swift */; };
@@ -62,7 +47,6 @@
 		E57A113BFF3CA1175BCB810D /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 71540FEB572BA7ADB70C4D69 /* WebRTC.framework */; };
 		E61312258EEB2041AA067B25 /* OPNGameCatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift */; };
 		E61312258EEB2041AA067B26 /* OPNGameCatalogModelSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift */; };
-		ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5C2052B439E438DCA24889EC /* CoreImage.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -80,25 +64,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
-		0D2B74C98C7ACD14E1175295 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2725E7B4151D930B8EEC76B0 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
-		2DC921A46254106F27A61389 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
-		3351CF6EEB747A30AA91CDE3 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		0D2B74C98C7ACD14E1175295 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = OpenNOW.app; path = "/Volumes/Projects/OpenNOW-Mac/build/Debug/OpenNOW.app"; sourceTree = "<absolute>"; };
 		56C01BA183847B38981C01FD /* OPNPremiumBackdrop.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = OPNPremiumBackdrop.metal; path = src/shaders/OPNPremiumBackdrop.metal; sourceTree = "<group>"; };
-		5BCB75964D40550D1FBD77B5 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
-		5C2052B439E438DCA24889EC /* CoreImage.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreImage.framework; path = System/Library/Frameworks/CoreImage.framework; sourceTree = SDKROOT; };
-		69C67B7CFDCBD4BFA8A4BDDB /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		71540FEB572BA7ADB70C4D69 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebRTC.framework; path = "third_party/webrtc-official/WebRTC.framework"; sourceTree = "<group>"; };
 		7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = System/Library/Frameworks/VideoToolbox.framework; sourceTree = SDKROOT; };
-		7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
-		8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		8C182E3135E4306DC54F496B /* OpenNOW-Info.plist */ = {isa = PBXFileReference; explicitFileType = text.plist.xml; path = "OpenNOW-Info.plist"; sourceTree = "<group>"; };
-		A2847DD23C73CB01927B8B6D /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		AD0614C0EE6F7B83442E87EC /* OPNGameCatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogView.swift; path = src/views/OPNGameCatalogView.swift; sourceTree = "<group>"; };
 		AD0614C0EE6F7B83442E87ED /* OPNGameCatalogModelSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogModelSupport.swift; path = src/views/GameCatalog/OPNGameCatalogModelSupport.swift; sourceTree = "<group>"; };
-		B00000000000000000000021 /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = System/Library/Frameworks/AudioUnit.framework; sourceTree = SDKROOT; };
-		CA8C15C5E2D0BC2B518A5122 /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
 		D00000000000000000000042 /* OPNGameCatalogArtworkSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogArtworkSupport.swift; path = src/views/GameCatalog/OPNGameCatalogArtworkSupport.swift; sourceTree = "<group>"; };
 		D00000000000000000000043 /* OPNGameCatalogMetadataSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogMetadataSupport.swift; path = src/views/GameCatalog/OPNGameCatalogMetadataSupport.swift; sourceTree = "<group>"; };
 		D00000000000000000000044 /* OPNStoreGameTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStoreGameTile.swift; path = src/views/GameCatalog/OPNStoreGameTile.swift; sourceTree = "<group>"; };
@@ -108,7 +80,6 @@
 		D00000000000000000000049 /* OPNGameCatalogView+Rendering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "OPNGameCatalogView+Rendering.swift"; path = "src/views/GameCatalog/OPNGameCatalogView+Rendering.swift"; sourceTree = "<group>"; };
 		D0000000000000000000004C /* OPNGameCatalogSearchSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogSearchSupport.swift; path = src/views/GameCatalog/OPNGameCatalogSearchSupport.swift; sourceTree = "<group>"; };
 		D0000000000000000000004D /* OPNGameCatalogLayoutSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNGameCatalogLayoutSupport.swift; path = src/views/GameCatalog/OPNGameCatalogLayoutSupport.swift; sourceTree = "<group>"; };
-		D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
 		E00000000000000000000015 /* OPNBackdropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNBackdropView.swift; path = src/views/OPNBackdropView.swift; sourceTree = "<group>"; };
 		E00000000000000000000016 /* OPNCarouselFocusLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNCarouselFocusLayout.swift; path = src/views/OPNCarouselFocusLayout.swift; sourceTree = "<group>"; };
 		E00000000000000000000017 /* OPNErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNErrorView.swift; path = src/views/OPNErrorView.swift; sourceTree = "<group>"; };
@@ -122,9 +93,6 @@
 		E0000000000000000000003B /* OPNSessionReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNSessionReportView.swift; path = src/views/OPNSessionReportView.swift; sourceTree = "<group>"; };
 		E0000000000000000000003D /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenNOWApp.swift; path = src/OpenNOWApp.swift; sourceTree = "<group>"; };
 		E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OPNStreamViewControllerOverlays.swift; path = src/streaming/OPNStreamViewControllerOverlays.swift; sourceTree = "<group>"; };
-		EE996F149E2BE5CD1D7B96C5 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
-		F1CB59A202D1743D348CB6E2 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
-		F7F59E351286CF299470CD20 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -133,9 +101,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E57A113BFF3CA1175BCB810D /* WebRTC.framework in Frameworks */,
-				4EB63AD5790216383B1EAEE0 /* Cocoa.framework in Frameworks */,
 				7B2A61D44F4E41BDB9A9D104 /* VideoToolbox.framework in Frameworks */,
-				8ECCF37444025BB964FF312C /* QuartzCore.framework in Frameworks */,
 				7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
 				777875922FDCA4F900B177D8 /* NesAuth in Frameworks */,
@@ -148,20 +114,6 @@
 				A00000000000000000000107 /* Backend in Frameworks */,
 				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
-				428BC444FE5243302EE59EAC /* Metal.framework in Frameworks */,
-				9512DC7E3A700A9D1BE634D1 /* MetalKit.framework in Frameworks */,
-				ED1D02AFEB3C955EB4D70A28 /* CoreImage.framework in Frameworks */,
-				3B4CCDD106825E705E33C838 /* AuthenticationServices.framework in Frameworks */,
-				B7F49677C78ABB1ED6E07C13 /* AVFoundation.framework in Frameworks */,
-				8953374293462F57B5DE59CF /* AVKit.framework in Frameworks */,
-				9AFDB0810ACB8B82728142E5 /* CoreMedia.framework in Frameworks */,
-				4A06F3F6B2094450A5049F2A /* CoreVideo.framework in Frameworks */,
-				57557463BAE573CB78603B2B /* OpenGL.framework in Frameworks */,
-				D4D1FDD046EF74604BF789F3 /* GameController.framework in Frameworks */,
-				56330183F7065F54C2D88C7F /* ApplicationServices.framework in Frameworks */,
-				A750DCB728A12BBBBF23C682 /* CoreAudio.framework in Frameworks */,
-				A00000000000000000000011 /* AudioUnit.framework in Frameworks */,
-				2EF04056FF33CDBD1E80741E /* ScreenCaptureKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -171,10 +123,6 @@
 		09E51D173F1A00C061B7641B /* src */ = {
 			isa = PBXGroup;
 			children = (
-				C00000000000000000000050 /* AppDelegate */,
-				F515E1DCA81C9F38EDA5851E /* auth */,
-				258D3F331162A2E4DD8D0A15 /* common */,
-				4A2AEEDD7ECFD3B280FE224B /* games */,
 				10C7B3F3A6E6F504ED29F4C7 /* shaders */,
 				258FB9F9F30FA962CED75214 /* streaming */,
 				92DF8FC120985BDB402B5489 /* views */,
@@ -191,57 +139,12 @@
 			name = shaders;
 			sourceTree = "<group>";
 		};
-		258D3F331162A2E4DD8D0A15 /* common */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = common;
-			sourceTree = "<group>";
-		};
 		258FB9F9F30FA962CED75214 /* streaming */ = {
 			isa = PBXGroup;
 			children = (
 				E0000000000000000000008B /* OPNStreamViewControllerOverlays.swift */,
 			);
 			name = streaming;
-			sourceTree = "<group>";
-		};
-		4A2AEEDD7ECFD3B280FE224B /* games */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = games;
-			sourceTree = "<group>";
-		};
-		5BB0AC794547B308C15C38CA /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				0D2B74C98C7ACD14E1175295 /* OpenNOW.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		777875882FDAB17C00B177D8 /* Recovered References */ = {
-			isa = PBXGroup;
-			children = (
-				2725E7B4151D930B8EEC76B0 /* Cocoa.framework */,
-				8081186F0925DE7C9ADAEE56 /* QuartzCore.framework */,
-				F1CB59A202D1743D348CB6E2 /* Metal.framework */,
-				5BCB75964D40550D1FBD77B5 /* MetalKit.framework */,
-				5C2052B439E438DCA24889EC /* CoreImage.framework */,
-				3351CF6EEB747A30AA91CDE3 /* AuthenticationServices.framework */,
-				69C67B7CFDCBD4BFA8A4BDDB /* AVFoundation.framework */,
-				2DC921A46254106F27A61389 /* AVKit.framework */,
-				A2847DD23C73CB01927B8B6D /* CoreMedia.framework */,
-				7F6085DF1B7645F2A9C98D41 /* CoreVideo.framework */,
-				F7F59E351286CF299470CD20 /* OpenGL.framework */,
-				0B6DBC7A2FACE85A3A7C62CF /* GameController.framework */,
-				D928B272EFA8B448F7CF8585 /* ApplicationServices.framework */,
-				EE996F149E2BE5CD1D7B96C5 /* CoreAudio.framework */,
-				B00000000000000000000021 /* AudioUnit.framework */,
-				CA8C15C5E2D0BC2B518A5122 /* ScreenCaptureKit.framework */,
-			);
-			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		92DF8FC120985BDB402B5489 /* views */ = {
@@ -265,13 +168,6 @@
 			name = views;
 			sourceTree = "<group>";
 		};
-		C00000000000000000000050 /* AppDelegate */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = AppDelegate;
-			sourceTree = "<group>";
-		};
 		D00000000000000000000050 /* GameCatalog */ = {
 			isa = PBXGroup;
 			children = (
@@ -292,20 +188,11 @@
 			isa = PBXGroup;
 			children = (
 				09E51D173F1A00C061B7641B /* src */,
-				5BB0AC794547B308C15C38CA /* Products */,
 				8C182E3135E4306DC54F496B /* OpenNOW-Info.plist */,
 				7B2A61D54F4E41BDB9A9D105 /* VideoToolbox.framework */,
 				71540FEB572BA7ADB70C4D69 /* WebRTC.framework */,
-				777875882FDAB17C00B177D8 /* Recovered References */,
 			);
 			name = OpenNOW;
-			sourceTree = "<group>";
-		};
-		F515E1DCA81C9F38EDA5851E /* auth */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = auth;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -326,18 +213,18 @@
 			);
 			name = OpenNOW;
 			packageProductDependencies = (
-				7778758B2FDCA4F900B177D8 /* Jarvis */,
-				7778758E2FDCA4F900B177D8 /* Starfleet */,
-				777875912FDCA4F900B177D8 /* NesAuth */,
-				A00000000000000000000201 /* CloudMatch */,
-				A00000000000000000000202 /* LCARS */,
-				A00000000000000000000203 /* GDN */,
-				A00000000000000000000204 /* Ragnarok */,
-				A00000000000000000000205 /* UDS */,
-				A00000000000000000000206 /* NetworkTest */,
 				A00000000000000000000207 /* Backend */,
-				A00000000000000000000208 /* SignalLinkKit */,
+				A00000000000000000000201 /* CloudMatch */,
 				A00000000000000000000209 /* Common */,
+				A00000000000000000000203 /* GDN */,
+				7778758B2FDCA4F900B177D8 /* Jarvis */,
+				A00000000000000000000202 /* LCARS */,
+				777875912FDCA4F900B177D8 /* NesAuth */,
+				A00000000000000000000206 /* NetworkTest */,
+				A00000000000000000000204 /* Ragnarok */,
+				A00000000000000000000208 /* SignalLinkKit */,
+				7778758E2FDCA4F900B177D8 /* Starfleet */,
+				A00000000000000000000205 /* UDS */,
 			);
 			productName = OpenNOW;
 			productReference = 0D2B74C98C7ACD14E1175295 /* OpenNOW.app */;
@@ -368,20 +255,20 @@
 			);
 			mainGroup = F3C5A43586F71EF5B9F29AFA /* OpenNOW */;
 			packageReferences = (
-				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */,
-				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */,
-				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */,
-				A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */,
-				A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */,
-				A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */,
-				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
-				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
-				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
 				A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */,
-				A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */,
+				A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */,
 				A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */,
+				A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */,
+				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */,
+				A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */,
+				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */,
+				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
+				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */,
+				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */,
+				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
 			);
-			productRefGroup = 5BB0AC794547B308C15C38CA /* Products */;
+			productRefGroup = F3C5A43586F71EF5B9F29AFA /* OpenNOW */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -613,53 +500,53 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */ = {
+		A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = jarvis;
-		};
-		7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = starfleet;
-		};
-		777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = nesauth;
+			relativePath = Backend;
 		};
 		A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = CloudMatch;
 		};
-		A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */ = {
+		A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = LCARS;
+			relativePath = Common;
 		};
 		A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = GDN;
 		};
-		A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */ = {
+		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Ragnarok;
+			relativePath = Jarvis;
 		};
-		A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */ = {
+		A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = UDS;
+			relativePath = LCARS;
+		};
+		777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = NesAuth;
 		};
 		A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = NetworkTest;
 		};
-		A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */ = {
+		A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Backend;
+			relativePath = Ragnarok;
 		};
 		A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = SignalLinkKit;
 		};
-		A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */ = {
+		7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Common;
+			relativePath = Starfleet;
+		};
+		A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = UDS;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -671,12 +558,12 @@
 		};
 		7778758E2FDCA4F900B177D8 /* Starfleet */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "starfleet" */;
+			package = 7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */;
 			productName = Starfleet;
 		};
 		777875912FDCA4F900B177D8 /* NesAuth */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "nesauth" */;
+			package = 777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */;
 			productName = NesAuth;
 		};
 		A00000000000000000000201 /* CloudMatch */ = {
