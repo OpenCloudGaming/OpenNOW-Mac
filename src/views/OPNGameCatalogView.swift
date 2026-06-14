@@ -838,7 +838,9 @@ private final class OPNCatalogHeroStageNSView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
         layer?.masksToBounds = true
-        artworkView.image = OPNUIHelpers.fallbackHeroArtworkImage()
+        let fallbackArtwork = OPNUIHelpers.fallbackHeroArtworkImage()
+        artworkView.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackArtwork)
+        artworkView.image = fallbackArtwork
         addSubview(artworkView, positioned: .below, relativeTo: nil)
         titleFallback.maximumNumberOfLines = 2
         titleFallback.lineBreakMode = .byWordWrapping
@@ -885,7 +887,9 @@ private final class OPNCatalogHeroStageNSView: NSView {
         logoView.image = nil
         logoView.isHidden = true
         logoView.alphaValue = 1.0
-        artworkView.image = OPNUIHelpers.fallbackHeroArtworkImage()
+        let fallbackArtwork = OPNUIHelpers.fallbackHeroArtworkImage()
+        artworkView.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackArtwork)
+        artworkView.image = fallbackArtwork
         artworkView.alphaValue = 1.0
         updateLogoFrame()
         loadArtwork(for: gameObject, identity: identity, generation: currentGeneration)
@@ -943,9 +947,11 @@ private final class OPNCatalogHeroStageNSView: NSView {
     }
 
     private func setArtworkImage(_ image: NSImage, animated: Bool) {
+        let fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: image)
         guard animated, artworkView.image != nil, artworkView.superview != nil else {
             artworkTransitionView?.removeFromSuperview()
             artworkTransitionView = nil
+            artworkView.fadeColor = fadeColor
             artworkView.image = image
             artworkView.alphaValue = 1.0
             updateLogoFrame()
@@ -954,6 +960,7 @@ private final class OPNCatalogHeroStageNSView: NSView {
         artworkTransitionView?.removeFromSuperview()
         let transitionView = OPNHeroArtworkView(frame: artworkView.frame)
         transitionView.autoresizingMask = [.width, .height]
+        transitionView.fadeColor = fadeColor
         transitionView.image = image
         transitionView.alphaValue = 0.0
         addSubview(transitionView, positioned: .above, relativeTo: artworkView)
@@ -966,6 +973,7 @@ private final class OPNCatalogHeroStageNSView: NSView {
         } completionHandler: { [weak self, weak transitionView] in
             MainActor.assumeIsolated {
                 guard let self, let transitionView, self.artworkTransitionView === transitionView else { return }
+                self.artworkView.fadeColor = fadeColor
                 self.artworkView.image = image
                 self.artworkView.alphaValue = 1.0
                 transitionView.removeFromSuperview()

@@ -265,6 +265,54 @@ final class OPNGameCatalogArtworkSupport: NSObject {
         return visiblePixels >= totalPixels / 3 && opaquePixels >= totalPixels / 5
     }
 
+    static func heroFadeColor(for image: NSImage?) -> NSColor {
+        let fallbackColor = OPNUIHelpers.color(rgb: 0x101113, alpha: 1.0)
+        guard let image else { return fallbackColor }
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        guard let source = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else { return fallbackColor }
+        let sampleWidth = 32
+        let sampleHeight = 18
+        let bytesPerPixel = 4
+        let bytesPerRow = sampleWidth * bytesPerPixel
+        var pixels = [UInt8](repeating: 0, count: sampleHeight * bytesPerRow)
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: &pixels, width: sampleWidth, height: sampleHeight, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return fallbackColor }
+        context.interpolationQuality = .low
+        context.draw(source, in: CGRect(x: 0, y: 0, width: sampleWidth, height: sampleHeight))
+        let firstSampleRow = sampleHeight * 11 / 18
+        var red = CGFloat(0.0)
+        var green = CGFloat(0.0)
+        var blue = CGFloat(0.0)
+        var weight = CGFloat(0.0)
+        for y in firstSampleRow..<sampleHeight {
+            let rowWeight = CGFloat(y - firstSampleRow + 1)
+            for x in 0..<sampleWidth {
+                let offset = y * bytesPerRow + x * bytesPerPixel
+                let alpha = pixels[offset + 3]
+                guard alpha > 32 else { continue }
+                red += CGFloat(pixels[offset]) * rowWeight
+                green += CGFloat(pixels[offset + 1]) * rowWeight
+                blue += CGFloat(pixels[offset + 2]) * rowWeight
+                weight += rowWeight
+            }
+        }
+        guard weight > 0.0 else { return fallbackColor }
+        let averageRed = red / weight / 255.0
+        let averageGreen = green / weight / 255.0
+        let averageBlue = blue / weight / 255.0
+        let luminance = 0.2126 * averageRed + 0.7152 * averageGreen + 0.0722 * averageBlue
+        let brightnessScale = min(1.0, 0.24 / max(luminance, 0.01))
+        let baseRed = CGFloat(0x10) / 255.0
+        let baseGreen = CGFloat(0x11) / 255.0
+        let baseBlue = CGFloat(0x13) / 255.0
+        return NSColor(
+            calibratedRed: baseRed * 0.25 + averageRed * brightnessScale * 0.75,
+            green: baseGreen * 0.25 + averageGreen * brightnessScale * 0.75,
+            blue: baseBlue * 0.25 + averageBlue * brightnessScale * 0.75,
+            alpha: 1.0
+        )
+    }
+
     private static func iconCandidatePaths(_ assetName: String) -> [String] {
         let safeAssetName = assetName.isEmpty ? "default" : assetName
         var paths: [String] = []

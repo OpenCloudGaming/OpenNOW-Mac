@@ -83,8 +83,14 @@ extension OpnImageLoadToken: @unchecked Sendable {}
 @objc(OPNHeroArtworkView)
 @MainActor
 public final class OPNHeroArtworkView: NSView {
+    private static let defaultFadeColor = OPNUIHelpers.color(rgb: 0x101113, alpha: 1.0)
+
     @objc public var image: NSImage? {
         didSet { updateImageLayer() }
+    }
+
+    @objc public var fadeColor: NSColor = OPNHeroArtworkView.defaultFadeColor {
+        didSet { updateFadeLayer() }
     }
 
     private let imageLayer = CALayer()
@@ -97,14 +103,10 @@ public final class OPNHeroArtworkView: NSView {
         imageLayer.contentsGravity = .resizeAspectFill
         imageLayer.masksToBounds = true
         layer?.addSublayer(imageLayer)
-        fadeLayer.colors = [
-            OPNUIHelpers.color(rgb: 0x101113, alpha: 0.0).cgColor,
-            OPNUIHelpers.color(rgb: 0x101113, alpha: 0.28).cgColor,
-            OPNUIHelpers.color(rgb: 0x101113, alpha: 1.0).cgColor
-        ]
         fadeLayer.locations = [0.0, 0.46, 1.0]
         fadeLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
         fadeLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
+        updateFadeLayer()
         layer?.addSublayer(fadeLayer)
     }
 
@@ -129,6 +131,18 @@ public final class OPNHeroArtworkView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         imageLayer.contents = cgImage
+        CATransaction.commit()
+    }
+
+    private func updateFadeLayer() {
+        let color = fadeColor.usingColorSpace(.sRGB) ?? OPNHeroArtworkView.defaultFadeColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fadeLayer.colors = [
+            color.withAlphaComponent(0.0).cgColor,
+            color.withAlphaComponent(0.34).cgColor,
+            color.withAlphaComponent(1.0).cgColor
+        ]
         CATransaction.commit()
     }
 }

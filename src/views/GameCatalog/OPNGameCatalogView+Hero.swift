@@ -176,7 +176,9 @@ extension OPNGameCatalogView {
 
         let artwork = OPNHeroArtworkView(frame: container.bounds)
         artwork.autoresizingMask = [.width, .height]
-        artwork.image = OPNUIHelpers.fallbackHeroArtworkImage()
+        let fallbackArtwork = OPNUIHelpers.fallbackHeroArtworkImage()
+        artwork.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackArtwork)
+        artwork.image = fallbackArtwork
         container.addSubview(artwork, positioned: .below, relativeTo: nil)
         desktopHeroArtworkView = artwork
 
@@ -210,9 +212,11 @@ extension OPNGameCatalogView {
 
     @objc func setDesktopHeroArtworkImage(_ image: NSImage?, animated: Bool) {
         guard let image, let container = desktopHeroContainer, let artworkView = desktopHeroArtworkView else { return }
+        let fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: image)
         if !animated || artworkView.image == nil || artworkView.superview == nil {
             desktopHeroArtworkTransitionView?.removeFromSuperview()
             desktopHeroArtworkTransitionView = nil
+            artworkView.fadeColor = fadeColor
             artworkView.image = image
             artworkView.alphaValue = 1.0
             updateDesktopHeroLogoFrame()
@@ -226,6 +230,7 @@ extension OPNGameCatalogView {
         desktopHeroArtworkTransitionView?.removeFromSuperview()
         let transitionView = OPNHeroArtworkView(frame: artworkView.frame)
         transitionView.autoresizingMask = [.width, .height]
+        transitionView.fadeColor = fadeColor
         transitionView.image = image
         transitionView.alphaValue = 0.0
         container.addSubview(transitionView, positioned: .above, relativeTo: artworkView)
@@ -243,6 +248,7 @@ extension OPNGameCatalogView {
         } completionHandler: { [weak self, weak transitionView] in
             MainActor.assumeIsolated {
                 guard let self, let transitionView, self.desktopHeroArtworkTransitionView === transitionView else { return }
+                self.desktopHeroArtworkView?.fadeColor = fadeColor
                 self.desktopHeroArtworkView?.image = image
                 self.desktopHeroArtworkView?.alphaValue = 1.0
                 transitionView.removeFromSuperview()
@@ -415,7 +421,9 @@ extension OPNGameCatalogView {
                 }
                 setDesktopHeroArtworkImage(OPNUIHelpers.fallbackHeroArtworkImage(), animated: animated)
             } else {
-                view.image = OPNUIHelpers.fallbackHeroArtworkImage()
+                let fallbackImage = OPNUIHelpers.fallbackHeroArtworkImage()
+                view.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackImage)
+                view.image = fallbackImage
             }
             view.alphaValue = 1.0
             if view === desktopHeroArtworkView { updateDesktopHeroLogoFrame() }
@@ -449,7 +457,9 @@ extension OPNGameCatalogView {
                         }
                         self.setDesktopHeroArtworkImage(OPNUIHelpers.fallbackHeroArtworkImage(), animated: animated)
                     } else {
-                        view.image = OPNUIHelpers.fallbackHeroArtworkImage()
+                        let fallbackImage = OPNUIHelpers.fallbackHeroArtworkImage()
+                        view.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackImage)
+                        view.image = fallbackImage
                     }
                     view.alphaValue = 1.0
                     if view === self.desktopHeroArtworkView { self.updateDesktopHeroLogoFrame() }
@@ -484,6 +494,7 @@ extension OPNGameCatalogView {
         if view === desktopHeroArtworkView {
             setDesktopHeroArtworkImage(image, animated: animated)
         } else {
+            view.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: image)
             view.image = image
         }
         view.alphaValue = 1.0
