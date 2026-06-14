@@ -17,7 +17,7 @@ struct LoginView: View {
         ZStack {
             LoginBackdrop()
             if let activeAccount = viewModel.activeAccount, let activeSession = viewModel.activeSession {
-                SignedInDashboardView(
+                CatalogView(
                     account: activeAccount,
                     session: activeSession,
                     accounts: accounts,
@@ -25,6 +25,7 @@ struct LoginView: View {
                     onSignOut: viewModel.signOut,
                     onForget: viewModel.forgetAccount
                 )
+                .id(activeSession.id)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 loginWindow

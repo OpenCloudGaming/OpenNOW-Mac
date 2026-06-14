@@ -1630,22 +1630,22 @@ final class OPNGameService: @unchecked Sendable {
 @objc(OPNGameServiceSwiftAdapter)
 public final class OPNGameServiceSwiftAdapter: NSObject {
     @objc(setAccessToken:)
-    static func setAccessToken(_ token: String) {
+    public static func setAccessToken(_ token: String) {
         OPNGameService.shared.setAccessToken(token)
     }
 
     @objc(setAccountLinkingToken:)
-    static func setAccountLinkingToken(_ token: String) {
+    public static func setAccountLinkingToken(_ token: String) {
         OPNGameService.shared.setAccountLinkingToken(token)
     }
 
     @objc(setVpcId:)
-    static func setVpcId(_ id: String) {
+    public static func setVpcId(_ id: String) {
         OPNGameService.shared.setVpcId(id)
     }
 
     @objc(setUserId:)
-    static func setUserId(_ id: String) {
+    public static func setUserId(_ id: String) {
         OPNGameService.shared.setUserId(id)
     }
 
@@ -1655,12 +1655,12 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     @objc(providerStreamingBaseURL)
-    static func providerStreamingBaseURL() -> String {
+    public static func providerStreamingBaseURL() -> String {
         OPNGameService.shared.providerStreamingBaseURL()
     }
 
     @objc(prewarmLaunchData)
-    static func prewarmLaunchData() {
+    public static func prewarmLaunchData() {
         OPNGameService.shared.prewarmLaunchData()
     }
 
@@ -1679,28 +1679,28 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     @objc(fetchMainPanelObjectsWithCompletion:)
-    static func fetchMainPanelObjects(completion: @escaping @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
+    public static func fetchMainPanelObjects(completion: @escaping @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
         OPNGameService.shared.fetchMainPanels { success, panels, error in
             completion(success, panels.map(OPNCatalogPanelObject.init), error)
         }
     }
 
     @objc(fetchMarqueePanelObjectsWithCompletion:)
-    static func fetchMarqueePanelObjects(completion: @escaping @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
+    public static func fetchMarqueePanelObjects(completion: @escaping @Sendable (Bool, [OPNCatalogPanelObject], String) -> Void) {
         OPNGameService.shared.fetchMarqueePanels { success, panels, error in
             completion(success, panels.map(OPNCatalogPanelObject.init), error)
         }
     }
 
     @objc(browseCatalogObjectWithSearchQuery:sortId:filterIds:fetchCount:completion:)
-    static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
+    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
         OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount) { success, result, error in
             completion(success, OPNCatalogBrowseResultObject(result: result), error)
         }
     }
 
     @objc(fetchLibraryGameObjectsWithCompletion:)
-    static func fetchLibraryGameObjects(completion: @escaping @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
+    public static func fetchLibraryGameObjects(completion: @escaping @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
         OPNGameService.shared.fetchLibraryGames { success, games, error in
             completion(success, games.map(OPNCatalogGameObject.init), error)
         }
@@ -1746,12 +1746,12 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     @objc(resolveStoreURLWithGameObject:variantIndex:completion:)
-    static func resolveStoreURL(game: OPNCatalogGameObject, variantIndex: Int, completion: @escaping @Sendable (Bool, String, String) -> Void) {
+    public static func resolveStoreURL(game: OPNCatalogGameObject, variantIndex: Int, completion: @escaping @Sendable (Bool, String, String) -> Void) {
         OPNGameService.shared.resolveStoreURL(game: game.swiftValue, variantIndex: variantIndex, completion: completion)
     }
 
     @objc(optimizeImageURL:width:)
-    static func optimizeImageURL(_ url: String, width: Int) -> String {
+    public static func optimizeImageURL(_ url: String, width: Int) -> String {
         OPNGameService.optimizeImageURL(url, width: width)
     }
 
