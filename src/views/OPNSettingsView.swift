@@ -110,6 +110,7 @@ final class OPNSettingsView: NSView {
     @objc func activateGamepadSelection() {}
 
     private func configure() {
+        subviews.forEach { $0.removeFromSuperview() }
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
         let root = OPNSettingsSwiftUIView(

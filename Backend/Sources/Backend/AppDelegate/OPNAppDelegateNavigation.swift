@@ -446,7 +446,7 @@ extension NSObject {
     private func showSettings(in container: NSView, bounds: NSRect, previousSubviews: [NSView], animated: Bool, forward: Bool) {
         opnNavConfigureLibraryWindow(opnNavGet(self, "window", as: NSWindow.self))
         updateAccountChrome()
-        guard let settings = OPNAppViewBridge.view(named: "OPNSettingsView", frame: bounds, string: "") else { return }
+        guard let settings = OPNAppViewBridge.view(named: "OPNSettingsView", frame: bounds) else { return }
         settings.autoresizingMask = [.width, .height]
         let selfBox = OPNNavigationWeakObject(self)
         settings.assignOnBackRequested { selfBox.value?.transitionToScreen(OPNNavigationScreen.store.rawValue) }
