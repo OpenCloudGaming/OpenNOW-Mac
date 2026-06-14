@@ -144,17 +144,17 @@ final class OPNStoreGameTile: NSView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.18)
         layer?.borderWidth = focused ? 2.5 : 1.25
-        layer?.borderColor = (focused ? Self.color(0x34C759, alpha: 0.98) : Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.12)).cgColor
+        layer?.borderColor = (focused && prominent ? Self.color(0x34C759, alpha: 0.98) : Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.0)).cgColor
         updateStoreIconSelection()
         shineLayer.opacity = Float(focused ? 1 : (prominent ? 0.88 : 0.52))
         layer?.shadowColor = Self.color(0x34C759).cgColor
-        layer?.shadowOpacity = focused ? 0.38 : 0
-        layer?.shadowRadius = focused ? 26 : 0
+        layer?.shadowOpacity = focused ? (prominent ? 0.38 : 0.45) : 0
+        layer?.shadowRadius = focused ? (prominent ? 26 : 10) : 0
         layer?.shadowOffset = .zero
         layer?.zPosition = focused ? 10 : 0
-        layer?.transform = CATransform3DIdentity
+        layer?.transform = prominent ? CATransform3DIdentity : CATransform3DMakeScale(focused ? OPNGameCatalogLayoutSupport.storeTileScaleFactor : 1.0, focused ? OPNGameCatalogLayoutSupport.storeTileScaleFactor : 1.0, 1.0)
         CATransaction.commit()
-        playButton.isHidden = !(prominent || focused)
+        playButton.isHidden = !prominent
     }
 
     func setActiveSession(_ active: Bool) {
@@ -201,7 +201,7 @@ final class OPNStoreGameTile: NSView {
         if !bounds.contains(convert(windowPoint, from: nil)) {
             model.mouseHovering = false
             playButton.isHidden = true
-            layer?.borderColor = Self.color(0xFFFFFF, alpha: 0.12).cgColor
+            layer?.borderColor = Self.color(0xFFFFFF, alpha: 0.0).cgColor
         }
     }
 
@@ -385,23 +385,23 @@ final class OPNStoreGameTile: NSView {
     override func mouseEntered(with event: NSEvent) {
         onHover?()
         model.mouseHovering = true
-        if !prominent { playButton.isHidden = false }
-        if !storeFocused { layer?.borderColor = Self.color(0x34C759, alpha: 0.42).cgColor }
+        if !prominent { playButton.isHidden = true }
+        if !storeFocused { layer?.borderColor = Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.0).cgColor }
     }
 
     override func mouseExited(with event: NSEvent) {
         model.mouseHovering = false
         if !prominent && !storeFocused { playButton.isHidden = true }
-        if !storeFocused { layer?.borderColor = Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.12).cgColor }
+        if !storeFocused { layer?.borderColor = Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.0).cgColor }
     }
 
     private func configureView() {
         wantsLayer = true
-        layer?.cornerRadius = prominent ? 28 : 18
+        layer?.cornerRadius = prominent ? 28 : 0
         layer?.masksToBounds = true
-        layer?.backgroundColor = Self.color(0x070A0C, alpha: 0.92).cgColor
+        layer?.backgroundColor = Self.color(prominent ? 0x070A0C : 0x292929, alpha: prominent ? 0.92 : 1.0).cgColor
         layer?.borderWidth = 1.25
-        layer?.borderColor = Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.12).cgColor
+        layer?.borderColor = Self.color(0xFFFFFF, alpha: prominent ? 0.18 : 0.0).cgColor
         imageView.frame = bounds
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.wantsLayer = true
@@ -409,16 +409,16 @@ final class OPNStoreGameTile: NSView {
         addSubview(imageView)
         gradientOverlay.frame = bounds
         gradientOverlay.wantsLayer = true
-        gradientLayer.colors = [Self.color(0x000000, alpha: prominent ? 0.08 : 0.02).cgColor, Self.color(0x000000, alpha: prominent ? 0.18 : 0.12).cgColor, Self.color(0x000000, alpha: prominent ? 0.88 : 0.82).cgColor]
+        gradientLayer.colors = [Self.color(0x000000, alpha: prominent ? 0.08 : 0.0).cgColor, Self.color(0x000000, alpha: prominent ? 0.18 : 0.18).cgColor, Self.color(0x000000, alpha: prominent ? 0.88 : 0.50).cgColor]
         gradientLayer.locations = [0, 0.52, 1]
         gradientLayer.startPoint = CGPoint(x: 0.5, y: 0)
         gradientLayer.endPoint = CGPoint(x: 0.5, y: 1)
         gradientOverlay.layer = gradientLayer
         addSubview(gradientOverlay)
-        shineLayer.backgroundColor = Self.color(0x34C759, alpha: prominent ? 0.16 : 0.10).cgColor
-        shineLayer.opacity = Float(prominent ? 0.88 : 0.52)
+        shineLayer.backgroundColor = Self.color(0x76B900, alpha: prominent ? 0.16 : 1.0).cgColor
+        shineLayer.opacity = Float(prominent ? 0.88 : 0.0)
         layer?.addSublayer(shineLayer)
-        accentLayer.backgroundColor = Self.color(0x34C759, alpha: 0.96).cgColor
+        accentLayer.backgroundColor = Self.color(0x76B900, alpha: prominent ? 0.96 : 0.0).cgColor
         layer?.addSublayer(accentLayer)
         storeBadgeView.wantsLayer = true
         storeBadgeView.layer?.backgroundColor = NSColor.clear.cgColor
@@ -534,22 +534,21 @@ final class OPNStoreGameTile: NSView {
     }
 
     private func layoutCompact(width: CGFloat, height: CGFloat) {
-        let iconSize: CGFloat = 28
-        let iconGap: CGFloat = 6
-        let badgeWidth = CGFloat(storeIconViews.count) * iconSize + CGFloat(max(0, storeIconViews.count - 1)) * iconGap
-        storeBadgeView.frame = NSRect(x: 12, y: 12, width: badgeWidth, height: 28)
-        layoutIconViews(iconSize: iconSize, iconGap: iconGap)
+        storeBadgeView.frame = .zero
+        layoutIconViews(iconSize: 0, iconGap: 0)
         availabilityLabel.frame = .zero
         metaLabel.frame = .zero
         titleLabel.frame = .zero
         featureLabel.frame = .zero
-        let buttonWidth: CGFloat = model.activeSession ? 68 : 50
-        playButton.frame = NSRect(x: width - buttonWidth - 14, y: height - 48, width: buttonWidth, height: 28)
-        playButton.layer?.cornerRadius = 14
+        playButton.frame = .zero
     }
 
     private func layoutIconViews(iconSize: CGFloat, iconGap: CGFloat) {
         for (index, iconView) in storeIconViews.enumerated() {
+            if iconSize <= 0.0 {
+                iconView.frame = .zero
+                continue
+            }
             iconView.frame = NSRect(x: CGFloat(index) * (iconSize + iconGap), y: 0, width: iconSize, height: iconSize)
             iconView.layer?.cornerRadius = iconSize * 0.5
         }
@@ -798,46 +797,85 @@ private struct OPNStoreGameTileSwiftUIView: View {
     @ObservedObject var model: OPNStoreGameTileModel
 
     private var focused: Bool { model.storeFocused || model.mouseHovering }
-    private var cornerRadius: CGFloat { model.prominent ? 28 : 18 }
+    private var cornerRadius: CGFloat { model.prominent ? 28 : 0 }
 
     var body: some View {
+        Group {
+            if model.prominent { prominentBody } else { compactBody }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .shadow(color: focused ? Color.black.opacity(model.prominent ? 0.38 : 0.58) : .clear, radius: focused ? (model.prominent ? 26 : 10) : 0, y: focused ? 4 : 0)
+        .animation(.easeOut(duration: 0.18), value: focused)
+        .allowsHitTesting(false)
+    }
+
+    private var prominentBody: some View {
         ZStack(alignment: .bottomLeading) {
             Image(nsImage: model.artwork)
                 .resizable()
                 .scaledToFill()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
-                .overlay(LinearGradient(colors: [.black.opacity(model.prominent ? 0.08 : 0.02), .black.opacity(model.prominent ? 0.18 : 0.12), .black.opacity(model.prominent ? 0.88 : 0.82)], startPoint: .top, endPoint: .bottom))
-
+                .overlay(LinearGradient(colors: [.black.opacity(0.08), .black.opacity(0.18), .black.opacity(0.88)], startPoint: .top, endPoint: .bottom))
             VStack(alignment: .leading, spacing: 0) {
                 topChrome
                 Spacer(minLength: 0)
-                if model.prominent { prominentText }
+                prominentText
             }
-            .padding(model.prominent ? 30 : 12)
-
-            if model.prominent || focused { actionPill }
-
+            .padding(30)
+            actionPill
             accentBar
         }
         .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x070A0C, alpha: 0.92)))
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(focused ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.98)) : .white.opacity(model.prominent ? 0.18 : 0.12), lineWidth: focused ? 2.5 : 1.25))
-        .shadow(color: focused ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.38)) : .clear, radius: focused ? 26 : 0)
-        .animation(.easeOut(duration: 0.18), value: focused)
-        .allowsHitTesting(false)
+        .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(focused ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.98)) : .white.opacity(0.18), lineWidth: focused ? 2.5 : 1.25))
+    }
+
+    private var compactBody: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                Image(nsImage: model.artwork)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                Rectangle()
+                    .fill(Color.black.opacity(focused ? 0.18 : 0.0))
+                LinearGradient(colors: [.clear, Color.black.opacity(0.50)], startPoint: .top, endPoint: .bottom)
+                if focused {
+                    Rectangle()
+                        .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                        .frame(height: 4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack(spacing: 8) {
+                Text(model.title)
+                    .font(.system(size: 12, weight: focused ? .medium : .regular))
+                    .foregroundStyle(Color.white.opacity(focused ? 0.90 : 0.60))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if model.activeSession {
+                    Circle()
+                        .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                        .frame(width: 7, height: 7)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: OPNGameCatalogLayoutSupport.storeTileTrayHeight)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: focused ? 0x3A3A3A : 0x292929, alpha: 1.0)))
+        }
+        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 1.0)))
     }
 
     private var topChrome: some View {
         HStack(alignment: .top) {
             storeIcons
             Spacer(minLength: 12)
-            if model.prominent {
-                Text(model.availabilityTitle)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.96)))
-                    .lineLimit(1)
-            }
+            Text(model.availabilityTitle)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.96)))
+                .lineLimit(1)
         }
     }
 

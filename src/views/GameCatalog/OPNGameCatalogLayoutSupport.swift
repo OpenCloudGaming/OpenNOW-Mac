@@ -261,10 +261,19 @@ final class OPNGameCatalogLayoutSupport: NSObject {
     @objc static let storeTopInset: CGFloat = 0.0
     @objc static let storeNavigationClearance: CGFloat = 0.0
     @objc static let storeHeroHeightRatio: CGFloat = 0.3229
-    @objc static let storeRowHeight: CGFloat = 282.0
-    @objc static let storeCardSpacing: CGFloat = 18.0
-    @objc static let storeTileWidth: CGFloat = 268.0
-    @objc static let storeTileHeight: CGFloat = 151.0
+    @objc static let storeRowHeight: CGFloat = 248.0
+    @objc static let storeCardSpacing: CGFloat = 16.0
+    @objc static let storeTileWidth: CGFloat = 272.0
+    @objc static let storeTileImageHeight: CGFloat = 153.0
+    @objc static let storeTileTrayHeight: CGFloat = 40.0
+    @objc static let storeTileHeight: CGFloat = storeTileImageHeight + storeTileTrayHeight
+    @objc static let storeTileHorizontalMargin: CGFloat = 8.0
+    @objc static let storeTileTopMargin: CGFloat = 16.0
+    @objc static let storeTileScaleFactor: CGFloat = 1.12
+    @objc static let storeTileScrimHeight: CGFloat = 32.0
+    @objc static let storeSectionHeaderMargin: CGFloat = 56.0
+    @objc static let storeSectionHeaderRightMargin: CGFloat = 56.0
+    @objc static let storeSectionTitleHeight: CGFloat = 28.0
     @objc static let storeHeroMinContentInset: CGFloat = 30.0
     @objc static let storeHeroMaxContentInset: CGFloat = 106.0
     @objc static let storeHeroContentInsetRatio: CGFloat = 0.055
@@ -477,16 +486,18 @@ final class OPNGameCatalogLayoutSupport: NSObject {
 
     @objc(tileWidthForRailWidth:)
     static func tileWidth(forRailWidth width: CGFloat) -> CGFloat {
-        let idealColumns = max(1.0, (width + storeCardSpacing) / (storeTileWidth + storeCardSpacing))
-        let columns = max(1.0, idealColumns.rounded())
-        return floor((width - storeCardSpacing * (columns - 1.0)) / columns)
+        let availableWidth = max(storeTileWidth, width - storeSectionHeaderMargin - storeSectionHeaderRightMargin)
+        let idealColumns = max(1.0, (availableWidth + storeCardSpacing) / (storeTileWidth + storeCardSpacing))
+        let columns = max(1.0, idealColumns.rounded(.down))
+        return floor(min(storeTileWidth, (availableWidth - storeCardSpacing * (columns - 1.0)) / columns))
     }
 
     @objc(tileMetricsForRailWidth:)
     static func tileMetrics(forRailWidth width: CGFloat) -> NSSize {
         let bucketedWidth = floor(max(320.0, width))
         let tileWidth = tileWidth(forRailWidth: bucketedWidth)
-        let tileHeight = floor(tileWidth * storeTileHeight / storeTileWidth)
+        let imageHeight = floor(tileWidth * storeTileImageHeight / storeTileWidth)
+        let tileHeight = imageHeight + storeTileTrayHeight
         return NSSize(width: tileWidth, height: tileHeight)
     }
 
