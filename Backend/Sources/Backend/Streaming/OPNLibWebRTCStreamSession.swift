@@ -156,8 +156,14 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         @Sendable func handleRemoteDescriptionSet(impl: OPNLibWebRTCSessionImpl, peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
             self.prepareMicrophoneIfNeeded(impl: impl, factory: factory)
             let answerCodec = normalizedCodec(string(self.settings["codec"]))
-            if !answerCodec.isEmpty, !OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec) {
-                NSLog("[LibWebRTC] No video transceiver accepted %@ codec preference before answer", answerCodec)
+            if !answerCodec.isEmpty {
+                if videoSdpContainsCodec(remoteOfferSdp, normalizedCodec: answerCodec) {
+                    if !OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec) {
+                        NSLog("[LibWebRTC] No video transceiver accepted %@ codec preference before answer", answerCodec)
+                    }
+                } else {
+                    NSLog("[LibWebRTC] Skipping %@ codec preference because remote offer does not include it", answerCodec)
+                }
             }
             peerConnection.answer(for: constraints) { [weak self, weak impl] answer, answerError in
                 guard let self, self.callbackGeneration == generation else { return }
@@ -866,9 +872,22 @@ private func videoPayloads(forCodec codec: String, in sdp: String) -> Set<Int> {
         if line.hasPrefix("m=") { inVideo = line.hasPrefix("m=video"); continue }
         guard inVideo, line.hasPrefix("a=rtpmap:"), let payload = payloadType(line, prefix: "a=rtpmap:") else { continue }
         let upper = line.uppercased()
-        if codec == "H265", upper.contains(" H265/") || upper.contains(" HEVC/") { payloads.insert(payload) }
+        switch codec {
+        case "H264":
+            if upper.contains(" H264/") { payloads.insert(payload) }
+        case "H265":
+            if upper.contains(" H265/") || upper.contains(" HEVC/") { payloads.insert(payload) }
+        case "AV1":
+            if upper.contains(" AV1/") { payloads.insert(payload) }
+        default:
+            break
+        }
     }
     return payloads
+}
+
+private func videoSdpContainsCodec(_ sdp: String, normalizedCodec: String) -> Bool {
+    !videoPayloads(forCodec: normalizedCodec, in: sdp).isEmpty
 }
 
 private func videoFmtpByPayload(in sdp: String) -> [Int: String] {
@@ -944,7 +963,27 @@ private func videoSdpHasMediaCodec(_ sdp: String) -> Bool {
 
 private func logVideoSdpSummary(_ label: String, _ sdp: String) {
     let videoLines = sdp.components(separatedBy: .newlines).filter { $0.hasPrefix("m=video") || $0.hasPrefix("a=rtpmap:") }
-    NSLog("[LibWebRTC] %@ lines=%d", label, videoLines.count)
+    let codecs = videoCodecDescriptions(in: sdp).joined(separator: ",")
+    NSLog("[LibWebRTC] %@ lines=%d codecs=%@", label, videoLines.count, codecs.isEmpty ? "none" : codecs)
+}
+
+private func videoCodecDescriptions(in sdp: String) -> [String] {
+    var result: [String] = []
+    var seen = Set<String>()
+    var inVideo = false
+    for line in sdpLines(sdp) {
+        if line.hasPrefix("m=") { inVideo = line.hasPrefix("m=video"); continue }
+        guard inVideo, line.hasPrefix("a=rtpmap:") else { continue }
+        let text = String(line.dropFirst("a=rtpmap:".count))
+        let parts = text.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        guard parts.count >= 2 else { continue }
+        let codec = parts[1].split(separator: "/").first.map(String.init) ?? parts[1]
+        let normalized = codec.uppercased()
+        guard !seen.contains(normalized) else { continue }
+        seen.insert(normalized)
+        result.append(normalized)
+    }
+    return result
 }
 
 private func normalizedCodec(_ codec: String) -> String {
