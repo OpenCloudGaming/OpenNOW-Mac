@@ -4,6 +4,8 @@ import Foundation
 
 public typealias OPNGameLaunchWindowCompletion = @MainActor @Sendable (_ success: Bool, _ message: String) -> Void
 public typealias OPNGameLaunchPreparationCompletion = @MainActor @Sendable (_ success: Bool, _ message: String, _ configuration: OPNStreamLaunchConfiguration?) -> Void
+public typealias OPNGameLaunchPlanCompletion = @MainActor @Sendable (_ success: Bool, _ message: String, _ plan: OPNGameLaunchPlan?) -> Void
+public typealias OPNGameLaunchSessionStopCompletion = @MainActor @Sendable (_ success: Bool, _ message: String) -> Void
 
 private final class OPNGameLaunchBridgeSendableValue<T>: @unchecked Sendable {
     let value: T
@@ -35,6 +37,25 @@ public struct OPNStreamLaunchConfiguration: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct OPNActiveStreamSessionDescriptor: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let appId: Int
+    public let serverIp: String
+    public let title: String
+
+    public init(sessionId: String, appId: Int, serverIp: String, title: String) {
+        self.id = sessionId
+        self.appId = appId
+        self.serverIp = serverIp
+        self.title = title.isEmpty ? "Current Stream" : title
+    }
+}
+
+public enum OPNGameLaunchPlan: Equatable, Sendable {
+    case ready(OPNStreamLaunchConfiguration)
+    case activeSession(active: OPNActiveStreamSessionDescriptor, resume: OPNStreamLaunchConfiguration, replacement: OPNStreamLaunchConfiguration)
+}
+
 @MainActor
 public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
     public static let shared = OPNGameLaunchBridge()
@@ -42,6 +63,22 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
     private var windows: [ObjectIdentifier: NSWindow] = [:]
 
     public func prepareLaunch(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, variantIndex: Int, completion: @escaping OPNGameLaunchPreparationCompletion) {
+        prepareLaunchPlan(game: game, accessToken: accessToken, idToken: idToken, userId: userId, variantIndex: variantIndex) { success, message, plan in
+            guard success, let plan else {
+                completion(false, message, nil)
+                return
+            }
+
+            switch plan {
+            case .ready(let configuration):
+                completion(true, message, configuration)
+            case .activeSession:
+                completion(false, message, nil)
+            }
+        }
+    }
+
+    public func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, variantIndex: Int, completion: @escaping OPNGameLaunchPlanCompletion) {
         let token = idToken.isEmpty ? accessToken : idToken
         guard !token.isEmpty else {
             completion(false, "Sign in again before launching a game.", nil)
@@ -61,6 +98,13 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
         let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
         let selectedStore = selectedVariant?.appStore ?? ""
+        let replacement = OPNStreamLaunchConfiguration(
+            title: title,
+            appId: appId,
+            apiToken: token,
+            accountLinked: accountLinked,
+            selectedStore: selectedStore
+        )
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
         let gameBox = OPNGameLaunchBridgeSendableValue(game)
         OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl) { [weak self] ok, sessions, _ in
@@ -71,7 +115,7 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
                 let sessions = sessionsBox.value
                 if ok {
                     if let requestedSession = sessions.first(where: { self.activeSession($0, matches: game, appId: appId) }) {
-                        completion(true, "Resuming \(title)...", OPNStreamLaunchConfiguration(
+                        completion(true, "Resuming \(title)...", .ready(OPNStreamLaunchConfiguration(
                             title: title,
                             appId: requestedSession.appId > 0 ? String(requestedSession.appId) : appId,
                             apiToken: token,
@@ -79,22 +123,39 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
                             selectedStore: "",
                             resumeSessionId: requestedSession.sessionId,
                             resumeServer: requestedSession.serverIp
-                        ))
+                        )))
                         return
                     }
                     if let activeSession = sessions.first {
-                        completion(false, "A different GeForce NOW session is already active for app id \(activeSession.appId). End it before launching \(title).", nil)
+                        let activeTitle = activeSession.appId > 0 ? "App ID \(activeSession.appId)" : "Current Stream"
+                        let active = OPNActiveStreamSessionDescriptor(sessionId: activeSession.sessionId, appId: activeSession.appId, serverIp: activeSession.serverIp, title: activeTitle)
+                        let resume = OPNStreamLaunchConfiguration(
+                            title: active.title,
+                            appId: activeSession.appId > 0 ? String(activeSession.appId) : appId,
+                            apiToken: token,
+                            accountLinked: true,
+                            selectedStore: "",
+                            resumeSessionId: activeSession.sessionId,
+                            resumeServer: activeSession.serverIp
+                        )
+                        completion(true, "Another GeForce NOW session is already active.", .activeSession(active: active, resume: resume, replacement: replacement))
                         return
                     }
                 }
 
-                completion(true, "Launching \(title)...", OPNStreamLaunchConfiguration(
-                    title: title,
-                    appId: appId,
-                    apiToken: token,
-                    accountLinked: accountLinked,
-                    selectedStore: selectedStore
-                ))
+                completion(true, "Launching \(title)...", .ready(replacement))
+            }
+        }
+    }
+
+    public func stopActiveSession(_ session: OPNActiveStreamSessionDescriptor, accessToken: String, completion: @escaping OPNGameLaunchSessionStopCompletion) {
+        guard !accessToken.isEmpty else {
+            completion(false, "Sign in again before ending the active session.")
+            return
+        }
+        OPNActiveSessionService.stopSession(accessToken: accessToken, sessionId: session.id, serverIp: session.serverIp) { success, error in
+            Task { @MainActor in
+                completion(success, success ? "Session ended." : (error.isEmpty ? "Unable to end the active session." : error))
             }
         }
     }

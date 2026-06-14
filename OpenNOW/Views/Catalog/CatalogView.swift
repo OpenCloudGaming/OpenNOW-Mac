@@ -7,6 +7,7 @@
 import AppKit
 import Backend
 import Combine
+import Common
 import CoreText
 import ImageIO
 import SwiftUI
@@ -122,11 +123,327 @@ struct CatalogView: View {
                     CatalogContentView(viewModel: viewModel)
                 }
                 .transition(.opacity)
+
+                if viewModel.isLaunchFlowVisible {
+                    VendorLaunchFlowOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(20)
+                }
             }
         }
         .background(Color.black)
         .task { viewModel.loadIfNeeded() }
         .preferredColorScheme(.dark)
+    }
+}
+
+private struct VendorLaunchFlowOverlay: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.82)
+                .ignoresSafeArea()
+            RadialGradient(
+                colors: [Color.openNowGreen.opacity(0.20), .clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 620
+            )
+            .ignoresSafeArea()
+
+            switch viewModel.launchFlowState {
+            case .selectingRoute:
+                VendorLaunchRouteCard(viewModel: viewModel)
+            case .activeSessionPrompt:
+                VendorActiveSessionCard(viewModel: viewModel)
+            case .checkingSession, .stoppingSession, .startingStream:
+                VendorLaunchProgressCard(viewModel: viewModel)
+            case .idle:
+                EmptyView()
+            }
+        }
+    }
+}
+
+private struct VendorLaunchRouteCard: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        VendorLaunchPanel(title: "GeForce NOW Launch", subtitle: viewModel.launchFlowTitle) {
+            VStack(alignment: .leading, spacing: 18) {
+                VendorLaunchStepHeader(index: "1", title: "Select Server Location", message: viewModel.launchFlowMessage)
+                VStack(spacing: 8) {
+                    ForEach(viewModel.launchRegionOptions, id: \.url) { option in
+                        VendorLaunchRegionRow(
+                            option: option,
+                            selected: option.url == viewModel.selectedLaunchRegionUrl,
+                            action: { viewModel.selectLaunchRegion(option.url) }
+                        )
+                    }
+                }
+                if !viewModel.launchFlowError.isEmpty {
+                    VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
+                }
+                HStack(spacing: 12) {
+                    Button("CANCEL") { viewModel.cancelVendorLaunch() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    Spacer()
+                    Button(viewModel.isRefreshingLaunchRegions ? "PINGING..." : "REFRESH") { viewModel.refreshLaunchRegions() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                        .disabled(viewModel.isRefreshingLaunchRegions)
+                    Button("CONTINUE") { viewModel.continueVendorLaunch() }
+                        .buttonStyle(VendorLaunchPrimaryButtonStyle())
+                }
+            }
+        }
+    }
+}
+
+private struct VendorActiveSessionCard: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        VendorLaunchPanel(title: "Active Session", subtitle: viewModel.activeLaunchSession?.title ?? "Current Stream") {
+            VStack(alignment: .leading, spacing: 18) {
+                VendorLaunchStepHeader(index: "2", title: "Session Already Running", message: viewModel.launchFlowMessage)
+                if let active = viewModel.activeLaunchSession {
+                    VStack(alignment: .leading, spacing: 10) {
+                        VendorLaunchSessionRow(label: "Current session", value: active.title)
+                        VendorLaunchSessionRow(label: "App ID", value: active.appId > 0 ? String(active.appId) : "Unknown")
+                        VendorLaunchSessionRow(label: "Server", value: active.serverIp)
+                    }
+                    .padding(14)
+                    .background(Color.white.opacity(0.055))
+                    .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+                }
+                if !viewModel.launchFlowError.isEmpty {
+                    VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
+                }
+                HStack(spacing: 12) {
+                    Button("CANCEL") { viewModel.cancelVendorLaunch() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    Spacer()
+                    Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    Button("END AND LAUNCH") { viewModel.endActiveSessionAndLaunchSelectedGame() }
+                        .buttonStyle(VendorLaunchPrimaryButtonStyle())
+                }
+            }
+        }
+    }
+}
+
+private struct VendorLaunchProgressCard: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        VendorLaunchPanel(title: "Launching", subtitle: viewModel.launchFlowTitle) {
+            VStack(alignment: .leading, spacing: 18) {
+                VendorLaunchStepHeader(index: progressIndex, title: progressTitle, message: viewModel.launchFlowMessage)
+                VendorIndeterminateProgressBar()
+                    .frame(height: 4)
+                if !viewModel.launchFlowError.isEmpty {
+                    VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
+                }
+            }
+        }
+    }
+
+    private var progressIndex: String {
+        switch viewModel.launchFlowState {
+        case .checkingSession: return "2"
+        case .stoppingSession: return "3"
+        case .startingStream: return "4"
+        default: return ""
+        }
+    }
+
+    private var progressTitle: String {
+        switch viewModel.launchFlowState {
+        case .checkingSession: return "Checking Session"
+        case .stoppingSession: return "Ending Session"
+        case .startingStream: return "Starting Stream"
+        default: return "Preparing Launch"
+        }
+    }
+}
+
+private struct VendorLaunchPanel<Content: View>: View {
+    let title: String
+    let subtitle: String
+    private let content: Content
+
+    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
+                    .scaledToFit()
+                    .frame(width: 108, height: 32, alignment: .leading)
+                Spacer()
+                Button { } label: {
+                    Text("LAUNCH FLOW")
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .tracking(1.4)
+                }
+                .buttonStyle(.plain)
+                .disabled(true)
+            }
+            .padding(.horizontal, 22)
+            .frame(height: 58)
+            .background(Color(red: 57 / 255, green: 57 / 255, blue: 57 / 255))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title.uppercased())
+                    .font(.nvidia(size: 13, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+                    .tracking(1.2)
+                Text(subtitle.isEmpty ? "GeForce NOW" : subtitle)
+                    .font(.nvidia(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, 26)
+            .padding(.top, 24)
+            .padding(.bottom, 18)
+
+            content
+                .padding(.horizontal, 26)
+                .padding(.bottom, 26)
+        }
+        .frame(width: 640)
+        .background(Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.55), radius: 28, y: 18)
+    }
+}
+
+private struct VendorLaunchStepHeader: View {
+    let index: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text(index)
+                .font(.nvidia(size: 12, weight: .bold))
+                .foregroundStyle(.black)
+                .frame(width: 26, height: 26)
+                .background(Color.openNowGreen)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.nvidia(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(message)
+                    .font(.nvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct VendorLaunchRegionRow: View {
+    let option: OPNStreamRegionOption
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Rectangle()
+                    .fill(selected ? Color.openNowGreen : Color.white.opacity(0.18))
+                    .frame(width: 4, height: 36)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(option.automatic ? "Automatic" : option.name)
+                        .font(.nvidia(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(option.automatic ? "Best measured route" : "Cloudmatch region")
+                        .font(.nvidia(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+                Spacer()
+                Text(latencyText)
+                    .font(.nvidia(size: 12, weight: .bold))
+                    .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.70))
+            }
+            .padding(12)
+            .background(selected ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.045))
+            .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.72) : Color.white.opacity(0.08), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var latencyText: String {
+        option.latencyMs >= 0 ? "\(option.latencyMs) ms" : "Measuring"
+    }
+}
+
+private struct VendorLaunchSessionRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label.uppercased())
+                .font(.nvidia(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.48))
+                .frame(width: 130, alignment: .leading)
+            Text(value.isEmpty ? "-" : value)
+                .font(.nvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct VendorLaunchInlineMessage: View {
+    let message: String
+    let warning: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
+            Text(message)
+                .font(.nvidia(size: 12, weight: .medium))
+        }
+        .foregroundStyle(warning ? Color.yellow.opacity(0.86) : .white.opacity(0.72))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.045))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+    }
+}
+
+private struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.nvidia(size: 12, weight: .bold))
+            .foregroundStyle(.black)
+            .tracking(0.8)
+            .padding(.horizontal, 18)
+            .frame(height: 38)
+            .background(Color.openNowGreen.opacity(configuration.isPressed ? 0.78 : 1.0))
+    }
+}
+
+private struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.nvidia(size: 12, weight: .bold))
+            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.68 : 0.86))
+            .tracking(0.8)
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.055))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
     }
 }
 

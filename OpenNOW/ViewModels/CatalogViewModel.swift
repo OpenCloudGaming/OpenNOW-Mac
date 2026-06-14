@@ -7,6 +7,7 @@
 import AppKit
 import Backend
 import Combine
+import Common
 import Foundation
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
@@ -23,6 +24,16 @@ private final class CatalogSendableValue<T>: @unchecked Sendable {
     nonisolated init(_ value: T) {
         self.value = value
     }
+}
+
+@MainActor
+enum CatalogLaunchFlowState: Equatable {
+    case idle
+    case selectingRoute
+    case checkingSession
+    case activeSessionPrompt
+    case stoppingSession
+    case startingStream
 }
 
 @MainActor
@@ -51,6 +62,14 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedSectionId = ""
     @Published var selectedVariantIndex = -1
     @Published var activeStreamConfiguration: OPNStreamLaunchConfiguration?
+    @Published var launchFlowState = CatalogLaunchFlowState.idle
+    @Published var launchFlowTitle = ""
+    @Published var launchFlowMessage = ""
+    @Published var launchFlowError = ""
+    @Published var launchRegionOptions: [OPNStreamRegionOption] = []
+    @Published var selectedLaunchRegionUrl = ""
+    @Published var isRefreshingLaunchRegions = false
+    @Published var activeLaunchSession: OPNActiveStreamSessionDescriptor?
 
     let account: LoginAccount
     let session: LoginSession
@@ -60,6 +79,10 @@ final class CatalogViewModel: ObservableObject {
     private var browseGeneration = 0
     private var authRefreshInFlight = false
     private var cancellables = Set<AnyCancellable>()
+    private var pendingLaunchGame: OPNCatalogGameObject?
+    private var pendingLaunchVariantIndex = -1
+    private var activeSessionResumeConfiguration: OPNStreamLaunchConfiguration?
+    private var activeSessionReplacementConfiguration: OPNStreamLaunchConfiguration?
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
@@ -249,28 +272,118 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func launch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
+        beginVendorLaunch(game: game, variantIndex: variantIndex)
+    }
+
+    var isLaunchFlowVisible: Bool {
+        launchFlowState != .idle
+    }
+
+    func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
+        pendingLaunchGame = game
+        pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
+        activeLaunchSession = nil
+        activeSessionResumeConfiguration = nil
+        activeSessionReplacementConfiguration = nil
+        launchFlowTitle = game.title.isEmpty ? "GeForce NOW" : game.title
+        launchFlowMessage = "Choose the route GeForce NOW should use for this launch."
+        launchFlowError = ""
         launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
         errorMessage = ""
+        selectedLaunchRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
+        launchRegionOptions = Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions())
+        launchFlowState = .selectingRoute
+        refreshLaunchRegions()
+    }
+
+    func refreshLaunchRegions() {
+        guard !isRefreshingLaunchRegions else { return }
+        isRefreshingLaunchRegions = true
+        launchFlowError = ""
+        let token = launchToken
+        let selfBox = CatalogWeakObject(self)
+        OPNStreamPreferences.fetchRegions(token: token, providerStreamingBaseUrl: OPNGameServiceSwiftAdapter.providerStreamingBaseURL()) { regions in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                self.isRefreshingLaunchRegions = false
+                self.launchRegionOptions = Self.launchRegionOptions(from: regions)
+                if !self.selectedLaunchRegionUrl.isEmpty, !regions.contains(where: { $0.url == self.selectedLaunchRegionUrl }) {
+                    self.selectedLaunchRegionUrl = ""
+                }
+                if regions.isEmpty {
+                    self.launchFlowError = "Route discovery did not return measured regions. Automatic can still launch."
+                }
+            }
+        }
+    }
+
+    func selectLaunchRegion(_ regionUrl: String) {
+        selectedLaunchRegionUrl = regionUrl
+    }
+
+    func continueVendorLaunch() {
+        guard let game = pendingLaunchGame else { return }
+        OPNStreamPreferences.saveSelectedRegionUrl(selectedLaunchRegionUrl)
+        launchFlowState = .checkingSession
+        launchFlowMessage = "Checking for active GeForce NOW sessions..."
+        launchFlowError = ""
         let userId = session.userId.isEmpty ? account.userId : session.userId
-        OPNGameLaunchBridge.shared.prepareLaunch(
+        OPNGameLaunchBridge.shared.prepareLaunchPlan(
             game: game,
             accessToken: session.accessToken,
             idToken: session.idToken,
             userId: userId,
-            variantIndex: variantIndex ?? Self.preferredVariantIndex(for: game)
-        ) { [weak self] success, message, configuration in
+            variantIndex: pendingLaunchVariantIndex
+        ) { [weak self] success, message, plan in
             guard let self else { return }
             self.launchMessage = ""
-            guard success, let configuration else {
-                self.errorMessage = message
+            guard success, let plan else {
+                self.launchFlowState = .selectingRoute
+                self.launchFlowError = message
                 return
             }
-            self.activeStreamConfiguration = configuration
+            switch plan {
+            case .ready(let configuration):
+                self.startPreparedStream(configuration, message: message)
+            case .activeSession(let active, let resume, let replacement):
+                self.activeLaunchSession = active
+                self.activeSessionResumeConfiguration = resume
+                self.activeSessionReplacementConfiguration = replacement
+                self.launchFlowState = .activeSessionPrompt
+                self.launchFlowMessage = "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
+            }
         }
+    }
+
+    func resumeActiveLaunchSession() {
+        guard let configuration = activeSessionResumeConfiguration else { return }
+        startPreparedStream(configuration, message: "Resuming \(configuration.title)...")
+    }
+
+    func endActiveSessionAndLaunchSelectedGame() {
+        guard let activeLaunchSession, let replacement = activeSessionReplacementConfiguration else { return }
+        launchFlowState = .stoppingSession
+        launchFlowMessage = "Ending the current GeForce NOW session..."
+        launchFlowError = ""
+        OPNGameLaunchBridge.shared.stopActiveSession(activeLaunchSession, accessToken: launchToken) { [weak self] success, message in
+            guard let self else { return }
+            guard success else {
+                self.launchFlowState = .activeSessionPrompt
+                self.launchFlowError = message
+                return
+            }
+            self.startPreparedStream(replacement, message: "Launching \(replacement.title)...")
+        }
+    }
+
+    func cancelVendorLaunch() {
+        clearLaunchFlow()
+        launchMessage = ""
     }
 
     func finishActiveStream(success: Bool, message: String, report: OPNSessionReportPayload?) {
         activeStreamConfiguration = nil
+        clearLaunchFlow()
         launchMessage = ""
         if !success, !message.isEmpty {
             errorMessage = message
@@ -279,6 +392,37 @@ final class CatalogViewModel: ObservableObject {
         if let report, report.shouldShow, !report.reportText.isEmpty {
             actionMessage = report.reportText
         }
+    }
+
+    private var launchToken: String {
+        session.idToken.isEmpty ? session.accessToken : session.idToken
+    }
+
+    private func startPreparedStream(_ configuration: OPNStreamLaunchConfiguration, message: String) {
+        launchFlowState = .startingStream
+        launchFlowMessage = message.isEmpty ? "Starting GeForce NOW stream..." : message
+        launchFlowError = ""
+        activeStreamConfiguration = configuration
+        clearLaunchFlow()
+    }
+
+    private func clearLaunchFlow() {
+        launchFlowState = .idle
+        launchFlowTitle = ""
+        launchFlowMessage = ""
+        launchFlowError = ""
+        activeLaunchSession = nil
+        activeSessionResumeConfiguration = nil
+        activeSessionReplacementConfiguration = nil
+        pendingLaunchGame = nil
+        pendingLaunchVariantIndex = -1
+        isRefreshingLaunchRegions = false
+    }
+
+    private static func launchRegionOptions(from regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {
+        let measured = regions.filter { !$0.url.isEmpty }
+        let bestLatency = measured.first?.latencyMs ?? -1
+        return [OPNStreamRegionOption(name: "Automatic", url: "", latencyMs: bestLatency, automatic: true)] + measured
     }
 
     func openStoreForSelectedVariant() {
