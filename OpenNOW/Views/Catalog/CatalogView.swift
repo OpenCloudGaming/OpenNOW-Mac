@@ -60,88 +60,92 @@ private struct CatalogTopBar: View {
     let onForget: (LoginAccount) -> Void
 
     var body: some View {
-        HStack(spacing: 20) {
-            VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
-                .scaledToFit()
-                .frame(width: 164, height: 42)
-                .layoutPriority(3)
-
-            HStack(spacing: 26) {
-                mallNavItem("Home", active: true)
-                mallNavItem("Games", active: false)
-                mallNavItem("Library", active: false)
+        ZStack {
+            HStack(spacing: 28) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 21, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.92))
+                Text("Games")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
+                Spacer()
             }
-            .fixedSize(horizontal: true, vertical: false)
-            .layoutPriority(3)
+            .padding(.leading, 20)
 
-            Spacer(minLength: 8)
+            catalogSearchField
+                .frame(width: 540)
 
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.white.opacity(0.42))
-                TextField("Search games", text: $viewModel.searchQuery)
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .onSubmit { viewModel.browseCatalog() }
-                if !viewModel.searchQuery.isEmpty {
-                    Button { viewModel.searchQuery = ""; viewModel.browseCatalog() } label: {
-                        Image(systemName: "xmark.circle.fill")
+            HStack(spacing: 24) {
+                Spacer()
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.94))
+                    .overlay(alignment: .topTrailing) {
+                        Circle()
+                            .fill(Color.openNowGreen)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 2, y: -2)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.42))
-                }
-            }
-            .padding(.horizontal, 14)
-            .frame(minWidth: 170, idealWidth: 260, maxWidth: 320, minHeight: 44, maxHeight: 44)
-            .background(Color(red: 0.129, green: 0.129, blue: 0.129))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 1) }
-            .layoutPriority(1)
 
-            Picker("Sort", selection: $viewModel.selectedSortId) {
-                Text("Last Played").tag("last_played")
-                Text("Title").tag("title")
-                Text("Newest").tag("date_added")
+                Menu {
+                    ForEach(accounts) { account in
+                        Button(account.displayName) { onSwitch(account) }
+                    }
+                    Divider()
+                    Button("Sign Out", action: onSignOut)
+                    ForEach(accounts) { account in
+                        Button("Forget \(account.displayName)", role: .destructive) { onForget(account) }
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "headphones")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(viewModel.account.displayName)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Text("Performance")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.78))
+                        }
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.88))
+                    }
+                }
+                .menuStyle(.button)
             }
-            .labelsHidden()
-            .frame(width: 132)
-            .onChange(of: viewModel.selectedSortId) { _, _ in viewModel.browseCatalog() }
-
-            Menu {
-                ForEach(accounts) { account in
-                    Button(account.displayName) { onSwitch(account) }
-                }
-                Divider()
-                Button("Sign Out", action: onSignOut)
-                ForEach(accounts) { account in
-                    Button("Forget \(account.displayName)", role: .destructive) { onForget(account) }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    AccountAvatar(name: viewModel.account.displayName, size: 30)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-            }
-            .menuStyle(.button)
+            .padding(.trailing, 22)
         }
-        .padding(.horizontal, 32)
-        .frame(height: 72)
-        .background(Color(red: 0.098, green: 0.098, blue: 0.098))
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
+        .frame(height: 64)
+        .background(Color(red: 0.205, green: 0.205, blue: 0.205))
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.28)).frame(height: 1) }
     }
 
-    private func mallNavItem(_ title: String, active: Bool) -> some View {
-        Text(title.uppercased())
-            .font(.system(size: 13, weight: .bold))
-            .tracking(0.7)
-            .foregroundStyle(active ? .white : .white.opacity(0.56))
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(height: 72)
-            .overlay(alignment: .bottom) {
-                if active { Rectangle().fill(Color.openNowGreen).frame(height: 3) }
+    private var catalogSearchField: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.76))
+            TextField("Search games, stores, or genres", text: $viewModel.searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white)
+                .onSubmit { viewModel.browseCatalog() }
+            if !viewModel.searchQuery.isEmpty {
+                Button { viewModel.searchQuery = ""; viewModel.browseCatalog() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.52))
             }
+        }
+        .padding(.horizontal, 15)
+        .frame(height: 46)
+        .background(Color(red: 0.145, green: 0.145, blue: 0.145))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
     }
 }
 
@@ -150,7 +154,7 @@ private struct CatalogContentView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 34) {
                 if let hero = viewModel.featuredGames.first ?? viewModel.catalogGames.first {
                     CatalogHeroView(viewModel: viewModel, game: hero)
                 }
@@ -168,7 +172,6 @@ private struct CatalogContentView: View {
                     CatalogRailView(viewModel: viewModel, title: section.title, games: section.games)
                 }
             }
-            .padding(.trailing, viewModel.selectedGame == nil ? 0 : 390)
             .padding(.bottom, 44)
         }
         .background(Color.black)
@@ -180,48 +183,49 @@ private struct CatalogHeroView: View {
     let game: OPNCatalogGameObject
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack(alignment: .bottom) {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill)
-                .frame(maxWidth: .infinity, minHeight: 410, maxHeight: 410)
+                .frame(maxWidth: .infinity, minHeight: 486, maxHeight: 486)
                 .clipped()
-            LinearGradient(colors: [.black.opacity(0.96), .black.opacity(0.58), .clear], startPoint: .leading, endPoint: .trailing)
-            LinearGradient(colors: [.clear, .black.opacity(0.92)], startPoint: .top, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 16) {
-                Text("GEFORCE NOW")
-                    .font(.system(size: 12, weight: .black))
-                    .tracking(2.2)
-                    .foregroundStyle(Color.openNowGreen)
-                Text(game.title.isEmpty ? "Featured Game" : game.title)
-                    .font(.system(size: 42, weight: .black))
-                    .lineLimit(2)
-                Text(game.gameDescription.isEmpty ? game.genreLine : game.gameDescription)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.74))
-                    .lineLimit(3)
-                    .frame(maxWidth: 440, alignment: .leading)
-                HStack(spacing: 12) {
-                    Button { viewModel.launch(game: game) } label: {
-                        Text("PLAY")
-                            .frame(width: 112)
-                    }
-                    .buttonStyle(VendorGetInButtonStyle())
-                    Button { viewModel.selectGame(game) } label: {
-                        Text("DETAILS")
-                            .frame(width: 112)
-                    }
-                    .buttonStyle(SecondaryLoginButtonStyle(compact: true))
+            LinearGradient(colors: [.black.opacity(0.88), .black.opacity(0.45), .clear], startPoint: .leading, endPoint: .trailing)
+            LinearGradient(colors: [.clear, .black.opacity(0.82), .black.opacity(0.96)], startPoint: .center, endPoint: .bottom)
+
+            VStack(spacing: 26) {
+                Spacer(minLength: 108)
+                Text(game.mallDisplayTitle)
+                    .font(.system(size: 52, weight: .light))
+                    .tracking(8)
+                    .foregroundStyle(.white.opacity(0.94))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                Spacer(minLength: 42)
+                VStack(spacing: 2) {
+                    Text(game.primaryStoreLabel)
+                        .font(.system(size: 13, weight: .black))
+                    Text(game.ratingLabel)
+                        .font(.system(size: 13, weight: .bold))
                 }
+                .foregroundStyle(.white.opacity(0.94))
+                Button { viewModel.selectGame(game) } label: {
+                    Text("VIEW DETAILS")
+                        .font(.system(size: 14, weight: .black))
+                        .frame(width: 142, height: 41)
+                }
+                .buttonStyle(VendorGetInButtonStyle())
+                Spacer(minLength: 58)
             }
-            .padding(.leading, 56)
-            .padding(.bottom, 48)
+            .frame(width: 470)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 38)
 
             HStack(spacing: 8) {
-                Capsule().fill(Color.openNowGreen).frame(width: 28, height: 3)
-                Capsule().fill(Color.white.opacity(0.35)).frame(width: 18, height: 3)
-                Capsule().fill(Color.white.opacity(0.35)).frame(width: 18, height: 3)
+                Circle().fill(Color.openNowGreen).frame(width: 12, height: 12)
+                ForEach(0..<6, id: \.self) { _ in
+                    Circle().fill(Color.white.opacity(0.58)).frame(width: 9, height: 9)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, 22)
+            .padding(.bottom, 34)
         }
         .clipShape(Rectangle())
     }
@@ -236,17 +240,22 @@ private struct CatalogRailView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(title)
-                    .font(.system(size: 21, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.96))
                 Spacer()
+                Button("SEE ALL") {}
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
             }
-            .padding(.horizontal, 56)
+            .padding(.horizontal, 44)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: 18) {
                     ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
                         CatalogGameTile(viewModel: viewModel, game: game)
                     }
                 }
-                .padding(.horizontal, 56)
+                .padding(.horizontal, 44)
                 .padding(.bottom, 4)
             }
         }
@@ -259,35 +268,34 @@ private struct CatalogGameTile: View {
     @State private var isHovering = false
 
     var body: some View {
-        Button { viewModel.selectGame(game) } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topTrailing) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestTileImageURL, width: 420), contentMode: .fill)
-                        .frame(width: 154, height: 218)
-                        .clipped()
-                    if game.isInLibrary {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Color.openNowGreen)
-                            .padding(7)
-                    }
+        Button { viewModel.launch(game: game) } label: {
+            ZStack(alignment: .topLeading) {
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
+                    .frame(width: 304, height: 171)
+                    .clipped()
+                if game.isInLibrary {
+                    MallRibbonShape()
+                        .fill(Color.openNowGreen)
+                        .frame(width: 7, height: 24)
                 }
-                HStack {
-                    Text(game.title.isEmpty ? "Untitled Game" : game.title)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.90))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                }
-                .padding(.horizontal, 10)
-                .frame(width: 154, height: 40, alignment: .leading)
-                .background(Color(red: 0.152, green: 0.152, blue: 0.152))
             }
             .scaleEffect(isHovering ? 1.08 : 1.0)
             .animation(.easeOut(duration: 0.15), value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+}
+
+private struct MallRibbonShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.72))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -529,6 +537,38 @@ private extension OPNCatalogGameObject {
         }
         if let value = screenshotUrls.first, !value.isEmpty { return value }
         return heroImageUrl
+    }
+
+    var bestWideImageURL: String {
+        for key in ["TILE", "HERO_IMAGE", "HERO", "BACKGROUND", "KEY_ART", "SCREENSHOT"] {
+            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
+        }
+        if let value = screenshotUrls.first, !value.isEmpty { return value }
+        if !heroImageUrl.isEmpty { return heroImageUrl }
+        return imageUrl
+    }
+
+    var mallDisplayTitle: String {
+        let fallbackTitle = title.isEmpty ? "Featured Game" : title
+        let split = fallbackTitle.replacingOccurrences(
+            of: "([a-z])([A-Z])",
+            with: "$1|$2",
+            options: .regularExpression
+        )
+        return split.uppercased()
+    }
+
+    var primaryStoreLabel: String {
+        if let store = availableStores.first, !store.isEmpty { return store.capitalized }
+        if let store = variants.first?.appStore, !store.isEmpty { return store.capitalized }
+        return "GeForce NOW"
+    }
+
+    var ratingLabel: String {
+        for chip in detailChips where chip.localizedCaseInsensitiveContains("rating") || chip.localizedCaseInsensitiveContains("ages") {
+            return chip.capitalized
+        }
+        return "Rating: Ages 16+"
     }
 
     var genreLine: String { genres.prefix(3).joined(separator: " / ") }

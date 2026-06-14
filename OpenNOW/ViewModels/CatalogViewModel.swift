@@ -36,6 +36,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var marqueePanels: [OPNCatalogPanelObject] = []
     @Published var mainPanels: [OPNCatalogPanelObject] = []
     @Published var catalogGames: [OPNCatalogGameObject] = []
+    @Published var libraryGames: [OPNCatalogGameObject] = []
     @Published var selectedGame: OPNCatalogGameObject?
     @Published var selectedVariantIndex = -1
 
@@ -82,7 +83,11 @@ final class CatalogViewModel: ObservableObject {
             }
         }
         if !catalogGames.isEmpty {
-            sections.insert((searchQuery.trimmed.isEmpty ? "Recently Added" : "Search Results", catalogGames), at: 0)
+            sections.insert((searchQuery.trimmed.isEmpty ? "My Favorites" : "Search Results", catalogGames), at: 0)
+        }
+        if searchQuery.trimmed.isEmpty, !libraryGames.isEmpty {
+            let insertionIndex = min(sections.count, catalogGames.isEmpty ? 0 : 1)
+            sections.insert(("My Library", libraryGames), at: insertionIndex)
         }
         return Array(sections.prefix(8))
     }
@@ -92,12 +97,14 @@ final class CatalogViewModel: ObservableObject {
         hasLoaded = true
         configureCatalogService()
         loadPanels()
+        loadLibrary()
         browseCatalog()
     }
 
     func refresh() {
         configureCatalogService()
         loadPanels()
+        loadLibrary()
         browseCatalog()
     }
 
@@ -213,6 +220,22 @@ final class CatalogViewModel: ObservableObject {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
                     self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW home panels." : error
+                }
+            }
+        }
+    }
+
+    private func loadLibrary() {
+        configureCatalogService()
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
+            let gamesBox = CatalogSendableValue(games)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.libraryGames = gamesBox.value
+                } else if self.refreshAuthIfNeeded(error: error) {
+                    self.libraryGames = []
                 }
             }
         }
