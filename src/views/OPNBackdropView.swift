@@ -230,36 +230,33 @@ private struct OPNDesktopChromeSwiftUIView: View {
     let openSettings: () -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
-            Text("OpenNOW")
-                .font(.system(size: 18, weight: .black))
-                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xF5F5F7, alpha: 1.0)))
-                .shadow(color: .black.opacity(0.95), radius: 3)
-
+        HStack(spacing: 18) {
             Spacer(minLength: 24)
 
             Button(action: openSettings) {
                 Text("Settings")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(model.settingsSelected ? .black.opacity(0.96) : .white.opacity(0.96))
-                    .frame(width: 124, height: 44)
-                    .background(model.settingsSelected ? Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.94)) : .black.opacity(0.50), in: Capsule())
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(model.settingsSelected ? .black.opacity(0.96) : .white.opacity(0.90))
+                    .frame(width: 118, height: 38)
+                    .background(model.settingsSelected ? Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)) : Color.black.opacity(0.54))
+                    .overlay(Rectangle().stroke(model.settingsSelected ? Color(nsColor: OPNUIHelpers.color(rgb: 0x8FD127, alpha: 0.72)) : Color.white.opacity(0.12), lineWidth: 1))
             }
             .buttonStyle(.plain)
 
             if !model.remainingPlayTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Playtime: \(model.remainingPlayTime)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.86))
                     .lineLimit(1)
-                    .frame(width: 172, height: 44)
-                    .background(.black.opacity(0.50), in: Capsule())
+                    .frame(width: 170, height: 38)
+                    .background(Color.black.opacity(0.54))
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1))
             }
 
             accountMenu
         }
-        .padding(.leading, 48)
-        .padding(.trailing, 58)
+        .padding(.leading, 40)
+        .padding(.trailing, 72)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .opacity(model.visible ? 1 : 0)
         .allowsHitTesting(model.visible)
@@ -291,8 +288,9 @@ private struct OPNDesktopChromeSwiftUIView: View {
                 }
             }
             .foregroundStyle(.white.opacity(0.96))
-            .frame(width: 180, height: 44)
-            .background(.black.opacity(0.50), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: 178, height: 38)
+            .background(Color.black.opacity(0.54))
+            .overlay(Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

@@ -260,7 +260,7 @@ final class OPNStoreHintPillView: NSView {
 final class OPNGameCatalogLayoutSupport: NSObject {
     @objc static let storeTopInset: CGFloat = 0.0
     @objc static let storeNavigationClearance: CGFloat = 0.0
-    @objc static let storeHeroHeightRatio: CGFloat = 0.3229
+    @objc static let storeHeroHeightRatio: CGFloat = 0.285
     @objc static let storeRowHeight: CGFloat = 248.0
     @objc static let storeCardSpacing: CGFloat = 16.0
     @objc static let storeTileWidth: CGFloat = 272.0
@@ -281,12 +281,12 @@ final class OPNGameCatalogLayoutSupport: NSObject {
     @objc static let storeHeroCornerColumn: CGFloat = 56.0
     @objc static let storeHeroTextColumnRatio: CGFloat = 0.14
     @objc static let storeHeroThirdColumnRatio: CGFloat = 0.06
-    @objc static let storeHeroImageMinHeight: CGFloat = 345.0
-    @objc static let storeHeroMinHeightBreakpoint: CGFloat = 1287.0
+    @objc static let storeHeroImageMinHeight: CGFloat = 300.0
+    @objc static let storeHeroMinHeightBreakpoint: CGFloat = 1150.0
     @objc static let storeHeroOverlayLeadingPadding: CGFloat = 24.0
     @objc static let storeHeroOverlayBottomPadding: CGFloat = 24.0
-    @objc static let storeHeroLogoMaxWidth: CGFloat = 520.0
-    @objc static let storeHeroLogoMaxHeight: CGFloat = 180.0
+    @objc static let storeHeroLogoMaxWidth: CGFloat = 430.0
+    @objc static let storeHeroLogoMaxHeight: CGFloat = 148.0
     @objc static let storeButtonHintPillHeight: CGFloat = 40.0
     @objc static let storeButtonHintPillBottomInset: CGFloat = 18.0
     @objc static let storeTopFoldNextRowInset: CGFloat = -100.0
@@ -329,7 +329,7 @@ final class OPNGameCatalogLayoutSupport: NSObject {
 
     @objc(heroFirstRowSpacingForWidth:)
     static func heroFirstRowSpacing(forWidth width: CGFloat) -> CGFloat {
-        floor(10.0 - heroImageSecondRowHeight(forWidth: width))
+        0.0
     }
 
     @objc(heroImageLeadingEdgeForWidth:)

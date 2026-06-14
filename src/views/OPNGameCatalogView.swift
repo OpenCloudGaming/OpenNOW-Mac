@@ -508,7 +508,7 @@ struct OPNGameCatalogSwiftUIView: View {
     var body: some View {
         GeometryReader { viewport in
             ZStack {
-                Color(nsColor: OPNUIHelpers.color(rgb: 0x191919, alpha: 1.0))
+                Color(nsColor: OPNUIHelpers.color(rgb: 0x141414, alpha: 1.0))
                     .ignoresSafeArea()
                 LinearGradient(
                     colors: [Color.black.opacity(0.42), Color.black.opacity(0.0)],
@@ -540,7 +540,7 @@ struct OPNGameCatalogSwiftUIView: View {
                             }
                         }
                     }
-                    .padding(.bottom, 88)
+                    .padding(.bottom, 118)
                 }
                 .ignoresSafeArea(.container, edges: .top)
                 catalogSearch(viewportSize: viewport.size)
@@ -549,7 +549,7 @@ struct OPNGameCatalogSwiftUIView: View {
                     .ignoresSafeArea(.container, edges: .top)
                 controllerHints
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, 8)
             }
         }
     }
@@ -648,6 +648,8 @@ struct OPNGameCatalogSwiftUIView: View {
                 }
             }
         }
+        .padding(.top, 18)
+        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x141414, alpha: 1.0)))
     }
 
     private var loadingState: some View {
@@ -698,20 +700,20 @@ struct OPNGameCatalogSwiftUIView: View {
                 hint("Y", "Variant")
             }
         }
-        .padding(.horizontal, 20)
-        .frame(height: 40)
-        .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.82)))
-        .overlay(Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+        .padding(.horizontal, 16)
+        .frame(height: 34)
+        .background(Color.black.opacity(0.56))
+        .overlay(Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1))
     }
 
     private func hint(_ key: String, _ label: String) -> some View {
         HStack(spacing: 6) {
             Text(key)
-                .font(.system(size: 11, weight: .black))
-                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textPrimary, alpha: 0.92)))
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.90))
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: OPNViewColor.textSecondary, alpha: 1)))
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(Color.white.opacity(0.68))
         }
     }
 
