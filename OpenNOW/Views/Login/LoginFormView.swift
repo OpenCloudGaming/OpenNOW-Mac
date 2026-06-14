@@ -30,12 +30,29 @@ struct LoginFormView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Provider", selection: $viewModel.selectedProvider) {
+                HStack(spacing: 10) {
+                    Text("Provider")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.gfnTextSecondary)
+
                     ForEach(LoginProvider.allCases) { provider in
-                        Text(provider.title).tag(provider)
+                        Button {
+                            viewModel.selectedProvider = provider
+                        } label: {
+                            Text(provider.title.uppercased())
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(viewModel.selectedProvider == provider ? .black : .white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(viewModel.selectedProvider == provider ? Color.openNowGreen : Color.white.opacity(0.08))
+                                .overlay {
+                                    Rectangle()
+                                        .stroke(viewModel.selectedProvider == provider ? Color.openNowGreen : Color.gfnStroke, lineWidth: 1)
+                                }
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
 
                 TextField("Email hint (optional)", text: $viewModel.email)
                     .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .email))
@@ -45,6 +62,7 @@ struct LoginFormView: View {
                 Toggle("I agree to NVIDIA terms and local session storage", isOn: $viewModel.acceptedTerms)
             }
             .toggleStyle(.checkbox)
+            .tint(Color.openNowGreen)
             .font(.system(size: 13, weight: .regular))
             .foregroundStyle(Color.gfnTextSecondary)
 
@@ -91,8 +109,8 @@ struct LoginFormView: View {
                         }
                         Text("COMPLETE SIGN-IN")
                         Spacer()
-                        Text("JARVIS_Get_Session_Token")
-                            .font(.caption.monospaced())
+                        Text("JARVIS")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(Color.gfnTextTertiary)
                     }
                     .frame(maxWidth: .infinity)
@@ -143,7 +161,7 @@ struct LoginFormView: View {
         .padding(.bottom, 32)
         .frame(width: 400, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.gfnPanel.opacity(0.96))
+        .background(Color.gfnAuthPanel)
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(Color.openNowGreen)

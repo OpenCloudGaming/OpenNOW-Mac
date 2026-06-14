@@ -12,6 +12,8 @@ struct LoginMarketingView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let contentLeading = min(max(500, proxy.size.width * 0.54), max(500, proxy.size.width - 420))
+
             ZStack(alignment: .leading) {
                 GFNHeroArtwork()
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -21,12 +23,11 @@ struct LoginMarketingView: View {
 
                 LinearGradient(
                     stops: [
-                        .init(color: .black.opacity(0.96), location: 0.00),
-                        .init(color: .black.opacity(0.92), location: 0.29),
-                        .init(color: .black.opacity(0.78), location: 0.42),
-                        .init(color: .black.opacity(0.60), location: 0.54),
-                        .init(color: .black.opacity(0.36), location: 0.74),
-                        .init(color: .black.opacity(0.08), location: 0.95),
+                        .init(color: .black.opacity(0.98), location: 0.00),
+                        .init(color: .black.opacity(0.94), location: 0.18),
+                        .init(color: .black.opacity(0.70), location: 0.40),
+                        .init(color: .black.opacity(0.36), location: 0.66),
+                        .init(color: .black.opacity(0.08), location: 0.94),
                         .init(color: .clear, location: 1.00),
                     ],
                     startPoint: .leading,
@@ -67,7 +68,8 @@ struct LoginMarketingView: View {
                 }
                 .padding(.top, 48)
                 .padding(.bottom, 32)
-                .padding(.leading, 40)
+                .padding(.leading, contentLeading)
+                .opacity(proxy.size.width > 820 ? 1 : 0)
             }
         }
         .ignoresSafeArea()
