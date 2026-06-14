@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
+		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758B2FDCA4F900B177D8 /* Jarvis */; };
 		7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758E2FDCA4F900B177D8 /* Starfleet */; };
 		777875922FDCA4F900B177D8 /* NesAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 777875912FDCA4F900B177D8 /* NesAuth */; };
@@ -21,8 +23,23 @@
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		7729CE892FDEDAB500D5C9D5 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -38,6 +55,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */,
 				A00000000000000000000107 /* Backend in Frameworks */,
 				A00000000000000000000101 /* CloudMatch in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
@@ -60,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				7729CE782FDEDAB300D5C9D5 /* OpenNOW */,
+				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -81,6 +100,7 @@
 			buildPhases = (
 				7729CE722FDEDAB300D5C9D5 /* Sources */,
 				7729CE732FDEDAB300D5C9D5 /* Frameworks */,
+				7729CE892FDEDAB500D5C9D5 /* Embed Frameworks */,
 				7729CE742FDEDAB300D5C9D5 /* Resources */,
 			);
 			buildRules = (
