@@ -5,11 +5,11 @@ import Foundation
 import Jarvis
 import Starfleet
 
-typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
+public typealias OPNAuthCallback = @Sendable (_ success: Bool, _ session: OPNAuthSession, _ error: String) -> Void
 typealias OPNSimpleCallback = @Sendable (_ success: Bool, _ error: String) -> Void
 
 public final class OPNAuthService: @unchecked Sendable {
-    static let shared = OPNAuthService()
+    public static let shared = OPNAuthService()
     private static let jarvisConfiguration = JarvisOAuthConfiguration.gfnPC
     static let jarvisAuthStatusDidChangeNotification = Notification.Name("OpenNOW.JarvisAuthStatusDidChange")
 
@@ -60,11 +60,11 @@ public final class OPNAuthService: @unchecked Sendable {
         }
     }
 
-    func startOAuthLogin(completion: @escaping OPNAuthCallback) {
+    public func startOAuthLogin(completion: @escaping OPNAuthCallback) {
         startOAuthLogin(providerIdpId: Self.defaultIdpId, completion: completion)
     }
 
-    func startOAuthLogin(providerIdpId: String, completion: @escaping OPNAuthCallback) {
+    public func startOAuthLogin(providerIdpId: String, completion: @escaping OPNAuthCallback) {
         let port = findAvailablePort()
         guard port > 0 else {
             DispatchQueue.main.async { completion(false, OPNAuthSession(), "No available port for OAuth callback") }

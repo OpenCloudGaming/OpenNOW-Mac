@@ -5,6 +5,7 @@
 //
 
 import AppKit
+import Backend
 import Combine
 import CryptoKit
 import Foundation
@@ -28,6 +29,7 @@ final class LoginViewModel: ObservableObject {
     @Published var requestedFocus: LoginField?
     @Published var currentAuthorizationURL = ""
 
+    private let authService = OPNAuthService.shared
     private let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
     private var modelContext: ModelContext?
     private var accounts: [LoginAccount] = []
@@ -136,39 +138,26 @@ final class LoginViewModel: ObservableObject {
         }
 
         isLaunchingOAuth = true
-        defer { isLaunchingOAuth = false }
+        validationMessage = "Finish NVIDIA sign-in in the browser. OpenNOW will continue automatically."
 
-        let verifier = Self.randomOAuthString(length: 64)
-        let state = JarvisOAuthState(
-            codeVerifier: verifier,
-            codeChallenge: Self.codeChallenge(for: verifier),
-            state: Self.randomOAuthString(length: 32),
-            nonce: Self.randomOAuthString(length: 32)
-        )
-        let redirectURI = JarvisOAuthConfiguration.gfnPC.redirectURI
-        let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
+        authService.startOAuthLogin(providerIdpId: selectedProvider.idpId) { [weak self] success, session, error in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isLaunchingOAuth = false
+                self.currentAuthorizationURL = ""
+                self.clearPendingOAuthState()
+                self.oauthCallbackText = ""
 
-        do {
-            let request = try await jarvisAuthService.createOAuthLoginRequest(
-                deviceId: primaryDevice.deviceId,
-                redirectURI: redirectURI,
-                locale: locale,
-                oauthState: state,
-                providerIdpId: selectedProvider.idpId,
-                useAppURL: true
-            )
-            primaryDevice.pendingOAuthState = state.state
-            primaryDevice.pendingOAuthCodeVerifier = verifier
-            primaryDevice.pendingOAuthProviderIdpId = selectedProvider.idpId
-            primaryDevice.pendingOAuthRedirectURI = redirectURI
-            primaryDevice.lastUsedAt = Date()
-            currentAuthorizationURL = request.url.absoluteString
-            trySave()
-            _ = await jarvisAuthService.sameTabAuthStarted()
-            NSWorkspace.shared.open(request.url)
-            validationMessage = "Finish NVIDIA sign-in in the browser. OpenNOW will continue automatically when the callback returns."
-        } catch {
-            validationMessage = Self.userFacingError(error)
+                guard success else {
+                    self.validationMessage = error.isEmpty ? "NVIDIA sign-in failed." : error
+                    return
+                }
+
+                await self.jarvisAuthService.setSession(session)
+                self.persistSignedInSession(session: session, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
+                self.validationMessage = ""
+                self.successMessage = "NVIDIA account connected. Client token and session metadata are ready."
+            }
         }
     }
 
