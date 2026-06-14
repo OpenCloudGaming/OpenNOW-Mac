@@ -39,6 +39,7 @@
 
 /* Begin PBXFileReference section */
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenNOW.entitlements; sourceTree = "<group>"; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -78,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				7729CE782FDEDAB300D5C9D5 /* OpenNOW */,
+				7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
@@ -323,6 +325,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = OpenNOW.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -360,6 +363,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = OpenNOW.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
