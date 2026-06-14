@@ -5,7 +5,7 @@ import Foundation
 
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let webRTCFrameworkSearchPath = packageRoot
-    .appendingPathComponent("../third_party/webrtc-official")
+    .appendingPathComponent("..")
     .standardizedFileURL
     .path
 
@@ -33,7 +33,7 @@ let package = Package(
                 .product(name: "Sentry", package: "sentry-cocoa"),
             ],
             swiftSettings: [
-                .unsafeFlags(["-F", webRTCFrameworkSearchPath]),
+                .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-Xcc", "-Wno-incomplete-umbrella"]),
             ],
             linkerSettings: [
                 .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-framework", "WebRTC"]),

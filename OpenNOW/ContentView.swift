@@ -5,10 +5,6 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import AppKit
-import CryptoKit
-import Jarvis
-import NesAuth
 import SwiftData
 import SwiftUI
 
@@ -18,40 +14,21 @@ struct ContentView: View {
     @Query(sort: \LoginSession.issuedAt, order: .reverse) private var sessions: [LoginSession]
     @Query private var devices: [LoginDeviceRegistration]
 
-    @State private var email = ""
-    @State private var password = ""
-    @State private var selectedProvider = LoginProvider.nvidia
-    @State private var rememberSession = true
-    @State private var acceptedTerms = false
-    @State private var isShowingAccountPicker = false
-    @State private var validationMessage = ""
-    @State private var successMessage = ""
-    @State private var isLaunchingOAuth = false
+    @StateObject private var viewModel = LoginViewModel()
 
     @FocusState private var focusedField: LoginField?
-
-    private var activeSession: LoginSession? {
-        sessions.first { session in
-            session.isActive && (!session.isExpired || session.canContinueOffline)
-        }
-    }
-
-    private var activeAccount: LoginAccount? {
-        guard let activeSession else { return nil }
-        return accounts.first { $0.email == activeSession.accountEmail }
-    }
 
     var body: some View {
         ZStack {
             LoginBackdrop()
-            if let activeAccount, let activeSession {
+            if let activeAccount = viewModel.activeAccount, let activeSession = viewModel.activeSession {
                 SignedInDashboard(
                     account: activeAccount,
                     session: activeSession,
                     accounts: accounts,
-                    onSwitch: activateAccount,
-                    onSignOut: signOut,
-                    onForget: forgetAccount
+                    onSwitch: viewModel.activateAccount,
+                    onSignOut: viewModel.signOut,
+                    onForget: viewModel.forgetAccount
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
@@ -61,10 +38,18 @@ struct ContentView: View {
         }
         .frame(minWidth: 980, minHeight: 660)
         .task {
-            ensureDeviceRegistration()
-            prefillLastAccount()
+            syncViewModel()
+            viewModel.bootstrap()
         }
-        .animation(.snappy(duration: 0.28), value: activeSession?.id)
+        .onChange(of: accounts.count) { _, _ in syncViewModel() }
+        .onChange(of: sessions.count) { _, _ in syncViewModel() }
+        .onChange(of: devices.count) { _, _ in syncViewModel() }
+        .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }
+        .animation(.snappy(duration: 0.28), value: viewModel.activeSession?.id)
+    }
+
+    private func syncViewModel() {
+        viewModel.update(modelContext: modelContext, accounts: accounts, sessions: sessions, devices: devices)
     }
 
     private var loginWindow: some View {
@@ -113,8 +98,8 @@ struct ContentView: View {
             }
 
             HStack(spacing: 12) {
-                LoginStatCard(title: "Auth", value: JarvisAuthStatus.notLoggedIn.rawValue.replacingOccurrences(of: "_", with: " "))
-                LoginStatCard(title: "NES", value: NesAuth.AuthorizationState.authorized.rawValue)
+                LoginStatCard(title: "Auth", value: viewModel.authStatusSummary)
+                LoginStatCard(title: "NES", value: viewModel.nesAuthorizationSummary)
             }
 
             Spacer(minLength: 12)
@@ -160,41 +145,41 @@ struct ContentView: View {
             }
 
             VStack(spacing: 14) {
-                Picker("Provider", selection: $selectedProvider) {
+                Picker("Provider", selection: $viewModel.selectedProvider) {
                     ForEach(LoginProvider.allCases) { provider in
                         Text(provider.title).tag(provider)
                     }
                 }
                 .pickerStyle(.segmented)
 
-                TextField("Email address", text: $email)
+                TextField("Email address", text: $viewModel.email)
                     .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField == .email))
                     .focused($focusedField, equals: .email)
 
-                SecureField("Password", text: $password)
+                SecureField("Password", text: $viewModel.password)
                     .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField == .password))
                     .focused($focusedField, equals: .password)
-                    .onSubmit(signInWithPassword)
+                    .onSubmit(viewModel.signInWithPassword)
             }
 
             VStack(spacing: 12) {
-                Toggle("Remember this account on this Mac", isOn: $rememberSession)
-                Toggle("I agree to the NVIDIA account terms and OpenNOW session storage", isOn: $acceptedTerms)
+                Toggle("Remember this account on this Mac", isOn: $viewModel.rememberSession)
+                Toggle("I agree to the NVIDIA account terms and OpenNOW session storage", isOn: $viewModel.acceptedTerms)
             }
             .toggleStyle(.checkbox)
             .font(.callout)
 
             VStack(spacing: 12) {
-                Button(action: signInWithPassword) {
+                Button(action: viewModel.signInWithPassword) {
                     Label("Continue", systemImage: "arrow.right.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryLoginButtonStyle())
-                .disabled(!canSubmitPassword)
+                .disabled(!viewModel.canSubmitPassword)
 
-                Button(action: launchOAuth) {
+                Button(action: viewModel.launchOAuth) {
                     HStack {
-                        if isLaunchingOAuth {
+                        if viewModel.isLaunchingOAuth {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
@@ -207,16 +192,16 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryLoginButtonStyle())
-                .disabled(isLaunchingOAuth || !acceptedTerms)
+                .disabled(viewModel.isLaunchingOAuth || !viewModel.acceptedTerms)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                if !validationMessage.isEmpty {
-                    Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                if !viewModel.validationMessage.isEmpty {
+                    Label(viewModel.validationMessage, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
-                if !successMessage.isEmpty {
-                    Label(successMessage, systemImage: "checkmark.seal.fill")
+                if !viewModel.successMessage.isEmpty {
+                    Label(viewModel.successMessage, systemImage: "checkmark.seal.fill")
                         .foregroundStyle(Color.openNowGreen)
                 }
             }
@@ -226,7 +211,7 @@ struct ContentView: View {
             Spacer()
 
             HStack {
-                Label(primaryDevice.displayName, systemImage: "macbook.and.iphone")
+                Label(viewModel.primaryDevice.displayName, systemImage: "macbook.and.iphone")
                 Spacer()
                 Text("Device ID saved in SwiftData")
             }
@@ -246,23 +231,18 @@ struct ContentView: View {
                 Text("Remembered accounts")
                     .font(.headline)
                 Spacer()
-                Button(isShowingAccountPicker ? "Hide" : "Show") {
-                    withAnimation(.snappy) {
-                        isShowingAccountPicker.toggle()
-                    }
+                Button(viewModel.isShowingAccountPicker ? "Hide" : "Show") {
+                    viewModel.toggleAccountPicker()
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.openNowGreen)
             }
 
-            if isShowingAccountPicker {
+            if viewModel.isShowingAccountPicker {
                 VStack(spacing: 8) {
                     ForEach(accounts.prefix(4)) { account in
                         Button {
-                            email = account.email
-                            selectedProvider = LoginProvider(idpId: account.providerIdpId) ?? .nvidia
-                            rememberSession = account.rememberSession
-                            focusedField = .password
+                            viewModel.selectRememberedAccount(account)
                         } label: {
                             HStack(spacing: 12) {
                                 AccountAvatar(name: account.displayName)
@@ -290,197 +270,6 @@ struct ContentView: View {
         }
     }
 
-    private var canSubmitPassword: Bool {
-        !email.trimmed.isEmpty && !password.isEmpty && acceptedTerms
-    }
-
-    private var primaryDevice: LoginDeviceRegistration {
-        devices.first ?? LoginDeviceRegistration()
-    }
-
-    private func signInWithPassword() {
-        validationMessage = ""
-        successMessage = ""
-
-        guard isValidEmail(email.trimmed) else {
-            validationMessage = "Enter a valid email address."
-            focusedField = .email
-            return
-        }
-        guard password.count >= 8 else {
-            validationMessage = "Password must be at least 8 characters."
-            focusedField = .password
-            return
-        }
-        guard acceptedTerms else {
-            validationMessage = "Accept the account and storage terms to continue."
-            return
-        }
-
-        persistSignedInSession(authMethod: "Password", accessTokenPrefix: "local")
-        password = ""
-        successMessage = "Signed in and stored in SwiftData."
-    }
-
-    private func launchOAuth() {
-        validationMessage = ""
-        successMessage = ""
-
-        guard acceptedTerms else {
-            validationMessage = "Accept the account and storage terms before opening OAuth."
-            return
-        }
-
-        isLaunchingOAuth = true
-        defer { isLaunchingOAuth = false }
-
-        let verifier = Self.randomOAuthString(length: 64)
-        let state = JarvisOAuthState(
-            codeVerifier: verifier,
-            codeChallenge: Self.codeChallenge(for: verifier),
-            state: Self.randomOAuthString(length: 32),
-            nonce: Self.randomOAuthString(length: 32)
-        )
-        let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
-        guard let url = JarvisOAuthRequestFactory.authorizationURL(
-            deviceId: primaryDevice.deviceId,
-            redirectURI: JarvisOAuthConfiguration.gfnPC.redirectURI,
-            locale: locale,
-            oauthState: state,
-            providerIdpId: selectedProvider.idpId
-        ) else {
-            validationMessage = "Unable to build the Jarvis OAuth URL."
-            return
-        }
-
-        primaryDevice.lastUsedAt = Date()
-        trySave()
-        NSWorkspace.shared.open(url)
-        validationMessage = "OAuth opened in your browser. Complete sign-in there, then return to OpenNOW."
-    }
-
-    private func persistSignedInSession(authMethod: String, accessTokenPrefix: String) {
-        let now = Date()
-        let normalizedEmail = email.trimmed.lowercased()
-        let displayName = normalizedEmail.split(separator: "@").first.map { String($0).capitalized } ?? "Player"
-
-        for account in accounts {
-            account.isActive = false
-        }
-        for session in sessions {
-            session.isActive = false
-        }
-
-        let account: LoginAccount
-        if let existingAccount = accounts.first(where: { $0.email == normalizedEmail }) {
-            account = existingAccount
-        } else {
-            account = LoginAccount(
-                email: normalizedEmail,
-                displayName: displayName,
-                providerIdpId: selectedProvider.idpId,
-                providerName: selectedProvider.title
-            )
-            modelContext.insert(account)
-        }
-        account.displayName = displayName
-        account.providerIdpId = selectedProvider.idpId
-        account.providerName = selectedProvider.title
-        account.membershipTier = "Founders"
-        account.authorizationState = NesAuth.AuthorizationState.authorized.rawValue
-        account.authStatus = JarvisAuthStatus.loggedIn.rawValue
-        account.lastLoginAt = now
-        account.rememberSession = rememberSession
-        account.isActive = true
-
-        let expiry = Calendar.current.date(byAdding: .day, value: rememberSession ? 30 : 1, to: now) ?? now.addingTimeInterval(86_400)
-        let clientExpiry = Calendar.current.date(byAdding: .hour, value: 12, to: now) ?? now.addingTimeInterval(43_200)
-        let tokenSeed = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let session = LoginSession(
-            accountEmail: normalizedEmail,
-            authMethod: authMethod,
-            accessToken: "\(accessTokenPrefix)-access-\(tokenSeed)",
-            clientToken: "\(accessTokenPrefix)-client-\(tokenSeed)",
-            idToken: "\(accessTokenPrefix)-id-\(tokenSeed)",
-            deviceId: primaryDevice.deviceId,
-            issuedAt: now,
-            expiresAt: expiry,
-            clientTokenExpiresAt: clientExpiry,
-            isActive: true,
-            canContinueOffline: rememberSession
-        )
-        modelContext.insert(session)
-        primaryDevice.lastUsedAt = now
-        trySave()
-    }
-
-    private func activateAccount(_ account: LoginAccount) {
-        email = account.email
-        selectedProvider = LoginProvider(idpId: account.providerIdpId) ?? .nvidia
-        acceptedTerms = true
-        rememberSession = account.rememberSession
-        persistSignedInSession(authMethod: "Remembered", accessTokenPrefix: "remembered")
-    }
-
-    private func signOut() {
-        for account in accounts {
-            account.isActive = false
-            account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
-        }
-        for session in sessions {
-            session.isActive = false
-        }
-        trySave()
-        successMessage = "Signed out."
-    }
-
-    private func forgetAccount(_ account: LoginAccount) {
-        for session in sessions where session.accountEmail == account.email {
-            modelContext.delete(session)
-        }
-        modelContext.delete(account)
-        trySave()
-    }
-
-    private func ensureDeviceRegistration() {
-        guard devices.isEmpty else { return }
-        modelContext.insert(LoginDeviceRegistration())
-        trySave()
-    }
-
-    private func prefillLastAccount() {
-        guard email.isEmpty, let account = accounts.first else { return }
-        email = account.email
-        selectedProvider = LoginProvider(idpId: account.providerIdpId) ?? .nvidia
-        rememberSession = account.rememberSession
-    }
-
-    private func isValidEmail(_ value: String) -> Bool {
-        let parts = value.split(separator: "@")
-        guard parts.count == 2 else { return false }
-        return parts[0].count >= 1 && parts[1].contains(".")
-    }
-
-    private func trySave() {
-        do {
-            try modelContext.save()
-        } catch {
-            validationMessage = error.localizedDescription
-        }
-    }
-
-    private static func randomOAuthString(length: Int) -> String {
-        let alphabet = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
-        return String((0..<length).compactMap { _ in alphabet.randomElement() })
-    }
-
-    private static func codeChallenge(for verifier: String) -> String {
-        let digest = SHA256.hash(data: Data(verifier.utf8))
-        return Data(digest).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-    }
 }
 
 private struct SignedInDashboard: View {
@@ -735,48 +524,8 @@ private struct SecondaryLoginButtonStyle: ButtonStyle {
     }
 }
 
-private enum LoginProvider: String, CaseIterable, Identifiable {
-    case nvidia
-    case xbox
-    case ubisoft
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .nvidia: "NVIDIA"
-        case .xbox: "Xbox"
-        case .ubisoft: "Ubisoft"
-        }
-    }
-
-    var idpId: String {
-        switch self {
-        case .nvidia: Jarvis.defaultIdpId
-        case .xbox: "xbox-live"
-        case .ubisoft: "ubisoft-connect"
-        }
-    }
-
-    init?(idpId: String) {
-        guard let provider = Self.allCases.first(where: { $0.idpId == idpId }) else { return nil }
-        self = provider
-    }
-}
-
-private enum LoginField: Hashable {
-    case email
-    case password
-}
-
 private extension Color {
     static let openNowGreen = Color(red: 0.46, green: 0.90, blue: 0.10)
-}
-
-private extension String {
-    var trimmed: String {
-        trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 #Preview {
