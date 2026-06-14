@@ -7,8 +7,77 @@
 import AppKit
 import Backend
 import Combine
+import CoreText
 import ImageIO
 import SwiftUI
+
+private enum CatalogVendorLayout {
+    static let appBarHeight: CGFloat = 56
+    static let appBarBackground = Color(red: 57 / 255, green: 57 / 255, blue: 57 / 255)
+    static let mallSurface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
+    static let tileTray = Color(red: 41 / 255, green: 41 / 255, blue: 41 / 255)
+    static let sectionHeaderMargin: CGFloat = 40
+    static let carouselContainerMargin: CGFloat = 32
+    static let tileHorizontalMargin: CGFloat = 8
+    static let tileTopMargin: CGFloat = 16
+    static let cardTrayHeight: CGFloat = 40
+    static let wideTileWidth: CGFloat = 272
+    static let wideTileHeight: CGFloat = 153
+    static let tileScaleFactor: CGFloat = 1.12
+}
+
+private enum CatalogVendorFont {
+    enum Weight: Hashable {
+        case regular
+        case medium
+        case bold
+    }
+
+    static func font(size: CGFloat, weight: Weight = .regular) -> Font {
+        Font(nsFont(size: size, weight: weight))
+    }
+
+    private static func nsFont(size: CGFloat, weight: Weight) -> NSFont {
+        if let descriptor = descriptor(weight: weight) {
+            return CTFontCreateWithFontDescriptor(descriptor, size, nil) as NSFont
+        }
+        return NSFont.systemFont(ofSize: size, weight: fallbackWeight(weight))
+    }
+
+    private static func fallbackWeight(_ weight: Weight) -> NSFont.Weight {
+        switch weight {
+        case .regular: return .regular
+        case .medium: return .medium
+        case .bold: return .bold
+        }
+    }
+
+    private static func descriptor(weight: Weight) -> CTFontDescriptor? {
+        descriptors[weight] ?? nil
+    }
+
+    private static let descriptors: [Weight: CTFontDescriptor?] = [
+        .regular: loadDescriptor(named: "NVIDIASans_W_Rg"),
+        .medium: loadDescriptor(named: "NVIDIASans_W_Md"),
+        .bold: loadDescriptor(named: "NVIDIASans_W_Bd")
+    ]
+
+    private static func loadDescriptor(named name: String) -> CTFontDescriptor? {
+        for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "woff2", subdirectory: subdirectory),
+                  let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
+                  let descriptor = descriptors.first else { continue }
+            return descriptor
+        }
+        return nil
+    }
+}
+
+private extension Font {
+    static func nvidia(size: CGFloat, weight: CatalogVendorFont.Weight = .regular) -> Font {
+        CatalogVendorFont.font(size: size, weight: weight)
+    }
+}
 
 struct CatalogView: View {
     let accounts: [LoginAccount]
@@ -58,10 +127,10 @@ private struct CatalogTopBar: View {
         ZStack {
             HStack(spacing: 28) {
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 21, weight: .regular))
+                    .font(.nvidia(size: 21))
                     .foregroundStyle(.white.opacity(0.92))
                 Text("Games")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.nvidia(size: 17, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
                 Spacer()
             }
@@ -73,7 +142,7 @@ private struct CatalogTopBar: View {
             HStack(spacing: 24) {
                 Spacer()
                 Image(systemName: "questionmark.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.nvidia(size: 22, weight: .medium))
                     .foregroundStyle(.white.opacity(0.94))
                     .overlay(alignment: .topTrailing) {
                         Circle()
@@ -94,19 +163,19 @@ private struct CatalogTopBar: View {
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "headphones")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(.nvidia(size: 28, weight: .bold))
                             .foregroundStyle(.white)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(viewModel.account.displayName)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.nvidia(size: 15, weight: .medium))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             Text("Performance")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.nvidia(size: 12, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.78))
                         }
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.nvidia(size: 10, weight: .bold))
                             .foregroundStyle(.white.opacity(0.88))
                     }
                 }
@@ -114,19 +183,19 @@ private struct CatalogTopBar: View {
             }
             .padding(.trailing, 22)
         }
-        .frame(height: 64)
-        .background(Color(red: 0.205, green: 0.205, blue: 0.205))
+        .frame(height: CatalogVendorLayout.appBarHeight)
+        .background(CatalogVendorLayout.appBarBackground)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.28)).frame(height: 1) }
     }
 
     private var catalogSearchField: some View {
         HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .medium))
+                .font(.nvidia(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.76))
             TextField("Search games, stores, or genres", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15, weight: .medium))
+                .font(.nvidia(size: 15, weight: .medium))
                 .foregroundStyle(.white)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
@@ -138,7 +207,7 @@ private struct CatalogTopBar: View {
             }
         }
         .padding(.horizontal, 15)
-        .frame(height: 46)
+        .frame(height: 40)
         .background(Color(red: 0.145, green: 0.145, blue: 0.145))
         .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
     }
@@ -170,20 +239,21 @@ private struct CatalogContentView: View {
 
                 if !viewModel.errorMessage.isEmpty {
                     CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .padding(.horizontal, 56)
+                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                 }
                 CatalogBrowseControlsView(viewModel: viewModel)
-                    .padding(.horizontal, 44)
+                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                 if viewModel.isLoading || viewModel.isLoadingPanels {
                     CatalogLoadingStrip()
-                        .padding(.horizontal, 56)
+                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                 }
 
                 ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
                     CatalogRailView(viewModel: viewModel, section: section)
                     if shouldShowDetail(afterSectionAt: index, sections: sections) {
                         GameDetailPanel(viewModel: viewModel)
-                            .padding(.horizontal, 44)
+                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                            .padding(.top, -CatalogVendorLayout.cardTrayHeight)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
@@ -255,7 +325,7 @@ private struct CatalogHeroView: View {
                 VStack(spacing: 26) {
                     Spacer(minLength: 108)
                     Text(game.mallDisplayTitle)
-                        .font(.system(size: 52, weight: .light))
+                        .font(.nvidia(size: 52))
                         .tracking(8)
                         .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
                         .lineLimit(1)
@@ -263,14 +333,14 @@ private struct CatalogHeroView: View {
                     Spacer(minLength: 42)
                     VStack(spacing: 2) {
                         Text(game.primaryStoreLabel)
-                            .font(.system(size: 13, weight: .black))
+                            .font(.nvidia(size: 13, weight: .bold))
                         Text(game.ratingLabel)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.nvidia(size: 13, weight: .bold))
                     }
                     .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
                     Button { viewModel.selectGame(game) } label: {
                         Text("VIEW DETAILS")
-                            .font(.system(size: 14, weight: .black))
+                            .font(.nvidia(size: 14, weight: .bold))
                             .frame(width: 142, height: 41)
                     }
                     .buttonStyle(VendorGetInButtonStyle())
@@ -306,19 +376,19 @@ private struct CatalogBrowseControlsView: View {
             HStack(spacing: 12) {
                 if !viewModel.resultSummary.isEmpty {
                     Text(viewModel.resultSummary.uppercased())
-                        .font(.system(size: 12, weight: .black))
+                        .font(.nvidia(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.nvidia(size: 12, weight: .bold))
                         .foregroundStyle(Color.openNowGreen.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
                     Button("CLEAR") { viewModel.clearSearchAndFilters() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .black))
+                        .font(.nvidia(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.84))
                 }
                 Menu {
@@ -330,7 +400,7 @@ private struct CatalogBrowseControlsView: View {
                         Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
                         Image(systemName: "chevron.down")
                     }
-                    .font(.system(size: 12, weight: .black))
+                    .font(.nvidia(size: 12, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
                     .padding(.horizontal, 12)
                     .frame(height: 34)
@@ -353,7 +423,7 @@ private struct CatalogBrowseControlsView: View {
                                     Text((group.label.isEmpty ? group.id : group.label).uppercased())
                                     Image(systemName: "slider.horizontal.3")
                                 }
-                                .font(.system(size: 11, weight: .black))
+                                .font(.nvidia(size: 11, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.82))
                                 .padding(.horizontal, 11)
                                 .frame(height: 32)
@@ -368,7 +438,7 @@ private struct CatalogBrowseControlsView: View {
                                     Text(option.label.uppercased())
                                     Image(systemName: "xmark")
                                 }
-                                .font(.system(size: 11, weight: .black))
+                                .font(.nvidia(size: 11, weight: .bold))
                                 .foregroundStyle(.black.opacity(0.88))
                                 .padding(.horizontal, 11)
                                 .frame(height: 32)
@@ -405,23 +475,24 @@ private struct CatalogRailView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(section.title)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.nvidia(size: 20, weight: .medium))
                     .foregroundStyle(.white.opacity(0.96))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canSeeAll {
                     Button(isExpanded ? "SHOW LESS" : "SEE ALL") { viewModel.toggleSectionExpansion(section.id) }
                         .buttonStyle(.plain)
-                        .font(.system(size: 13, weight: .black))
+                        .font(.nvidia(size: 13, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
                 }
             }
-            .padding(.horizontal, 44)
+            .frame(height: 28)
+            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
 
             ScrollViewReader { proxy in
                 ZStack {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 18) {
+                        HStack(alignment: .top, spacing: 0) {
                             ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
                                 CatalogGameTile(viewModel: viewModel, game: game)
                                     .id(game.catalogIdentity)
@@ -430,7 +501,7 @@ private struct CatalogRailView: View {
                                 CatalogSeeMoreTile(title: "See All") { viewModel.toggleSectionExpansion(section.id) }
                             }
                         }
-                        .padding(.horizontal, 44)
+                        .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
                         .padding(.bottom, 4)
                     }
                     if games.count > 3 {
@@ -466,10 +537,10 @@ private struct CatalogRailArrow: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 20, weight: .black))
+                .font(.nvidia(size: 20, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
-                .frame(width: 42, height: 82)
-                .background(Color.black.opacity(0.54))
+                .frame(width: 40, height: 40)
+                .background(.black.opacity(0.24), in: Circle())
         }
         .buttonStyle(.plain)
     }
@@ -484,19 +555,22 @@ private struct CatalogSeeMoreTile: View {
         Button(action: action) {
             VStack(spacing: 12) {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 34, weight: .black))
+                    .font(.nvidia(size: 34, weight: .bold))
                     .foregroundStyle(.white.opacity(0.82))
                 Text(title.uppercased())
-                    .font(.system(size: 13, weight: .black))
+                    .font(.nvidia(size: 16, weight: .medium))
                     .foregroundStyle(.white.opacity(0.88))
             }
-            .frame(width: 304, height: 171)
-            .background(Color.white.opacity(isHovering ? 0.13 : 0.08))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
-            .scaleEffect(isHovering ? 1.06 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: isHovering)
+            .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+            .background(Color(red: 43 / 255, green: 43 / 255, blue: 43 / 255))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
+            .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
+            .animation(.easeOut(duration: 0.2), value: isHovering)
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+        .padding(.top, CatalogVendorLayout.tileTopMargin)
+        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.cardTrayHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
         .onHover { isHovering = $0 }
         .accessibilityLabel("See all")
     }
@@ -521,53 +595,54 @@ private struct CatalogGameTile: View {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
-                        .frame(width: 304, height: 171)
+                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                         .clipped()
                     if shouldDim {
-                        Color.black.opacity(0.50)
+                        Color.black.opacity(0.80)
                     }
                     if isHovering || isSelected {
-                        LinearGradient(colors: [.clear, .black.opacity(0.64)], startPoint: .center, endPoint: .bottom)
+                        Color.black.opacity(0.50)
+                        LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
                     }
                     if game.isInLibrary {
                         MallRibbonShape()
                             .fill(Color.openNowGreen)
                             .frame(width: 7, height: 24)
                     }
-                    if isSelected {
-                        Rectangle()
-                            .stroke(Color.openNowGreen, lineWidth: 3)
-                    }
                 }
                 if isHovering || isSelected {
                     HStack(spacing: 8) {
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
                             .lineLimit(1)
-                            .foregroundStyle(.white.opacity(0.94))
+                            .foregroundStyle(isSelected ? .white.opacity(0.90) : .white.opacity(0.60))
                         Spacer(minLength: 0)
-                        Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .black))
+                        Image(systemName: "chevron.down")
+                            .font(.nvidia(size: 10, weight: .bold))
                             .foregroundStyle(.white.opacity(0.76))
                     }
-                    .frame(width: 284, height: 34)
-                    .padding(.horizontal, 10)
-                    .background(Color(red: 0.12, green: 0.12, blue: 0.12))
+                    .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
+                    .padding(.horizontal, 16)
+                    .background(CatalogVendorLayout.tileTray)
                 }
             }
-            .frame(width: 304, alignment: .top)
-            .overlay(alignment: .topTrailing) {
+            .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
+            .overlay(alignment: .top) {
                 if isSelected {
                     Rectangle()
                         .fill(Color.openNowGreen)
-                        .frame(width: 34, height: 4)
-                        .offset(y: 171)
+                        .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
+                        .offset(y: CatalogVendorLayout.wideTileHeight + 4)
                 }
             }
-            .scaleEffect(isHovering && !viewModel.selectedGameExists ? 1.08 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: isHovering)
+            .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
+            .scaleEffect(isHovering && !viewModel.selectedGameExists ? CatalogVendorLayout.tileScaleFactor : 1.0)
+            .animation(.easeOut(duration: 0.2), value: isHovering)
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+        .padding(.top, CatalogVendorLayout.tileTopMargin)
+        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.cardTrayHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
         .onHover { isHovering = $0 }
         .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
         .accessibilityAddTraits(.isButton)
@@ -610,7 +685,7 @@ private struct GameDetailPanel: View {
 
                     VStack(alignment: .leading, spacing: 16) {
                         Text(game.title.isEmpty ? "Selected Game" : game.title)
-                            .font(.system(size: 34, weight: .black))
+                            .font(.nvidia(size: 34, weight: .bold))
                             .lineLimit(2)
 
                         if !game.detailChips.isEmpty {
@@ -618,7 +693,7 @@ private struct GameDetailPanel: View {
                         }
 
                         Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.nvidia(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.76))
                             .lineSpacing(4)
                             .lineLimit(5)
@@ -627,7 +702,7 @@ private struct GameDetailPanel: View {
                         HStack(spacing: 14) {
                             Button { primaryAction(game: game) } label: {
                                 Text(primaryActionTitle(game: game))
-                                    .font(.system(size: 15, weight: .black))
+                                    .font(.nvidia(size: 15, weight: .bold))
                                     .frame(width: 152, height: 42)
                             }
                             .buttonStyle(VendorGetInButtonStyle())
@@ -650,7 +725,7 @@ private struct GameDetailPanel: View {
                                 }
                             } label: {
                                 Image(systemName: "ellipsis.vertical")
-                                    .font(.system(size: 16, weight: .black))
+                                    .font(.nvidia(size: 16, weight: .bold))
                                     .frame(width: 42, height: 42)
                             }
                             .menuStyle(.button)
@@ -690,7 +765,7 @@ private struct GameDetailPanel: View {
 
                 Button { viewModel.selectGame(nil) } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .black))
+                        .font(.nvidia(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
                         .background(.black.opacity(0.62))
@@ -699,7 +774,7 @@ private struct GameDetailPanel: View {
                 .padding(18)
             }
             .frame(maxWidth: .infinity, minHeight: 430, maxHeight: 430)
-            .background(Color(red: 0.075, green: 0.075, blue: 0.075))
+            .background(CatalogVendorLayout.mallSurface)
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
             .shadow(color: .black.opacity(0.42), radius: 22, x: 0, y: 18)
         }
@@ -709,7 +784,7 @@ private struct GameDetailPanel: View {
         FlowLayout(spacing: 8) {
             ForEach(game.detailChips, id: \.self) { chip in
                 Text(chip)
-                    .font(.system(size: 11, weight: .black))
+                    .font(.nvidia(size: 11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.82))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -763,7 +838,7 @@ private struct GameDetailPanel: View {
             Image(systemName: account?.hasAccountLinkingData == true ? "link.circle.fill" : "link.circle")
                 .foregroundStyle(Color.openNowGreen)
             Text(accountStatusText(account: account, storeName: storeName))
-                .font(.system(size: 12, weight: .semibold))
+                .font(.nvidia(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.70))
             Spacer(minLength: 0)
         }
@@ -797,11 +872,11 @@ private struct CatalogDetailRow: View {
         if !value.isEmpty {
             HStack(alignment: .top) {
                 Text(label.uppercased())
-                    .font(.system(size: 10, weight: .black))
+                    .font(.nvidia(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.38))
                     .frame(width: 84, alignment: .leading)
                 Text(value)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.nvidia(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.72))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -901,8 +976,6 @@ private struct CatalogHeroVendorBackgroundScrim: View {
 }
 
 private struct CatalogHeroVendorForegroundScrim: View {
-    private let mallSurface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
-
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .bottomLeading) {
@@ -919,7 +992,7 @@ private struct CatalogHeroVendorForegroundScrim: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 LinearGradient(
-                    colors: [.clear, mallSurface.opacity(0.25)],
+                    colors: [.clear, CatalogVendorLayout.mallSurface.opacity(0.25)],
                     startPoint: .trailing,
                     endPoint: .leading
                 )
@@ -927,7 +1000,7 @@ private struct CatalogHeroVendorForegroundScrim: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 LinearGradient(
-                    colors: [mallSurface.opacity(0.00), mallSurface],
+                    colors: [CatalogVendorLayout.mallSurface.opacity(0.00), CatalogVendorLayout.mallSurface],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -1111,7 +1184,7 @@ private struct CatalogImageFallback: View {
         ZStack {
             LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
             Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 34, weight: .black))
+                .font(.nvidia(size: 34, weight: .bold))
                 .foregroundStyle(Color.openNowGreen.opacity(0.78))
         }
     }
@@ -1126,7 +1199,7 @@ private struct CatalogMessageView: View {
             Image(systemName: systemImage)
                 .foregroundStyle(Color.openNowGreen)
             Text(message)
-                .font(.system(size: 12, weight: .bold))
+                .font(.nvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.78))
             Spacer()
         }
@@ -1141,7 +1214,7 @@ private struct CatalogLoadingStrip: View {
         HStack(spacing: 12) {
             ProgressView().controlSize(.small)
             Text("Loading GeForce NOW catalog")
-                .font(.system(size: 12, weight: .black))
+                .font(.nvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.62))
         }
         .padding(12)
