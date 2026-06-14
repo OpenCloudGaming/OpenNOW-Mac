@@ -1629,6 +1629,16 @@ final class OPNGameService: @unchecked Sendable {
 
 @objc(OPNGameServiceSwiftAdapter)
 public final class OPNGameServiceSwiftAdapter: NSObject {
+    @objc(configureCatalogSessionWithAccessToken:idToken:userId:)
+    public static func configureCatalogSession(accessToken: String, idToken: String, userId: String) {
+        let token = idToken.isEmpty ? accessToken : idToken
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setAccountLinkingToken(token)
+        OPNGameService.shared.setUserId(userId)
+        OPNGameService.shared.setVpcId("GFN-PC")
+        OPNGameService.shared.prewarmLaunchData()
+    }
+
     @objc(setAccessToken:)
     public static func setAccessToken(_ token: String) {
         OPNGameService.shared.setAccessToken(token)

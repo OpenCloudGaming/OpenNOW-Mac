@@ -24,7 +24,8 @@ struct LoginView: View {
                     accounts: accounts,
                     onSwitch: viewModel.activateAccount,
                     onSignOut: viewModel.signOut,
-                    onForget: viewModel.forgetAccount
+                    onForget: viewModel.forgetAccount,
+                    onRefreshAuth: viewModel.refreshActiveSession
                 )
                 .id(activeSession.id)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))

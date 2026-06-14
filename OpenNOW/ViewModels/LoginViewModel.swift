@@ -119,6 +119,11 @@ final class LoginViewModel: ObservableObject {
         Task { await signOutCurrentSession() }
     }
 
+    func refreshActiveSession() {
+        guard let activeAccount else { return }
+        Task { await restoreAccountSession(activeAccount) }
+    }
+
     func forgetAccount(_ account: LoginAccount) {
         guard let modelContext else { return }
         for session in sessions where session.accountEmail == account.email {

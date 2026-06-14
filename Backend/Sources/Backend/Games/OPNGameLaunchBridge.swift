@@ -8,8 +8,9 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
 
     private var windows: [ObjectIdentifier: NSWindow] = [:]
 
-    public func launch(game: OPNCatalogGameObject, accessToken: String, userId: String, variantIndex: Int, completion: OPNGameLaunchWindowCompletion? = nil) {
-        guard !accessToken.isEmpty else {
+    public func launch(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, variantIndex: Int, completion: OPNGameLaunchWindowCompletion? = nil) {
+        let token = idToken.isEmpty ? accessToken : idToken
+        guard !token.isEmpty else {
             completion?(false, "Sign in again before launching a game.")
             return
         }
@@ -22,8 +23,8 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
             return
         }
 
-        OPNGameService.shared.setAccessToken(accessToken)
-        OPNGameService.shared.setAccountLinkingToken(accessToken)
+        OPNGameService.shared.setAccessToken(token)
+        OPNGameService.shared.setAccountLinkingToken(token)
         OPNGameService.shared.setUserId(userId)
         OPNGameService.shared.setVpcId("GFN-PC")
 
@@ -32,7 +33,7 @@ public final class OPNGameLaunchBridge: NSObject, NSWindowDelegate {
         let controller = OPNStreamViewController(
             gameTitle: title,
             appId: appId,
-            apiToken: accessToken,
+            apiToken: token,
             accountLinked: accountLinked,
             selectedStore: selectedVariant?.appStore ?? ""
         )

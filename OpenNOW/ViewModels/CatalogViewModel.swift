@@ -41,13 +41,16 @@ final class CatalogViewModel: ObservableObject {
 
     let account: LoginAccount
     let session: LoginSession
+    let onRefreshAuth: () -> Void
 
     private var hasLoaded = false
     private var browseGeneration = 0
+    private var authRefreshInFlight = false
 
-    init(account: LoginAccount, session: LoginSession) {
+    init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
         self.session = session
+        self.onRefreshAuth = onRefreshAuth
     }
 
     var featuredGames: [OPNCatalogGameObject] {
@@ -117,6 +120,7 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value, generation == self.browseGeneration else { return }
                 self.isLoading = false
                 guard success else {
+                    if self.refreshAuthIfNeeded(error: error) { return }
                     self.errorMessage = error.isEmpty ? "Unable to browse the GeForce NOW catalog." : error
                     return
                 }
@@ -145,6 +149,7 @@ final class CatalogViewModel: ObservableObject {
         OPNGameLaunchBridge.shared.launch(
             game: game,
             accessToken: session.accessToken,
+            idToken: session.idToken,
             userId: userId,
             variantIndex: variantIndex ?? Self.preferredVariantIndex(for: game)
         ) { [weak self] success, message in
@@ -194,6 +199,8 @@ final class CatalogViewModel: ObservableObject {
                 if success {
                     self.marqueePanels = panelBox.value
                     if self.selectedGame == nil { self.selectGame(self.featuredGames.first) }
+                } else if self.refreshAuthIfNeeded(error: error) {
+                    self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
                     self.errorMessage = error
                 }
@@ -207,6 +214,8 @@ final class CatalogViewModel: ObservableObject {
                 if success {
                     self.mainPanels = panelBox.value
                     if self.selectedGame == nil { self.selectGame(self.featuredGames.first ?? self.catalogGames.first) }
+                } else if self.refreshAuthIfNeeded(error: error) {
+                    self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
                     self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW home panels." : error
                 }
@@ -216,11 +225,17 @@ final class CatalogViewModel: ObservableObject {
 
     private func configureCatalogService() {
         let userId = session.userId.isEmpty ? account.userId : session.userId
-        OPNGameServiceSwiftAdapter.setAccessToken(session.accessToken)
-        OPNGameServiceSwiftAdapter.setAccountLinkingToken(session.accessToken)
-        OPNGameServiceSwiftAdapter.setUserId(userId)
-        OPNGameServiceSwiftAdapter.setVpcId("GFN-PC")
-        OPNGameServiceSwiftAdapter.prewarmLaunchData()
+        OPNGameServiceSwiftAdapter.configureCatalogSession(accessToken: session.accessToken, idToken: session.idToken, userId: userId)
+    }
+
+    private func refreshAuthIfNeeded(error: String) -> Bool {
+        guard error.contains("401"), !authRefreshInFlight else { return false }
+        authRefreshInFlight = true
+        isLoading = false
+        isLoadingPanels = false
+        errorMessage = "Refreshing NVIDIA session..."
+        onRefreshAuth()
+        return true
     }
 
     static func identity(for game: OPNCatalogGameObject) -> String {
