@@ -831,39 +831,42 @@ private struct OPNStoreGameTileSwiftUIView: View {
     }
 
     private var compactBody: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .bottom) {
-                Image(nsImage: model.artwork)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                Rectangle()
-                    .fill(Color.black.opacity(focused ? 0.18 : 0.0))
-                LinearGradient(colors: [.clear, Color.black.opacity(0.50)], startPoint: .top, endPoint: .bottom)
-                if focused {
+        ZStack(alignment: .bottom) {
+            Image(nsImage: model.artwork)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+            if focused || model.activeSession {
+                LinearGradient(colors: [.clear, Color.black.opacity(0.70)], startPoint: .top, endPoint: .bottom)
+                VStack(spacing: 0) {
                     Rectangle()
                         .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
-                        .frame(height: 4)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .frame(height: 5)
+                    HStack(spacing: 8) {
+                        if focused {
+                            Text(model.actionTitle.uppercased())
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.92))
+                                .frame(width: 76, height: 28)
+                                .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                        }
+                        Text(model.title)
+                            .font(.system(size: 12, weight: focused ? .medium : .regular))
+                            .foregroundStyle(Color.white.opacity(focused ? 0.92 : 0.70))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if model.activeSession {
+                            Circle()
+                                .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                                .frame(width: 7, height: 7)
+                        }
+                    }
+                    .padding(.horizontal, focused ? 0 : 12)
+                    .frame(height: 36)
+                    .background(Color.black.opacity(0.58))
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            HStack(spacing: 8) {
-                Text(model.title)
-                    .font(.system(size: 12, weight: focused ? .medium : .regular))
-                    .foregroundStyle(Color.white.opacity(focused ? 0.90 : 0.60))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if model.activeSession {
-                    Circle()
-                        .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
-                        .frame(width: 7, height: 7)
-                }
-            }
-            .padding(.horizontal, 16)
-            .frame(height: OPNGameCatalogLayoutSupport.storeTileTrayHeight)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: focused ? 0x3A3A3A : 0x292929, alpha: 1.0)))
         }
         .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 1.0)))
     }

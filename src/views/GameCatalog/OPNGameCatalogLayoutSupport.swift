@@ -265,8 +265,8 @@ final class OPNGameCatalogLayoutSupport: NSObject {
     @objc static let storeCardSpacing: CGFloat = 16.0
     @objc static let storeTileWidth: CGFloat = 272.0
     @objc static let storeTileImageHeight: CGFloat = 153.0
-    @objc static let storeTileTrayHeight: CGFloat = 40.0
-    @objc static let storeTileHeight: CGFloat = storeTileImageHeight + storeTileTrayHeight
+    @objc static let storeTileTrayHeight: CGFloat = 0.0
+    @objc static let storeTileHeight: CGFloat = storeTileImageHeight
     @objc static let storeTileHorizontalMargin: CGFloat = 8.0
     @objc static let storeTileTopMargin: CGFloat = 16.0
     @objc static let storeTileScaleFactor: CGFloat = 1.12
@@ -496,8 +496,7 @@ final class OPNGameCatalogLayoutSupport: NSObject {
     static func tileMetrics(forRailWidth width: CGFloat) -> NSSize {
         let bucketedWidth = floor(max(320.0, width))
         let tileWidth = tileWidth(forRailWidth: bucketedWidth)
-        let imageHeight = floor(tileWidth * storeTileImageHeight / storeTileWidth)
-        let tileHeight = imageHeight + storeTileTrayHeight
+        let tileHeight = floor(tileWidth * storeTileImageHeight / storeTileWidth)
         return NSSize(width: tileWidth, height: tileHeight)
     }
 

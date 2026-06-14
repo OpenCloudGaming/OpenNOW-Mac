@@ -234,30 +234,21 @@ private struct OPNDesktopChromeSwiftUIView: View {
             Spacer(minLength: 24)
 
             Button(action: openSettings) {
-                Text("Settings")
+                Text("?")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(model.settingsSelected ? .black.opacity(0.96) : .white.opacity(0.90))
-                    .frame(width: 118, height: 38)
+                    .frame(width: 34, height: 34)
                     .background(model.settingsSelected ? Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)) : Color.black.opacity(0.54))
                     .overlay(Rectangle().stroke(model.settingsSelected ? Color(nsColor: OPNUIHelpers.color(rgb: 0x8FD127, alpha: 0.72)) : Color.white.opacity(0.12), lineWidth: 1))
             }
             .buttonStyle(.plain)
 
-            if !model.remainingPlayTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Playtime: \(model.remainingPlayTime)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.86))
-                    .lineLimit(1)
-                    .frame(width: 170, height: 38)
-                    .background(Color.black.opacity(0.54))
-                    .overlay(Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1))
-            }
-
             accountMenu
         }
         .padding(.leading, 40)
         .padding(.trailing, 72)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.top, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .opacity(model.visible ? 1 : 0)
         .allowsHitTesting(model.visible)
     }
@@ -277,20 +268,24 @@ private struct OPNDesktopChromeSwiftUIView: View {
             Button("Manage Account") { manageAccount() }
             Button("Add Account...") { addAccount() }
         } label: {
-            VStack(spacing: 4) {
-                Text(model.accountName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                if !model.accountStatus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("\(model.accountStatus) Account")
-                        .font(.system(size: 9.5, weight: .black))
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color.white.opacity(0.94))
+                    .frame(width: 30, height: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.accountName)
+                        .font(.system(size: 13, weight: .regular))
+                        .lineLimit(1)
+                    Text(model.accountStatus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Performance" : model.accountStatus)
+                        .font(.system(size: 12, weight: .regular))
                         .lineLimit(1)
                 }
-            }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                }
             .foregroundStyle(.white.opacity(0.96))
-            .frame(width: 178, height: 38)
-            .background(Color.black.opacity(0.54))
-            .overlay(Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .frame(width: 190, height: 44)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
