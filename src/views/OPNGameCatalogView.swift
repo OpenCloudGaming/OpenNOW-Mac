@@ -500,7 +500,7 @@ struct OPNGameCatalogItemModel: Identifiable, Equatable {
 
 struct OPNGameCatalogSwiftUIView: View {
     @ObservedObject var model: OPNGameCatalogModel
-    @State private var closedDetailItemID = ""
+    @State private var selectedDetailItemID = ""
     @State private var favoriteDetailItemIDs: Set<String> = []
 
     let onSearchChanged: (String) -> Void
@@ -633,7 +633,7 @@ struct OPNGameCatalogSwiftUIView: View {
                 .foregroundStyle(Color.white.opacity(0.80))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            Button("VIEW DETAILS") { onSelect(item) }
+            Button("VIEW DETAILS") { toggleDetail(for: item) }
                 .buttonStyle(OPNCatalogHeroActionButtonStyle())
                 .frame(width: 146, height: 42)
         }
@@ -693,7 +693,7 @@ struct OPNGameCatalogSwiftUIView: View {
                                         focusScrollRequestToken: model.focusScrollRequestItemID == item.id ? model.focusScrollRequestToken : 0,
                                         onSelect: { selectedVariantIndex in
                                             model.setVariant(itemID: item.id, variantIndex: selectedVariantIndex)
-                                            onSelect(model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
+                                            toggleDetail(for: model.item(withID: item.id) ?? OPNGameCatalogItemModel(gameObject: item.gameObject, selectedVariantIndex: selectedVariantIndex))
                                         },
                                         onHover: {
                                             model.focusedRowIndex = rowIndex
@@ -719,8 +719,8 @@ struct OPNGameCatalogSwiftUIView: View {
                         }
                     }
                     .frame(height: rowHeight)
-                    if model.focusedRowIndex == rowIndex, let focusedItem = model.focusedItem, focusedItem.id != closedDetailItemID {
-                        activeGameDetail(focusedItem, viewportSize: viewportSize)
+                    if let selectedItem = selectedDetailItem(in: section) {
+                        activeGameDetail(selectedItem, viewportSize: viewportSize)
                     }
                 }
             }
@@ -731,6 +731,15 @@ struct OPNGameCatalogSwiftUIView: View {
 
     private func displayTitle(for title: String) -> String {
         title.caseInsensitiveCompare("Library") == .orderedSame ? "My Library" : title
+    }
+
+    private func selectedDetailItem(in section: OPNGameCatalogSectionModel) -> OPNGameCatalogItemModel? {
+        guard !selectedDetailItemID.isEmpty else { return nil }
+        return section.games.first { $0.id == selectedDetailItemID }
+    }
+
+    private func toggleDetail(for item: OPNGameCatalogItemModel) {
+        selectedDetailItemID = selectedDetailItemID == item.id ? "" : item.id
     }
 
     private func activeGameDetail(_ item: OPNGameCatalogItemModel, viewportSize: CGSize) -> some View {
@@ -747,7 +756,7 @@ struct OPNGameCatalogSwiftUIView: View {
                     .overlay(LinearGradient(colors: [.clear, Color.black.opacity(0.34)], startPoint: .top, endPoint: .bottom))
             }
             activeGameInfo(item, leftWidth: leftWidth)
-            Button { closedDetailItemID = item.id } label: {
+            Button { selectedDetailItemID = "" } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.92))
