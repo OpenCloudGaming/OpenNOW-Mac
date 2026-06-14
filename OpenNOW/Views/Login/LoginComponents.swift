@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct LoginBackdrop: View {
     var body: some View {
@@ -33,29 +34,72 @@ struct GFNWordmark: View {
     }
 }
 
-struct GFNHeroArtwork: View {
-    private let columns = [
-        GridItem(.fixed(150), spacing: 18),
-        GridItem(.fixed(150), spacing: 18),
-        GridItem(.fixed(150), spacing: 18),
-        GridItem(.fixed(150), spacing: 18),
-    ]
+struct VendorResourceImage: View {
+    let name: String
+    let fileExtension: String
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            LinearGradient(colors: [Color.gfnCharcoal, .black], startPoint: .topTrailing, endPoint: .bottomLeading)
+        if let image = Self.loadImage(name: name, fileExtension: fileExtension) {
+            Image(nsImage: image)
+                .resizable()
+        } else {
+            Color.black
+        }
+    }
 
-            LazyVGrid(columns: columns, spacing: 18) {
-                ForEach(0..<24, id: \.self) { index in
-                    GFNGameTile(index: index)
-                }
+    private static func loadImage(name: String, fileExtension: String) -> NSImage? {
+        for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+            let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
+            if let url, let image = NSImage(contentsOf: url) {
+                return image
             }
-            .rotationEffect(.degrees(-10))
-            .offset(x: 220, y: -16)
-            .opacity(0.82)
-            .blur(radius: 0.2)
+        }
+        return nil
+    }
+}
 
-            LinearGradient(colors: [.clear, .black.opacity(0.52)], startPoint: .top, endPoint: .bottom)
+struct GFNHeroArtwork: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let tileWidth = max(320, proxy.size.height * 0.6)
+            let tileCount = max(4, Int((proxy.size.width / tileWidth).rounded(.up)) + 2)
+
+            ZStack(alignment: .trailing) {
+                VendorResourceImage(name: "LoginWallFallbackTile", fileExtension: "png")
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+
+                HStack(spacing: 0) {
+                    ForEach(0..<tileCount, id: \.self) { _ in
+                        VendorResourceImage(name: "LoginWallContentBackground", fileExtension: "png")
+                            .scaledToFill()
+                            .frame(width: tileWidth, height: proxy.size.height)
+                            .clipped()
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .trailing)
+                .opacity(0.92)
+
+                Color.black.opacity(0.18)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.90), location: 0.00),
+                        .init(color: .black.opacity(0.85), location: 0.29),
+                        .init(color: .black.opacity(0.79), location: 0.42),
+                        .init(color: .black.opacity(0.70), location: 0.54),
+                        .init(color: .black.opacity(0.60), location: 0.62),
+                        .init(color: .black.opacity(0.48), location: 0.74),
+                        .init(color: .black.opacity(0.33), location: 0.82),
+                        .init(color: .black.opacity(0.23), location: 0.87),
+                        .init(color: .black.opacity(0.07), location: 0.95),
+                        .init(color: .clear, location: 1.00),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
         }
     }
 }

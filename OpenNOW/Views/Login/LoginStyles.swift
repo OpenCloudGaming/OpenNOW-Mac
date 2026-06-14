@@ -58,7 +58,6 @@ struct SecondaryLoginButtonStyle: ButtonStyle {
 
 extension Color {
     static let openNowGreen = Color(red: 0.46, green: 0.90, blue: 0.10)
-    static let gfnAuthPanel = Color(red: 0.110, green: 0.110, blue: 0.110)
     static let gfnPanel = Color(red: 0.224, green: 0.224, blue: 0.224)
     static let gfnCharcoal = Color(red: 0.098, green: 0.098, blue: 0.098)
     static let gfnStroke = Color.white.opacity(0.14)
