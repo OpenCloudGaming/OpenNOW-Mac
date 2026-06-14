@@ -242,6 +242,7 @@ private struct CatalogHeroView: View {
     var body: some View {
         if let game {
             ZStack(alignment: .bottom) {
+                CatalogHeroVendorBackgroundScrim(color: scrimColor)
                 CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill) { color in
                     scrimColor = color
                 }
@@ -249,7 +250,7 @@ private struct CatalogHeroView: View {
                     .clipped()
                     .id(game.catalogIdentity)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                CatalogHeroVendorScrim(color: scrimColor)
+                CatalogHeroVendorForegroundScrim()
 
                 VStack(spacing: 26) {
                     Spacer(minLength: 108)
@@ -871,38 +872,69 @@ private struct CatalogHeroRemoteImage: View {
     }
 }
 
-private struct CatalogHeroVendorScrim: View {
+private struct CatalogHeroVendorBackgroundScrim: View {
     let color: CatalogMarqueeScrimColor
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                stops: [
-                    .init(color: color.color.opacity(0.00), location: 0.0000),
-                    .init(color: color.color.opacity(0.02), location: 0.0342),
-                    .init(color: color.color.opacity(0.05), location: 0.0668),
-                    .init(color: color.color.opacity(0.12), location: 0.0955),
-                    .init(color: color.color.opacity(0.20), location: 0.1230),
-                    .init(color: color.color.opacity(0.29), location: 0.1500),
-                    .init(color: color.color.opacity(0.39), location: 0.1752),
-                    .init(color: color.color.opacity(0.50), location: 0.2000),
-                    .init(color: color.color.opacity(0.61), location: 0.2248),
-                    .init(color: color.color.opacity(0.71), location: 0.2500),
-                    .init(color: color.color.opacity(0.80), location: 0.2770),
-                    .init(color: color.color.opacity(0.88), location: 0.3045),
-                    .init(color: color.color.opacity(0.95), location: 0.3332),
-                    .init(color: color.color.opacity(0.98), location: 0.3658),
-                    .init(color: color.color.opacity(1.00), location: 0.4000)
-                ],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            LinearGradient(
-                colors: [color.color.opacity(0.88), color.color.opacity(0.42), color.color.opacity(0.00)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
+        LinearGradient(
+            stops: [
+                .init(color: color.color.opacity(0.00), location: 0.0000),
+                .init(color: color.color.opacity(0.02), location: 0.0342),
+                .init(color: color.color.opacity(0.05), location: 0.0668),
+                .init(color: color.color.opacity(0.12), location: 0.0955),
+                .init(color: color.color.opacity(0.20), location: 0.1230),
+                .init(color: color.color.opacity(0.29), location: 0.1500),
+                .init(color: color.color.opacity(0.39), location: 0.1752),
+                .init(color: color.color.opacity(0.50), location: 0.2000),
+                .init(color: color.color.opacity(0.61), location: 0.2248),
+                .init(color: color.color.opacity(0.71), location: 0.2500),
+                .init(color: color.color.opacity(0.80), location: 0.2770),
+                .init(color: color.color.opacity(0.88), location: 0.3045),
+                .init(color: color.color.opacity(0.95), location: 0.3332),
+                .init(color: color.color.opacity(0.98), location: 0.3658),
+                .init(color: color.color.opacity(1.00), location: 0.4000)
+            ],
+            startPoint: .bottom,
+            endPoint: .top
+        )
+    }
+}
+
+private struct CatalogHeroVendorForegroundScrim: View {
+    private let mallSurface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0000),
+                        .init(color: .black, location: 0.6662),
+                        .init(color: .black, location: 1.0000)
+                    ],
+                    startPoint: .trailing,
+                    endPoint: .leading
+                )
+                .frame(width: proxy.size.width * 0.58)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                LinearGradient(
+                    colors: [.clear, mallSurface.opacity(0.25)],
+                    startPoint: .trailing,
+                    endPoint: .leading
+                )
+                .frame(width: proxy.size.width * 0.34)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                LinearGradient(
+                    colors: [mallSurface.opacity(0.00), mallSurface],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: proxy.size.height * 0.33)
+            }
         }
+        .allowsHitTesting(false)
     }
 }
 
