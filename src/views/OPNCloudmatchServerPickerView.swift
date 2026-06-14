@@ -255,42 +255,50 @@ private struct OPNCloudmatchServerPickerSwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.50).ignoresSafeArea()
+            Color.black.opacity(0.64).ignoresSafeArea()
             panel
         }
     }
 
     private var panel: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             header
+            Rectangle()
+                .fill(Color.white.opacity(0.24))
+                .frame(height: 1)
+                .padding(.top, 16)
             routeList
             status
             footer
         }
-        .padding(18)
-        .frame(minWidth: 300, idealWidth: 460, maxWidth: 460, minHeight: 300, idealHeight: 420, maxHeight: 420)
-        .background(Color(nsColor: opnColor(0x090B0E, 0.86)), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
-        .shadow(color: .black.opacity(0.22), radius: 20, y: 10)
+        .padding(28)
+        .frame(minWidth: 340, idealWidth: 520, maxWidth: 520, minHeight: 380, idealHeight: 500, maxHeight: 500)
+        .background(Color(nsColor: opnColor(0x292929, 0.96)))
+        .overlay(Rectangle().stroke(.white.opacity(0.20), lineWidth: 1))
+        .shadow(color: .black.opacity(0.48), radius: 30, y: 16)
         .padding(.horizontal, 16)
         .padding(.vertical, 32)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("Route")
-                .font(.system(size: 18, weight: .black))
-                .foregroundStyle(Color(nsColor: opnColor(OPNViewColor.textPrimary)))
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SERVER LOCATION")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color(nsColor: opnColor(0x76B900)))
+                .tracking(1.2)
+            Text("Choose a Route")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(Color.white)
             Text("Choose the Cloudmatch route for \(model.gameTitle).")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Color.white.opacity(0.66))
         }
     }
 
     private var routeList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 6) {
+                LazyVStack(spacing: 2) {
                     ForEach(Array(model.options.enumerated()), id: \.offset) { index, option in
                         OPNCloudmatchServerOptionRow(option: option, selected: index == model.selectedIndex) {
                             onSelect(index)
@@ -300,15 +308,16 @@ private struct OPNCloudmatchServerPickerSwiftUIView: View {
 
                     if model.options.isEmpty {
                         Text(model.refreshing ? "Measuring routes..." : "No routes available.")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(Color.white.opacity(0.62))
                             .frame(maxWidth: .infinity, minHeight: 110)
                     }
                 }
-                .padding(.vertical, 1)
+                .padding(.vertical, 0)
             }
             .scrollIndicators(.automatic)
-            .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 256)
+            .frame(maxWidth: .infinity, minHeight: 146, maxHeight: 260)
+            .padding(.top, 18)
             .onChange(of: model.selectedIndex) { _, selectedIndex in
                 withAnimation(.snappy(duration: 0.16)) {
                     proxy.scrollTo(selectedIndex, anchor: .center)
@@ -321,10 +330,11 @@ private struct OPNCloudmatchServerPickerSwiftUIView: View {
     private var status: some View {
         if !model.statusMessage.isEmpty {
             Text(model.statusMessage)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(model.statusIsError ? Color(nsColor: opnColor(OPNViewColor.errorRed)) : .secondary)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(model.statusIsError ? Color(nsColor: opnColor(OPNViewColor.errorRed)) : Color.white.opacity(0.62))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 12)
         }
     }
 
@@ -333,9 +343,9 @@ private struct OPNCloudmatchServerPickerSwiftUIView: View {
             Button(model.refreshing ? "Pinging" : "Refresh") { onRefresh() }
                 .disabled(model.refreshing)
                 .buttonStyle(OPNCloudmatchButtonStyle(
-                    foreground: Color(nsColor: opnColor(OPNViewColor.textPrimary)),
-                    background: Color(nsColor: opnColor(0x12171C, 0.50)),
-                    border: .white.opacity(0.14)
+                    foreground: Color.white.opacity(0.82),
+                    background: Color(nsColor: opnColor(0x1F1F1F)),
+                    border: .white.opacity(0.16)
                 ))
                 .frame(width: 88, height: 34)
 
@@ -344,20 +354,21 @@ private struct OPNCloudmatchServerPickerSwiftUIView: View {
             Button("Cancel") { onCancel() }
                 .buttonStyle(OPNCloudmatchButtonStyle(
                     foreground: Color(nsColor: opnColor(OPNViewColor.errorRed)),
-                    background: Color(nsColor: opnColor(0x161113, 0.50)),
-                    border: Color(nsColor: opnColor(OPNViewColor.errorRed)).opacity(0.30)
+                    background: Color(nsColor: opnColor(0x1F1F1F)),
+                    border: Color(nsColor: opnColor(OPNViewColor.errorRed)).opacity(0.36)
                 ))
                 .frame(width: 92, height: 34)
 
             Button("Launch") { onConfirm() }
                 .disabled(!model.hasSelection)
                 .buttonStyle(OPNCloudmatchButtonStyle(
-                    foreground: Color(nsColor: opnColor(OPNViewColor.brandGreen)),
-                    background: Color(nsColor: opnColor(0x102116, 0.50)),
-                    border: Color(nsColor: opnColor(OPNViewColor.brandGreen)).opacity(0.42)
+                    foreground: Color.black,
+                    background: Color(nsColor: opnColor(0x76B900)),
+                    border: Color(nsColor: opnColor(0x8FD127)).opacity(0.75)
                 ))
                 .frame(width: 108, height: 34)
         }
+        .padding(.top, 22)
     }
 }
 
@@ -368,38 +379,45 @@ private struct OPNCloudmatchServerOptionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(option.name.isEmpty ? "Cloudmatch region" : option.name)
-                        .font(.system(size: 13.5, weight: .bold))
-                        .foregroundStyle(selected ? Color(nsColor: opnColor(0xF4FFF6)) : Color(nsColor: opnColor(OPNViewColor.textPrimary)))
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(selected ? Color(nsColor: opnColor(0x76B900)) : Color.clear)
+                    .frame(width: 4)
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(option.name.isEmpty ? "Cloudmatch region" : option.name)
+                            .font(.system(size: 13.5, weight: selected ? .medium : .regular))
+                            .foregroundStyle(selected ? Color.white : Color.white.opacity(0.82))
+                            .lineLimit(1)
+                        Text(option.detailText)
+                            .font(.system(size: 11.5, weight: .regular))
+                            .foregroundStyle(Color.white.opacity(0.54))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 10)
+
+                    Text(option.latencyText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(latencyColor)
                         .lineLimit(1)
-                    Text(option.detailText)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .frame(width: 86, height: 22)
+                        .background(Color(nsColor: opnColor(selected ? 0x1F1F1F : 0x292929)))
+                        .overlay(Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1))
                 }
-
-                Spacer(minLength: 10)
-
-                Text(option.latencyText)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(latencyColor)
-                    .lineLimit(1)
-                    .frame(width: 86, height: 20)
-                    .background(selected ? Color(nsColor: opnColor(0x06140A, 0.50)) : Color(nsColor: opnColor(0x171B20, 0.50)), in: Capsule())
+                .padding(.horizontal, 12)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .background(selected ? Color(nsColor: opnColor(0x102116, 0.50)) : Color(nsColor: opnColor(0x0D1013, 0.50)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(selected ? Color(nsColor: opnColor(OPNViewColor.brandGreen)).opacity(0.72) : .white.opacity(0.10), lineWidth: 1))
+            .frame(height: 46)
+            .background(Color(nsColor: opnColor(selected ? 0x3A3A3A : 0x1F1F1F)))
+            .overlay(Rectangle().stroke(selected ? Color(nsColor: opnColor(0x76B900)).opacity(0.86) : .white.opacity(0.10), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
     private var latencyColor: Color {
         if option.latencyMs < 0 { return Color(nsColor: opnColor(0x8E8E93)) }
-        if option.latencyMs <= 50 { return Color(nsColor: opnColor(OPNViewColor.brandGreen)) }
+        if option.latencyMs <= 50 { return Color(nsColor: opnColor(0x76B900)) }
         if option.latencyMs <= 85 { return Color(nsColor: opnColor(0xFFD166)) }
         return Color(nsColor: opnColor(OPNViewColor.errorRed))
     }
@@ -412,11 +430,11 @@ private struct OPNCloudmatchButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .bold))
+            .font(.system(size: 13, weight: .medium))
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(background.opacity(configuration.isPressed ? 0.72 : 1.0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(border, lineWidth: 1))
+            .background(background.opacity(configuration.isPressed ? 0.72 : 1.0))
+            .overlay(Rectangle().stroke(border, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.86 : 1.0)
     }
 }

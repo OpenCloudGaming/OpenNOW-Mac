@@ -61,30 +61,29 @@ private struct OPNAuthenticatingSwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.94)
+            Color(nsColor: OPNUIHelpers.color(rgb: 0x191919, alpha: 1.0))
+                .ignoresSafeArea()
             VStack(spacing: 22) {
                 ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.10), lineWidth: 5)
-                    Circle()
-                        .trim(from: 0.12, to: 0.86)
-                        .stroke(Color(red: 0.204, green: 0.780, blue: 0.349), style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                        .rotationEffect(.degrees(28))
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
                 }
-                .frame(width: 82, height: 82)
+                .frame(width: 72, height: 72)
 
                 Text(model.message)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.86))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
             }
             .padding(36)
-            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(.white.opacity(0.10), lineWidth: 1)
-            )
+            .frame(width: 420, height: 220)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.96)))
+            .overlay(Rectangle().stroke(Color.white.opacity(0.20), lineWidth: 1))
+            .shadow(color: .black.opacity(0.42), radius: 24, y: 14)
         }
     }
 }

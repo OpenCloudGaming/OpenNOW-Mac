@@ -354,55 +354,56 @@ private struct OPNActiveSessionPromptSwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: OPNUIHelpers.color(rgb: 0x020304, alpha: 0.82)).ignoresSafeArea()
+            Color.black.opacity(0.64).ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.88)))
-                    .frame(width: 80, height: 3)
-                    .padding(.top, 28)
+                Rectangle()
+                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                    .frame(width: 88, height: 4)
 
                 Text("ACTIVE SESSION")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 1)))
-                    .padding(.top, 22)
+                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1)))
+                    .tracking(1.2)
+                    .padding(.top, 24)
 
                 Text("Resume or Replace")
-                    .font(.system(size: 31, weight: .black))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xF5F5F7, alpha: 1)))
-                    .padding(.top, 6)
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundStyle(Color.white)
+                    .padding(.top, 8)
 
                 Text(bodyText)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xB7B8BE, alpha: 1)))
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.68))
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 12)
 
                 Rectangle()
-                    .fill(.white.opacity(0.10))
+                    .fill(.white.opacity(0.24))
                     .frame(height: 1)
                     .padding(.top, 18)
 
                 HStack(spacing: 14) {
                     Button("A  Continue Session") { onContinue() }
-                        .buttonStyle(OPNActivePromptButtonStyle(foreground: Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 1)), border: Color(nsColor: OPNUIHelpers.color(rgb: 0x34C759, alpha: 0.52))))
+                        .buttonStyle(OPNActivePromptButtonStyle(foreground: Color.black, background: Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)), border: Color(nsColor: OPNUIHelpers.color(rgb: 0x8FD127, alpha: 0.75))))
                     Button("Y  Delete Session") { onDelete() }
-                        .buttonStyle(OPNActivePromptButtonStyle(foreground: Color(nsColor: OPNUIHelpers.color(rgb: 0xFF453A, alpha: 1)), border: Color(nsColor: OPNUIHelpers.color(rgb: 0xFF453A, alpha: 0.46))))
+                        .buttonStyle(OPNActivePromptButtonStyle(foreground: Color(nsColor: OPNUIHelpers.color(rgb: 0xFF453A, alpha: 1)), background: Color(nsColor: OPNUIHelpers.color(rgb: 0x1F1F1F, alpha: 1.0)), border: Color(nsColor: OPNUIHelpers.color(rgb: 0xFF453A, alpha: 0.46))))
                 }
                 .frame(height: 48)
                 .padding(.top, 22)
 
                 Text("Choose how to handle the existing cloud session before launching.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x787A82, alpha: 1)))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.48))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 18)
             }
-            .padding(.horizontal, 34)
-            .frame(minWidth: 420, idealWidth: 640, maxWidth: 640, minHeight: 330, idealHeight: 330, maxHeight: 330, alignment: .topLeading)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x0A0C0F, alpha: 0.98)), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.16), lineWidth: 1.5))
-            .shadow(color: .black.opacity(0.58), radius: 46, y: 20)
+            .padding(.horizontal, 42)
+            .padding(.vertical, 34)
+            .frame(minWidth: 420, idealWidth: 620, maxWidth: 620, minHeight: 332, idealHeight: 332, maxHeight: 332, alignment: .topLeading)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.96)))
+            .overlay(Rectangle().stroke(.white.opacity(0.20), lineWidth: 1))
+            .shadow(color: .black.opacity(0.48), radius: 30, y: 16)
             .padding(.horizontal, 48)
         }
     }
@@ -416,15 +417,16 @@ private struct OPNActiveSessionPromptSwiftUIView: View {
 
 private struct OPNActivePromptButtonStyle: ButtonStyle {
     let foreground: Color
+    let background: Color
     let border: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .bold))
+            .font(.system(size: 14, weight: .medium))
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x11161A, alpha: configuration.isPressed ? 0.76 : 0.98)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(border, lineWidth: 1))
+            .background(background.opacity(configuration.isPressed ? 0.78 : 1.0))
+            .overlay(Rectangle().stroke(border, lineWidth: 1))
     }
 }
 
@@ -478,34 +480,49 @@ private struct OPNOwnershipSyncProgressSwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: OPNUIHelpers.color(rgb: 0x020304, alpha: 0.64)).ignoresSafeArea()
-            VStack(spacing: 14) {
-                ProgressView()
-                    .controlSize(.large)
-                    .padding(.top, 8)
+            Color.black.opacity(0.64).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                    .frame(width: 72, height: 4)
 
                 Text(model.title)
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xF5F5F7, alpha: 1)))
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(Color.white)
                     .lineLimit(1)
+                    .padding(.top, 24)
 
                 Text(model.message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0xA8ADB7, alpha: 1)))
-                    .multilineTextAlignment(.center)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.68))
+                    .multilineTextAlignment(.leading)
                     .lineLimit(2)
-                    .frame(minHeight: 34)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
+                    .padding(.top, 12)
+
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                    Rectangle()
+                        .fill(Color.white.opacity(0.24))
+                        .frame(height: 1)
+                }
+                .padding(.top, 18)
 
                 Text(model.footer)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x8E969F, alpha: 1)))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.48))
                     .lineLimit(1)
+                    .padding(.top, 18)
             }
-            .padding(.horizontal, 36)
-            .frame(width: 430, height: 210)
-            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x0A0C0F, alpha: 0.98)), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.14), lineWidth: 1))
-            .shadow(color: .black.opacity(0.34), radius: 28, y: 16)
+            .padding(.horizontal, 38)
+            .padding(.vertical, 32)
+            .frame(width: 468, height: 244, alignment: .topLeading)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.96)))
+            .overlay(Rectangle().stroke(.white.opacity(0.20), lineWidth: 1))
+            .shadow(color: .black.opacity(0.48), radius: 28, y: 16)
         }
     }
 }

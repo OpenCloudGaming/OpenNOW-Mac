@@ -69,51 +69,72 @@ private struct OPNErrorSwiftUIView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.94)
-            VStack(spacing: 0) {
-                Circle()
-                    .fill(Color(red: 1, green: 0.271, blue: 0.227).opacity(0.18))
-                    .overlay(Circle().stroke(Color(red: 1, green: 0.271, blue: 0.227).opacity(0.42), lineWidth: 1))
-                    .frame(width: 22, height: 22)
-                    .padding(.top, 34)
+            Color(nsColor: OPNUIHelpers.color(rgb: 0x191919, alpha: 1.0))
+                .ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(Color(nsColor: OPNUIHelpers.color(rgb: 0xFF453A, alpha: 1.0)))
+                    .frame(width: 72, height: 4)
 
                 Text(title)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.top, 14)
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(Color.white)
+                    .padding(.top, 24)
 
                 Text(message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.68))
+                    .multilineTextAlignment(.leading)
                     .lineLimit(5)
-                    .frame(width: 332, height: 78)
-                    .padding(.top, 10)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+                    .padding(.top, 14)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.24))
+                    .frame(height: 1)
+                    .padding(.top, 18)
 
                 if canRetry {
                     Button(action: onRetry) {
                         Text("Try Again")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(width: 292, height: 44)
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.204, green: 0.780, blue: 0.349))
-                    .padding(.top, 4)
+                    .buttonStyle(OPNErrorPrimaryButtonStyle())
+                    .padding(.top, 22)
                 }
 
                 Button("Return to Sign In", action: onBack)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(red: 0.039, green: 0.518, blue: 1))
-                    .padding(.top, canRetry ? 18 : 66)
+                    .buttonStyle(OPNErrorSecondaryButtonStyle())
+                    .frame(maxWidth: .infinity, minHeight: 42)
+                    .padding(.top, canRetry ? 12 : 22)
             }
-            .frame(width: 420, height: 300, alignment: .top)
-            .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(.white.opacity(0.10), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.24), radius: 22, y: 12)
+            .padding(.horizontal, 42)
+            .padding(.vertical, 34)
+            .frame(width: 456, height: canRetry ? 342 : 286, alignment: .topLeading)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x292929, alpha: 0.96)))
+            .overlay(Rectangle().stroke(Color.white.opacity(0.20), lineWidth: 1))
+            .shadow(color: .black.opacity(0.48), radius: 28, y: 16)
         }
+    }
+}
+
+private struct OPNErrorPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color.black)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: configuration.isPressed ? 0.78 : 1.0)))
+            .overlay(Rectangle().stroke(Color(nsColor: OPNUIHelpers.color(rgb: 0x8FD127, alpha: 0.75)), lineWidth: 1))
+    }
+}
+
+private struct OPNErrorSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .regular))
+            .foregroundStyle(Color.white.opacity(configuration.isPressed ? 0.58 : 0.78))
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x1F1F1F, alpha: 1.0)))
+            .overlay(Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1))
     }
 }
