@@ -817,14 +817,21 @@ private struct MallRibbonShape: Shape {
 
 private struct GameDetailPanel: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @State private var activeImageIndex = 0
+    private let imageTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         if let game = viewModel.selectedGame {
+            let imageURLs = game.detailImageURLs
+            let imageIndex = imageURLs.indices.contains(activeImageIndex) ? activeImageIndex : 0
+            let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             GeometryReader { proxy in
                 ZStack(alignment: .topTrailing) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1600), contentMode: .fill)
+                    CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
                         .frame(width: proxy.size.width, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
+                        .id(imageURL)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
                             .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.96), location: 0.00),
@@ -927,6 +934,37 @@ private struct GameDetailPanel: View {
                     .buttonStyle(.plain)
                     .padding(18)
                 }
+                .overlay {
+                    if imageURLs.count > 1 {
+                        HStack {
+                            CatalogDetailImageArrow(systemName: "chevron.left") {
+                                moveImage(delta: -1, count: imageURLs.count)
+                            }
+                            Spacer()
+                            CatalogDetailImageArrow(systemName: "chevron.right") {
+                                moveImage(delta: 1, count: imageURLs.count)
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if imageURLs.count > 1 {
+                        HStack(spacing: 12) {
+                            ForEach(imageURLs.indices, id: \.self) { index in
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.18)) { activeImageIndex = index }
+                                } label: {
+                                    Circle()
+                                        .fill(index == imageIndex ? Color.openNowGreen : Color.white.opacity(0.62))
+                                        .frame(width: index == imageIndex ? 12 : 9, height: index == imageIndex ? 12 : 9)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.bottom, 38)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 300) {
                         AsyncImage(url: logoURL) { phase in
@@ -947,6 +985,18 @@ private struct GameDetailPanel: View {
             .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
             .background(Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255))
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+            .onReceive(imageTimer) { _ in
+                guard game.detailImageURLs.count > 1 else { return }
+                moveImage(delta: 1, count: game.detailImageURLs.count)
+            }
+            .onChange(of: game.catalogIdentity) { _, _ in activeImageIndex = 0 }
+        }
+    }
+
+    private func moveImage(delta: Int, count: Int) {
+        guard count > 1 else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            activeImageIndex = (activeImageIndex + delta + count) % count
         }
     }
 
@@ -1392,6 +1442,23 @@ private struct CatalogLoadingStrip: View {
     }
 }
 
+private struct CatalogDetailImageArrow: View {
+    let systemName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.nvidia(size: 18, weight: .bold))
+                .foregroundStyle(.white.opacity(0.92))
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.28), in: Circle())
+                .overlay { Circle().stroke(Color.white.opacity(0.22), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct FlowLayout: Layout {
     var spacing: CGFloat
 
@@ -1474,6 +1541,35 @@ private extension OPNCatalogGameObject {
         if !heroImageUrl.isEmpty { return heroImageUrl }
         if let value = screenshotUrls.first, !value.isEmpty { return value }
         return imageUrl
+    }
+
+    var detailImageURLs: [String] {
+        var values: [String] = []
+        var seen = Set<String>()
+
+        func append(_ value: String) {
+            guard !value.isEmpty, !seen.contains(value) else { return }
+            seen.insert(value)
+            values.append(value)
+        }
+
+        func appendValues(forKey key: String) {
+            for value in imageUrlsByType[key] ?? [] { append(value) }
+            for value in imageUrlsByType[key.lowercased()] ?? [] { append(value) }
+        }
+
+        appendValues(forKey: "HERO_IMAGE")
+        appendValues(forKey: "SCREENSHOTS")
+        for value in screenshotUrls { append(value) }
+        appendValues(forKey: "FEATURE_IMAGE")
+        appendValues(forKey: "KEY_ART")
+        appendValues(forKey: "KEY_IMAGE")
+        appendValues(forKey: "MARQUEE_HERO_IMAGE")
+        appendValues(forKey: "TV_BANNER")
+        append(heroImageUrl)
+        append(imageUrl)
+        append(bestDetailImageURL)
+        return values
     }
 
     var mallDisplayTitle: String {
