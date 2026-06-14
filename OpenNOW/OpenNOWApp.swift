@@ -5,11 +5,14 @@
 //  Created by Jayian on 6/14/26.
 //
 
+import AppKit
 import SwiftUI
 import SwiftData
 
 @main
 struct OpenNOWApp: App {
+    @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             LoginAccount.self,
@@ -31,5 +34,11 @@ struct OpenNOWApp: App {
         }
         .defaultSize(width: 1100, height: 720)
         .modelContainer(sharedModelContainer)
+    }
+}
+
+final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 }
