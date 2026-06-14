@@ -220,10 +220,15 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func selectGame(_ game: OPNCatalogGameObject?) {
-        selectedGame = game
-        selectedVariantIndex = game.map { Self.preferredVariantIndex(for: $0) } ?? -1
+        let resolvedGame = game.flatMap(resolveGameForDetails) ?? game
+        selectedGame = resolvedGame
+        selectedVariantIndex = resolvedGame.map { Self.preferredVariantIndex(for: $0) } ?? -1
         launchMessage = ""
         actionMessage = ""
+    }
+
+    func selectGameFromHero(_ game: OPNCatalogGameObject) {
+        selectGame(game)
     }
 
     func launchSelectedGame() {
@@ -517,6 +522,22 @@ final class CatalogViewModel: ObservableObject {
         if !game.uuid.isEmpty { return game.uuid }
         if !game.launchAppId.isEmpty { return game.launchAppId }
         return game.title
+    }
+
+    static func looseIdentityMatches(_ lhs: OPNCatalogGameObject, _ rhs: OPNCatalogGameObject) -> Bool {
+        let lhsIdentity = identity(for: lhs)
+        let rhsIdentity = identity(for: rhs)
+        if !lhsIdentity.isEmpty, !rhsIdentity.isEmpty, lhsIdentity == rhsIdentity { return true }
+        return !lhs.title.isEmpty && lhs.title.caseInsensitiveCompare(rhs.title) == .orderedSame
+    }
+
+    private func resolveGameForDetails(_ game: OPNCatalogGameObject) -> OPNCatalogGameObject {
+        for section in catalogSections {
+            if let sectionGame = section.games.first(where: { Self.looseIdentityMatches($0, game) }) {
+                return sectionGame
+            }
+        }
+        return game
     }
 
     static func preferredVariantIndex(for game: OPNCatalogGameObject) -> Int {

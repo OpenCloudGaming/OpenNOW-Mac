@@ -122,13 +122,29 @@ private struct CatalogTopBar: View {
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
+    @State private var showsSessionDetails = false
 
     var body: some View {
         ZStack {
             HStack(spacing: 28) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.nvidia(size: 21))
-                    .foregroundStyle(.white.opacity(0.92))
+                Menu {
+                    Button("Games") {
+                        if viewModel.isBrowseMode { viewModel.clearSearchAndFilters() }
+                    }
+                    Button("Refresh Catalog") { viewModel.refresh() }
+                    if viewModel.isBrowseMode {
+                        Button("Clear Search and Filters") { viewModel.clearSearchAndFilters() }
+                    }
+                    Divider()
+                    Button("Sign Out", action: onSignOut)
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.nvidia(size: 21))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .frame(width: 40, height: 40)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 Text("Games")
                     .font(.nvidia(size: 17, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
@@ -141,15 +157,24 @@ private struct CatalogTopBar: View {
 
             HStack(spacing: 24) {
                 Spacer()
-                Image(systemName: "questionmark.circle.fill")
-                    .font(.nvidia(size: 22, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.94))
-                    .overlay(alignment: .topTrailing) {
-                        Circle()
-                            .fill(Color.openNowGreen)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 2, y: -2)
-                    }
+                Button { showsSessionDetails.toggle() } label: {
+                    Image(systemName: "questionmark.circle.fill")
+                        .font(.nvidia(size: 22, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.94))
+                        .overlay(alignment: .topTrailing) {
+                            Circle()
+                                .fill(Color.openNowGreen)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 2, y: -2)
+                        }
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showsSessionDetails, arrowEdge: .top) {
+                    CatalogSessionDetailsPopover(viewModel: viewModel)
+                        .frame(width: 340)
+                        .padding(18)
+                        .background(CatalogVendorLayout.appBarBackground)
+                }
 
                 Menu {
                     ForEach(accounts) { account in
@@ -210,6 +235,46 @@ private struct CatalogTopBar: View {
         .frame(height: 40)
         .background(Color(red: 0.145, green: 0.145, blue: 0.145))
         .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+    }
+}
+
+private struct CatalogSessionDetailsPopover: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Previous Session")
+                .font(.nvidia(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+
+            VStack(alignment: .leading, spacing: 8) {
+                detailRow("Account", viewModel.account.displayName)
+                detailRow("Plan", viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier)
+                detailRow("Auth", viewModel.session.authMethod)
+                detailRow("Device", viewModel.session.deviceId)
+                detailRow("Issued", formattedDate(viewModel.session.issuedAt))
+                detailRow("Expires", formattedDate(viewModel.session.expiresAt))
+                detailRow("Offline", viewModel.session.canContinueOffline ? "Available" : "Unavailable")
+            }
+        }
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label.uppercased())
+                .font(.nvidia(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.46))
+                .frame(width: 72, alignment: .leading)
+            Text(value.isEmpty ? "-" : value)
+                .font(.nvidia(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.84))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
@@ -300,12 +365,11 @@ private struct CatalogContentView: View {
 
     private func shouldShowDetail(afterSectionAt index: Int, sections: [CatalogSectionModel]) -> Bool {
         guard let selectedGame = viewModel.selectedGame else { return false }
-        let selectedIdentity = CatalogViewModel.identity(for: selectedGame)
-        guard sections[index].games.contains(where: { CatalogViewModel.identity(for: $0) == selectedIdentity }) else {
+        guard sections[index].games.contains(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else {
             return false
         }
         return !sections.prefix(index).contains { section in
-            section.games.contains { CatalogViewModel.identity(for: $0) == selectedIdentity }
+            section.games.contains { CatalogViewModel.looseIdentityMatches($0, selectedGame) }
         }
     }
 }
@@ -347,7 +411,7 @@ private struct CatalogHeroView: View {
                             .font(.nvidia(size: 13, weight: .bold))
                     }
                     .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
-                    Button { viewModel.selectGame(game) } label: {
+                    Button { viewModel.selectGameFromHero(game) } label: {
                         Text("VIEW DETAILS")
                             .font(.nvidia(size: 14, weight: .bold))
                             .frame(width: 142, height: 41)
@@ -1058,29 +1122,29 @@ private struct CatalogHeroVendorForegroundScrim: View {
                 LinearGradient(
                     stops: [
                         .init(color: .clear, location: 0.0000),
-                        .init(color: .black, location: 0.6662),
-                        .init(color: .black, location: 1.0000)
+                        .init(color: .black.opacity(0.42), location: 0.6662),
+                        .init(color: .black.opacity(0.78), location: 1.0000)
                     ],
                     startPoint: .trailing,
                     endPoint: .leading
                 )
-                .frame(width: proxy.size.width * 0.58)
+                .frame(width: proxy.size.width * 0.46)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 LinearGradient(
-                    colors: [.clear, CatalogVendorLayout.mallSurface.opacity(0.25)],
+                    colors: [.clear, CatalogVendorLayout.mallSurface.opacity(0.16)],
                     startPoint: .trailing,
                     endPoint: .leading
                 )
-                .frame(width: proxy.size.width * 0.34)
+                .frame(width: proxy.size.width * 0.28)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 LinearGradient(
-                    colors: [CatalogVendorLayout.mallSurface.opacity(0.00), CatalogVendorLayout.mallSurface],
+                    colors: [CatalogVendorLayout.mallSurface.opacity(0.00), CatalogVendorLayout.mallSurface.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: proxy.size.height * 0.33)
+                .frame(height: proxy.size.height * 0.30)
             }
         }
         .allowsHitTesting(false)
@@ -1343,14 +1407,14 @@ private extension OPNCatalogGameObject {
 
     var bestHeroImageURL: String {
         if !heroImageUrl.isEmpty { return heroImageUrl }
-        for key in ["HERO_IMAGE", "HERO", "BACKGROUND", "KEY_ART"] {
+        for key in ["MARQUEE_HERO_IMAGE", "HERO_IMAGE"] {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
         }
         return bestTileImageURL
     }
 
     var bestLogoImageURL: String {
-        for key in ["LOGO", "TITLE_LOGO", "GAME_LOGO", "MARQUEE_LOGO", "HERO_LOGO", "LOGO_IMAGE", "TREATMENT"] {
+        for key in ["GAME_LOGO"] {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
             if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
         }
@@ -1367,12 +1431,10 @@ private extension OPNCatalogGameObject {
     }
 
     var bestWideImageURL: String {
-        for key in ["TILE", "HERO_IMAGE", "HERO", "BACKGROUND", "KEY_ART", "SCREENSHOT"] {
+        for key in ["TV_BANNER"] {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
         }
-        if let value = screenshotUrls.first, !value.isEmpty { return value }
-        if !heroImageUrl.isEmpty { return heroImageUrl }
-        return imageUrl
+        return ""
     }
 
     var mallDisplayTitle: String {
