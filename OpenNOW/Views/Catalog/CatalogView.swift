@@ -108,9 +108,21 @@ struct CatalogView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            CatalogTopBar(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-            CatalogContentView(viewModel: viewModel)
+        ZStack {
+            if let streamConfiguration = viewModel.activeStreamConfiguration {
+                OPNEmbeddedStreamView(configuration: streamConfiguration) { success, message, report in
+                    viewModel.finishActiveStream(success: success, message: message, report: report)
+                }
+                .id(streamConfiguration.id)
+                .ignoresSafeArea()
+                .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    CatalogTopBar(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                    CatalogContentView(viewModel: viewModel)
+                }
+                .transition(.opacity)
+            }
         }
         .background(Color.black)
         .task { viewModel.loadIfNeeded() }

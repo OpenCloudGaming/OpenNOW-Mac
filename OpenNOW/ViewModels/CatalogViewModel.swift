@@ -50,6 +50,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedGame: OPNCatalogGameObject?
     @Published var selectedSectionId = ""
     @Published var selectedVariantIndex = -1
+    @Published var activeStreamConfiguration: OPNStreamLaunchConfiguration?
 
     let account: LoginAccount
     let session: LoginSession
@@ -248,18 +249,35 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func launch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
-        launchMessage = "Launching \(game.title.isEmpty ? "game" : game.title)..."
+        launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
+        errorMessage = ""
         let userId = session.userId.isEmpty ? account.userId : session.userId
-        OPNGameLaunchBridge.shared.launch(
+        OPNGameLaunchBridge.shared.prepareLaunch(
             game: game,
             accessToken: session.accessToken,
             idToken: session.idToken,
             userId: userId,
             variantIndex: variantIndex ?? Self.preferredVariantIndex(for: game)
-        ) { [weak self] success, message in
+        ) { [weak self] success, message, configuration in
             guard let self else { return }
-            self.launchMessage = success ? message : ""
-            if !success { self.errorMessage = message }
+            self.launchMessage = ""
+            guard success, let configuration else {
+                self.errorMessage = message
+                return
+            }
+            self.activeStreamConfiguration = configuration
+        }
+    }
+
+    func finishActiveStream(success: Bool, message: String, report: OPNSessionReportPayload?) {
+        activeStreamConfiguration = nil
+        launchMessage = ""
+        if !success, !message.isEmpty {
+            errorMessage = message
+            return
+        }
+        if let report, report.shouldShow, !report.reportText.isEmpty {
+            actionMessage = report.reportText
         }
     }
 
