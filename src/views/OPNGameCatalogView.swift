@@ -500,6 +500,8 @@ struct OPNGameCatalogItemModel: Identifiable, Equatable {
 
 struct OPNGameCatalogSwiftUIView: View {
     @ObservedObject var model: OPNGameCatalogModel
+    @State private var closedDetailItemID = ""
+    @State private var favoriteDetailItemIDs: Set<String> = []
 
     let onSearchChanged: (String) -> Void
     let onSelect: (OPNGameCatalogItemModel) -> Void
@@ -717,6 +719,9 @@ struct OPNGameCatalogSwiftUIView: View {
                         }
                     }
                     .frame(height: rowHeight)
+                    if model.focusedRowIndex == rowIndex, let focusedItem = model.focusedItem, focusedItem.id != closedDetailItemID {
+                        activeGameDetail(focusedItem, viewportSize: viewportSize)
+                    }
                 }
             }
         }
@@ -726,6 +731,261 @@ struct OPNGameCatalogSwiftUIView: View {
 
     private func displayTitle(for title: String) -> String {
         title.caseInsensitiveCompare("Library") == .orderedSame ? "My Library" : title
+    }
+
+    private func activeGameDetail(_ item: OPNGameCatalogItemModel, viewportSize: CGSize) -> some View {
+        let height = min(580.0, max(430.0, viewportSize.height * 0.54))
+        let leftWidth = min(760.0, max(520.0, viewportSize.width * 0.45))
+        return ZStack(alignment: .topLeading) {
+            Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 1.0))
+            HStack(spacing: 0) {
+                Spacer(minLength: leftWidth)
+                OPNCatalogArtworkView(urlStrings: activeGameArtworkCandidates(for: item.gameObject), contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .overlay(LinearGradient(colors: [Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 1.0)), Color(nsColor: OPNUIHelpers.color(rgb: 0x303030, alpha: 0.70)), .clear], startPoint: .leading, endPoint: .trailing))
+                    .overlay(LinearGradient(colors: [.clear, Color.black.opacity(0.34)], startPoint: .top, endPoint: .bottom))
+            }
+            activeGameInfo(item, leftWidth: leftWidth)
+            Button { closedDetailItemID = item.id } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.92))
+                    .frame(width: 52, height: 52)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.top, 8)
+            .padding(.trailing, 28)
+            activeGameLogo(item.gameObject)
+            activeGameDots
+        }
+        .frame(height: height)
+    }
+
+    private func activeGameInfo(_ item: OPNGameCatalogItemModel, leftWidth: CGFloat) -> some View {
+        let isFavorite = favoriteDetailItemIDs.contains(item.id)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(item.gameObject.title.isEmpty ? "Selected Game" : item.gameObject.title)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.96))
+                        .lineLimit(1)
+                    detailMetadata(item.gameObject)
+                    detailBadges()
+                    detailStoreRow(item)
+                    HStack(spacing: 18) {
+                        Button(primaryActionTitle(item).uppercased()) { onSelect(item) }
+                            .buttonStyle(OPNCatalogDetailPlayButtonStyle())
+                            .frame(width: 74, height: 41)
+                        Menu {
+                            if variantCanBeMarkedUnowned(item) {
+                                Button("Mark as Unowned") { onMarkUnowned(item) }
+                            } else {
+                                Button("Game Options") {}
+                                    .disabled(true)
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(Color.white.opacity(0.92))
+                                .frame(width: 38, height: 38)
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                    }
+                    HStack(spacing: 0) {
+                        Text("Access unlocked with your membership. Game ownership required to play. ")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(Color.white.opacity(0.70))
+                        Text("Learn more")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)))
+                            .underline()
+                    }
+                    Text(detailDescription(item.gameObject))
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.90))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    detailCapabilities()
+                    detailRating(item.gameObject)
+                    HStack(spacing: 6) {
+                        Text("READ MORE")
+                            .font(.system(size: 15, weight: .bold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(Color.white.opacity(0.92))
+                    .padding(.top, 20)
+                }
+                Spacer(minLength: 20)
+                Button {
+                    if isFavorite { favoriteDetailItemIDs.remove(item.id) } else { favoriteDetailItemIDs.insert(item.id) }
+                } label: {
+                    Image(systemName: isFavorite ? "heart.fill" : "heart")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.92))
+                        .frame(width: 52, height: 52)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.leading, OPNGameCatalogLayoutSupport.storeSectionHeaderMargin)
+        .padding(.top, 24)
+        .frame(width: leftWidth, alignment: .topLeading)
+    }
+
+    private func detailMetadata(_ game: OPNCatalogGameObject) -> some View {
+        HStack(spacing: 11) {
+            Text(contentRatingLabel(game))
+                .font(.system(size: 12, weight: .bold))
+            Image(systemName: "person.3.fill")
+            Image(systemName: "keyboard")
+            Image(systemName: "gamecontroller.fill")
+            Text("·")
+            Text(detailGenreLabel(game))
+                .lineLimit(1)
+        }
+        .font(.system(size: 12, weight: .bold))
+        .foregroundStyle(Color.white.opacity(0.82))
+    }
+
+    private func detailBadges() -> some View {
+        HStack(spacing: 4) {
+            detailBadge("checkmark.circle.fill", "For Premium Members", highlighted: true)
+            detailBadge(nil, "RTX", highlighted: false)
+            detailBadge(nil, "Reflex", highlighted: false)
+        }
+    }
+
+    private func detailStoreRow(_ item: OPNGameCatalogItemModel) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "cloud.fill")
+                .font(.system(size: 13, weight: .bold))
+            Text(detailStoreLabel(item))
+                .font(.system(size: 14, weight: .bold))
+            detailBadge(nil, gameNeedsPurchase(item) ? "Required" : "Owned", highlighted: false)
+        }
+        .foregroundStyle(Color.white.opacity(0.88))
+        .padding(.top, 12)
+    }
+
+    private func detailBadge(_ icon: String?, _ text: String, highlighted: Bool) -> some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+            }
+            Text(text)
+                .font(.system(size: 12, weight: .bold))
+        }
+        .foregroundStyle(Color.white.opacity(highlighted ? 0.94 : 0.70))
+        .padding(.horizontal, 10)
+        .frame(height: 23)
+        .background(Color.white.opacity(highlighted ? 0.18 : 0.08))
+    }
+
+    private func detailCapabilities() -> some View {
+        VStack(spacing: 0) {
+            Divider().background(Color.white.opacity(0.22))
+            detailCapabilityRow(icon: "checkmark.circle.fill", title: "RTX", subtitle: "Ready - You may need to turn this on in-game")
+            detailCapabilityRow(icon: "lock.fill", title: "Reflex", subtitle: "Upgrade your membership to unlock")
+            Divider().background(Color.white.opacity(0.22))
+        }
+        .padding(.top, 2)
+    }
+
+    private func detailCapabilityRow(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .frame(width: 18)
+            Text(title)
+                .font(.system(size: 15, weight: .bold))
+                .frame(width: 58, alignment: .leading)
+            Text(subtitle)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(Color.white.opacity(0.70))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Color.white.opacity(0.88))
+        .frame(height: 31)
+    }
+
+    private func detailRating(_ game: OPNCatalogGameObject) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 0) {
+                Text(String(contentRatingLabel(game).prefix(1)))
+                    .font(.system(size: 38, weight: .black))
+                    .foregroundStyle(Color.black)
+                    .frame(width: 52, height: 52)
+                    .background(Color.white)
+                Text("ESRB")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 52, height: 12)
+                    .background(Color.black)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text(contentRatingLabel(game))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.90))
+                Text("Blood, Violence")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.64))
+                Divider().background(Color.white.opacity(0.22))
+                Text("In-Game Purchases, Users Interact")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.64))
+            }
+        }
+        .padding(.top, 18)
+    }
+
+    private var activeGameDots: some View {
+        HStack(spacing: 12) {
+            ForEach(0..<7, id: \.self) { index in
+                Circle()
+                    .fill(index == 0 ? Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: 1.0)) : Color.white.opacity(0.52))
+                    .frame(width: 9, height: 9)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 42)
+    }
+
+    private func activeGameLogo(_ game: OPNCatalogGameObject) -> some View {
+        OPNCatalogArtworkView(urlStrings: logoCandidates(for: game), contentMode: .fit)
+            .frame(width: 200, height: 74)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .padding(.trailing, 40)
+            .padding(.bottom, 38)
+    }
+
+    private func activeGameArtworkCandidates(for game: OPNCatalogGameObject) -> [String] {
+        imageCandidates(for: game, preferredTypes: ["SCREENSHOT", "FEATURE_IMAGE", "HERO_IMAGE", "MARQUEE_HERO_IMAGE", "TV_BANNER", "KEY_ART", "GAME_BOX_ART"], includeScreenshots: true)
+    }
+
+    private func detailDescription(_ game: OPNCatalogGameObject) -> String {
+        let trimmed = game.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return "\(game.title.isEmpty ? "This game" : game.title) is ready to stream on GeForce NOW. Launch instantly from your cloud gaming library."
+    }
+
+    private func detailGenreLabel(_ game: OPNCatalogGameObject) -> String {
+        let labels = game.genres.prefix(2).map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") }.filter { !$0.isEmpty }
+        return labels.isEmpty ? primaryGenre(game) : labels.joined(separator: ", ")
+    }
+
+    private func detailStoreLabel(_ item: OPNGameCatalogItemModel) -> String {
+        variant(at: item.selectedVariantIndex, in: item.gameObject).map { OPNGameCatalogArtworkSupport.displayLabel($0.appStore) }.flatMap { $0.isEmpty ? nil : $0 } ?? variantStores(item.gameObject).first ?? "Cloud"
+    }
+
+    private func contentRatingLabel(_ game: OPNCatalogGameObject) -> String {
+        let rating = game.contentRatings.first.map { OPNGameCatalogMetadataSupport.displayString($0, fallback: "") } ?? ""
+        return rating.isEmpty ? "TEEN" : rating.uppercased()
     }
 
     private var loadingState: some View {
@@ -816,6 +1076,16 @@ private struct OPNCatalogHeroActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(Color.black.opacity(0.92))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: configuration.isPressed ? 0.76 : 1.0)))
+    }
+}
+
+private struct OPNCatalogDetailPlayButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .black))
             .foregroundStyle(Color.black.opacity(0.92))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: OPNUIHelpers.color(rgb: 0x76B900, alpha: configuration.isPressed ? 0.76 : 1.0)))
