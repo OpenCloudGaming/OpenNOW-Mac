@@ -29,7 +29,7 @@ struct OpenNOWApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("GeForce NOW") {
             ContentView()
         }
         .defaultSize(width: 1100, height: 720)

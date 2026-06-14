@@ -99,14 +99,18 @@ final class CatalogViewModel: ObservableObject {
                 sections.append(CatalogSectionModel(id: section.sectionIdentity(fallbackPanelId: panel.id), title: resolvedTitle, games: section.games, kind: .panel))
             }
         }
-        if !catalogGames.isEmpty {
-            sections.insert(CatalogSectionModel(id: "catalog-results", title: searchQuery.trimmed.isEmpty ? "My Favorites" : "Search Results", games: catalogGames, kind: .catalog), at: 0)
+        if isBrowseMode, !catalogGames.isEmpty {
+            sections.insert(CatalogSectionModel(id: "catalog-results", title: "Search Results", games: catalogGames, kind: .catalog), at: 0)
         }
-        if searchQuery.trimmed.isEmpty, !libraryGames.isEmpty {
-            let insertionIndex = min(sections.count, catalogGames.isEmpty ? 0 : 1)
+        if !isBrowseMode, !libraryGames.isEmpty {
+            let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
             sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library), at: insertionIndex)
         }
         return Array(sections.prefix(10))
+    }
+
+    var isBrowseMode: Bool {
+        !searchQuery.trimmed.isEmpty || !selectedFilterIds.isEmpty
     }
 
     var selectedSortLabel: String {

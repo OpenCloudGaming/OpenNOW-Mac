@@ -162,9 +162,9 @@ private struct CatalogTopBar: View {
                     }
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "headphones")
-                            .font(.nvidia(size: 28, weight: .bold))
-                            .foregroundStyle(.white)
+                        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
+                            .scaledToFit()
+                            .frame(width: 32, height: 32)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(viewModel.account.displayName)
                                 .font(.nvidia(size: 15, weight: .medium))
@@ -179,7 +179,7 @@ private struct CatalogTopBar: View {
                             .foregroundStyle(.white.opacity(0.88))
                     }
                 }
-                .menuStyle(.button)
+                .buttonStyle(.plain)
             }
             .padding(.trailing, 22)
         }
@@ -233,6 +233,16 @@ private struct CatalogContentView: View {
                         onSelectSlide: { index in
                             heroAutoScrollEnabled = false
                             heroIndex = index
+                        },
+                        onPreviousSlide: {
+                            guard !heroes.isEmpty else { return }
+                            heroAutoScrollEnabled = false
+                            heroIndex = max(heroIndex - 1, 0)
+                        },
+                        onNextSlide: {
+                            guard !heroes.isEmpty else { return }
+                            heroAutoScrollEnabled = false
+                            heroIndex = min(heroIndex + 1, heroes.count - 1)
                         }
                     )
                 }
@@ -241,8 +251,10 @@ private struct CatalogContentView: View {
                     CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
                         .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                 }
-                CatalogBrowseControlsView(viewModel: viewModel)
-                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                if viewModel.isBrowseMode {
+                    CatalogBrowseControlsView(viewModel: viewModel)
+                        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                }
                 if viewModel.isLoading || viewModel.isLoadingPanels {
                     CatalogLoadingStrip()
                         .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
@@ -303,6 +315,8 @@ private struct CatalogHeroView: View {
     let games: [OPNCatalogGameObject]
     let activeIndex: Int
     let onSelectSlide: (Int) -> Void
+    let onPreviousSlide: () -> Void
+    let onNextSlide: () -> Void
     @State private var scrimColor = CatalogMarqueeScrimColor.black
 
     private var game: OPNCatalogGameObject? {
@@ -324,12 +338,7 @@ private struct CatalogHeroView: View {
 
                 VStack(spacing: 26) {
                     Spacer(minLength: 108)
-                    Text(game.mallDisplayTitle)
-                        .font(.nvidia(size: 52))
-                        .tracking(8)
-                        .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
+                    CatalogHeroTitleView(viewModel: viewModel, game: game, scrimColor: scrimColor)
                     Spacer(minLength: 42)
                     VStack(spacing: 2) {
                         Text(game.primaryStoreLabel)
@@ -350,6 +359,21 @@ private struct CatalogHeroView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 38)
 
+                HStack {
+                    if activeIndex > 0 {
+                        CatalogMarqueeArrow(name: "lt_arrow", action: onPreviousSlide)
+                    } else {
+                        Color.clear.frame(width: 48, height: 48)
+                    }
+                    Spacer()
+                    if activeIndex < games.count - 1 {
+                        CatalogMarqueeArrow(name: "rt_arrow", action: onNextSlide)
+                    } else {
+                        Color.clear.frame(width: 48, height: 48)
+                    }
+                }
+                .padding(.horizontal, 16)
+
                 HStack(spacing: 8) {
                     ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                         Button { onSelectSlide(index) } label: {
@@ -365,6 +389,58 @@ private struct CatalogHeroView: View {
             }
             .clipShape(Rectangle())
         }
+    }
+}
+
+private struct CatalogHeroTitleView: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    let game: OPNCatalogGameObject
+    let scrimColor: CatalogMarqueeScrimColor
+
+    var body: some View {
+        if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 620) {
+            AsyncImage(url: logoURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 390, maxHeight: 150)
+                case .failure:
+                    fallbackTitle
+                case .empty:
+                    fallbackTitle.opacity(0)
+                @unknown default:
+                    fallbackTitle
+                }
+            }
+        } else {
+            fallbackTitle
+        }
+    }
+
+    private var fallbackTitle: some View {
+        Text(game.mallDisplayTitle)
+            .font(.nvidia(size: 52))
+            .tracking(8)
+            .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
+            .lineLimit(2)
+            .minimumScaleFactor(0.55)
+            .multilineTextAlignment(.center)
+    }
+}
+
+private struct CatalogMarqueeArrow: View {
+    let name: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VendorResourceImage(name: name, fileExtension: "svg")
+                .scaledToFit()
+                .frame(width: 40, height: 40)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1271,6 +1347,14 @@ private extension OPNCatalogGameObject {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
         }
         return bestTileImageURL
+    }
+
+    var bestLogoImageURL: String {
+        for key in ["LOGO", "TITLE_LOGO", "GAME_LOGO", "MARQUEE_LOGO", "HERO_LOGO", "LOGO_IMAGE", "TREATMENT"] {
+            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
+            if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
+        }
+        return ""
     }
 
     var bestTileImageURL: String {
