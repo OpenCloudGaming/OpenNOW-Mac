@@ -37,15 +37,16 @@ struct CatalogView: View {
     var body: some View {
         VStack(spacing: 0) {
             CatalogTopBar(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-            CatalogContentView(viewModel: viewModel)
+            ZStack(alignment: .trailing) {
+                CatalogContentView(viewModel: viewModel)
+                if viewModel.selectedGame != nil {
+                    GameDetailPanel(viewModel: viewModel)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .clipped()
         }
         .background(Color.black)
-        .overlay(alignment: .trailing) {
-            if viewModel.selectedGame != nil {
-                GameDetailPanel(viewModel: viewModel)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
         .task { viewModel.loadIfNeeded() }
         .preferredColorScheme(.dark)
     }
@@ -59,18 +60,21 @@ private struct CatalogTopBar: View {
     let onForget: (LoginAccount) -> Void
 
     var body: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 20) {
             VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
                 .scaledToFit()
-                .frame(width: 170, height: 42)
+                .frame(width: 164, height: 42)
+                .layoutPriority(3)
 
             HStack(spacing: 26) {
                 mallNavItem("Home", active: true)
                 mallNavItem("Games", active: false)
                 mallNavItem("Library", active: false)
             }
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(3)
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 8)
 
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
@@ -88,9 +92,10 @@ private struct CatalogTopBar: View {
                 }
             }
             .padding(.horizontal, 14)
-            .frame(width: 320, height: 44)
+            .frame(minWidth: 170, idealWidth: 260, maxWidth: 320, minHeight: 44, maxHeight: 44)
             .background(Color(red: 0.129, green: 0.129, blue: 0.129))
             .overlay { Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 1) }
+            .layoutPriority(1)
 
             Picker("Sort", selection: $viewModel.selectedSortId) {
                 Text("Last Played").tag("last_played")
@@ -98,7 +103,7 @@ private struct CatalogTopBar: View {
                 Text("Newest").tag("date_added")
             }
             .labelsHidden()
-            .frame(width: 142)
+            .frame(width: 132)
             .onChange(of: viewModel.selectedSortId) { _, _ in viewModel.browseCatalog() }
 
             Menu {
@@ -131,6 +136,8 @@ private struct CatalogTopBar: View {
             .font(.system(size: 13, weight: .bold))
             .tracking(0.7)
             .foregroundStyle(active ? .white : .white.opacity(0.56))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .frame(height: 72)
             .overlay(alignment: .bottom) {
                 if active { Rectangle().fill(Color.openNowGreen).frame(height: 3) }

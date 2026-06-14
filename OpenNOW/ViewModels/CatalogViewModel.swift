@@ -125,9 +125,6 @@ final class CatalogViewModel: ObservableObject {
                     return
                 }
                 self.catalogGames = resultBox.value.games
-                if self.selectedGame == nil {
-                    self.selectGame(self.featuredGames.first ?? self.catalogGames.first)
-                }
             }
         }
     }
@@ -198,7 +195,6 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.marqueePanels = panelBox.value
-                    if self.selectedGame == nil { self.selectGame(self.featuredGames.first) }
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
@@ -213,7 +209,6 @@ final class CatalogViewModel: ObservableObject {
                 self.isLoadingPanels = false
                 if success {
                     self.mainPanels = panelBox.value
-                    if self.selectedGame == nil { self.selectGame(self.featuredGames.first ?? self.catalogGames.first) }
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
