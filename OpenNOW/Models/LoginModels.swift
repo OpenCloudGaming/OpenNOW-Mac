@@ -17,6 +17,8 @@ final class LoginAccount {
     var membershipTier: String
     var authorizationState: String
     var authStatus: String
+    var userId: String
+    var externalUserId: String
     var preferredRegion: String
     var createdAt: Date
     var lastLoginAt: Date
@@ -31,6 +33,8 @@ final class LoginAccount {
         membershipTier: String = "Free",
         authorizationState: String = "AUTHORIZED",
         authStatus: String = "LOGGED_IN",
+        userId: String = "",
+        externalUserId: String = "",
         preferredRegion: String = "Auto",
         createdAt: Date = Date(),
         lastLoginAt: Date = Date(),
@@ -44,6 +48,8 @@ final class LoginAccount {
         self.membershipTier = membershipTier
         self.authorizationState = authorizationState
         self.authStatus = authStatus
+        self.userId = userId
+        self.externalUserId = externalUserId
         self.preferredRegion = preferredRegion
         self.createdAt = createdAt
         self.lastLoginAt = lastLoginAt
@@ -60,6 +66,9 @@ final class LoginSession {
     var accessToken: String
     var clientToken: String
     var idToken: String
+    var refreshToken: String
+    var userId: String
+    var idpId: String
     var deviceId: String
     var issuedAt: Date
     var expiresAt: Date
@@ -74,6 +83,9 @@ final class LoginSession {
         accessToken: String,
         clientToken: String,
         idToken: String,
+        refreshToken: String = "",
+        userId: String = "",
+        idpId: String = "",
         deviceId: String,
         issuedAt: Date = Date(),
         expiresAt: Date,
@@ -87,6 +99,9 @@ final class LoginSession {
         self.accessToken = accessToken
         self.clientToken = clientToken
         self.idToken = idToken
+        self.refreshToken = refreshToken
+        self.userId = userId
+        self.idpId = idpId
         self.deviceId = deviceId
         self.issuedAt = issuedAt
         self.expiresAt = expiresAt
@@ -105,6 +120,10 @@ final class LoginDeviceRegistration {
     @Attribute(.unique) var id: String
     var deviceId: String
     var displayName: String
+    var pendingOAuthState: String
+    var pendingOAuthCodeVerifier: String
+    var pendingOAuthProviderIdpId: String
+    var pendingOAuthRedirectURI: String
     var createdAt: Date
     var lastUsedAt: Date
 
@@ -112,12 +131,20 @@ final class LoginDeviceRegistration {
         id: String = "primary",
         deviceId: String = UUID().uuidString,
         displayName: String = Host.current().localizedName ?? "OpenNOW Mac",
+        pendingOAuthState: String = "",
+        pendingOAuthCodeVerifier: String = "",
+        pendingOAuthProviderIdpId: String = "",
+        pendingOAuthRedirectURI: String = "",
         createdAt: Date = Date(),
         lastUsedAt: Date = Date()
     ) {
         self.id = id
         self.deviceId = deviceId
         self.displayName = displayName
+        self.pendingOAuthState = pendingOAuthState
+        self.pendingOAuthCodeVerifier = pendingOAuthCodeVerifier
+        self.pendingOAuthProviderIdpId = pendingOAuthProviderIdpId
+        self.pendingOAuthRedirectURI = pendingOAuthRedirectURI
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
     }

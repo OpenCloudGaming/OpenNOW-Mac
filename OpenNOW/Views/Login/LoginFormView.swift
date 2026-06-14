@@ -1,4 +1,3 @@
-//
 //  LoginFormView.swift
 //  OpenNOW
 //
@@ -13,20 +12,21 @@ struct LoginFormView: View {
     var focusedField: FocusState<LoginField?>.Binding
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Welcome back")
+                Text("Connect NVIDIA")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                Text("Choose a provider, continue with a remembered account, or launch browser OAuth.")
+                Text("OpenNOW uses the production Jarvis OAuth flow from the vendor client. Passwords never enter this app.")
                     .foregroundStyle(.secondary)
                     .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if !accounts.isEmpty {
                 RememberedAccountsView(viewModel: viewModel, accounts: accounts)
             }
 
-            VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 14) {
                 Picker("Provider", selection: $viewModel.selectedProvider) {
                     ForEach(LoginProvider.allCases) { provider in
                         Text(provider.title).tag(provider)
@@ -34,47 +34,72 @@ struct LoginFormView: View {
                 }
                 .pickerStyle(.segmented)
 
-                TextField("Email address", text: $viewModel.email)
+                TextField("Email hint (optional)", text: $viewModel.email)
                     .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .email))
                     .focused(focusedField, equals: .email)
 
-                SecureField("Password", text: $viewModel.password)
-                    .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .password))
-                    .focused(focusedField, equals: .password)
-                    .onSubmit(viewModel.signInWithPassword)
-            }
-
-            VStack(spacing: 12) {
                 Toggle("Remember this account on this Mac", isOn: $viewModel.rememberSession)
-                Toggle("I agree to the NVIDIA account terms and OpenNOW session storage", isOn: $viewModel.acceptedTerms)
+                Toggle("I agree to NVIDIA account terms and OpenNOW session storage", isOn: $viewModel.acceptedTerms)
             }
             .toggleStyle(.checkbox)
             .font(.callout)
 
-            VStack(spacing: 12) {
-                Button(action: viewModel.signInWithPassword) {
-                    Label("Continue", systemImage: "arrow.right.circle.fill")
-                        .frame(maxWidth: .infinity)
+            Button(action: viewModel.launchOAuth) {
+                HStack {
+                    if viewModel.isLaunchingOAuth {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "safari.fill")
+                    }
+                    Text(viewModel.hasPendingOAuth ? "Reopen NVIDIA sign-in" : "Continue with NVIDIA")
+                    Spacer()
+                    Image(systemName: "arrow.up.forward.app.fill")
                 }
-                .buttonStyle(PrimaryLoginButtonStyle())
-                .disabled(!viewModel.canSubmitPassword)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryLoginButtonStyle())
+            .disabled(!viewModel.canLaunchOAuth)
 
-                Button(action: viewModel.launchOAuth) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: viewModel.hasPendingOAuth ? "link.badge.plus" : "link.badge.plus.fill")
+                        .foregroundStyle(viewModel.hasPendingOAuth ? Color.openNowGreen : .secondary)
+                    Text(viewModel.hasPendingOAuth ? "Waiting for OAuth callback" : "Browser authorization not started")
+                        .font(.headline)
+                    Spacer()
+                }
+
+                TextField("Paste callback URL or code query if macOS does not return automatically", text: $viewModel.oauthCallbackText, axis: .vertical)
+                    .lineLimit(2...4)
+                    .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .callback))
+                    .focused(focusedField, equals: .callback)
+                    .disabled(!viewModel.hasPendingOAuth || viewModel.isAuthenticating)
+
+                Button(action: viewModel.completeOAuthWithCallbackText) {
                     HStack {
-                        if viewModel.isLaunchingOAuth {
+                        if viewModel.isAuthenticating {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: "safari.fill")
+                            Image(systemName: "checkmark.seal.fill")
                         }
-                        Text("Sign in with NVIDIA OAuth")
+                        Text("Complete sign-in")
                         Spacer()
-                        Image(systemName: "arrow.up.forward.app.fill")
+                        Text("JARVIS_Get_Session_Token")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryLoginButtonStyle())
-                .disabled(viewModel.isLaunchingOAuth || !viewModel.acceptedTerms)
+                .disabled(!viewModel.canCompleteOAuth)
+            }
+            .padding(16)
+            .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(.white.opacity(0.10), lineWidth: 1)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -86,22 +111,29 @@ struct LoginFormView: View {
                     Label(viewModel.successMessage, systemImage: "checkmark.seal.fill")
                         .foregroundStyle(Color.openNowGreen)
                 }
+                if !viewModel.currentAuthorizationURL.isEmpty {
+                    Text(viewModel.currentAuthorizationURL)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
             }
             .font(.callout)
-            .frame(minHeight: 46, alignment: .topLeading)
+            .frame(minHeight: 58, alignment: .topLeading)
 
             Spacer()
 
             HStack {
                 Label(viewModel.primaryDevice.displayName, systemImage: "macbook.and.iphone")
                 Spacer()
-                Text("Device ID saved in SwiftData")
+                Text("Device ID feeds Jarvis OAuth")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
         .padding(38)
-        .frame(width: 430, alignment: .topLeading)
+        .frame(width: 440, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .background(.regularMaterial)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 34, topTrailingRadius: 34, style: .continuous))

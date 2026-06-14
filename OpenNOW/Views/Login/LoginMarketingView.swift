@@ -30,11 +30,11 @@ struct LoginMarketingView: View {
             Spacer(minLength: 12)
 
             VStack(alignment: .leading, spacing: 14) {
-                Text("Sign in to your streaming command center.")
+                Text("Production sign-in for your streaming command center.")
                     .font(.system(size: 46, weight: .bold, design: .rounded))
                     .lineLimit(3)
                     .minimumScaleFactor(0.8)
-                Text("Jarvis OAuth metadata, NES authorization state, and local account continuity are persisted through SwiftData so the frontend can survive restarts cleanly.")
+                Text("OpenNOW follows the vendor Jarvis flow: OAuth URL, callback code, session token, client token refresh, and NES authorization state are connected before play.")
                     .font(.title3)
                     .foregroundStyle(.white.opacity(0.68))
                     .lineSpacing(3)
@@ -48,9 +48,9 @@ struct LoginMarketingView: View {
             Spacer(minLength: 12)
 
             VStack(alignment: .leading, spacing: 12) {
-                LoginChecklistItem(icon: "lock.shield.fill", title: "No password persistence", detail: "Credentials are validated for the UI flow and discarded immediately.")
-                LoginChecklistItem(icon: "externaldrive.connected.to.line.below.fill", title: "SwiftData sessions", detail: "Remembered accounts, device IDs, and active sessions live in the model container.")
-                LoginChecklistItem(icon: "safari.fill", title: "OAuth ready", detail: "The provider button launches a Jarvis-compatible authorization URL.")
+                LoginChecklistItem(icon: "lock.shield.fill", title: "No password capture", detail: "Authentication happens in NVIDIA's browser flow, not inside OpenNOW fields.")
+                LoginChecklistItem(icon: "key.radiowaves.forward.fill", title: "Vendor token chain", detail: "OpenNOW exchanges the callback through JARVIS_Get_Session_Token and Get_Client_Token.")
+                LoginChecklistItem(icon: "externaldrive.connected.to.line.below.fill", title: "Session continuity", detail: "Remembered accounts restore through real token refresh or explicit offline continuity.")
             }
         }
         .foregroundStyle(.white)
