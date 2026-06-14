@@ -93,7 +93,16 @@ public final class OPNHeroArtworkView: NSView {
         didSet { updateFadeLayer() }
     }
 
+    @objc public var imageContentFrame: NSRect = .null {
+        didSet { needsLayout = true }
+    }
+
+    @objc public var imageEdgeFadeFraction: CGFloat = 0.0 {
+        didSet { updateImageMaskLayer() }
+    }
+
     private let imageLayer = CALayer()
+    private let imageMaskLayer = CAGradientLayer()
     private let fadeLayer = CAGradientLayer()
 
     public override init(frame frameRect: NSRect) {
@@ -102,6 +111,8 @@ public final class OPNHeroArtworkView: NSView {
         layer?.backgroundColor = OPNUIHelpers.color(rgb: 0x101113, alpha: 1.0).cgColor
         imageLayer.contentsGravity = .resizeAspectFill
         imageLayer.masksToBounds = true
+        imageMaskLayer.startPoint = CGPoint(x: 0.0, y: 0.5)
+        imageMaskLayer.endPoint = CGPoint(x: 1.0, y: 0.5)
         layer?.addSublayer(imageLayer)
         fadeLayer.locations = [0.0, 0.46, 1.0]
         fadeLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
@@ -120,9 +131,13 @@ public final class OPNHeroArtworkView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        imageLayer.frame = bounds
+        let proposedImageFrame = imageContentFrame.isNull ? bounds : bounds.intersection(imageContentFrame)
+        let imageFrame = proposedImageFrame.isNull || proposedImageFrame.isEmpty ? .zero : proposedImageFrame
+        imageLayer.frame = imageFrame
+        imageMaskLayer.frame = imageLayer.bounds
         fadeLayer.frame = bounds
         CATransaction.commit()
+        updateImageMaskLayer()
     }
 
     private func updateImageLayer() {
@@ -143,6 +158,24 @@ public final class OPNHeroArtworkView: NSView {
             color.withAlphaComponent(0.34).cgColor,
             color.withAlphaComponent(1.0).cgColor
         ]
+        CATransaction.commit()
+    }
+
+    private func updateImageMaskLayer() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let fadeFraction = min(0.9, max(0.0, imageEdgeFadeFraction))
+        if fadeFraction > 0.0 {
+            imageMaskLayer.colors = [
+                NSColor.black.withAlphaComponent(0.0).cgColor,
+                NSColor.black.withAlphaComponent(1.0).cgColor,
+                NSColor.black.withAlphaComponent(1.0).cgColor
+            ]
+            imageMaskLayer.locations = [0.0, NSNumber(value: Double(fadeFraction)), 1.0]
+            imageLayer.mask = imageMaskLayer
+        } else {
+            imageLayer.mask = nil
+        }
         CATransaction.commit()
     }
 }

@@ -269,11 +269,15 @@ final class OPNGameCatalogLayoutSupport: NSObject {
     @objc static let storeHeroMaxContentInset: CGFloat = 106.0
     @objc static let storeHeroContentInsetRatio: CGFloat = 0.055
     @objc static let storeFallbackHeroAspect: CGFloat = 1.0 / storeHeroHeightRatio
-    @objc static let storeHeroMaxHeight: CGFloat = 820.0
-    @objc static let storeHeroMaxViewportRatio: CGFloat = 0.62
+    @objc static let storeHeroCornerColumn: CGFloat = 56.0
+    @objc static let storeHeroTextColumnRatio: CGFloat = 0.14
+    @objc static let storeHeroThirdColumnRatio: CGFloat = 0.06
+    @objc static let storeHeroImageMinHeight: CGFloat = 345.0
+    @objc static let storeHeroMinHeightBreakpoint: CGFloat = 1287.0
+    @objc static let storeHeroOverlayLeadingPadding: CGFloat = 24.0
+    @objc static let storeHeroOverlayBottomPadding: CGFloat = 24.0
     @objc static let storeHeroLogoMaxWidth: CGFloat = 520.0
     @objc static let storeHeroLogoMaxHeight: CGFloat = 180.0
-    @objc static let storeHeroFirstRowSpacing: CGFloat = 64.0
     @objc static let storeButtonHintPillHeight: CGFloat = 40.0
     @objc static let storeButtonHintPillBottomInset: CGFloat = 18.0
     @objc static let storeTopFoldNextRowInset: CGFloat = -100.0
@@ -289,9 +293,39 @@ final class OPNGameCatalogLayoutSupport: NSObject {
 
     @objc(heroHeightForWidth:viewportHeight:)
     static func heroHeight(forWidth width: CGFloat, viewportHeight: CGFloat) -> CGFloat {
-        let fallbackHeight = max(1.0, width) / storeFallbackHeroAspect
-        let viewportHeightLimit = viewportHeight > 0.0 ? viewportHeight * storeHeroMaxViewportRatio : fallbackHeight
-        return floor(min(storeHeroMaxHeight, viewportHeightLimit))
+        floor(heroContainerHeight(forWidth: width))
+    }
+
+    @objc(heroContainerHeightForWidth:)
+    static func heroContainerHeight(forWidth width: CGFloat) -> CGFloat {
+        let resolvedWidth = max(1.0, width)
+        if resolvedWidth <= storeHeroMinHeightBreakpoint {
+            return storeHeroImageMinHeight + heroImageSecondRowHeight(forWidth: resolvedWidth)
+        }
+        return resolvedWidth * storeHeroHeightRatio
+    }
+
+    @objc(heroImageHeightForWidth:)
+    static func heroImageHeight(forWidth width: CGFloat) -> CGFloat {
+        let resolvedWidth = max(1.0, width)
+        let imageWidthBasis = resolvedWidth - storeHeroCornerColumn - resolvedWidth * storeHeroTextColumnRatio
+        return max(storeHeroImageMinHeight, imageWidthBasis * storeHeroHeightRatio)
+    }
+
+    @objc(heroImageSecondRowHeightForWidth:)
+    static func heroImageSecondRowHeight(forWidth width: CGFloat) -> CGFloat {
+        let resolvedWidth = max(1.0, width)
+        return (storeHeroCornerColumn + resolvedWidth * storeHeroTextColumnRatio) * storeHeroHeightRatio
+    }
+
+    @objc(heroFirstRowSpacingForWidth:)
+    static func heroFirstRowSpacing(forWidth width: CGFloat) -> CGFloat {
+        floor(10.0 - heroImageSecondRowHeight(forWidth: width))
+    }
+
+    @objc(heroImageLeadingEdgeForWidth:)
+    static func heroImageLeadingEdge(forWidth width: CGFloat) -> CGFloat {
+        storeHeroCornerColumn + max(1.0, width) * storeHeroTextColumnRatio
     }
 
     @objc(nextRowYAfterRow:rowIndex:hasHero:viewportHeight:)

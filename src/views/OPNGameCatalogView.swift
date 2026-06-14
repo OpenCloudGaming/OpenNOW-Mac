@@ -520,7 +520,7 @@ struct OPNGameCatalogSwiftUIView: View {
                         } else {
                             if let heroGame = model.heroGame {
                                 heroView(heroGame, viewportSize: viewport.size)
-                                    .padding(.bottom, OPNGameCatalogLayoutSupport.storeHeroFirstRowSpacing)
+                                    .padding(.bottom, OPNGameCatalogLayoutSupport.heroFirstRowSpacing(forWidth: viewport.size.width))
                             } else {
                                 Color.clear.frame(height: 88)
                             }
@@ -840,6 +840,7 @@ private final class OPNCatalogHeroStageNSView: NSView {
         layer?.masksToBounds = true
         let fallbackArtwork = OPNUIHelpers.fallbackHeroArtworkImage()
         artworkView.fadeColor = OPNGameCatalogArtworkSupport.heroFadeColor(for: fallbackArtwork)
+        artworkView.imageEdgeFadeFraction = 0.22
         artworkView.image = fallbackArtwork
         addSubview(artworkView, positioned: .below, relativeTo: nil)
         titleFallback.maximumNumberOfLines = 2
@@ -865,7 +866,9 @@ private final class OPNCatalogHeroStageNSView: NSView {
     override func layout() {
         super.layout()
         artworkView.frame = bounds
+        artworkView.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: bounds)
         artworkTransitionView?.frame = bounds
+        artworkTransitionView?.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: bounds)
         updateLogoFrame()
     }
 
@@ -960,6 +963,8 @@ private final class OPNCatalogHeroStageNSView: NSView {
         artworkTransitionView?.removeFromSuperview()
         let transitionView = OPNHeroArtworkView(frame: artworkView.frame)
         transitionView.autoresizingMask = [.width, .height]
+        transitionView.imageContentFrame = OPNGameCatalogArtworkSupport.heroArtworkFrame(in: bounds)
+        transitionView.imageEdgeFadeFraction = 0.22
         transitionView.fadeColor = fadeColor
         transitionView.image = image
         transitionView.alphaValue = 0.0
