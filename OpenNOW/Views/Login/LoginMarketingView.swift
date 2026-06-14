@@ -11,65 +11,65 @@ struct LoginMarketingView: View {
     @ObservedObject var viewModel: LoginViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            HStack(spacing: 12) {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.black)
-                    .frame(width: 52, height: 52)
-                    .background(Color.openNowGreen, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("OpenNOW")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    Text("Cloud play, native control")
-                        .foregroundStyle(.white.opacity(0.58))
-                        .font(.callout)
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                GFNHeroArtwork()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+
+                Rectangle()
+                    .fill(Color.black.opacity(0.54))
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.96), location: 0.00),
+                        .init(color: .black.opacity(0.92), location: 0.29),
+                        .init(color: .black.opacity(0.78), location: 0.42),
+                        .init(color: .black.opacity(0.60), location: 0.54),
+                        .init(color: .black.opacity(0.36), location: 0.74),
+                        .init(color: .black.opacity(0.08), location: 0.95),
+                        .init(color: .clear, location: 1.00),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                VStack(alignment: .leading, spacing: 0) {
+                    GFNWordmark()
+
+                    Spacer()
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("GeForce NOW")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundStyle(.white)
+                            .tracking(0.2)
+                        Text("Connect your NVIDIA account to continue")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundStyle(Color.gfnTextSecondary)
+                            .lineSpacing(3)
+                    }
+                    .frame(width: 400, alignment: .leading)
+
+                    Spacer()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        LoginStatCard(title: "Auth", value: viewModel.authStatusSummary)
+                        LoginStatCard(title: "NES", value: viewModel.nesAuthorizationSummary)
+                    }
+                    .frame(width: 400)
+
+                    Spacer()
+                        .frame(height: 32)
+
+                    Text("Powered by OpenNOW native streaming")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(Color.gfnTextTertiary)
                 }
-            }
-
-            Spacer(minLength: 12)
-
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Production sign-in for your streaming command center.")
-                    .font(.system(size: 46, weight: .bold, design: .rounded))
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.8)
-                Text("OpenNOW follows the vendor Jarvis flow: OAuth URL, callback code, session token, client token refresh, and NES authorization state are connected before play.")
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.68))
-                    .lineSpacing(3)
-            }
-
-            HStack(spacing: 12) {
-                LoginStatCard(title: "Auth", value: viewModel.authStatusSummary)
-                LoginStatCard(title: "NES", value: viewModel.nesAuthorizationSummary)
-            }
-
-            Spacer(minLength: 12)
-
-            VStack(alignment: .leading, spacing: 12) {
-                LoginChecklistItem(icon: "lock.shield.fill", title: "No password capture", detail: "Authentication happens in NVIDIA's browser flow, not inside OpenNOW fields.")
-                LoginChecklistItem(icon: "key.radiowaves.forward.fill", title: "Vendor token chain", detail: "OpenNOW exchanges the callback through JARVIS_Get_Session_Token and Get_Client_Token.")
-                LoginChecklistItem(icon: "externaldrive.connected.to.line.below.fill", title: "Session continuity", detail: "Remembered accounts restore through real token refresh or explicit offline continuity.")
+                .padding(.top, 48)
+                .padding(.bottom, 32)
+                .padding(.leading, 40)
             }
         }
-        .foregroundStyle(.white)
-        .padding(42)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background {
-            ZStack(alignment: .bottomTrailing) {
-                LinearGradient(colors: [.black.opacity(0.84), .black.opacity(0.45)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                Circle()
-                    .fill(Color.openNowGreen.opacity(0.18))
-                    .frame(width: 280, height: 280)
-                    .blur(radius: 34)
-                    .offset(x: 86, y: 76)
-                AngularGradient(colors: [.clear, .openNowGreen.opacity(0.28), .clear, .mint.opacity(0.18), .clear], center: .center)
-                    .frame(width: 420, height: 420)
-                    .blur(radius: 24)
-                    .offset(x: 110, y: 90)
-            }
-        }
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 34, bottomLeadingRadius: 34, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous))
+        .ignoresSafeArea()
     }
 }

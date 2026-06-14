@@ -12,21 +12,24 @@ struct LoginFormView: View {
     var focusedField: FocusState<LoginField?>.Binding
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Connect NVIDIA")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                Text("OpenNOW uses the production Jarvis OAuth flow from the vendor client. Passwords never enter this app.")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Sign in")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.top, 48)
+
+            Text("Use your NVIDIA account to sync your library and start streaming games.")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(Color.gfnTextSecondary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !accounts.isEmpty {
                 RememberedAccountsView(viewModel: viewModel, accounts: accounts)
+                    .padding(.top, 6)
             }
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 Picker("Provider", selection: $viewModel.selectedProvider) {
                     ForEach(LoginProvider.allCases) { provider in
                         Text(provider.title).tag(provider)
@@ -38,11 +41,12 @@ struct LoginFormView: View {
                     .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .email))
                     .focused(focusedField, equals: .email)
 
-                Toggle("Remember this account on this Mac", isOn: $viewModel.rememberSession)
-                Toggle("I agree to NVIDIA account terms and OpenNOW session storage", isOn: $viewModel.acceptedTerms)
+                Toggle("Remember this account", isOn: $viewModel.rememberSession)
+                Toggle("I agree to NVIDIA terms and local session storage", isOn: $viewModel.acceptedTerms)
             }
             .toggleStyle(.checkbox)
-            .font(.callout)
+            .font(.system(size: 13, weight: .regular))
+            .foregroundStyle(Color.gfnTextSecondary)
 
             Button(action: viewModel.launchOAuth) {
                 HStack {
@@ -52,7 +56,7 @@ struct LoginFormView: View {
                     } else {
                         Image(systemName: "safari.fill")
                     }
-                    Text(viewModel.hasPendingOAuth ? "Reopen NVIDIA sign-in" : "Continue with NVIDIA")
+                    Text(viewModel.hasPendingOAuth ? "REOPEN NVIDIA SIGN-IN" : "CONTINUE WITH NVIDIA")
                     Spacer()
                     Image(systemName: "arrow.up.forward.app.fill")
                 }
@@ -61,12 +65,13 @@ struct LoginFormView: View {
             .buttonStyle(PrimaryLoginButtonStyle())
             .disabled(!viewModel.canLaunchOAuth)
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Image(systemName: viewModel.hasPendingOAuth ? "link.badge.plus" : "link.badge.plus.fill")
                         .foregroundStyle(viewModel.hasPendingOAuth ? Color.openNowGreen : .secondary)
                     Text(viewModel.hasPendingOAuth ? "Waiting for OAuth callback" : "Browser authorization not started")
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
                     Spacer()
                 }
 
@@ -84,11 +89,11 @@ struct LoginFormView: View {
                         } else {
                             Image(systemName: "checkmark.seal.fill")
                         }
-                        Text("Complete sign-in")
+                        Text("COMPLETE SIGN-IN")
                         Spacer()
                         Text("JARVIS_Get_Session_Token")
                             .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.gfnTextTertiary)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -96,10 +101,10 @@ struct LoginFormView: View {
                 .disabled(!viewModel.canCompleteOAuth)
             }
             .padding(16)
-            .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color.gfnPanel)
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(.white.opacity(0.10), lineWidth: 1)
+                Rectangle()
+                    .stroke(Color.gfnStroke, lineWidth: 1)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -114,7 +119,7 @@ struct LoginFormView: View {
                 if !viewModel.currentAuthorizationURL.isEmpty {
                     Text(viewModel.currentAuthorizationURL)
                         .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.gfnTextTertiary)
                         .lineLimit(2)
                         .textSelection(.enabled)
                 }
@@ -124,18 +129,26 @@ struct LoginFormView: View {
 
             Spacer()
 
-            HStack {
-                Label(viewModel.primaryDevice.displayName, systemImage: "macbook.and.iphone")
-                Spacer()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "macbook.and.iphone")
+                    Text(viewModel.primaryDevice.displayName)
+                }
                 Text("Device ID feeds Jarvis OAuth")
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 12, weight: .regular))
+            .foregroundStyle(Color.gfnTextTertiary)
         }
-        .padding(38)
-        .frame(width: 440, alignment: .topLeading)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 32)
+        .frame(width: 400, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(.regularMaterial)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 34, topTrailingRadius: 34, style: .continuous))
+        .background(Color.gfnPanel.opacity(0.96))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color.openNowGreen)
+                .frame(width: 4)
+        }
+        .padding(.leading, 40)
     }
 }

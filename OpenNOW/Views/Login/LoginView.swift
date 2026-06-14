@@ -32,20 +32,14 @@ struct LoginView: View {
             }
         }
         .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }
+        .preferredColorScheme(.dark)
     }
 
     private var loginWindow: some View {
-        HStack(spacing: 0) {
+        ZStack(alignment: .leading) {
             LoginMarketingView(viewModel: viewModel)
             LoginFormView(viewModel: viewModel, accounts: accounts, focusedField: $focusedField)
         }
-        .frame(maxWidth: 1040, maxHeight: 660)
-        .background(.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .stroke(.white.opacity(0.10), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.36), radius: 36, x: 0, y: 24)
-        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

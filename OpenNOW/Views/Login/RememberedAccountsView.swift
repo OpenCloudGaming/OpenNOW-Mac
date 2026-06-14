@@ -14,8 +14,9 @@ struct RememberedAccountsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Remembered accounts")
-                    .font(.headline)
+                Text("Remembered accounts".uppercased())
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.gfnTextTertiary)
                 Spacer()
                 Button(viewModel.isShowingAccountPicker ? "Hide" : "Show") {
                     viewModel.toggleAccountPicker()
@@ -35,17 +36,19 @@ struct RememberedAccountsView: View {
                                     AccountAvatar(name: account.displayName)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(account.displayName)
-                                            .foregroundStyle(.primary)
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundStyle(.white)
                                         Text(account.email)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .font(.system(size: 12, weight: .regular))
+                                            .foregroundStyle(Color.gfnTextTertiary)
                                     }
                                     Spacer()
                                     Text(account.membershipTier)
-                                        .font(.caption.weight(.semibold))
+                                        .font(.system(size: 11, weight: .bold))
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
-                                        .background(Color.openNowGreen.opacity(0.14), in: Capsule())
+                                        .foregroundStyle(.black)
+                                        .background(Color.openNowGreen)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -53,11 +56,15 @@ struct RememberedAccountsView: View {
                             Button("Use") {
                                 viewModel.activateAccount(account)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(SecondaryLoginButtonStyle(compact: true))
                             .disabled(viewModel.isAuthenticating)
                         }
                         .padding(10)
-                        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(Color.white.opacity(0.08))
+                        .overlay {
+                            Rectangle()
+                                .stroke(Color.gfnStroke, lineWidth: 1)
+                        }
                     }
                 }
             }
