@@ -61,83 +61,49 @@ struct VendorResourceImage: View {
 struct GFNHeroArtwork: View {
     var body: some View {
         GeometryReader { proxy in
-            let tileWidth = max(320, proxy.size.height * 0.6)
-            let tileCount = max(4, Int((proxy.size.width / tileWidth).rounded(.up)) + 2)
+            let backgroundBaseHeight = max(proxy.size.height, proxy.size.width * 0.5)
+            let gridHeight = 1.66 * backgroundBaseHeight
+            let gridWidth = 2.5 * backgroundBaseHeight
+            let imageHeight = 0.22 * backgroundBaseHeight
+            let rowOffset = 0.1 * backgroundBaseHeight
 
-            ZStack(alignment: .trailing) {
-                VendorResourceImage(name: "LoginWallFallbackTile", fileExtension: "png")
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
+            ZStack {
+                RadialGradient(
+                    colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],
+                    center: UnitPoint(x: 0.65, y: 0.25),
+                    startRadius: 0,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.75
+                )
 
-                HStack(spacing: 0) {
-                    ForEach(0..<tileCount, id: \.self) { _ in
-                        VendorResourceImage(name: "LoginWallContentBackground", fileExtension: "png")
-                            .scaledToFill()
-                            .frame(width: tileWidth, height: proxy.size.height)
-                            .clipped()
+                VStack(spacing: 0) {
+                    ForEach(0..<6, id: \.self) { row in
+                        HStack(spacing: 0) {
+                            ForEach(0..<6, id: \.self) { column in
+                                VendorResourceImage(name: "LoginWallFallbackTile", fileExtension: "png")
+                                    .scaledToFit()
+                                    .frame(height: imageHeight)
+                                    .opacity(0.5)
+
+                                if column < 5 {
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                        .frame(width: gridWidth)
+                        .offset(x: row.isMultiple(of: 2) ? rowOffset : -rowOffset)
+
+                        if row < 5 {
+                            Spacer(minLength: 0)
+                        }
                     }
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .trailing)
-                .opacity(0.92)
-
-                Color.black.opacity(0.18)
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.90), location: 0.00),
-                        .init(color: .black.opacity(0.85), location: 0.29),
-                        .init(color: .black.opacity(0.79), location: 0.42),
-                        .init(color: .black.opacity(0.70), location: 0.54),
-                        .init(color: .black.opacity(0.60), location: 0.62),
-                        .init(color: .black.opacity(0.48), location: 0.74),
-                        .init(color: .black.opacity(0.33), location: 0.82),
-                        .init(color: .black.opacity(0.23), location: 0.87),
-                        .init(color: .black.opacity(0.07), location: 0.95),
-                        .init(color: .clear, location: 1.00),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+                .frame(width: gridWidth, height: gridHeight)
+                .rotationEffect(.degrees(-15))
+                .position(x: proxy.size.width - (gridWidth / 2) + (0.12 * backgroundBaseHeight), y: proxy.size.height / 2)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
-    }
-}
-
-struct GFNGameTile: View {
-    let index: Int
-
-    private var colors: [Color] {
-        let palettes: [[Color]] = [
-            [Color(red: 0.16, green: 0.48, blue: 0.12), Color(red: 0.02, green: 0.08, blue: 0.02)],
-            [Color(red: 0.12, green: 0.20, blue: 0.34), Color(red: 0.02, green: 0.03, blue: 0.09)],
-            [Color(red: 0.45, green: 0.18, blue: 0.08), Color(red: 0.10, green: 0.03, blue: 0.01)],
-            [Color(red: 0.28, green: 0.28, blue: 0.30), Color(red: 0.06, green: 0.06, blue: 0.07)],
-        ]
-        return palettes[index % palettes.count]
-    }
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-            Circle()
-                .fill(.white.opacity(0.10))
-                .frame(width: 96, height: 96)
-                .offset(x: 78, y: -76)
-            Rectangle()
-                .fill(LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .top, endPoint: .bottom))
-            Text(["RTX", "GFN", "4K", "120"][index % 4])
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.white.opacity(0.70))
-                .padding(12)
-        }
-        .frame(width: 150, height: 210)
-        .clipped()
-        .overlay {
-            Rectangle()
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.5), radius: 18, x: 0, y: 12)
     }
 }
 

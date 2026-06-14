@@ -12,163 +12,166 @@ struct LoginFormView: View {
     var focusedField: FocusState<LoginField?>.Binding
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Sign in")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(.white)
-                .padding(.top, 48)
+        GeometryReader { proxy in
+            let metrics = VendorLoginWallMetrics(size: proxy.size)
 
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Use your NVIDIA account to sync your library and start streaming games.")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Color.gfnTextSecondary)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+            ZStack(alignment: .leading) {
+                leftPanel(metrics: metrics)
+                    .frame(width: metrics.panelWidth, height: proxy.size.height)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+        }
+    }
 
-                if !accounts.isEmpty {
-                    RememberedAccountsView(viewModel: viewModel, accounts: accounts)
-                        .padding(.top, 6)
-                }
+    private func leftPanel(metrics: VendorLoginWallMetrics) -> some View {
+        ZStack(alignment: .topLeading) {
+            VendorResourceImage(name: "LoginWallContentBackground", fileExtension: "png")
+                .scaledToFill()
+                .frame(width: metrics.panelWidth, height: metrics.height)
+                .clipped()
+                .opacity(0.30)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 10) {
-                        Text("Provider")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Color.gfnTextSecondary)
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0),
+                    .init(color: .black.opacity(0.95), location: 0.28),
+                    .init(color: .black.opacity(0.85), location: 0.60),
+                    .init(color: .black.opacity(0.60), location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
 
-                        ForEach(LoginProvider.allCases) { provider in
-                            Button {
-                                viewModel.selectedProvider = provider
-                            } label: {
-                                Text(provider.title.uppercased())
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(viewModel.selectedProvider == provider ? .black : .white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(viewModel.selectedProvider == provider ? Color.openNowGreen : Color.white.opacity(0.08))
-                                    .overlay {
-                                        Rectangle()
-                                            .stroke(viewModel.selectedProvider == provider ? Color.openNowGreen : Color.gfnStroke, lineWidth: 1)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                        }
+            VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
+                .scaledToFit()
+                .frame(width: 186, height: 56)
+                .position(x: metrics.contentLeft + 93, y: 52)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer()
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("GeForce NOW")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineSpacing(0)
+                        .padding(.bottom, 24)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        VendorBullet(text: "Play your games instantly across devices.")
+                        VendorBullet(text: "No downloads. No updates. Just jump in.")
+                        VendorBullet(text: "Stream with RTX performance from the cloud.")
                     }
-
-                    TextField("Email hint (optional)", text: $viewModel.email)
-                        .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .email))
-                        .focused(focusedField, equals: .email)
-
-                    Toggle("Remember this account", isOn: $viewModel.rememberSession)
-                    Toggle("I agree to NVIDIA terms and local session storage", isOn: $viewModel.acceptedTerms)
                 }
-                .toggleStyle(.checkbox)
-                .tint(Color.openNowGreen)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(Color.gfnTextSecondary)
+                .padding(.bottom, 32)
 
-                Button(action: viewModel.launchOAuth) {
-                    HStack {
-                        if viewModel.isLaunchingOAuth {
+                Button(action: startVendorLogin) {
+                    HStack(spacing: 10) {
+                        if viewModel.isLaunchingOAuth || viewModel.isAuthenticating {
                             ProgressView()
                                 .controlSize(.small)
-                        } else {
-                            Image(systemName: "safari.fill")
                         }
-                        Text(viewModel.hasPendingOAuth ? "REOPEN NVIDIA SIGN-IN" : "CONTINUE WITH NVIDIA")
-                        Spacer()
-                        Image(systemName: "arrow.up.forward.app.fill")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryLoginButtonStyle())
-                .disabled(!viewModel.canLaunchOAuth)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Image(systemName: viewModel.hasPendingOAuth ? "link.badge.plus" : "link.badge.plus.fill")
-                            .foregroundStyle(viewModel.hasPendingOAuth ? Color.openNowGreen : .secondary)
-                        Text(viewModel.hasPendingOAuth ? "Waiting for OAuth callback" : "Browser authorization not started")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                        Spacer()
-                    }
-
-                    TextField("Paste callback URL or code query if macOS does not return automatically", text: $viewModel.oauthCallbackText, axis: .vertical)
-                        .lineLimit(2...4)
-                        .textFieldStyle(LoginTextFieldStyle(isFocused: focusedField.wrappedValue == .callback))
-                        .focused(focusedField, equals: .callback)
-                        .disabled(!viewModel.hasPendingOAuth || viewModel.isAuthenticating)
-
-                    Button(action: viewModel.completeOAuthWithCallbackText) {
-                        HStack {
-                            if viewModel.isAuthenticating {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "checkmark.seal.fill")
-                            }
-                            Text("COMPLETE SIGN-IN")
-                            Spacer()
-                            Text("JARVIS")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(Color.gfnTextTertiary)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(SecondaryLoginButtonStyle())
-                    .disabled(!viewModel.canCompleteOAuth)
-                }
-                .padding(16)
-                .background(Color.gfnPanel.opacity(0.88))
-                .overlay {
-                    Rectangle()
-                        .stroke(Color.gfnStroke, lineWidth: 1)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    if !viewModel.validationMessage.isEmpty {
-                        Label(viewModel.validationMessage, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    }
-                    if !viewModel.successMessage.isEmpty {
-                        Label(viewModel.successMessage, systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(Color.openNowGreen)
-                    }
-                    if !viewModel.currentAuthorizationURL.isEmpty {
-                        Text(viewModel.currentAuthorizationURL)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(Color.gfnTextTertiary)
-                            .lineLimit(2)
-                            .textSelection(.enabled)
+                        Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
                     }
                 }
-                .font(.callout)
-                .frame(minHeight: 58, alignment: .topLeading)
+                .buttonStyle(VendorGetInButtonStyle())
+                .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                .padding(.bottom, 32)
+
+                if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
+                    Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(viewModel.validationMessage.isEmpty ? Color.openNowGreen : .orange)
+                        .padding(.bottom, 16)
+                }
+
+                Spacer()
             }
-            .padding(.top, 24)
+            .padding(.top, 88)
+            .padding(.leading, metrics.contentLeft)
+            .padding(.trailing, metrics.contentRight)
+            .padding(.bottom, metrics.contentBottom)
+            .frame(width: metrics.panelWidth, alignment: .leading)
 
-            Spacer()
-
-            VStack(alignment: .leading, spacing: 10) {
-                LoginStatCard(title: "Auth", value: viewModel.authStatusSummary)
-                LoginStatCard(title: "NES", value: viewModel.nesAuthorizationSummary)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Version OpenNOW")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Color.gfnTextSecondary)
+                    .lineLimit(1)
             }
+            .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 34)
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "macbook.and.iphone")
-                    Text(viewModel.primaryDevice.displayName)
-                }
-                Text("Device ID feeds Jarvis OAuth")
-            }
-            .font(.system(size: 12, weight: .regular))
-            .foregroundStyle(Color.gfnTextTertiary)
+            Rectangle()
+                .fill(Color.openNowGreen)
+                .frame(width: 8)
+                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.leading, 40)
-        .padding(.trailing, 0)
-        .padding(.bottom, 32)
-        .frame(width: 440, alignment: .topLeading)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(.black)
+    }
+
+    private func startVendorLogin() {
+        viewModel.selectedProvider = .nvidia
+        viewModel.rememberSession = true
+        viewModel.acceptedTerms = true
+        viewModel.launchOAuth()
+    }
+}
+
+private struct VendorLoginWallMetrics {
+    let height: CGFloat
+    let panelWidth: CGFloat
+    let contentLeft: CGFloat
+    let contentRight: CGFloat
+    let contentBottom: CGFloat
+
+    init(size: CGSize) {
+        height = size.height
+        let columnCount: CGFloat
+        let gutter: CGFloat
+        let sideSpacing: CGFloat
+
+        if size.width >= 960 {
+            columnCount = 12
+            gutter = size.width >= 1440 ? 16 : 8
+            sideSpacing = 24
+        } else if size.width >= 720 {
+            columnCount = 8
+            gutter = 8
+            sideSpacing = 16
+        } else if size.width >= 480 {
+            columnCount = 6
+            gutter = 8
+            sideSpacing = 16
+        } else {
+            columnCount = 4
+            gutter = 8
+            sideSpacing = 16
+        }
+
+        let columnSize = (size.width - (2 * sideSpacing) - (gutter * (columnCount - 1))) / columnCount
+        let panelColumnCount: CGFloat = size.width >= 960 && size.width < 1440 ? 5 : 4
+        panelWidth = (panelColumnCount * columnSize) + ((panelColumnCount - 1) * gutter) + sideSpacing
+        contentLeft = 24 + sideSpacing
+        contentRight = 40
+        contentBottom = 48
+    }
+}
+
+private struct VendorBullet: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Circle()
+                .fill(Color.openNowGreen)
+                .frame(width: 8, height: 8)
+                .padding(.top, 4)
+            Text(text)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(Color.gfnTextSecondary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

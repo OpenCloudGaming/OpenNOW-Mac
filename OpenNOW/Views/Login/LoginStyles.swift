@@ -38,6 +38,18 @@ struct PrimaryLoginButtonStyle: ButtonStyle {
     }
 }
 
+struct VendorGetInButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(configuration.isPressed ? Color.openNowGreen.opacity(0.78) : Color.openNowGreen)
+            .opacity(configuration.isPressed ? 0.92 : 1)
+    }
+}
+
 struct SecondaryLoginButtonStyle: ButtonStyle {
     var compact = false
 
