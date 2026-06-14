@@ -144,14 +144,26 @@ private struct CatalogTopBar: View {
 
 private struct CatalogContentView: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @State private var heroIndex = 0
+    @State private var heroAutoScrollEnabled = true
+    private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        let hero = viewModel.featuredGames.first ?? viewModel.catalogGames.first
+        let heroes = heroGames
+        let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
         ScrollView {
             VStack(alignment: .leading, spacing: 34) {
-                if let hero {
-                    CatalogHeroView(viewModel: viewModel, game: hero)
+                if hero != nil {
+                    CatalogHeroView(
+                        viewModel: viewModel,
+                        games: heroes,
+                        activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
+                        onSelectSlide: { index in
+                            heroAutoScrollEnabled = false
+                            heroIndex = index
+                        }
+                    )
                 }
 
                 if !viewModel.errorMessage.isEmpty {
@@ -175,6 +187,29 @@ private struct CatalogContentView: View {
             .padding(.bottom, 44)
         }
         .background(Color.black)
+        .onReceive(heroTimer) { _ in
+            guard heroAutoScrollEnabled, heroes.count > 1 else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                heroIndex = (heroIndex + 1) % heroes.count
+            }
+        }
+        .onChange(of: heroIdentityList) { _, identities in
+            guard !identities.isEmpty else {
+                heroIndex = 0
+                return
+            }
+            if heroIndex >= identities.count { heroIndex = 0 }
+        }
+    }
+
+    private var heroGames: [OPNCatalogGameObject] {
+        let featuredGames = viewModel.featuredGames
+        if !featuredGames.isEmpty { return Array(featuredGames.prefix(8)) }
+        return Array(viewModel.catalogGames.prefix(8))
+    }
+
+    private var heroIdentityList: [String] {
+        heroGames.map { CatalogViewModel.identity(for: $0) }
     }
 
     private func shouldShowDetail(afterSectionAt index: Int, sections: [(title: String, games: [OPNCatalogGameObject])]) -> Bool {
@@ -191,54 +226,68 @@ private struct CatalogContentView: View {
 
 private struct CatalogHeroView: View {
     @ObservedObject var viewModel: CatalogViewModel
-    let game: OPNCatalogGameObject
+    let games: [OPNCatalogGameObject]
+    let activeIndex: Int
+    let onSelectSlide: (Int) -> Void
+
+    private var game: OPNCatalogGameObject? {
+        games.indices.contains(activeIndex) ? games[activeIndex] : games.first
+    }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill)
-                .frame(maxWidth: .infinity, minHeight: 486, maxHeight: 486)
-                .clipped()
-            LinearGradient(colors: [.black.opacity(0.88), .black.opacity(0.45), .clear], startPoint: .leading, endPoint: .trailing)
-            LinearGradient(colors: [.clear, .black.opacity(0.82), .black.opacity(0.96)], startPoint: .center, endPoint: .bottom)
+        if let game {
+            ZStack(alignment: .bottom) {
+                CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill)
+                    .frame(maxWidth: .infinity, minHeight: 486, maxHeight: 486)
+                    .clipped()
+                    .id(game.catalogIdentity)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+                LinearGradient(colors: [.black.opacity(0.88), .black.opacity(0.45), .clear], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(colors: [.clear, .black.opacity(0.82), .black.opacity(0.96)], startPoint: .center, endPoint: .bottom)
 
-            VStack(spacing: 26) {
-                Spacer(minLength: 108)
-                Text(game.mallDisplayTitle)
-                    .font(.system(size: 52, weight: .light))
-                    .tracking(8)
+                VStack(spacing: 26) {
+                    Spacer(minLength: 108)
+                    Text(game.mallDisplayTitle)
+                        .font(.system(size: 52, weight: .light))
+                        .tracking(8)
+                        .foregroundStyle(.white.opacity(0.94))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                    Spacer(minLength: 42)
+                    VStack(spacing: 2) {
+                        Text(game.primaryStoreLabel)
+                            .font(.system(size: 13, weight: .black))
+                        Text(game.ratingLabel)
+                            .font(.system(size: 13, weight: .bold))
+                    }
                     .foregroundStyle(.white.opacity(0.94))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.55)
-                Spacer(minLength: 42)
-                VStack(spacing: 2) {
-                    Text(game.primaryStoreLabel)
-                        .font(.system(size: 13, weight: .black))
-                    Text(game.ratingLabel)
-                        .font(.system(size: 13, weight: .bold))
+                    Button { viewModel.selectGame(game) } label: {
+                        Text("VIEW DETAILS")
+                            .font(.system(size: 14, weight: .black))
+                            .frame(width: 142, height: 41)
+                    }
+                    .buttonStyle(VendorGetInButtonStyle())
+                    Spacer(minLength: 58)
                 }
-                .foregroundStyle(.white.opacity(0.94))
-                Button { viewModel.selectGame(game) } label: {
-                    Text("VIEW DETAILS")
-                        .font(.system(size: 14, weight: .black))
-                        .frame(width: 142, height: 41)
-                }
-                .buttonStyle(VendorGetInButtonStyle())
-                Spacer(minLength: 58)
-            }
-            .frame(width: 470)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 38)
+                .frame(width: 470)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 38)
 
-            HStack(spacing: 8) {
-                Circle().fill(Color.openNowGreen).frame(width: 12, height: 12)
-                ForEach(0..<6, id: \.self) { _ in
-                    Circle().fill(Color.white.opacity(0.58)).frame(width: 9, height: 9)
+                HStack(spacing: 8) {
+                    ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
+                        Button { onSelectSlide(index) } label: {
+                            Circle()
+                                .fill(index == activeIndex ? Color.openNowGreen : Color.white.opacity(0.58))
+                                .frame(width: index == activeIndex ? 12 : 9, height: index == activeIndex ? 12 : 9)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 34)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, 34)
+            .clipShape(Rectangle())
         }
-        .clipShape(Rectangle())
     }
 }
 
