@@ -25,8 +25,17 @@ private enum CatalogVendorLayout {
     static let wideTileWidth: CGFloat = 272
     static let wideTileHeight: CGFloat = 153
     static let tileScaleFactor: CGFloat = 1.12
-    static let heroHeight: CGFloat = 500
+    static let heroAspectRatio: CGFloat = 0.3229
+    static let heroFallbackHeight: CGFloat = 500
     static let detailPanelHeight: CGFloat = 548
+
+    static func heroHeight(for width: CGFloat) -> CGFloat {
+        width > 0 ? width * heroAspectRatio : heroFallbackHeight
+    }
+
+    static func heroImageLeading(for width: CGFloat) -> CGFloat {
+        width > 0 ? 56 + width * 0.14 : 258
+    }
 }
 
 private enum CatalogVendorFont {
@@ -723,6 +732,7 @@ private struct CatalogHeroView: View {
     let onPreviousSlide: () -> Void
     let onNextSlide: () -> Void
     @State private var scrimColor = CatalogMarqueeScrimColor.black
+    @State private var containerWidth: CGFloat = 0
 
     private var game: OPNCatalogGameObject? {
         games.indices.contains(activeIndex) ? games[activeIndex] : games.first
@@ -731,16 +741,20 @@ private struct CatalogHeroView: View {
     var body: some View {
         if let game {
             GeometryReader { proxy in
+                let heroHeight = CatalogVendorLayout.heroHeight(for: proxy.size.width)
+                let imageLeading = CatalogVendorLayout.heroImageLeading(for: proxy.size.width)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
-                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1400), contentMode: .fill) { color in
+                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1920), contentMode: .fill) { color in
                         scrimColor = color
                     }
-                    .frame(width: proxy.size.width, height: CatalogVendorLayout.heroHeight)
+                    .frame(width: max(proxy.size.width - imageLeading, 1), height: heroHeight)
+                    .mask(CatalogHeroVendorImageMask())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                     .clipped()
                     .id(game.catalogIdentity)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                    CatalogHeroVendorForegroundScrim()
+                    CatalogHeroVendorGradientOverlays(imageLeading: imageLeading)
 
                     VStack(spacing: 24) {
                         CatalogHeroTitleView(viewModel: viewModel, game: game, scrimColor: scrimColor)
@@ -776,7 +790,7 @@ private struct CatalogHeroView: View {
                             Color.clear.frame(width: 48, height: 48)
                         }
                     }
-                    .frame(height: CatalogVendorLayout.heroHeight, alignment: .center)
+                    .frame(height: heroHeight, alignment: .center)
                     .padding(.horizontal, 16)
 
                     HStack(spacing: 8) {
@@ -792,8 +806,10 @@ private struct CatalogHeroView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 34)
                 }
+                .onAppear { containerWidth = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, width in containerWidth = width }
             }
-            .frame(height: CatalogVendorLayout.heroHeight)
+            .frame(height: CatalogVendorLayout.heroHeight(for: containerWidth))
             .clipShape(Rectangle())
         }
     }
@@ -1531,36 +1547,34 @@ private struct CatalogHeroVendorBackgroundScrim: View {
     }
 }
 
-private struct CatalogHeroVendorForegroundScrim: View {
+private struct CatalogHeroVendorImageMask: View {
+    var body: some View {
+        VendorResourceImage(name: "Marquee_Hero_Image_Gradient", fileExtension: "svg")
+            .scaledToFill()
+    }
+}
+
+private struct CatalogHeroVendorGradientOverlays: View {
+    let imageLeading: CGFloat
+
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .bottomLeading) {
                 LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0000),
-                        .init(color: .black.opacity(0.42), location: 0.6662),
-                        .init(color: .black.opacity(0.78), location: 1.0000)
-                    ],
+                    colors: [CatalogVendorLayout.mallSurface.opacity(0.00), CatalogVendorLayout.mallSurface.opacity(0.25)],
                     startPoint: .trailing,
                     endPoint: .leading
                 )
-                .frame(width: proxy.size.width * 0.46)
+                .frame(width: imageLeading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 LinearGradient(
-                    colors: [.clear, CatalogVendorLayout.mallSurface.opacity(0.16)],
-                    startPoint: .trailing,
-                    endPoint: .leading
-                )
-                .frame(width: proxy.size.width * 0.28)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                LinearGradient(
-                    colors: [CatalogVendorLayout.mallSurface.opacity(0.00), CatalogVendorLayout.mallSurface.opacity(0.92)],
+                    colors: [CatalogVendorLayout.mallSurface.opacity(0.00), CatalogVendorLayout.mallSurface],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: proxy.size.height * 0.30)
+                .frame(height: proxy.size.height * 0.33)
+                .offset(y: 1)
             }
         }
         .allowsHitTesting(false)
