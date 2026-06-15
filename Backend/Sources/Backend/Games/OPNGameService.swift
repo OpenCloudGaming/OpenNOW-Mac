@@ -1504,6 +1504,7 @@ final class OPNGameService: @unchecked Sendable {
 
     private func deduplicateGames(_ games: [OPNGameInfo]) -> [OPNGameInfo] {
         var byId: [String: OPNGameInfo] = [:]
+        var orderedIds: [String] = []
         for game in games {
             guard !game.id.isEmpty else { continue }
             if var existing = byId[game.id] {
@@ -1518,9 +1519,10 @@ final class OPNGameService: @unchecked Sendable {
                 byId[game.id] = existing
             } else {
                 byId[game.id] = game
+                orderedIds.append(game.id)
             }
         }
-        return Array(byId.values).filter { !$0.variants.isEmpty }
+        return orderedIds.compactMap { byId[$0] }.filter { !$0.variants.isEmpty }
     }
 
     private func fetchPublicGamesLocale(locales: [String], index: Int, completion: @escaping OPNCatalogCallback) {

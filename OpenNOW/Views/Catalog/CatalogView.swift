@@ -182,15 +182,21 @@ private struct VendorLaunchRouteCard: View {
         VendorLaunchPanel(title: "GeForce NOW Launch", subtitle: viewModel.launchFlowTitle) {
             VStack(alignment: .leading, spacing: 18) {
                 VendorLaunchStepHeader(index: "1", title: "Select Server Location", message: viewModel.launchFlowMessage)
-                VStack(spacing: 8) {
-                    ForEach(viewModel.launchRegionOptions, id: \.url) { option in
-                        VendorLaunchRegionRow(
-                            option: option,
-                            selected: option.url == viewModel.selectedLaunchRegionUrl,
-                            action: { viewModel.selectLaunchRegion(option.url) }
-                        )
+                ScrollView(.vertical) {
+                    VStack(spacing: 8) {
+                        ForEach(viewModel.launchRegionOptions, id: \.url) { option in
+                            VendorLaunchRegionRow(
+                                option: option,
+                                selected: option.url == viewModel.selectedLaunchRegionUrl,
+                                action: { viewModel.selectLaunchRegion(option.url) }
+                            )
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
+                .frame(maxHeight: 420)
+                .background(Color.black.opacity(0.14))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
                 if !viewModel.launchFlowError.isEmpty {
                     VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
                 }
