@@ -761,8 +761,10 @@ private struct CatalogHeroView: View {
                         VStack(spacing: 2) {
                             Text(game.primaryStoreLabel)
                                 .font(.nvidia(size: 13, weight: .bold))
-                            Text(game.ratingLabel)
-                                .font(.nvidia(size: 13, weight: .bold))
+                            if !game.ratingLabel.isEmpty {
+                                Text(game.ratingLabel)
+                                    .font(.nvidia(size: 13, weight: .bold))
+                            }
                         }
                         .foregroundStyle(scrimColor.preferredTextColor.opacity(0.94))
                         Button { viewModel.selectGameFromHero(game) } label: {
@@ -1935,9 +1937,7 @@ private extension OPNCatalogGameObject {
     }
 
     var ratingLabel: String {
-        if let rating = contentRatings.first, !rating.isEmpty { return rating }
-        if !playType.isEmpty { return playType }
-        return primaryStoreLabel
+        contentRatings.first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
     }
 
     var genreLine: String { genres.prefix(3).joined(separator: " / ") }
