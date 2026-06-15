@@ -120,10 +120,23 @@ struct CatalogView: View {
     var body: some View {
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
-                OPNEmbeddedStreamView(configuration: streamConfiguration) { success, message, report in
-                    viewModel.finishActiveStream(success: success, message: message, report: report)
+                ZStack {
+                    OPNEmbeddedStreamView(
+                        configuration: streamConfiguration,
+                        onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                        onEnd: { success, message, report in
+                            viewModel.finishActiveStream(success: success, message: message, report: report)
+                        }
+                    )
+                    .id(streamConfiguration.id)
+                    .ignoresSafeArea()
+
+                    if viewModel.isStreamLaunchLoadingVisible {
+                        VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
+                            .transition(.opacity)
+                            .zIndex(10)
+                    }
                 }
-                .id(streamConfiguration.id)
                 .ignoresSafeArea()
                 .transition(.opacity)
             } else {
@@ -281,6 +294,114 @@ private struct VendorLaunchProgressCard: View {
         case .startingStream: return "Starting Stream"
         default: return "Preparing Launch"
         }
+    }
+}
+
+private struct VendorStreamLaunchLoadingOverlay: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        GeometryReader { proxy in
+            let progress = viewModel.activeStreamProgress
+            let steps = progress?.steps ?? []
+            let title = progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW"
+            let message = progress?.message ?? "Starting GeForce NOW stream..."
+            ZStack {
+                Color.black
+
+                RadialGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.18), location: 0.00),
+                        .init(color: .white.opacity(0.05), location: 0.46),
+                        .init(color: .clear, location: 1.00)
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.72
+                )
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.80), location: 0.00),
+                        .init(color: .black.opacity(0.34), location: 0.24),
+                        .init(color: .black.opacity(0.18), location: 0.50),
+                        .init(color: .black.opacity(0.34), location: 0.76),
+                        .init(color: .black.opacity(0.80), location: 1.00)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                VStack(spacing: 24) {
+                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                        .scaledToFit()
+                        .frame(width: 174, height: 131)
+
+                    VStack(spacing: 10) {
+                        Text(title)
+                            .font(.nvidia(size: 22, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text(message)
+                            .font(.nvidia(size: 13, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    VendorIndeterminateProgressBar()
+                        .frame(width: 320, height: 4)
+
+                    if !steps.isEmpty {
+                        VStack(alignment: .leading, spacing: 9) {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                                VendorStreamLaunchStepRow(step: step, index: index, currentIndex: progress?.currentStepIndex ?? -1)
+                            }
+                        }
+                        .frame(width: 320, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .background(.black)
+        .ignoresSafeArea()
+    }
+}
+
+private struct VendorStreamLaunchStepRow: View {
+    let step: String
+    let index: Int
+    let currentIndex: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(marker)
+                .font(.nvidia(size: 11, weight: .bold))
+                .foregroundStyle(markerColor)
+                .frame(width: 22, alignment: .center)
+            Text(step)
+                .font(.nvidia(size: 12, weight: index == currentIndex ? .bold : .medium))
+                .foregroundStyle(textColor)
+            Spacer(minLength: 0)
+        }
+        .opacity(index > currentIndex && currentIndex >= 0 ? 0.58 : 1)
+    }
+
+    private var marker: String {
+        if index < currentIndex { return "OK" }
+        return String(index + 1)
+    }
+
+    private var markerColor: Color {
+        index <= currentIndex ? .openNowGreen : .white.opacity(0.46)
+    }
+
+    private var textColor: Color {
+        index <= currentIndex || currentIndex < 0 ? .white.opacity(0.84) : .white.opacity(0.52)
     }
 }
 

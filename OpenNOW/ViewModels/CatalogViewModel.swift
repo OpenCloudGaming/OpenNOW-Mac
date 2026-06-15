@@ -62,6 +62,8 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedSectionId = ""
     @Published var selectedVariantIndex = -1
     @Published var activeStreamConfiguration: OPNStreamLaunchConfiguration?
+    @Published var activeStreamProgress: OPNEmbeddedStreamProgress?
+    @Published var isActiveStreamLaunchOverlayVisible = false
     @Published var launchFlowState = CatalogLaunchFlowState.idle
     @Published var launchFlowTitle = ""
     @Published var launchFlowMessage = ""
@@ -83,6 +85,7 @@ final class CatalogViewModel: ObservableObject {
     private var pendingLaunchVariantIndex = -1
     private var activeSessionResumeConfiguration: OPNStreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: OPNStreamLaunchConfiguration?
+    private var streamProgressGeneration = 0
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
@@ -279,6 +282,11 @@ final class CatalogViewModel: ObservableObject {
         launchFlowState != .idle
     }
 
+    var isStreamLaunchLoadingVisible: Bool {
+        guard activeStreamConfiguration != nil else { return false }
+        return isActiveStreamLaunchOverlayVisible
+    }
+
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
         pendingLaunchGame = game
         pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
@@ -383,6 +391,9 @@ final class CatalogViewModel: ObservableObject {
 
     func finishActiveStream(success: Bool, message: String, report: OPNSessionReportPayload?) {
         activeStreamConfiguration = nil
+        activeStreamProgress = nil
+        isActiveStreamLaunchOverlayVisible = false
+        streamProgressGeneration += 1
         clearLaunchFlow()
         launchMessage = ""
         if !success, !message.isEmpty {
@@ -394,6 +405,18 @@ final class CatalogViewModel: ObservableObject {
         }
     }
 
+    func updateActiveStreamProgress(_ progress: OPNEmbeddedStreamProgress) {
+        activeStreamProgress = progress
+        isActiveStreamLaunchOverlayVisible = true
+        guard progress.isReady else { return }
+        let generation = streamProgressGeneration
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard generation == self.streamProgressGeneration else { return }
+            self.isActiveStreamLaunchOverlayVisible = false
+        }
+    }
+
     private var launchToken: String {
         session.idToken.isEmpty ? session.accessToken : session.idToken
     }
@@ -402,6 +425,9 @@ final class CatalogViewModel: ObservableObject {
         launchFlowState = .startingStream
         launchFlowMessage = message.isEmpty ? "Starting GeForce NOW stream..." : message
         launchFlowError = ""
+        streamProgressGeneration += 1
+        isActiveStreamLaunchOverlayVisible = true
+        activeStreamProgress = OPNEmbeddedStreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         activeStreamConfiguration = configuration
         clearLaunchFlow()
     }

@@ -24,7 +24,10 @@ private final class OPNStreamSendableValue<T>: @unchecked Sendable {
 @MainActor
 final class OPNStreamViewController: NSViewController {
     var onStreamEnd: ((Bool, String, OPNSessionReportPayload) -> Void)?
+    var onLaunchProgress: ((OPNEmbeddedStreamProgress) -> Void)?
     var onDashboardToggleRequested: (() -> Void)?
+
+    private static let launchProgressSteps = ["Check network route", "Allocate cloud session", "Receive stream offer", "Negotiate WebRTC", "Connected"]
 
     private let gameTitle: String
     private let appId: String
@@ -63,6 +66,7 @@ final class OPNStreamViewController: NSViewController {
     private var connectedToast: NSView?
     private var activeSessionInfo: [String: Any] = [:]
     private var hasActiveSessionInfo = false
+    private var currentLaunchProgressStepIndex = -1
     private var remoteStopRequested = false
     private var webRTCBackendName = "libwebrtc"
     private var lastStreamActivityTime: CFTimeInterval = 0
@@ -242,6 +246,7 @@ final class OPNStreamViewController: NSViewController {
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"], fallback: 50)
         let providerStreamingBaseUrl = OPNGameService.shared.providerStreamingBaseURL()
         healthReport.markPhase("Check network route", now: CACurrentMediaTime())
+        setStatus("Checking network route...", currentStepIndex: 0)
         OPNStreamPreferences.fetchCloudVariables(token: apiToken) { [weak self] cloudVariables in
             guard let self else { return }
             OPNStreamPreferences.runNetworkPreflight(token: self.apiToken, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps) { [weak self] preflight in
@@ -275,7 +280,7 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func launchFreshSession(settings: [String: Any], generation: UInt) {
-        setStatus("Allocating cloud session...")
+        setStatus("Allocating cloud session...", currentStepIndex: 1)
         healthReport.markPhase("Allocate cloud session", now: CACurrentMediaTime())
         OPNLogCapture.appendEvent("[StreamLaunch] Launching fresh session \(streamSettingsSummary(settings))")
         let settingsBox = OPNStreamSendableValue(settings)
@@ -287,7 +292,7 @@ final class OPNStreamViewController: NSViewController {
             DispatchQueue.main.async { [sessionBox] in
                 guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
                 let progressSession = sessionBox.value
-                self.setStatus(message.isEmpty ? self.progressMessage(for: progressSession as NSDictionary) : message)
+                self.setStatus(message.isEmpty ? self.progressMessage(for: progressSession as NSDictionary) : message, currentStepIndex: 1)
                 if !self.string(progressSession["sessionId"]).isEmpty { self.updateLaunchAdState(progressSession as NSDictionary) }
             }
         }, completion: { [weak self] success, sessionInfo, _, error in
@@ -304,7 +309,7 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func createSession(settings: [String: Any], generation: UInt) {
-        setStatus("Allocating cloud session...")
+        setStatus("Allocating cloud session...", currentStepIndex: 1)
         healthReport.markPhase("Allocate cloud session", now: CACurrentMediaTime())
         OPNLogCapture.appendEvent("[StreamLaunch] Creating session \(streamSettingsSummary(settings))")
         OPNSessionManager.shared.createSession(appId: appId, internalTitle: gameTitle.isEmpty ? "OpenNOW" : gameTitle, settings: settings) { [weak self] success, sessionInfo, error in
@@ -320,7 +325,7 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func claimSession(settings: [String: Any], generation: UInt) {
-        setStatus("Resuming session...")
+        setStatus("Resuming session...", currentStepIndex: 1)
         healthReport.markPhase("Allocate cloud session", now: CACurrentMediaTime())
         OPNLogCapture.appendEvent("[StreamLaunch] Claiming session \(streamSettingsSummary(settings))")
         OPNSessionManager.shared.claimSession(sessionId: resumeSessionId, serverIp: resumeServer, appId: appId, settings: settings, recoveryMode: recovering) { [weak self] success, sessionInfo, error in
@@ -348,7 +353,7 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func reResolveAndClaimActiveSession(settings: [String: Any], generation: UInt) {
-        setStatus("Resuming current active session...")
+        setStatus("Resuming current active session...", currentStepIndex: 1)
         let requestedSessionId = resumeSessionId
         OPNSessionManager.shared.getActiveSessions { [weak self] success, sessions, error in
             DispatchQueue.main.async {
@@ -405,7 +410,7 @@ final class OPNStreamViewController: NSViewController {
             return
         }
         updateLaunchAdState(sessionInfo)
-        setStatus(progressMessage(for: sessionInfo))
+        setStatus(progressMessage(for: sessionInfo), currentStepIndex: 1)
         let delay = attempt < 12 ? 0.3 : (attempt < 20 ? 0.5 : 1.0)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.launchGeneration == generation, !self.streamEnded else { return }
@@ -433,7 +438,7 @@ final class OPNStreamViewController: NSViewController {
         healthReport.setSession(zone: string(sessionInfo["zone"]), gpuType: string(sessionInfo["gpuType"]), negotiatedResolution: string(negotiatedSettings["resolution"]), negotiatedFps: int(negotiatedSettings["fps"]), negotiatedCodec: string(negotiatedSettings["codec"]))
         healthReport.setFinal(resolution: string(negotiatedSettings["resolution"]), fps: int(negotiatedSettings["fps"]), codec: string(negotiatedSettings["codec"]), bitrateMbps: int(negotiatedSettings["maxBitrateMbps"]))
         OPNLogCapture.appendEvent("[StreamLaunch] Connecting session \(sessionSummary(sessionInfo)) negotiated=\(streamSettingsSummary(negotiatedSettings))")
-        setStatus("Connecting to stream...")
+        setStatus("Connecting to stream...", currentStepIndex: 2)
         let signaling = OPNWebSocketSignalingClient(signalingServer: string(sessionInfo["signalingServer"]), sessionId: string(sessionInfo["sessionId"]), signalingUrl: string(sessionInfo["signalingUrl"]))
         signaling.setPeerResolution(negotiatedSettings["resolution"] as? String ?? "1920x1080")
         self.signaling = signaling
@@ -447,6 +452,7 @@ final class OPNStreamViewController: NSViewController {
             self.remoteIceReceived = false
             self.startRemoteIceGraceTimer(generation: generation)
             self.healthReport.markPhase("Negotiate WebRTC", now: CACurrentMediaTime())
+            self.setStatus("Negotiating WebRTC...", currentStepIndex: 3)
             self.session.start(sessionInfo: sessionInfo, offerSdp: offer, settings: negotiatedSettings as NSDictionary, answerHandler: { [weak self] sdp, nvstSdp in
                 DispatchQueue.main.async { self?.signaling?.sendAnswerSdp(sdp as String, nvstSdp: nvstSdp as String) }
             }, localIceCandidateHandler: { [weak self] candidate in
@@ -481,6 +487,7 @@ final class OPNStreamViewController: NSViewController {
             cancelRemoteIceGraceTimer()
             connectedOnce = true
             recovering = false
+            setStatus("Connected", currentStepIndex: 4, isReady: true)
             loadingView?.stopAnimating()
             loadingView?.removeFromSuperview()
             loadingView = nil
@@ -699,7 +706,7 @@ final class OPNStreamViewController: NSViewController {
         }
         guard let loading = OPNAppViewBridge.view(named: "OPNLoadingView", frame: view.bounds, string: message) else { return }
         loading.autoresizingMask = [.width, .height]
-        loading.setSteps(["Check network route", "Allocate cloud session", "Receive stream offer", "Negotiate WebRTC", "Connected"], currentStepIndex: -1)
+        loading.setSteps(Self.launchProgressSteps, currentStepIndex: currentLaunchProgressStepIndex)
         loading.startAnimating()
         loadingView = loading
         statusLabel = loading.messageLabel
@@ -716,10 +723,16 @@ final class OPNStreamViewController: NSViewController {
         view.addSubview(loading)
     }
 
-    private func setStatus(_ message: String) {
+    private func setStatus(_ message: String, currentStepIndex: Int? = nil, isReady: Bool = false) {
         DispatchQueue.main.async { [weak self] in
-            self?.loadingView?.message = message
-            self?.statusLabel?.stringValue = message
+            guard let self else { return }
+            if let currentStepIndex {
+                self.currentLaunchProgressStepIndex = currentStepIndex
+                self.loadingView?.setSteps(Self.launchProgressSteps, currentStepIndex: currentStepIndex)
+            }
+            self.loadingView?.message = message
+            self.statusLabel?.stringValue = message
+            self.onLaunchProgress?(OPNEmbeddedStreamProgress(title: self.gameTitle.isEmpty ? "GeForce NOW" : self.gameTitle, message: message, steps: Self.launchProgressSteps, currentStepIndex: self.currentLaunchProgressStepIndex, isReady: isReady))
         }
     }
 
