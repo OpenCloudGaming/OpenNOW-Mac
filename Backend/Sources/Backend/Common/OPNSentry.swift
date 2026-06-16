@@ -53,17 +53,34 @@ extension OPNSentryTransaction: @unchecked Sendable {}
 @objcMembers
 @objc(OPNSentry)
 final class OPNSentry: NSObject {
-    private static let dsn = "https://9db09e478cd379b8abdb101361ae5248@o4509317113184256.ingest.us.sentry.io/4511552111247360"
+    private static let fallbackDsn = "https://9db09e478cd379b8abdb101361ae5248@o4509317113184256.ingest.us.sentry.io/4511552111247360"
     private nonisolated(unsafe) static var initialized = false
 
     static func initializeSentry() {
         guard !initialized else { return }
+        guard let dsn = resolvedDsn(), !dsn.isEmpty else { return }
         SentrySDK.start { options in
             options.dsn = dsn
-            options.debug = true
-            options.sendDefaultPii = true
-            options.tracesSampleRate = 1.0
+            options.debug = environmentFlagEnabled("OPN_SENTRY_DEBUG")
+            options.diagnosticLevel = options.debug ? .debug : .error
+            options.sendDefaultPii = environmentFlagEnabled("OPN_SENTRY_SEND_PII")
+            options.environment = resolvedEnvironment()
+            options.releaseName = resolvedReleaseName()
+            options.dist = resolvedDist()
+            options.sampleRate = NSNumber(value: clampedSampleRate(environmentDouble("OPN_SENTRY_EVENT_SAMPLE_RATE") ?? 1.0))
+            options.tracesSampleRate = NSNumber(value: clampedSampleRate(environmentDouble("OPN_SENTRY_TRACES_SAMPLE_RATE") ?? 0.25))
+            options.enableAutoSessionTracking = true
+            options.enableLogs = true
             options.enableMetrics = true
+            options.attachStacktrace = true
+            options.attachAllThreads = false
+            options.beforeSend = { event in sanitize(event: event) }
+            options.beforeBreadcrumb = { breadcrumb in sanitize(breadcrumb: breadcrumb) }
+            options.beforeSendLog = { log in sanitize(log: log) }
+            options.onLastRunStatusDetermined = { status, _ in
+                let message = "[Sentry] Last run status: \(status.description)"
+                fputs("\(message)\n", stderr)
+            }
         }
         initialized = true
     }
@@ -207,7 +224,137 @@ final class OPNSentry: NSObject {
 
     private static func environmentFlagEnabled(_ name: String) -> Bool {
         guard let value = ProcessInfo.processInfo.environment[name] else { return false }
-        return value == "1"
+        return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+    }
+
+    private static func environmentDouble(_ name: String) -> Double? {
+        guard let value = ProcessInfo.processInfo.environment[name] else { return nil }
+        return Double(value)
+    }
+
+    private static func environmentString(_ name: String) -> String? {
+        guard let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
+    }
+
+    private static func clampedSampleRate(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
+
+    private static func resolvedDsn() -> String? {
+        guard !environmentFlagEnabled("OPN_DISABLE_SENTRY") else { return nil }
+        return environmentString("OPN_SENTRY_DSN") ?? environmentString("SENTRY_DSN") ?? fallbackDsn
+    }
+
+    private static func resolvedEnvironment() -> String {
+        if let environment = environmentString("OPN_SENTRY_ENVIRONMENT") ?? environmentString("SENTRY_ENVIRONMENT") {
+            return environment
+        }
+        #if DEBUG
+        return "debug"
+        #else
+        return "production"
+        #endif
+    }
+
+    private static func resolvedReleaseName() -> String? {
+        if let release = environmentString("OPN_SENTRY_RELEASE") ?? environmentString("SENTRY_RELEASE") {
+            return release
+        }
+        guard let identifier = Bundle.main.bundleIdentifier, !identifier.isEmpty else { return nil }
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = (info["CFBundleShortVersionString"] as? String)?.isEmpty == false ? info["CFBundleShortVersionString"] as? String ?? "0" : "0"
+        let build = (info["CFBundleVersion"] as? String)?.isEmpty == false ? info["CFBundleVersion"] as? String ?? "0" : "0"
+        return "\(identifier)@\(version)+\(build)"
+    }
+
+    private static func resolvedDist() -> String? {
+        if let dist = environmentString("OPN_SENTRY_DIST") ?? environmentString("SENTRY_DIST") {
+            return dist
+        }
+        return Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+    }
+
+    private static func sanitize(event: Event) -> Event? {
+        if let message = event.message?.formatted, !message.isEmpty {
+            event.message = SentryMessage(formatted: sanitizedMessage(message))
+        }
+        event.logger = event.logger.map(sanitizedMessage)
+        event.serverName = nil
+        event.transaction = event.transaction.map(sanitizedMessage)
+        if let tags = event.tags {
+            event.tags = sanitizedStringDictionary(tags)
+        }
+        if let extra = event.extra {
+            event.extra = sanitizedDictionary(extra)
+        }
+        if let user = event.user {
+            user.email = nil
+            user.ipAddress = nil
+            user.name = nil
+            user.username = nil
+            user.data = nil
+        }
+        return event
+    }
+
+    private static func sanitize(breadcrumb: Breadcrumb) -> Breadcrumb? {
+        breadcrumb.message = breadcrumb.message.map(sanitizedMessage)
+        breadcrumb.category = sanitizedMessage(breadcrumb.category)
+        if let data = breadcrumb.data {
+            breadcrumb.data = sanitizedDictionary(data)
+        }
+        return breadcrumb
+    }
+
+    private static func sanitize(log: SentryLog) -> SentryLog? {
+        log.body = sanitizedMessage(log.body)
+        log.attributes = sanitizedLogAttributes(log.attributes)
+        return log
+    }
+
+    private static func sanitizedStringDictionary(_ dictionary: [String: String]) -> [String: String] {
+        var result: [String: String] = [:]
+        for (key, value) in dictionary {
+            result[sanitizedMessage(key)] = sanitizedMessage(value)
+        }
+        return result
+    }
+
+    private static func sanitizedDictionary(_ dictionary: [String: Any]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for (key, value) in dictionary {
+            result[sanitizedMessage(key)] = sanitizedValue(value)
+        }
+        return result
+    }
+
+    private static func sanitizedValue(_ value: Any) -> Any {
+        switch value {
+        case let string as String:
+            return sanitizedMessage(string)
+        case let dictionary as [String: Any]:
+            return sanitizedDictionary(dictionary)
+        case let array as [Any]:
+            return array.map(sanitizedValue)
+        default:
+            return value
+        }
+    }
+
+    private static func sanitizedLogAttributes(_ attributes: [String: SentryAttribute]) -> [String: SentryAttribute] {
+        var result: [String: SentryAttribute] = [:]
+        for (key, attribute) in attributes {
+            let sanitizedKey = sanitizedMessage(key)
+            if let value = attribute.value as? String {
+                result[sanitizedKey] = SentryAttribute(string: sanitizedMessage(value))
+            } else if let values = attribute.value as? [String] {
+                result[sanitizedKey] = SentryAttribute(stringArray: values.map(sanitizedMessage))
+            } else {
+                result[sanitizedKey] = attribute
+            }
+        }
+        return result
     }
 
     private static func sanitizedMessage(_ message: String) -> String {
