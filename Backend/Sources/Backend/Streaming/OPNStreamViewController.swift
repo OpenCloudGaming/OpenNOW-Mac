@@ -42,7 +42,7 @@ final class OPNStreamViewController: NSViewController {
     private var loadingView: OPNLoadingView?
     private var statusLabel: NSTextField?
     private var quitDecisionInFlight = false
-    private var statsOverlay: OPNStatsOverlayView?
+    private var statsOverlay: OPNGFNStatsHUDView?
     private var shortcutLegendOverlay: OPNShortcutLegendView?
     private var statsRefreshTimer: Timer?
     private var inactivityTimer: Timer?
@@ -870,7 +870,7 @@ final class OPNStreamViewController: NSViewController {
 
     private func toggleStatsOverlay() {
         if let statsOverlay { statsOverlay.removeFromSuperview(); self.statsOverlay = nil; if !connectedOnce { stopStatsRefreshTimer() }; return }
-        guard let overlay = OPNAppViewBridge.view(named: "OPNStatsOverlayView", frame: statsOverlayFrame()) else { return }
+        let overlay = OPNGFNStatsHUDView(frame: statsOverlayFrame())
         statsOverlay = overlay
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
         updateStatsOverlay()
@@ -878,13 +878,13 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func statsOverlayFrame() -> NSRect {
-        NSRect(x: 16, y: max(16, view.bounds.height - 54), width: min(620, max(320, view.bounds.width - 32)), height: 32)
+        NSRect(x: 18, y: max(18, view.bounds.height - 248), width: min(382, max(320, view.bounds.width - 36)), height: 230)
     }
 
     private func updateStatsOverlay() {
         guard let statsOverlay else { return }
         let stats = session.latestStatsSnapshot()
-        statsOverlay.update(latencyMs: Int(stats.latencyMs.rounded()), bitrateMbps: stats.inboundBitrateMbps, packetsLost: stats.packetsLost, resolution: stats.resolution, fps: stats.fps, renderFps: stats.renderFps, codec: stats.codec, enhancement: stats.videoEnhancementActiveTier, framesDropped: stats.framesDropped)
+        statsOverlay.update(snapshot: stats, gameTitle: gameTitle, backendName: webRTCBackendName)
     }
 
     private func startStatsRefreshTimer() {
