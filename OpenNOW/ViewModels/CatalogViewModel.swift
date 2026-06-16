@@ -114,6 +114,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var isRefreshingSettingsRegions = false
     @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
     @Published var previousGameSession = CatalogPreviousGameSession.load()
+    @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
 
     let account: LoginAccount
     let session: LoginSession
@@ -133,6 +134,7 @@ final class CatalogViewModel: ObservableObject {
         self.account = account
         self.session = session
         self.onRefreshAuth = onRefreshAuth
+        playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: session))
         $searchQuery
             .dropFirst()
             .removeDuplicates()
@@ -483,6 +485,12 @@ final class CatalogViewModel: ObservableObject {
             let session = CatalogPreviousGameSession(configuration: finishedConfiguration, success: success, message: message, report: report)
             previousGameSession = session
             session.save()
+            if let report, report.durationSeconds > 0 {
+                var statistics = playtimeStatistics
+                statistics.record(title: session.title, durationSeconds: report.durationSeconds, endedAt: session.endedAt)
+                playtimeStatistics = statistics
+                statistics.save(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: self.session))
+            }
         }
         if !success, !message.isEmpty {
             errorMessage = message
@@ -1046,6 +1054,14 @@ final class CatalogViewModel: ObservableObject {
         return !lhs.title.isEmpty && lhs.title.caseInsensitiveCompare(rhs.title) == .orderedSame
     }
 
+    private static func playtimeAccountIdentifier(account: LoginAccount, session: LoginSession) -> String {
+        for value in [session.userId, account.userId, account.externalUserId, account.email] {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed.lowercased() }
+        }
+        return "default"
+    }
+
     private func resolveGameForDetails(_ game: OPNCatalogGameObject) -> OPNCatalogGameObject {
         resolveGameForDetails(game, preferredSectionId: "")
     }
@@ -1139,6 +1155,51 @@ struct CatalogStoreDefinition: Identifiable, Equatable {
     let isAccountLinkingSupported: Bool
     let isAccountLinkingRequired: Bool
     let accountLinkingLabel: String
+}
+
+struct CatalogPlaytimeStatistics: Codable, Equatable {
+    private static let storagePrefix = "OpenNOW.Catalog.PlaytimeStatistics"
+
+    static let empty = CatalogPlaytimeStatistics(totalSeconds: 0, sessionCount: 0, lastSessionSeconds: 0, longestSessionSeconds: 0, lastPlayedTitle: "", lastPlayedAt: nil)
+
+    private(set) var totalSeconds: Double
+    private(set) var sessionCount: Int
+    private(set) var lastSessionSeconds: Double
+    private(set) var longestSessionSeconds: Double
+    private(set) var lastPlayedTitle: String
+    private(set) var lastPlayedAt: Date?
+
+    var averageSessionSeconds: Double {
+        sessionCount > 0 ? totalSeconds / Double(sessionCount) : 0
+    }
+
+    mutating func record(title: String, durationSeconds: Double, endedAt: Date) {
+        let duration = max(0, durationSeconds.isFinite ? durationSeconds : 0)
+        guard duration > 0 else { return }
+        totalSeconds += duration
+        sessionCount += 1
+        lastSessionSeconds = duration
+        longestSessionSeconds = max(longestSessionSeconds, duration)
+        lastPlayedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastPlayedAt = endedAt
+    }
+
+    static func load(accountIdentifier: String) -> CatalogPlaytimeStatistics {
+        guard let data = UserDefaults.standard.data(forKey: storageKey(accountIdentifier: accountIdentifier)),
+              let statistics = try? JSONDecoder().decode(CatalogPlaytimeStatistics.self, from: data) else {
+            return .empty
+        }
+        return statistics
+    }
+
+    func save(accountIdentifier: String) {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        UserDefaults.standard.set(data, forKey: Self.storageKey(accountIdentifier: accountIdentifier))
+    }
+
+    private static func storageKey(accountIdentifier: String) -> String {
+        "\(storagePrefix).\(accountIdentifier)"
+    }
 }
 
 struct CatalogPreviousGameSession: Codable, Equatable {

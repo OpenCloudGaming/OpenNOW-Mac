@@ -232,7 +232,75 @@ private struct AccountSettingsPage: View {
                 SettingsInfoRow(label: "Status", value: viewModel.account.authStatus)
                 SettingsInfoRow(label: "Preferred Region", value: viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl)
             }
+
+            SettingsCard(title: "Playtime Statistics") {
+                if viewModel.playtimeStatistics.sessionCount == 0 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No completed streams recorded yet.")
+                            .font(.settingsNvidia(size: 15, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.86))
+                        Text("OpenNOW will track local playtime after your next GeForce NOW session ends.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                } else {
+                    SettingsFlowLayout(spacing: 10) {
+                        SettingsStatisticTile(label: "Total Playtime", value: durationText(viewModel.playtimeStatistics.totalSeconds), emphasized: true)
+                        SettingsStatisticTile(label: "Sessions", value: "\(viewModel.playtimeStatistics.sessionCount)")
+                        SettingsStatisticTile(label: "Last Session", value: durationText(viewModel.playtimeStatistics.lastSessionSeconds))
+                        SettingsStatisticTile(label: "Average Session", value: durationText(viewModel.playtimeStatistics.averageSessionSeconds))
+                        SettingsStatisticTile(label: "Longest Session", value: durationText(viewModel.playtimeStatistics.longestSessionSeconds))
+                        SettingsStatisticTile(label: "Last Played", value: lastPlayedText)
+                    }
+                    if !viewModel.playtimeStatistics.lastPlayedTitle.isEmpty {
+                        SettingsDivider()
+                        SettingsInfoRow(label: "Most Recent Game", value: viewModel.playtimeStatistics.lastPlayedTitle)
+                    }
+                }
+            }
         }
+    }
+
+    private var lastPlayedText: String {
+        guard let date = viewModel.playtimeStatistics.lastPlayedAt else { return "-" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func durationText(_ seconds: Double) -> String {
+        let totalMinutes = max(0, Int((seconds / 60).rounded()))
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours > 0, minutes > 0 { return "\(hours)h \(minutes)m" }
+        if hours > 0 { return "\(hours)h" }
+        return "\(minutes)m"
+    }
+}
+
+private struct SettingsStatisticTile: View {
+    let label: String
+    let value: String
+    var emphasized = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label.uppercased())
+                .font(.settingsNvidia(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.44))
+            Text(value.isEmpty ? "-" : value)
+                .font(.settingsNvidia(size: emphasized ? 24 : 19, weight: .bold))
+                .foregroundStyle(emphasized ? Color.openNowGreen : .white.opacity(0.90))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(width: emphasized ? 206 : 164, height: 78, alignment: .leading)
+        .background(Color.white.opacity(emphasized ? 0.075 : 0.052))
+        .overlay { Rectangle().stroke(emphasized ? Color.openNowGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 

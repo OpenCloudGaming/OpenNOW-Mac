@@ -251,6 +251,7 @@ final class OPNSessionHealthReportBuilder: NSObject {
             averageLatencyText: formatMetric(finalized.stats.averageLatencyMs, suffix: " ms", digits: 0),
             averageBitrateText: formatMetric(finalized.stats.averageBitrateMbps, suffix: " Mbps", digits: 1),
             droppedFramesText: String(finalized.stats.framesDropped),
+            durationSeconds: finalized.durationSeconds,
             reportText: reportText,
             copyText: reportText,
             shouldShow: decision.shouldShow,

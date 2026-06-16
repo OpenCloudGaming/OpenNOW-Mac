@@ -9,6 +9,7 @@ public final class OPNSessionReportPayload: NSObject {
     public let averageLatencyText: String
     public let averageBitrateText: String
     public let droppedFramesText: String
+    public let durationSeconds: Double
     public let reportText: String
     public let copyText: String
     public let shouldShow: Bool
@@ -22,6 +23,7 @@ public final class OPNSessionReportPayload: NSObject {
         averageLatencyText: String,
         averageBitrateText: String,
         droppedFramesText: String,
+        durationSeconds: Double,
         reportText: String,
         copyText: String,
         shouldShow: Bool,
@@ -34,6 +36,7 @@ public final class OPNSessionReportPayload: NSObject {
         self.averageLatencyText = averageLatencyText
         self.averageBitrateText = averageBitrateText
         self.droppedFramesText = droppedFramesText
+        self.durationSeconds = max(0.0, durationSeconds.isFinite ? durationSeconds : 0.0)
         self.reportText = reportText
         self.copyText = copyText
         self.shouldShow = shouldShow
