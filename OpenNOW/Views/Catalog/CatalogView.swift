@@ -99,6 +99,7 @@ struct CatalogView: View {
     let onRefreshAuth: () -> Void
 
     @StateObject private var viewModel: CatalogViewModel
+    @State private var showsMainMenu = false
     @State private var showsPreviousSessionOverlay = false
 
     init(
@@ -142,7 +143,7 @@ struct CatalogView: View {
                 .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
-                    CatalogTopBar(viewModel: viewModel, accounts: accounts, showsPreviousSessionOverlay: $showsPreviousSessionOverlay, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                    CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, showsPreviousSessionOverlay: $showsPreviousSessionOverlay, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                     if viewModel.selectedMainPage == .settings {
                         SettingsView(viewModel: viewModel)
                     } else {
@@ -150,6 +151,12 @@ struct CatalogView: View {
                     }
                 }
                 .transition(.opacity)
+
+                if showsMainMenu {
+                    CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, onSignOut: onSignOut)
+                        .transition(.opacity)
+                        .zIndex(12)
+                }
 
                 if viewModel.isLaunchFlowVisible {
                     VendorLaunchFlowOverlay(viewModel: viewModel)
@@ -596,6 +603,7 @@ private struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
 private struct CatalogTopBar: View {
     @ObservedObject var viewModel: CatalogViewModel
     let accounts: [LoginAccount]
+    @Binding var showsMainMenu: Bool
     @Binding var showsPreviousSessionOverlay: Bool
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
@@ -604,21 +612,11 @@ private struct CatalogTopBar: View {
     var body: some View {
         ZStack {
             HStack(spacing: 28) {
-                Menu {
-                    Button("Games") { viewModel.showGames() }
-                    Button("Settings") { viewModel.showSettings() }
-                    Divider()
-                    Button("Refresh Catalog") { viewModel.refresh() }
-                    if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
-                        Button("Clear Search and Filters") { viewModel.clearSearchAndFilters() }
-                    }
-                    Divider()
-                    Button("Sign Out", action: onSignOut)
-                } label: {
-                    CatalogHamburgerLabel()
+                Button { showsMainMenu.toggle() } label: {
+                    CatalogHamburgerLabel(isOpen: showsMainMenu)
                 }
-                .menuStyle(.button)
                 .buttonStyle(.plain)
+                .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                 Text(viewModel.selectedMainPage == .settings ? "Settings" : "Games")
                     .font(.nvidia(size: 17, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
@@ -718,21 +716,244 @@ private struct CatalogTopBar: View {
 }
 
 private struct CatalogHamburgerLabel: View {
+    let isOpen: Bool
     @State private var isHovering = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { _ in
-                Capsule()
-                    .fill(Color.white.opacity(isHovering ? 0.98 : 0.84))
-                    .frame(width: 23, height: 2)
+        ZStack {
+            VStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule()
+                        .fill((isOpen || isHovering) ? Color.openNowGreen : Color.white.opacity(0.84))
+                        .frame(width: index == 1 ? 20 : 23, height: 2)
+                }
             }
         }
         .frame(width: 44, height: 40)
-        .background(isHovering ? Color.white.opacity(0.10) : Color.clear)
-        .overlay { Rectangle().stroke(isHovering ? Color.white.opacity(0.16) : Color.clear, lineWidth: 1) }
+        .background((isOpen || isHovering) ? Color.black.opacity(0.32) : Color.clear)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill((isOpen || isHovering) ? Color.openNowGreen : Color.clear)
+                .frame(height: 3)
+        }
         .onHover { isHovering = $0 }
         .accessibilityLabel("Main menu")
+    }
+}
+
+private struct CatalogMainMenuOverlay: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    @Binding var isPresented: Bool
+    let onSignOut: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .onTapGesture { isPresented = false }
+
+            CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut)
+                .padding(.top, CatalogVendorLayout.appBarHeight)
+                .padding(.leading, 0)
+        }
+        .onExitCommand { isPresented = false }
+    }
+}
+
+private struct CatalogMainMenuPanel: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    @Binding var isPresented: Bool
+    let onSignOut: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("GEFORCE NOW")
+                    .font(.nvidia(size: 11, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(Color.openNowGreen)
+                Text("OpenNOW Menu")
+                    .font(.nvidia(size: 20, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.96))
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 20)
+            .padding(.bottom, 18)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 6) {
+                CatalogMainMenuSectionLabel("NAVIGATION")
+                CatalogMainMenuRow(title: "Games", subtitle: "Browse and launch cloud games", systemImage: "gamecontroller.fill", isActive: viewModel.selectedMainPage == .games) {
+                    viewModel.showGames()
+                    isPresented = false
+                }
+                CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
+                    viewModel.showSettings()
+                    isPresented = false
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+
+            VStack(alignment: .leading, spacing: 6) {
+                CatalogMainMenuSectionLabel("SETTINGS")
+                ForEach(CatalogSettingsPage.allCases) { page in
+                    CatalogMainMenuRow(title: page.title, subtitle: "", systemImage: settingsIcon(for: page), isActive: viewModel.selectedMainPage == .settings && viewModel.selectedSettingsPage == page, compact: true) {
+                        viewModel.showSettings(page)
+                        isPresented = false
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+
+            VStack(alignment: .leading, spacing: 6) {
+                CatalogMainMenuSectionLabel("ACTIONS")
+                CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
+                    viewModel.refresh()
+                    isPresented = false
+                }
+                if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
+                    CatalogMainMenuRow(title: "Clear Search and Filters", subtitle: "Return to the default catalog view", systemImage: "line.3.horizontal.decrease.circle", isActive: false) {
+                        viewModel.clearSearchAndFilters()
+                        isPresented = false
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+
+            Spacer(minLength: 18)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(height: 1)
+
+            CatalogMainMenuRow(title: "Sign Out", subtitle: viewModel.account.displayName, systemImage: "rectangle.portrait.and.arrow.right", isActive: false, role: .destructive) {
+                isPresented = false
+                onSignOut()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 12)
+        }
+        .frame(width: 344, height: 620, alignment: .topLeading)
+        .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(Color.white.opacity(0.10))
+                .frame(width: 1)
+        }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.openNowGreen)
+                .frame(height: 2)
+        }
+        .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+    }
+
+    private func settingsIcon(for page: CatalogSettingsPage) -> String {
+        switch page {
+        case .account: return "person.crop.circle.fill"
+        case .connections: return "link"
+        case .gameplay: return "slider.horizontal.3"
+        case .serverLocation: return "network"
+        case .resolutionUpscaling: return "sparkles.tv.fill"
+        case .system: return "desktopcomputer"
+        case .about: return "info.circle.fill"
+        }
+    }
+}
+
+private struct CatalogMainMenuSectionLabel: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.nvidia(size: 10, weight: .bold))
+            .tracking(1.1)
+            .foregroundStyle(.white.opacity(0.42))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+    }
+}
+
+private struct CatalogMainMenuRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let isActive: Bool
+    var compact = false
+    var role: ButtonRole?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 13) {
+                ZStack {
+                    Rectangle()
+                        .fill(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                    Image(systemName: systemImage)
+                        .font(.nvidia(size: compact ? 12 : 14, weight: .bold))
+                        .foregroundStyle(iconColor)
+                }
+                .frame(width: compact ? 28 : 34, height: compact ? 28 : 34)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.nvidia(size: compact ? 12 : 14, weight: .bold))
+                        .foregroundStyle(titleColor)
+                        .lineLimit(1)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.nvidia(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.52))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                if isActive {
+                    Rectangle()
+                        .fill(Color.openNowGreen)
+                        .frame(width: 4, height: compact ? 26 : 38)
+                }
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 0)
+            .frame(height: compact ? 38 : 50)
+            .background(rowBackground)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(isActive ? Color.openNowGreen : Color.clear)
+                    .frame(width: 3)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(title)
+    }
+
+    private var rowBackground: Color {
+        if isActive { return Color.openNowGreen.opacity(0.14) }
+        return Color.white.opacity(isHovering ? 0.085 : 0)
+    }
+
+    private var titleColor: Color {
+        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+    }
+
+    private var iconColor: Color {
+        if isActive { return .black.opacity(0.86) }
+        if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
+        return .white.opacity(isHovering ? 0.94 : 0.72)
     }
 }
 
