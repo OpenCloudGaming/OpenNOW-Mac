@@ -30,6 +30,18 @@ private struct OPNStreamGamepadState: Equatable {
     var rightStickY: Int16 = 0
     var connected = false
     var timestampUs: UInt64 = 0
+
+    static func == (lhs: OPNStreamGamepadState, rhs: OPNStreamGamepadState) -> Bool {
+        lhs.controllerId == rhs.controllerId &&
+            lhs.buttons == rhs.buttons &&
+            lhs.leftTrigger == rhs.leftTrigger &&
+            lhs.rightTrigger == rhs.rightTrigger &&
+            lhs.leftStickX == rhs.leftStickX &&
+            lhs.leftStickY == rhs.leftStickY &&
+            lhs.rightStickX == rhs.rightStickX &&
+            lhs.rightStickY == rhs.rightStickY &&
+            lhs.connected == rhs.connected
+    }
 }
 private struct OPNPadSnapshot { var known = false; var state = OPNStreamGamepadState() }
 
@@ -397,9 +409,11 @@ final class OPNStreamView: NSView {
                 context.duration = 0.18
                 overlay.animator().alphaValue = 0
             } completionHandler: { [weak self, weak overlay] in
-                guard let self, let overlay, self.microphoneShortcutOverlay === overlay else { return }
-                overlay.removeFromSuperview()
-                self.microphoneShortcutOverlay = nil
+                Task { @MainActor [weak self, weak overlay] in
+                    guard let self, let overlay, self.microphoneShortcutOverlay === overlay else { return }
+                    overlay.removeFromSuperview()
+                    self.microphoneShortcutOverlay = nil
+                }
             }
         }
     }

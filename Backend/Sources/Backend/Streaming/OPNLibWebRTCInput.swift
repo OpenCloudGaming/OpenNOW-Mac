@@ -8,6 +8,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         static let partialReliableInputLifetimeMs: Int32 = 5
         static let partialReliableInputBacklogLimitBytes: UInt64 = 16 * 1024
         static let lowLatencyInputBacklogLimitBytes: UInt64 = 4 * 1024
+        static let gamepadInputBacklogLimitBytes: UInt64 = 512
     }
 
     private weak var owner: OPNLibWebRTCStreamSession?
@@ -102,6 +103,9 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                           bitmap: UInt16,
                           lowLatencyMode: Bool,
                           sessionImpl: OPNLibWebRTCSessionImpl?) {
+        guard let channel = sessionImpl?.partialInputChannel,
+              channel.readyState == .open,
+              channel.bufferedAmount <= Constants.gamepadInputBacklogLimitBytes else { return }
         let encoded = encoder.encodeGamepadState(controllerId: controllerId,
                                                  buttons: buttons,
                                                  leftTrigger: leftTrigger,
