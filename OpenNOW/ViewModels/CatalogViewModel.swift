@@ -140,10 +140,10 @@ final class CatalogViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    var featuredGames: [OPNCatalogGameObject] {
+    var marqueeGames: [OPNCatalogGameObject] {
         var games: [OPNCatalogGameObject] = []
         var seen = Set<String>()
-        for panel in marqueePanels + mainPanels {
+        for panel in marqueePanels {
             for section in panel.sections {
                 for game in section.games {
                     let key = Self.identity(for: game)
@@ -153,7 +153,7 @@ final class CatalogViewModel: ObservableObject {
                 }
             }
         }
-        return Array(games.prefix(8))
+        return games
     }
 
     var catalogSections: [CatalogSectionModel] {

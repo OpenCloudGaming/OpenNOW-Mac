@@ -839,9 +839,7 @@ private struct CatalogContentView: View {
     }
 
     private var heroGames: [OPNCatalogGameObject] {
-        let featuredGames = viewModel.featuredGames
-        if !featuredGames.isEmpty { return Array(featuredGames.prefix(8)) }
-        return Array(viewModel.catalogGames.prefix(8))
+        viewModel.marqueeGames
     }
 
     private var heroIdentityList: [String] {
