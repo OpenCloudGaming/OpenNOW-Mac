@@ -14,12 +14,19 @@ private enum OPNRecordingAudioKind {
     case microphone
 }
 
-private struct OPNRecordedPCMBuffer: Sendable {
-    let data: Data
-    let frameCount: UInt32
-    let sampleRate: Double
-    let channels: UInt32
-    let hostTime: CFTimeInterval
+private final class OPNRecordedPCMBufferSlot: @unchecked Sendable {
+    let byteCapacity: Int
+    var data: Data
+    var byteCount = 0
+    var frameCount: UInt32 = 0
+    var sampleRate = 48_000.0
+    var channels: UInt32 = 2
+    var hostTime: CFTimeInterval = 0
+
+    init(byteCapacity: Int) {
+        self.byteCapacity = byteCapacity
+        self.data = Data(count: byteCapacity)
+    }
 }
 
 private final class OPNSendableBox<T>: @unchecked Sendable {
@@ -32,6 +39,9 @@ private final class OPNSendableBox<T>: @unchecked Sendable {
 
 @objc(OPNStreamRecordingManager)
 final class OPNStreamRecordingManager: NSObject {
+    private static let realtimeAudioBufferSlotCount = 32
+    private static let realtimeAudioBufferByteCapacity = 16 * 1024
+
     @objc private(set) dynamic var isRecording = false
     @objc private(set) dynamic var isStarting = false
     @objc private(set) dynamic var statusText: String? = "Ready"
@@ -42,6 +52,8 @@ final class OPNStreamRecordingManager: NSObject {
     private let writerQueue = DispatchQueue(label: "com.opennow.recording.writer")
     private let audioQueue = DispatchQueue(label: "com.opennow.recording.audio")
     private let ciContext = CIContext(options: nil)
+    private let realtimeAudioBufferLock = NSLock()
+    private let realtimeAudioBufferSlots = (0..<OPNStreamRecordingManager.realtimeAudioBufferSlotCount).map { _ in OPNRecordedPCMBufferSlot(byteCapacity: OPNStreamRecordingManager.realtimeAudioBufferByteCapacity) }
 
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -63,17 +75,26 @@ final class OPNStreamRecordingManager: NSObject {
     private var enhancedVideoFallbackDeadlineHostTime: CFTimeInterval = 0
     private var droppedVideoFrames: UInt64 = 0
     private var lastDroppedVideoFrameLogTime: CFTimeInterval = 0
+    private var realtimeAudioFreeBuffers: [OPNRecordedPCMBufferSlot] = []
+    private var realtimeAudioPendingBuffers: [OPNRecordedPCMBufferSlot] = []
+    private var realtimeAudioDrainSource: DispatchSourceUserDataAdd?
     private var microphoneCaptureSession: AVCaptureSession?
     private var ypCbCrToARGBInfo = vImage_YpCbCrToARGB()
     private var ypCbCrConversionReady = false
 
     override init() {
         super.init()
+        realtimeAudioFreeBuffers = realtimeAudioBufferSlots
+        let source = DispatchSource.makeUserDataAddSource(queue: writerQueue)
+        source.setEventHandler { [weak self] in self?.drainRealtimeAudioBuffers() }
+        realtimeAudioDrainSource = source
+        source.resume()
         refreshRecentRecordings()
     }
 
     deinit {
         stopRecording()
+        realtimeAudioDrainSource?.cancel()
     }
 
     @objc(toggleRecordingForGameTitle:window:)
@@ -338,19 +359,10 @@ final class OPNStreamRecordingManager: NSObject {
         let dataBytes = min(expectedBytes, buffer.mDataByteSize)
         guard dataBytes > 0 else { return }
 
-        let copiedBuffer = OPNRecordedPCMBuffer(
-            data: Data(bytes: data, count: Int(dataBytes)),
-            frameCount: frameCount,
-            sampleRate: sampleRate,
-            channels: channels,
-            hostTime: CACurrentMediaTime()
-        )
-        writerQueue.async { [weak self, copiedBuffer] in
-            self?.appendCopiedWebRTCAudioBuffer(copiedBuffer)
-        }
+        enqueueRealtimeAudioBuffer(data: data, byteCount: Int(dataBytes), frameCount: frameCount, sampleRate: sampleRate, channels: channels)
     }
 
-    private func appendCopiedWebRTCAudioBuffer(_ copiedBuffer: OPNRecordedPCMBuffer) {
+    private func appendCopiedWebRTCAudioBuffer(_ copiedBuffer: OPNRecordedPCMBufferSlot) {
         guard acceptingSamples, writer?.status == .writing else { return }
 
         var format = AudioStreamBasicDescription()
@@ -363,7 +375,7 @@ final class OPNStreamRecordingManager: NSObject {
         format.mBytesPerFrame = format.mChannelsPerFrame * UInt32(MemoryLayout<Int16>.size)
         format.mBytesPerPacket = format.mBytesPerFrame
 
-        let dataBytes = min(copiedBuffer.data.count, Int(copiedBuffer.frameCount * format.mBytesPerFrame))
+        let dataBytes = min(copiedBuffer.byteCount, Int(copiedBuffer.frameCount * format.mBytesPerFrame))
         guard dataBytes > 0 else { return }
 
         var formatDescription: CMAudioFormatDescription?
@@ -385,6 +397,50 @@ final class OPNStreamRecordingManager: NSObject {
         status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, formatDescription: formatDescription, sampleCount: sampleCount, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sampleBuffer)
         guard status == noErr, let sampleBuffer else { return }
         appendPreparedAudioSampleBufferOnWriterQueue(sampleBuffer, kind: .system)
+    }
+
+    private func enqueueRealtimeAudioBuffer(data: UnsafeMutableRawPointer, byteCount: Int, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
+        guard byteCount > 0, byteCount <= Self.realtimeAudioBufferByteCapacity else { return }
+        guard realtimeAudioBufferLock.try() else { return }
+        defer { realtimeAudioBufferLock.unlock() }
+        guard let slot = realtimeAudioFreeBuffers.popLast() else { return }
+        slot.byteCount = byteCount
+        slot.frameCount = frameCount
+        slot.sampleRate = sampleRate
+        slot.channels = channels
+        slot.hostTime = CACurrentMediaTime()
+        slot.data.withUnsafeMutableBytes { bytes in
+            if let baseAddress = bytes.baseAddress {
+                memcpy(baseAddress, data, byteCount)
+            }
+        }
+        realtimeAudioPendingBuffers.append(slot)
+        realtimeAudioDrainSource?.add(data: 1)
+    }
+
+    private func drainRealtimeAudioBuffers() {
+        while true {
+            let slot: OPNRecordedPCMBufferSlot?
+            realtimeAudioBufferLock.lock()
+            if realtimeAudioPendingBuffers.isEmpty {
+                slot = nil
+            } else {
+                slot = realtimeAudioPendingBuffers.removeFirst()
+            }
+            realtimeAudioBufferLock.unlock()
+            guard let slot else { return }
+            appendCopiedWebRTCAudioBuffer(slot)
+            returnRealtimeAudioBuffer(slot)
+        }
+    }
+
+    private func returnRealtimeAudioBuffer(_ slot: OPNRecordedPCMBufferSlot) {
+        slot.byteCount = 0
+        realtimeAudioBufferLock.lock()
+        if realtimeAudioFreeBuffers.count < realtimeAudioBufferSlots.count {
+            realtimeAudioFreeBuffers.append(slot)
+        }
+        realtimeAudioBufferLock.unlock()
     }
 
     @objc(thumbnailForRecordingURL:size:)

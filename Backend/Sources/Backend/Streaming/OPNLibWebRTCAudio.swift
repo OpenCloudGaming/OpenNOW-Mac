@@ -400,8 +400,10 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         microphoneEnabled = enabled
         self.sessionImpl = sessionImpl
         sessionImpl?.localMicrophoneTrack?.isEnabled = enabled
-        if enabled, sessionImpl?.localMicrophoneTrack != nil {
+        if enabled, sessionImpl?.localMicrophoneTrack != nil, sessionImpl?.audioDevice == nil {
             startMicrophoneLevelPolling(sessionImpl: sessionImpl, statsQueue: DispatchQueue.global(qos: .utility))
+        } else if sessionImpl?.audioDevice != nil {
+            stopMicrophoneLevelPolling()
         } else if !enabled {
             owner?.handleMicrophoneLevel(0)
         }

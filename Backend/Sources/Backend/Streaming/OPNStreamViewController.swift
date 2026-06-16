@@ -1084,7 +1084,7 @@ final class OPNStreamViewController: NSViewController {
     private func shortcutLegendFrame() -> NSRect { NSRect(x: max(24, view.bounds.width - 384), y: max(24, (view.bounds.height - 338) / 2), width: 360, height: 338) }
 
     private func recordStreamUserActivity() { lastStreamActivityTime = CACurrentMediaTime() }
-    private func startInactivityTimer() { lastStreamActivityTime = CACurrentMediaTime(); inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in Task { @MainActor [weak self] in self?.checkInactivity() } } }
+    private func startInactivityTimer() { lastStreamActivityTime = CACurrentMediaTime(); guard inactivityTimer == nil else { return }; inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in Task { @MainActor [weak self] in self?.checkInactivity() } } }
     private func stopInactivityTimer() { inactivityTimer?.invalidate(); inactivityTimer = nil }
     private func checkInactivity() {
         guard connectedOnce, !recovering else { return }

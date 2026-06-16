@@ -305,7 +305,6 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func sendMouseButton(button: UInt8, down: Bool) { inputController.sendMouseButton(button: button, down: down, sessionImpl: impl) }
     func sendMouseWheel(delta: Int16) { inputController.sendMouseWheel(delta: delta, sessionImpl: impl) }
     func sendGamepadState(controllerId: UInt16, buttons: UInt16, leftTrigger: UInt8, rightTrigger: UInt8, leftStickX: Int16, leftStickY: Int16, rightStickX: Int16, rightStickY: Int16, connected: Bool, bitmap: UInt16, timestampUs: UInt64) {
-        guard connected else { return }
         inputController.sendGamepadState(controllerId: controllerId, buttons: buttons, leftTrigger: leftTrigger, rightTrigger: rightTrigger, leftStickX: leftStickX, leftStickY: leftStickY, rightStickX: rightStickX, rightStickY: rightStickY, timestampUs: timestampUs, bitmap: bitmap, lowLatencyMode: lowLatencyMode, sessionImpl: impl)
     }
 
@@ -524,7 +523,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         audioTrack.isEnabled = microphoneEnabled
         if attachMicrophoneTrack(impl: impl, audioTrack: audioTrack) {
             impl.localMicrophoneTrack = audioTrack
-            audioController.startMicrophoneLevelPolling(sessionImpl: impl, statsQueue: statsQueue)
+            if impl.audioDevice == nil {
+                audioController.startMicrophoneLevelPolling(sessionImpl: impl, statsQueue: statsQueue)
+            }
         } else {
             NSLog("[LibWebRTC] failed to attach local microphone track")
         }
