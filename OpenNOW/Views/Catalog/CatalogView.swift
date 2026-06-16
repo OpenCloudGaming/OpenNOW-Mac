@@ -608,10 +608,7 @@ private struct CatalogTopBar: View {
                     Divider()
                     Button("Sign Out", action: onSignOut)
                 } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.nvidia(size: 21))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .frame(width: 40, height: 40)
+                    CatalogHamburgerLabel()
                 }
                 .menuStyle(.button)
                 .buttonStyle(.plain)
@@ -716,23 +713,50 @@ private struct CatalogTopBar: View {
     }
 }
 
+private struct CatalogHamburgerLabel: View {
+    @State private var isHovering = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { _ in
+                Capsule()
+                    .fill(Color.white.opacity(isHovering ? 0.98 : 0.84))
+                    .frame(width: 23, height: 2)
+            }
+        }
+        .frame(width: 44, height: 40)
+        .background(isHovering ? Color.white.opacity(0.10) : Color.clear)
+        .overlay { Rectangle().stroke(isHovering ? Color.white.opacity(0.16) : Color.clear, lineWidth: 1) }
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("Main menu")
+    }
+}
+
 private struct CatalogSessionDetailsPopover: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Previous Session")
+            Text("Previous Game Session")
                 .font(.nvidia(size: 17, weight: .bold))
                 .foregroundStyle(.white)
 
-            VStack(alignment: .leading, spacing: 8) {
-                detailRow("Account", viewModel.account.displayName)
-                detailRow("Plan", viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier)
-                detailRow("Auth", viewModel.session.authMethod)
-                detailRow("Device", viewModel.session.deviceId)
-                detailRow("Issued", formattedDate(viewModel.session.issuedAt))
-                detailRow("Expires", formattedDate(viewModel.session.expiresAt))
-                detailRow("Offline", viewModel.session.canContinueOffline ? "Available" : "Unavailable")
+            if let previous = viewModel.previousGameSession {
+                VStack(alignment: .leading, spacing: 8) {
+                    detailRow("Game", previous.title)
+                    detailRow("App ID", previous.appId)
+                    detailRow("Store", previous.store.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: previous.store))
+                    detailRow("Ended", formattedDate(previous.endedAt))
+                    detailRow("Result", previous.result)
+                    detailRow("Launch", previous.launchTime)
+                    detailRow("Latency", previous.averageLatency)
+                    detailRow("Bitrate", previous.averageBitrate)
+                    detailRow("Dropped", previous.droppedFrames)
+                }
+            } else {
+                Text("No completed game stream yet.")
+                    .font(.nvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.68))
             }
         }
     }
@@ -816,6 +840,11 @@ private struct CatalogContentView: View {
                 }
                 .padding(.bottom, 44)
             }
+            .background(
+                Color.black
+                    .contentShape(Rectangle())
+                    .onTapGesture { viewModel.closeGameDetailsFromBackground() }
+            )
 
             if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
                 VendorSplashLoadingView()

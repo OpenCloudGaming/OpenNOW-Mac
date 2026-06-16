@@ -19,6 +19,150 @@ private final class OPNStreamSendableValue<T>: @unchecked Sendable {
     }
 }
 
+@MainActor
+private final class OPNStreamQuitDecisionSheet {
+    private let window: NSWindow
+
+    init(gameTitle: String) {
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 292))
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor(calibratedWhite: 0.075, alpha: 1).cgColor
+
+        window = NSWindow(contentRect: contentView.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = contentView
+        window.backgroundColor = .clear
+        window.isReleasedWhenClosed = false
+        let sheetWindow = window
+
+        let accent = NSColor(calibratedRed: 0.46, green: 0.73, blue: 0, alpha: 1)
+        let title = Self.makeLabel(
+            gameTitle.isEmpty ? "Leave GeForce NOW stream?" : "Leave \(gameTitle)?",
+            size: 24,
+            weight: .bold,
+            color: .white
+        )
+        let subtitle = Self.makeLabel(
+            "Choose how OpenNOW should handle the active cloud session.",
+            size: 13,
+            weight: .medium,
+            color: NSColor(calibratedWhite: 0.72, alpha: 1)
+        )
+        subtitle.maximumNumberOfLines = 2
+
+        let pauseTitle = Self.makeLabel("PAUSE STREAM", size: 13, weight: .bold, color: .white)
+        let pauseBody = Self.makeLabel("Disconnect this Mac and keep the cloud session available to resume.", size: 12, weight: .medium, color: NSColor(calibratedWhite: 0.62, alpha: 1))
+        pauseBody.maximumNumberOfLines = 2
+        let endTitle = Self.makeLabel("END STREAM", size: 13, weight: .bold, color: .white)
+        let endBody = Self.makeLabel("Close the GeForce NOW cloud session instead of leaving it paused.", size: 12, weight: .medium, color: NSColor(calibratedWhite: 0.62, alpha: 1))
+        endBody.maximumNumberOfLines = 2
+        let pauseButton = Self.makeButton("PAUSE STREAM", background: accent, foreground: .black) { [weak sheetWindow] in
+            guard let sheetWindow else { return }
+            sheetWindow.sheetParent?.endSheet(sheetWindow, returnCode: .alertFirstButtonReturn)
+        }
+        let endButton = Self.makeButton("END STREAM", background: NSColor(calibratedWhite: 0.18, alpha: 1), foreground: .white) { [weak sheetWindow] in
+            guard let sheetWindow else { return }
+            sheetWindow.sheetParent?.endSheet(sheetWindow, returnCode: .alertSecondButtonReturn)
+        }
+        let cancelButton = Self.makeButton("CANCEL", background: NSColor(calibratedWhite: 0.11, alpha: 1), foreground: NSColor(calibratedWhite: 0.86, alpha: 1)) { [weak sheetWindow] in
+            guard let sheetWindow else { return }
+            sheetWindow.sheetParent?.endSheet(sheetWindow, returnCode: .alertThirdButtonReturn)
+        }
+
+        let divider = NSView()
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
+
+        [title, subtitle, pauseTitle, pauseBody, endTitle, endBody, pauseButton, endButton, cancelButton, divider].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview($0)
+        }
+
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 34),
+            title.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -34),
+            title.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 30),
+            subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            subtitle.trailingAnchor.constraint(equalTo: title.trailingAnchor),
+            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 8),
+            divider.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: title.trailingAnchor),
+            divider.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 22),
+            divider.heightAnchor.constraint(equalToConstant: 1),
+            pauseTitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            pauseTitle.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 22),
+            pauseBody.leadingAnchor.constraint(equalTo: pauseTitle.leadingAnchor),
+            pauseBody.trailingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: -18),
+            pauseBody.topAnchor.constraint(equalTo: pauseTitle.bottomAnchor, constant: 6),
+            pauseButton.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            pauseButton.topAnchor.constraint(equalTo: pauseBody.bottomAnchor, constant: 18),
+            pauseButton.widthAnchor.constraint(equalToConstant: 176),
+            pauseButton.heightAnchor.constraint(equalToConstant: 40),
+            endTitle.leadingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: 18),
+            endTitle.topAnchor.constraint(equalTo: pauseTitle.topAnchor),
+            endBody.leadingAnchor.constraint(equalTo: endTitle.leadingAnchor),
+            endBody.trailingAnchor.constraint(equalTo: title.trailingAnchor),
+            endBody.topAnchor.constraint(equalTo: endTitle.bottomAnchor, constant: 6),
+            endButton.leadingAnchor.constraint(equalTo: endTitle.leadingAnchor),
+            endButton.topAnchor.constraint(equalTo: pauseButton.topAnchor),
+            endButton.widthAnchor.constraint(equalToConstant: 154),
+            endButton.heightAnchor.constraint(equalToConstant: 40),
+            cancelButton.trailingAnchor.constraint(equalTo: title.trailingAnchor),
+            cancelButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24),
+            cancelButton.widthAnchor.constraint(equalToConstant: 112),
+            cancelButton.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+
+    func begin(for parent: NSWindow, completion: @escaping (NSApplication.ModalResponse) -> Void) {
+        parent.beginSheet(window) { response in completion(response) }
+    }
+
+    private static func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.systemFont(ofSize: size, weight: weight)
+        label.textColor = color
+        label.lineBreakMode = .byWordWrapping
+        return label
+    }
+
+    private static func makeButton(_ title: String, background: NSColor, foreground: NSColor, action: @escaping () -> Void) -> NSButton {
+        let button = OPNStreamQuitDecisionButton(title: title, background: background, foreground: foreground, action: action)
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = background.cgColor
+        button.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.13).cgColor
+        button.layer?.borderWidth = 1
+        return button
+    }
+}
+
+@MainActor
+private final class OPNStreamQuitDecisionButton: NSButton {
+    private let handler: () -> Void
+
+    init(title: String, background: NSColor, foreground: NSColor, action: @escaping () -> Void) {
+        handler = action
+        super.init(frame: .zero)
+        attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .bold),
+            .foregroundColor: foreground,
+            .kern: 0.8
+        ])
+        target = self
+        self.action = #selector(performAction)
+    }
+
+    required init?(coder: NSCoder) {
+        handler = {}
+        super.init(coder: coder)
+    }
+
+    @objc private func performAction() {
+        handler()
+    }
+}
+
 @objc(OPNStreamViewController)
 @objcMembers
 @MainActor
@@ -42,6 +186,7 @@ final class OPNStreamViewController: NSViewController {
     private var loadingView: OPNLoadingView?
     private var statusLabel: NSTextField?
     private var quitDecisionInFlight = false
+    private var quitDecisionSheet: OPNStreamQuitDecisionSheet?
     private var statsOverlay: OPNGFNStatsHUDView?
     private var shortcutLegendOverlay: OPNShortcutLegendView?
     private var statsRefreshTimer: Timer?
@@ -206,19 +351,13 @@ final class OPNStreamViewController: NSViewController {
         }
         quitDecisionInFlight = true
         streamView?.releasePointerLock()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = gameTitle.isEmpty ? "Leave GeForce NOW stream?" : "Leave \(gameTitle)?"
-        alert.informativeText = "Pause disconnects this Mac and keeps the cloud session available to resume. End closes the cloud session for everyone."
-        alert.addButton(withTitle: "Pause Stream")
-        alert.addButton(withTitle: "End Stream")
-        alert.addButton(withTitle: "Cancel")
         let handleResponse: @MainActor (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self else {
                 completion(false)
                 return
             }
             self.quitDecisionInFlight = false
+            self.quitDecisionSheet = nil
             switch response {
             case .alertFirstButtonReturn:
                 self.pauseStreamFromUserQuit()
@@ -232,10 +371,19 @@ final class OPNStreamViewController: NSViewController {
             }
         }
         if let window = view.window {
-            alert.beginSheetModal(for: window) { response in
+            let sheet = OPNStreamQuitDecisionSheet(gameTitle: gameTitle)
+            quitDecisionSheet = sheet
+            sheet.begin(for: window) { response in
                 Task { @MainActor in handleResponse(response) }
             }
         } else {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = gameTitle.isEmpty ? "Leave GeForce NOW stream?" : "Leave \(gameTitle)?"
+            alert.informativeText = "Pause disconnects this Mac and keeps the cloud session available to resume. End closes the cloud session for everyone."
+            alert.addButton(withTitle: "Pause Stream")
+            alert.addButton(withTitle: "End Stream")
+            alert.addButton(withTitle: "Cancel")
             handleResponse(alert.runModal())
         }
     }

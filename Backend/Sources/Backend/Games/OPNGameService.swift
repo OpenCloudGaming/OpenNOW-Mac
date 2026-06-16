@@ -855,7 +855,10 @@ final class OPNGameService: @unchecked Sendable {
                     self.dispatchPanel(completion, false, [], missingMessage)
                     return
                 }
-                self.dispatchPanel(completion, true, self.parsePanelResults(rawPanels), "")
+                let panels = self.parsePanelResults(rawPanels)
+                self.enrichPanelResults(panels, vpcId: resolvedVpcId) { enrichedPanels in
+                    self.dispatchPanel(completion, true, enrichedPanels, "")
+                }
             }
         }
     }
@@ -1018,6 +1021,33 @@ final class OPNGameService: @unchecked Sendable {
                 return merged
             }
             completion(enriched)
+        }
+    }
+
+    private func enrichPanelResults(_ panels: [OPNPanelResult], vpcId: String, completion: @escaping @Sendable ([OPNPanelResult]) -> Void) {
+        let games = panels.flatMap(\.sections).flatMap(\.games)
+        guard !games.isEmpty else {
+            completion(panels)
+            return
+        }
+        enrichGames(games, vpcId: vpcId) { enrichedGames in
+            var enrichedById: [String: OPNGameInfo] = [:]
+            for game in enrichedGames {
+                let key = game.uuid.isEmpty ? game.id : game.uuid
+                if !key.isEmpty { enrichedById[key] = game }
+            }
+            let enrichedPanels = panels.map { panel in
+                var outputPanel = panel
+                outputPanel.sections = panel.sections.map { section in
+                    var outputSection = section
+                    outputSection.games = section.games.map { game in
+                        enrichedById[game.uuid.isEmpty ? game.id : game.uuid] ?? game
+                    }
+                    return outputSection
+                }
+                return outputPanel
+            }
+            completion(enrichedPanels)
         }
     }
 

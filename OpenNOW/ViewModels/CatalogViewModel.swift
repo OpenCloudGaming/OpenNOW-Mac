@@ -113,6 +113,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedSettingsRegionUrl = ""
     @Published var isRefreshingSettingsRegions = false
     @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
+    @Published var previousGameSession = CatalogPreviousGameSession.load()
 
     let account: LoginAccount
     let session: LoginSession
@@ -322,6 +323,11 @@ final class CatalogViewModel: ObservableObject {
         selectGame(game)
     }
 
+    func closeGameDetailsFromBackground() {
+        guard selectedGame != nil else { return }
+        selectGame(nil)
+    }
+
     func launchSelectedGame() {
         guard let selectedGame else { return }
         launch(game: selectedGame, variantIndex: selectedVariantIndex)
@@ -466,12 +472,18 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func finishActiveStream(success: Bool, message: String, report: OPNSessionReportPayload?) {
+        let finishedConfiguration = activeStreamConfiguration
         activeStreamConfiguration = nil
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
         streamProgressGeneration += 1
         clearLaunchFlow()
         launchMessage = ""
+        if let finishedConfiguration {
+            let session = CatalogPreviousGameSession(configuration: finishedConfiguration, success: success, message: message, report: report)
+            previousGameSession = session
+            session.save()
+        }
         if !success, !message.isEmpty {
             errorMessage = message
             return
@@ -1027,6 +1039,47 @@ struct CatalogStoreDefinition: Identifiable, Equatable {
     let isAccountLinkingSupported: Bool
     let isAccountLinkingRequired: Bool
     let accountLinkingLabel: String
+}
+
+struct CatalogPreviousGameSession: Codable, Equatable {
+    private static let storageKey = "OpenNOW.Catalog.PreviousGameSession"
+
+    let title: String
+    let appId: String
+    let store: String
+    let result: String
+    let endedAt: Date
+    let launchTime: String
+    let averageLatency: String
+    let averageBitrate: String
+    let droppedFrames: String
+
+    init(configuration: OPNStreamLaunchConfiguration, success: Bool, message: String, report: OPNSessionReportPayload?) {
+        let reportTitle = report?.gameTitle ?? ""
+        title = reportTitle.isEmpty ? (configuration.title.isEmpty ? "GeForce NOW" : configuration.title) : reportTitle
+        appId = configuration.appId
+        store = configuration.selectedStore
+        if success {
+            result = report?.success == false ? "Ended with warnings" : "Ended normally"
+        } else {
+            result = message.isEmpty ? "Ended with error" : message
+        }
+        endedAt = Date()
+        launchTime = report?.launchText ?? "Unknown"
+        averageLatency = report?.averageLatencyText ?? "Unknown"
+        averageBitrate = report?.averageBitrateText ?? "Unknown"
+        droppedFrames = report?.droppedFramesText ?? "Unknown"
+    }
+
+    static func load() -> CatalogPreviousGameSession? {
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return nil }
+        return try? JSONDecoder().decode(CatalogPreviousGameSession.self, from: data)
+    }
+
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        UserDefaults.standard.set(data, forKey: Self.storageKey)
+    }
 }
 
 private extension OPNCatalogPanelSectionObject {
