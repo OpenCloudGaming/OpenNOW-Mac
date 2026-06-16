@@ -14,7 +14,7 @@ import SwiftUI
 
 private enum CatalogVendorLayout {
     static let appBarHeight: CGFloat = 56
-    static let appBarBackground = Color(red: 57 / 255, green: 57 / 255, blue: 57 / 255)
+    static let appBarBackground = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
     static let mallSurface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
     static let tileTray = Color(red: 41 / 255, green: 41 / 255, blue: 41 / 255)
     static let sectionHeaderMargin: CGFloat = 40
@@ -28,6 +28,7 @@ private enum CatalogVendorLayout {
     static let heroAspectRatio: CGFloat = 0.3229
     static let heroFallbackHeight: CGFloat = 500
     static let detailPanelHeight: CGFloat = 548
+    static let mainMenuWidth: CGFloat = 344
 
     static func heroHeight(for width: CGFloat) -> CGFloat {
         width > 0 ? width * heroAspectRatio : heroFallbackHeight
@@ -687,7 +688,7 @@ private struct CatalogTopBar: View {
         }
         .frame(height: CatalogVendorLayout.appBarHeight)
         .background(CatalogVendorLayout.appBarBackground)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.28)).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.42)).frame(height: 1) }
     }
 
     private var catalogSearchField: some View {
@@ -710,8 +711,8 @@ private struct CatalogTopBar: View {
         }
         .padding(.horizontal, 15)
         .frame(height: 40)
-        .background(Color(red: 0.145, green: 0.145, blue: 0.145))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+        .background(Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
     }
 }
 
@@ -730,7 +731,7 @@ private struct CatalogHamburgerLabel: View {
             }
         }
         .frame(width: 44, height: 40)
-        .background((isOpen || isHovering) ? Color.black.opacity(0.32) : Color.clear)
+        .background((isOpen || isHovering) ? Color.black.opacity(0.22) : Color.clear)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill((isOpen || isHovering) ? Color.openNowGreen : Color.clear)
@@ -747,14 +748,16 @@ private struct CatalogMainMenuOverlay: View {
     let onSignOut: () -> Void
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
-                .onTapGesture { isPresented = false }
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture { isPresented = false }
 
-            CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut)
-                .padding(.top, CatalogVendorLayout.appBarHeight)
-                .padding(.leading, 0)
+                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight))
+                    .padding(.top, CatalogVendorLayout.appBarHeight)
+                    .padding(.leading, 0)
+            }
         }
         .onExitCommand { isPresented = false }
     }
@@ -764,6 +767,7 @@ private struct CatalogMainMenuPanel: View {
     @ObservedObject var viewModel: CatalogViewModel
     @Binding var isPresented: Bool
     let onSignOut: () -> Void
+    let availableHeight: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -784,49 +788,52 @@ private struct CatalogMainMenuPanel: View {
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 6) {
-                CatalogMainMenuSectionLabel("NAVIGATION")
-                CatalogMainMenuRow(title: "Games", subtitle: "Browse and launch cloud games", systemImage: "gamecontroller.fill", isActive: viewModel.selectedMainPage == .games) {
-                    viewModel.showGames()
-                    isPresented = false
-                }
-                CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
-                    viewModel.showSettings()
-                    isPresented = false
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 14)
-
-            VStack(alignment: .leading, spacing: 6) {
-                CatalogMainMenuSectionLabel("SETTINGS")
-                ForEach(CatalogSettingsPage.allCases) { page in
-                    CatalogMainMenuRow(title: page.title, subtitle: "", systemImage: settingsIcon(for: page), isActive: viewModel.selectedMainPage == .settings && viewModel.selectedSettingsPage == page, compact: true) {
-                        viewModel.showSettings(page)
-                        isPresented = false
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        CatalogMainMenuSectionLabel("NAVIGATION")
+                        CatalogMainMenuRow(title: "Games", subtitle: "Browse and launch cloud games", systemImage: "gamecontroller.fill", isActive: viewModel.selectedMainPage == .games) {
+                            viewModel.showGames()
+                            isPresented = false
+                        }
+                        CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
+                            viewModel.showSettings()
+                            isPresented = false
+                        }
                     }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 14)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 14)
 
-            VStack(alignment: .leading, spacing: 6) {
-                CatalogMainMenuSectionLabel("ACTIONS")
-                CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
-                    viewModel.refresh()
-                    isPresented = false
-                }
-                if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
-                    CatalogMainMenuRow(title: "Clear Search and Filters", subtitle: "Return to the default catalog view", systemImage: "line.3.horizontal.decrease.circle", isActive: false) {
-                        viewModel.clearSearchAndFilters()
-                        isPresented = false
+                    VStack(alignment: .leading, spacing: 6) {
+                        CatalogMainMenuSectionLabel("SETTINGS")
+                        ForEach(CatalogSettingsPage.allCases) { page in
+                            CatalogMainMenuRow(title: page.title, subtitle: "", systemImage: settingsIcon(for: page), isActive: viewModel.selectedMainPage == .settings && viewModel.selectedSettingsPage == page, compact: true) {
+                                viewModel.showSettings(page)
+                                isPresented = false
+                            }
+                        }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.top, 14)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        CatalogMainMenuSectionLabel("ACTIONS")
+                        CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
+                            viewModel.refresh()
+                            isPresented = false
+                        }
+                        if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
+                            CatalogMainMenuRow(title: "Clear Search and Filters", subtitle: "Return to the default catalog view", systemImage: "line.3.horizontal.decrease.circle", isActive: false) {
+                                viewModel.clearSearchAndFilters()
+                                isPresented = false
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.top, 14)
+                    .padding(.bottom, 18)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 14)
-
-            Spacer(minLength: 18)
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
@@ -839,7 +846,7 @@ private struct CatalogMainMenuPanel: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 12)
         }
-        .frame(width: 344, height: 620, alignment: .topLeading)
+        .frame(width: CatalogVendorLayout.mainMenuWidth, height: availableHeight, alignment: .topLeading)
         .background(Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255).opacity(0.985))
         .overlay(alignment: .trailing) {
             Rectangle()
@@ -919,14 +926,9 @@ private struct CatalogMainMenuRow: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if isActive {
-                    Rectangle()
-                        .fill(Color.openNowGreen)
-                        .frame(width: 4, height: compact ? 26 : 38)
-                }
             }
             .padding(.leading, 8)
-            .padding(.trailing, 0)
+            .padding(.trailing, 12)
             .frame(height: compact ? 38 : 50)
             .background(rowBackground)
             .overlay(alignment: .leading) {
@@ -941,7 +943,7 @@ private struct CatalogMainMenuRow: View {
     }
 
     private var rowBackground: Color {
-        if isActive { return Color.openNowGreen.opacity(0.14) }
+        if isActive { return Color.openNowGreen.opacity(0.095) }
         return Color.white.opacity(isHovering ? 0.085 : 0)
     }
 
@@ -1640,16 +1642,16 @@ private struct GameDetailPanel: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
-                            .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.96), location: 0.00),
-                            .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.88), location: 0.36),
-                            .init(color: Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255).opacity(0.50), location: 0.54),
-                            .init(color: .black.opacity(0.08), location: 0.74),
+                            .init(color: Color.black.opacity(0.90), location: 0.00),
+                            .init(color: Color.black.opacity(0.78), location: 0.32),
+                            .init(color: Color.black.opacity(0.34), location: 0.50),
+                            .init(color: .black.opacity(0.06), location: 0.66),
                             .init(color: .clear, location: 1.00)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
-                    LinearGradient(colors: [.black.opacity(0.06), .black.opacity(0.46)], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.black.opacity(0.02), .black.opacity(0.50)], startPoint: .top, endPoint: .bottom)
 
                     VStack(alignment: .leading, spacing: 15) {
                         Text(game.title.isEmpty ? "Selected Game" : game.title)
@@ -1737,6 +1739,8 @@ private struct GameDetailPanel: View {
                 .overlay {
                     if imageURLs.count > 1 {
                         HStack {
+                            Spacer()
+                                .frame(width: min(min(proxy.size.width * 0.47, 760) + 52, max(24, proxy.size.width - 154)))
                             CatalogDetailImageArrow(name: "lt_arrow") {
                                 moveImage(delta: -1, count: imageURLs.count)
                             }
@@ -1783,7 +1787,7 @@ private struct GameDetailPanel: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
-            .background(Color(red: 82 / 255, green: 82 / 255, blue: 82 / 255))
+            .background(Color.black)
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
             .onReceive(imageTimer) { _ in
                 guard game.detailImageURLs.count > 1 else { return }
