@@ -1133,11 +1133,11 @@ private struct CatalogRailView: View {
                     }
                     if games.count > 3 {
                         HStack {
-                            CatalogRailArrow(systemName: "chevron.left") {
+                            CatalogRailArrow(name: "lt_arrow") {
                                 moveRail(proxy: proxy, delta: -3)
                             }
                             Spacer()
-                            CatalogRailArrow(systemName: "chevron.right") {
+                            CatalogRailArrow(name: "rt_arrow") {
                                 moveRail(proxy: proxy, delta: 3)
                             }
                         }
@@ -1158,15 +1158,15 @@ private struct CatalogRailView: View {
 }
 
 private struct CatalogRailArrow: View {
-    let systemName: String
+    let name: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.nvidia(size: 20, weight: .bold))
-                .foregroundStyle(.white.opacity(0.95))
-                .frame(width: 40, height: 40)
+            VendorResourceImage(name: name, fileExtension: "svg")
+                .scaledToFit()
+                .frame(width: 30, height: 30)
+                .frame(width: 44, height: 44)
                 .background(.black.opacity(0.24), in: Circle())
         }
         .buttonStyle(.plain)
@@ -1374,13 +1374,7 @@ private struct GameDetailPanel: View {
                         }
 
                         if !game.variants.isEmpty {
-                            Picker("Store", selection: selectedVariantBinding(game: game)) {
-                                ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
-                                    Text(storePickerTitle(variant: variant)).tag(index)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(maxWidth: 360)
+                            variantChips(game: game)
                         }
 
                         if let selectedVariant, !selectedVariant.appStore.isEmpty {
@@ -1512,23 +1506,41 @@ private struct GameDetailPanel: View {
         }
     }
 
-    private func selectedVariantBinding(game: OPNCatalogGameObject) -> Binding<Int> {
-        Binding(
-            get: { viewModel.selectedVariantIndex },
-            set: { index in
-                viewModel.selectedVariantIndex = index
-                guard index >= 0, index < game.variants.count else { return }
-                let variant = game.variants[index]
-                if variant.inLibrary || variant.librarySelected { viewModel.selectOwnedVariant(variant) }
+    private func variantChips(game: OPNCatalogGameObject) -> some View {
+        FlowLayout(spacing: 8) {
+            ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
+                Button { selectVariant(at: index, in: game) } label: {
+                    HStack(spacing: 7) {
+                        if variant.librarySelected || variant.inLibrary || index == viewModel.selectedVariantIndex {
+                            Image(systemName: variant.librarySelected || variant.inLibrary ? "checkmark.circle.fill" : "circle.fill")
+                                .font(.nvidia(size: 11, weight: .bold))
+                        }
+                        Text(storePickerTitle(variant: variant))
+                            .font(.nvidia(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(index == viewModel.selectedVariantIndex ? .black.opacity(0.88) : .white.opacity(0.82))
+                    .padding(.horizontal, 11)
+                    .frame(height: 32)
+                    .background(index == viewModel.selectedVariantIndex ? Color.openNowGreen : Color.white.opacity(0.09))
+                    .overlay { Rectangle().stroke(index == viewModel.selectedVariantIndex ? Color.openNowGreen : Color.white.opacity(0.14), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(storePickerTitle(variant: variant))
+                .accessibilityValue(index == viewModel.selectedVariantIndex ? "Selected" : "")
             }
-        )
+        }
+        .frame(maxWidth: 520, alignment: .leading)
+    }
+
+    private func selectVariant(at index: Int, in game: OPNCatalogGameObject) {
+        viewModel.selectedVariantIndex = index
+        guard index >= 0, index < game.variants.count else { return }
+        let variant = game.variants[index]
+        if variant.inLibrary || variant.librarySelected { viewModel.selectOwnedVariant(variant) }
     }
 
     private func storePickerTitle(variant: OPNCatalogGameVariantObject) -> String {
-        let store = variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
-        if variant.librarySelected { return "✓ \(store)" }
-        if variant.inLibrary { return "• \(store)" }
-        return store
+        variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
     }
 
     private func storeAccountStatus(store: String) -> some View {
