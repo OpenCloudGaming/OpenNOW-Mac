@@ -41,7 +41,7 @@ final class OPNStreamViewController: NSViewController {
     private var streamView: OPNStreamView?
     private var loadingView: OPNLoadingView?
     private var statusLabel: NSTextField?
-    private var quitOverlay: OPNQuitGameOverlayView?
+    private var quitDecisionInFlight = false
     private var statsOverlay: OPNStatsOverlayView?
     private var shortcutLegendOverlay: OPNShortcutLegendView?
     private var statsRefreshTimer: Timer?
@@ -191,19 +191,53 @@ final class OPNStreamViewController: NSViewController {
     }
 
     func requestQuitGameConfirmation() {
+        requestUserQuitDecision(terminateApplicationAfterChoice: false) { _ in }
+    }
+
+    var canRequestUserQuitDecision: Bool {
+        !streamEnded
+    }
+
+    func requestUserQuitDecision(terminateApplicationAfterChoice: Bool, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         guard !streamEnded else { return }
-        streamView?.releasePointerLock()
-        if let quitOverlay {
-            view.window?.makeFirstResponder(quitOverlay)
+        guard !quitDecisionInFlight else {
+            completion(false)
             return
         }
-        guard let overlay = OPNAppViewBridge.view(named: "OPNQuitGameOverlayView", frame: view.bounds) else { return }
-        overlay.autoresizingMask = [.width, .height]
-        overlay.assignOnCancel { [weak self] in self?.dismissQuitGameOverlayAndRefocus(true) }
-        overlay.assignOnQuit { [weak self] in self?.endStreamFromUserQuit() }
-        quitOverlay = overlay
-        view.addSubview(overlay, positioned: .above, relativeTo: nil)
-        view.window?.makeFirstResponder(overlay)
+        quitDecisionInFlight = true
+        streamView?.releasePointerLock()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = gameTitle.isEmpty ? "Leave GeForce NOW stream?" : "Leave \(gameTitle)?"
+        alert.informativeText = "Pause disconnects this Mac and keeps the cloud session available to resume. End closes the cloud session for everyone."
+        alert.addButton(withTitle: "Pause Stream")
+        alert.addButton(withTitle: "End Stream")
+        alert.addButton(withTitle: "Cancel")
+        let handleResponse: @MainActor (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else {
+                completion(false)
+                return
+            }
+            self.quitDecisionInFlight = false
+            switch response {
+            case .alertFirstButtonReturn:
+                self.pauseStreamFromUserQuit()
+                completion(terminateApplicationAfterChoice)
+            case .alertSecondButtonReturn:
+                self.endStreamFromUserQuit()
+                completion(terminateApplicationAfterChoice)
+            default:
+                self.streamView?.takeFocus()
+                completion(false)
+            }
+        }
+        if let window = view.window {
+            alert.beginSheetModal(for: window) { response in
+                Task { @MainActor in handleResponse(response) }
+            }
+        } else {
+            handleResponse(alert.runModal())
+        }
     }
 
     func shutdownForApplicationTermination() {
@@ -900,7 +934,6 @@ final class OPNStreamViewController: NSViewController {
 
     private func shortcutLegendFrame() -> NSRect { NSRect(x: max(24, view.bounds.width - 384), y: max(24, (view.bounds.height - 338) / 2), width: 360, height: 338) }
 
-    private func dismissQuitGameOverlayAndRefocus(_ refocus: Bool) { quitOverlay?.removeFromSuperview(); quitOverlay = nil; if refocus { streamView?.takeFocus() } }
     private func recordStreamUserActivity() { lastStreamActivityTime = CACurrentMediaTime() }
     private func startInactivityTimer() { lastStreamActivityTime = CACurrentMediaTime(); inactivityTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in Task { @MainActor [weak self] in self?.checkInactivity() } } }
     private func stopInactivityTimer() { inactivityTimer?.invalidate(); inactivityTimer = nil }
@@ -927,6 +960,7 @@ final class OPNStreamViewController: NSViewController {
             self.session.sendMouseMove(dx: -delta.0, dy: -delta.1)
         }
     }
+    private func pauseStreamFromUserQuit() { endStream(success: true, errorMessage: "") }
     private func endStreamFromUserQuit() { requestRemoteStopForActiveSession(); endStream(success: true, errorMessage: "") }
 
     private func requestRemoteStopForActiveSession() {
@@ -1020,7 +1054,6 @@ final class OPNStreamViewController: NSViewController {
         clearCurrentSessionCallbacks()
         streamView?.stopRecordingIfNeeded(); streamView?.detachFromPipeline(); streamView?.releasePointerLock()
         loadingView?.stopAnimating(); loadingView?.removeFromSuperview(); loadingView = nil
-        quitOverlay?.removeFromSuperview(); quitOverlay = nil
         statsOverlay?.removeFromSuperview(); statsOverlay = nil
         shortcutLegendOverlay?.removeFromSuperview(); shortcutLegendOverlay = nil
         session.stop()

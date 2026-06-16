@@ -3,6 +3,32 @@ import SwiftUI
 
 public typealias OPNEmbeddedStreamCompletion = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: OPNSessionReportPayload?) -> Void
 public typealias OPNEmbeddedStreamProgressHandler = @MainActor @Sendable (_ progress: OPNEmbeddedStreamProgress) -> Void
+public typealias OPNEmbeddedStreamQuitDecisionHandler = @MainActor @Sendable (_ shouldTerminateApplication: Bool) -> Void
+
+@MainActor
+public enum OPNEmbeddedStreamLifecycle {
+    private static weak var activeController: OPNStreamViewController?
+
+    public static var hasActiveStream: Bool {
+        activeController?.canRequestUserQuitDecision == true
+    }
+
+    public static func requestApplicationQuitDecision(completion: @escaping OPNEmbeddedStreamQuitDecisionHandler) -> Bool {
+        guard let activeController, activeController.canRequestUserQuitDecision else { return false }
+        activeController.requestUserQuitDecision(terminateApplicationAfterChoice: true, completion: completion)
+        return true
+    }
+
+    fileprivate static func activate(_ controller: OPNStreamViewController) {
+        activeController = controller
+    }
+
+    fileprivate static func deactivate(_ controller: OPNStreamViewController) {
+        if activeController === controller {
+            activeController = nil
+        }
+    }
+}
 
 public struct OPNEmbeddedStreamProgress: Equatable, Sendable {
     public let title: String
@@ -57,6 +83,7 @@ public struct OPNEmbeddedStreamView: NSViewControllerRepresentable {
                 context.coordinator.onProgress?(progress)
             }
         }
+        OPNEmbeddedStreamLifecycle.activate(controller)
         context.coordinator.controller = controller
         return controller
     }
@@ -68,6 +95,7 @@ public struct OPNEmbeddedStreamView: NSViewControllerRepresentable {
 
     public static func dismantleNSViewController(_ nsViewController: NSViewController, coordinator: Coordinator) {
         guard let controller = nsViewController as? OPNStreamViewController else { return }
+        OPNEmbeddedStreamLifecycle.deactivate(controller)
         controller.shutdownForApplicationTermination()
     }
 
