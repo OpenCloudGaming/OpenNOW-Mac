@@ -129,7 +129,7 @@ struct CatalogView: View {
                         }
                     )
                     .id(streamConfiguration.id)
-                    .ignoresSafeArea()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     if viewModel.isStreamLaunchLoadingVisible {
                         VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
@@ -137,7 +137,7 @@ struct CatalogView: View {
                             .zIndex(10)
                     }
                 }
-                .ignoresSafeArea()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
@@ -368,7 +368,6 @@ private struct VendorStreamLaunchLoadingOverlay: View {
             .clipped()
         }
         .background(.black)
-        .ignoresSafeArea()
     }
 }
 
