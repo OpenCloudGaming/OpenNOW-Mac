@@ -812,6 +812,106 @@ final class CatalogViewModel: ObservableObject {
         return URL(string: optimized.isEmpty ? rawValue : optimized)
     }
 
+    var imageCacheSignature: String {
+        imageCacheURLs.map(\.absoluteString).joined(separator: "|").hashValue.description
+    }
+
+    var imageCacheURLs: [URL] {
+        var result: [URL] = []
+        var seen = Set<String>()
+        for game in imageCacheGames {
+            appendOptimizedImageURL(bestHeroImageURL(for: game), width: 1920, result: &result, seen: &seen)
+            appendOptimizedImageURL(bestLogoImageURL(for: game), width: 620, result: &result, seen: &seen)
+            appendOptimizedImageURL(bestLogoImageURL(for: game), width: 300, result: &result, seen: &seen)
+            appendOptimizedImageURL(bestWideImageURL(for: game), width: 620, result: &result, seen: &seen)
+            for detailURL in detailImageURLs(for: game) {
+                appendOptimizedImageURL(detailURL, width: 1600, result: &result, seen: &seen)
+            }
+        }
+        return result
+    }
+
+    private var imageCacheGames: [OPNCatalogGameObject] {
+        var result: [OPNCatalogGameObject] = []
+        var seen = Set<String>()
+        func append(_ game: OPNCatalogGameObject) {
+            let identity = Self.identity(for: game)
+            guard !seen.contains(identity) else { return }
+            seen.insert(identity)
+            result.append(game)
+        }
+        for game in marqueeGames { append(game) }
+        for section in catalogSections {
+            for game in section.games { append(game) }
+        }
+        return result
+    }
+
+    private func appendOptimizedImageURL(_ rawValue: String, width: Int, result: inout [URL], seen: inout Set<String>) {
+        guard let url = optimizedImageURL(rawValue, width: width) else { return }
+        let key = url.absoluteString
+        guard !seen.contains(key) else { return }
+        seen.insert(key)
+        result.append(url)
+    }
+
+    private func bestHeroImageURL(for game: OPNCatalogGameObject) -> String {
+        if !game.heroImageUrl.isEmpty { return game.heroImageUrl }
+        if let value = firstImageValue(for: game, keys: ["MARQUEE_HERO_IMAGE", "HERO_IMAGE"]) { return value }
+        return bestTileImageURL(for: game)
+    }
+
+    private func bestLogoImageURL(for game: OPNCatalogGameObject) -> String {
+        firstImageValue(for: game, keys: ["GAME_LOGO", "LOGO", "TITLE_LOGO"]) ?? ""
+    }
+
+    private func bestTileImageURL(for game: OPNCatalogGameObject) -> String {
+        if !game.imageUrl.isEmpty { return game.imageUrl }
+        if let value = firstImageValue(for: game, keys: ["BOX_ART", "BOXART", "TILE", "GAME_BOX_ART", "HERO_IMAGE"]) { return value }
+        if let value = game.screenshotUrls.first, !value.isEmpty { return value }
+        return game.heroImageUrl
+    }
+
+    private func bestWideImageURL(for game: OPNCatalogGameObject) -> String {
+        firstImageValue(for: game, keys: ["TV_BANNER"]) ?? ""
+    }
+
+    private func bestDetailImageURL(for game: OPNCatalogGameObject) -> String {
+        if let value = firstImageValue(for: game, keys: ["HERO_IMAGE", "MARQUEE_HERO_IMAGE", "FEATURE_IMAGE", "KEY_ART", "TV_BANNER"]) { return value }
+        if !game.heroImageUrl.isEmpty { return game.heroImageUrl }
+        if let value = game.screenshotUrls.first, !value.isEmpty { return value }
+        return game.imageUrl
+    }
+
+    private func detailImageURLs(for game: OPNCatalogGameObject) -> [String] {
+        var values: [String] = []
+        var seen = Set<String>()
+        func append(_ value: String) {
+            guard !value.isEmpty, !seen.contains(value) else { return }
+            seen.insert(value)
+            values.append(value)
+        }
+        appendImageValues(for: game, key: "SCREENSHOTS", append: append)
+        for value in game.screenshotUrls { append(value) }
+        append(game.heroImageUrl)
+        append(game.imageUrl)
+        append(bestDetailImageURL(for: game))
+        return values
+    }
+
+    private func firstImageValue(for game: OPNCatalogGameObject, keys: [String]) -> String? {
+        for key in keys {
+            if let value = game.imageUrlsByType[key]?.first, !value.isEmpty { return value }
+            if let value = game.imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
+        }
+        return nil
+    }
+
+    private func appendImageValues(for game: OPNCatalogGameObject, key: String, append: (String) -> Void) {
+        for value in game.imageUrlsByType[key] ?? [] { append(value) }
+        for value in game.imageUrlsByType[key.lowercased()] ?? [] { append(value) }
+    }
+
     private func loadPanels() {
         isLoadingPanels = true
         errorMessage = ""

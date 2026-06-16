@@ -14,11 +14,20 @@ import SwiftData
 struct OpenNOWApp: App {
     @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
 
-    var sharedModelContainer: ModelContainer = {
+    let sharedModelContainer: ModelContainer
+
+    init() {
+        let container = Self.makeModelContainer()
+        sharedModelContainer = container
+        CatalogImageCache.shared.configure(container: container)
+    }
+
+    private static func makeModelContainer() -> ModelContainer {
         let schema = Schema([
             LoginAccount.self,
             LoginSession.self,
             LoginDeviceRegistration.self,
+            CatalogImageCacheEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -27,7 +36,7 @@ struct OpenNOWApp: App {
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup("OpenNOW") {

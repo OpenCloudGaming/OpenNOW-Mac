@@ -174,6 +174,9 @@ struct CatalogView: View {
         }
         .background(Color.black)
         .task { viewModel.loadIfNeeded() }
+        .task(id: viewModel.imageCacheSignature) {
+            CatalogImageCache.shared.prefetch(viewModel.imageCacheURLs)
+        }
         .preferredColorScheme(.dark)
     }
 }
@@ -1278,21 +1281,8 @@ private struct CatalogHeroTitleView: View {
 
     var body: some View {
         if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 620) {
-            AsyncImage(url: logoURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 390, maxHeight: 150)
-                case .failure:
-                    fallbackTitle
-                case .empty:
-                    fallbackTitle.opacity(0)
-                @unknown default:
-                    fallbackTitle
-                }
-            }
+            CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: fallbackTitle.opacity(0), failure: fallbackTitle)
+                .frame(maxWidth: 390, maxHeight: 150)
         } else {
             fallbackTitle
         }
@@ -1771,14 +1761,7 @@ private struct GameDetailPanel: View {
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: 300) {
-                        AsyncImage(url: logoURL) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFit()
-                            default:
-                                EmptyView()
-                            }
-                        }
+                        CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: EmptyView(), failure: EmptyView())
                         .frame(width: 160, height: 70, alignment: .bottomTrailing)
                         .padding(.trailing, 42)
                         .padding(.bottom, 28)
@@ -1966,20 +1949,13 @@ private struct CatalogHeroRemoteImage: View {
 
         onScrimColorChange(.black)
         isLoading = true
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+        if let cached = await CatalogImageCache.shared.image(for: url) {
             guard !Task.isCancelled else { return }
-            if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
-                throw URLError(.badServerResponse)
-            }
-            guard let loadedImage = NSImage(data: data) else {
-                throw URLError(.cannotDecodeContentData)
-            }
-            image = loadedImage
+            image = cached.image
             hasFailed = false
             isLoading = false
-            onScrimColorChange(CatalogHeroImageMetadata.scrimColor(from: data) ?? .black)
-        } catch {
+            onScrimColorChange(CatalogHeroImageMetadata.scrimColor(from: cached.data) ?? .black)
+        } else {
             guard !Task.isCancelled else { return }
             image = nil
             hasFailed = true
@@ -2204,18 +2180,48 @@ private struct CatalogRemoteImage: View {
     let contentMode: ContentMode
 
     var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: contentMode)
-            case .failure:
-                CatalogImageFallback()
-            case .empty:
-                CatalogImageFallback().overlay { ProgressView().controlSize(.small) }
-            @unknown default:
-                CatalogImageFallback()
+        CatalogCachedImageView(url: url, contentMode: contentMode, placeholder: CatalogImageFallback().overlay { ProgressView().controlSize(.small) }, failure: CatalogImageFallback())
+    }
+}
+
+private struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
+    let url: URL?
+    let contentMode: ContentMode
+    let placeholder: Placeholder
+    let failure: Failure
+
+    @State private var image: NSImage?
+    @State private var hasFailed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else if hasFailed {
+                failure
+            } else {
+                placeholder
             }
         }
+        .task(id: url) { await loadImage() }
+    }
+
+    @MainActor
+    private func loadImage() async {
+        image = nil
+        hasFailed = false
+        guard let url else {
+            hasFailed = true
+            return
+        }
+        guard let cached = await CatalogImageCache.shared.image(for: url), !Task.isCancelled else {
+            hasFailed = !Task.isCancelled
+            return
+        }
+        image = cached.image
+        hasFailed = false
     }
 }
 
