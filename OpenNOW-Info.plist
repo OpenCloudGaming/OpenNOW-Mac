@@ -41,5 +41,7 @@
 	<string>public.app-category.games</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
 </dict>
 </plist>
