@@ -107,6 +107,7 @@ final class OPNStreamView: NSView {
     private var lastGamepadSend = Array(repeating: 0.0, count: gamepadMaxControllers)
     private var videoSurface: OPNVideoSurfaceView!
     private var microphoneActiveOverlay: NSView!
+    private var microphoneShortcutOverlay: NSView?
     private var sidebarHUD: NSView?
     private var sidebarMicStatusValue: NSTextField?
     private var sidebarPlaytimeValue: NSTextField?
@@ -243,11 +244,13 @@ final class OPNStreamView: NSView {
     func toggleMicrophoneEnabledShortcut() -> Bool {
         guard microphoneMode != "disabled" else {
             log("[StreamView] Command-M ignored because microphone is disabled in settings")
+            showMicrophoneShortcutOverlay(enabled: false, disabled: true)
             return false
         }
         microphoneShortcutEnabled.toggle()
         if microphoneShortcutEnabled { applyMicrophoneShortcutState() } else { pushToTalkMicEnabled = false; setMicrophoneActive(false) }
         OPNStreamViewPreferences.saveMicrophoneShortcutEnabled(microphoneShortcutEnabled)
+        showMicrophoneShortcutOverlay(enabled: microphoneShortcutEnabled, disabled: false)
         log("[StreamView] Microphone shortcut toggled \(microphoneShortcutEnabled ? "on" : "off")")
         return true
     }
@@ -352,6 +355,55 @@ final class OPNStreamView: NSView {
         addSubview(overlay, positioned: .above, relativeTo: videoSurface)
     }
 
+    private func showMicrophoneShortcutOverlay(enabled: Bool, disabled: Bool) {
+        microphoneShortcutOverlay?.removeFromSuperview()
+
+        let overlay = NSView(frame: NSRect(x: 0, y: 0, width: 238, height: 104))
+        overlay.wantsLayer = true
+        overlay.layer?.cornerRadius = 18
+        overlay.layer?.backgroundColor = NSColor(calibratedWhite: 0.03, alpha: 0.88).cgColor
+        overlay.layer?.borderWidth = 1
+        overlay.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.13).cgColor
+
+        let iconName = enabled && !disabled ? "mic.fill" : "mic.slash.fill"
+        if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: nil) {
+            let icon = NSImageView(frame: NSRect(x: 28, y: 34, width: 36, height: 36))
+            icon.image = image
+            icon.contentTintColor = enabled && !disabled ? NSColor(calibratedRed: 0.46, green: 0.73, blue: 0, alpha: 1) : NSColor(calibratedWhite: 0.88, alpha: 1)
+            icon.imageScaling = .scaleProportionallyUpOrDown
+            overlay.addSubview(icon)
+        }
+
+        let title = label(disabled ? "MICROPHONE DISABLED" : (enabled ? "MICROPHONE ON" : "MICROPHONE OFF"), 14, .bold, .white)
+        title.frame = NSRect(x: 78, y: 54, width: 138, height: 18)
+        overlay.addSubview(title)
+
+        let shortcut = label("COMMAND + M", 11, .semibold, NSColor(calibratedWhite: 0.62, alpha: 1))
+        shortcut.frame = NSRect(x: 78, y: 32, width: 138, height: 16)
+        overlay.addSubview(shortcut)
+
+        microphoneShortcutOverlay = overlay
+        addSubview(overlay, positioned: .above, relativeTo: sidebarHUD ?? microphoneActiveOverlay)
+        layoutVideoAndOverlays()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            overlay.animator().alphaValue = 1
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) { [weak self, weak overlay] in
+            guard let self, let overlay, self.microphoneShortcutOverlay === overlay else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                overlay.animator().alphaValue = 0
+            } completionHandler: { [weak self, weak overlay] in
+                guard let self, let overlay, self.microphoneShortcutOverlay === overlay else { return }
+                overlay.removeFromSuperview()
+                self.microphoneShortcutOverlay = nil
+            }
+        }
+    }
+
     private func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor, _ alignment: NSTextAlignment = .left) -> NSTextField { let field = NSTextField(frame: .zero); field.stringValue = text; field.font = .systemFont(ofSize: size, weight: weight); field.textColor = color; field.alignment = alignment; field.drawsBackground = false; field.isBordered = false; field.isEditable = false; field.isSelectable = false; field.lineBreakMode = .byTruncatingTail; return field }
     private func section(_ frame: NSRect, _ alpha: CGFloat) -> NSView { let view = NSView(frame: frame); view.wantsLayer = true; view.layer?.cornerRadius = 14; view.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: alpha).cgColor; view.layer?.borderWidth = 1; view.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.08).cgColor; return view }
     private func separator(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat) -> NSView { let view = NSView(frame: NSRect(x: x, y: y, width: width, height: 1)); view.wantsLayer = true; view.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor; return view }
@@ -401,7 +453,7 @@ final class OPNStreamView: NSView {
         updateSidebarMicStatus(); updateSidebarPlaytimeStatus(); updateRecordingControls()
     }
 
-    private func layoutVideoAndOverlays() { let width = bounds.width; let height = bounds.height; guard width > 0, height > 0 else { return }; let targetAspect = videoAspectRatio > 0.1 ? videoAspectRatio : 16.0 / 9.0; var fittedWidth = width; var fittedHeight = floor(width / targetAspect); if fittedHeight > height { fittedHeight = height; fittedWidth = floor(height * targetAspect) }; let x = floor((width - fittedWidth) / 2); let y = floor((height - fittedHeight) / 2); videoSurface.frame = NSRect(x: x, y: y, width: fittedWidth, height: fittedHeight); applyVideoUpscalingFilters(to: videoSurface); microphoneActiveOverlay.frame = NSRect(x: videoSurface.frame.maxX - 64, y: videoSurface.frame.minY + 18, width: 46, height: 46); if let sidebarHUD { let panelHeight = min(660, max(580, height - 36)); sidebarHUD.frame = NSRect(x: 18, y: floor((height - panelHeight) / 2), width: sidebarHUD.frame.width, height: panelHeight) } }
+    private func layoutVideoAndOverlays() { let width = bounds.width; let height = bounds.height; guard width > 0, height > 0 else { return }; let targetAspect = videoAspectRatio > 0.1 ? videoAspectRatio : 16.0 / 9.0; var fittedWidth = width; var fittedHeight = floor(width / targetAspect); if fittedHeight > height { fittedHeight = height; fittedWidth = floor(height * targetAspect) }; let x = floor((width - fittedWidth) / 2); let y = floor((height - fittedHeight) / 2); videoSurface.frame = NSRect(x: x, y: y, width: fittedWidth, height: fittedHeight); applyVideoUpscalingFilters(to: videoSurface); microphoneActiveOverlay.frame = NSRect(x: videoSurface.frame.maxX - 64, y: videoSurface.frame.minY + 18, width: 46, height: 46); if let microphoneShortcutOverlay { microphoneShortcutOverlay.frame = NSRect(x: floor((width - microphoneShortcutOverlay.frame.width) / 2), y: floor((height - microphoneShortcutOverlay.frame.height) / 2), width: microphoneShortcutOverlay.frame.width, height: microphoneShortcutOverlay.frame.height) }; if let sidebarHUD { let panelHeight = min(660, max(580, height - 36)); sidebarHUD.frame = NSRect(x: 18, y: floor((height - panelHeight) / 2), width: sidebarHUD.frame.width, height: panelHeight) } }
     private func applyVideoUpscalingFilters(to view: NSView?) { guard let view else { return }; view.wantsLayer = true; if let layer = view.layer { layer.contentsScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1; layer.filters = nil; if videoUpscalingMode <= 0 { layer.magnificationFilter = .nearest; layer.minificationFilter = .linear; layer.minificationFilterBias = 0; layer.allowsEdgeAntialiasing = false } else { layer.magnificationFilter = .linear; layer.minificationFilter = .linear; layer.minificationFilterBias = 0; layer.allowsEdgeAntialiasing = true } }; view.subviews.forEach { applyVideoUpscalingFilters(to: $0) } }
     private func updateEnhancedVideoRecordingPreference() { let active = recordingManager.isRecording || recordingManager.isStarting; let prefers = active && recordingEnhancedVideoEnabled && videoUpscalingMode > 0; recordingManager.setPrefersEnhancedVideoCapture(prefers); streamEnhancedVideoCaptureHandler?(prefers) }
     private func setMicrophoneLevel(_ level: Double) { microphoneLevel = max(0, min(level, 1)); guard let track = microphoneMeterTrack, let fill = microphoneMeterFill else { return }; CATransaction.begin(); CATransaction.setDisableActions(true); fill.frame = NSRect(x: 0, y: 0, width: track.bounds.width * microphoneLevel, height: track.bounds.height); fill.backgroundColor = (microphoneLevel > 0.72 ? NSColor(calibratedRed: 1, green: 0.48, blue: 0.24, alpha: 1) : microphoneLevel > 0.45 ? NSColor(calibratedRed: 0.95, green: 0.78, blue: 0.28, alpha: 1) : NSColor(calibratedRed: 0.28, green: 0.88, blue: 0.54, alpha: 1)).cgColor; CATransaction.commit() }

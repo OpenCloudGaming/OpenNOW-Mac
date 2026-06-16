@@ -232,22 +232,6 @@ private struct AccountSettingsPage: View {
                 SettingsInfoRow(label: "Status", value: viewModel.account.authStatus)
                 SettingsInfoRow(label: "Preferred Region", value: viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl)
             }
-
-            SettingsCard(title: "Previous Game Session") {
-                if let previous = viewModel.previousGameSession {
-                    SettingsInfoRow(label: "Game", value: previous.title)
-                    SettingsInfoRow(label: "App ID", value: previous.appId)
-                    SettingsInfoRow(label: "Store", value: previous.store.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: previous.store))
-                    SettingsInfoRow(label: "Ended", value: previous.endedAt.formatted(date: .abbreviated, time: .shortened))
-                    SettingsInfoRow(label: "Result", value: previous.result)
-                    SettingsInfoRow(label: "Launch Time", value: previous.launchTime)
-                    SettingsInfoRow(label: "Average Latency", value: previous.averageLatency)
-                    SettingsInfoRow(label: "Average Bitrate", value: previous.averageBitrate)
-                    SettingsInfoRow(label: "Dropped Frames", value: previous.droppedFrames)
-                } else {
-                    SettingsInfoRow(label: "Status", value: "No completed game stream yet.")
-                }
-            }
         }
     }
 }

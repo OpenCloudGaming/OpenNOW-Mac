@@ -99,6 +99,7 @@ struct CatalogView: View {
     let onRefreshAuth: () -> Void
 
     @StateObject private var viewModel: CatalogViewModel
+    @State private var showsPreviousSessionOverlay = false
 
     init(
         account: LoginAccount,
@@ -141,7 +142,7 @@ struct CatalogView: View {
                 .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
-                    CatalogTopBar(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                    CatalogTopBar(viewModel: viewModel, accounts: accounts, showsPreviousSessionOverlay: $showsPreviousSessionOverlay, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                     if viewModel.selectedMainPage == .settings {
                         SettingsView(viewModel: viewModel)
                     } else {
@@ -154,6 +155,12 @@ struct CatalogView: View {
                     VendorLaunchFlowOverlay(viewModel: viewModel)
                         .transition(.opacity)
                         .zIndex(20)
+                }
+
+                if showsPreviousSessionOverlay {
+                    CatalogPreviousSessionOverlay(viewModel: viewModel, isPresented: $showsPreviousSessionOverlay)
+                        .transition(.opacity)
+                        .zIndex(15)
                 }
             }
         }
@@ -589,10 +596,10 @@ private struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
 private struct CatalogTopBar: View {
     @ObservedObject var viewModel: CatalogViewModel
     let accounts: [LoginAccount]
+    @Binding var showsPreviousSessionOverlay: Bool
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
-    @State private var showsSessionDetails = false
 
     var body: some View {
         ZStack {
@@ -632,24 +639,21 @@ private struct CatalogTopBar: View {
 
             HStack(spacing: 24) {
                 Spacer()
-                Button { showsSessionDetails.toggle() } label: {
+                Button { showsPreviousSessionOverlay.toggle() } label: {
                     Image(systemName: "questionmark.circle.fill")
                         .font(.nvidia(size: 22, weight: .medium))
                         .foregroundStyle(.white.opacity(0.94))
                         .overlay(alignment: .topTrailing) {
-                            Circle()
-                                .fill(Color.openNowGreen)
-                                .frame(width: 8, height: 8)
-                                .offset(x: 2, y: -2)
+                            if viewModel.previousGameSession != nil {
+                                Circle()
+                                    .fill(Color.openNowGreen)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 2, y: -2)
+                            }
                         }
                 }
                 .buttonStyle(.plain)
-                .popover(isPresented: $showsSessionDetails, arrowEdge: .top) {
-                    CatalogSessionDetailsPopover(viewModel: viewModel)
-                        .frame(width: 340)
-                        .padding(18)
-                        .background(CatalogVendorLayout.appBarBackground)
-                }
+                .accessibilityLabel("Previous game session")
 
                 Menu {
                     ForEach(accounts) { account in
@@ -732,32 +736,74 @@ private struct CatalogHamburgerLabel: View {
     }
 }
 
-private struct CatalogSessionDetailsPopover: View {
+private struct CatalogPreviousSessionOverlay: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Previous Game Session")
-                .font(.nvidia(size: 17, weight: .bold))
-                .foregroundStyle(.white)
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.34)
+                .ignoresSafeArea()
+                .onTapGesture { isPresented = false }
 
-            if let previous = viewModel.previousGameSession {
-                VStack(alignment: .leading, spacing: 8) {
-                    detailRow("Game", previous.title)
-                    detailRow("App ID", previous.appId)
-                    detailRow("Store", previous.store.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: previous.store))
-                    detailRow("Ended", formattedDate(previous.endedAt))
-                    detailRow("Result", previous.result)
-                    detailRow("Launch", previous.launchTime)
-                    detailRow("Latency", previous.averageLatency)
-                    detailRow("Bitrate", previous.averageBitrate)
-                    detailRow("Dropped", previous.droppedFrames)
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.nvidia(size: 20, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Previous Game Session")
+                            .font(.nvidia(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Most recent GeForce NOW stream summary")
+                            .font(.nvidia(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    Spacer()
+                    Button { isPresented = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.nvidia(size: 13, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
                 }
-            } else {
-                Text("No completed game stream yet.")
-                    .font(.nvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.68))
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(height: 1)
+
+                if let previous = viewModel.previousGameSession {
+                    VStack(alignment: .leading, spacing: 10) {
+                        detailRow("Game", previous.title)
+                        detailRow("App ID", previous.appId)
+                        detailRow("Store", previous.store.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: previous.store))
+                        detailRow("Ended", formattedDate(previous.endedAt))
+                        detailRow("Result", previous.result)
+                        detailRow("Launch", previous.launchTime)
+                        detailRow("Latency", previous.averageLatency)
+                        detailRow("Bitrate", previous.averageBitrate)
+                        detailRow("Dropped", previous.droppedFrames)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No completed game stream yet.")
+                            .font(.nvidia(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("The green indicator appears after OpenNOW has a previous game session to show.")
+                            .font(.nvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.64))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
+            .padding(22)
+            .frame(width: 430, alignment: .leading)
+            .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255).opacity(0.98))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+            .shadow(color: .black.opacity(0.48), radius: 22, x: 0, y: 14)
+            .padding(.top, CatalogVendorLayout.appBarHeight + 12)
+            .padding(.trailing, 22)
         }
     }
 
