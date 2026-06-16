@@ -115,6 +115,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
     @Published var previousGameSession = CatalogPreviousGameSession.load()
     @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
+    @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
 
     let account: LoginAccount
     let session: LoginSession
@@ -991,6 +992,22 @@ final class CatalogViewModel: ObservableObject {
                 if success { self.storeDefinitions = definitionsBox.value.map(Self.parseStoreDefinition) }
             }
         }
+        let userId = session.userId.isEmpty ? account.userId : session.userId
+        guard !userId.isEmpty else {
+            subscriptionStatus = .unavailable
+            return
+        }
+        OPNGameServiceSwiftAdapter.fetchSubscriptionInfo(userId: userId) { success, subscription, error in
+            let subscriptionBox = CatalogSendableValue(subscription)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscriptionBox.value)
+                } else if self.refreshAuthIfNeeded(error: error) {
+                    self.subscriptionStatus = .unavailable
+                }
+            }
+        }
     }
 
     private func loadSettingsPreferences() {
@@ -1199,6 +1216,44 @@ struct CatalogPlaytimeStatistics: Codable, Equatable {
 
     private static func storageKey(accountIdentifier: String) -> String {
         "\(storagePrefix).\(accountIdentifier)"
+    }
+}
+
+struct CatalogSubscriptionStatus: Equatable {
+    static let unavailable = CatalogSubscriptionStatus(membershipTier: "Performance", remainingPlaytimeText: "Unavailable", usageText: "Playtime refresh pending", isAvailable: false)
+
+    let membershipTier: String
+    let remainingPlaytimeText: String
+    let usageText: String
+    let isAvailable: Bool
+
+    init(membershipTier: String, remainingPlaytimeText: String, usageText: String, isAvailable: Bool) {
+        self.membershipTier = membershipTier.isEmpty ? "Performance" : membershipTier
+        self.remainingPlaytimeText = remainingPlaytimeText
+        self.usageText = usageText
+        self.isAvailable = isAvailable
+    }
+
+    init(subscription: OPNParsedSubscriptionInfo) {
+        let tier = subscription.membershipTier.isEmpty ? "Performance" : subscription.membershipTier.capitalized
+        if subscription.isUnlimited {
+            self.init(membershipTier: tier, remainingPlaytimeText: "Unlimited", usageText: "No monthly playtime cap", isAvailable: true)
+            return
+        }
+        let remaining = Self.hoursText(subscription.remainingHours)
+        let used = Self.hoursText(subscription.usedHours)
+        let total = Self.hoursText(subscription.totalHours)
+        let usage = subscription.totalHours > 0 ? "\(used) used of \(total)" : "\(used) used"
+        self.init(membershipTier: tier, remainingPlaytimeText: "\(remaining) left", usageText: usage, isAvailable: true)
+    }
+
+    private static func hoursText(_ hours: Double) -> String {
+        let totalMinutes = max(0, Int((hours * 60).rounded()))
+        let wholeHours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if wholeHours > 0, minutes > 0 { return "\(wholeHours)h \(minutes)m" }
+        if wholeHours > 0 { return "\(wholeHours)h" }
+        return "\(minutes)m"
     }
 }
 

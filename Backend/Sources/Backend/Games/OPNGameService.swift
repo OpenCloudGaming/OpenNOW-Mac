@@ -1714,7 +1714,7 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     }
 
     @objc(fetchSubscriptionInfoWithUserId:completion:)
-    static func fetchSubscriptionInfo(userId: String, completion: @escaping @Sendable (Bool, OPNParsedSubscriptionInfo, String) -> Void) {
+    public static func fetchSubscriptionInfo(userId: String, completion: @escaping @Sendable (Bool, OPNParsedSubscriptionInfo, String) -> Void) {
         OPNGameService.shared.fetchSubscriptionInfo(userId: userId) { success, subscription, error in
             completion(success, OPNParsedSubscriptionInfo(subscription: subscription), error)
         }
@@ -1850,14 +1850,14 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
 }
 
 @objcMembers
-final class OPNParsedSubscriptionInfo: NSObject {
-    let membershipTier: String
-    let subscriptionType: String
-    let subscriptionSubType: String
-    let isUnlimited: Bool
-    let totalHours: Double
-    let usedHours: Double
-    let remainingHours: Double
+public final class OPNParsedSubscriptionInfo: NSObject {
+    public let membershipTier: String
+    public let subscriptionType: String
+    public let subscriptionSubType: String
+    public let isUnlimited: Bool
+    public let totalHours: Double
+    public let usedHours: Double
+    public let remainingHours: Double
 
     init(subscription: OPNSubscriptionInfo) {
         membershipTier = subscription.membershipTier
