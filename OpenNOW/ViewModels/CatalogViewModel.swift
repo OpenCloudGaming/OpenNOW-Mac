@@ -37,7 +37,42 @@ enum CatalogLaunchFlowState: Equatable {
 }
 
 @MainActor
+enum CatalogMainPage: String, CaseIterable, Identifiable {
+    case games
+    case settings
+
+    var id: String { rawValue }
+}
+
+@MainActor
+enum CatalogSettingsPage: String, CaseIterable, Identifiable {
+    case account
+    case connections
+    case gameplay
+    case serverLocation
+    case resolutionUpscaling
+    case system
+    case about
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .account: return "Account"
+        case .connections: return "Connections"
+        case .gameplay: return "Gameplay"
+        case .serverLocation: return "Server Location"
+        case .resolutionUpscaling: return "Resolution Upscaling"
+        case .system: return "System"
+        case .about: return "About"
+        }
+    }
+}
+
+@MainActor
 final class CatalogViewModel: ObservableObject {
+    @Published var selectedMainPage = CatalogMainPage.games
+    @Published var selectedSettingsPage = CatalogSettingsPage.account
     @Published var searchQuery = ""
     @Published var selectedSortId = "last_played"
     @Published var selectedFilterIds: [String] = []
@@ -72,6 +107,12 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedLaunchRegionUrl = ""
     @Published var isRefreshingLaunchRegions = false
     @Published var activeLaunchSession: OPNActiveStreamSessionDescriptor?
+    @Published var streamProfile = OPNStreamPreferenceProfile()
+    @Published var streamCapabilities = OPNStreamDeviceCapabilities()
+    @Published var settingsRegionOptions: [OPNStreamRegionOption] = []
+    @Published var selectedSettingsRegionUrl = ""
+    @Published var isRefreshingSettingsRegions = false
+    @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
 
     let account: LoginAccount
     let session: LoginSession
@@ -165,6 +206,7 @@ final class CatalogViewModel: ObservableObject {
         loadPanels()
         loadLibrary()
         loadAccountAndStores()
+        loadSettingsPreferences()
         browseCatalog()
     }
 
@@ -173,7 +215,18 @@ final class CatalogViewModel: ObservableObject {
         loadPanels()
         loadLibrary()
         loadAccountAndStores()
+        loadSettingsPreferences()
         browseCatalog()
+    }
+
+    func showGames() {
+        selectedMainPage = .games
+    }
+
+    func showSettings(_ page: CatalogSettingsPage = .account) {
+        selectedMainPage = .settings
+        selectedSettingsPage = page
+        loadSettingsPreferences()
     }
 
     func browseCatalog() {
@@ -327,6 +380,29 @@ final class CatalogViewModel: ObservableObject {
 
     func selectLaunchRegion(_ regionUrl: String) {
         selectedLaunchRegionUrl = regionUrl
+    }
+
+    func selectSettingsRegion(_ regionUrl: String) {
+        selectedSettingsRegionUrl = regionUrl
+        OPNStreamPreferences.saveSelectedRegionUrl(regionUrl)
+        loadSettingsPreferences()
+    }
+
+    func refreshSettingsRegions() {
+        guard !isRefreshingSettingsRegions else { return }
+        isRefreshingSettingsRegions = true
+        let token = launchToken
+        let selfBox = CatalogWeakObject(self)
+        OPNStreamPreferences.fetchRegions(token: token, providerStreamingBaseUrl: OPNGameServiceSwiftAdapter.providerStreamingBaseURL()) { regions in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                self.isRefreshingSettingsRegions = false
+                self.settingsRegionOptions = Self.launchRegionOptions(from: regions)
+                if !self.selectedSettingsRegionUrl.isEmpty, !regions.contains(where: { $0.url == self.selectedSettingsRegionUrl }) {
+                    self.selectSettingsRegion("")
+                }
+            }
+        }
     }
 
     func continueVendorLaunch() {
@@ -544,6 +620,11 @@ final class CatalogViewModel: ObservableObject {
 
     func syncSelectedStoreAccount() {
         guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        syncStoreAccount(store)
+    }
+
+    func syncStoreAccount(_ store: String) {
+        guard !store.isEmpty else { return }
         let selfBox = CatalogWeakObject(self)
         setActionMessage("Syncing \(displayName(forStore: store)) account...")
         OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { success, error in
@@ -563,6 +644,11 @@ final class CatalogViewModel: ObservableObject {
 
     func linkSelectedStoreAccount() {
         guard let store = selectedVariant(in: selectedGame)?.appStore, !store.isEmpty else { return }
+        linkStoreAccount(store)
+    }
+
+    func linkStoreAccount(_ store: String) {
+        guard !store.isEmpty else { return }
         let selfBox = CatalogWeakObject(self)
         setActionMessage("Opening \(displayName(forStore: store)) account linking...")
         OPNGameServiceSwiftAdapter.startAccountLinking(store: store) { success, error in
@@ -596,6 +682,116 @@ final class CatalogViewModel: ObservableObject {
 
     func accountStatus(forStore store: String) -> CatalogStoreAccount? {
         accountStores.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+    }
+
+    func setAspectIndex(_ index: Int) {
+        OPNStreamPreferences.saveAspectIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setResolutionIndex(_ index: Int) {
+        OPNStreamPreferences.saveResolutionIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setFpsIndex(_ index: Int) {
+        OPNStreamPreferences.saveFpsIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setCodecIndex(_ index: Int) {
+        OPNStreamPreferences.saveCodecIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setBitrateIndex(_ index: Int) {
+        OPNStreamPreferences.saveBitrateIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setColorQualityIndex(_ index: Int) {
+        OPNStreamPreferences.saveColorQualityIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setPrefilterModeIndex(_ index: Int) {
+        OPNStreamPreferences.savePrefilterModeIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setPrefilterSharpness(_ value: Double) {
+        OPNStreamPreferences.savePrefilterSharpness(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setPrefilterDenoise(_ value: Double) {
+        OPNStreamPreferences.savePrefilterDenoise(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setUpscalingModeIndex(_ index: Int) {
+        OPNStreamPreferences.saveUpscalingModeIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setUpscalingSharpness(_ value: Double) {
+        OPNStreamPreferences.saveUpscalingSharpness(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setUpscalingDenoise(_ value: Double) {
+        OPNStreamPreferences.saveUpscalingDenoise(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setL4SEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveL4SEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setHDREnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveHDREnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setLowLatencyModeEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveLowLatencyModeEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setPowerSaverEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.savePowerSaverEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setSuppressInputWhenInactive(_ enabled: Bool) {
+        OPNStreamPreferences.saveSuppressInputWhenInactive(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setDirectMouseInputEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveDirectMouseInputEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setGameVolume(_ value: Double) {
+        OPNStreamPreferences.saveGameVolume(value)
+        loadSettingsPreferences()
+    }
+
+    func setMicrophoneVolume(_ value: Double) {
+        OPNStreamPreferences.saveMicrophoneVolume(value)
+        loadSettingsPreferences()
+    }
+
+    func setMicrophoneMode(_ mode: String) {
+        OPNStreamPreferences.saveMicrophoneMode(mode)
+        loadSettingsPreferences()
+    }
+
+    func setMicrophoneDeviceId(_ deviceId: String) {
+        OPNStreamPreferences.saveMicrophoneDeviceId(deviceId)
+        loadSettingsPreferences()
     }
 
     func optimizedImageURL(_ rawValue: String, width: Int) -> URL? {
@@ -675,6 +871,14 @@ final class CatalogViewModel: ObservableObject {
                 if success { self.storeDefinitions = definitionsBox.value.map(Self.parseStoreDefinition) }
             }
         }
+    }
+
+    private func loadSettingsPreferences() {
+        streamCapabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        streamProfile = OPNStreamPreferences.effectiveProfile(OPNStreamPreferences.loadProfile(), capabilities: streamCapabilities)
+        selectedSettingsRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
+        settingsRegionOptions = Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions())
+        microphoneDeviceOptions = OPNStreamPreferences.loadMicrophoneDeviceOptions()
     }
 
     private func refreshCatalogAfterOwnershipChange() {

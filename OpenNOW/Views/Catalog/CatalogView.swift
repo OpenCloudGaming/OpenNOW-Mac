@@ -142,7 +142,11 @@ struct CatalogView: View {
             } else {
                 VStack(spacing: 0) {
                     CatalogTopBar(viewModel: viewModel, accounts: accounts, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-                    CatalogContentView(viewModel: viewModel)
+                    if viewModel.selectedMainPage == .settings {
+                        SettingsView(viewModel: viewModel)
+                    } else {
+                        CatalogContentView(viewModel: viewModel)
+                    }
                 }
                 .transition(.opacity)
 
@@ -594,11 +598,11 @@ private struct CatalogTopBar: View {
         ZStack {
             HStack(spacing: 28) {
                 Menu {
-                    Button("Games") {
-                        if viewModel.isBrowseMode { viewModel.clearSearchAndFilters() }
-                    }
+                    Button("Games") { viewModel.showGames() }
+                    Button("Settings") { viewModel.showSettings() }
+                    Divider()
                     Button("Refresh Catalog") { viewModel.refresh() }
-                    if viewModel.isBrowseMode {
+                    if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
                         Button("Clear Search and Filters") { viewModel.clearSearchAndFilters() }
                     }
                     Divider()
@@ -611,15 +615,23 @@ private struct CatalogTopBar: View {
                 }
                 .menuStyle(.button)
                 .buttonStyle(.plain)
-                Text("Games")
+                Text(viewModel.selectedMainPage == .settings ? "Settings" : "Games")
                     .font(.nvidia(size: 17, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
                 Spacer()
             }
             .padding(.leading, 20)
 
-            catalogSearchField
-                .frame(width: 540)
+            if viewModel.selectedMainPage == .games {
+                catalogSearchField
+                    .frame(width: 540)
+            } else {
+                Text(viewModel.selectedSettingsPage.title)
+                    .font(.nvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .tracking(1.1)
+                    .frame(width: 540)
+            }
 
             HStack(spacing: 24) {
                 Spacer()
