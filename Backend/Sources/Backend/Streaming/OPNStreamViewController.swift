@@ -1026,7 +1026,8 @@ final class OPNStreamViewController: NSViewController {
     }
 
     private func statsOverlayFrame() -> NSRect {
-        NSRect(x: 18, y: max(18, view.bounds.height - 248), width: min(382, max(320, view.bounds.width - 36)), height: 230)
+        let width = min(382, max(320, view.bounds.width - 36))
+        return NSRect(x: max(18, view.bounds.width - width - 18), y: max(18, view.bounds.height - 248), width: width, height: 230)
     }
 
     private func updateStatsOverlay() {

@@ -836,65 +836,71 @@ private struct CatalogContentView: View {
         let heroes = heroGames
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
-        ZStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
-                    if hero != nil {
-                        CatalogHeroView(
-                            viewModel: viewModel,
-                            games: heroes,
-                            activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
-                            onSelectSlide: { index in
-                                heroAutoScrollEnabled = false
-                                heroIndex = index
-                            },
-                            onPreviousSlide: {
-                                guard !heroes.isEmpty else { return }
-                                heroAutoScrollEnabled = false
-                                heroIndex = max(heroIndex - 1, 0)
-                            },
-                            onNextSlide: {
-                                guard !heroes.isEmpty else { return }
-                                heroAutoScrollEnabled = false
-                                heroIndex = min(heroIndex + 1, heroes.count - 1)
-                            }
-                        )
-                    }
+        ScrollViewReader { proxy in
+            ZStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 26) {
+                        if hero != nil {
+                            CatalogHeroView(
+                                viewModel: viewModel,
+                                games: heroes,
+                                activeIndex: heroes.indices.contains(heroIndex) ? heroIndex : 0,
+                                onSelectSlide: { index in
+                                    heroAutoScrollEnabled = false
+                                    heroIndex = index
+                                },
+                                onPreviousSlide: {
+                                    guard !heroes.isEmpty else { return }
+                                    heroAutoScrollEnabled = false
+                                    heroIndex = max(heroIndex - 1, 0)
+                                },
+                                onNextSlide: {
+                                    guard !heroes.isEmpty else { return }
+                                    heroAutoScrollEnabled = false
+                                    heroIndex = min(heroIndex + 1, heroes.count - 1)
+                                }
+                            )
+                        }
 
-                    if !viewModel.errorMessage.isEmpty {
-                        CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                    }
-                    if viewModel.isBrowseMode {
-                        CatalogBrowseControlsView(viewModel: viewModel)
-                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                    }
-                    if (viewModel.isLoading || viewModel.isLoadingPanels) && !sections.isEmpty {
-                        CatalogLoadingStrip()
-                            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                    }
-
-                    ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                        CatalogRailView(viewModel: viewModel, section: section)
-                        if shouldShowDetail(afterSectionAt: index, sections: sections) {
-                            GameDetailPanel(viewModel: viewModel)
+                        if !viewModel.errorMessage.isEmpty {
+                            CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
                                 .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
-                                .padding(.top, -CatalogVendorLayout.cardTrayHeight)
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
+                        if viewModel.isBrowseMode {
+                            CatalogBrowseControlsView(viewModel: viewModel)
+                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                        }
+                        if (viewModel.isLoading || viewModel.isLoadingPanels) && !sections.isEmpty {
+                            CatalogLoadingStrip()
+                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                        }
+
+                        ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                            CatalogRailView(viewModel: viewModel, section: section)
+                            if shouldShowDetail(afterSectionAt: index, sections: sections), let detailAnchor = selectedDetailScrollAnchor {
+                                GameDetailPanel(viewModel: viewModel)
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                                    .padding(.top, -CatalogVendorLayout.cardTrayHeight)
+                                    .id(detailAnchor)
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            }
                         }
                     }
+                    .padding(.bottom, 44)
                 }
-                .padding(.bottom, 44)
-            }
-            .background(
-                Color.black
-                    .contentShape(Rectangle())
-                    .onTapGesture { viewModel.closeGameDetailsFromBackground() }
-            )
+                .background(
+                    Color.black
+                        .contentShape(Rectangle())
+                        .onTapGesture { viewModel.closeGameDetailsFromBackground() }
+                )
 
-            if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
-                VendorSplashLoadingView()
-                    .transition(.opacity)
+                if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
+                    VendorSplashLoadingView()
+                        .transition(.opacity)
+                }
+            }
+            .onChange(of: selectedDetailScrollAnchor) { _, anchor in
+                scrollToSelectedDetail(anchor, proxy: proxy)
             }
         }
         .background(Color.black)
@@ -919,6 +925,20 @@ private struct CatalogContentView: View {
 
     private var heroIdentityList: [String] {
         heroGames.map { CatalogViewModel.identity(for: $0) }
+    }
+
+    private var selectedDetailScrollAnchor: String? {
+        guard let selectedGame = viewModel.selectedGame else { return nil }
+        return "detail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
+    }
+
+    private func scrollToSelectedDetail(_ anchor: String?, proxy: ScrollViewProxy) {
+        guard let anchor else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.24)) {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        }
     }
 
     private func shouldShowDetail(afterSectionAt index: Int, sections: [CatalogSectionModel]) -> Bool {
