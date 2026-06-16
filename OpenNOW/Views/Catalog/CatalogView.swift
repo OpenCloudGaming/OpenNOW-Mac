@@ -1417,11 +1417,11 @@ private struct GameDetailPanel: View {
                 .overlay {
                     if imageURLs.count > 1 {
                         HStack {
-                            CatalogDetailImageArrow(systemName: "chevron.left") {
+                            CatalogDetailImageArrow(name: "lt_arrow") {
                                 moveImage(delta: -1, count: imageURLs.count)
                             }
                             Spacer()
-                            CatalogDetailImageArrow(systemName: "chevron.right") {
+                            CatalogDetailImageArrow(name: "rt_arrow") {
                                 moveImage(delta: 1, count: imageURLs.count)
                             }
                         }
@@ -1922,15 +1922,15 @@ private struct CatalogLoadingStrip: View {
 }
 
 private struct CatalogDetailImageArrow: View {
-    let systemName: String
+    let name: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.nvidia(size: 18, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 44, height: 44)
+            VendorResourceImage(name: name, fileExtension: "svg")
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+                .frame(width: 48, height: 48)
                 .background(.black.opacity(0.28), in: Circle())
                 .overlay { Circle().stroke(Color.white.opacity(0.22), lineWidth: 1) }
         }
@@ -2037,14 +2037,8 @@ private extension OPNCatalogGameObject {
             for value in imageUrlsByType[key.lowercased()] ?? [] { append(value) }
         }
 
-        appendValues(forKey: "HERO_IMAGE")
         appendValues(forKey: "SCREENSHOTS")
         for value in screenshotUrls { append(value) }
-        appendValues(forKey: "FEATURE_IMAGE")
-        appendValues(forKey: "KEY_ART")
-        appendValues(forKey: "KEY_IMAGE")
-        appendValues(forKey: "MARQUEE_HERO_IMAGE")
-        appendValues(forKey: "TV_BANNER")
         append(heroImageUrl)
         append(imageUrl)
         append(bestDetailImageURL)
