@@ -159,7 +159,7 @@ final class CatalogImageCache {
     }
 
     private func pruneIfNeeded(context: ModelContext) {
-        var descriptor = FetchDescriptor<CatalogImageCacheEntry>(sortBy: [SortDescriptor(\CatalogImageCacheEntry.lastAccessedAt, order: .reverse)])
+        let descriptor = FetchDescriptor<CatalogImageCacheEntry>(sortBy: [SortDescriptor(\CatalogImageCacheEntry.lastAccessedAt, order: .reverse)])
         guard let entries = try? context.fetch(descriptor) else { return }
         var totalBytes = 0
         var entriesToDelete: [CatalogImageCacheEntry] = []

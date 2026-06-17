@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OpenNOWGameServices
 import SwiftUI
 import WebRTCMedia
 
@@ -42,30 +43,33 @@ struct WebRTCMediaStreamView: View {
     @State private var path: WebRTCStreamingPath?
     @State private var hasStarted = false
     @State private var statusMessage = "Starting WebRTC media path..."
+    @State private var isStreamReady = false
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.02, green: 0.025, blue: 0.03), Color(red: 0.08, green: 0.10, blue: 0.09)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            VStack(spacing: 18) {
-                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(statusMessage)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.72))
-                ProgressView()
-                    .controlSize(.large)
+            NativeWebRTCStreamSurface { nativeView in
+                Task { await startIfNeeded(nativeView: nativeView) }
             }
-            .padding(32)
+            if !isStreamReady {
+                LinearGradient(
+                    colors: [Color(red: 0.02, green: 0.025, blue: 0.03), Color(red: 0.08, green: 0.10, blue: 0.09)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                VStack(spacing: 18) {
+                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(statusMessage)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                    ProgressView()
+                        .controlSize(.large)
+                }
+                .padding(32)
+            }
         }
         .ignoresSafeArea()
-        .task(id: configuration.id) {
-            await startIfNeeded()
-        }
         .onDisappear {
             OpenNOWStreamLifecycle.deactivate(configuration.id)
             if let path {
@@ -75,20 +79,27 @@ struct WebRTCMediaStreamView: View {
     }
 
     @MainActor
-    private func startIfNeeded() async {
+    private func startIfNeeded(nativeView: NativeWebRTCStreamView) async {
         guard !hasStarted else { return }
         hasStarted = true
         OpenNOWStreamLifecycle.activate(configuration.id)
 
-        let provider = OpenNOWUnavailableStreamSessionProvider()
-        let transport = OpenNOWUnavailableWebRTCTransport()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let coordinator = OpenNOWStreamSessionCoordinator()
+        let path = WebRTCStreamingPath(
+            sessionProvider: coordinator,
+            transport: NativeWebRTCTransport(nativeView: nativeView),
+            signaling: coordinator
+        )
+        nativeView.onInputEvent = { event in
+            Task { try? await path.send(event) }
+        }
         self.path = path
 
         do {
             _ = try await path.start(configuration: configuration) { progress in
                 await MainActor.run {
                     statusMessage = progress.message
+                    isStreamReady = progress.isReady
                     onProgress?(progress)
                 }
             }
@@ -115,40 +126,14 @@ struct WebRTCMediaStreamView: View {
     }
 }
 
-private enum OpenNOWWebRTCMediaStreamError: LocalizedError, Sendable {
-    case sessionProviderUnavailable
-    case transportUnavailable
+private struct NativeWebRTCStreamSurface: NSViewRepresentable {
+    let onResolve: @MainActor (NativeWebRTCStreamView) -> Void
 
-    var errorDescription: String? {
-        switch self {
-        case .sessionProviderUnavailable:
-            "The WebRTC.Media session provider is not configured yet."
-        case .transportUnavailable:
-            "The WebRTC.Media transport is not configured yet."
-        }
-    }
-}
-
-private struct OpenNOWUnavailableStreamSessionProvider: StreamSessionProvider {
-    func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
-        throw OpenNOWWebRTCMediaStreamError.sessionProviderUnavailable
+    func makeNSView(context: Context) -> NativeWebRTCStreamView {
+        let view = NativeWebRTCStreamView(frame: .zero)
+        onResolve(view)
+        return view
     }
 
-    func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {}
-}
-
-private struct OpenNOWUnavailableWebRTCTransport: WebRTCStreamTransport {
-    func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
-        throw OpenNOWWebRTCMediaStreamError.transportUnavailable
-    }
-
-    func addRemoteIceCandidate(_ candidate: StreamIceCandidate) async throws {
-        throw OpenNOWWebRTCMediaStreamError.transportUnavailable
-    }
-
-    func send(_ event: UserInputEvent) async throws {
-        throw OpenNOWWebRTCMediaStreamError.transportUnavailable
-    }
-
-    func disconnect() async {}
+    func updateNSView(_ nsView: NativeWebRTCStreamView, context: Context) {}
 }
