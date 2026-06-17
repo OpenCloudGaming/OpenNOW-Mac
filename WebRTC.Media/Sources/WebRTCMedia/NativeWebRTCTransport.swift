@@ -5,6 +5,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     private let session = OPNLibWebRTCStreamSession()
     private weak var nativeView: NSView?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
+    private var statsTelemetryTask: Task<Void, Never>?
 
     public init(nativeView: NSView) {
         self.nativeView = nativeView
@@ -12,7 +13,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
-        try await withCheckedThrowingContinuation { continuation in
+        WebRTCMediaTelemetry.capture("webrtc.transport.connect.start", level: .info, message: "Starting native WebRTC transport.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
+        return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             if let nativeView {
                 session.setNativeWindow(Unmanaged.passUnretained(nativeView).toOpaque())
@@ -26,6 +28,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 },
                 localIceCandidateHandler: { _ in },
                 stateHandler: { [weak self] connected, error in
+                    if connected {
+                        WebRTCMediaTelemetry.capture("webrtc.transport.connected", level: .info, message: "Native WebRTC transport connected.", attributes: ["sessionId": offer.session.id])
+                    }
                     guard !connected, !(error as String).isEmpty else { return }
                     self?.resumeError(NativeWebRTCTransportError.connectionFailed(error as String))
                 }
@@ -55,7 +60,28 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func disconnect() async {
+        WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = nil
         session.stop()
+    }
+
+    public func latestStatsSnapshot() -> OPNStreamStatsSnapshot {
+        session.latestStatsSnapshot()
+    }
+
+    public func statsSnapshots(intervalSeconds: Double = 1.0) -> AsyncStream<OPNStreamStatsSnapshot> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { [session] continuation in
+            let interval = max(0.25, intervalSeconds)
+            let task = Task {
+                while !Task.isCancelled {
+                    continuation.yield(session.latestStatsSnapshot())
+                    try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     private func send(_ event: MouseEvent) {
@@ -100,13 +126,36 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     private func resumeAnswer(_ answer: StreamAnswer) {
         guard let continuation else { return }
         self.continuation = nil
+        WebRTCMediaTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
+        startStatsTelemetry()
         continuation.resume(returning: answer)
     }
 
     private func resumeError(_ error: Error) {
         guard let continuation else { return }
         self.continuation = nil
+        WebRTCMediaTelemetry.capture("webrtc.transport.error", level: .error, message: error.localizedDescription)
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = nil
         continuation.resume(throwing: error)
+    }
+
+    private func startStatsTelemetry() {
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = Task { [session] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                let stats = session.latestStatsSnapshot()
+                guard stats.available else { continue }
+                let attributes = ["codec": stats.codec, "resolution": stats.resolution]
+                WebRTCMediaTelemetry.record("webrtc.media.latency_ms", kind: .gauge, value: stats.latencyMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.jitter_ms", kind: .gauge, value: stats.jitterMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.inbound_bitrate_mbps", kind: .gauge, value: stats.inboundBitrateMbps, unit: "megabit/second", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.packet_loss_percent", kind: .gauge, value: stats.packetLossPercent, unit: "percent", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.render_fps", kind: .gauge, value: stats.renderFps, attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.decode_time_ms", kind: .gauge, value: stats.decodeTimeMs, unit: "millisecond", attributes: attributes)
+            }
+        }
     }
 }
 

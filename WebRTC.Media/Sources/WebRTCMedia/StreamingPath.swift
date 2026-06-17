@@ -48,17 +48,35 @@ public actor WebRTCStreamingPath {
     public func start(configuration: StreamLaunchConfiguration,
                       progress: (@Sendable (StreamProgress) async -> Void)? = nil) async throws -> StreamSessionDescriptor {
         guard activeSession == nil else { throw StreamingPathError.alreadyRunning }
+        WebRTCMediaTelemetry.capture("webrtc.path.start", level: .info, message: "Starting WebRTC streaming path.", attributes: ["configurationId": configuration.id.uuidString, "applicationID": configuration.applicationID])
 
         try await publishProgress(configuration: configuration, step: .checkNetworkRoute, message: "Checking network route...", progress: progress)
         try await publishProgress(configuration: configuration, step: .allocateCloudSession, message: "Allocating cloud session...", progress: progress)
-        let offer = try await sessionProvider.startSession(configuration: configuration)
+        let offer: StreamOffer
+        do {
+            offer = try await sessionProvider.startSession(configuration: configuration)
+        } catch {
+            WebRTCMediaTelemetry.capture("webrtc.path.session_provider.error", level: .error, message: error.localizedDescription, attributes: ["applicationID": configuration.applicationID])
+            throw error
+        }
         guard !offer.sdp.isEmpty else { throw StreamingPathError.invalidOffer }
 
         try await publishProgress(configuration: configuration, step: .receiveStreamOffer, message: "Received stream offer.", progress: progress)
         try await publishProgress(configuration: configuration, step: .negotiateWebRTC, message: "Negotiating WebRTC...", progress: progress)
-        let answer = try await transport.connect(offer: offer, mediaReceiver: mediaSession)
+        let answer: StreamAnswer
+        do {
+            answer = try await transport.connect(offer: offer, mediaReceiver: mediaSession)
+        } catch {
+            WebRTCMediaTelemetry.capture("webrtc.path.transport.error", level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
+            throw error
+        }
         if let signaling {
-            try await signaling.sendAnswer(answer, for: offer.session)
+            do {
+                try await signaling.sendAnswer(answer, for: offer.session)
+            } catch {
+                WebRTCMediaTelemetry.capture("webrtc.path.signaling_answer.error", level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
+                throw error
+            }
             startRemoteIceCandidateForwarding(session: offer.session, signaling: signaling)
         }
 
@@ -66,6 +84,7 @@ public actor WebRTCStreamingPath {
         startedAt = .now
         state = .running(offer.session)
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected.", isReady: true, progress: progress)
+        WebRTCMediaTelemetry.capture("webrtc.path.connected", level: .info, message: "WebRTC streaming path connected.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
         return offer.session
     }
 
@@ -81,6 +100,7 @@ public actor WebRTCStreamingPath {
 
     public func stop(reason: StreamEndReason = .userRequested, message: String = "Stream ended.") async throws -> StreamReport {
         guard let activeSession else { throw StreamingPathError.notRunning }
+        WebRTCMediaTelemetry.capture("webrtc.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": String(describing: reason)])
         iceCandidateTask?.cancel()
         iceCandidateTask = nil
         await transport.disconnect()
@@ -117,8 +137,10 @@ public actor WebRTCStreamingPath {
                 let candidates = try await signaling.remoteIceCandidates(for: session)
                 for await candidate in candidates {
                     try await transport.addRemoteIceCandidate(candidate)
+                    WebRTCMediaTelemetry.record("webrtc.media.remote_ice_candidate.count", kind: .counter, value: 1, attributes: ["sessionId": session.id])
                 }
             } catch {
+                WebRTCMediaTelemetry.capture("webrtc.path.remote_ice.error", level: .warning, message: error.localizedDescription, attributes: ["sessionId": session.id])
                 return
             }
         }

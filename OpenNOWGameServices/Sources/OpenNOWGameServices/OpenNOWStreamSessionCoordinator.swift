@@ -156,40 +156,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         var profile = OPNStreamPreferences.loadProfile(forGame: configuration.applicationID) ?? OPNStreamPreferences.loadProfile()
         profile = OPNStreamPreferences.effectiveProfile(profile, capabilities: capabilities)
-        let resolution = profile.resolution
-        let codec = OPNStreamPreferences.resolveCodec(profile: profile, resolution: resolution, capabilities: capabilities, libWebRTCAvailable: true)
-        return [
-            "resolution": resolution.value,
-            "fps": profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
-            "codec": codec,
-            "colorQuality": profile.colorQuality.value.isEmpty ? "8bit_420" : profile.colorQuality.value,
-            "maxBitrateMbps": profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps,
-            "prefilterMode": profile.lowLatencyMode ? 0 : profile.prefilterMode,
-            "prefilterSharpness": profile.lowLatencyMode ? 0 : profile.prefilterSharpness,
-            "prefilterDenoise": profile.lowLatencyMode ? 0 : profile.prefilterDenoise,
-            "prefilterModel": profile.lowLatencyMode ? 0 : profile.prefilterModel,
-            "enableL4S": profile.enableL4S,
-            "enableHdr": profile.enableHdr,
-            "enableReflex": true,
-            "lowLatencyMode": profile.lowLatencyMode,
-            "microphoneMode": profile.microphoneMode,
-            "microphoneDeviceId": profile.microphoneDeviceId,
-            "microphonePushToTalkKeyCode": profile.microphonePushToTalkKeyCode,
-            "microphonePushToTalkModifierMask": profile.microphonePushToTalkModifierMask,
-            "gameVolume": profile.gameVolume,
-            "microphoneVolume": profile.microphoneVolume,
-            "upscalingMode": profile.lowLatencyMode ? 0 : profile.upscalingMode,
-            "upscalingSharpness": profile.lowLatencyMode ? 0 : profile.upscalingSharpness,
-            "upscalingDenoise": profile.lowLatencyMode ? 0 : profile.upscalingDenoise,
-            "upscalingTargetHeight": profile.upscalingTargetHeight,
-            "suppressInputWhenInactive": profile.suppressInputWhenInactive,
-            "directMouseInput": profile.directMouseInput,
-            "gameLanguage": OPNLocale.currentGFNLocale(),
-            "accountLinked": configuration.accountLinked,
-            "selectedStore": configuration.selectedStore,
-            "remoteControllersBitmap": 0,
-            "availableSupportedControllers": [],
-        ]
+        let resolved = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: webRTCMediaProfile(from: profile),
+            capabilities: webRTCMediaCapabilities(from: capabilities),
+            cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables()),
+            libWebRTCAvailable: true
+        )
+        return resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
     }
 
     private func resumeOffer(_ offer: StreamOffer) {

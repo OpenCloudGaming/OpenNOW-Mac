@@ -2,6 +2,7 @@
 
 import Common
 import OpenNOWTelemetry
+import WebRTCMedia
 
 final class OPNSessionManager: NSObject, @unchecked Sendable {
     static let shared = OPNSessionManager()
@@ -942,51 +943,15 @@ private func userAgent() -> String {
 }
 
 private func settingsByApplyingCloudVariables(_ settings: [String: Any], requestedCodec: String, capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
-    var typed = OPNStreamSettings()
-    typed.resolution = string(settings["resolution"]).isEmpty ? typed.resolution : string(settings["resolution"])
-    typed.fps = int(settings["fps"], fallback: typed.fps)
-    typed.codec = string(settings["codec"]).isEmpty ? typed.codec : string(settings["codec"])
-    typed.colorQuality = string(settings["colorQuality"]).isEmpty ? typed.colorQuality : string(settings["colorQuality"])
-    typed.maxBitrateMbps = int(settings["maxBitrateMbps"], fallback: typed.maxBitrateMbps)
-    typed.prefilterMode = int(settings["prefilterMode"])
-    typed.prefilterSharpness = int(settings["prefilterSharpness"])
-    typed.prefilterDenoise = int(settings["prefilterDenoise"])
-    typed.prefilterModel = int(settings["prefilterModel"])
-    typed.enableCloudGsync = bool(settings["enableCloudGsync"])
-    typed.enableL4S = bool(settings["enableL4S"])
-    typed.enableReflex = bool(settings["enableReflex"], fallback: true)
-    typed.lowLatencyMode = bool(settings["lowLatencyMode"])
-    typed.enableHdr = bool(settings["enableHdr"])
-    typed.microphoneMode = string(settings["microphoneMode"])
-    typed.microphoneDeviceId = string(settings["microphoneDeviceId"])
-    typed.microphonePushToTalkKeyCode = int(settings["microphonePushToTalkKeyCode"], fallback: 9)
-    typed.microphonePushToTalkModifierMask = int(settings["microphonePushToTalkModifierMask"])
-    typed.gameVolume = double(settings["gameVolume"], fallback: 1.0)
-    typed.microphoneVolume = double(settings["microphoneVolume"], fallback: 1.0)
-    typed.keyboardLayout = string(settings["keyboardLayout"])
-    typed.gameLanguage = string(settings["gameLanguage"])
-    typed.accountLinked = bool(settings["accountLinked"], fallback: true)
-    typed.selectedStore = string(settings["selectedStore"])
-    typed.networkTestSessionId = string(settings["networkTestSessionId"])
-    typed.networkType = string(settings["networkType"])
-    typed.networkLatencyMs = int(settings["networkLatencyMs"], fallback: -1)
-    typed.remoteControllersBitmap = UInt32(int(settings["remoteControllersBitmap"]))
-    typed.supportedHidDevices = UInt32(int(settings["supportedHidDevices"]))
-    typed.availableSupportedControllers = stringArray(settings["availableSupportedControllers"])
-    let applied = OPNStreamPreferences.settingsByApplyingCloudVariables(typed, variables: OPNStreamPreferences.loadCachedCloudVariables(), capabilities: capabilities)
+    let resolved = WebRTCMediaStreamSettingsResolver.resolve(
+        profile: webRTCMediaProfile(from: settings),
+        capabilities: webRTCMediaCapabilities(from: capabilities),
+        cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables()),
+        libWebRTCAvailable: true
+    )
     var result = settings
-    result["resolution"] = applied.resolution
-    result["fps"] = applied.fps
-    result["codec"] = requestedCodec.isEmpty ? applied.codec : requestedCodec
-    result["colorQuality"] = applied.colorQuality
-    result["maxBitrateMbps"] = applied.maxBitrateMbps
-    result["prefilterMode"] = applied.prefilterMode
-    result["prefilterSharpness"] = applied.prefilterSharpness
-    result["prefilterDenoise"] = applied.prefilterDenoise
-    result["prefilterModel"] = applied.prefilterModel
-    result["enableL4S"] = applied.enableL4S
-    result["enableHdr"] = applied.enableHdr
-    result["enableReflex"] = applied.enableReflex
+    result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"]), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }
+    if !requestedCodec.isEmpty { result["codec"] = requestedCodec }
     return result
 }
 

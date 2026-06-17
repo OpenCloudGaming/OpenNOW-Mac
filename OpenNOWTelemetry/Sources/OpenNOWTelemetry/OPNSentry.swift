@@ -173,14 +173,14 @@ public final class OPNSentry: NSObject {
     }
 
     @objc(recordGaugeMetricWithKey:value:unit:attributes:)
-    static func recordGaugeMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
+    public static func recordGaugeMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
         guard initialized, SentrySDK.isEnabled else { return false }
         SentrySDK.metrics.gauge(key: key, value: value, unit: sentryUnit(from: unit), attributes: sentryAttributes(from: attributes))
         return true
     }
 
     @objc(recordDistributionMetricWithKey:value:unit:attributes:)
-    static func recordDistributionMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
+    public static func recordDistributionMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
         guard initialized, SentrySDK.isEnabled else { return false }
         SentrySDK.metrics.distribution(key: key, value: value, unit: sentryUnit(from: unit), attributes: sentryAttributes(from: attributes))
         return true

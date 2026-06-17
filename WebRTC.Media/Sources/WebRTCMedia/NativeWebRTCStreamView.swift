@@ -3,12 +3,17 @@ import AppKit
 @MainActor
 public final class NativeWebRTCStreamView: NSView {
     public var onInputEvent: ((UserInputEvent) -> Void)?
+    public var onPointerLockChanged: ((Bool) -> Void)?
+    public private(set) var isPointerLocked = false
     private var trackingArea: NSTrackingArea?
+    private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        gamepadMonitor.onInputEvent = { [weak self] event in self?.onInputEvent?(event) }
+        gamepadMonitor.start()
     }
 
     @available(*, unavailable)
@@ -22,6 +27,23 @@ public final class NativeWebRTCStreamView: NSView {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         window?.acceptsMouseMovedEvents = true
+        if window == nil { gamepadMonitor.stop() } else { gamepadMonitor.start() }
+        if window == nil { setPointerLocked(false) }
+    }
+
+    public func setPointerLocked(_ locked: Bool) {
+        guard isPointerLocked != locked else { return }
+        isPointerLocked = locked
+        if locked {
+            NSCursor.hide()
+            CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+            window?.makeFirstResponder(self)
+        } else {
+            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+            NSCursor.unhide()
+        }
+        onPointerLockChanged?(locked)
+        WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
     }
 
     public override func updateTrackingAreas() {
@@ -34,6 +56,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if event.clickCount >= 2 { setPointerLocked(true) }
         emitMouseButton(.left, isPressed: true)
     }
 
@@ -80,6 +103,10 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, isPointerLocked {
+            setPointerLocked(false)
+            return
+        }
         emitKey(event, isPressed: true)
     }
 
