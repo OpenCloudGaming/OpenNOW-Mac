@@ -21,6 +21,7 @@
 		A00000000000000000000107 /* Backend in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* Backend */; };
 		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
+		A00000000000000000000110 /* WebRTCMedia in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000210 /* WebRTCMedia */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -69,6 +70,7 @@
 				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
 				A00000000000000000000105 /* UDS in Frameworks */,
+				A00000000000000000000110 /* WebRTCMedia in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,6 +128,7 @@
 				A00000000000000000000208 /* SignalLinkKit */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
 				A00000000000000000000205 /* UDS */,
+				A00000000000000000000210 /* WebRTCMedia */,
 			);
 			productName = OpenNOW;
 			productReference = 7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */;
@@ -168,6 +171,7 @@
 				A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */,
 				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
+				A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7729CE772FDEDAB300D5C9D5 /* Products */;
@@ -468,6 +472,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Common;
 		};
+		A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = WebRTC.Media;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -530,6 +538,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */;
 			productName = Common;
+		};
+		A00000000000000000000210 /* WebRTCMedia */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */;
+			productName = WebRTCMedia;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
