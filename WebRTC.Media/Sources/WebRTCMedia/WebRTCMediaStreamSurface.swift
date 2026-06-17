@@ -19,9 +19,13 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var sidebarVisible = true
+    @State private var quitMenuVisible = false
+    @State private var isEndingStream = false
+    @State private var didEndStream = false
     @State private var latestStats: OPNStreamStatsSnapshot?
     @State private var statsTask: Task<Void, Never>?
     @State private var nativeView: NativeWebRTCStreamView?
+    @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -48,10 +52,12 @@ public struct WebRTCMediaStreamSurface: View {
             if !isStreamReady { launchOverlay }
             if statsVisible { statsHUD }
             if sidebarVisible { sidebar }
+            if quitMenuVisible { quitMenu }
             if pointerLocked { pointerLockBadge }
         }
         .background(Color.black)
         .ignoresSafeArea()
+        .onAppear { registerStreamLifecycle() }
         .onDisappear { stopStream() }
     }
 
@@ -118,6 +124,9 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "gamecontroller.fill", title: "Pad") {
                 WebRTCMediaTelemetry.capture("webrtc.ui.gamepad.status", level: .info, message: "Gamepad status requested.", attributes: ["connected": String(NativeWebRTCGamepadMonitor.connectedGamepadCount())])
             }
+            sidebarButton(systemName: "power", title: "Quit") {
+                showQuitMenu()
+            }
             sidebarButton(systemName: "xmark", title: "Close") {
                 sidebarVisible = false
             }
@@ -127,6 +136,53 @@ public struct WebRTCMediaStreamSurface: View {
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
         .padding(.top, 22)
         .padding(.trailing, 18)
+    }
+
+    private var quitMenu: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.54))
+                .ignoresSafeArea()
+            VStack(spacing: 18) {
+                Text("STREAM PAUSED")
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .tracking(2.4)
+                    .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
+                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                Text("Resume the stream or quit the current session. Remote input is paused while this menu is open.")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+                HStack(spacing: 12) {
+                    Button(action: resumeFromQuitMenu) {
+                        Text("Resume")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.black)
+                            .frame(width: 150, height: 44)
+                            .background(Color(red: 0.61, green: 1.0, blue: 0.22), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: quitStreamFromMenu) {
+                        Text(isEndingStream ? "Quitting..." : "Quit Stream")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(width: 150, height: 44)
+                            .background(.white.opacity(0.11), in: Capsule())
+                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isEndingStream)
+                }
+            }
+            .padding(32)
+            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.26), lineWidth: 1))
+            .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
+        }
     }
 
     private var pointerLockBadge: some View {
@@ -173,7 +229,13 @@ public struct WebRTCMediaStreamSurface: View {
         hasStarted = true
         let transport = NativeWebRTCTransport(nativeView: nativeView)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
-        nativeView.onInputEvent = { event in Task { try? await path.send(event) } }
+        nativeView.onInputEvent = { event in
+            Task {
+                let shouldSend = await MainActor.run { !quitMenuVisible && !isEndingStream }
+                guard shouldSend else { return }
+                try? await path.send(event)
+            }
+        }
         self.transport = transport
         self.path = path
         startStatsPolling(transport: transport)
@@ -209,13 +271,75 @@ public struct WebRTCMediaStreamSurface: View {
         case .toggleSidebar:
             sidebarVisible.toggle()
             WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
+        case .showQuitMenu:
+            showQuitMenu()
+        }
+    }
+
+    private func registerStreamLifecycle() {
+        WebRTCMediaStreamLifecycle.activate(configuration.id) { completion in
+            showQuitMenu(completion: completion)
+            return true
+        }
+    }
+
+    private func showQuitMenu(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = completion
+        nativeView?.setPointerLocked(false)
+        quitMenuVisible = true
+        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func resumeFromQuitMenu() {
+        quitMenuVisible = false
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = nil
+        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.resume", level: .info, message: "Stream resumed from quit menu.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func quitStreamFromMenu() {
+        guard !isEndingStream else { return }
+        isEndingStream = true
+        quitMenuVisible = false
+        let completion = pendingApplicationQuitCompletion
+        pendingApplicationQuitCompletion = nil
+        nativeView?.setPointerLocked(false)
+        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.quit_stream", level: .info, message: "Stream quit requested from quit menu.", attributes: ["applicationID": configuration.applicationID])
+        Task {
+            let report = await finishStream(reason: .userRequested, message: "Stream ended by user.")
+            await MainActor.run {
+                completion?(false)
+                onEnd(report.success, report.message, report)
+            }
+        }
+    }
+
+    private func finishStream(reason: StreamEndReason, message: String) async -> StreamReport {
+        let fallbackReport = StreamReport(title: configuration.title, success: reason != .failed, reason: reason, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID])
+        let shouldFinish = await MainActor.run {
+            guard !didEndStream else { return false }
+            didEndStream = true
+            return true
+        }
+        guard shouldFinish else { return fallbackReport }
+        guard let path else { return fallbackReport }
+        do {
+            return try await path.stop(reason: reason, message: message)
+        } catch {
+            return StreamReport(title: configuration.title, success: false, reason: .failed, message: Self.message(for: error), durationSeconds: 0, metadata: ["applicationID": configuration.applicationID])
         }
     }
 
     private func stopStream() {
+        WebRTCMediaStreamLifecycle.deactivate(configuration.id)
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = nil
         statsTask?.cancel()
         statsTask = nil
         nativeView?.setPointerLocked(false)
+        guard !didEndStream else { return }
+        didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }
     }
 

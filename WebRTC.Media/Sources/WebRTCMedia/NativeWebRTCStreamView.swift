@@ -4,6 +4,7 @@ import AppKit
 public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
     case toggleSidebar
+    case showQuitMenu
 }
 
 @MainActor
@@ -154,6 +155,9 @@ public final class NativeWebRTCStreamView: NSView {
             return true
         case 5:
             onCommand?(.toggleSidebar)
+            return true
+        case 12:
+            onCommand?(.showQuitMenu)
             return true
         default:
             return false

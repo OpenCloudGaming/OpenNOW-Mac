@@ -8,6 +8,7 @@
 import AppKit
 import SwiftUI
 import SwiftData
+import WebRTCMedia
 
 @main
 struct OpenNOWApp: App {
@@ -61,10 +62,10 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         if isCompletingUserApprovedTermination {
             return .terminateNow
         }
-        guard OpenNOWStreamLifecycle.hasActiveStream else {
+        guard WebRTCMediaStreamLifecycle.hasActiveStream else {
             return .terminateNow
         }
-        guard OpenNOWStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, weak sender] shouldTerminateApplication in
+        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, weak sender] shouldTerminateApplication in
             guard let sender else { return }
             if shouldTerminateApplication {
                 self?.isCompletingUserApprovedTermination = true
