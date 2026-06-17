@@ -2,6 +2,64 @@ import Foundation
 import Testing
 @testable import WebRTCMedia
 
+private actor RecordingSessionProvider: StreamSessionProvider {
+    private(set) var finished: [(StreamSessionDescriptor, StreamEndReason)] = []
+    let offer: StreamOffer
+
+    init(offer: StreamOffer) {
+        self.offer = offer
+    }
+
+    func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
+        offer
+    }
+
+    func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
+        finished.append((session, reason))
+    }
+}
+
+private actor RecordingTransport: WebRTCStreamTransport {
+    private(set) var connectedOffer: StreamOffer?
+    private(set) var sentEvents: [UserInputEvent] = []
+    private(set) var remoteCandidates: [StreamIceCandidate] = []
+    private(set) var disconnected = false
+
+    func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
+        connectedOffer = offer
+        await mediaReceiver.receive(.audio(AudioFrame(
+            trackID: "audio-main",
+            timestamp: MediaTimestamp(nanoseconds: 1),
+            durationNanoseconds: 20_000_000,
+            sampleRate: 48_000,
+            channelCount: 2,
+            sampleFormat: .pcmInt16,
+            payload: Data([1, 2])
+        )))
+        return StreamAnswer(sdp: "answer")
+    }
+
+    func addRemoteIceCandidate(_ candidate: StreamIceCandidate) async throws {
+        remoteCandidates.append(candidate)
+    }
+
+    func send(_ event: UserInputEvent) async throws {
+        sentEvents.append(event)
+    }
+
+    func disconnect() async {
+        disconnected = true
+    }
+}
+
+private actor ProgressRecorder {
+    private(set) var values: [StreamProgress] = []
+
+    func append(_ progress: StreamProgress) {
+        values.append(progress)
+    }
+}
+
 @Suite("WebRTCMediaSession")
 struct WebRTCMediaSessionTests {
     @Test("routes video frames to media subscribers")
@@ -48,5 +106,56 @@ struct WebRTCMediaSessionTests {
         #expect(received == .gamepad(state))
         #expect(state.rightTrigger == 1)
         #expect(state.leftStickX == -1)
+    }
+}
+
+@Suite("WebRTCStreamingPath")
+struct WebRTCStreamingPathTests {
+    @Test("starts stream through provider and transport")
+    func startsStream() async throws {
+        let session = StreamSessionDescriptor(id: "session-1", applicationID: "100", serverAddress: "server", title: "Game")
+        let offer = StreamOffer(session: session, sdp: "offer")
+        let provider = RecordingSessionProvider(offer: offer)
+        let transport = RecordingTransport()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "100", accessToken: "token", accountLinked: true, selectedStore: "steam")
+        let progressRecorder = ProgressRecorder()
+
+        let mediaStream = await path.mediaFrames()
+        let started = try await path.start(configuration: configuration) { progress in
+            await progressRecorder.append(progress)
+        }
+        var iterator = mediaStream.makeAsyncIterator()
+        let firstFrame = await iterator.next()
+        let progressValues = await progressRecorder.values
+
+        #expect(started == session)
+        #expect(await transport.connectedOffer == offer)
+        #expect(progressValues.map(\.currentStepIndex) == [0, 1, 2, 3, 4])
+        #expect(progressValues.last?.isReady == true)
+        #expect(firstFrame?.kind == .audio)
+    }
+
+    @Test("forwards input events and stops active session")
+    func forwardsInputAndStops() async throws {
+        let session = StreamSessionDescriptor(id: "session-2", applicationID: "200", serverAddress: "server", title: "Game")
+        let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
+        let transport = RecordingTransport()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "200", accessToken: "token", accountLinked: true, selectedStore: "steam")
+        let event = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 10, scanCode: 20, isPressed: true, timestamp: MediaTimestamp(nanoseconds: 10)))
+
+        _ = try await path.start(configuration: configuration)
+        try await path.send(event)
+        let report = try await path.stop(reason: .userRequested, message: "Stopped")
+
+        #expect(await transport.sentEvents == [event])
+        #expect(await transport.disconnected == true)
+        let finished = await provider.finished
+        #expect(finished.count == 1)
+        #expect(finished.first?.0 == session)
+        #expect(finished.first?.1 == .userRequested)
+        #expect(report.success == true)
+        #expect(report.message == "Stopped")
     }
 }
