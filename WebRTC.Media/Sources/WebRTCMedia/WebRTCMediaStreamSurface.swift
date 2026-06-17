@@ -40,6 +40,9 @@ public struct WebRTCMediaStreamSurface: View {
             NativeWebRTCStreamSurface { view in
                 nativeView = view
                 view.onPointerLockChanged = { locked in pointerLocked = locked }
+                view.onCommand = { command in
+                    handle(command)
+                }
                 Task { await startIfNeeded(nativeView: view) }
             }
             if !isStreamReady { launchOverlay }
@@ -195,6 +198,17 @@ public struct WebRTCMediaStreamSurface: View {
             for await snapshot in transport.statsSnapshots(intervalSeconds: 1) {
                 latestStats = snapshot
             }
+        }
+    }
+
+    private func handle(_ command: WebRTCMediaStreamCommand) {
+        switch command {
+        case .toggleStatsHUD:
+            statsVisible.toggle()
+            WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
+        case .toggleSidebar:
+            sidebarVisible.toggle()
+            WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
         }
     }
 

@@ -1,9 +1,16 @@
 import AppKit
 
 @MainActor
+public enum WebRTCMediaStreamCommand: Sendable {
+    case toggleStatsHUD
+    case toggleSidebar
+}
+
+@MainActor
 public final class NativeWebRTCStreamView: NSView {
     public var onInputEvent: ((UserInputEvent) -> Void)?
     public var onPointerLockChanged: ((Bool) -> Void)?
+    public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
     public private(set) var isPointerLocked = false
     private var trackingArea: NSTrackingArea?
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
@@ -103,6 +110,7 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func keyDown(with event: NSEvent) {
+        if handleCommand(event) { return }
         if event.keyCode == 53, isPointerLocked {
             setPointerLocked(false)
             return
@@ -125,6 +133,20 @@ public final class NativeWebRTCStreamView: NSView {
 
     private func emitMouseButton(_ button: MouseButton, isPressed: Bool) {
         onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: isPressed, timestamp: Self.timestamp())))
+    }
+
+    private func handleCommand(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) else { return false }
+        switch event.keyCode {
+        case 45:
+            onCommand?(.toggleStatsHUD)
+            return true
+        case 5:
+            onCommand?(.toggleSidebar)
+            return true
+        default:
+            return false
+        }
     }
 
     private func emitKey(_ event: NSEvent, isPressed: Bool) {

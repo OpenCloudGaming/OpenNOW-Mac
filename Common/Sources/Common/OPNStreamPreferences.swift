@@ -573,22 +573,6 @@ public enum OPNStreamPreferences {
         return variables
     }
 
-    public static func settingsByApplyingCloudVariables(_ settings: OPNStreamSettings, variables: OPNStreamCloudVariables, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamSettings {
-        var result = settings
-        if !variables.allowH265, result.codec == "H265" { result.codec = "H264" }
-        if !variables.allowAV1, result.codec == "AV1" { result.codec = "H264" }
-        if !variables.allowHDR || !capabilities.hdrDisplaySupported { result.enableHdr = false }
-        if !variables.allowReflex { result.enableReflex = false }
-        if variables.fetched, !variables.allowPrefilter { result.prefilterMode = 0 }
-        if result.prefilterMode == 0 {
-            result.prefilterSharpness = 0
-            result.prefilterDenoise = 0
-            result.prefilterModel = 0
-        }
-        if variables.maxBitrateMbps > 0 { result.maxBitrateMbps = min(result.maxBitrateMbps, variables.maxBitrateMbps) }
-        return result
-    }
-
     public static func loadCachedCloudVariables() -> OPNStreamCloudVariables {
         guard let json = storage.string(forKey: k.cachedCloudVariablesJSON), !json.isEmpty else { return OPNStreamCloudVariables() }
         var variables = cloudVariables(from: json)
