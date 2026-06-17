@@ -13,6 +13,7 @@ public final class NativeWebRTCStreamView: NSView {
     public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
     public private(set) var isPointerLocked = false
     private var trackingArea: NSTrackingArea?
+    private var keyEquivalentMonitor: Any?
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
     public override init(frame frameRect: NSRect) {
@@ -34,8 +35,14 @@ public final class NativeWebRTCStreamView: NSView {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         window?.acceptsMouseMovedEvents = true
-        if window == nil { gamepadMonitor.stop() } else { gamepadMonitor.start() }
-        if window == nil { setPointerLocked(false) }
+        if window == nil {
+            removeKeyEquivalentMonitor()
+            gamepadMonitor.stop()
+            setPointerLocked(false)
+        } else {
+            installKeyEquivalentMonitor()
+            gamepadMonitor.start()
+        }
     }
 
     public func setPointerLocked(_ locked: Bool) {
@@ -122,6 +129,10 @@ public final class NativeWebRTCStreamView: NSView {
         emitKey(event, isPressed: false)
     }
 
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        handleCommand(event) || super.performKeyEquivalent(with: event)
+    }
+
     private func emitMouseMove(_ event: NSEvent) {
         onInputEvent?(.mouse(.moved(
             deviceID: "mouse",
@@ -147,6 +158,20 @@ public final class NativeWebRTCStreamView: NSView {
         default:
             return false
         }
+    }
+
+    private func installKeyEquivalentMonitor() {
+        guard keyEquivalentMonitor == nil else { return }
+        keyEquivalentMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.window?.isKeyWindow == true else { return event }
+            return self.handleCommand(event) ? nil : event
+        }
+    }
+
+    private func removeKeyEquivalentMonitor() {
+        guard let keyEquivalentMonitor else { return }
+        NSEvent.removeMonitor(keyEquivalentMonitor)
+        self.keyEquivalentMonitor = nil
     }
 
     private func emitKey(_ event: NSEvent, isPressed: Bool) {
