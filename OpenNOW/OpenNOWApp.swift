@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import Backend
 import SwiftUI
 import SwiftData
 
@@ -59,10 +58,10 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         if isCompletingUserApprovedTermination {
             return .terminateNow
         }
-        guard OPNEmbeddedStreamLifecycle.hasActiveStream else {
+        guard OpenNOWStreamLifecycle.hasActiveStream else {
             return .terminateNow
         }
-        guard OPNEmbeddedStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, weak sender] shouldTerminateApplication in
+        guard OpenNOWStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, weak sender] shouldTerminateApplication in
             guard let sender else { return }
             if shouldTerminateApplication {
                 self?.isCompletingUserApprovedTermination = true

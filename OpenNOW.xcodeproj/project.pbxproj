@@ -18,10 +18,12 @@
 		A00000000000000000000104 /* Ragnarok in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000204 /* Ragnarok */; };
 		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
-		A00000000000000000000107 /* Backend in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000207 /* Backend */; };
 		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
 		A00000000000000000000110 /* WebRTCMedia in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000210 /* WebRTCMedia */; };
+		A00000000000000000000111 /* OpenNOWAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000211 /* OpenNOWAuth */; };
+		A00000000000000000000112 /* OpenNOWGameServices in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000212 /* OpenNOWGameServices */; };
+		A00000000000000000000113 /* OpenNOWTelemetry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000213 /* OpenNOWTelemetry */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -40,8 +42,8 @@
 
 /* Begin PBXFileReference section */
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenNOW.entitlements; sourceTree = "<group>"; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
+		7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenNOW.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -58,7 +60,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */,
-				A00000000000000000000107 /* Backend in Frameworks */,
 				A00000000000000000000101 /* CloudMatch in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
 				A00000000000000000000103 /* GDN in Frameworks */,
@@ -66,6 +67,9 @@
 				A00000000000000000000102 /* LCARS in Frameworks */,
 				777875922FDCA4F900B177D8 /* NesAuth in Frameworks */,
 				A00000000000000000000106 /* NetworkTest in Frameworks */,
+				A00000000000000000000111 /* OpenNOWAuth in Frameworks */,
+				A00000000000000000000112 /* OpenNOWGameServices in Frameworks */,
+				A00000000000000000000113 /* OpenNOWTelemetry in Frameworks */,
 				A00000000000000000000104 /* Ragnarok in Frameworks */,
 				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
@@ -116,7 +120,6 @@
 			);
 			name = OpenNOW;
 			packageProductDependencies = (
-				A00000000000000000000207 /* Backend */,
 				A00000000000000000000201 /* CloudMatch */,
 				A00000000000000000000209 /* Common */,
 				A00000000000000000000203 /* GDN */,
@@ -124,6 +127,9 @@
 				A00000000000000000000202 /* LCARS */,
 				777875912FDCA4F900B177D8 /* NesAuth */,
 				A00000000000000000000206 /* NetworkTest */,
+				A00000000000000000000211 /* OpenNOWAuth */,
+				A00000000000000000000212 /* OpenNOWGameServices */,
+				A00000000000000000000213 /* OpenNOWTelemetry */,
 				A00000000000000000000204 /* Ragnarok */,
 				A00000000000000000000208 /* SignalLinkKit */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
@@ -159,7 +165,6 @@
 			mainGroup = 7729CE6D2FDEDAB300D5C9D5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */,
 				A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */,
 				A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */,
 				A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */,
@@ -167,6 +172,9 @@
 				A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */,
 				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */,
 				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
+				A00000000000000000000311 /* XCLocalSwiftPackageReference "OpenNOWAuth" */,
+				A00000000000000000000312 /* XCLocalSwiftPackageReference "OpenNOWGameServices" */,
+				A00000000000000000000313 /* XCLocalSwiftPackageReference "OpenNOWTelemetry" */,
 				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
 				A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */,
@@ -460,10 +468,6 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = NetworkTest;
 		};
-		A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Backend;
-		};
 		A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = SignalLinkKit;
@@ -475,6 +479,18 @@
 		A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = WebRTC.Media;
+		};
+		A00000000000000000000311 /* XCLocalSwiftPackageReference "OpenNOWAuth" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OpenNOWAuth;
+		};
+		A00000000000000000000312 /* XCLocalSwiftPackageReference "OpenNOWGameServices" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OpenNOWGameServices;
+		};
+		A00000000000000000000313 /* XCLocalSwiftPackageReference "OpenNOWTelemetry" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OpenNOWTelemetry;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -524,11 +540,6 @@
 			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */;
 			productName = NetworkTest;
 		};
-		A00000000000000000000207 /* Backend */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000307 /* XCLocalSwiftPackageReference "Backend" */;
-			productName = Backend;
-		};
 		A00000000000000000000208 /* SignalLinkKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */;
@@ -543,6 +554,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */;
 			productName = WebRTCMedia;
+		};
+		A00000000000000000000211 /* OpenNOWAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000311 /* XCLocalSwiftPackageReference "OpenNOWAuth" */;
+			productName = OpenNOWAuth;
+		};
+		A00000000000000000000212 /* OpenNOWGameServices */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000312 /* XCLocalSwiftPackageReference "OpenNOWGameServices" */;
+			productName = OpenNOWGameServices;
+		};
+		A00000000000000000000213 /* OpenNOWTelemetry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000313 /* XCLocalSwiftPackageReference "OpenNOWTelemetry" */;
+			productName = OpenNOWTelemetry;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

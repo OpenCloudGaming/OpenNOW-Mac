@@ -5,10 +5,11 @@
 //
 
 import AppKit
-import Backend
 import Combine
 import Common
 import Foundation
+import OpenNOWGameServices
+import WebRTCMedia
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
     weak var value: T?
@@ -96,8 +97,8 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedGame: OPNCatalogGameObject?
     @Published var selectedSectionId = ""
     @Published var selectedVariantIndex = -1
-    @Published var activeStreamConfiguration: OPNStreamLaunchConfiguration?
-    @Published var activeStreamProgress: OPNEmbeddedStreamProgress?
+    @Published var activeStreamConfiguration: StreamLaunchConfiguration?
+    @Published var activeStreamProgress: StreamProgress?
     @Published var isActiveStreamLaunchOverlayVisible = false
     @Published var launchFlowState = CatalogLaunchFlowState.idle
     @Published var launchFlowTitle = ""
@@ -127,8 +128,8 @@ final class CatalogViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var pendingLaunchGame: OPNCatalogGameObject?
     private var pendingLaunchVariantIndex = -1
-    private var activeSessionResumeConfiguration: OPNStreamLaunchConfiguration?
-    private var activeSessionReplacementConfiguration: OPNStreamLaunchConfiguration?
+    private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
+    private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
@@ -437,11 +438,11 @@ final class CatalogViewModel: ObservableObject {
             }
             switch plan {
             case .ready(let configuration):
-                self.startPreparedStream(configuration, message: message)
+                self.startPreparedStream(Self.mediaConfiguration(from: configuration), message: message)
             case .activeSession(let active, let resume, let replacement):
                 self.activeLaunchSession = active
-                self.activeSessionResumeConfiguration = resume
-                self.activeSessionReplacementConfiguration = replacement
+                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume)
+                self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
                 self.launchFlowState = .activeSessionPrompt
                 self.launchFlowMessage = "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
             }
@@ -474,7 +475,7 @@ final class CatalogViewModel: ObservableObject {
         launchMessage = ""
     }
 
-    func finishActiveStream(success: Bool, message: String, report: OPNSessionReportPayload?) {
+    func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
         activeStreamConfiguration = nil
         activeStreamProgress = nil
@@ -497,12 +498,12 @@ final class CatalogViewModel: ObservableObject {
             errorMessage = message
             return
         }
-        if let report, report.shouldShow, !report.reportText.isEmpty {
-            actionMessage = report.reportText
+        if let report, !report.message.isEmpty {
+            actionMessage = report.message
         }
     }
 
-    func updateActiveStreamProgress(_ progress: OPNEmbeddedStreamProgress) {
+    func updateActiveStreamProgress(_ progress: StreamProgress) {
         activeStreamProgress = progress
         isActiveStreamLaunchOverlayVisible = true
         guard progress.isReady else { return }
@@ -518,15 +519,27 @@ final class CatalogViewModel: ObservableObject {
         session.idToken.isEmpty ? session.accessToken : session.idToken
     }
 
-    private func startPreparedStream(_ configuration: OPNStreamLaunchConfiguration, message: String) {
+    private func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String) {
         launchFlowState = .startingStream
         launchFlowMessage = message.isEmpty ? "Starting GeForce NOW stream..." : message
         launchFlowError = ""
         streamProgressGeneration += 1
         isActiveStreamLaunchOverlayVisible = true
-        activeStreamProgress = OPNEmbeddedStreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
+        activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         activeStreamConfiguration = configuration
         clearLaunchFlow()
+    }
+
+    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration) -> StreamLaunchConfiguration {
+        StreamLaunchConfiguration(
+            title: configuration.title,
+            applicationID: configuration.appId,
+            accessToken: configuration.apiToken,
+            accountLinked: configuration.accountLinked,
+            selectedStore: configuration.selectedStore,
+            resumeSessionID: configuration.resumeSessionId,
+            resumeServer: configuration.resumeServer
+        )
     }
 
     private func clearLaunchFlow() {
@@ -1270,10 +1283,10 @@ struct CatalogPreviousGameSession: Codable, Equatable {
     let averageBitrate: String
     let droppedFrames: String
 
-    init(configuration: OPNStreamLaunchConfiguration, success: Bool, message: String, report: OPNSessionReportPayload?) {
-        let reportTitle = report?.gameTitle ?? ""
+    init(configuration: StreamLaunchConfiguration, success: Bool, message: String, report: StreamReport?) {
+        let reportTitle = report?.title ?? ""
         title = reportTitle.isEmpty ? (configuration.title.isEmpty ? "GeForce NOW" : configuration.title) : reportTitle
-        appId = configuration.appId
+        appId = configuration.applicationID
         store = configuration.selectedStore
         if success {
             result = report?.success == false ? "Ended with warnings" : "Ended normally"
@@ -1281,10 +1294,18 @@ struct CatalogPreviousGameSession: Codable, Equatable {
             result = message.isEmpty ? "Ended with error" : message
         }
         endedAt = Date()
-        launchTime = report?.launchText ?? "Unknown"
-        averageLatency = report?.averageLatencyText ?? "Unknown"
-        averageBitrate = report?.averageBitrateText ?? "Unknown"
-        droppedFrames = report?.droppedFramesText ?? "Unknown"
+        launchTime = report.map { Self.durationText(seconds: $0.durationSeconds) } ?? "Unknown"
+        averageLatency = report?.metadata["averageLatency"] ?? "Unknown"
+        averageBitrate = report?.metadata["averageBitrate"] ?? "Unknown"
+        droppedFrames = report?.metadata["droppedFrames"] ?? "Unknown"
+    }
+
+    private static func durationText(seconds: Double) -> String {
+        let totalSeconds = max(0, Int(seconds.rounded()))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        if minutes > 0 { return "\(minutes)m \(seconds)s" }
+        return "\(seconds)s"
     }
 
     static func load() -> CatalogPreviousGameSession? {

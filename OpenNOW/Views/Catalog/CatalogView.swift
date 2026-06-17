@@ -5,12 +5,13 @@
 //
 
 import AppKit
-import Backend
 import Combine
 import Common
 import CoreText
 import ImageIO
+import OpenNOWGameServices
 import SwiftUI
+import WebRTCMedia
 
 private enum CatalogVendorLayout {
     static let appBarHeight: CGFloat = 56
@@ -124,7 +125,7 @@ struct CatalogView: View {
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 ZStack {
-                    OPNEmbeddedStreamView(
+                    WebRTCMediaStreamView(
                         configuration: streamConfiguration,
                         onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
                         onEnd: { success, message, report in
