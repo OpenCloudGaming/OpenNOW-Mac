@@ -53,7 +53,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) private var sourceFrameSize = CGSize.zero
     private let targetFps: Int
     nonisolated(unsafe) private var frameSerial: UInt64 = 0
-    nonisolated(unsafe) private var drawScheduled = false
     nonisolated(unsafe) private var lastFrameArrivalTime: CFTimeInterval = 0
     nonisolated(unsafe) private var frameArrivalIntervalTotalMs = 0.0
     nonisolated(unsafe) private var frameArrivalIntervalMaxMs = 0.0
@@ -83,9 +82,9 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         metalView.autoresizingMask = [.width, .height]
         metalView.framebufferOnly = true
         metalView.autoResizeDrawable = false
-        metalView.isPaused = true
-        metalView.enableSetNeedsDisplay = true
         metalView.preferredFramesPerSecond = self.targetFps
+        metalView.isPaused = false
+        metalView.enableSetNeedsDisplay = false
         metalView.delegate = self
         metalView.layerContentsPlacement = .scaleProportionallyToFit
         if let metalLayer = metalView.layer as? CAMetalLayer {
@@ -135,7 +134,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
         owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
-        let shouldScheduleDraw: Bool
         objc_sync_enter(self)
         let now = CACurrentMediaTime()
         if lastFrameArrivalTime > 0 {
@@ -147,14 +145,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         lastFrameArrivalTime = now
         videoFrame = frame
         frameSerial += 1
-        shouldScheduleDraw = !drawScheduled
-        drawScheduled = true
         objc_sync_exit(self)
-        guard shouldScheduleDraw else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.metalView.draw()
-        }
     }
 
     func draw(in view: MTKView) {
@@ -162,7 +153,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
         let snapshot = synchronized { () -> (RTCVideoFrame?, UInt64, CGSize) in
-            drawScheduled = false
             return (videoFrame, frameSerial, sourceFrameSize)
         }
         guard let frame = snapshot.0,
@@ -400,8 +390,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             fallback = "\(className) rejected MTKView"
             return nil
         }
-        metalView.isPaused = true
-        metalView.enableSetNeedsDisplay = true
         metalView.preferredFramesPerSecond = targetFps
         return renderer
     }
