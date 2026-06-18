@@ -4,6 +4,7 @@ import AppKit
 public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
     case toggleSidebar
+    case toggleMicrophone
     case showQuitMenu
 }
 
@@ -298,6 +299,9 @@ public final class NativeWebRTCStreamView: NSView {
     private func handleCommand(_ event: NSEvent) -> Bool {
         guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) else { return false }
         switch event.keyCode {
+        case 46:
+            onCommand?(.toggleMicrophone)
+            return true
         case 45:
             onCommand?(.toggleStatsHUD)
             return true

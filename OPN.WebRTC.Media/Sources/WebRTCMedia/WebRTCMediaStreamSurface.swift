@@ -381,14 +381,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func microphoneToggleAction(for keyboard: KeyboardEvent) -> StreamInputAction? {
         guard keyboard.modifiers.contains(.command), Int(keyboard.keyCode) == Self.microphoneToggleKeyCode else { return nil }
         guard keyboard.isPressed else { return .drop }
-        guard pointerLocked, runtimeSettings.microphoneMode != "disabled" else {
-            microphoneEnabled = false
-            transport?.setMicrophoneEnabled(false)
-            return .drop
-        }
-        microphoneEnabled.toggle()
-        transport?.setMicrophoneEnabled(microphoneEnabled)
-        WebRTCMediaTelemetry.capture("webrtc.ui.microphone.toggle", level: .info, message: microphoneEnabled ? "Microphone enabled." : "Microphone muted.", attributes: ["enabled": String(microphoneEnabled)])
+        toggleMicrophone()
         return .drop
     }
 
@@ -423,9 +416,22 @@ public struct WebRTCMediaStreamSurface: View {
         case .toggleSidebar:
             setSidebarVisible(!sidebarVisible)
             WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
+        case .toggleMicrophone:
+            toggleMicrophone()
         case .showQuitMenu:
             showQuitMenu()
         }
+    }
+
+    private func toggleMicrophone() {
+        guard pointerLocked, runtimeSettings.microphoneMode != "disabled" else {
+            microphoneEnabled = false
+            transport?.setMicrophoneEnabled(false)
+            return
+        }
+        microphoneEnabled.toggle()
+        transport?.setMicrophoneEnabled(microphoneEnabled)
+        WebRTCMediaTelemetry.capture("webrtc.ui.microphone.toggle", level: .info, message: microphoneEnabled ? "Microphone enabled." : "Microphone muted.", attributes: ["enabled": String(microphoneEnabled)])
     }
 
     private func handlePointerLockChanged(_ locked: Bool) {
