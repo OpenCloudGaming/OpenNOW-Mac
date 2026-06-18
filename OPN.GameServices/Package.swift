@@ -10,27 +10,27 @@ let webRTCFrameworkSearchPath = packageRoot
     .path
 
 let package = Package(
-    name: "OPN.OpenNOWGameServices",
+    name: "OPN.GameServices",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "OpenNOWGameServices", targets: ["OpenNOWGameServices"]),
     ],
     dependencies: [
-        .package(path: "../Common"),
-        .package(path: "../Jarvis"),
-        .package(path: "../OpenNOWTelemetry"),
-        .package(path: "../SignalLinkKit"),
-        .package(path: "../WebRTC.Media"),
+        .package(path: "../OPN.Common"),
+        .package(path: "../GFN.Jarvis"),
+        .package(path: "../OPN.Telemetry"),
+        .package(path: "../GFN.SignalLinkKit"),
+        .package(path: "../OPN.WebRTC.Media"),
     ],
     targets: [
         .target(
             name: "OpenNOWGameServices",
             dependencies: [
-                "Common",
-                "Jarvis",
-                "OpenNOWTelemetry",
-                "SignalLinkKit",
-                .product(name: "WebRTCMedia", package: "WebRTC.Media"),
+                .product(name: "Common", package: "OPN.Common"),
+                .product(name: "Jarvis", package: "GFN.Jarvis"),
+                .product(name: "OpenNOWTelemetry", package: "OPN.Telemetry"),
+                .product(name: "SignalLinkKit", package: "GFN.SignalLinkKit"),
+                .product(name: "WebRTCMedia", package: "OPN.WebRTC.Media"),
             ],
             swiftSettings: [
                 .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-Xcc", "-Wno-incomplete-umbrella"]),
@@ -43,7 +43,7 @@ let package = Package(
             name: "OpenNOWGameServicesTests",
             dependencies: [
                 "OpenNOWGameServices",
-                .product(name: "WebRTCMedia", package: "WebRTC.Media"),
+                .product(name: "WebRTCMedia", package: "OPN.WebRTC.Media"),
             ],
             swiftSettings: [
                 .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-Xcc", "-Wno-incomplete-umbrella"]),

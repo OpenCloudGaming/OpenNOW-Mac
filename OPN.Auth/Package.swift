@@ -3,23 +3,23 @@
 import PackageDescription
 
 let package = Package(
-    name: "OPN.OpenNOWAuth",
+    name: "OPN.Auth",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "OpenNOWAuth", targets: ["OpenNOWAuth"]),
     ],
     dependencies: [
-        .package(path: "../Jarvis"),
-        .package(path: "../Starfleet"),
-        .package(path: "../OpenNOWTelemetry"),
+        .package(path: "../GFN.Jarvis"),
+        .package(path: "../GFN.Starfleet"),
+        .package(path: "../OPN.Telemetry"),
     ],
     targets: [
         .target(
             name: "OpenNOWAuth",
             dependencies: [
-                "Jarvis",
-                "Starfleet",
-                "OpenNOWTelemetry",
+                .product(name: "Jarvis", package: "GFN.Jarvis"),
+                .product(name: "Starfleet", package: "GFN.Starfleet"),
+                .product(name: "OpenNOWTelemetry", package: "OPN.Telemetry"),
             ]
         ),
     ],

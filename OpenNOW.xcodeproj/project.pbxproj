@@ -165,21 +165,21 @@
 			mainGroup = 7729CE6D2FDEDAB300D5C9D5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */,
-				A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */,
-				A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */,
-				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */,
-				A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */,
-				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */,
-				A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */,
-				A00000000000000000000311 /* XCLocalSwiftPackageReference "OpenNOWAuth" */,
-				A00000000000000000000312 /* XCLocalSwiftPackageReference "OpenNOWGameServices" */,
-				A00000000000000000000313 /* XCLocalSwiftPackageReference "OpenNOWTelemetry" */,
-				A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */,
-				A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */,
-				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */,
-				A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */,
-				A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */,
+				A00000000000000000000301 /* XCLocalSwiftPackageReference "GFN.CloudMatch" */,
+				A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */,
+				A00000000000000000000303 /* XCLocalSwiftPackageReference "GFN.GDN" */,
+				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Jarvis" */,
+				A00000000000000000000302 /* XCLocalSwiftPackageReference "GFN.LCARS" */,
+				777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.NesAuth" */,
+				A00000000000000000000306 /* XCLocalSwiftPackageReference "GFN.NetworkTest" */,
+				A00000000000000000000311 /* XCLocalSwiftPackageReference "OPN.Auth" */,
+				A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */,
+				A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */,
+				A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.SignalLinkKit" */,
+				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */,
+				A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */,
+				A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7729CE772FDEDAB300D5C9D5 /* Products */;
@@ -432,65 +432,65 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */ = {
+		7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Jarvis" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Jarvis;
+			relativePath = GFN.Jarvis;
 		};
-		7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */ = {
+		7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Starfleet;
+			relativePath = GFN.Starfleet;
 		};
-		777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */ = {
+		777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.NesAuth" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = NesAuth;
+			relativePath = GFN.NesAuth;
 		};
-		A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */ = {
+		A00000000000000000000301 /* XCLocalSwiftPackageReference "GFN.CloudMatch" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = CloudMatch;
+			relativePath = GFN.CloudMatch;
 		};
-		A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */ = {
+		A00000000000000000000302 /* XCLocalSwiftPackageReference "GFN.LCARS" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = LCARS;
+			relativePath = GFN.LCARS;
 		};
-		A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */ = {
+		A00000000000000000000303 /* XCLocalSwiftPackageReference "GFN.GDN" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = GDN;
+			relativePath = GFN.GDN;
 		};
-		A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */ = {
+		A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Ragnarok;
+			relativePath = GFN.Ragnarok;
 		};
-		A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */ = {
+		A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = UDS;
+			relativePath = GFN.UDS;
 		};
-		A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */ = {
+		A00000000000000000000306 /* XCLocalSwiftPackageReference "GFN.NetworkTest" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = NetworkTest;
+			relativePath = GFN.NetworkTest;
 		};
-		A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */ = {
+		A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.SignalLinkKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = SignalLinkKit;
+			relativePath = GFN.SignalLinkKit;
 		};
-		A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */ = {
+		A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Common;
+			relativePath = OPN.Common;
 		};
-		A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */ = {
+		A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = WebRTC.Media;
+			relativePath = OPN.WebRTC.Media;
 		};
-		A00000000000000000000311 /* XCLocalSwiftPackageReference "OpenNOWAuth" */ = {
+		A00000000000000000000311 /* XCLocalSwiftPackageReference "OPN.Auth" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = OpenNOWAuth;
+			relativePath = OPN.Auth;
 		};
-		A00000000000000000000312 /* XCLocalSwiftPackageReference "OpenNOWGameServices" */ = {
+		A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = OpenNOWGameServices;
+			relativePath = OPN.GameServices;
 		};
-		A00000000000000000000313 /* XCLocalSwiftPackageReference "OpenNOWTelemetry" */ = {
+		A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = OpenNOWTelemetry;
+			relativePath = OPN.Telemetry;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -557,17 +557,17 @@
 		};
 		A00000000000000000000211 /* OpenNOWAuth */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000311 /* XCLocalSwiftPackageReference "OpenNOWAuth" */;
+			package = A00000000000000000000311 /* XCLocalSwiftPackageReference "OPN.Auth" */;
 			productName = OpenNOWAuth;
 		};
 		A00000000000000000000212 /* OpenNOWGameServices */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000312 /* XCLocalSwiftPackageReference "OpenNOWGameServices" */;
+			package = A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */;
 			productName = OpenNOWGameServices;
 		};
 		A00000000000000000000213 /* OpenNOWTelemetry */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000313 /* XCLocalSwiftPackageReference "OpenNOWTelemetry" */;
+			package = A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */;
 			productName = OpenNOWTelemetry;
 		};
 /* End XCSwiftPackageProductDependency section */

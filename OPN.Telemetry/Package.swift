@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "OPN.OpenNOWTelemetry",
+    name: "OPN.Telemetry",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "OpenNOWTelemetry", targets: ["OpenNOWTelemetry"]),
