@@ -28,7 +28,6 @@ struct ContentView: View {
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
             .onChange(of: devices.count) { _, _ in syncViewModel() }
             .onOpenURL { url in viewModel.handleOAuthCallback(url) }
-            .animation(.snappy(duration: 0.28), value: viewModel.activeSession?.id)
     }
 
     private func syncViewModel() {

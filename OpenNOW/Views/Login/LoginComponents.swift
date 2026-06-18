@@ -29,14 +29,22 @@ struct VendorResourceImage: View {
     }
 
     private static func loadImage(name: String, fileExtension: String) -> NSImage? {
+        let cacheKey = "\(name).\(fileExtension)" as NSString
+        if let cachedImage = imageCache.object(forKey: cacheKey) {
+            return cachedImage
+        }
+
         for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
+                imageCache.setObject(image, forKey: cacheKey)
                 return image
             }
         }
         return nil
     }
+
+    private static let imageCache = NSCache<NSString, NSImage>()
 }
 
 struct VendorSplashLoadingView: View {
@@ -100,25 +108,25 @@ struct VendorSplashLoadingView: View {
 }
 
 struct VendorIndeterminateProgressBar: View {
-    @State private var phase: CGFloat = -1
-
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(.white.opacity(0.24))
-                Rectangle()
-                    .fill(Color.openNowGreen)
-                    .frame(width: max(width * 0.34, 72))
-                    .offset(x: phase * width)
-            }
-            .clipped()
-            .onAppear {
-                phase = -0.36
-                withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) {
-                    phase = 1.04
+            let indicatorWidth = max(width * 0.34, 72)
+
+            TimelineView(.animation) { timeline in
+                let cycleDuration = 1.15
+                let progress = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
+                let phase = -0.36 + (1.40 * progress)
+
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(.white.opacity(0.24))
+                    Rectangle()
+                        .fill(Color.openNowGreen)
+                        .frame(width: indicatorWidth)
+                        .offset(x: phase * width)
                 }
+                .clipped()
             }
         }
     }
