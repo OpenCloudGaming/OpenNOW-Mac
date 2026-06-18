@@ -1704,8 +1704,8 @@ private struct GameDetailPanel: View {
                                 detailActions(game: game)
                             }
                             Spacer(minLength: 20)
-                            Button { viewModel.shareSelectedGame() } label: {
-                                Image(systemName: "heart.fill")
+                            Button { viewModel.toggleFavoriteSelectedGame() } label: {
+                                Image(systemName: viewModel.isFavorite(game) ? "heart.fill" : "heart")
                                     .font(.nvidia(size: 21, weight: .bold))
                                     .foregroundStyle(.white.opacity(0.94))
                                     .frame(width: 36, height: 36)
@@ -1927,18 +1927,16 @@ private struct GameDetailPanel: View {
             .buttonStyle(VendorGetInButtonStyle())
 
             Menu {
-                Button("Share") { viewModel.shareSelectedGame() }
+                Button("Change game store") { viewModel.changeSelectedGameStore() }
+                Button("Add shortcut") { viewModel.addShortcutForSelectedGame() }
                 if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
-                    Button("Remove from Library", role: .destructive) { viewModel.removeSelectedVariantOwned() }
+                    Button("Unmark as owned") { viewModel.removeSelectedVariantOwned() }
                 } else if selectedVariant != nil {
-                    Button("Mark as Owned") { viewModel.markSelectedVariantOwned() }
+                    Button("Mark as owned") { viewModel.markSelectedVariantOwned() }
                 }
-                if selectedVariant?.appStore.isEmpty == false {
-                    Button("Sync \(viewModel.displayName(forStore: selectedVariant?.appStore ?? ""))") { viewModel.syncSelectedStoreAccount() }
-                    Button("Connect \(viewModel.displayName(forStore: selectedVariant?.appStore ?? ""))") { viewModel.linkSelectedStoreAccount() }
-                }
+                Button("Visit game store") { viewModel.openStoreForSelectedVariant() }
             } label: {
-                Image(systemName: "ellipsis")
+                Image(systemName: "ellipsis.vertical")
                     .font(.nvidia(size: 18, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
                     .frame(width: 40, height: 40)

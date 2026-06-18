@@ -121,6 +121,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var previousGameSession = CatalogPreviousGameSession.load()
     @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
     @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
+    @Published var favoriteGameIdentities: Set<String> = []
 
     let account: LoginAccount
     let session: LoginSession
@@ -143,6 +144,7 @@ final class CatalogViewModel: ObservableObject {
         self.session = session
         self.onRefreshAuth = onRefreshAuth
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: session))
+        favoriteGameIdentities = Self.loadFavoriteGameIdentities(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: session))
         $searchQuery
             .dropFirst()
             .removeDuplicates()
@@ -170,6 +172,11 @@ final class CatalogViewModel: ObservableObject {
     var catalogSections: [CatalogSectionModel] {
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
+        let localFavoriteGames = favoriteGames
+        if !isBrowseMode, !localFavoriteGames.isEmpty {
+            sections.append(CatalogSectionModel(id: "local-favorites", title: "My Favorites", games: localFavoriteGames, kind: .panel))
+            seenTitles.insert("My Favorites")
+        }
         for panel in mainPanels {
             for section in panel.sections where !section.games.isEmpty {
                 let title = section.title.isEmpty ? panel.title : section.title
@@ -199,6 +206,27 @@ final class CatalogViewModel: ObservableObject {
 
     var visibleFilterGroups: [OPNCatalogFilterGroupObject] {
         filterGroups.filter { !$0.options.isEmpty }
+    }
+
+    var favoriteGames: [OPNCatalogGameObject] {
+        guard !favoriteGameIdentities.isEmpty else { return [] }
+        var games: [OPNCatalogGameObject] = []
+        var seen = Set<String>()
+        for game in allKnownGames {
+            let identity = Self.identity(for: game)
+            guard favoriteGameIdentities.contains(identity), !seen.contains(identity) else { continue }
+            seen.insert(identity)
+            games.append(game)
+        }
+        return games
+    }
+
+    private var allKnownGames: [OPNCatalogGameObject] {
+        var games = marqueeGames + catalogGames + libraryGames
+        for panel in mainPanels {
+            for section in panel.sections { games.append(contentsOf: section.games) }
+        }
+        return games
     }
 
     var selectedFilterCount: Int { selectedFilterIds.count }
@@ -567,6 +595,59 @@ final class CatalogViewModel: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString([title, url?.absoluteString].compactMap { $0 }.joined(separator: "\n"), forType: .string)
         actionMessage = "Copied share details."
+    }
+
+    func isFavorite(_ game: OPNCatalogGameObject) -> Bool {
+        favoriteGameIdentities.contains(Self.identity(for: game))
+    }
+
+    func toggleFavoriteSelectedGame() {
+        guard let selectedGame else { return }
+        let identity = Self.identity(for: selectedGame)
+        guard !identity.isEmpty else { return }
+        if favoriteGameIdentities.contains(identity) {
+            favoriteGameIdentities.remove(identity)
+            actionMessage = "Removed from favorites."
+        } else {
+            favoriteGameIdentities.insert(identity)
+            actionMessage = "Added to favorites."
+        }
+        Self.saveFavoriteGameIdentities(favoriteGameIdentities, accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: session))
+    }
+
+    func changeSelectedGameStore() {
+        guard let selectedGame, selectedGame.variants.count > 1 else {
+            actionMessage = "No alternate store is available."
+            return
+        }
+        let currentIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
+        let nextIndex = (max(currentIndex, 0) + 1) % selectedGame.variants.count
+        selectedVariantIndex = nextIndex
+        let variant = selectedGame.variants[nextIndex]
+        if variant.inLibrary || variant.librarySelected { selectOwnedVariant(variant) }
+        actionMessage = "Changed store to \(displayName(forStore: variant.appStore))."
+    }
+
+    func addShortcutForSelectedGame() {
+        guard let selectedGame else { return }
+        let title = selectedGame.title.isEmpty ? "GeForce NOW Game" : selectedGame.title
+        resolveSelectedStoreURL { [weak self] url in
+            guard let self else { return }
+            guard let url else {
+                self.errorMessage = "No URL is available for this game."
+                return
+            }
+            do {
+                let desktopURL = try FileManager.default.url(for: .desktopDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                let shortcutURL = desktopURL.appendingPathComponent(Self.safeShortcutFilename(title))
+                let payload = ["URL": url.absoluteString]
+                let data = try PropertyListSerialization.data(fromPropertyList: payload, format: .xml, options: 0)
+                try data.write(to: shortcutURL, options: .atomic)
+                self.actionMessage = "Added shortcut to Desktop."
+            } catch {
+                self.errorMessage = "Unable to add shortcut: \(error.localizedDescription)"
+            }
+        }
     }
 
     func markSelectedVariantOwned() {
@@ -950,6 +1031,32 @@ final class CatalogViewModel: ObservableObject {
         errorMessage = ""
     }
 
+    private func resolveSelectedStoreURL(completion: @escaping (URL?) -> Void) {
+        guard let selectedGame else {
+            completion(nil)
+            return
+        }
+        let variantIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
+        if variantIndex >= 0, variantIndex < selectedGame.variants.count {
+            let variant = selectedGame.variants[variantIndex]
+            if let url = URL(string: variant.storeUrl), !variant.storeUrl.isEmpty {
+                completion(url)
+                return
+            }
+        }
+        if let url = selectedGame.primaryStoreURL {
+            completion(url)
+            return
+        }
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.resolveStoreURL(game: selectedGame, variantIndex: max(variantIndex, 0)) { success, storeURL, _ in
+            Task { @MainActor in
+                guard selfBox.value != nil else { return }
+                completion(success ? URL(string: storeURL) : nil)
+            }
+        }
+    }
+
     private func configureCatalogService() {
         let userId = session.userId.isEmpty ? account.userId : session.userId
         OPNGameServiceSwiftAdapter.configureCatalogSession(accessToken: session.accessToken, idToken: session.idToken, userId: userId)
@@ -985,6 +1092,25 @@ final class CatalogViewModel: ObservableObject {
             if !trimmed.isEmpty { return trimmed.lowercased() }
         }
         return "default"
+    }
+
+    private static func favoritesKey(accountIdentifier: String) -> String {
+        "OpenNOW.catalog.favoriteGameIdentities.\(accountIdentifier)"
+    }
+
+    private static func loadFavoriteGameIdentities(accountIdentifier: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: favoritesKey(accountIdentifier: accountIdentifier)) ?? [])
+    }
+
+    private static func saveFavoriteGameIdentities(_ identities: Set<String>, accountIdentifier: String) {
+        UserDefaults.standard.set(Array(identities).sorted(), forKey: favoritesKey(accountIdentifier: accountIdentifier))
+    }
+
+    private static func safeShortcutFilename(_ title: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: ":/").union(.newlines).union(.controlCharacters)
+        let sanitized = title.components(separatedBy: invalidCharacters).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = sanitized.isEmpty ? "GeForce NOW Game" : sanitized
+        return "\(baseName).webloc"
     }
 
     private func resolveGameForDetails(_ game: OPNCatalogGameObject) -> OPNCatalogGameObject {
