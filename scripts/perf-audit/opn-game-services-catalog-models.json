@@ -1,0 +1,365 @@
+{
+  "generatedAt" : "2026-06-18T16:01:01Z",
+  "measurements" : [
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 3.981584,
+      "meanMilliseconds" : 3.5927900800000003,
+      "minMilliseconds" : 3.479542,
+      "modelCount" : 96,
+      "operation" : "JSONDecoder.decode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 89.81975200000001
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 3.106708,
+      "meanMilliseconds" : 2.9999234,
+      "minMilliseconds" : 2.964667,
+      "modelCount" : 96,
+      "operation" : "JSONEncoder.encode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 74.998085
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.100583,
+      "meanMilliseconds" : 0.05641006,
+      "minMilliseconds" : 0.055292,
+      "modelCount" : 96,
+      "operation" : "OPNCatalogGameObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 2.820503
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.061792,
+      "meanMilliseconds" : 0.05753491999999999,
+      "minMilliseconds" : 0.057208,
+      "modelCount" : 96,
+      "operation" : "OPNCatalogGameObject swiftValue map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 2.8767459999999994
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.212333,
+      "meanMilliseconds" : 0.16908666,
+      "minMilliseconds" : 0.164792,
+      "modelCount" : 96,
+      "operation" : "OPNCatalogPanelObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 8.454333
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.04775,
+      "meanMilliseconds" : 0.0018750100000000042,
+      "minMilliseconds" : 0.001708,
+      "modelCount" : 96,
+      "operation" : "CatalogViewModel.catalogSections equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 0.9375050000000021
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.027708,
+      "meanMilliseconds" : 0.019876166000000042,
+      "minMilliseconds" : 0.019542,
+      "modelCount" : 96,
+      "operation" : "CatalogViewModel.marqueeGames equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 9.938083000000022
+    },
+    {
+      "iterations" : 2000,
+      "maxMilliseconds" : 0.016166,
+      "meanMilliseconds" : 0.0067404780000000055,
+      "minMilliseconds" : 0.006583,
+      "modelCount" : 96,
+      "operation" : "selected detail section scan equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 13.480956000000011
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.061667,
+      "meanMilliseconds" : 0.03709050800000007,
+      "minMilliseconds" : 0.036583,
+      "modelCount" : 96,
+      "operation" : "best image URL derivation equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 18.545254000000035
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 18.492916,
+      "meanMilliseconds" : 18.246396520000005,
+      "minMilliseconds" : 18.108416,
+      "modelCount" : 500,
+      "operation" : "JSONDecoder.decode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 456.1599130000001
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 16.202458,
+      "meanMilliseconds" : 15.61928496,
+      "minMilliseconds" : 15.409083,
+      "modelCount" : 500,
+      "operation" : "JSONEncoder.encode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 390.482124
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.319708,
+      "meanMilliseconds" : 0.2793524399999999,
+      "minMilliseconds" : 0.277125,
+      "modelCount" : 500,
+      "operation" : "OPNCatalogGameObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 13.967621999999995
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.318083,
+      "meanMilliseconds" : 0.29877413999999997,
+      "minMilliseconds" : 0.295625,
+      "modelCount" : 500,
+      "operation" : "OPNCatalogGameObject swiftValue map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 14.938706999999999
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.322375,
+      "meanMilliseconds" : 0.27705330000000006,
+      "minMilliseconds" : 0.272083,
+      "modelCount" : 500,
+      "operation" : "OPNCatalogPanelObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 13.852665000000002
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.00575,
+      "meanMilliseconds" : 0.0015893360000000024,
+      "minMilliseconds" : 0.001541,
+      "modelCount" : 500,
+      "operation" : "CatalogViewModel.catalogSections equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 0.7946680000000012
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.078208,
+      "meanMilliseconds" : 0.06058191000000002,
+      "minMilliseconds" : 0.058375,
+      "modelCount" : 500,
+      "operation" : "CatalogViewModel.marqueeGames equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 30.290955000000007
+    },
+    {
+      "iterations" : 2000,
+      "maxMilliseconds" : 0.049084,
+      "meanMilliseconds" : 0.011262723999999884,
+      "minMilliseconds" : 0.010958,
+      "modelCount" : 500,
+      "operation" : "selected detail section scan equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 22.525447999999766
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.224416,
+      "meanMilliseconds" : 0.19195314599999988,
+      "minMilliseconds" : 0.188584,
+      "modelCount" : 500,
+      "operation" : "best image URL derivation equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 95.97657299999995
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 59.33875,
+      "meanMilliseconds" : 55.76363836,
+      "minMilliseconds" : 54.6565,
+      "modelCount" : 1500,
+      "operation" : "JSONDecoder.decode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 1394.090959
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 47.960042,
+      "meanMilliseconds" : 47.26250824000001,
+      "minMilliseconds" : 46.972292,
+      "modelCount" : 1500,
+      "operation" : "JSONEncoder.encode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 1181.5627060000002
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.901291,
+      "meanMilliseconds" : 0.8467825600000001,
+      "minMilliseconds" : 0.831916,
+      "modelCount" : 1500,
+      "operation" : "OPNCatalogGameObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 42.339128
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.949041,
+      "meanMilliseconds" : 0.8896874799999996,
+      "minMilliseconds" : 0.877917,
+      "modelCount" : 1500,
+      "operation" : "OPNCatalogGameObject swiftValue map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 44.48437399999998
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.795834,
+      "meanMilliseconds" : 0.65474838,
+      "minMilliseconds" : 0.646541,
+      "modelCount" : 1500,
+      "operation" : "OPNCatalogPanelObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 32.737419
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.006875,
+      "meanMilliseconds" : 0.0017153219999999966,
+      "minMilliseconds" : 0.001625,
+      "modelCount" : 1500,
+      "operation" : "CatalogViewModel.catalogSections equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 0.8576609999999982
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.178,
+      "meanMilliseconds" : 0.1405938180000002,
+      "minMilliseconds" : 0.136542,
+      "modelCount" : 1500,
+      "operation" : "CatalogViewModel.marqueeGames equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 70.2969090000001
+    },
+    {
+      "iterations" : 2000,
+      "maxMilliseconds" : 0.04425,
+      "meanMilliseconds" : 0.02682232950000045,
+      "minMilliseconds" : 0.0265,
+      "modelCount" : 1500,
+      "operation" : "selected detail section scan equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 53.6446590000009
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.645084,
+      "meanMilliseconds" : 0.5746516559999996,
+      "minMilliseconds" : 0.563375,
+      "modelCount" : 1500,
+      "operation" : "best image URL derivation equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 287.3258279999998
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 111.501167,
+      "meanMilliseconds" : 109.64903663999999,
+      "minMilliseconds" : 109.170417,
+      "modelCount" : 3000,
+      "operation" : "JSONDecoder.decode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 2741.225916
+    },
+    {
+      "iterations" : 25,
+      "maxMilliseconds" : 96.659792,
+      "meanMilliseconds" : 94.77524507999999,
+      "minMilliseconds" : 94.375833,
+      "modelCount" : 3000,
+      "operation" : "JSONEncoder.encode([OPNGameInfo])",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 2369.3811269999997
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 1.856416,
+      "meanMilliseconds" : 1.70168916,
+      "minMilliseconds" : 1.671167,
+      "modelCount" : 3000,
+      "operation" : "OPNCatalogGameObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 85.084458
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 2.046,
+      "meanMilliseconds" : 1.8016383799999998,
+      "minMilliseconds" : 1.756959,
+      "modelCount" : 3000,
+      "operation" : "OPNCatalogGameObject swiftValue map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 90.08191899999998
+    },
+    {
+      "iterations" : 50,
+      "maxMilliseconds" : 0.746833,
+      "meanMilliseconds" : 0.6593558600000001,
+      "minMilliseconds" : 0.646416,
+      "modelCount" : 3000,
+      "operation" : "OPNCatalogPanelObject init map",
+      "package" : "OPN.GameServices",
+      "totalMilliseconds" : 32.96779300000001
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.009917,
+      "meanMilliseconds" : 0.0017024279999999913,
+      "minMilliseconds" : 0.001584,
+      "modelCount" : 3000,
+      "operation" : "CatalogViewModel.catalogSections equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 0.8512139999999957
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 0.378292,
+      "meanMilliseconds" : 0.14101124999999987,
+      "minMilliseconds" : 0.134958,
+      "modelCount" : 3000,
+      "operation" : "CatalogViewModel.marqueeGames equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 70.50562499999994
+    },
+    {
+      "iterations" : 2000,
+      "maxMilliseconds" : 0.053708,
+      "meanMilliseconds" : 0.026855945500000374,
+      "minMilliseconds" : 0.026458,
+      "modelCount" : 3000,
+      "operation" : "selected detail section scan equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 53.71189100000075
+    },
+    {
+      "iterations" : 500,
+      "maxMilliseconds" : 1.299041,
+      "meanMilliseconds" : 1.1513011599999996,
+      "minMilliseconds" : 1.127833,
+      "modelCount" : 3000,
+      "operation" : "best image URL derivation equivalent",
+      "package" : "OpenNOW",
+      "totalMilliseconds" : 575.6505799999998
+    }
+  ]
+}

@@ -10,6 +10,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "Common"),
+        .testTarget(name: "CommonTests", dependencies: ["Common"]),
     ],
     swiftLanguageModes: [.v6]
 )
