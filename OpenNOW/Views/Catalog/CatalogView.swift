@@ -175,7 +175,7 @@ struct CatalogView: View {
                 }
             }
         }
-        .background(Color.openNowGreen)
+        .background(Color.gfnBackgroundGreen)
         .task { viewModel.loadIfNeeded() }
         .preferredColorScheme(.dark)
     }
@@ -1119,7 +1119,7 @@ private struct CatalogContentView: View {
                     .padding(.bottom, 44)
                 }
                 .background(
-                    Color.openNowGreen
+                    Color.gfnBackgroundGreen
                         .contentShape(Rectangle())
                         .onTapGesture { viewModel.closeGameDetailsFromBackground() }
                 )
@@ -1137,7 +1137,7 @@ private struct CatalogContentView: View {
                 scrollToSelectedDetail(anchor, proxy: proxy)
             }
         }
-        .background(Color.openNowGreen)
+        .background(Color.gfnBackgroundGreen)
         .onReceive(heroTimer) { _ in
             guard heroAutoScrollEnabled, heroes.count > 1 else { return }
             withAnimation(.easeInOut(duration: 0.2)) {

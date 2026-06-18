@@ -145,7 +145,7 @@ private struct SettingsContent: View {
             .frame(maxWidth: 1040, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.openNowGreen)
+        .background(Color.gfnBackgroundGreen)
     }
 
     @ViewBuilder private var page: some View {
