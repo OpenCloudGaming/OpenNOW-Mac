@@ -156,10 +156,29 @@ public struct WebRTCMediaStreamSurface: View {
                 }
                 .buttonStyle(.plain)
             }
-            settingsRow("Mode", runtimeSettings.upscalingModeLabel)
-            settingsRow("Sharpness", runtimeSettings.upscalingMode == 0 ? "Off" : String(runtimeSettings.upscalingSharpness))
-            settingsRow("Denoise", runtimeSettings.upscalingMode == 0 ? "Off" : String(runtimeSettings.upscalingDenoise))
-            settingsRow("Target", runtimeSettings.upscalingMode == 0 ? "Native" : "\(runtimeSettings.upscalingTargetHeight)p")
+            Picker("Mode", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
+                ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
+                    Text(option.label).tag(option.value)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(Color(red: 0.61, green: 1.0, blue: 0.22))
+            .disabled(!isStreamReady)
+            if runtimeSettings.upscalingMode != 0 {
+                videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...40) { value in
+                    updateVideoEnhancement(sharpness: value)
+                }
+                videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in
+                    updateVideoEnhancement(denoise: value)
+                }
+                Picker("Target", selection: Binding(get: { runtimeSettings.upscalingTargetHeight }, set: { updateVideoEnhancement(targetHeight: $0) })) {
+                    ForEach(StreamRuntimeSettings.upscalingTargets, id: \.height) { option in
+                        Text(option.label).tag(option.height)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(!isStreamReady)
+            }
             Divider().overlay(.white.opacity(0.12))
             settingsRow("Configured", liveEnhancementValue(latestStats?.videoEnhancementConfiguredTier, fallback: runtimeSettings.upscalingModeLabel))
             settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
@@ -279,6 +298,35 @@ public struct WebRTCMediaStreamSurface: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
+    }
+
+    private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, action: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(label).foregroundStyle(.white.opacity(0.58))
+            Spacer(minLength: 8)
+            Stepper(value: Binding(get: { value }, set: { action($0) }), in: range) {
+                Text(String(value))
+                    .foregroundStyle(.white.opacity(0.94))
+                    .frame(minWidth: 28, alignment: .trailing)
+            }
+            .disabled(!isStreamReady)
+        }
+    }
+
+    private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
+        runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+        transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight)
+        WebRTCMediaTelemetry.capture(
+            "webrtc.ui.video_enhancement.update",
+            level: .info,
+            message: "Video enhancement settings updated.",
+            attributes: [
+                "mode": String(runtimeSettings.upscalingMode),
+                "sharpness": String(runtimeSettings.upscalingSharpness),
+                "denoise": String(runtimeSettings.upscalingDenoise),
+                "targetHeight": String(runtimeSettings.upscalingTargetHeight),
+            ]
+        )
     }
 
     private func formatted(_ value: Double?, suffix: String) -> String {
@@ -538,6 +586,18 @@ private enum StreamInputAction {
 }
 
 private struct StreamRuntimeSettings: Equatable {
+    static let upscalingModes = [
+        VideoEnhancementMode(label: "Off", value: 0),
+        VideoEnhancementMode(label: "Auto", value: 1),
+        VideoEnhancementMode(label: "Spatial", value: 2),
+        VideoEnhancementMode(label: "MetalFX", value: 3),
+        VideoEnhancementMode(label: "Temporal", value: 4),
+    ]
+    static let upscalingTargets = [
+        VideoEnhancementTarget(label: "2K", height: 1440),
+        VideoEnhancementTarget(label: "4K", height: 2160),
+    ]
+
     var resolutionWidth = 1920
     var resolutionHeight = 1080
     var microphoneMode = "disabled"
@@ -562,6 +622,19 @@ private struct StreamRuntimeSettings: Equatable {
     }
 
     init() {}
+
+    mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
+        if let mode {
+            let allowed = Self.upscalingModes.map(\.value)
+            upscalingMode = allowed.contains(mode) ? mode : 0
+        }
+        if let sharpness { upscalingSharpness = min(max(sharpness, 0), 40) }
+        if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
+        if let targetHeight {
+            let allowed = Self.upscalingTargets.map(\.height)
+            upscalingTargetHeight = allowed.contains(targetHeight) ? targetHeight : 2160
+        }
+    }
 
     init(json: String?) {
         guard let json,
@@ -606,6 +679,16 @@ private struct StreamRuntimeSettings: Equatable {
         let parts = value.split(separator: "x").compactMap { Int($0) }
         return (max(1, parts.first ?? 1920), max(1, parts.count > 1 ? parts[1] : 1080))
     }
+}
+
+private struct VideoEnhancementMode: Equatable {
+    let label: String
+    let value: Int
+}
+
+private struct VideoEnhancementTarget: Equatable {
+    let label: String
+    let height: Int
 }
 
 private struct NativeWebRTCStreamSurface: NSViewRepresentable {

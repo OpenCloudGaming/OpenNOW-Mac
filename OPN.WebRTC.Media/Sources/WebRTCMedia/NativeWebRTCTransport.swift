@@ -85,6 +85,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         session.setMicrophoneEnabled(enabled)
     }
 
+    public func setLocalVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int) {
+        session.setLocalVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+    }
+
     public func disconnect() async {
         WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
         isDisconnecting = true
