@@ -156,21 +156,14 @@ public final class OPNGameLaunchBridge {
     }
 
     private func resolvedAppId(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject?) -> String {
-        if let variantId = validLaunchAppId(variant?.id) { return variantId }
-        if let launchAppId = validLaunchAppId(game.launchAppId) { return launchAppId }
-        return validLaunchAppId(game.id) ?? ""
+        if let variant, !variant.id.isEmpty { return variant.id }
+        if !game.launchAppId.isEmpty { return game.launchAppId }
+        return game.id
     }
 
     private func activeSession(_ session: OPNActiveSessionObject, matches game: OPNCatalogGameObject, appId: String) -> Bool {
         guard session.appId > 0 else { return false }
         let activeAppId = String(session.appId)
-        return activeAppId == appId || activeAppId == validLaunchAppId(game.id) || activeAppId == validLaunchAppId(game.launchAppId) || game.variants.contains { validLaunchAppId($0.id) == activeAppId }
-    }
-
-    private func validLaunchAppId(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let numericValue = Int(trimmed), numericValue > 0 else { return nil }
-        return trimmed
+        return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
     }
 }

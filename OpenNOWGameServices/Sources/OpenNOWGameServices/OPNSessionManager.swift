@@ -31,10 +31,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "No access token")
             return
         }
-        guard validLaunchAppId(appId) else {
-            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
-            return
-        }
 
         clearPersistedActiveSessionId("")
         let baseUrl = currentStreamingBaseUrl()
@@ -380,10 +376,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "No server IP for claim")
             return
         }
-        guard validLaunchAppId(appId) else {
-            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
-            return
-        }
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let clientId = UUID().uuidString.lowercased()
         let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
@@ -434,10 +426,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     private func sendClaimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], token: String, deviceId: String, clientId: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
-        guard let appIdValue = validLaunchAppIdValue(appId) else {
-            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
-            return
-        }
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
         let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
@@ -469,7 +457,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "clientTimezoneOffset": -TimeZone.current.secondsFromGMT() * 1000,
                 "clientIdentification": "GFN-PC",
                 "parentSessionId": NSNull(),
-                "appId": appIdValue,
+                "appId": Int(appId) ?? 0,
                 "streamerVersion": 1,
                 "appLaunchMode": 1,
                 "sdkVersion": "1.0",
@@ -1116,15 +1104,6 @@ private func bool(_ value: Any?, fallback: Bool = false) -> Bool {
     if let value = value as? NSNumber { return value.boolValue }
     if let value = value as? String { return (value as NSString).boolValue }
     return fallback
-}
-
-private func validLaunchAppId(_ value: String) -> Bool {
-    validLaunchAppIdValue(value) != nil
-}
-
-private func validLaunchAppIdValue(_ value: String) -> Int? {
-    guard let numericValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)), numericValue > 0 else { return nil }
-    return numericValue
 }
 
 private extension NSLock {

@@ -84,10 +84,6 @@ final class OPNGameService: @unchecked Sendable {
 
     func launchGame(appId: String, internalTitle: String, settings: [String: Any], recoveryMode: Bool, progress: @escaping OPNGameLaunchProgressCallback, completion: @escaping OPNGameLaunchCallback) {
         OPNSentry.logInfoMessage("[GameService] LaunchGame called with appId=\(appId) recovery=\(recoveryMode)")
-        guard validLaunchAppId(appId) else {
-            dispatchLaunch(completion, false, [:], "", "This game does not include a launchable GeForce NOW app id.")
-            return
-        }
         OPNSessionManager.shared.setAccessToken(accessToken)
         OPNSessionManager.shared.getActiveSessions { [weak self] ok, sessions, error in
             guard let self else { return }
@@ -1116,9 +1112,9 @@ final class OPNGameService: @unchecked Sendable {
         var firstNumericVariant = ""
         for variant in game.variants {
             if variant.inLibrary, !variant.serviceStatus.isEmpty { game.isInLibrary = true }
-            let launchable = validLaunchAppId(variant.id)
-            if launchable, variant.librarySelected { game.launchAppId = variant.id }
-            if launchable, firstNumericVariant.isEmpty { firstNumericVariant = variant.id }
+            let numeric = !variant.id.isEmpty && variant.id.allSatisfy(\.isNumber)
+            if numeric, variant.librarySelected { game.launchAppId = variant.id }
+            if numeric, firstNumericVariant.isEmpty { firstNumericVariant = variant.id }
         }
         if game.launchAppId.isEmpty { game.launchAppId = firstNumericVariant }
         if let genres = app["genres"] as? [Any] {
@@ -1501,11 +1497,6 @@ final class OPNGameService: @unchecked Sendable {
         if !target.librarySelected, source.librarySelected { target.librarySelected = true; changed = true }
         if !target.inLibrary, source.inLibrary { target.inLibrary = true; changed = true }
         return changed
-    }
-
-    private func validLaunchAppId(_ value: String) -> Bool {
-        guard let numericValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-        return numericValue > 0
     }
 
     private func mergeMissingStoreMetadata(target: inout OPNGameInfo, metadata: OPNGameInfo) {

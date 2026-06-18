@@ -13,11 +13,11 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     public init() {}
 
     public func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
-        let settings = makeSettings(configuration: configuration)
-        let sessionInfo = try await allocateSession(configuration: configuration, settings: settings)
+        let launch = await prepareLaunch(configuration: configuration)
+        let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
         let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
         activeSession = descriptor
-        return try await connectSignaling(sessionInfo: sessionInfo, settings: settings, descriptor: descriptor)
+        return try await connectSignaling(sessionInfo: sessionInfo, settings: launch.settings, descriptor: descriptor)
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
@@ -53,14 +53,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
     }
 
-    private func allocateSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
+    private func allocateSession(configuration: StreamLaunchConfiguration, launch: PreparedStreamLaunch) async throws -> AllocatedStreamSession {
         OPNSessionManager.shared.setAccessToken(configuration.accessToken)
-        let selectedStreamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: configuration.applicationID)
-        OPNSessionManager.shared.setStreamingBaseUrl(selectedStreamingBaseUrl)
+        OPNSessionManager.shared.setStreamingBaseUrl(launch.streamingBaseUrl)
 
         if configuration.resumesExistingSession {
             return try await withCheckedThrowingContinuation { continuation in
-                OPNSessionManager.shared.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: false) { success, info, error in
+                OPNSessionManager.shared.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: launch.settings, recoveryMode: false) { success, info, error in
                     if success {
                         continuation.resume(returning: AllocatedStreamSession(info))
                     } else {
@@ -71,12 +70,12 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
 
         OPNGameService.shared.setAccessToken(configuration.accessToken)
-        OPNGameService.shared.setStreamingBaseUrl(selectedStreamingBaseUrl)
+        OPNGameService.shared.setStreamingBaseUrl(launch.streamingBaseUrl)
         return try await withCheckedThrowingContinuation { continuation in
             OPNGameService.shared.launchGame(
                 appId: configuration.applicationID,
                 internalTitle: configuration.title.isEmpty ? "OpenNOW" : configuration.title,
-                settings: settings,
+                settings: launch.settings,
                 recoveryMode: false,
                 progress: { _, _ in },
                 completion: { success, info, _, error in
@@ -88,6 +87,54 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 }
             )
         }
+    }
+
+    private func prepareLaunch(configuration: StreamLaunchConfiguration) async -> PreparedStreamLaunch {
+        let baseSettings = makeSettings(configuration: configuration)
+        let cloudVariables = await fetchCloudVariables(token: configuration.accessToken)
+        var settings = settingsByApplyingCloudVariables(baseSettings, variables: cloudVariables)
+        let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"])
+        let preflight = await runNetworkPreflight(token: configuration.accessToken, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
+        settings["networkTestSessionId"] = preflight.networkTestSessionId
+        settings["networkType"] = preflight.networkType
+        settings["networkLatencyMs"] = preflight.latencyMs >= 0 ? String(preflight.latencyMs) : "Unknown"
+        if preflight.recommendedMaxBitrateMbps > 0 {
+            settings["maxBitrateMbps"] = min(int(settings["maxBitrateMbps"]), preflight.recommendedMaxBitrateMbps)
+        }
+        let streamingBaseUrl = preflight.streamingBaseUrl.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: configuration.applicationID) : preflight.streamingBaseUrl
+        return PreparedStreamLaunch(settings: settings, streamingBaseUrl: streamingBaseUrl)
+    }
+
+    private func fetchCloudVariables(token: String) async -> OPNStreamCloudVariables {
+        await withCheckedContinuation { continuation in
+            OPNStreamPreferences.fetchCloudVariables(token: token) { variables in
+                continuation.resume(returning: variables)
+            }
+        }
+    }
+
+    private func runNetworkPreflight(token: String, requestedMaxBitrateMbps: Int) async -> OPNStreamNetworkPreflightResult {
+        await withCheckedContinuation { continuation in
+            OPNStreamPreferences.runNetworkPreflight(
+                token: token,
+                providerStreamingBaseUrl: OPNGameService.shared.providerStreamingBaseURL(),
+                requestedMaxBitrateMbps: requestedMaxBitrateMbps,
+                completion: { preflight in continuation.resume(returning: preflight) }
+            )
+        }
+    }
+
+    private func settingsByApplyingCloudVariables(_ settings: [String: Any], variables: OPNStreamCloudVariables) -> [String: Any] {
+        let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        let resolved = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: webRTCMediaProfile(from: settings),
+            capabilities: webRTCMediaCapabilities(from: capabilities),
+            cloudVariables: webRTCMediaCloudVariables(from: variables),
+            libWebRTCAvailable: true
+        )
+        var result = settings
+        result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"], fallback: OPNLocale.currentGFNLocale()), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }
+        return result
     }
 
     private func connectSignaling(sessionInfo: AllocatedStreamSession, settings: [String: Any], descriptor: StreamSessionDescriptor) async throws -> StreamOffer {
@@ -203,6 +250,18 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         if let value = value as? String { return Int(value) ?? 0 }
         return 0
     }
+
+    private func bool(_ value: Any?, fallback: Bool = false) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        if let value = value as? String { return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame }
+        return fallback
+    }
+}
+
+private struct PreparedStreamLaunch {
+    let settings: [String: Any]
+    let streamingBaseUrl: String
 }
 
 private struct AllocatedStreamSession: Sendable {
