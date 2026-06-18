@@ -39,6 +39,19 @@ let package = Package(
                 .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-framework", "WebRTC", "-Xlinker", "-rpath", "-Xlinker", webRTCFrameworkSearchPath]),
             ]
         ),
+        .testTarget(
+            name: "OpenNOWGameServicesTests",
+            dependencies: [
+                "OpenNOWGameServices",
+                .product(name: "WebRTCMedia", package: "WebRTC.Media"),
+            ],
+            swiftSettings: [
+                .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-Xcc", "-Wno-incomplete-umbrella"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-framework", "WebRTC", "-Xlinker", "-rpath", "-Xlinker", webRTCFrameworkSearchPath]),
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

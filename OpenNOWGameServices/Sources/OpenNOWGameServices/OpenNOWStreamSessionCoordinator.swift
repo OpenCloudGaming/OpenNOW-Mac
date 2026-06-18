@@ -62,35 +62,80 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         OPNSessionManager.shared.setStreamingBaseUrl(launch.streamingBaseUrl)
 
         if configuration.resumesExistingSession {
-            return try await withCheckedThrowingContinuation { continuation in
-                OPNSessionManager.shared.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: launch.settings, recoveryMode: false) { success, info, error in
-                    if success {
-                        continuation.resume(returning: AllocatedStreamSession(info))
-                    } else {
-                        continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to resume stream session." : error))
-                    }
+            let claimed = try await claimSession(configuration: configuration, settings: launch.settings)
+            return try await waitForReadySession(claimed)
+        }
+
+        let created = try await createSession(configuration: configuration, settings: launch.settings)
+        return try await waitForReadySession(created)
+    }
+
+    private func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
+        return try await withCheckedThrowingContinuation { continuation in
+            OPNSessionManager.shared.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "OpenNOW" : configuration.title, settings: settings) { success, info, error in
+                if success {
+                    continuation.resume(returning: AllocatedStreamSession(info))
+                } else {
+                    continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error))
                 }
             }
         }
+    }
 
-        OPNGameService.shared.setAccessToken(configuration.accessToken)
-        OPNGameService.shared.setStreamingBaseUrl(launch.streamingBaseUrl)
-        return try await withCheckedThrowingContinuation { continuation in
-            OPNGameService.shared.launchGame(
-                appId: configuration.applicationID,
-                internalTitle: configuration.title.isEmpty ? "OpenNOW" : configuration.title,
-                settings: launch.settings,
-                recoveryMode: false,
-                progress: { _, _ in },
-                completion: { success, info, _, error in
-                    if success {
-                        continuation.resume(returning: AllocatedStreamSession(info))
-                    } else {
-                        continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to allocate stream session." : error))
-                    }
+    private func claimSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
+        try await withCheckedThrowingContinuation { continuation in
+            OPNSessionManager.shared.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: false) { success, info, error in
+                if success {
+                    continuation.resume(returning: AllocatedStreamSession(info))
+                } else {
+                    continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to resume stream session." : error))
                 }
-            )
+            }
         }
+    }
+
+    private func waitForReadySession(_ initial: AllocatedStreamSession) async throws -> AllocatedStreamSession {
+        if initial.isReady { return initial }
+        guard !initial.sessionId.isEmpty, !initial.serverIp.isEmpty else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("Cloud session is missing session id or server address.")
+        }
+
+        var attempts = 0
+        var lastPollWasPendingProgress = initial.isPendingProgress
+        var latest = initial
+        while !latest.isReady {
+            try Task.checkCancellation()
+            if attempts >= 60, !lastPollWasPendingProgress {
+                throw OpenNOWStreamSessionError.sessionAllocationFailed("Session poll timeout")
+            }
+            if attempts >= 60, lastPollWasPendingProgress { attempts = 0 }
+            attempts += 1
+            try await Task.sleep(nanoseconds: pollDelayNanoseconds(attempt: attempts))
+            latest = try await pollSession(sessionId: initial.sessionId, serverIp: initial.serverIp)
+            if latest.status > 3, latest.status != 6 {
+                throw OpenNOWStreamSessionError.sessionAllocationFailed("Session in terminal error state")
+            }
+            lastPollWasPendingProgress = latest.isPendingProgress
+        }
+        return latest
+    }
+
+    private func pollSession(sessionId: String, serverIp: String) async throws -> AllocatedStreamSession {
+        try await withCheckedThrowingContinuation { continuation in
+            OPNSessionManager.shared.pollSession(sessionId: sessionId, serverIp: serverIp) { success, info, error in
+                if success {
+                    continuation.resume(returning: AllocatedStreamSession(info))
+                } else {
+                    continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(error.isEmpty ? "Unable to poll stream session." : error))
+                }
+            }
+        }
+    }
+
+    private func pollDelayNanoseconds(attempt: Int) -> UInt64 {
+        if attempt <= 12 { return 300_000_000 }
+        if attempt <= 20 { return 500_000_000 }
+        return 1_000_000_000
     }
 
     private func prepareLaunch(configuration: StreamLaunchConfiguration) async -> PreparedStreamLaunch {
@@ -288,7 +333,22 @@ private struct AllocatedStreamSession: Sendable {
     let signalingServer: String
     let signalingUrl: String
     let streamingBaseUrl: String
+    let status: Int
+    let queuePosition: Int
+    let seatSetupStep: Int
+    let progressState: Int
+    let adsRequired: Bool
     let rawJSON: String
+
+    var isReady: Bool {
+        (status == 2 || status == 3) && !sessionId.isEmpty && !serverIp.isEmpty
+    }
+
+    var isPendingProgress: Bool {
+        if status == 6 { return true }
+        guard status == 1 else { return false }
+        return adsRequired || queuePosition > 0 || seatSetupStep > 0 || [1, 2, 3, 4].contains(progressState)
+    }
 
     init(_ info: [String: Any]) {
         sessionId = Self.string(info["sessionId"])
@@ -296,6 +356,11 @@ private struct AllocatedStreamSession: Sendable {
         signalingServer = Self.string(info["signalingServer"])
         signalingUrl = Self.string(info["signalingUrl"])
         streamingBaseUrl = Self.string(info["streamingBaseUrl"])
+        status = Self.int(info["status"])
+        queuePosition = Self.int(info["queuePosition"])
+        seatSetupStep = Self.int(info["seatSetupStep"])
+        progressState = Self.int(info["progressState"])
+        adsRequired = Self.bool((info["adState"] as? [String: Any])?["isAdsRequired"])
         rawJSON = Self.jsonString(info)
     }
 
@@ -311,6 +376,20 @@ private struct AllocatedStreamSession: Sendable {
         if let value = value as? NSString { return value as String }
         if let value = value as? NSNumber { return value.stringValue }
         return ""
+    }
+
+    private static func int(_ value: Any?) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) ?? 0 }
+        return 0
+    }
+
+    private static func bool(_ value: Any?) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        if let value = value as? String { return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame }
+        return false
     }
 }
 
