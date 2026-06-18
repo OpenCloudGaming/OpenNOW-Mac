@@ -167,6 +167,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             return
         }
 
+        if isTenBitBiPlanarFrame(frame), renderTenBitFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
+            emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+            return
+        }
+
         let renderer = rendererForFrame(frame, diagnostics: &diagnostics)
         if let renderer {
             renderer.drawFrame(frame)
@@ -267,6 +272,43 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         return false
     }
 
+    private func renderTenBitFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
+        guard let enhancementRenderer else { return false }
+        let settings = enhancementSettings
+        settings.configuredTier = .spatial
+        settings.sharpness = 0
+        settings.denoise = 0
+        settings.sourceSize = sourceSize
+        settings.drawableSize = metalView.drawableSize
+        settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
+        settings.captureEnhancedPixelBuffer = false
+        settings.lowCostSpatial = true
+        settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || CACurrentMediaTime() - lastDiagnosticsUpdateTime >= 1.0
+
+        let result = enhancementResult
+        if enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result) {
+            diagnostics.pixelFormat = result.pixelFormat.isEmpty ? "P010" : result.pixelFormat
+            diagnostics.renderMode = "P010"
+            diagnostics.frameSource = result.frameSource.isEmpty ? "CVPixelBuffer" : result.frameSource
+            diagnostics.renderPath = result.renderPath.isEmpty ? "OPNMetalSpatialUpscalerSwift" : result.renderPath
+            diagnostics.fallback = result.fallbackReason
+            diagnostics.enhancementConfiguredTier = "Off"
+            diagnostics.enhancementActiveTier = "Native 10-bit"
+            diagnostics.enhancementFallbackReason = result.tierFallbackReason
+            diagnostics.sourceResolution = result.sourceResolution.isEmpty ? diagnostics.sourceResolution : result.sourceResolution
+            diagnostics.drawableResolution = result.drawableResolution.isEmpty ? diagnostics.drawableResolution : result.drawableResolution
+            diagnostics.enhancementDiagnostics = result.diagnostics
+            diagnostics.enhancementFrameTimeMs = result.frameTimeMs
+            enhancementDroppedFrameCount = result.droppedFrames
+            lastDrawnFrameSerial = drawSerial
+            lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
+            return true
+        }
+        diagnostics.fallback = result.fallbackReason.isEmpty ? "P010 renderer unavailable" : result.fallbackReason
+        enhancementDroppedFrameCount = result.droppedFrames
+        return false
+    }
+
     private func adaptEnhancementBudget(frameTimeMs: Double, targetFrameTimeMs: Double) {
         if frameTimeMs > targetFrameTimeMs * 1.15 {
             enhancementOverBudgetCount += 1
@@ -315,6 +357,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         diagnostics.renderMode = "I420"
         diagnostics.renderPath = "RTCMTLI420Renderer"
         return i420Renderer(fallback: &diagnostics.fallback)
+    }
+
+    private func isTenBitBiPlanarFrame(_ frame: RTCVideoFrame) -> Bool {
+        guard let buffer = frame.buffer as? RTCCVPixelBuffer else { return false }
+        let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
+        return format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
     }
 
     private func newRenderer(named className: String, fallback: inout String) -> OPNRTCMetalRenderer? {
@@ -420,6 +468,8 @@ private func pixelFormatName(_ format: OSType) -> String {
     switch format {
     case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "420v/NV12"
     case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "420f/NV12"
+    case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange: return "x420/P010"
+    case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange: return "xf20/P010"
     case kCVPixelFormatType_32BGRA: return "BGRA"
     case kCVPixelFormatType_32ARGB: return "ARGB"
     default: return String(format: "0x%08x", format)

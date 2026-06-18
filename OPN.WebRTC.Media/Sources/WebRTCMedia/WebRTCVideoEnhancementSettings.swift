@@ -132,21 +132,22 @@ final class OPNVideoTextureSource: NSObject {
         pixelFormat?.pointee = Self.pixelFormatName(format) as NSString
         frameSource?.pointee = "CVPixelBuffer"
         let isBGRA = format == kCVPixelFormatType_32BGRA
-        let isNV12 = format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        guard isBGRA || isNV12 else {
+        let isBiPlanar = Self.isSupportedBiPlanarFormat(format)
+        let isTenBitBiPlanar = Self.isTenBitBiPlanarFormat(format)
+        guard isBGRA || isBiPlanar else {
             fallback?.pointee = "unsupported GPU ingestion format; using Core Image compatibility path"
             return nil
         }
 
-        let width = isNV12 ? CVPixelBufferGetWidthOfPlane(pixelBuffer, 0) : CVPixelBufferGetWidth(pixelBuffer)
-        let height = isNV12 ? CVPixelBufferGetHeightOfPlane(pixelBuffer, 0) : CVPixelBufferGetHeight(pixelBuffer)
+        let width = isBiPlanar ? CVPixelBufferGetWidthOfPlane(pixelBuffer, 0) : CVPixelBufferGetWidth(pixelBuffer)
+        let height = isBiPlanar ? CVPixelBufferGetHeightOfPlane(pixelBuffer, 0) : CVPixelBufferGetHeight(pixelBuffer)
         guard width > 0, height > 0 else {
             fallback?.pointee = "empty CVPixelBuffer dimensions"
             return nil
         }
 
         let textureFrame = OPNVideoTextureFrame()
-        textureFrame.kind = isNV12 ? 1 : 0
+        textureFrame.kind = isBiPlanar ? 1 : 0
         var contentWidth = width
         var contentHeight = height
         var cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
@@ -171,7 +172,7 @@ final class OPNVideoTextureSource: NSObject {
             textureCache,
             pixelBuffer,
             nil,
-            isNV12 ? .r8Unorm : .bgra8Unorm,
+            isBiPlanar ? (isTenBitBiPlanar ? .r16Unorm : .r8Unorm) : .bgra8Unorm,
             width,
             height,
             0,
@@ -181,7 +182,7 @@ final class OPNVideoTextureSource: NSObject {
             fallback?.pointee = "CVMetalTextureCache could not create BGRA texture"
             return nil
         }
-        if !isNV12 {
+        if !isBiPlanar {
             textureFrame.rgbTexture = texture
             return textureFrame
         }
@@ -194,7 +195,7 @@ final class OPNVideoTextureSource: NSObject {
             textureCache,
             pixelBuffer,
             nil,
-            .rg8Unorm,
+            isTenBitBiPlanar ? .rg16Unorm : .rg8Unorm,
             chromaWidth,
             chromaHeight,
             1,
@@ -233,9 +234,22 @@ final class OPNVideoTextureSource: NSObject {
     private static func pixelFormatName(_ format: OSType) -> String {
         if format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange { return "420v/NV12" }
         if format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange { return "420f/NV12" }
+        if format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange { return "x420/P010" }
+        if format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange { return "xf20/P010" }
         if format == kCVPixelFormatType_32BGRA { return "BGRA" }
         if format == kCVPixelFormatType_32ARGB { return "ARGB" }
         return String(format: "0x%08x", format)
+    }
+
+    private static func isSupportedBiPlanarFormat(_ format: OSType) -> Bool {
+        format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+            format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
+            isTenBitBiPlanarFormat(format)
+    }
+
+    private static func isTenBitBiPlanarFormat(_ format: OSType) -> Bool {
+        format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
+            format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
     }
 
     private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
