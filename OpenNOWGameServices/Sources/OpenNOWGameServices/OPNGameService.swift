@@ -84,6 +84,10 @@ final class OPNGameService: @unchecked Sendable {
 
     func launchGame(appId: String, internalTitle: String, settings: [String: Any], recoveryMode: Bool, progress: @escaping OPNGameLaunchProgressCallback, completion: @escaping OPNGameLaunchCallback) {
         OPNSentry.logInfoMessage("[GameService] LaunchGame called with appId=\(appId) recovery=\(recoveryMode)")
+        guard validLaunchAppId(appId) else {
+            dispatchLaunch(completion, false, [:], "", "This game does not include a launchable GeForce NOW app id.")
+            return
+        }
         OPNSessionManager.shared.setAccessToken(accessToken)
         OPNSessionManager.shared.getActiveSessions { [weak self] ok, sessions, error in
             guard let self else { return }
