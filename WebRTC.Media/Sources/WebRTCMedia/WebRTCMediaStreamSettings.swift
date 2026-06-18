@@ -229,7 +229,7 @@ public enum WebRTCMediaStreamSettingsResolver {
         if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
         if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
         let lowLatency = profile.lowLatencyMode
-        let controllerCount = max(0, min(4, capabilities.connectedGamepadCount))
+        let controllerCount = 4
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,

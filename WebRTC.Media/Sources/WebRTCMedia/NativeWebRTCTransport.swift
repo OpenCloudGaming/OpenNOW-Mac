@@ -100,14 +100,15 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         case .moved(_, let deltaX, let deltaY, _):
             session.sendMouseMove(dx: deltaX, dy: deltaY)
         case .button(_, let button, let isPressed, _):
-            session.sendMouseButton(button: button.rawValue, down: isPressed)
+            session.sendMouseButton(button: Self.gfnMouseButton(button), down: isPressed)
         case .wheel(_, let delta, _):
             session.sendMouseWheel(delta: delta)
         }
     }
 
     private func send(_ state: GamepadState) {
-        let buttons = UInt16(truncatingIfNeeded: state.buttons.rawValue)
+        let buttons = Self.gfnGamepadButtons(state.buttons)
+        let bitmap = Self.gfnControllerBitmap(playerIndex: state.playerIndex)
         let leftTrigger = UInt8((state.leftTrigger * 255).rounded())
         let rightTrigger = UInt8((state.rightTrigger * 255).rounded())
         session.sendGamepadState(
@@ -120,9 +121,45 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             rightStickX: Self.axisValue(state.rightStickX),
             rightStickY: Self.axisValue(state.rightStickY),
             connected: true,
-            bitmap: 0xffff,
+            bitmap: bitmap,
             timestampUs: state.timestamp.nanoseconds / 1_000
         )
+    }
+
+    static func gfnMouseButton(_ button: MouseButton) -> UInt8 {
+        switch button {
+        case .left: 1
+        case .middle: 2
+        case .right: 3
+        case .back: 4
+        case .forward: 5
+        }
+    }
+
+    static func gfnGamepadButtons(_ buttons: GamepadButtons) -> UInt16 {
+        var value: UInt16 = 0
+        if buttons.contains(.dpadUp) { value |= 0x0001 }
+        if buttons.contains(.dpadDown) { value |= 0x0002 }
+        if buttons.contains(.dpadLeft) { value |= 0x0004 }
+        if buttons.contains(.dpadRight) { value |= 0x0008 }
+        if buttons.contains(.start) { value |= 0x0010 }
+        if buttons.contains(.select) { value |= 0x0020 }
+        if buttons.contains(.leftStick) { value |= 0x0040 }
+        if buttons.contains(.rightStick) { value |= 0x0080 }
+        if buttons.contains(.leftShoulder) { value |= 0x0100 }
+        if buttons.contains(.rightShoulder) { value |= 0x0200 }
+        if buttons.contains(.south) { value |= 0x1000 }
+        if buttons.contains(.east) { value |= 0x2000 }
+        if buttons.contains(.west) { value |= 0x4000 }
+        if buttons.contains(.north) { value |= 0x8000 }
+        return value
+    }
+
+    static func gfnControllerBitmap(playerIndex: Int) -> UInt16 {
+        let connectedCount = max(1, min(4, max(NativeWebRTCGamepadMonitor.connectedGamepadCount(), playerIndex + 1)))
+        return (0..<connectedCount).reduce(UInt16(0)) { partial, index in
+            partial | UInt16(1 << index) | UInt16(1 << (index + 8))
+        }
     }
 
     private static func axisValue(_ value: Float) -> Int16 {

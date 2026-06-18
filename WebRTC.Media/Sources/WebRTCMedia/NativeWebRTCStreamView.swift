@@ -13,6 +13,11 @@ public final class NativeWebRTCStreamView: NSView {
     public var onPointerLockChanged: ((Bool) -> Void)?
     public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
     public private(set) var isPointerLocked = false
+    public var directMouseInputEnabled = true {
+        didSet {
+            if !directMouseInputEnabled { setPointerLocked(false) }
+        }
+    }
     private var trackingArea: NSTrackingArea?
     private var keyEquivalentMonitor: Any?
     private var pointerLockMonitor: Any?
@@ -88,7 +93,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        if event.clickCount >= 2 { setPointerLocked(true) }
+        if capturePointerForMouseDown() { return }
         emitMouseButton(.left, isPressed: true)
     }
 
@@ -98,6 +103,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func rightMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if capturePointerForMouseDown() { return }
         emitMouseButton(.right, isPressed: true)
     }
 
@@ -107,6 +113,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func otherMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if capturePointerForMouseDown() { return }
         emitMouseButton(mouseButton(event.buttonNumber), isPressed: true)
     }
 
@@ -179,7 +186,6 @@ public final class NativeWebRTCStreamView: NSView {
             NSCursor.hide()
             pointerLockCursorHidden = true
         }
-        moveCursorToPointerLockCenter()
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         installPointerLockMonitor()
         installPointerLockNotifications()
@@ -222,7 +228,6 @@ public final class NativeWebRTCStreamView: NSView {
                 return nil
             case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
                 self.emitMouseMove(event)
-                self.moveCursorToPointerLockCenter()
                 return nil
             case .scrollWheel:
                 self.emitScrollWheel(event)
@@ -257,14 +262,6 @@ public final class NativeWebRTCStreamView: NSView {
         pointerLockNotificationTokens.removeAll()
     }
 
-    private func moveCursorToPointerLockCenter() {
-        guard let window else { return }
-        let contentFrame = videoContentFrame()
-        let centerInView = CGPoint(x: contentFrame.midX, y: contentFrame.midY)
-        let centerInWindow = convert(centerInView, to: nil)
-        moveCursor(toScreenPoint: window.convertPoint(toScreen: centerInWindow))
-    }
-
     private func moveCursor(toScreenPoint point: CGPoint) {
         let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? window?.screen
         guard let screen,
@@ -274,6 +271,12 @@ public final class NativeWebRTCStreamView: NSView {
         }
         let displayPoint = CGPoint(x: point.x - screen.frame.minX, y: screen.frame.maxY - point.y)
         CGDisplayMoveCursorToPoint(CGDirectDisplayID(screenNumber.uint32Value), displayPoint)
+    }
+
+    private func capturePointerForMouseDown() -> Bool {
+        guard directMouseInputEnabled, !isPointerLocked else { return false }
+        setPointerLocked(true)
+        return isPointerLocked
     }
 
     private func videoContentFrame() -> CGRect {

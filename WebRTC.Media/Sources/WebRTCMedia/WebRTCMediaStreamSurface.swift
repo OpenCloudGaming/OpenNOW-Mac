@@ -263,6 +263,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             await MainActor.run {
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
+                nativeView.directMouseInputEnabled = runtimeSettings.directMouseInput
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
             }
         } catch {
@@ -285,7 +286,7 @@ public struct WebRTCMediaStreamSurface: View {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
-        if isMouseEvent(event), !runtimeSettings.directMouseInput { return .drop }
+        if let mouse = mouseEvent(from: event), !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
         return .send
     }
 
@@ -308,8 +309,13 @@ public struct WebRTCMediaStreamSurface: View {
         return nil
     }
 
-    private func isMouseEvent(_ event: UserInputEvent) -> Bool {
-        if case .mouse = event { return true }
+    private func mouseEvent(from event: UserInputEvent) -> MouseEvent? {
+        if case .mouse(let mouse) = event { return mouse }
+        return nil
+    }
+
+    private func isMouseMove(_ event: MouseEvent) -> Bool {
+        if case .moved = event { return true }
         return false
     }
 

@@ -111,6 +111,23 @@ struct WebRTCMediaSessionTests {
 
 @Suite("WebRTCStreamingPath")
 struct WebRTCStreamingPathTests {
+    @Test("maps mouse buttons to GFN protocol values")
+    func mapsMouseButtonsToGFNProtocolValues() {
+        #expect(NativeWebRTCTransport.gfnMouseButton(.left) == 1)
+        #expect(NativeWebRTCTransport.gfnMouseButton(.middle) == 2)
+        #expect(NativeWebRTCTransport.gfnMouseButton(.right) == 3)
+        #expect(NativeWebRTCTransport.gfnMouseButton(.back) == 4)
+        #expect(NativeWebRTCTransport.gfnMouseButton(.forward) == 5)
+    }
+
+    @Test("maps gamepad buttons to GFN protocol values")
+    func mapsGamepadButtonsToGFNProtocolValues() {
+        let buttons: GamepadButtons = [.south, .east, .west, .north, .leftShoulder, .rightShoulder, .select, .start, .leftStick, .rightStick, .dpadUp, .dpadDown, .dpadLeft, .dpadRight]
+
+        #expect(NativeWebRTCTransport.gfnGamepadButtons(buttons) == 0xf3ff)
+        #expect(NativeWebRTCTransport.gfnControllerBitmap(playerIndex: 0) & 0x0101 == 0x0101)
+    }
+
     @Test("starts stream through provider and transport")
     func startsStream() async throws {
         let session = StreamSessionDescriptor(id: "session-1", applicationID: "100", serverAddress: "server", title: "Game")
