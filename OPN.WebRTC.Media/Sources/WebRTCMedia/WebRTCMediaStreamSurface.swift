@@ -317,19 +317,15 @@ public struct WebRTCMediaStreamSurface: View {
             handleTransportEnded(message: message)
         }
         nativeView.onInputEvent = { event in
-            Task {
-                let action = await MainActor.run { inputAction(for: event) }
-                switch action {
-                case .send:
-                    break
-                case .drop:
-                    return
-                case .setMicrophone(let enabled):
-                    await MainActor.run { microphoneEnabled = enabled }
-                    transport.setMicrophoneEnabled(enabled)
-                    return
-                }
-                try? await path.send(event)
+            switch inputAction(for: event) {
+            case .send:
+                guard isStreamReady else { return }
+                transport.sendNow(event)
+            case .drop:
+                return
+            case .setMicrophone(let enabled):
+                microphoneEnabled = enabled
+                transport.setMicrophoneEnabled(enabled)
             }
         }
         self.transport = transport

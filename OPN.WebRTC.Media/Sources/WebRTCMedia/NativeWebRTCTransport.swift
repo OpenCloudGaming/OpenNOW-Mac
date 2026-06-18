@@ -52,6 +52,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func send(_ event: UserInputEvent) async throws {
+        sendNow(event)
+    }
+
+    public func sendNow(_ event: UserInputEvent) {
         switch event {
         case .keyboard(let keyboard):
             session.sendKey(keycode: keyboard.keyCode, scancode: keyboard.scanCode, modifiers: keyboard.modifiers.rawValue, down: keyboard.isPressed)
