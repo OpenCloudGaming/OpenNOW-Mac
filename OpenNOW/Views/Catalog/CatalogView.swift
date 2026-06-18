@@ -1595,6 +1595,9 @@ private struct CatalogGameTile: View {
                             .fill(Color.openNowGreen)
                             .frame(width: 7, height: 24)
                     }
+                    if let badge = game.cardBadgeLabel {
+                        CatalogGameCardBadge(label: badge)
+                    }
                 }
                 if isHovering || isSelected {
                     HStack(spacing: 8) {
@@ -1638,6 +1641,77 @@ private struct CatalogGameTile: View {
 
 private extension CatalogViewModel {
     var selectedGameExists: Bool { selectedGame != nil }
+}
+
+private struct CatalogGameCardBadge: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            MallRibbonShape()
+                .fill(Color.openNowGreen)
+                .frame(width: 7, height: 24)
+            Text(label)
+                .font(.nvidia(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(0.94))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .background(Color(red: 56 / 255, green: 56 / 255, blue: 56 / 255).opacity(0.94))
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+private enum CatalogCardBadgeMapper {
+    nonisolated static func label(campaignIds: [String], skuTags: [String]) -> String? {
+        let values = (skuTags + campaignIds).map(normalizedValue).filter { !$0.isEmpty }
+        for value in values {
+            if let discount = discountLabel(value) { return discount }
+        }
+        if values.contains(where: isFree) { return "Free" }
+        if values.contains(where: isNewSeason) { return "New Season" }
+        if values.contains(where: isNewOnGFN) { return "New on GFN" }
+        return values.compactMap(readableLabel).first
+    }
+
+    nonisolated private static func normalizedValue(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func discountLabel(_ value: String) -> String? {
+        let lowercased = value.lowercased()
+        guard lowercased.contains("discount") || lowercased.contains("off") || lowercased.contains("sale") || value.contains("%") else { return nil }
+        guard let match = value.range(of: #"\d{1,2}"#, options: .regularExpression) else { return nil }
+        return "-\(value[match])%"
+    }
+
+    nonisolated private static func isFree(_ value: String) -> Bool {
+        let lowercased = value.lowercased()
+        return lowercased == "free" || lowercased.contains("free_to_play") || lowercased.contains("free-to-play") || lowercased.contains("free2play")
+    }
+
+    nonisolated private static func isNewSeason(_ value: String) -> Bool {
+        let lowercased = value.lowercased().replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+        return lowercased.contains("new season") || lowercased.contains("season launch")
+    }
+
+    nonisolated private static func isNewOnGFN(_ value: String) -> Bool {
+        let lowercased = value.lowercased().replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+        return lowercased.contains("new on gfn") || lowercased.contains("new to gfn") || lowercased.contains("new release")
+    }
+
+    nonisolated private static func readableLabel(_ value: String) -> String? {
+        let words = value
+            .replacingOccurrences(of: #"^[A-Z]+_"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { word in word.prefix(1).uppercased() + word.dropFirst().lowercased() }
+        let label = words.joined(separator: " ")
+        guard !label.isEmpty, label.count <= 18 else { return nil }
+        return label
+    }
 }
 
 private struct MallRibbonShape: Shape {
@@ -2642,6 +2716,10 @@ private struct FlowLayout: Layout {
 
 private extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
+
+    var cardBadgeLabel: String? {
+        CatalogCardBadgeMapper.label(campaignIds: campaignIds, skuTags: skuTags)
+    }
 
     var bestHeroImageURL: String {
         if !heroImageUrl.isEmpty { return heroImageUrl }

@@ -253,6 +253,8 @@ final class OPNGameDataCache: NSObject {
         putArray(game.contentRatings, key: "r", into: &dictionary)
         putArray(game.nvidiaTech, key: "x", into: &dictionary)
         putArray(game.availableStores, key: "as", into: &dictionary)
+        putArray(game.campaignIds, key: "ci", into: &dictionary)
+        putArray(game.skuTags, key: "sk", into: &dictionary)
         if game.isInLibrary { dictionary["il"] = true }
         if !game.variants.isEmpty { dictionary["z"] = game.variants.map(variantDictionary) }
         return dictionary
@@ -284,6 +286,8 @@ final class OPNGameDataCache: NSObject {
         game.contentRatings = dictionary["r"] as? [String] ?? []
         game.nvidiaTech = dictionary["x"] as? [String] ?? []
         game.availableStores = dictionary["as"] as? [String] ?? []
+        game.campaignIds = dictionary["ci"] as? [String] ?? []
+        game.skuTags = dictionary["sk"] as? [String] ?? []
         game.isInLibrary = (dictionary["il"] as? NSNumber)?.boolValue ?? false
         game.variants = (dictionary["z"] as? [Any] ?? []).map(gameVariant)
         return game

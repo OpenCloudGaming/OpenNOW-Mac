@@ -775,10 +775,16 @@ final class OPNGameService: @unchecked Sendable {
         if game.description.isEmpty, let itemMetadata = app["itemMetadata"] as? NSDictionary {
             game.description = firstSafeString(itemMetadata, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
         }
+        if let itemMetadata = app["itemMetadata"] as? NSDictionary {
+            appendStringValues(&game.campaignIds, itemMetadata["campaignIds"])
+        }
         if let gfn = app["gfn"] as? NSDictionary {
             game.playabilityState = safeString(gfn["playabilityState"]) ?? ""
             game.membershipTierLabel = safeString(gfn["minimumMembershipTierLabel"]) ?? ""
             game.playType = safeString(gfn["playType"]) ?? ""
+            if let catalogSkuStrings = gfn["catalogSkuStrings"] as? NSDictionary {
+                appendStringValues(&game.skuTags, catalogSkuStrings["SKU_BASED_TAG"])
+            }
         }
         if let images = app["images"] as? NSDictionary {
             for case let key as String in images.allKeys {

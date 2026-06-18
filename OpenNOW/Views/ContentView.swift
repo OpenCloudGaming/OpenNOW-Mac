@@ -6,6 +6,7 @@
 //
 
 import Combine
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -20,6 +21,7 @@ struct ContentView: View {
     var body: some View {
         LoginView(viewModel: viewModel, accounts: accounts)
             .frame(minWidth: 980, minHeight: 660)
+            .background(OpaqueTitlebarConfigurator())
             .task {
                 syncViewModel()
                 viewModel.bootstrap()
@@ -32,6 +34,25 @@ struct ContentView: View {
 
     private func syncViewModel() {
         viewModel.update(modelContext: modelContext, accounts: accounts, sessions: sessions, devices: devices)
+    }
+}
+
+private struct OpaqueTitlebarConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { configure(window: view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { configure(window: view.window) }
+    }
+
+    private func configure(window: NSWindow?) {
+        guard let window else { return }
+        window.titlebarAppearsTransparent = false
+        window.backgroundColor = NSColor(red: 45 / 255, green: 45 / 255, blue: 45 / 255, alpha: 1)
+        window.toolbarStyle = .unified
     }
 }
 
