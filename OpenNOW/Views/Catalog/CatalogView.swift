@@ -30,6 +30,7 @@ private enum CatalogVendorLayout {
     static let heroAspectRatio: CGFloat = 0.3229
     static let heroFallbackHeight: CGFloat = 500
     static let detailPanelHeight: CGFloat = 612
+    static let detailPanelHorizontalMargin: CGFloat = 44
     static let mainMenuWidth: CGFloat = 344
 
     static func heroHeight(for width: CGFloat) -> CGFloat {
@@ -1107,7 +1108,6 @@ private struct CatalogContentView: View {
                             CatalogRailView(viewModel: viewModel, section: section)
                             if shouldShowDetail(afterSectionAt: index, sections: sections), let detailAnchor = selectedDetailScrollAnchor {
                                 GameDetailPanel(viewModel: viewModel)
-                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                     .padding(.top, -10)
                                     .padding(.bottom, 18)
                                     .onHover { isPointerInsideDetailPanel = $0 }
@@ -1653,10 +1653,11 @@ private struct GameDetailPanel: View {
             let imageIndex = imageURLs.indices.contains(activeImageIndex) ? activeImageIndex : 0
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             GeometryReader { proxy in
-                let contentWidth = min(proxy.size.width * 0.45, 620)
+                let panelWidth = max(1, proxy.size.width - CatalogVendorLayout.detailPanelHorizontalMargin * 2)
+                let contentWidth = min(panelWidth * 0.45, 620)
                 ZStack(alignment: .topTrailing) {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
-                        .frame(width: proxy.size.width, height: CatalogVendorLayout.detailPanelHeight)
+                        .frame(width: panelWidth, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
                         .id(imageURL)
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
@@ -1733,7 +1734,7 @@ private struct GameDetailPanel: View {
                     if imageURLs.count > 1 {
                         HStack {
                             Spacer()
-                                .frame(width: min(contentWidth + 54, max(24, proxy.size.width - 154)))
+                                .frame(width: min(contentWidth + 54, max(24, panelWidth - 154)))
                             CatalogDetailImageArrow(name: "lt_arrow") {
                                 moveImage(delta: -1, count: imageURLs.count)
                             }
@@ -1771,10 +1772,12 @@ private struct GameDetailPanel: View {
                         .opacity(0.94)
                     }
                 }
+                .frame(width: panelWidth, height: CatalogVendorLayout.detailPanelHeight)
+                .background(Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
             .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
-            .background(Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
             .onReceive(imageTimer) { _ in
                 guard game.detailImageURLs.count > 1 else { return }
                 moveImage(delta: 1, count: game.detailImageURLs.count)
