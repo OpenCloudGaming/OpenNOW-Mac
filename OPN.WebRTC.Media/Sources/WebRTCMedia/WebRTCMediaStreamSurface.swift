@@ -341,7 +341,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             await MainActor.run {
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
-                microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity" && pointerLocked
+                microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity"
                 transport.setMicrophoneEnabled(microphoneEnabled)
                 nativeView.directMouseInputEnabled = runtimeSettings.directMouseInput
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
@@ -365,7 +365,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
-        guard pointerLocked else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
+        guard pointerLocked else { return .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
         if let mouse = mouseEvent(from: event), !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
@@ -424,7 +424,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func toggleMicrophone() {
-        guard pointerLocked, runtimeSettings.microphoneMode != "disabled" else {
+        guard runtimeSettings.microphoneMode != "disabled" else {
             microphoneEnabled = false
             transport?.setMicrophoneEnabled(false)
             return
@@ -438,9 +438,6 @@ public struct WebRTCMediaStreamSurface: View {
         pointerLocked = locked
         if locked {
             setSidebarVisible(false)
-        } else {
-            microphoneEnabled = false
-            transport?.setMicrophoneEnabled(false)
         }
     }
 
@@ -448,8 +445,6 @@ public struct WebRTCMediaStreamSurface: View {
         sidebarVisible = visible
         guard visible else { return }
         nativeView?.setPointerLocked(false)
-        microphoneEnabled = false
-        transport?.setMicrophoneEnabled(false)
     }
 
     private func registerStreamLifecycle() {
