@@ -47,7 +47,7 @@ public struct WebRTCMediaStreamSurface: View {
         ZStack(alignment: .topLeading) {
             NativeWebRTCStreamSurface { view in
                 nativeView = view
-                view.onPointerLockChanged = { locked in pointerLocked = locked }
+                view.onPointerLockChanged = { locked in handlePointerLockChanged(locked) }
                 view.onCommand = { command in
                     handle(command)
                 }
@@ -137,7 +137,7 @@ public struct WebRTCMediaStreamSurface: View {
                 showQuitMenu()
             }
             sidebarButton(systemName: "xmark", title: "Close") {
-                sidebarVisible = false
+                setSidebarVisible(false)
             }
         }
         .padding(10)
@@ -357,6 +357,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
+        guard !sidebarVisible else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
         if let mouse = mouseEvent(from: event), !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
@@ -398,11 +399,23 @@ public struct WebRTCMediaStreamSurface: View {
             statsVisible.toggle()
             WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
         case .toggleSidebar:
-            sidebarVisible.toggle()
+            setSidebarVisible(!sidebarVisible)
             WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
         case .showQuitMenu:
             showQuitMenu()
         }
+    }
+
+    private func handlePointerLockChanged(_ locked: Bool) {
+        pointerLocked = locked
+        if locked { setSidebarVisible(false) }
+    }
+
+    private func setSidebarVisible(_ visible: Bool) {
+        sidebarVisible = visible
+        guard visible else { return }
+        nativeView?.setPointerLocked(false)
+        transport?.setMicrophoneEnabled(false)
     }
 
     private func registerStreamLifecycle() {
