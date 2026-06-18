@@ -53,6 +53,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) private var sourceFrameSize = CGSize.zero
     private let targetFps: Int
     nonisolated(unsafe) private var frameSerial: UInt64 = 0
+    nonisolated(unsafe) private var drawScheduled = false
     private var lastDrawnFrameSerial: UInt64 = 0
     private var enhancementDroppedFrameCount: UInt64 = 0
     private var lastEnhancementFrameTimeMs = -1.0
@@ -129,10 +130,14 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
         owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
+        let shouldScheduleDraw: Bool
         objc_sync_enter(self)
         videoFrame = frame
         frameSerial += 1
+        shouldScheduleDraw = !drawScheduled
+        drawScheduled = true
         objc_sync_exit(self)
+        guard shouldScheduleDraw else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.metalView.draw()
@@ -144,7 +149,8 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
         let snapshot = synchronized { () -> (RTCVideoFrame?, UInt64, CGSize) in
-            (videoFrame, frameSerial, sourceFrameSize)
+            drawScheduled = false
+            return (videoFrame, frameSerial, sourceFrameSize)
         }
         guard let frame = snapshot.0,
               frame.width > 0,
