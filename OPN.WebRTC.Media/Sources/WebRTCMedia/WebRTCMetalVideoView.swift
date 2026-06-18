@@ -63,6 +63,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private var enhancementResult = OPNVideoEnhancementResult()
     private var enhancementOverBudgetCount = 0
     private var adaptiveEnhancementPenalty = 0
+    private var customDrawableRenderingEnabled = false
     nonisolated(unsafe) private weak var owner: OPNLibWebRTCStreamSession?
 
     init(frame frameRect: NSRect, targetFps: Int32, owner: OPNLibWebRTCStreamSession?) {
@@ -76,7 +77,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         metalView.frame = bounds
         metalView.autoresizingMask = [.width, .height]
-        metalView.framebufferOnly = false
+        metalView.framebufferOnly = true
         metalView.autoResizeDrawable = false
         metalView.isPaused = true
         metalView.enableSetNeedsDisplay = true
@@ -172,16 +173,24 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
+        if enhancement.mode > 0 {
+            setCustomDrawableRenderingEnabled(true)
+        }
         if enhancement.mode > 0, renderEnhancedFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
         }
 
-        if isTenBitBiPlanarFrame(frame), renderTenBitFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
+        let tenBitFrame = isTenBitBiPlanarFrame(frame)
+        if tenBitFrame {
+            setCustomDrawableRenderingEnabled(true)
+        }
+        if tenBitFrame, renderTenBitFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
         }
 
+        setCustomDrawableRenderingEnabled(false)
         let renderer = rendererForFrame(frame, diagnostics: &diagnostics)
         if let renderer {
             renderer.drawFrame(frame)
@@ -413,6 +422,12 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private func localVideoEnhancement() -> VideoEnhancement {
         let values = owner?.localVideoEnhancement() ?? (0, 0, 0, 2160)
         return VideoEnhancement(mode: values.0, sharpness: values.1, denoise: values.2, targetHeight: values.3)
+    }
+
+    private func setCustomDrawableRenderingEnabled(_ enabled: Bool) {
+        guard customDrawableRenderingEnabled != enabled else { return }
+        customDrawableRenderingEnabled = enabled
+        metalView.framebufferOnly = !enabled
     }
 
     private func synchronized<T>(_ body: () -> T) -> T {
