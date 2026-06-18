@@ -1104,8 +1104,14 @@ private struct CatalogContentView: View {
                         }
 
                         ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                            let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
+                            if showsDetail, let railAnchor = selectedRailScrollAnchor {
+                                Color.clear
+                                    .frame(height: 0)
+                                    .id(railAnchor)
+                            }
                             CatalogRailView(viewModel: viewModel, section: section)
-                            if shouldShowDetail(afterSectionAt: index, sections: sections), let detailAnchor = selectedDetailScrollAnchor {
+                            if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                 GameDetailPanel(viewModel: viewModel)
                                     .padding(.top, -8)
                                     .padding(.bottom, 22)
@@ -1132,8 +1138,8 @@ private struct CatalogContentView: View {
                         .transition(.opacity)
                 }
             }
-            .onChange(of: selectedDetailScrollAnchor) { _, anchor in
-                scrollToSelectedDetail(anchor, proxy: proxy)
+            .onChange(of: selectedRailScrollAnchor) { _, anchor in
+                scrollToSelectedRail(anchor, proxy: proxy)
             }
         }
         .background(Color.gfnBackgroundGreen)
@@ -1156,6 +1162,11 @@ private struct CatalogContentView: View {
         viewModel.marqueeGames
     }
 
+    private var selectedRailScrollAnchor: String? {
+        guard let selectedGame = viewModel.selectedGame else { return nil }
+        return "rail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
+    }
+
     private var heroIdentityList: [String] {
         heroGames.map { CatalogViewModel.identity(for: $0) }
     }
@@ -1165,7 +1176,7 @@ private struct CatalogContentView: View {
         return "detail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
     }
 
-    private func scrollToSelectedDetail(_ anchor: String?, proxy: ScrollViewProxy) {
+    private func scrollToSelectedRail(_ anchor: String?, proxy: ScrollViewProxy) {
         guard let anchor else { return }
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.24)) {
