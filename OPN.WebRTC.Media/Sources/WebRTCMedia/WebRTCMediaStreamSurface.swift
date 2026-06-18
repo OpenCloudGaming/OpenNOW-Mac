@@ -219,14 +219,14 @@ public struct WebRTCMediaStreamSurface: View {
                     .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
-                Text("Resume the stream or quit the current session. Remote input is paused while this menu is open.")
+                Text("Pause the quit request or quit the current session. Remote input is paused while this menu is open.")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.68))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
                 HStack(spacing: 12) {
-                    Button(action: resumeFromQuitMenu) {
-                        Text("Resume")
+                    Button(action: pauseFromQuitMenu) {
+                        Text("Pause")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.black)
                             .frame(width: 150, height: 44)
@@ -234,7 +234,7 @@ public struct WebRTCMediaStreamSurface: View {
                     }
                     .buttonStyle(.plain)
                     Button(action: quitStreamFromMenu) {
-                        Text(isEndingStream ? "Quitting..." : "Quit Stream")
+                        Text(isEndingStream ? "Quitting..." : "Quit")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .frame(width: 150, height: 44)
@@ -500,11 +500,11 @@ public struct WebRTCMediaStreamSurface: View {
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
     }
 
-    private func resumeFromQuitMenu() {
+    private func pauseFromQuitMenu() {
         quitMenuVisible = false
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
-        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.resume", level: .info, message: "Stream resumed from quit menu.", attributes: ["applicationID": configuration.applicationID])
+        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.pause", level: .info, message: "Application quit paused from stream quit menu.", attributes: ["applicationID": configuration.applicationID])
     }
 
     private func quitStreamFromMenu() {
