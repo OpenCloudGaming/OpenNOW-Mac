@@ -1664,8 +1664,8 @@ private struct CatalogGameCardBadge: View {
 }
 
 private enum CatalogCardBadgeMapper {
-    nonisolated static func label(campaignIds: [String], skuTags: [String]) -> String? {
-        let values = (skuTags + campaignIds).map(normalizedValue).filter { !$0.isEmpty }
+    nonisolated static func label(campaignIds: [String], skuTags: [String], genres: [String], featureLabels: [String]) -> String? {
+        let values = (skuTags + campaignIds + genres + featureLabels).map(normalizedValue).filter { !$0.isEmpty }
         for value in values {
             if let discount = discountLabel(value) { return discount }
         }
@@ -1760,65 +1760,36 @@ private struct GameDetailPanel: View {
                     )
                     LinearGradient(colors: [.black.opacity(0.04), .black.opacity(0.02), .black.opacity(0.22)], startPoint: .top, endPoint: .bottom)
 
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 18) {
-                                Text(game.title.isEmpty ? "Selected Game" : game.title)
-                                    .font(.nvidia(size: 30, weight: .bold))
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.82)
-                                    .foregroundStyle(.white.opacity(0.96))
-
-                                detailMetadataLine(game: game)
-
-                                capabilityChips(game: game)
-
-                                variantStatusRow(game: game)
-
-                                detailActions(game: game)
-                            }
+                            Text(game.title.isEmpty ? "Selected Game" : game.title)
+                                .font(.nvidia(size: 30, weight: .bold))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.82)
+                                .foregroundStyle(.white.opacity(0.96))
                             Spacer(minLength: 20)
                             Button { viewModel.toggleFavoriteSelectedGame() } label: {
                                 Image(systemName: viewModel.isFavorite(game) ? "heart.fill" : "heart")
                                     .font(.nvidia(size: 21, weight: .bold))
                                     .foregroundStyle(.white.opacity(0.94))
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 36, height: 32)
                             }
                             .buttonStyle(.plain)
-                            .padding(.top, 4)
                         }
 
+                        detailMetadataLine(game: game)
+                        capabilityChips(game: game)
+                        variantStatusRow(game: game)
+                        detailActions(game: game)
                         accessMessage(game: game)
-                            .padding(.top, 12)
-
-                        if let selectedVariant, !selectedVariant.appStore.isEmpty {
-                            storeAccountStatus(store: selectedVariant.appStore)
-                                .padding(.top, 8)
-                        }
-
-                        if !viewModel.launchMessage.isEmpty {
-                            CatalogMessageView(message: viewModel.launchMessage, systemImage: "play.circle.fill")
-                                .frame(maxWidth: 520)
-                                .padding(.top, 8)
-                        }
-
-                        if !viewModel.actionMessage.isEmpty {
-                            CatalogMessageView(message: viewModel.actionMessage, systemImage: "checkmark.circle.fill")
-                                .frame(maxWidth: 520)
-                                .padding(.top, 8)
-                        }
-
                         detailDescription(game: game)
-                            .padding(.top, 20)
-
-                        featureRows(game: game)
-                            .padding(.top, 18)
-
+                            .padding(.top, 4)
+                        nvidiaTechRows(game: game)
+                            .padding(.top, 4)
                         ratingBlock(game: game)
-                            .padding(.top, 16)
-
+                            .padding(.top, 4)
                         readMoreButton
-                            .padding(.top, 22)
+                            .padding(.top, 2)
                     }
                     .frame(width: contentWidth, alignment: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -2055,7 +2026,7 @@ private struct GameDetailPanel: View {
             Text(accessBody(game: game))
                 .font(.nvidia(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.76))
-                .lineLimit(2)
+                .lineLimit(1)
             Text("Learn more")
                 .font(.nvidia(size: 13, weight: .bold))
                 .foregroundStyle(Color.openNowGreen)
@@ -2075,27 +2046,35 @@ private struct GameDetailPanel: View {
 
     private func detailDescription(game: OPNCatalogGameObject) -> some View {
         Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
-            .font(.nvidia(size: 16, weight: .medium))
+            .font(.nvidia(size: 15, weight: .medium))
             .foregroundStyle(.white.opacity(0.90))
-            .lineSpacing(4)
+            .lineSpacing(3)
             .lineLimit(2)
             .frame(maxWidth: 660, alignment: .leading)
     }
 
-    private func featureRows(game: OPNCatalogGameObject) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            ForEach(game.featureLabels.prefix(3), id: \.self) { feature in
-                CatalogFeatureAvailabilityRow(title: feature, message: featureMessage(feature), locked: featureIsLocked(feature))
+    private func nvidiaTechRows(game: OPNCatalogGameObject) -> some View {
+        let technologies = nvidiaTechnologies(game: game)
+        return VStack(alignment: .leading, spacing: 7) {
+            ForEach(technologies.prefix(2), id: \.self) { technology in
+                CatalogFeatureAvailabilityRow(title: technology, message: featureMessage(technology), locked: featureIsLocked(technology))
             }
         }
-        .padding(.vertical, game.featureLabels.isEmpty ? 0 : 9)
+        .padding(.vertical, technologies.isEmpty ? 0 : 8)
         .frame(maxWidth: 660, alignment: .leading)
         .overlay(alignment: .top) {
-            if !game.featureLabels.isEmpty { Rectangle().fill(Color.white.opacity(0.26)).frame(height: 1) }
+            if !technologies.isEmpty { Rectangle().fill(Color.white.opacity(0.26)).frame(height: 1) }
         }
         .overlay(alignment: .bottom) {
-            if !game.featureLabels.isEmpty { Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1) }
+            if !technologies.isEmpty { Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1) }
         }
+    }
+
+    private func nvidiaTechnologies(game: OPNCatalogGameObject) -> [String] {
+        var values: [String] = []
+        for technology in game.nvidiaTech { appendUnique(technology, to: &values) }
+        for feature in game.featureLabels { appendUnique(feature, to: &values) }
+        return values
     }
 
     private func featureMessage(_ feature: String) -> String {
@@ -2718,7 +2697,7 @@ private extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
 
     var cardBadgeLabel: String? {
-        CatalogCardBadgeMapper.label(campaignIds: campaignIds, skuTags: skuTags)
+        CatalogCardBadgeMapper.label(campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
     }
 
     var bestHeroImageURL: String {
