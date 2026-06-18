@@ -977,7 +977,7 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
         "heightInPixels": height,
         "framesPerSecond": int(settings["fps"], fallback: 60),
         "sdrHdrMode": hdrEnabled ? 1 : 0,
-        "displayData": hdrEnabled && capabilities.hdrDisplaySupported ? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 400] : NSNull(),
+        "displayData": hdrEnabled && capabilities.hdrDisplaySupported ? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 400] : [:],
         "hdr10PlusGamingData": NSNull(),
         "dpi": max(0, capabilities.displayDpi),
     ]
@@ -985,7 +985,7 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
 
 private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: Bool) -> [String: Any] {
     let colorQuality = string(settings["colorQuality"])
-    let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 10 : 0
+    let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 1 : 0
     let chromaFormat = colorQuality == "8bit_444" || colorQuality == "10bit_444" ? 2 : 0
     return [
         "reflex": bool(settings["enableReflex"], fallback: true),
@@ -1002,6 +1002,7 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
         "prefilterMode": min(max(int(settings["prefilterMode"]), 0), 2),
         "prefilterSharpness": min(max(int(settings["prefilterSharpness"]), 0), 10),
         "prefilterNoiseReduction": min(max(int(settings["prefilterDenoise"]), 0), 10),
+        "prefilterModel": max(int(settings["prefilterModel"]), 0),
         "hudStreamingMode": 0,
         "sdrColorSpace": 2,
         "hdrColorSpace": 0,

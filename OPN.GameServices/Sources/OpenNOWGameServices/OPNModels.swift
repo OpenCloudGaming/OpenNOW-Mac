@@ -655,7 +655,7 @@ public final class OPNSessionJSONParser: NSObject {
 
         if let features = session["finalizedStreamingFeatures"] as? [String: Any] {
             if let bitDepth = intValue(features["bitDepth"]) {
-                profile.bitDepth = bitDepth
+                profile.bitDepth = displayBitDepth(bitDepth)
             }
             if let chromaFormat = intValue(features["chromaFormat"]) {
                 profile.chromaFormat = chromaFormat
@@ -883,6 +883,14 @@ public final class OPNSessionJSONParser: NSObject {
         if tenBit { return "10bit_420" }
         if fourFourFour { return "8bit_444" }
         return "8bit_420"
+    }
+
+    private static func displayBitDepth(_ value: Int) -> Int {
+        switch value {
+        case 0: return 8
+        case 1: return 10
+        default: return value
+        }
     }
 }
 
