@@ -77,8 +77,8 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         metalView.autoresizingMask = [.width, .height]
         metalView.framebufferOnly = false
         metalView.autoResizeDrawable = false
-        metalView.isPaused = false
-        metalView.enableSetNeedsDisplay = false
+        metalView.isPaused = true
+        metalView.enableSetNeedsDisplay = true
         metalView.preferredFramesPerSecond = self.targetFps
         metalView.delegate = self
         metalView.layerContentsPlacement = .scaleProportionallyToFit
@@ -133,6 +133,10 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         videoFrame = frame
         frameSerial += 1
         objc_sync_exit(self)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.metalView.setNeedsDisplay(self.metalView.bounds)
+        }
     }
 
     func draw(in view: MTKView) {
@@ -368,8 +372,8 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             fallback = "\(className) rejected MTKView"
             return nil
         }
-        metalView.isPaused = false
-        metalView.enableSetNeedsDisplay = false
+        metalView.isPaused = true
+        metalView.enableSetNeedsDisplay = true
         metalView.preferredFramesPerSecond = targetFps
         return renderer
     }
