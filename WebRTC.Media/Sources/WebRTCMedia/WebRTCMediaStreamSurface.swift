@@ -486,7 +486,7 @@ private struct NativeWebRTCStreamSurface: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NativeWebRTCStreamView {
         let view = NativeWebRTCStreamView(frame: .zero)
-        onResolve(view)
+        Task { @MainActor in onResolve(view) }
         return view
     }
 
