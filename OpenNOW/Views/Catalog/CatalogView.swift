@@ -195,54 +195,12 @@ private struct VendorLaunchFlowOverlay: View {
             .ignoresSafeArea()
 
             switch viewModel.launchFlowState {
-            case .selectingRoute:
-                VendorLaunchRouteCard(viewModel: viewModel)
             case .activeSessionPrompt:
                 VendorActiveSessionCard(viewModel: viewModel)
             case .checkingSession, .stoppingSession, .startingStream:
                 VendorLaunchProgressCard(viewModel: viewModel)
             case .idle:
                 EmptyView()
-            }
-        }
-    }
-}
-
-private struct VendorLaunchRouteCard: View {
-    @ObservedObject var viewModel: CatalogViewModel
-
-    var body: some View {
-        VendorLaunchPanel(title: "GeForce NOW Launch", subtitle: viewModel.launchFlowTitle) {
-            VStack(alignment: .leading, spacing: 18) {
-                VendorLaunchStepHeader(index: "1", title: "Select Server Location", message: viewModel.launchFlowMessage)
-                ScrollView(.vertical) {
-                    VStack(spacing: 8) {
-                        ForEach(viewModel.launchRegionOptions, id: \.url) { option in
-                            VendorLaunchRegionRow(
-                                option: option,
-                                selected: option.url == viewModel.selectedLaunchRegionUrl,
-                                action: { viewModel.selectLaunchRegion(option.url) }
-                            )
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .frame(maxHeight: 420)
-                .background(Color.black.opacity(0.14))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
-                if !viewModel.launchFlowError.isEmpty {
-                    VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
-                }
-                HStack(spacing: 12) {
-                    Button("CANCEL") { viewModel.cancelVendorLaunch() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                    Spacer()
-                    Button(viewModel.isRefreshingLaunchRegions ? "PINGING..." : "REFRESH") { viewModel.refreshLaunchRegions() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
-                        .disabled(viewModel.isRefreshingLaunchRegions)
-                    Button("CONTINUE") { viewModel.continueVendorLaunch() }
-                        .buttonStyle(VendorLaunchPrimaryButtonStyle())
-                }
             }
         }
     }
@@ -502,42 +460,6 @@ private struct VendorLaunchStepHeader: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-}
-
-private struct VendorLaunchRegionRow: View {
-    let option: OPNStreamRegionOption
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Rectangle()
-                    .fill(selected ? Color.openNowGreen : Color.white.opacity(0.18))
-                    .frame(width: 4, height: 36)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(option.automatic ? "Automatic" : option.name)
-                        .font(.nvidia(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text(option.automatic ? "Best measured route" : "Cloudmatch region")
-                        .font(.nvidia(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.56))
-                }
-                Spacer()
-                Text(latencyText)
-                    .font(.nvidia(size: 12, weight: .bold))
-                    .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.70))
-            }
-            .padding(12)
-            .background(selected ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.045))
-            .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.72) : Color.white.opacity(0.08), lineWidth: 1) }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var latencyText: String {
-        option.latencyMs >= 0 ? "\(option.latencyMs) ms" : "Measuring"
     }
 }
 

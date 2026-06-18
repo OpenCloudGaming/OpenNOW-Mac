@@ -38,7 +38,6 @@ private struct CatalogSettingsPreferencesSnapshot: Sendable {
 @MainActor
 enum CatalogLaunchFlowState: Equatable {
     case idle
-    case selectingRoute
     case checkingSession
     case activeSessionPrompt
     case stoppingSession
@@ -112,9 +111,6 @@ final class CatalogViewModel: ObservableObject {
     @Published var launchFlowTitle = ""
     @Published var launchFlowMessage = ""
     @Published var launchFlowError = ""
-    @Published var launchRegionOptions: [OPNStreamRegionOption] = []
-    @Published var selectedLaunchRegionUrl = ""
-    @Published var isRefreshingLaunchRegions = false
     @Published var activeLaunchSession: OPNActiveStreamSessionDescriptor?
     @Published var streamProfile = OPNStreamPreferenceProfile()
     @Published var streamCapabilities = OPNStreamDeviceCapabilities()
@@ -367,39 +363,12 @@ final class CatalogViewModel: ObservableObject {
         activeSessionResumeConfiguration = nil
         activeSessionReplacementConfiguration = nil
         launchFlowTitle = game.title.isEmpty ? "GeForce NOW" : game.title
-        launchFlowMessage = "Choose the route GeForce NOW should use for this launch."
+        launchFlowMessage = "Checking for active GeForce NOW sessions..."
         launchFlowError = ""
         launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
         errorMessage = ""
-        selectedLaunchRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
-        launchRegionOptions = Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions())
-        launchFlowState = .selectingRoute
-        refreshLaunchRegions()
-    }
-
-    func refreshLaunchRegions() {
-        guard !isRefreshingLaunchRegions else { return }
-        isRefreshingLaunchRegions = true
-        launchFlowError = ""
-        let token = launchToken
-        let selfBox = CatalogWeakObject(self)
-        OPNStreamPreferences.fetchRegions(token: token, providerStreamingBaseUrl: OPNGameServiceSwiftAdapter.providerStreamingBaseURL()) { regions in
-            Task { @MainActor in
-                guard let self = selfBox.value else { return }
-                self.isRefreshingLaunchRegions = false
-                self.launchRegionOptions = Self.launchRegionOptions(from: regions)
-                if !self.selectedLaunchRegionUrl.isEmpty, !regions.contains(where: { $0.url == self.selectedLaunchRegionUrl }) {
-                    self.selectedLaunchRegionUrl = ""
-                }
-                if regions.isEmpty {
-                    self.launchFlowError = "Route discovery did not return measured regions. Automatic can still launch."
-                }
-            }
-        }
-    }
-
-    func selectLaunchRegion(_ regionUrl: String) {
-        selectedLaunchRegionUrl = regionUrl
+        launchFlowState = .checkingSession
+        continueVendorLaunch()
     }
 
     func selectSettingsRegion(_ regionUrl: String) {
@@ -427,7 +396,6 @@ final class CatalogViewModel: ObservableObject {
 
     func continueVendorLaunch() {
         guard let game = pendingLaunchGame else { return }
-        OPNStreamPreferences.saveSelectedRegionUrl(selectedLaunchRegionUrl)
         launchFlowState = .checkingSession
         launchFlowMessage = "Checking for active GeForce NOW sessions..."
         launchFlowError = ""
@@ -442,8 +410,8 @@ final class CatalogViewModel: ObservableObject {
             guard let self else { return }
             self.launchMessage = ""
             guard success, let plan else {
-                self.launchFlowState = .selectingRoute
-                self.launchFlowError = message
+                self.clearLaunchFlow()
+                self.errorMessage = message.isEmpty ? "Unable to prepare GeForce NOW launch." : message
                 return
             }
             switch plan {
@@ -562,7 +530,6 @@ final class CatalogViewModel: ObservableObject {
         activeSessionReplacementConfiguration = nil
         pendingLaunchGame = nil
         pendingLaunchVariantIndex = -1
-        isRefreshingLaunchRegions = false
     }
 
     nonisolated private static func launchRegionOptions(from regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {
