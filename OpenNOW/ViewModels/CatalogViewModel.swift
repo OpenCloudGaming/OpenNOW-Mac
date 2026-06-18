@@ -27,6 +27,14 @@ private final class CatalogSendableValue<T>: @unchecked Sendable {
     }
 }
 
+private struct CatalogSettingsPreferencesSnapshot: Sendable {
+    let capabilities: OPNStreamDeviceCapabilities
+    let profile: OPNStreamPreferenceProfile
+    let selectedRegionUrl: String
+    let regionOptions: [OPNStreamRegionOption]
+    let microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption]
+}
+
 @MainActor
 enum CatalogLaunchFlowState: Equatable {
     case idle
@@ -131,6 +139,8 @@ final class CatalogViewModel: ObservableObject {
     private var activeSessionResumeConfiguration: StreamLaunchConfiguration?
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
+    private var settingsPreferencesGeneration = 0
+    private var settingsPreferencesTask: Task<Void, Never>?
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
@@ -555,7 +565,7 @@ final class CatalogViewModel: ObservableObject {
         isRefreshingLaunchRegions = false
     }
 
-    private static func launchRegionOptions(from regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {
+    nonisolated private static func launchRegionOptions(from regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {
         let measured = regions.filter { !$0.url.isEmpty }
         let bestLatency = measured.first?.latencyMs ?? -1
         return [OPNStreamRegionOption(name: "Automatic", url: "", latencyMs: bestLatency, automatic: true)] + measured
@@ -1024,11 +1034,29 @@ final class CatalogViewModel: ObservableObject {
     }
 
     private func loadSettingsPreferences() {
-        streamCapabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        streamProfile = OPNStreamPreferences.effectiveProfile(OPNStreamPreferences.loadProfile(), capabilities: streamCapabilities)
-        selectedSettingsRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
-        settingsRegionOptions = Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions())
-        microphoneDeviceOptions = OPNStreamPreferences.loadMicrophoneDeviceOptions()
+        settingsPreferencesGeneration += 1
+        let generation = settingsPreferencesGeneration
+        settingsPreferencesTask?.cancel()
+        settingsPreferencesTask = Task.detached(priority: .userInitiated) {
+            let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+            let profile = OPNStreamPreferences.effectiveProfile(OPNStreamPreferences.loadProfile(), capabilities: capabilities)
+            let snapshot = CatalogSettingsPreferencesSnapshot(
+                capabilities: capabilities,
+                profile: profile,
+                selectedRegionUrl: OPNStreamPreferences.loadSelectedRegionUrl(),
+                regionOptions: Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions()),
+                microphoneDeviceOptions: OPNStreamPreferences.loadMicrophoneDeviceOptions()
+            )
+            await MainActor.run { [weak self] in
+                guard let self, generation == self.settingsPreferencesGeneration, !Task.isCancelled else { return }
+                self.streamCapabilities = snapshot.capabilities
+                self.streamProfile = snapshot.profile
+                self.selectedSettingsRegionUrl = snapshot.selectedRegionUrl
+                self.settingsRegionOptions = snapshot.regionOptions
+                self.microphoneDeviceOptions = snapshot.microphoneDeviceOptions
+                self.settingsPreferencesTask = nil
+            }
+        }
     }
 
     private func refreshCatalogAfterOwnershipChange() {
