@@ -67,15 +67,24 @@ public final class OPNGameLaunchBridge {
         }
 
         let selectedVariantIndex = resolvedVariantIndex(for: game, requestedIndex: variantIndex)
-        let selectedVariant = selectedVariantIndex >= 0 && selectedVariantIndex < game.variants.count ? game.variants[selectedVariantIndex] : nil
-        let appId = resolvedAppId(game: game, variant: selectedVariant)
+        configureServices(token: token, userId: userId)
+        let gameValue = game.swiftValue
+        let gameBox = OPNGameLaunchBridgeSendableValue(game)
+        OPNGameService.shared.resolveLaunchAppId(game: gameValue, variantIndex: selectedVariantIndex) { [weak self] appId in
+            Task { @MainActor in
+                guard let self else { return }
+                let game = gameBox.value
+                let selectedVariant = selectedVariantIndex >= 0 && selectedVariantIndex < game.variants.count ? game.variants[selectedVariantIndex] : nil
+                self.prepareResolvedLaunchPlan(game: game, selectedVariant: selectedVariant, appId: appId, token: token, completion: completion)
+            }
+        }
+    }
+
+    private func prepareResolvedLaunchPlan(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, appId: String, token: String, completion: @escaping OPNGameLaunchPlanCompletion) {
         guard !appId.isEmpty else {
             completion(false, "This game does not include a launchable GeForce NOW app id.", nil)
             return
         }
-
-        configureServices(token: token, userId: userId)
-
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
         let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
         let selectedStore = selectedVariant?.appStore ?? ""
@@ -153,12 +162,6 @@ public final class OPNGameLaunchBridge {
         if let index = game.variants.firstIndex(where: { $0.librarySelected }) { return index }
         if let index = game.variants.firstIndex(where: { $0.inLibrary }) { return index }
         return game.variants.isEmpty ? -1 : 0
-    }
-
-    private func resolvedAppId(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject?) -> String {
-        if let variant, !variant.id.isEmpty { return variant.id }
-        if !game.launchAppId.isEmpty { return game.launchAppId }
-        return game.id
     }
 
     private func activeSession(_ session: OPNActiveSessionObject, matches game: OPNCatalogGameObject, appId: String) -> Bool {

@@ -8,6 +8,7 @@ typealias OPNCatalogCallback = @Sendable (_ success: Bool, _ games: [OPNGameInfo
 typealias OPNCatalogBrowseCallback = @Sendable (_ success: Bool, _ result: OPNCatalogBrowseResult, _ error: String) -> Void
 typealias OPNSubscriptionCallback = @Sendable (_ success: Bool, _ subscription: OPNSubscriptionInfo, _ error: String) -> Void
 typealias OPNStoreURLCallback = @Sendable (_ success: Bool, _ storeURL: String, _ error: String) -> Void
+typealias OPNLaunchAppIdCallback = @Sendable (_ appId: String) -> Void
 typealias OPNProviderInfoCallback = @Sendable (_ success: Bool, _ providerInfo: OPNGameProviderInfo, _ selectedEndpoint: OPNGameProviderEndpoint, _ error: String) -> Void
 typealias OPNOwnershipActionCallback = @Sendable (_ success: Bool, _ error: String) -> Void
 typealias OPNUserAccountCallback = @Sendable (_ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) -> Void
@@ -686,6 +687,32 @@ final class OPNGameService: @unchecked Sendable {
                     return
                 }
                 self.dispatchStoreURL(completion, true, storeURL, "")
+            }
+        }
+    }
+
+    func resolveLaunchAppId(game: OPNGameInfo, variantIndex: Int, completion: @escaping OPNLaunchAppIdCallback) {
+        if let appId = launchableAppId(for: game, variantIndex: variantIndex) {
+            completion(appId)
+            return
+        }
+        let metadataAppId = game.uuid.isEmpty ? game.id : game.uuid
+        guard !metadataAppId.isEmpty, !accessToken.isEmpty else {
+            completion("")
+            return
+        }
+        let selectedVariant = game.variants.indices.contains(variantIndex) ? game.variants[variantIndex] : nil
+        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+            guard let self else { return }
+            self.fetchAppMetadata(appIds: [metadataAppId], vpcId: resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId) { data, error in
+                guard error.isEmpty,
+                      let items = (data?["apps"] as? NSDictionary)?["items"] as? [NSDictionary] else {
+                    completion("")
+                    return
+                }
+                let metadataApp = items.first { self.safeString($0["id"]) == metadataAppId } ?? items.first
+                let metadataGame = self.parseGameItem(metadataApp)
+                completion(self.launchableAppId(for: metadataGame, preferredStore: selectedVariant?.appStore ?? "") ?? "")
             }
         }
     }
@@ -1526,6 +1553,26 @@ final class OPNGameService: @unchecked Sendable {
     private func storeURLForKnownGame(_ game: OPNGameInfo, variantIndex: Int) -> String? {
         if game.variants.indices.contains(variantIndex), !game.variants[variantIndex].storeUrl.isEmpty { return game.variants[variantIndex].storeUrl }
         return game.variants.first { !$0.storeUrl.isEmpty }?.storeUrl
+    }
+
+    private func launchableAppId(for game: OPNGameInfo, variantIndex: Int) -> String? {
+        if game.variants.indices.contains(variantIndex), let appId = validLaunchAppId(game.variants[variantIndex].id) { return appId }
+        if let appId = validLaunchAppId(game.launchAppId) { return appId }
+        if let appId = validLaunchAppId(game.id) { return appId }
+        return game.variants.compactMap { validLaunchAppId($0.id) }.first
+    }
+
+    private func launchableAppId(for game: OPNGameInfo, preferredStore: String) -> String? {
+        if !preferredStore.isEmpty, let appId = game.variants.first(where: { $0.appStore.caseInsensitiveCompare(preferredStore) == .orderedSame }).flatMap({ validLaunchAppId($0.id) }) { return appId }
+        if let appId = validLaunchAppId(game.launchAppId) { return appId }
+        if let appId = validLaunchAppId(game.id) { return appId }
+        return game.variants.compactMap { validLaunchAppId($0.id) }.first
+    }
+
+    private func validLaunchAppId(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let numeric = Int(trimmed), numeric > 0 else { return nil }
+        return trimmed
     }
 
     private func storeURLForMetadataGame(_ metadataGame: OPNGameInfo, variantId: String, store: String) -> String {
