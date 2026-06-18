@@ -1665,14 +1665,16 @@ private struct CatalogGameCardBadge: View {
 
 private enum CatalogCardBadgeMapper {
     nonisolated static func label(campaignIds: [String], skuTags: [String], genres: [String], featureLabels: [String]) -> String? {
-        let values = (skuTags + campaignIds + genres + featureLabels).map(normalizedValue).filter { !$0.isEmpty }
+        let explicitValues = (skuTags + campaignIds).map(normalizedValue).filter { !$0.isEmpty }
+        let taxonomyValues = (genres + featureLabels).map(normalizedValue).filter { !$0.isEmpty }
+        let values = explicitValues + taxonomyValues
         for value in values {
             if let discount = discountLabel(value) { return discount }
         }
         if values.contains(where: isFree) { return "Free" }
         if values.contains(where: isNewSeason) { return "New Season" }
         if values.contains(where: isNewOnGFN) { return "New on GFN" }
-        return values.compactMap(readableLabel).first
+        return explicitValues.compactMap(readableLabel).first
     }
 
     nonisolated private static func normalizedValue(_ value: String) -> String {
@@ -1729,6 +1731,7 @@ private struct MallRibbonShape: Shape {
 private struct GameDetailPanel: View {
     @ObservedObject var viewModel: CatalogViewModel
     @State private var activeImageIndex = 0
+    @State private var isDescriptionExpanded = false
     private let imageTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -1858,7 +1861,10 @@ private struct GameDetailPanel: View {
                 guard game.detailImageURLs.count > 1 else { return }
                 moveImage(delta: 1, count: game.detailImageURLs.count)
             }
-            .onChange(of: game.catalogIdentity) { _, _ in activeImageIndex = 0 }
+            .onChange(of: game.catalogIdentity) { _, _ in
+                activeImageIndex = 0
+                isDescriptionExpanded = false
+            }
         }
     }
 
@@ -1970,6 +1976,7 @@ private struct GameDetailPanel: View {
                     .frame(width: primaryActionTitle(game: game) == "PLAY" ? 72 : 132, height: 40)
             }
             .buttonStyle(VendorGetInButtonStyle())
+            .fixedSize()
 
             Menu {
                 Button("Change game store") { viewModel.changeSelectedGameStore() }
@@ -1985,9 +1992,12 @@ private struct GameDetailPanel: View {
                     .font(.nvidia(size: 18, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
                     .frame(width: 40, height: 40)
+                    .background(Color.black.opacity(0.28))
+                    .overlay { Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func variantStatusRow(game: OPNCatalogGameObject) -> some View {
@@ -2049,7 +2059,7 @@ private struct GameDetailPanel: View {
             .font(.nvidia(size: 15, weight: .medium))
             .foregroundStyle(.white.opacity(0.90))
             .lineSpacing(3)
-            .lineLimit(2)
+            .lineLimit(isDescriptionExpanded ? 6 : 2)
             .frame(maxWidth: 660, alignment: .leading)
     }
 
@@ -2116,12 +2126,17 @@ private struct GameDetailPanel: View {
     }
 
     private var readMoreButton: some View {
-        HStack(spacing: 5) {
-            Text("READ MORE")
-            Image(systemName: "chevron.down")
+        Button {
+            isDescriptionExpanded.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                Text(isDescriptionExpanded ? "READ LESS" : "READ MORE")
+                Image(systemName: isDescriptionExpanded ? "chevron.up" : "chevron.down")
+            }
+            .font(.nvidia(size: 13, weight: .bold))
+            .foregroundStyle(.white.opacity(0.95))
         }
-        .font(.nvidia(size: 13, weight: .bold))
-        .foregroundStyle(.white.opacity(0.95))
+        .buttonStyle(.plain)
     }
 
     private func esrbShortRating(_ rating: String) -> String {
