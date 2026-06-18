@@ -6,6 +6,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
 
     private let session = OPNLibWebRTCStreamSession()
     private weak var nativeView: NativeWebRTCStreamView?
+    private let localIceLock = NSLock()
+    private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
     private var statsTelemetryTask: Task<Void, Never>?
     private var isDisconnecting = false
@@ -31,7 +33,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 answerHandler: { [weak self] sdp, nvstSdp in
                     self?.resumeAnswer(StreamAnswer(sdp: sdp as String, metadata: ["nvstSdp": nvstSdp as String]))
                 },
-                localIceCandidateHandler: { _ in },
+                localIceCandidateHandler: { [weak self] payload in
+                    self?.handleLocalIceCandidate(payload as NSDictionary)
+                },
                 stateHandler: { [weak self] connected, error in
                     if connected {
                         WebRTCMediaTelemetry.capture("webrtc.transport.connected", level: .info, message: "Native WebRTC transport connected.", attributes: ["sessionId": offer.session.id])
@@ -49,6 +53,15 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             "sdpMid": candidate.sdpMid,
             "sdpMLineIndex": candidate.sdpMLineIndex,
         ])
+    }
+
+    public func localIceCandidates() -> AsyncStream<StreamIceCandidate> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(120)) { continuation in
+            localIceLock.withLock { localIceContinuation = continuation }
+            continuation.onTermination = { [weak self] _ in
+                self?.localIceLock.withLock { self?.localIceContinuation = nil }
+            }
+        }
     }
 
     public func send(_ event: UserInputEvent) async throws {
@@ -77,6 +90,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         isDisconnecting = true
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
+        localIceLock.withLock {
+            localIceContinuation?.finish()
+            localIceContinuation = nil
+        }
         session.stop()
     }
 
@@ -174,6 +191,20 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
+    private static func stringValue(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        if let value = value as? NSString { return value as String }
+        if let value = value as? NSNumber { return value.stringValue }
+        return ""
+    }
+
+    private static func intValue(_ value: Any?) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) ?? 0 }
+        return 0
+    }
+
     private func resumeAnswer(_ answer: StreamAnswer) {
         guard let continuation else { return }
         self.continuation = nil
@@ -189,6 +220,17 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
         continuation.resume(throwing: error)
+    }
+
+    private func handleLocalIceCandidate(_ payload: NSDictionary) {
+        let candidate = Self.stringValue(payload["candidate"])
+        guard !candidate.isEmpty else { return }
+        let iceCandidate = StreamIceCandidate(
+            sdp: candidate,
+            sdpMid: Self.stringValue(payload["sdpMid"]),
+            sdpMLineIndex: Self.intValue(payload["sdpMLineIndex"])
+        )
+        localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
     }
 
     private func handleEnded(message: String) {

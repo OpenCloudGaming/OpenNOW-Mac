@@ -4,10 +4,13 @@ import SignalLinkKit
 import WebRTCMedia
 
 public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, @unchecked Sendable {
+    private static let maxBufferedIceCandidates = 120
+
     private let lock = NSLock()
     private var signaling: OPNWebSocketSignalingClient?
     private var activeSession: StreamSessionDescriptor?
     private var iceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
+    private var pendingIceCandidates: [StreamIceCandidate] = []
     private var offerContinuation: CheckedContinuation<StreamOffer, Error>?
 
     public init() {}
@@ -30,6 +33,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             signaling = nil
             iceContinuation?.finish()
             iceContinuation = nil
+            pendingIceCandidates.removeAll()
             offerContinuation = nil
         }
         guard reason == .userRequested || reason == .completed || reason == .remoteEnded else { return }
@@ -51,9 +55,31 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         signaling.sendAnswerSdp(answer.sdp, nvstSdp: answer.metadata["nvstSdp"] ?? "")
     }
 
+    public func sendLocalIceCandidate(_ candidate: StreamIceCandidate, for session: StreamSessionDescriptor) async throws {
+        guard let signaling = lock.withLock({ self.signaling }) else {
+            throw OpenNOWStreamSessionError.signalingUnavailable
+        }
+        signaling.sendIceCandidate([
+            "candidate": candidate.sdp,
+            "sdpMid": candidate.sdpMid,
+            "sdpMLineIndex": candidate.sdpMLineIndex,
+        ] as NSDictionary)
+    }
+
     public func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate> {
         AsyncStream(bufferingPolicy: .bufferingNewest(120)) { continuation in
-            lock.withLock { iceContinuation = continuation }
+            let buffered = lock.withLock { () -> [StreamIceCandidate] in
+                iceContinuation = continuation
+                let values = pendingIceCandidates
+                pendingIceCandidates.removeAll()
+                return values
+            }
+            for candidate in buffered {
+                continuation.yield(candidate)
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.lock.withLock { self?.iceContinuation = nil }
+            }
         }
     }
 
@@ -203,13 +229,11 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             }
             client.onIceCandidate = { [weak self] payload in
                 guard let self else { return }
-                _ = self.lock.withLock {
-                    self.iceContinuation?.yield(StreamIceCandidate(
-                        sdp: self.string(payload["candidate"]),
-                        sdpMid: self.string(payload["sdpMid"]),
-                        sdpMLineIndex: self.int(payload["sdpMLineIndex"])
-                    ))
-                }
+                self.handleRemoteIceCandidate(StreamIceCandidate(
+                    sdp: self.string(payload["candidate"]),
+                    sdpMid: self.string(payload["sdpMid"]),
+                    sdpMLineIndex: self.int(payload["sdpMLineIndex"])
+                ))
             }
             client.onClosed = { [weak self] clean, reason in
                 guard !clean else { return }
@@ -223,6 +247,20 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             client.connect { [weak self] success, error in
                 guard !success else { return }
                 self?.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
+            }
+        }
+    }
+
+    private func handleRemoteIceCandidate(_ candidate: StreamIceCandidate) {
+        guard !candidate.sdp.isEmpty else { return }
+        lock.withLock {
+            if let iceContinuation {
+                iceContinuation.yield(candidate)
+                return
+            }
+            pendingIceCandidates.append(candidate)
+            if pendingIceCandidates.count > Self.maxBufferedIceCandidates {
+                pendingIceCandidates.removeFirst(pendingIceCandidates.count - Self.maxBufferedIceCandidates)
             }
         }
     }

@@ -24,6 +24,7 @@ private actor RecordingTransport: WebRTCStreamTransport {
     private(set) var sentEvents: [UserInputEvent] = []
     private(set) var remoteCandidates: [StreamIceCandidate] = []
     private(set) var disconnected = false
+    private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
 
     func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
         connectedOffer = offer
@@ -43,12 +44,56 @@ private actor RecordingTransport: WebRTCStreamTransport {
         remoteCandidates.append(candidate)
     }
 
+    nonisolated func localIceCandidates() -> AsyncStream<StreamIceCandidate> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(120)) { continuation in
+            Task { await self.setLocalIceContinuation(continuation) }
+        }
+    }
+
+    func yieldLocalIceCandidate(_ candidate: StreamIceCandidate) {
+        localIceContinuation?.yield(candidate)
+    }
+
     func send(_ event: UserInputEvent) async throws {
         sentEvents.append(event)
     }
 
     func disconnect() async {
         disconnected = true
+        localIceContinuation?.finish()
+        localIceContinuation = nil
+    }
+
+    private func setLocalIceContinuation(_ continuation: AsyncStream<StreamIceCandidate>.Continuation) {
+        localIceContinuation = continuation
+    }
+}
+
+private actor RecordingSignaling: StreamSignalingChannel {
+    private(set) var sentAnswer: StreamAnswer?
+    private(set) var sentLocalCandidates: [StreamIceCandidate] = []
+    private var remoteIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
+
+    func sendAnswer(_ answer: StreamAnswer, for session: StreamSessionDescriptor) async throws {
+        sentAnswer = answer
+    }
+
+    func sendLocalIceCandidate(_ candidate: StreamIceCandidate, for session: StreamSessionDescriptor) async throws {
+        sentLocalCandidates.append(candidate)
+    }
+
+    nonisolated func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(120)) { continuation in
+            Task { await self.setRemoteIceContinuation(continuation) }
+        }
+    }
+
+    func yieldRemoteIceCandidate(_ candidate: StreamIceCandidate) {
+        remoteIceContinuation?.yield(candidate)
+    }
+
+    private func setRemoteIceContinuation(_ continuation: AsyncStream<StreamIceCandidate>.Continuation) {
+        remoteIceContinuation = continuation
     }
 }
 
@@ -164,6 +209,28 @@ struct WebRTCStreamingPathTests {
         #expect(progressValues.map(\.currentStepIndex) == [0, 1, 2, 3, 4])
         #expect(progressValues.last?.isReady == true)
         #expect(firstFrame?.kind == .audio)
+    }
+
+    @Test("forwards remote and local ICE candidates through signaling")
+    func forwardsIceCandidates() async throws {
+        let session = StreamSessionDescriptor(id: "session-ice", applicationID: "400", serverAddress: "server", title: "Game")
+        let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
+        let transport = RecordingTransport()
+        let signaling = RecordingSignaling()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "400", accessToken: "token", accountLinked: true, selectedStore: "steam")
+        let remoteCandidate = StreamIceCandidate(sdp: "candidate:remote", sdpMid: "0", sdpMLineIndex: 0)
+        let localCandidate = StreamIceCandidate(sdp: "candidate:local", sdpMid: "0", sdpMLineIndex: 0)
+
+        _ = try await path.start(configuration: configuration)
+        try await Task.sleep(for: .milliseconds(100))
+        await signaling.yieldRemoteIceCandidate(remoteCandidate)
+        await transport.yieldLocalIceCandidate(localCandidate)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(await transport.remoteCandidates == [remoteCandidate])
+        #expect(await signaling.sentAnswer?.sdp == "answer")
+        #expect(await signaling.sentLocalCandidates == [localCandidate])
     }
 
     @Test("carries offer metadata into running session")

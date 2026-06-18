@@ -134,7 +134,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         configuration.bundlePolicy = .maxBundle
         configuration.rtcpMuxPolicy = .require
         configuration.tcpCandidatePolicy = .disabled
-        configuration.continualGatheringPolicy = .gatherOnce
+        configuration.continualGatheringPolicy = .gatherContinually
         configuration.iceConnectionReceivingTimeout = 30_000
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
@@ -390,7 +390,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         cancelDisconnectGraceTimer()
         let generation = callbackGeneration
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + .milliseconds(3000))
+        timer.schedule(deadline: .now() + .milliseconds(10000))
         timer.setEventHandler { [weak self] in
             guard let self, self.callbackGeneration == generation else { return }
             self.handleConnectionState(false, error: reason)
