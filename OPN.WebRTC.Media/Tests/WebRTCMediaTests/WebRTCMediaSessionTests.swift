@@ -121,6 +121,7 @@ struct WebRTCStreamingPathTests {
         #expect(settings.remoteControllersBitmap == 0x1)
         #expect(settings.supportedHidDevices == 0)
         #expect(settings.availableSupportedControllers.isEmpty)
+        #expect(settings.upscalingMode == 0)
     }
 
     @Test("maps mouse buttons to GFN protocol values")

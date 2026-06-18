@@ -97,7 +97,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         gameVolume = clampedDouble(settings["gameVolume"], fallback: 1, minimum: 0, maximum: 1)
         microphoneVolume = clampedDouble(settings["microphoneVolume"], fallback: 1, minimum: 0, maximum: 1)
         setLocalVideoEnhancement(
-            mode: int(settings["upscalingMode"], fallback: 1),
+            mode: int(settings["upscalingMode"]),
             sharpness: int(settings["upscalingSharpness"], fallback: 4),
             denoise: int(settings["upscalingDenoise"]),
             targetHeight: int(settings["upscalingTargetHeight"], fallback: 2160)

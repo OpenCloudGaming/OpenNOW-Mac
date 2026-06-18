@@ -119,7 +119,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 microphonePushToTalkModifierMask: Int = 0,
                 gameVolume: Double = 1,
                 microphoneVolume: Double = 1,
-                upscalingMode: Int = 1,
+                upscalingMode: Int = 0,
                 upscalingSharpness: Int = 4,
                 upscalingDenoise: Int = 0,
                 upscalingTargetHeight: Int = 2160,

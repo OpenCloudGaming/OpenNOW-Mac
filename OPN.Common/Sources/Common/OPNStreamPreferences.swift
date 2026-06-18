@@ -193,8 +193,8 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var prefilterSharpness = 0
     public var prefilterDenoise = 0
     public var prefilterModel = 0
-    public var upscalingModeIndex = 1
-    public var upscalingMode = 1
+    public var upscalingModeIndex = 0
+    public var upscalingMode = 0
     public var upscalingTargetIndex = 1
     public var upscalingTargetHeight = 2160
     public var upscalingSharpness = 4
@@ -223,7 +223,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var bitrate = OPNStreamPreferences.bitrateOptions[2]
     public var colorQuality = OPNStreamPreferences.colorQualityOptions[0]
     public var prefilterModeOption = OPNStreamPreferences.prefilterModeOptions[0]
-    public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
+    public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[0]
     public var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
 
     public var aspectRatio: Double {
@@ -746,7 +746,7 @@ public enum OPNStreamPreferences {
         profile.prefilterMode = profile.prefilterModeOption.value
         profile.prefilterSharpness = clampedInt(dictionary, k.prefilterSharpness, 0, 11)
         profile.prefilterDenoise = clampedInt(dictionary, k.prefilterDenoise, 0, 11)
-        profile.upscalingModeIndex = clampedInt(dictionary, k.upscalingModeIndex, 1, upscalingModeOptions.count)
+        profile.upscalingModeIndex = clampedInt(dictionary, k.upscalingModeIndex, 0, upscalingModeOptions.count)
         profile.upscalingModeOption = upscalingModeOptions[profile.upscalingModeIndex]
         profile.upscalingMode = profile.upscalingModeOption.value
         applyDefaultUpscalingTarget(&profile)

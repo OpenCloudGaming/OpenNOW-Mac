@@ -204,17 +204,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     }
 
     private func enhancementDrawableSize(for boundsSize: CGSize, scale: CGFloat) -> CGSize {
-        let backingSize = CGSize(width: max(1, floor(boundsSize.width * scale)), height: max(1, floor(boundsSize.height * scale)))
-        var aspect = boundsSize.height > 0 ? boundsSize.width / boundsSize.height : 16.0 / 9.0
-        if aspect <= 0.1 || !aspect.isFinite { aspect = 16.0 / 9.0 }
-        let enhancement = localVideoEnhancement()
-        var targetHeightPixels = CGFloat(max(1440, min(Int(enhancement.targetHeight), 2160)))
-        if enhancement.mode == 1, metalDeviceIsAppleM1Class(metalView.device) {
-            targetHeightPixels = min(targetHeightPixels, 1440)
-        }
-        let targetWidth = targetHeightPixels * aspect
-        let targetHeight = targetWidth / aspect
-        return CGSize(width: max(backingSize.width, floor(targetWidth)), height: max(backingSize.height, floor(targetHeight)))
+        CGSize(width: max(1, floor(boundsSize.width * scale)), height: max(1, floor(boundsSize.height * scale)))
     }
 
     private func renderEnhancedFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {

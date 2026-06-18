@@ -557,7 +557,7 @@ private struct StreamRuntimeSettings: Equatable {
     var microphonePushToTalkModifierMask = 0
     var suppressInputWhenInactive = true
     var directMouseInput = true
-    var upscalingMode = 1
+    var upscalingMode = 0
     var upscalingSharpness = 4
     var upscalingDenoise = 0
     var upscalingTargetHeight = 2160
@@ -587,7 +587,7 @@ private struct StreamRuntimeSettings: Equatable {
         microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
-        upscalingMode = Self.int(dictionary["upscalingMode"], fallback: 1)
+        upscalingMode = Self.int(dictionary["upscalingMode"])
         upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 4)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
         upscalingTargetHeight = Self.int(dictionary["upscalingTargetHeight"], fallback: 2160)
