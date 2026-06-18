@@ -15,6 +15,10 @@ public final class NativeWebRTCStreamView: NSView {
     public private(set) var isPointerLocked = false
     private var trackingArea: NSTrackingArea?
     private var keyEquivalentMonitor: Any?
+    private var pointerLockMonitor: Any?
+    private var pointerLockNotificationTokens: [NSObjectProtocol] = []
+    private var pointerLockRestoreLocation: CGPoint?
+    private var pointerLockCursorHidden = false
     private var streamContentSize = CGSize.zero
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
@@ -32,6 +36,11 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override var acceptsFirstResponder: Bool { true }
+
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, alphaValue > 0, bounds.contains(point) else { return nil }
+        return self
+    }
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -62,17 +71,11 @@ public final class NativeWebRTCStreamView: NSView {
 
     public func setPointerLocked(_ locked: Bool) {
         guard isPointerLocked != locked else { return }
-        isPointerLocked = locked
         if locked {
-            NSCursor.hide()
-            CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
-            window?.makeFirstResponder(self)
+            enablePointerLock()
         } else {
-            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-            NSCursor.unhide()
+            disablePointerLock()
         }
-        onPointerLockChanged?(locked)
-        WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
     }
 
     public override func updateTrackingAreas() {
@@ -128,7 +131,7 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func scrollWheel(with event: NSEvent) {
-        onInputEvent?(.mouse(.wheel(deviceID: "mouse", delta: Self.clampedInt16(Int((event.scrollingDeltaY * 120).rounded())), timestamp: Self.timestamp())))
+        emitScrollWheel(event)
     }
 
     public override func keyDown(with event: NSEvent) {
@@ -149,12 +152,128 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func emitMouseMove(_ event: NSEvent) {
+        emitMouseMove(deltaX: Self.clampedInt16(Int(event.deltaX.rounded())), deltaY: Self.clampedInt16(Int(event.deltaY.rounded())))
+    }
+
+    private func emitMouseMove(deltaX: Int16, deltaY: Int16) {
+        guard deltaX != 0 || deltaY != 0 else { return }
         onInputEvent?(.mouse(.moved(
             deviceID: "mouse",
-            deltaX: Self.clampedInt16(Int(event.deltaX.rounded())),
-            deltaY: Self.clampedInt16(Int(event.deltaY.rounded())),
+            deltaX: deltaX,
+            deltaY: deltaY,
             timestamp: Self.timestamp()
         )))
+    }
+
+    private func emitScrollWheel(_ event: NSEvent) {
+        onInputEvent?(.mouse(.wheel(deviceID: "mouse", delta: Self.clampedInt16(Int((event.scrollingDeltaY * 120).rounded())), timestamp: Self.timestamp())))
+    }
+
+    private func enablePointerLock() {
+        guard window != nil else { return }
+        isPointerLocked = true
+        pointerLockRestoreLocation = NSEvent.mouseLocation
+        window?.acceptsMouseMovedEvents = true
+        window?.makeFirstResponder(self)
+        if !pointerLockCursorHidden {
+            NSCursor.hide()
+            pointerLockCursorHidden = true
+        }
+        moveCursorToPointerLockCenter()
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        installPointerLockMonitor()
+        installPointerLockNotifications()
+        notifyPointerLockChanged(true)
+    }
+
+    private func disablePointerLock() {
+        guard isPointerLocked else { return }
+        isPointerLocked = false
+        removePointerLockMonitor()
+        removePointerLockNotifications()
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        if let restoreLocation = pointerLockRestoreLocation {
+            moveCursor(toScreenPoint: restoreLocation)
+        }
+        pointerLockRestoreLocation = nil
+        if pointerLockCursorHidden {
+            NSCursor.unhide()
+            pointerLockCursorHidden = false
+        }
+        notifyPointerLockChanged(false)
+    }
+
+    private func notifyPointerLockChanged(_ locked: Bool) {
+        onPointerLockChanged?(locked)
+        WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
+    }
+
+    private func installPointerLockMonitor() {
+        guard pointerLockMonitor == nil else { return }
+        pointerLockMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel, .keyDown]) { [weak self] event in
+            guard let self, self.isPointerLocked else { return event }
+            guard NSApplication.shared.isActive, self.window?.isKeyWindow == true else {
+                self.setPointerLocked(false)
+                return event
+            }
+            switch event.type {
+            case .keyDown where event.keyCode == 53:
+                self.setPointerLocked(false)
+                return nil
+            case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+                self.emitMouseMove(event)
+                self.moveCursorToPointerLockCenter()
+                return nil
+            case .scrollWheel:
+                self.emitScrollWheel(event)
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removePointerLockMonitor() {
+        guard let pointerLockMonitor else { return }
+        NSEvent.removeMonitor(pointerLockMonitor)
+        self.pointerLockMonitor = nil
+    }
+
+    private func installPointerLockNotifications() {
+        guard pointerLockNotificationTokens.isEmpty else { return }
+        let center = NotificationCenter.default
+        let appToken = center.addObserver(forName: NSApplication.didResignActiveNotification, object: NSApplication.shared, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.setPointerLocked(false) }
+        }
+        let windowToken = center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.setPointerLocked(false) }
+        }
+        pointerLockNotificationTokens = [appToken, windowToken]
+    }
+
+    private func removePointerLockNotifications() {
+        let center = NotificationCenter.default
+        pointerLockNotificationTokens.forEach { center.removeObserver($0) }
+        pointerLockNotificationTokens.removeAll()
+    }
+
+    private func moveCursorToPointerLockCenter() {
+        guard let window else { return }
+        let contentFrame = videoContentFrame()
+        let centerInView = CGPoint(x: contentFrame.midX, y: contentFrame.midY)
+        let centerInWindow = convert(centerInView, to: nil)
+        moveCursor(toScreenPoint: window.convertPoint(toScreen: centerInWindow))
+    }
+
+    private func moveCursor(toScreenPoint point: CGPoint) {
+        let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? window?.screen
+        guard let screen,
+              let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            CGWarpMouseCursorPosition(point)
+            return
+        }
+        let displayPoint = CGPoint(x: point.x - screen.frame.minX, y: screen.frame.maxY - point.y)
+        CGDisplayMoveCursorToPoint(CGDirectDisplayID(screenNumber.uint32Value), displayPoint)
     }
 
     private func videoContentFrame() -> CGRect {
