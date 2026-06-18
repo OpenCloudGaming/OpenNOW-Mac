@@ -7,14 +7,15 @@ public final class NativeWebRTCGamepadMonitor {
     nonisolated(unsafe) private var timer: Timer?
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
     private var controllerSlots: [ObjectIdentifier: Int] = [:]
+    private var pollingAllowed = false
 
     public init() {
         observerTokens = [
             NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.refreshControllerSlots() }
+                MainActor.assumeIsolated { self?.refreshControllerSlots() }
             },
             NotificationCenter.default.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.refreshControllerSlots() }
+                MainActor.assumeIsolated { self?.refreshControllerSlots() }
             },
         ]
         refreshControllerSlots()
@@ -30,17 +31,14 @@ public final class NativeWebRTCGamepadMonitor {
     }
 
     public func start() {
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.pollControllers() }
-        }
-        RunLoop.main.add(timer!, forMode: .common)
+        pollingAllowed = true
+        if Self.connectedGamepadCount() > 0 { startPollingTimer() }
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.start", level: .info, message: "Gamepad monitor started.", attributes: ["connected": String(Self.connectedGamepadCount())])
     }
 
     public func stop() {
-        timer?.invalidate()
-        timer = nil
+        pollingAllowed = false
+        stopPollingTimer()
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }
 
@@ -49,7 +47,24 @@ public final class NativeWebRTCGamepadMonitor {
         for (index, controller) in GCController.controllers().filter({ $0.extendedGamepad != nil }).prefix(4).enumerated() {
             controllerSlots[ObjectIdentifier(controller)] = index
         }
+        if pollingAllowed {
+            controllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
+        }
         WebRTCMediaTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(controllerSlots.count) controller(s).", attributes: ["connected": String(controllerSlots.count)])
+    }
+
+    private func startPollingTimer() {
+        guard timer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollControllers() }
+        }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopPollingTimer() {
+        timer?.invalidate()
+        timer = nil
     }
 
     private func pollControllers() {
