@@ -227,11 +227,25 @@ Risk: low from source scan. It builds, has no tests, and no obvious UI-loop work
 
 ## Recommended Fix Order
 
-1. Make settings/device loading asynchronous and snapshot-based.
-2. Batch catalog browse state into one published state object.
-3. Move `CatalogImageCache` storage/image decoding off `@MainActor`; only publish final `NSImage` assignment on main.
-4. Memoize `imageCacheURLs` and `imageCacheSignature` on catalog data changes.
+1. Make settings/device loading asynchronous and snapshot-based. Implemented in `b1db6e7`.
+2. Make catalog rendering and image prefetch visibility-driven. Implemented in the catalog virtualization pass after this audit.
+3. Batch catalog browse state into one published state object.
+4. Move `CatalogImageCache` storage/image decoding off `@MainActor`; only publish final `NSImage` assignment on main.
 5. Replace stream teardown `DispatchQueue.main.sync` with nonblocking main-actor cleanup.
+
+## Follow-Up Pass: Catalog Visibility
+
+The next audit pass confirmed that the app loaded a bounded catalog batch, but still rendered and prefetched too broadly:
+
+| Source | Previous behavior | Updated behavior |
+| --- | --- | --- |
+| `OpenNOW/Views/Catalog/CatalogView.swift` | Catalog content used eager `VStack`. | Uses `LazyVStack`, so offscreen sections are not built immediately. |
+| `OpenNOW/Views/Catalog/CatalogView.swift` | Rails used eager horizontal `HStack`. | Uses `LazyHStack`, so offscreen rail tiles are not built immediately. |
+| `OpenNOW/Views/Catalog/CatalogView.swift` | Top-level `.task(id: viewModel.imageCacheSignature)` prefetched `viewModel.imageCacheURLs`. | Removed broad top-level prefetch. |
+| `OpenNOW/ViewModels/CatalogViewModel.swift` | `imageCacheURLs` walked hero, section, and detail URLs for loaded catalog data. | Removed the broad full-catalog image prefetch helpers. |
+| `CatalogRailView` | Image prefetch was global and data-driven. | Prefetches only first near-visible rail images when a rail appears or its visible games change. |
+
+This pass does not change the catalog fetch size (`fetchCount: 96`). It reduces the amount of SwiftUI view construction and image-cache work triggered by quick navigation through already-loaded catalog data.
 
 ## Reproducing Measurements
 

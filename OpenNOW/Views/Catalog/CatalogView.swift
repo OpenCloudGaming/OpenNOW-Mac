@@ -175,9 +175,6 @@ struct CatalogView: View {
         }
         .background(Color.black)
         .task { viewModel.loadIfNeeded() }
-        .task(id: viewModel.imageCacheSignature) {
-            CatalogImageCache.shared.prefetch(viewModel.imageCacheURLs)
-        }
         .preferredColorScheme(.dark)
     }
 }
@@ -1108,7 +1105,7 @@ private struct CatalogContentView: View {
         ScrollViewReader { proxy in
             ZStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 26) {
+                    LazyVStack(alignment: .leading, spacing: 26) {
                         if hero != nil {
                             CatalogHeroView(
                                 viewModel: viewModel,
@@ -1481,7 +1478,7 @@ private struct CatalogRailView: View {
             ScrollViewReader { proxy in
                 ZStack {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 0) {
+                        LazyHStack(alignment: .top, spacing: 0) {
                             ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
                                 CatalogGameTile(viewModel: viewModel, game: game, sectionId: section.id)
                                     .id(game.catalogIdentity)
@@ -1508,6 +1505,8 @@ private struct CatalogRailView: View {
                 }
             }
         }
+        .onAppear { prefetchNearVisibleImages() }
+        .onChange(of: games.map(\.catalogIdentity)) { _, _ in prefetchNearVisibleImages() }
     }
 
     private func moveRail(proxy: ScrollViewProxy, delta: Int) {
@@ -1516,6 +1515,25 @@ private struct CatalogRailView: View {
         withAnimation(.easeInOut(duration: 0.22)) {
             proxy.scrollTo(games[scrollIndex].catalogIdentity, anchor: .leading)
         }
+    }
+
+    private func prefetchNearVisibleImages() {
+        var urls: [URL] = []
+        var seen = Set<String>()
+        for game in games.prefix(8) {
+            appendPrefetchURL(game.bestTileImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
+        }
+        CatalogImageCache.shared.prefetch(urls)
+    }
+
+    private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
+        guard let url = viewModel.optimizedImageURL(rawValue, width: width) else { return }
+        let key = url.absoluteString
+        guard !seen.contains(key) else { return }
+        seen.insert(key)
+        urls.append(url)
     }
 }
 
