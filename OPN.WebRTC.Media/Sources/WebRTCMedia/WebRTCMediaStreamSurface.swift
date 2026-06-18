@@ -30,6 +30,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var nativeView: NativeWebRTCStreamView?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var runtimeSettings = StreamRuntimeSettings()
+    @State private var microphoneEnabled = false
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -58,6 +59,7 @@ public struct WebRTCMediaStreamSurface: View {
             if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
+            micStatusIndicator
         }
         .background(Color.black)
         .ignoresSafeArea()
@@ -239,6 +241,20 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private var micStatusIndicator: some View {
+        let isAvailable = runtimeSettings.microphoneMode != "disabled"
+        return Image(systemName: microphoneEnabled && isAvailable ? "mic.fill" : "mic.slash.fill")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(microphoneEnabled && isAvailable ? Color(red: 0.61, green: 1.0, blue: 0.22) : .white.opacity(0.72))
+            .frame(width: 30, height: 30)
+            .background(.black.opacity(0.58), in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
+            .opacity(isAvailable ? 1 : 0.55)
+            .padding(.trailing, 18)
+            .padding(.bottom, 18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+
     private func sidebarButton(systemName: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
@@ -305,6 +321,7 @@ public struct WebRTCMediaStreamSurface: View {
                 case .drop:
                     return
                 case .setMicrophone(let enabled):
+                    await MainActor.run { microphoneEnabled = enabled }
                     transport.setMicrophoneEnabled(enabled)
                     return
                 }
@@ -324,6 +341,8 @@ public struct WebRTCMediaStreamSurface: View {
             }
             await MainActor.run {
                 runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
+                microphoneEnabled = runtimeSettings.microphoneMode == "voice-activity" && pointerLocked
+                transport.setMicrophoneEnabled(microphoneEnabled)
                 nativeView.directMouseInputEnabled = runtimeSettings.directMouseInput
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
             }
@@ -345,6 +364,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
+        if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
         guard pointerLocked else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
@@ -356,6 +376,20 @@ public struct WebRTCMediaStreamSurface: View {
         guard runtimeSettings.suppressInputWhenInactive else { return true }
         guard let nativeView else { return false }
         return nativeView.window?.isKeyWindow == true && NSApplication.shared.isActive
+    }
+
+    private func microphoneToggleAction(for keyboard: KeyboardEvent) -> StreamInputAction? {
+        guard keyboard.modifiers.contains(.command), Int(keyboard.keyCode) == Self.microphoneToggleKeyCode else { return nil }
+        guard keyboard.isPressed else { return .drop }
+        guard pointerLocked, runtimeSettings.microphoneMode != "disabled" else {
+            microphoneEnabled = false
+            transport?.setMicrophoneEnabled(false)
+            return .drop
+        }
+        microphoneEnabled.toggle()
+        transport?.setMicrophoneEnabled(microphoneEnabled)
+        WebRTCMediaTelemetry.capture("webrtc.ui.microphone.toggle", level: .info, message: microphoneEnabled ? "Microphone enabled." : "Microphone muted.", attributes: ["enabled": String(microphoneEnabled)])
+        return .drop
     }
 
     private func microphoneAction(for keyboard: KeyboardEvent) -> StreamInputAction? {
@@ -399,6 +433,7 @@ public struct WebRTCMediaStreamSurface: View {
         if locked {
             setSidebarVisible(false)
         } else {
+            microphoneEnabled = false
             transport?.setMicrophoneEnabled(false)
         }
     }
@@ -407,6 +442,7 @@ public struct WebRTCMediaStreamSurface: View {
         sidebarVisible = visible
         guard visible else { return }
         nativeView?.setPointerLocked(false)
+        microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
     }
 
@@ -421,6 +457,7 @@ public struct WebRTCMediaStreamSurface: View {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
         nativeView?.setPointerLocked(false)
+        microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         quitMenuVisible = true
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
@@ -440,6 +477,7 @@ public struct WebRTCMediaStreamSurface: View {
         let completion = pendingApplicationQuitCompletion
         pendingApplicationQuitCompletion = nil
         nativeView?.setPointerLocked(false)
+        microphoneEnabled = false
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.quit_stream", level: .info, message: "Stream quit requested from quit menu.", attributes: ["applicationID": configuration.applicationID])
         Task {
             let report = await finishStream(reason: .userRequested, message: "Stream ended by user.")
@@ -457,6 +495,7 @@ public struct WebRTCMediaStreamSurface: View {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         nativeView?.setPointerLocked(false)
+        microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         Task {
             let report = await finishStream(reason: .remoteEnded, message: message.isEmpty ? "Stream ended." : message)
@@ -487,6 +526,7 @@ public struct WebRTCMediaStreamSurface: View {
         statsTask?.cancel()
         statsTask = nil
         nativeView?.setPointerLocked(false)
+        microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         guard !didEndStream else { return }
         didEndStream = true
@@ -499,6 +539,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private static let pushToTalkModifierMask = KeyboardModifiers.shift.rawValue | KeyboardModifiers.control.rawValue | KeyboardModifiers.option.rawValue | KeyboardModifiers.command.rawValue | KeyboardModifiers.capsLock.rawValue
+    private static let microphoneToggleKeyCode = 46
 }
 
 private enum StreamInputAction {
