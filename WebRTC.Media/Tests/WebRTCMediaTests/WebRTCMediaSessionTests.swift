@@ -136,6 +136,22 @@ struct WebRTCStreamingPathTests {
         #expect(firstFrame?.kind == .audio)
     }
 
+    @Test("carries offer metadata into running session")
+    func carriesOfferMetadataIntoRunningSession() async throws {
+        let session = StreamSessionDescriptor(id: "session-settings", applicationID: "300", serverAddress: "server", title: "Game", metadata: ["accessToken": "token"])
+        let settings = "{\"directMouseInput\":false,\"suppressInputWhenInactive\":true,\"microphoneMode\":\"push-to-talk\"}"
+        let offer = StreamOffer(session: session, sdp: "offer", metadata: ["settings": settings])
+        let provider = RecordingSessionProvider(offer: offer)
+        let transport = RecordingTransport()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "300", accessToken: "token", accountLinked: true, selectedStore: "steam")
+
+        let started = try await path.start(configuration: configuration)
+
+        #expect(started.metadata["accessToken"] == "token")
+        #expect(started.metadata["settings"] == settings)
+    }
+
     @Test("forwards input events and stops active session")
     func forwardsInputAndStops() async throws {
         let session = StreamSessionDescriptor(id: "session-2", applicationID: "200", serverAddress: "server", title: "Game")

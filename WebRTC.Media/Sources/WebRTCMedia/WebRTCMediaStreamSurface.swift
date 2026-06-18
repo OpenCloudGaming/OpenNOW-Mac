@@ -1,3 +1,5 @@
+import AppKit
+import Foundation
 import SwiftUI
 
 public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ progress: StreamProgress) -> Void
@@ -26,6 +28,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var statsTask: Task<Void, Never>?
     @State private var nativeView: NativeWebRTCStreamView?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
+    @State private var runtimeSettings = StreamRuntimeSettings()
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -231,8 +234,16 @@ public struct WebRTCMediaStreamSurface: View {
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         nativeView.onInputEvent = { event in
             Task {
-                let shouldSend = await MainActor.run { !quitMenuVisible && !isEndingStream }
-                guard shouldSend else { return }
+                let action = await MainActor.run { inputAction(for: event) }
+                switch action {
+                case .send:
+                    break
+                case .drop:
+                    return
+                case .setMicrophone(let enabled):
+                    transport.setMicrophoneEnabled(enabled)
+                    return
+                }
                 try? await path.send(event)
             }
         }
@@ -240,13 +251,14 @@ public struct WebRTCMediaStreamSurface: View {
         self.path = path
         startStatsPolling(transport: transport)
         do {
-            _ = try await path.start(configuration: configuration) { progress in
+            let session = try await path.start(configuration: configuration) { progress in
                 await MainActor.run {
                     statusMessage = progress.message
                     isStreamReady = progress.isReady
                     onProgress?(progress)
                 }
             }
+            await MainActor.run { runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"]) }
         } catch {
             let message = Self.message(for: error)
             statusMessage = message
@@ -261,6 +273,38 @@ public struct WebRTCMediaStreamSurface: View {
                 latestStats = snapshot
             }
         }
+    }
+
+    private func inputAction(for event: UserInputEvent) -> StreamInputAction {
+        guard !quitMenuVisible, !isEndingStream else { return .drop }
+        guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
+        if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
+        if isMouseEvent(event), !runtimeSettings.directMouseInput { return .drop }
+        return .send
+    }
+
+    private func shouldAcceptInputWhenInactive() -> Bool {
+        guard runtimeSettings.suppressInputWhenInactive else { return true }
+        guard let nativeView else { return false }
+        return nativeView.window?.isKeyWindow == true && NSApplication.shared.isActive
+    }
+
+    private func microphoneAction(for keyboard: KeyboardEvent) -> StreamInputAction? {
+        guard runtimeSettings.microphoneMode == "push-to-talk" else { return nil }
+        guard Int(keyboard.keyCode) == runtimeSettings.microphonePushToTalkKeyCode else { return nil }
+        let configuredModifiers = UInt16(truncatingIfNeeded: runtimeSettings.microphonePushToTalkModifierMask) & Self.pushToTalkModifierMask
+        guard keyboard.modifiers.rawValue & Self.pushToTalkModifierMask == configuredModifiers else { return nil }
+        return .setMicrophone(keyboard.isPressed)
+    }
+
+    private func keyboardEvent(from event: UserInputEvent) -> KeyboardEvent? {
+        if case .keyboard(let keyboard) = event { return keyboard }
+        return nil
+    }
+
+    private func isMouseEvent(_ event: UserInputEvent) -> Bool {
+        if case .mouse = event { return true }
+        return false
     }
 
     private func handle(_ command: WebRTCMediaStreamCommand) {
@@ -287,6 +331,7 @@ public struct WebRTCMediaStreamSurface: View {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
         nativeView?.setPointerLocked(false)
+        transport?.setMicrophoneEnabled(false)
         quitMenuVisible = true
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
     }
@@ -338,6 +383,7 @@ public struct WebRTCMediaStreamSurface: View {
         statsTask?.cancel()
         statsTask = nil
         nativeView?.setPointerLocked(false)
+        transport?.setMicrophoneEnabled(false)
         guard !didEndStream else { return }
         didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }
@@ -346,6 +392,56 @@ public struct WebRTCMediaStreamSurface: View {
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription
+    }
+
+    private static let pushToTalkModifierMask = KeyboardModifiers.shift.rawValue | KeyboardModifiers.control.rawValue | KeyboardModifiers.option.rawValue | KeyboardModifiers.command.rawValue | KeyboardModifiers.capsLock.rawValue
+}
+
+private enum StreamInputAction {
+    case send
+    case drop
+    case setMicrophone(Bool)
+}
+
+private struct StreamRuntimeSettings: Equatable {
+    var microphoneMode = "disabled"
+    var microphonePushToTalkKeyCode = 9
+    var microphonePushToTalkModifierMask = 0
+    var suppressInputWhenInactive = true
+    var directMouseInput = true
+
+    init() {}
+
+    init(json: String?) {
+        guard let json,
+              let data = json.data(using: .utf8),
+              let dictionary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        microphoneMode = Self.string(dictionary["microphoneMode"], fallback: "disabled")
+        microphonePushToTalkKeyCode = Self.int(dictionary["microphonePushToTalkKeyCode"], fallback: 9)
+        microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
+        suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
+        directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
+    }
+
+    private static func string(_ value: Any?, fallback: String = "") -> String {
+        if let value = value as? String { return value.isEmpty ? fallback : value }
+        if let value = value as? NSString { let string = value as String; return string.isEmpty ? fallback : string }
+        if let value = value as? NSNumber { return value.stringValue }
+        return fallback
+    }
+
+    private static func int(_ value: Any?, fallback: Int = 0) -> Int {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) ?? fallback }
+        return fallback
+    }
+
+    private static func bool(_ value: Any?, fallback: Bool = false) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        if let value = value as? String { return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame }
+        return fallback
     }
 }
 

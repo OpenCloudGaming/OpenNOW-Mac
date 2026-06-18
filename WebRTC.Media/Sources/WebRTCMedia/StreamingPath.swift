@@ -80,12 +80,19 @@ public actor WebRTCStreamingPath {
             startRemoteIceCandidateForwarding(session: offer.session, signaling: signaling)
         }
 
-        activeSession = offer.session
+        let runningSession = StreamSessionDescriptor(
+            id: offer.session.id,
+            applicationID: offer.session.applicationID,
+            serverAddress: offer.session.serverAddress,
+            title: offer.session.title,
+            metadata: offer.session.metadata.merging(offer.metadata) { current, _ in current }
+        )
+        activeSession = runningSession
         startedAt = .now
-        state = .running(offer.session)
+        state = .running(runningSession)
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected.", isReady: true, progress: progress)
         WebRTCMediaTelemetry.capture("webrtc.path.connected", level: .info, message: "WebRTC streaming path connected.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
-        return offer.session
+        return runningSession
     }
 
     public func send(_ event: UserInputEvent) async throws {

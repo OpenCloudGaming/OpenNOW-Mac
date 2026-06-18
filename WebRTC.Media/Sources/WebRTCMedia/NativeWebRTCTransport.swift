@@ -59,6 +59,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         }
     }
 
+    public func setMicrophoneEnabled(_ enabled: Bool) {
+        session.setMicrophoneEnabled(enabled)
+    }
+
     public func disconnect() async {
         WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
         statsTelemetryTask?.cancel()

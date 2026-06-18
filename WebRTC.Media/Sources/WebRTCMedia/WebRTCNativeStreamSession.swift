@@ -93,9 +93,15 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         adaptiveCongestionScore = 0
         adaptiveRecoveryScore = 0
         lastAdaptiveBitrateChangeMs = 0
-        if string(settings["microphoneMode"]) != "disabled", !microphoneEnabled {
-            microphoneEnabled = string(settings["microphoneMode"]) == "voice-activity"
-        }
+        microphoneEnabled = string(settings["microphoneMode"]) == "voice-activity"
+        gameVolume = clampedDouble(settings["gameVolume"], fallback: 1, minimum: 0, maximum: 1)
+        microphoneVolume = clampedDouble(settings["microphoneVolume"], fallback: 1, minimum: 0, maximum: 1)
+        setLocalVideoEnhancement(
+            mode: int(settings["upscalingMode"], fallback: 1),
+            sharpness: int(settings["upscalingSharpness"], fallback: 4),
+            denoise: int(settings["upscalingDenoise"]),
+            targetHeight: int(settings["upscalingTargetHeight"], fallback: 2160)
+        )
         resetStats(sessionInfo: sessionInfo, settings: settings)
 
         guard Self.isAvailable() else {
@@ -1090,6 +1096,7 @@ private func int(_ value: Any?, fallback: Int = 0) -> Int { if let value = value
 private func int64(_ value: Any?) -> Int64 { if let value = value as? Int64 { return value }; if let value = value as? NSNumber { return value.int64Value }; if let value = value as? String { return Int64(value) ?? 0 }; return 0 }
 private func uint64(_ value: Any?) -> UInt64 { if let value = value as? UInt64 { return value }; if let value = value as? NSNumber { return value.uint64Value }; if let value = value as? String { return UInt64(value) ?? 0 }; return 0 }
 private func double(_ value: Any?, fallback: Double = 0) -> Double { if let value = value as? Double { return value }; if let value = value as? NSNumber { return value.doubleValue }; if let value = value as? String { return Double(value) ?? fallback }; return fallback }
+private func clampedDouble(_ value: Any?, fallback: Double, minimum: Double, maximum: Double) -> Double { min(max(double(value, fallback: fallback), minimum), maximum) }
 private func bool(_ value: Any?) -> Bool { if let value = value as? Bool { return value }; if let value = value as? NSNumber { return value.boolValue }; if let value = value as? String { return (value as NSString).boolValue }; return false }
 
 private extension String {
