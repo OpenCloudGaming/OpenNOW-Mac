@@ -304,9 +304,9 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
                     diagnostics.renderPath = "RTCMTLRGBRenderer"
                     return rendererRGB
                 }
-                diagnostics.fallback = fallback.isEmpty ? "RGB unavailable; using I420" : fallback
+                diagnostics.fallback = fallback.isEmpty ? "NV12 preferred; RGB unavailable; using I420" : fallback
             } else {
-                diagnostics.fallback = "unsupported CVPixelBuffer; using I420"
+                diagnostics.fallback = "NV12 preferred; unsupported CVPixelBuffer; using I420"
             }
         } else {
             diagnostics.frameSource = NSStringFromClass(type(of: frame.buffer as AnyObject))

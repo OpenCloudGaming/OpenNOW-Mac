@@ -15,6 +15,7 @@ public final class NativeWebRTCStreamView: NSView {
     public private(set) var isPointerLocked = false
     private var trackingArea: NSTrackingArea?
     private var keyEquivalentMonitor: Any?
+    private var streamContentSize = CGSize.zero
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
     public override init(frame frameRect: NSRect) {
@@ -43,6 +44,19 @@ public final class NativeWebRTCStreamView: NSView {
         } else {
             installKeyEquivalentMonitor()
             gamepadMonitor.start()
+        }
+    }
+
+    public func setStreamContentSize(width: Int, height: Int) {
+        streamContentSize = CGSize(width: max(1, width), height: max(1, height))
+        needsLayout = true
+    }
+
+    public override func layout() {
+        super.layout()
+        let contentFrame = videoContentFrame()
+        for subview in subviews {
+            subview.frame = contentFrame
         }
     }
 
@@ -141,6 +155,18 @@ public final class NativeWebRTCStreamView: NSView {
             deltaY: Self.clampedInt16(Int(event.deltaY.rounded())),
             timestamp: Self.timestamp()
         )))
+    }
+
+    private func videoContentFrame() -> CGRect {
+        guard bounds.width > 0, bounds.height > 0, streamContentSize.width > 0, streamContentSize.height > 0 else { return bounds }
+        let viewAspect = bounds.width / bounds.height
+        let contentAspect = streamContentSize.width / streamContentSize.height
+        if contentAspect > viewAspect {
+            let height = bounds.width / contentAspect
+            return CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height).integral
+        }
+        let width = bounds.height * contentAspect
+        return CGRect(x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height).integral
     }
 
     private func emitMouseButton(_ button: MouseButton, isPressed: Bool) {

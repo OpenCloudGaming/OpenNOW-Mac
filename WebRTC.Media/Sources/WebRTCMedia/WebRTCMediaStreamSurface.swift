@@ -232,6 +232,9 @@ public struct WebRTCMediaStreamSurface: View {
         hasStarted = true
         let transport = NativeWebRTCTransport(nativeView: nativeView)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
+        transport.onEnded = { message in
+            handleTransportEnded(message: message)
+        }
         nativeView.onInputEvent = { event in
             Task {
                 let action = await MainActor.run { inputAction(for: event) }
@@ -258,7 +261,10 @@ public struct WebRTCMediaStreamSurface: View {
                     onProgress?(progress)
                 }
             }
-            await MainActor.run { runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"]) }
+            await MainActor.run {
+                runtimeSettings = StreamRuntimeSettings(json: session.metadata["settings"])
+                nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
+            }
         } catch {
             let message = Self.message(for: error)
             statusMessage = message
@@ -360,6 +366,20 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func handleTransportEnded(message: String) {
+        guard !didEndStream else { return }
+        isEndingStream = true
+        quitMenuVisible = false
+        pendingApplicationQuitCompletion?(false)
+        pendingApplicationQuitCompletion = nil
+        nativeView?.setPointerLocked(false)
+        transport?.setMicrophoneEnabled(false)
+        Task {
+            let report = await finishStream(reason: .remoteEnded, message: message.isEmpty ? "Stream ended." : message)
+            await MainActor.run { onEnd(report.success, report.message, report) }
+        }
+    }
+
     private func finishStream(reason: StreamEndReason, message: String) async -> StreamReport {
         let fallbackReport = StreamReport(title: configuration.title, success: reason != .failed, reason: reason, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID])
         let shouldFinish = await MainActor.run {
@@ -404,6 +424,8 @@ private enum StreamInputAction {
 }
 
 private struct StreamRuntimeSettings: Equatable {
+    var resolutionWidth = 1920
+    var resolutionHeight = 1080
     var microphoneMode = "disabled"
     var microphonePushToTalkKeyCode = 9
     var microphonePushToTalkModifierMask = 0
@@ -416,6 +438,9 @@ private struct StreamRuntimeSettings: Equatable {
         guard let json,
               let data = json.data(using: .utf8),
               let dictionary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        let resolution = Self.resolution(Self.string(dictionary["resolution"], fallback: "1920x1080"))
+        resolutionWidth = resolution.width
+        resolutionHeight = resolution.height
         microphoneMode = Self.string(dictionary["microphoneMode"], fallback: "disabled")
         microphonePushToTalkKeyCode = Self.int(dictionary["microphonePushToTalkKeyCode"], fallback: 9)
         microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
@@ -442,6 +467,11 @@ private struct StreamRuntimeSettings: Equatable {
         if let value = value as? NSNumber { return value.boolValue }
         if let value = value as? String { return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame }
         return fallback
+    }
+
+    private static func resolution(_ value: String) -> (width: Int, height: Int) {
+        let parts = value.split(separator: "x").compactMap { Int($0) }
+        return (max(1, parts.first ?? 1920), max(1, parts.count > 1 ? parts[1] : 1080))
     }
 }
 

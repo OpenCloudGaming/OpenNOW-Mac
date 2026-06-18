@@ -2,10 +2,14 @@ import AppKit
 import Foundation
 
 public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unchecked Sendable {
+    public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
+
     private let session = OPNLibWebRTCStreamSession()
     private weak var nativeView: NSView?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
     private var statsTelemetryTask: Task<Void, Never>?
+    private var isDisconnecting = false
+    private var didEmitEnd = false
 
     public init(nativeView: NSView) {
         self.nativeView = nativeView
@@ -16,6 +20,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         WebRTCMediaTelemetry.capture("webrtc.transport.connect.start", level: .info, message: "Starting native WebRTC transport.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
+            self.isDisconnecting = false
+            self.didEmitEnd = false
             if let nativeView {
                 session.setNativeWindow(Unmanaged.passUnretained(nativeView).toOpaque())
             }
@@ -32,7 +38,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                         WebRTCMediaTelemetry.capture("webrtc.transport.connected", level: .info, message: "Native WebRTC transport connected.", attributes: ["sessionId": offer.session.id])
                     }
                     guard !connected, !(error as String).isEmpty else { return }
-                    self?.resumeError(NativeWebRTCTransportError.connectionFailed(error as String))
+                    self?.handleEnded(message: error as String)
                 }
             )
         }
@@ -65,6 +71,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
 
     public func disconnect() async {
         WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
+        isDisconnecting = true
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
         session.stop()
@@ -142,6 +149,19 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
         continuation.resume(throwing: error)
+    }
+
+    private func handleEnded(message: String) {
+        if continuation != nil {
+            resumeError(NativeWebRTCTransportError.connectionFailed(message))
+            return
+        }
+        guard !isDisconnecting, !didEmitEnd else { return }
+        didEmitEnd = true
+        statsTelemetryTask?.cancel()
+        statsTelemetryTask = nil
+        WebRTCMediaTelemetry.capture("webrtc.transport.ended", level: .warning, message: message)
+        Task { @MainActor [onEnded] in onEnded?(message) }
     }
 
     private func startStatsTelemetry() {

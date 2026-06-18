@@ -416,6 +416,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             latestStats.videoEnhancementDiagnostics = enhancementDiagnostics
             latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs
             latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames
+            if !enhancementSourceResolution.isEmpty, enhancementSourceResolution != "unknown", enhancementSourceResolution != "pending" {
+                latestStats.resolution = enhancementSourceResolution
+            }
         }
     }
 
