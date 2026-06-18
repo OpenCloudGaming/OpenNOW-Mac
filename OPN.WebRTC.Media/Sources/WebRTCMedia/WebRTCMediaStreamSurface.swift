@@ -125,24 +125,12 @@ public struct WebRTCMediaStreamSurface: View {
                 .font(.system(size: 11, weight: .black, design: .rounded))
                 .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
                 .padding(.bottom, 6)
-            sidebarButton(systemName: pointerLocked ? "cursorarrow.rays" : "cursorarrow", title: pointerLocked ? "Unlock" : "Lock") {
-                nativeView?.setPointerLocked(!pointerLocked)
-            }
             sidebarButton(systemName: "waveform.path.ecg", title: "Stats") {
                 statsVisible.toggle()
             }
             sidebarButton(systemName: "sparkles", title: "Video") {
                 videoEnhancementSettingsVisible.toggle()
                 WebRTCMediaTelemetry.capture("webrtc.ui.video_enhancement.toggle", level: .info, message: videoEnhancementSettingsVisible ? "Video enhancement settings shown." : "Video enhancement settings hidden.", attributes: ["visible": String(videoEnhancementSettingsVisible)])
-            }
-            sidebarButton(systemName: "gamecontroller.fill", title: "Pad") {
-                WebRTCMediaTelemetry.capture("webrtc.ui.gamepad.status", level: .info, message: "Gamepad status requested.", attributes: ["connected": String(NativeWebRTCGamepadMonitor.connectedGamepadCount())])
-            }
-            sidebarButton(systemName: "power", title: "Quit") {
-                showQuitMenu()
-            }
-            sidebarButton(systemName: "xmark", title: "Close") {
-                setSidebarVisible(false)
             }
         }
         .padding(10)
