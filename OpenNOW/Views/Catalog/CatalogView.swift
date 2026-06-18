@@ -29,8 +29,7 @@ private enum CatalogVendorLayout {
     static let tileScaleFactor: CGFloat = 1.12
     static let heroAspectRatio: CGFloat = 0.3229
     static let heroFallbackHeight: CGFloat = 500
-    static let detailPanelHeight: CGFloat = 612
-    static let detailPanelHorizontalMargin: CGFloat = 44
+    static let detailPanelHeight: CGFloat = 500
     static let mainMenuWidth: CGFloat = 344
 
     static func heroHeight(for width: CGFloat) -> CGFloat {
@@ -1108,8 +1107,8 @@ private struct CatalogContentView: View {
                             CatalogRailView(viewModel: viewModel, section: section)
                             if shouldShowDetail(afterSectionAt: index, sections: sections), let detailAnchor = selectedDetailScrollAnchor {
                                 GameDetailPanel(viewModel: viewModel)
-                                    .padding(.top, -10)
-                                    .padding(.bottom, 18)
+                                    .padding(.top, -8)
+                                    .padding(.bottom, 22)
                                     .onHover { isPointerInsideDetailPanel = $0 }
                                     .id(detailAnchor)
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -1653,26 +1652,28 @@ private struct GameDetailPanel: View {
             let imageIndex = imageURLs.indices.contains(activeImageIndex) ? activeImageIndex : 0
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             GeometryReader { proxy in
-                let panelWidth = max(1, proxy.size.width - CatalogVendorLayout.detailPanelHorizontalMargin * 2)
-                let contentWidth = min(panelWidth * 0.45, 620)
+                let panelWidth = max(1, proxy.size.width)
+                let contentWidth = min(panelWidth * 0.43, 760)
+                let imageWidth = max(panelWidth * 0.66, panelWidth - contentWidth * 0.62)
                 ZStack(alignment: .topTrailing) {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
-                        .frame(width: panelWidth, height: CatalogVendorLayout.detailPanelHeight)
+                        .frame(width: imageWidth, height: CatalogVendorLayout.detailPanelHeight)
                         .clipped()
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                         .id(imageURL)
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
-                            .init(color: Color.black.opacity(0.68), location: 0.00),
-                            .init(color: Color.black.opacity(0.58), location: 0.27),
-                            .init(color: Color.black.opacity(0.34), location: 0.46),
-                            .init(color: .black.opacity(0.08), location: 0.72),
+                            .init(color: Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255).opacity(0.98), location: 0.00),
+                            .init(color: Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255).opacity(0.94), location: 0.27),
+                            .init(color: Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255).opacity(0.68), location: 0.45),
+                            .init(color: Color.black.opacity(0.16), location: 0.68),
                             .init(color: .clear, location: 1.00)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
-                    LinearGradient(colors: [.white.opacity(0.10), .black.opacity(0.14), .black.opacity(0.28)], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.black.opacity(0.04), .black.opacity(0.02), .black.opacity(0.22)], startPoint: .top, endPoint: .bottom)
 
                     VStack(alignment: .leading, spacing: 14) {
                         detailEyebrow(game: game)
@@ -1717,9 +1718,9 @@ private struct GameDetailPanel: View {
                     }
                     .frame(width: contentWidth, alignment: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, 32)
-                    .padding(.leading, 42)
-                    .padding(.trailing, 54)
+                    .padding(.top, 24)
+                    .padding(.leading, 44)
+                    .padding(.trailing, 32)
 
                     Button { viewModel.selectGame(nil) } label: {
                         Image(systemName: "xmark")
@@ -1734,7 +1735,7 @@ private struct GameDetailPanel: View {
                     if imageURLs.count > 1 {
                         HStack {
                             Spacer()
-                                .frame(width: min(contentWidth + 54, max(24, panelWidth - 154)))
+                                .frame(width: min(contentWidth + 42, max(24, panelWidth - 154)))
                             CatalogDetailImageArrow(name: "lt_arrow") {
                                 moveImage(delta: -1, count: imageURLs.count)
                             }
@@ -1773,8 +1774,7 @@ private struct GameDetailPanel: View {
                     }
                 }
                 .frame(width: panelWidth, height: CatalogVendorLayout.detailPanelHeight)
-                .background(Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                .background(Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255))
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
