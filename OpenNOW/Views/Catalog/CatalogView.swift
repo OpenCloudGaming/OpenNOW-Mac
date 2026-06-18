@@ -8,6 +8,7 @@ import AppKit
 import Combine
 import Common
 import CoreText
+import CryptoKit
 import ImageIO
 import OpenNOWGameServices
 import SwiftUI
@@ -535,7 +536,7 @@ private struct CatalogTopBar: View {
 
     var body: some View {
         ZStack {
-            HStack(spacing: 28) {
+            HStack(spacing: 18) {
                 Button { showsMainMenu.toggle() } label: {
                     CatalogHamburgerLabel(isOpen: showsMainMenu)
                 }
@@ -546,7 +547,7 @@ private struct CatalogTopBar: View {
                     .foregroundStyle(.white.opacity(0.92))
                 Spacer()
             }
-            .padding(.leading, 76)
+            .padding(.leading, 12)
 
             if viewModel.selectedMainPage == .games {
                 catalogSearchField
@@ -588,9 +589,7 @@ private struct CatalogTopBar: View {
                     }
                 } label: {
                     HStack(spacing: 12) {
-                        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
-                            .scaledToFit()
-                            .frame(width: 32, height: 32)
+                        CatalogAccountAvatar(account: viewModel.account, size: 32)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(viewModel.account.displayName)
                                 .font(.nvidia(size: 15, weight: .medium))
@@ -636,6 +635,46 @@ private struct CatalogTopBar: View {
         .frame(height: 40)
         .background(Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255))
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+    }
+}
+
+private struct CatalogAccountAvatar: View {
+    let account: LoginAccount
+    let size: CGFloat
+
+    private var gravatarURL: URL? {
+        let normalizedEmail = account.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedEmail.isEmpty else { return nil }
+        let digest = Insecure.MD5.hash(data: Data(normalizedEmail.utf8))
+        let hash = digest.map { String(format: "%02x", $0) }.joined()
+        return URL(string: "https://www.gravatar.com/avatar/\(hash)?s=\(Int(size * 3))&d=404")
+    }
+
+    var body: some View {
+        Group {
+            if let gravatarURL {
+                AsyncImage(url: gravatarURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallbackAvatar
+                    }
+                }
+            } else {
+                fallbackAvatar
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(.white.opacity(0.16), lineWidth: 1))
+    }
+
+    private var fallbackAvatar: some View {
+        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
+            .scaledToFill()
     }
 }
 
@@ -1018,6 +1057,7 @@ private struct CatalogContentView: View {
     @ObservedObject var viewModel: CatalogViewModel
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
+    @State private var isPointerInsideDetailPanel = false
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -1070,6 +1110,7 @@ private struct CatalogContentView: View {
                                     .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                     .padding(.top, -10)
                                     .padding(.bottom, 18)
+                                    .onHover { isPointerInsideDetailPanel = $0 }
                                     .id(detailAnchor)
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
@@ -1082,6 +1123,10 @@ private struct CatalogContentView: View {
                         .contentShape(Rectangle())
                         .onTapGesture { viewModel.closeGameDetailsFromBackground() }
                 )
+                .simultaneousGesture(TapGesture().onEnded {
+                    guard viewModel.selectedGame != nil, !isPointerInsideDetailPanel else { return }
+                    viewModel.closeGameDetailsFromBackground()
+                })
 
                 if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
                     VendorSplashLoadingView()
