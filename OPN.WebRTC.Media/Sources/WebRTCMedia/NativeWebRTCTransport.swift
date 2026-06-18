@@ -5,26 +5,25 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
 
     private let session = OPNLibWebRTCStreamSession()
-    private weak var nativeView: NSView?
+    private weak var nativeView: NativeWebRTCStreamView?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
     private var statsTelemetryTask: Task<Void, Never>?
     private var isDisconnecting = false
     private var didEmitEnd = false
 
-    public init(nativeView: NSView) {
+    public init(nativeView: NativeWebRTCStreamView) {
         self.nativeView = nativeView
         super.init()
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
         WebRTCMediaTelemetry.capture("webrtc.transport.connect.start", level: .info, message: "Starting native WebRTC transport.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
+        let nativeWindowAddress = await MainActor.run { nativeView.map { UInt(bitPattern: Unmanaged.passUnretained($0.nativeVideoView()).toOpaque()) } }
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             self.isDisconnecting = false
             self.didEmitEnd = false
-            if let nativeView {
-                session.setNativeWindow(Unmanaged.passUnretained(nativeView).toOpaque())
-            }
+            session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             session.start(
                 sessionInfo: offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata,
                 offerSdp: offer.sdp,

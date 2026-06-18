@@ -1,5 +1,22 @@
 import AppKit
 
+private final class NativeWebRTCVideoSurfaceView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
 @MainActor
 public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
@@ -26,12 +43,14 @@ public final class NativeWebRTCStreamView: NSView {
     private var pointerLockRestoreLocation: CGPoint?
     private var pointerLockCursorHidden = false
     private var streamContentSize = CGSize.zero
+    private let videoSurface = NativeWebRTCVideoSurfaceView(frame: .zero)
     private let gamepadMonitor = NativeWebRTCGamepadMonitor()
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        addSubview(videoSurface)
         gamepadMonitor.onInputEvent = { [weak self] event in self?.onInputEvent?(event) }
         gamepadMonitor.start()
     }
@@ -67,12 +86,13 @@ public final class NativeWebRTCStreamView: NSView {
         needsLayout = true
     }
 
+    public func nativeVideoView() -> NSView {
+        videoSurface
+    }
+
     public override func layout() {
         super.layout()
-        let contentFrame = videoContentFrame()
-        for subview in subviews {
-            subview.frame = contentFrame
-        }
+        videoSurface.frame = videoContentFrame()
     }
 
     public func setPointerLocked(_ locked: Bool) {
