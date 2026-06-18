@@ -128,7 +128,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         }
 
         let configuration = RTCConfiguration()
-        configuration.iceServers = iceServers(from: sessionInfo)
+        let configuredIceServers = iceServers(from: sessionInfo)
+        configuration.iceServers = configuredIceServers
         NSLog("[LibWebRTC] configured ICE servers=%d", configuration.iceServers.count)
         configuration.sdpSemantics = .unifiedPlan
         configuration.bundlePolicy = .maxBundle
@@ -220,6 +221,13 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             createAndSendAnswer(retriedWithoutCodecPreference: false)
         }
 
+        func injectDirectCandidatesIfNeeded(offerSdp: String) {
+            guard configuredIceServers.isEmpty else { return }
+            let serverIceUfrag = Self.iceUfrag(fromOfferSdp: offerSdp)
+            guard !serverIceUfrag.isEmpty else { return }
+            self.injectManualIceCandidate(sessionInfo: sessionInfo, offerSdp: offerSdp, serverIceUfrag: serverIceUfrag)
+        }
+
         let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
         peerConnection.setRemoteDescription(offer) { [weak self, weak impl] error in
             guard let self, self.callbackGeneration == generation else { return }
@@ -237,11 +245,13 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                         return
                     }
                     guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+                    injectDirectCandidatesIfNeeded(offerSdp: offerSdp)
                     handleRemoteDescriptionSet(impl: impl, peerConnection: peerConnection, factory: factory)
                 }
                 return
             }
             guard let impl, let peerConnection = impl.peerConnection, let factory = impl.factory else { return }
+            injectDirectCandidatesIfNeeded(offerSdp: remoteOfferSdp)
             handleRemoteDescriptionSet(impl: impl, peerConnection: peerConnection, factory: factory)
         }
     }
@@ -291,10 +301,14 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let media = dictionary(sessionInfo["mediaConnectionInfo"])
         let ip = extractPublicIp(string(media["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(media["ip"]))
         guard !ip.isEmpty else { return }
-        let target = extractVideoIceTarget(from: offerSdp)
-        guard target.mLineIndex >= 0 else { return }
-        let candidate = "candidate:1 1 udp 2130706431 \(ip) \(int(media["port"], fallback: 47998)) typ host generation 0 ufrag \(serverIceUfrag) network-cost 999"
-        addRemoteIceCandidatePayload(["candidate": candidate, "sdpMid": target.mid, "sdpMLineIndex": target.mLineIndex, "usernameFragment": serverIceUfrag])
+        let targets = extractIceTargets(from: offerSdp)
+        guard !targets.isEmpty else { return }
+        let port = int(media["port"], fallback: 47998)
+        let candidate = "candidate:1 1 udp 2130706431 \(ip) \(port) typ host generation 0 ufrag \(serverIceUfrag) network-cost 999"
+        NSLog("[LibWebRTC] injecting direct ICE candidates count=%d ip=%@ port=%d ufrag=%@", targets.count, ip, port, serverIceUfrag)
+        for target in targets {
+            addRemoteIceCandidatePayload(["candidate": candidate, "sdpMid": target.mid, "sdpMLineIndex": target.mLineIndex, "usernameFragment": serverIceUfrag])
+        }
     }
 
     var isInputReady: Bool { inputController.isInputReady }
@@ -1077,15 +1091,23 @@ private func envFlagEnabled(_ name: String, defaultValue: Bool) -> Bool {
 
 private struct OPNIceMediaTarget { var mid = "0"; var mLineIndex: Int32 = -1 }
 
-private func extractVideoIceTarget(from sdp: String) -> OPNIceMediaTarget {
+private func extractIceTargets(from sdp: String) -> [OPNIceMediaTarget] {
+    var targets: [OPNIceMediaTarget] = []
     var index: Int32 = -1
     var currentMid = "0"
-    var inVideo = false
+    var hasOpenMediaSection = false
     for line in sdp.components(separatedBy: .newlines) {
-        if line.hasPrefix("m=") { index += 1; inVideo = line.hasPrefix("m=video") }
-        else if inVideo, line.hasPrefix("a=mid:") { currentMid = String(line.dropFirst("a=mid:".count)).trimmingCharacters(in: .whitespacesAndNewlines); return OPNIceMediaTarget(mid: currentMid, mLineIndex: index) }
+        if line.hasPrefix("m=") {
+            if hasOpenMediaSection { targets.append(OPNIceMediaTarget(mid: currentMid, mLineIndex: index)) }
+            index += 1
+            currentMid = String(index)
+            hasOpenMediaSection = true
+        } else if hasOpenMediaSection, line.hasPrefix("a=mid:") {
+            currentMid = String(line.dropFirst("a=mid:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
-    return OPNIceMediaTarget(mid: currentMid, mLineIndex: index >= 0 ? index : 0)
+    if hasOpenMediaSection { targets.append(OPNIceMediaTarget(mid: currentMid, mLineIndex: index)) }
+    return targets.filter { $0.mLineIndex >= 0 && !$0.mid.isEmpty }
 }
 
 private func extractPublicIp(_ hostOrIp: String) -> String {
