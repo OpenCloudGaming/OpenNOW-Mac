@@ -215,6 +215,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 WebRTCMediaTelemetry.record("webrtc.media.packet_loss_percent", kind: .gauge, value: stats.packetLossPercent, unit: "percent", attributes: attributes)
                 WebRTCMediaTelemetry.record("webrtc.media.render_fps", kind: .gauge, value: stats.renderFps, attributes: attributes)
                 WebRTCMediaTelemetry.record("webrtc.media.decode_time_ms", kind: .gauge, value: stats.decodeTimeMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.frame_interval_ms", kind: .gauge, value: stats.videoFrameIntervalMs, unit: "millisecond", attributes: attributes)
+                WebRTCMediaTelemetry.record("webrtc.media.max_frame_interval_ms", kind: .gauge, value: stats.videoMaxFrameIntervalMs, unit: "millisecond", attributes: attributes)
             }
         }
     }

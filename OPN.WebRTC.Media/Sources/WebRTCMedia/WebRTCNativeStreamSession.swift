@@ -336,7 +336,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                                       videoEnhancementFallbackReason: stats.videoEnhancementFallbackReason,
                                       videoEnhancementDiagnostics: stats.videoEnhancementDiagnostics,
                                       videoEnhancementFrameTimeMs: stats.videoEnhancementFrameTimeMs,
-                                      videoEnhancementDroppedFrames: stats.videoEnhancementDroppedFrames)
+                                      videoEnhancementDroppedFrames: stats.videoEnhancementDroppedFrames,
+                                      videoFrameIntervalMs: stats.videoFrameIntervalMs,
+                                      videoMaxFrameIntervalMs: stats.videoMaxFrameIntervalMs)
     }
 
     var lowLatencyMode: Bool { bool(settings["lowLatencyMode"]) }
@@ -401,7 +403,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         statsLock.withLock { latestStats.videoSink = sink; latestStats.videoPipelineMode = pipelineMode }
     }
 
-    func setVideoRenderDiagnostics(pixelFormat: String, renderMode: String, frameSource: String, renderPath: String, fallback: String, enhancementConfiguredTier: String, enhancementActiveTier: String, enhancementFallbackReason: String, enhancementSourceResolution: String, enhancementDrawableResolution: String, enhancementDiagnostics: String, enhancementFrameTimeMs: Double, enhancementDroppedFrames: UInt64) {
+    func setVideoRenderDiagnostics(pixelFormat: String, renderMode: String, frameSource: String, renderPath: String, fallback: String, enhancementConfiguredTier: String, enhancementActiveTier: String, enhancementFallbackReason: String, enhancementSourceResolution: String, enhancementDrawableResolution: String, enhancementDiagnostics: String, enhancementFrameTimeMs: Double, enhancementDroppedFrames: UInt64, frameIntervalMs: Double, maxFrameIntervalMs: Double) {
         statsLock.withLock {
             latestStats.videoPixelFormat = pixelFormat
             latestStats.videoRenderMode = renderMode
@@ -416,6 +418,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             latestStats.videoEnhancementDiagnostics = enhancementDiagnostics
             latestStats.videoEnhancementFrameTimeMs = enhancementFrameTimeMs
             latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames
+            latestStats.videoFrameIntervalMs = frameIntervalMs
+            latestStats.videoMaxFrameIntervalMs = maxFrameIntervalMs
             if !enhancementSourceResolution.isEmpty, enhancementSourceResolution != "unknown", enhancementSourceResolution != "pending" {
                 latestStats.resolution = enhancementSourceResolution
             }
@@ -612,6 +616,8 @@ private struct OPNStreamStatsState {
     var videoEnhancementDiagnostics = ""
     var videoEnhancementFrameTimeMs = -1.0
     var videoEnhancementDroppedFrames: UInt64 = 0
+    var videoFrameIntervalMs = -1.0
+    var videoMaxFrameIntervalMs = -1.0
     var fps = 0
 }
 

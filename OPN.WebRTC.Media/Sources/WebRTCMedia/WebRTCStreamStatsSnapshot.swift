@@ -1,7 +1,5 @@
 import Foundation
 
-import Foundation
-
 @objc(OPNStreamStatsSnapshot)
 public final class OPNStreamStatsSnapshot: NSObject {
     @objc public let available: Bool
@@ -25,6 +23,8 @@ public final class OPNStreamStatsSnapshot: NSObject {
     @objc public let videoEnhancementDiagnostics: String
     @objc public let videoEnhancementFrameTimeMs: Double
     @objc public let videoEnhancementDroppedFrames: UInt64
+    @objc public let videoFrameIntervalMs: Double
+    @objc public let videoMaxFrameIntervalMs: Double
 
     @objc public init(available: Bool,
                       latencyMs: Double,
@@ -46,7 +46,9 @@ public final class OPNStreamStatsSnapshot: NSObject {
                       videoEnhancementFallbackReason: String,
                       videoEnhancementDiagnostics: String,
                       videoEnhancementFrameTimeMs: Double,
-                      videoEnhancementDroppedFrames: UInt64) {
+                      videoEnhancementDroppedFrames: UInt64,
+                      videoFrameIntervalMs: Double,
+                      videoMaxFrameIntervalMs: Double) {
         self.available = available
         self.latencyMs = latencyMs
         self.jitterMs = jitterMs
@@ -68,6 +70,8 @@ public final class OPNStreamStatsSnapshot: NSObject {
         self.videoEnhancementDiagnostics = videoEnhancementDiagnostics
         self.videoEnhancementFrameTimeMs = videoEnhancementFrameTimeMs
         self.videoEnhancementDroppedFrames = videoEnhancementDroppedFrames
+        self.videoFrameIntervalMs = videoFrameIntervalMs
+        self.videoMaxFrameIntervalMs = videoMaxFrameIntervalMs
         super.init()
     }
 }
