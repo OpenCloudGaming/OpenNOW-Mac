@@ -33,7 +33,7 @@ private enum CatalogVendorLayout {
     static let mainMenuWidth: CGFloat = 344
 
     static func heroHeight(for width: CGFloat) -> CGFloat {
-        width > 0 ? width * heroAspectRatio : heroFallbackHeight
+        width > 0 ? min(width * heroAspectRatio, heroFallbackHeight) : heroFallbackHeight
     }
 
     static func heroImageLeading(for width: CGFloat) -> CGFloat {
