@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "NetworkTest",
+    name: "GFN.NetworkTest",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "NetworkTest", targets: ["NetworkTest"]),

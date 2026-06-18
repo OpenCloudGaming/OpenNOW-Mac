@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Ragnarok",
+    name: "GFN.Ragnarok",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "Ragnarok", targets: ["Ragnarok"]),

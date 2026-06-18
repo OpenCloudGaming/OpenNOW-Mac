@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "NesAuth",
+    name: "GFN.NesAuth",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "NesAuth", targets: ["NesAuth"]),

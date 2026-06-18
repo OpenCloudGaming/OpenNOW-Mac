@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "GDN",
+    name: "GFN.GDN",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "GDN", targets: ["GDN"]),

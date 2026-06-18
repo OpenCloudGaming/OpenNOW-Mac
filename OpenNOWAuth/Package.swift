@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "OpenNOWAuth",
+    name: "OPN.OpenNOWAuth",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "OpenNOWAuth", targets: ["OpenNOWAuth"]),

@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "LCARS",
+    name: "GFN.LCARS",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "LCARS", targets: ["LCARS"]),

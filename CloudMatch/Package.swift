@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "CloudMatch",
+    name: "GFN.CloudMatch",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "CloudMatch", targets: ["CloudMatch"]),

@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Jarvis",
+    name: "GFN.Jarvis",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "Jarvis", targets: ["Jarvis"]),

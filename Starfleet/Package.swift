@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Starfleet",
+    name: "GFN.Starfleet",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "Starfleet", targets: ["Starfleet"]),

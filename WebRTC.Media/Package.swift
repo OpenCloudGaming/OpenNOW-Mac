@@ -10,7 +10,7 @@ let webRTCFrameworkSearchPath = packageRoot
     .path
 
 let package = Package(
-    name: "WebRTC.Media",
+    name: "OPN.WebRTC.Media",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "WebRTC.Media", targets: ["WebRTCMedia"]),

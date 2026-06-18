@@ -10,7 +10,7 @@ let webRTCFrameworkSearchPath = packageRoot
     .path
 
 let package = Package(
-    name: "OpenNOWGameServices",
+    name: "OPN.OpenNOWGameServices",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "OpenNOWGameServices", targets: ["OpenNOWGameServices"]),

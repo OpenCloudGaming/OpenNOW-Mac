@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "UDS",
+    name: "GFN.UDS",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "UDS", targets: ["UDS"]),
