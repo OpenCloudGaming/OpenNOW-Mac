@@ -1,5 +1,6 @@
 import AppKit
 import CoreVideo
+import Darwin
 import Foundation
 @preconcurrency import WebRTC
 
@@ -1110,10 +1111,54 @@ private func extractIceTargets(from sdp: String) -> [OPNIceMediaTarget] {
     return targets.filter { $0.mLineIndex >= 0 && !$0.mid.isEmpty }
 }
 
-private func extractPublicIp(_ hostOrIp: String) -> String {
-    guard !hostOrIp.isEmpty else { return "" }
-    if hostOrIp.allSatisfy({ $0.isNumber || $0 == "." }) { return hostOrIp }
-    return hostOrIp.split(separator: ":").first.map(String.init) ?? hostOrIp
+func extractPublicIp(_ hostOrIp: String) -> String {
+    let host = extractHost(from: hostOrIp)
+    guard !host.isEmpty else { return "" }
+    if isIPv4Address(host) { return host }
+    if let dashedAddress = dashedIPv4Prefix(from: host) { return dashedAddress }
+    return resolvedIPv4Address(for: host) ?? ""
+}
+
+private func extractHost(from hostOrIp: String) -> String {
+    let trimmed = hostOrIp.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let url = URL(string: trimmed), let host = url.host(percentEncoded: false), !host.isEmpty { return host }
+    return trimmed.split(separator: ":").first.map(String.init) ?? trimmed
+}
+
+private func isIPv4Address(_ value: String) -> Bool {
+    let parts = value.split(separator: ".")
+    guard parts.count == 4 else { return false }
+    return parts.allSatisfy { part in
+        guard !part.isEmpty, let byte = Int(part), byte >= 0, byte <= 255 else { return false }
+        return String(byte) == part || part == "0"
+    }
+}
+
+private func dashedIPv4Prefix(from host: String) -> String? {
+    let firstLabel = host.split(separator: ".").first.map(String.init) ?? host
+    let parts = firstLabel.split(separator: "-")
+    guard parts.count == 4 else { return nil }
+    let address = parts.joined(separator: ".")
+    return isIPv4Address(address) ? address : nil
+}
+
+private func resolvedIPv4Address(for host: String) -> String? {
+    var hints = addrinfo(ai_flags: AI_ADDRCONFIG, ai_family: AF_INET, ai_socktype: SOCK_DGRAM, ai_protocol: IPPROTO_UDP, ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
+    var result: UnsafeMutablePointer<addrinfo>?
+    guard getaddrinfo(host, nil, &hints, &result) == 0, let result else { return nil }
+    defer { freeaddrinfo(result) }
+    var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+    var current: UnsafeMutablePointer<addrinfo>? = result
+    while let info = current {
+        if info.pointee.ai_family == AF_INET, let address = info.pointee.ai_addr?.withMemoryRebound(to: sockaddr_in.self, capacity: 1, { $0 }) {
+            var ipv4 = address.pointee.sin_addr
+            if inet_ntop(AF_INET, &ipv4, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil {
+                return String(cString: buffer)
+            }
+        }
+        current = info.pointee.ai_next
+    }
+    return nil
 }
 
 private func dictionary(_ value: Any?) -> [String: Any] { value as? [String: Any] ?? [:] }

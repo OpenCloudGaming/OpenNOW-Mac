@@ -107,6 +107,14 @@ private actor ProgressRecorder {
 
 @Suite("WebRTCMediaSession")
 struct WebRTCMediaSessionTests {
+    @Test("extracts numeric IPv4 addresses for direct ICE fallback")
+    func extractsNumericIPv4Addresses() {
+        #expect(extractPublicIp("66.22.138.138") == "66.22.138.138")
+        #expect(extractPublicIp("66-22-138-138.cloudmatchbeta.nvidiagrid.net") == "66.22.138.138")
+        #expect(extractPublicIp("https://66-22-138-138.cloudmatchbeta.nvidiagrid.net/nvst/sign_in") == "66.22.138.138")
+        #expect(extractPublicIp("not-a-valid-local-host.invalid") == "")
+    }
+
     @Test("routes video frames to media subscribers")
     func routesVideoFrames() async {
         let session = WebRTCMediaSession()
