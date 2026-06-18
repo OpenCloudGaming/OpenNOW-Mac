@@ -176,7 +176,7 @@
 				A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */,
 				A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */,
 				A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */,
-				A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.SignalLinkKit" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */,
 				A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */,
 				A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */,
@@ -468,9 +468,9 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = GFN.NetworkTest;
 		};
-		A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.SignalLinkKit" */ = {
+		A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = GFN.SignalLinkKit;
+			relativePath = OPN.SignalLinkKit;
 		};
 		A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -542,7 +542,7 @@
 		};
 		A00000000000000000000208 /* SignalLinkKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "SignalLinkKit" */;
+			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */;
 			productName = SignalLinkKit;
 		};
 		A00000000000000000000209 /* Common */ = {

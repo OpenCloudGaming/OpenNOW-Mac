@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "GFN.SignalLinkKit",
+    name: "OPN.SignalLinkKit",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "SignalLinkKit", targets: ["SignalLinkKit"]),

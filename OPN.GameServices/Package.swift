@@ -19,7 +19,7 @@ let package = Package(
         .package(path: "../OPN.Common"),
         .package(path: "../GFN.Jarvis"),
         .package(path: "../OPN.Telemetry"),
-        .package(path: "../GFN.SignalLinkKit"),
+        .package(path: "../OPN.SignalLinkKit"),
         .package(path: "../OPN.WebRTC.Media"),
     ],
     targets: [
@@ -29,7 +29,7 @@ let package = Package(
                 .product(name: "Common", package: "OPN.Common"),
                 .product(name: "Jarvis", package: "GFN.Jarvis"),
                 .product(name: "OpenNOWTelemetry", package: "OPN.Telemetry"),
-                .product(name: "SignalLinkKit", package: "GFN.SignalLinkKit"),
+                .product(name: "SignalLinkKit", package: "OPN.SignalLinkKit"),
                 .product(name: "WebRTCMedia", package: "OPN.WebRTC.Media"),
             ],
             swiftSettings: [
