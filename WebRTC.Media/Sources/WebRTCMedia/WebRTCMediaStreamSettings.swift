@@ -229,7 +229,7 @@ public enum WebRTCMediaStreamSettingsResolver {
         if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
         if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
         let lowLatency = profile.lowLatencyMode
-        let controllerCount = 4
+        let controllerCount = capabilities.connectedGamepadCount
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
@@ -257,8 +257,8 @@ public enum WebRTCMediaStreamSettingsResolver {
             suppressInputWhenInactive: profile.suppressInputWhenInactive,
             directMouseInput: profile.directMouseInput,
             remoteControllersBitmap: controllerBitmap(count: controllerCount),
-            supportedHidDevices: controllerCount > 0 ? 0xffff_ffff : 0,
-            availableSupportedControllers: Array(repeating: "Xbox 360 Controller", count: controllerCount)
+            supportedHidDevices: 0,
+            availableSupportedControllers: []
         )
     }
 

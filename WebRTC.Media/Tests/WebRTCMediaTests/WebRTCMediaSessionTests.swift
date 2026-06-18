@@ -111,6 +111,18 @@ struct WebRTCMediaSessionTests {
 
 @Suite("WebRTCStreamingPath")
 struct WebRTCStreamingPathTests {
+    @Test("resolves CloudMatch controller settings without virtual HID advertisement")
+    func resolvesCloudMatchControllerSettingsWithoutVirtualHIDAdvertisement() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(),
+            capabilities: WebRTCMediaDeviceCapabilities(connectedGamepadCount: 1)
+        )
+
+        #expect(settings.remoteControllersBitmap == 0x1)
+        #expect(settings.supportedHidDevices == 0)
+        #expect(settings.availableSupportedControllers.isEmpty)
+    }
+
     @Test("maps mouse buttons to GFN protocol values")
     func mapsMouseButtonsToGFNProtocolValues() {
         #expect(NativeWebRTCTransport.gfnMouseButton(.left) == 1)
