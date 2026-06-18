@@ -31,6 +31,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "No access token")
             return
         }
+        guard validLaunchAppId(appId) else {
+            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
+            return
+        }
 
         clearPersistedActiveSessionId("")
         let baseUrl = currentStreamingBaseUrl()
@@ -1104,6 +1108,11 @@ private func bool(_ value: Any?, fallback: Bool = false) -> Bool {
     if let value = value as? NSNumber { return value.boolValue }
     if let value = value as? String { return (value as NSString).boolValue }
     return fallback
+}
+
+private func validLaunchAppId(_ value: String) -> Bool {
+    guard let numericValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+    return numericValue > 0
 }
 
 private extension NSLock {
