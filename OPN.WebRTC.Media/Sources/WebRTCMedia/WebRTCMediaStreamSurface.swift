@@ -58,7 +58,6 @@ public struct WebRTCMediaStreamSurface: View {
             if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
-            if pointerLocked { pointerLockBadge }
         }
         .background(Color.black)
         .ignoresSafeArea()
@@ -240,17 +239,6 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private var pointerLockBadge: some View {
-        Text("POINTER LOCKED  ESC TO RELEASE")
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(Color(red: 0.61, green: 1.0, blue: 0.22), in: Capsule())
-            .padding(.bottom, 22)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-    }
-
     private func sidebarButton(systemName: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
@@ -357,7 +345,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
-        guard !sidebarVisible else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
+        guard pointerLocked else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
         if let mouse = mouseEvent(from: event), !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
@@ -408,7 +396,11 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func handlePointerLockChanged(_ locked: Bool) {
         pointerLocked = locked
-        if locked { setSidebarVisible(false) }
+        if locked {
+            setSidebarVisible(false)
+        } else {
+            transport?.setMicrophoneEnabled(false)
+        }
     }
 
     private func setSidebarVisible(_ visible: Bool) {
