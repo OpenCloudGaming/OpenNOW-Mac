@@ -43,7 +43,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .topLeading) {
             NativeWebRTCStreamSurface { view in
                 nativeView = view
                 view.onPointerLockChanged = { locked in pointerLocked = locked }
@@ -108,7 +108,7 @@ public struct WebRTCMediaStreamSurface: View {
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.28), lineWidth: 1))
         .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 12)
         .padding(.top, 22)
-        .padding(.trailing, sidebarVisible ? 102 : 22)
+        .padding(.trailing, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
@@ -138,7 +138,7 @@ public struct WebRTCMediaStreamSurface: View {
         .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
         .padding(.top, 22)
-        .padding(.trailing, 18)
+        .padding(.leading, 18)
     }
 
     private var quitMenu: some View {
