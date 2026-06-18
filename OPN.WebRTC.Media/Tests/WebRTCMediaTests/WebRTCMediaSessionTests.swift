@@ -211,8 +211,8 @@ struct WebRTCStreamingPathTests {
         #expect(firstFrame?.kind == .audio)
     }
 
-    @Test("forwards remote and local ICE candidates through signaling")
-    func forwardsIceCandidates() async throws {
+    @Test("forwards remote ICE candidates through signaling")
+    func forwardsRemoteIceCandidates() async throws {
         let session = StreamSessionDescriptor(id: "session-ice", applicationID: "400", serverAddress: "server", title: "Game")
         let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
         let transport = RecordingTransport()
@@ -220,17 +220,15 @@ struct WebRTCStreamingPathTests {
         let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "400", accessToken: "token", accountLinked: true, selectedStore: "steam")
         let remoteCandidate = StreamIceCandidate(sdp: "candidate:remote", sdpMid: "0", sdpMLineIndex: 0)
-        let localCandidate = StreamIceCandidate(sdp: "candidate:local", sdpMid: "0", sdpMLineIndex: 0)
 
         _ = try await path.start(configuration: configuration)
         try await Task.sleep(for: .milliseconds(100))
         await signaling.yieldRemoteIceCandidate(remoteCandidate)
-        await transport.yieldLocalIceCandidate(localCandidate)
         try await Task.sleep(for: .milliseconds(100))
 
         #expect(await transport.remoteCandidates == [remoteCandidate])
         #expect(await signaling.sentAnswer?.sdp == "answer")
-        #expect(await signaling.sentLocalCandidates == [localCandidate])
+        #expect(await signaling.sentLocalCandidates.isEmpty)
     }
 
     @Test("carries offer metadata into running session")

@@ -1,5 +1,7 @@
 import Foundation
 
+import Foundation
+
 public protocol StreamSessionProvider: Sendable {
     func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws
@@ -65,7 +67,9 @@ public actor WebRTCStreamingPath {
         guard !offer.sdp.isEmpty else { throw StreamingPathError.invalidOffer }
         if let signaling {
             startRemoteIceCandidateForwarding(session: offer.session, signaling: signaling)
-            startLocalIceCandidateForwarding(session: offer.session, signaling: signaling)
+            if Self.envFlagEnabled("OPN_ENABLE_WEBRTC_LOCAL_TRICKLE_ICE", defaultValue: false) {
+                startLocalIceCandidateForwarding(session: offer.session, signaling: signaling)
+            }
         }
 
         try await publishProgress(configuration: configuration, step: .receiveStreamOffer, message: "Received stream offer.", progress: progress)
@@ -187,5 +191,13 @@ public actor WebRTCStreamingPath {
         let duration = startedAt.duration(to: .now)
         let components = duration.components
         return Double(components.seconds) + Double(components.attoseconds) / 1_000_000_000_000_000_000
+    }
+
+    private static func envFlagEnabled(_ name: String, defaultValue: Bool) -> Bool {
+        guard let value = ProcessInfo.processInfo.environment[name], !value.isEmpty else { return defaultValue }
+        let lower = value.lowercased()
+        if ["0", "false", "no", "off"].contains(lower) { return false }
+        if ["1", "true", "yes", "on"].contains(lower) { return true }
+        return defaultValue
     }
 }

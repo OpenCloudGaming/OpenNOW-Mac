@@ -134,7 +134,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         configuration.bundlePolicy = .maxBundle
         configuration.rtcpMuxPolicy = .require
         configuration.tcpCandidatePolicy = .disabled
-        configuration.continualGatheringPolicy = .gatherContinually
+        configuration.continualGatheringPolicy = envFlagEnabled("OPN_ENABLE_WEBRTC_CONTINUAL_ICE_GATHERING", defaultValue: false) ? .gatherContinually : .gatherOnce
         configuration.iceConnectionReceivingTimeout = 30_000
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)

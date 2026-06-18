@@ -236,8 +236,10 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 ))
             }
             client.onClosed = { [weak self] clean, reason in
-                guard !clean else { return }
-                self?.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(reason.isEmpty ? "Signaling connection closed." : reason))
+                guard let self else { return }
+                let isWaitingForOffer = self.lock.withLock { self.offerContinuation != nil }
+                guard !clean || isWaitingForOffer else { return }
+                self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(reason.isEmpty ? "Signaling connection closed before receiving an offer." : reason))
             }
 
             lock.withLock {
@@ -245,9 +247,23 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 offerContinuation = continuation
             }
             client.connect { [weak self] success, error in
-                guard !success else { return }
-                self?.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
+                guard let self else { return }
+                if success {
+                    self.startOfferTimeout(client: client, descriptor: descriptor)
+                    return
+                }
+                self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(error.isEmpty ? "Unable to connect signaling." : error))
             }
+        }
+    }
+
+    private func startOfferTimeout(client: OPNWebSocketSignalingClient, descriptor: StreamSessionDescriptor) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20.0) { [weak self, weak client] in
+            guard let self, let client else { return }
+            let shouldFail = self.lock.withLock { self.signaling === client && self.offerContinuation != nil }
+            guard shouldFail else { return }
+            client.disconnect()
+            self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed("Signaling connected but no stream offer was received within 20 seconds for session \(descriptor.id)."))
         }
     }
 
