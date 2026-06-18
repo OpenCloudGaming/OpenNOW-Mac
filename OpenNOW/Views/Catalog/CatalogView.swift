@@ -1664,8 +1664,8 @@ private struct GameDetailPanel: View {
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             GeometryReader { proxy in
                 let panelWidth = max(1, proxy.size.width)
-                let contentWidth = min(panelWidth * 0.43, 760)
-                let imageWidth = max(panelWidth * 0.66, panelWidth - contentWidth * 0.62)
+                let contentWidth = min(panelWidth * 0.47, 790)
+                let imageWidth = max(panelWidth * 0.64, panelWidth - contentWidth * 0.52)
                 ZStack(alignment: .topTrailing) {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
                         .frame(width: imageWidth, height: CatalogVendorLayout.detailPanelHeight)
@@ -1675,10 +1675,10 @@ private struct GameDetailPanel: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
-                            .init(color: Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255).opacity(0.98), location: 0.00),
-                            .init(color: Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255).opacity(0.94), location: 0.27),
-                            .init(color: Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255).opacity(0.68), location: 0.45),
-                            .init(color: Color.black.opacity(0.16), location: 0.68),
+                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.99), location: 0.00),
+                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.98), location: 0.34),
+                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.84), location: 0.49),
+                            .init(color: Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255).opacity(0.22), location: 0.67),
                             .init(color: .clear, location: 1.00)
                         ],
                         startPoint: .leading,
@@ -1686,52 +1686,71 @@ private struct GameDetailPanel: View {
                     )
                     LinearGradient(colors: [.black.opacity(0.04), .black.opacity(0.02), .black.opacity(0.22)], startPoint: .top, endPoint: .bottom)
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        detailEyebrow(game: game)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 18) {
+                                Text(game.title.isEmpty ? "Selected Game" : game.title)
+                                    .font(.nvidia(size: 30, weight: .bold))
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.82)
+                                    .foregroundStyle(.white.opacity(0.96))
 
-                        Text(game.title.isEmpty ? "Selected Game" : game.title)
-                            .font(.nvidia(size: 38, weight: .bold))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.78)
-                            .foregroundStyle(.white.opacity(0.96))
+                                detailMetadataLine(game: game)
 
-                        if !game.detailChips.isEmpty {
-                            detailChips(game: game)
+                                capabilityChips(game: game)
+
+                                variantStatusRow(game: game)
+
+                                detailActions(game: game)
+                            }
+                            Spacer(minLength: 20)
+                            Button { viewModel.shareSelectedGame() } label: {
+                                Image(systemName: "heart.fill")
+                                    .font(.nvidia(size: 21, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.94))
+                                    .frame(width: 36, height: 36)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 4)
                         }
-
-                        if !game.variants.isEmpty {
-                            variantChips(game: game)
-                        }
-
-                        detailActions(game: game)
 
                         accessMessage(game: game)
+                            .padding(.top, 12)
 
                         if let selectedVariant, !selectedVariant.appStore.isEmpty {
                             storeAccountStatus(store: selectedVariant.appStore)
+                                .padding(.top, 8)
                         }
 
                         if !viewModel.launchMessage.isEmpty {
                             CatalogMessageView(message: viewModel.launchMessage, systemImage: "play.circle.fill")
                                 .frame(maxWidth: 520)
+                                .padding(.top, 8)
                         }
 
                         if !viewModel.actionMessage.isEmpty {
                             CatalogMessageView(message: viewModel.actionMessage, systemImage: "checkmark.circle.fill")
                                 .frame(maxWidth: 520)
+                                .padding(.top, 8)
                         }
 
                         detailDescription(game: game)
+                            .padding(.top, 20)
 
                         featureRows(game: game)
+                            .padding(.top, 18)
 
-                        detailRows(game: game)
+                        ratingBlock(game: game)
+                            .padding(.top, 16)
+
+                        readMoreButton
+                            .padding(.top, 22)
                     }
                     .frame(width: contentWidth, alignment: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, 24)
+                    .padding(.top, 22)
                     .padding(.leading, 44)
-                    .padding(.trailing, 32)
+                    .padding(.trailing, 28)
 
                     Button { viewModel.selectGame(nil) } label: {
                         Image(systemName: "xmark")
@@ -1772,6 +1791,7 @@ private struct GameDetailPanel: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.leading, contentWidth + 54)
                         .padding(.bottom, 38)
                     }
                 }
@@ -1785,7 +1805,7 @@ private struct GameDetailPanel: View {
                     }
                 }
                 .frame(width: panelWidth, height: CatalogVendorLayout.detailPanelHeight)
-                .background(Color(red: 58 / 255, green: 58 / 255, blue: 60 / 255))
+                .background(Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255))
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
@@ -1819,6 +1839,58 @@ private struct GameDetailPanel: View {
         }
     }
 
+    private func detailMetadataLine(game: OPNCatalogGameObject) -> some View {
+        HStack(spacing: 9) {
+            if !game.ratingLabel.isEmpty {
+                Text(game.ratingLabel.uppercased())
+                    .font(.nvidia(size: 12, weight: .bold))
+            }
+            metadataSeparator
+            Image(systemName: "person.3.fill")
+            Image(systemName: "keyboard")
+            Image(systemName: "gamecontroller.fill")
+            metadataSeparator
+            Text(game.genres.prefix(2).joined(separator: ", "))
+                .lineLimit(1)
+        }
+        .font(.nvidia(size: 12, weight: .bold))
+        .foregroundStyle(.white.opacity(0.86))
+    }
+
+    private var metadataSeparator: some View {
+        Circle()
+            .fill(Color.white.opacity(0.72))
+            .frame(width: 3, height: 3)
+    }
+
+    private func capabilityChips(game: OPNCatalogGameObject) -> some View {
+        FlowLayout(spacing: 5) {
+            ForEach(capabilityLabels(game: game), id: \.self) { chip in
+                HStack(spacing: 5) {
+                    if chip == "For Premium Members" {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.nvidia(size: 10, weight: .bold))
+                    }
+                    Text(chip)
+                        .font(.nvidia(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.white.opacity(0.86))
+                .padding(.horizontal, 9)
+                .frame(height: 23)
+                .background(chip == "For Premium Members" ? Color.white.opacity(0.22) : Color.black.opacity(0.18))
+            }
+        }
+        .frame(maxWidth: 520, alignment: .leading)
+    }
+
+    private func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
+        var labels: [String] = []
+        if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
+        for feature in game.featureLabels.prefix(2) { appendUnique(feature, to: &labels) }
+        if labels.isEmpty { labels.append("Cloud Ready") }
+        return labels
+    }
+
     private func detailEyebrow(game: OPNCatalogGameObject) -> some View {
         FlowLayout(spacing: 8) {
             ForEach(detailMetadata(game: game), id: \.self) { item in
@@ -1850,19 +1922,9 @@ private struct GameDetailPanel: View {
                 Text(primaryActionTitle(game: game))
                     .font(.nvidia(size: 15, weight: .bold))
                     .tracking(0.3)
-                    .frame(width: 132, height: 38)
+                    .frame(width: primaryActionTitle(game: game) == "PLAY" ? 72 : 132, height: 40)
             }
             .buttonStyle(VendorGetInButtonStyle())
-
-            Button { viewModel.openStoreForSelectedVariant() } label: {
-                Text("OPEN STORE")
-                    .font(.nvidia(size: 12, weight: .bold))
-                    .tracking(0.5)
-                    .frame(width: 118, height: 36)
-            }
-            .buttonStyle(SecondaryLoginButtonStyle(compact: true))
-            .opacity(game.variants.isEmpty ? 0.5 : 1)
-            .disabled(game.variants.isEmpty)
 
             Menu {
                 Button("Share") { viewModel.shareSelectedGame() }
@@ -1879,13 +1941,41 @@ private struct GameDetailPanel: View {
                 Image(systemName: "ellipsis")
                     .font(.nvidia(size: 18, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
-                    .frame(width: 38, height: 36)
-                    .background(Color.white.opacity(0.075))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+                    .frame(width: 40, height: 40)
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 2)
+    }
+
+    private func variantStatusRow(game: OPNCatalogGameObject) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(game.variants.prefix(1).enumerated()), id: \.offset) { index, variant in
+                Button { selectVariant(at: index, in: game) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: storeIconName(variant: variant))
+                            .font(.nvidia(size: 13, weight: .bold))
+                        Text(storePickerTitle(variant: variant))
+                            .font(.nvidia(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.white.opacity(0.92))
+                    .frame(height: 30)
+                    .padding(.horizontal, 0)
+                }
+                .buttonStyle(.plain)
+            }
+            Text((selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary) ? "Owned" : "Not Owned")
+                .font(.nvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.72))
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(Color.black.opacity(0.14))
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: 520, alignment: .leading)
+    }
+
+    private func storeIconName(variant: OPNCatalogGameVariantObject) -> String {
+        variant.appStore.lowercased().contains("steam") ? "circle.grid.cross.fill" : "play.circle.fill"
     }
 
     private func accessMessage(game: OPNCatalogGameObject) -> some View {
@@ -1912,34 +2002,91 @@ private struct GameDetailPanel: View {
     }
 
     private func detailDescription(game: OPNCatalogGameObject) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
-                .font(.nvidia(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.86))
-                .lineSpacing(4)
-                .lineLimit(3)
-            HStack(spacing: 5) {
-                Text("READ MORE")
-                Image(systemName: "chevron.down")
-            }
-            .font(.nvidia(size: 13, weight: .bold))
-            .foregroundStyle(.white.opacity(0.92))
-        }
+        Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
+            .font(.nvidia(size: 16, weight: .medium))
+            .foregroundStyle(.white.opacity(0.90))
+            .lineSpacing(4)
+            .lineLimit(2)
+            .frame(maxWidth: 660, alignment: .leading)
     }
 
     private func featureRows(game: OPNCatalogGameObject) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             ForEach(game.featureLabels.prefix(3), id: \.self) { feature in
-                CatalogFeatureAvailabilityRow(title: feature, message: "Ready - You may need to turn this on in-game", locked: false)
+                CatalogFeatureAvailabilityRow(title: feature, message: featureMessage(feature), locked: featureIsLocked(feature))
             }
         }
-        .padding(.vertical, game.featureLabels.isEmpty ? 0 : 8)
+        .padding(.vertical, game.featureLabels.isEmpty ? 0 : 9)
+        .frame(maxWidth: 660, alignment: .leading)
         .overlay(alignment: .top) {
             if !game.featureLabels.isEmpty { Rectangle().fill(Color.white.opacity(0.26)).frame(height: 1) }
         }
         .overlay(alignment: .bottom) {
             if !game.featureLabels.isEmpty { Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1) }
         }
+    }
+
+    private func featureMessage(_ feature: String) -> String {
+        feature.localizedCaseInsensitiveContains("reflex") ? "Upgrade your membership to unlock" : "Ready - You may need to turn this on in-game"
+    }
+
+    private func featureIsLocked(_ feature: String) -> Bool {
+        feature.localizedCaseInsensitiveContains("reflex")
+    }
+
+    private func ratingBlock(game: OPNCatalogGameObject) -> some View {
+        HStack(alignment: .top, spacing: 18) {
+            if !game.ratingLabel.isEmpty {
+                Text(esrbShortRating(game.ratingLabel))
+                    .font(.system(size: 32, weight: .black, design: .default))
+                    .foregroundStyle(.black)
+                    .frame(width: 48, height: 64)
+                    .background(.white)
+                    .overlay(alignment: .top) {
+                        Text(game.ratingLabel.uppercased())
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(.black)
+                            .padding(.top, 4)
+                    }
+            }
+            VStack(alignment: .leading, spacing: 7) {
+                Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
+                    .font(.nvidia(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.92))
+                ForEach(ratingDescriptors(game: game), id: \.self) { descriptor in
+                    Text(descriptor)
+                        .font(.nvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .frame(maxWidth: 215, alignment: .leading)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.24)).frame(height: 1).offset(y: 5) }
+                }
+            }
+        }
+    }
+
+    private var readMoreButton: some View {
+        HStack(spacing: 5) {
+            Text("READ MORE")
+            Image(systemName: "chevron.down")
+        }
+        .font(.nvidia(size: 13, weight: .bold))
+        .foregroundStyle(.white.opacity(0.95))
+    }
+
+    private func esrbShortRating(_ rating: String) -> String {
+        let uppercased = rating.uppercased()
+        if uppercased.contains("EVERYONE 10") { return "E10" }
+        if uppercased.contains("EVERYONE") { return "E" }
+        if uppercased.contains("TEEN") { return "T" }
+        if uppercased.contains("MATURE") { return "M" }
+        if uppercased.contains("ADULT") { return "A" }
+        return String(uppercased.prefix(1))
+    }
+
+    private func ratingDescriptors(game: OPNCatalogGameObject) -> [String] {
+        var descriptors = game.contentRatings.filter { $0.caseInsensitiveCompare(game.ratingLabel) != .orderedSame }
+        if descriptors.isEmpty { descriptors = game.genres.prefix(2).map { $0.capitalized } }
+        return Array(descriptors.prefix(3))
     }
 
     private var selectedVariant: OPNCatalogGameVariantObject? {
