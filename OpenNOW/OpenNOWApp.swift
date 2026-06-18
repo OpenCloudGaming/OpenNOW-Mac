@@ -41,13 +41,34 @@ struct OpenNOWApp: App {
     var body: some Scene {
         Window("OpenNOW", id: "main") {
             ContentView()
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        OpenNOWTitlebarBrand()
+                    }
+                }
         }
         .defaultSize(width: 1100, height: 720)
-        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact)
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
+    }
+}
+
+private struct OpenNOWTitlebarBrand: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 18, height: 18)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            Text("OpenNOW")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(.primary)
+        .accessibilityLabel("OpenNOW")
     }
 }
 

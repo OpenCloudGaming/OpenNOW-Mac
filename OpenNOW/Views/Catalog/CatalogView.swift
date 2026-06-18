@@ -545,14 +545,20 @@ private struct CatalogTopBar: View {
                 Text(viewModel.selectedMainPage == .settings ? "Settings" : "Games")
                     .font(.nvidia(size: 17, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
-                titlebarContext
                 Spacer()
             }
             .padding(.leading, 12)
-            .padding(.trailing, 340)
 
-            CatalogTitlebarBrand()
-                .allowsHitTesting(false)
+            if viewModel.selectedMainPage == .games {
+                catalogSearchField
+                    .frame(width: 540)
+            } else {
+                Text(viewModel.selectedSettingsPage.title)
+                    .font(.nvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .tracking(1.1)
+                    .frame(width: 540)
+            }
 
             HStack(spacing: 24) {
                 Spacer()
@@ -607,20 +613,6 @@ private struct CatalogTopBar: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.42)).frame(height: 1) }
     }
 
-    @ViewBuilder
-    private var titlebarContext: some View {
-        if viewModel.selectedMainPage == .games {
-            catalogSearchField
-                .frame(width: 360)
-        } else {
-            Text(viewModel.selectedSettingsPage.title)
-                .font(.nvidia(size: 13, weight: .bold))
-                .foregroundStyle(.white.opacity(0.64))
-                .tracking(1.1)
-                .lineLimit(1)
-        }
-    }
-
     private var catalogSearchField: some View {
         HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
@@ -643,23 +635,6 @@ private struct CatalogTopBar: View {
         .frame(height: 40)
         .background(Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255))
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
-    }
-}
-
-private struct CatalogTitlebarBrand: View {
-    var body: some View {
-        HStack(spacing: 9) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 22, height: 22)
-                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-            Text("OpenNOW")
-                .font(.nvidia(size: 15, weight: .bold))
-                .foregroundStyle(.white.opacity(0.94))
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel("OpenNOW")
     }
 }
 
