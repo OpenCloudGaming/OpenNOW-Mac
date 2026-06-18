@@ -164,10 +164,6 @@ public final class NativeWebRTCStreamView: NSView {
 
     public override func keyDown(with event: NSEvent) {
         if handleCommand(event) { return }
-        if event.keyCode == 53, isPointerLocked {
-            setPointerLocked(false)
-            return
-        }
         emitKey(event, isPressed: true)
     }
 
@@ -244,9 +240,6 @@ public final class NativeWebRTCStreamView: NSView {
                 return event
             }
             switch event.type {
-            case .keyDown where event.keyCode == 53:
-                self.setPointerLocked(false)
-                return nil
             case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
                 self.emitMouseMove(event)
                 return nil
