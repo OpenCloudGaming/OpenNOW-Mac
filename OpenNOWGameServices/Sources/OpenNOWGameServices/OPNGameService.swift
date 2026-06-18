@@ -84,6 +84,12 @@ final class OPNGameService: @unchecked Sendable {
     func providerStreamingBaseURL() -> String { providerStreamingBaseUrl.isEmpty ? Self.defaultStreamingBaseUrl : providerStreamingBaseUrl }
 
     func launchGame(appId: String, internalTitle: String, settings: [String: Any], recoveryMode: Bool, progress: @escaping OPNGameLaunchProgressCallback, completion: @escaping OPNGameLaunchCallback) {
+        guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
+            OPNSentry.logErrorMessage("[GameService] Refusing LaunchGame with invalid appId=\(appId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "(empty)" : appId)")
+            dispatchLaunch(completion, false, [:], "", "This game does not include a launchable GeForce NOW app id.")
+            return
+        }
+        let appId = launchAppId.stringValue
         OPNSentry.logInfoMessage("[GameService] LaunchGame called with appId=\(appId) recovery=\(recoveryMode)")
         OPNSessionManager.shared.setAccessToken(accessToken)
         OPNSessionManager.shared.getActiveSessions { [weak self] ok, sessions, error in
@@ -1570,9 +1576,7 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private func validLaunchAppId(_ value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let numeric = Int(trimmed), numeric > 0 else { return nil }
-        return trimmed
+        OPNLaunchAppId.resolve(value)?.stringValue
     }
 
     private func storeURLForMetadataGame(_ metadataGame: OPNGameInfo, variantId: String, store: String) -> String {

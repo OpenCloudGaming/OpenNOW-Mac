@@ -81,10 +81,11 @@ public final class OPNGameLaunchBridge {
     }
 
     private func prepareResolvedLaunchPlan(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, appId: String, token: String, completion: @escaping OPNGameLaunchPlanCompletion) {
-        guard !appId.isEmpty else {
+        guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             completion(false, "This game does not include a launchable GeForce NOW app id.", nil)
             return
         }
+        let appId = launchAppId.stringValue
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
         let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
         let selectedStore = selectedVariant?.appStore ?? ""

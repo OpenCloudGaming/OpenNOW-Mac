@@ -26,6 +26,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+        guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
+            OPNSentry.logErrorMessage("[SessionManager] Refusing CreateSession with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))")
+            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
+            return
+        }
         let token = currentAccessToken()
         guard !token.isEmpty else {
             completion(false, [:], "No access token")
@@ -42,10 +47,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
 
-        OPNSentry.logInfoMessage("[SessionManager] CreateSession called with appId=\(appId) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off")")
+        OPNSentry.logInfoMessage("[SessionManager] CreateSession called with appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))")
 
         let sessionRequestData: [String: Any] = [
-            "appId": appId,
+            "appId": launchAppId.stringValue,
             "internalTitle": internalTitle,
             "availableSupportedControllers": stringArray(effectiveSettings["availableSupportedControllers"]),
             "networkTestSessionId": networkTestSessionIdValue(effectiveSettings),
@@ -127,11 +132,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             guard http?.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
-                if let json = self.jsonDictionary(data), self.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: Int(appId) ?? 0) {
+                if let json = self.jsonDictionary(data), self.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
                     trace?.setStatus(true)
                     trace?.finish()
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
-                        self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? appId : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
+                        self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
                     } else {
                         self.pollClaimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: createCompletion)
                     }
@@ -367,6 +372,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     func claimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], recoveryMode: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {
+        guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
+            OPNSentry.logErrorMessage("[ClaimSession] Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))")
+            completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
+            return
+        }
         let token = currentAccessToken()
         guard !token.isEmpty else {
             completion(false, [:], "No access token")
@@ -383,7 +393,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "Invalid validation URL")
             return
         }
-        OPNSentry.logInfoMessage("[ClaimSession] Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(appId) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)")
+        OPNSentry.logInfoMessage("[ClaimSession] Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)")
         var validationRequest = URLRequest(url: validationUrl)
         validationRequest.timeoutInterval = 30
         applyCommonCloudMatchHeaders(to: &validationRequest, token: token, deviceId: deviceId, includeOrigin: false)
@@ -421,11 +431,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
                 return
             }
-            self.sendClaimSession(sessionId: sessionId, serverIp: serverIp, appId: appId, settings: claimSettings, token: token, deviceId: deviceId, clientId: clientId, completion: completion)
+            self.sendClaimSession(sessionId: sessionId, serverIp: serverIp, appId: launchAppId, settings: claimSettings, token: token, deviceId: deviceId, clientId: clientId, completion: completion)
         }.resume()
     }
 
-    private func sendClaimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], token: String, deviceId: String, clientId: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
+    private func sendClaimSession(sessionId: String, serverIp: String, appId: OPNResolvedLaunchAppId, settings: [String: Any], token: String, deviceId: String, clientId: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
         let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
@@ -457,7 +467,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "clientTimezoneOffset": -TimeZone.current.secondsFromGMT() * 1000,
                 "clientIdentification": "GFN-PC",
                 "parentSessionId": NSNull(),
-                "appId": Int(appId) ?? 0,
+                "appId": appId.intValue,
                 "streamerVersion": 1,
                 "appLaunchMode": 1,
                 "sdkVersion": "1.0",

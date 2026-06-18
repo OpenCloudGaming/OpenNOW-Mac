@@ -13,6 +13,10 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     public init() {}
 
     public func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
+        guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
+            throw OpenNOWStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
+        }
+        let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
         let launch = await prepareLaunch(configuration: configuration)
         let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
         let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
@@ -210,6 +214,20 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             libWebRTCAvailable: true
         )
         return resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
+    }
+
+    private func normalizedConfiguration(_ configuration: StreamLaunchConfiguration, appId: String) -> StreamLaunchConfiguration {
+        StreamLaunchConfiguration(
+            id: configuration.id,
+            title: configuration.title,
+            applicationID: appId,
+            accessToken: configuration.accessToken,
+            accountLinked: configuration.accountLinked,
+            selectedStore: configuration.selectedStore,
+            resumeSessionID: configuration.resumeSessionID,
+            resumeServer: configuration.resumeServer,
+            metadata: configuration.metadata
+        )
     }
 
     private func resumeOffer(_ offer: StreamOffer) {
