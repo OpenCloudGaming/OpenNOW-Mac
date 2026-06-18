@@ -20,6 +20,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var statusMessage = "Starting WebRTC media path..."
     @State private var pointerLocked = false
     @State private var statsVisible = false
+    @State private var videoEnhancementSettingsVisible = false
     @State private var sidebarVisible = true
     @State private var quitMenuVisible = false
     @State private var isEndingStream = false
@@ -54,6 +55,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             if !isStreamReady { launchOverlay }
             if statsVisible { statsHUD }
+            if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
             if pointerLocked { pointerLockBadge }
@@ -124,6 +126,10 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "waveform.path.ecg", title: "Stats") {
                 statsVisible.toggle()
             }
+            sidebarButton(systemName: "sparkles", title: "Video") {
+                videoEnhancementSettingsVisible.toggle()
+                WebRTCMediaTelemetry.capture("webrtc.ui.video_enhancement.toggle", level: .info, message: videoEnhancementSettingsVisible ? "Video enhancement settings shown." : "Video enhancement settings hidden.", attributes: ["visible": String(videoEnhancementSettingsVisible)])
+            }
             sidebarButton(systemName: "gamecontroller.fill", title: "Pad") {
                 WebRTCMediaTelemetry.capture("webrtc.ui.gamepad.status", level: .info, message: "Gamepad status requested.", attributes: ["connected": String(NativeWebRTCGamepadMonitor.connectedGamepadCount())])
             }
@@ -139,6 +145,52 @@ public struct WebRTCMediaStreamSurface: View {
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
         .padding(.top, 22)
         .padding(.leading, 18)
+    }
+
+    private var videoEnhancementSettingsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("VIDEO ENHANCEMENT")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
+                Spacer()
+                Button(action: { videoEnhancementSettingsVisible = false }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .frame(width: 24, height: 24)
+                        .background(.white.opacity(0.09), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            settingsRow("Mode", runtimeSettings.upscalingModeLabel)
+            settingsRow("Sharpness", runtimeSettings.upscalingMode == 0 ? "Off" : String(runtimeSettings.upscalingSharpness))
+            settingsRow("Denoise", runtimeSettings.upscalingMode == 0 ? "Off" : String(runtimeSettings.upscalingDenoise))
+            settingsRow("Target", runtimeSettings.upscalingMode == 0 ? "Native" : "\(runtimeSettings.upscalingTargetHeight)p")
+            Divider().overlay(.white.opacity(0.12))
+            settingsRow("Configured", liveEnhancementValue(latestStats?.videoEnhancementConfiguredTier, fallback: runtimeSettings.upscalingModeLabel))
+            settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
+            settingsRow("Source", liveEnhancementValue(latestStats?.videoEnhancementSourceResolution, fallback: "Pending"))
+            settingsRow("Drawable", liveEnhancementValue(latestStats?.videoEnhancementDrawableResolution, fallback: "Pending"))
+            settingsRow("Frame", frameTimeValue(latestStats?.videoEnhancementFrameTimeMs))
+            settingsRow("Dropped", String(latestStats?.videoEnhancementDroppedFrames ?? 0))
+            if let fallback = latestStats?.videoEnhancementFallbackReason, !fallback.isEmpty {
+                Text(fallback)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+        }
+        .font(.system(size: 11, weight: .medium, design: .monospaced))
+        .padding(14)
+        .frame(width: 272, alignment: .leading)
+        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.25), lineWidth: 1))
+        .shadow(color: .black.opacity(0.48), radius: 24, x: 0, y: 12)
+        .padding(.top, 22)
+        .padding(.leading, 96)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var quitMenu: some View {
@@ -222,9 +274,30 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func settingsRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 12) {
+            Text(label).foregroundStyle(.white.opacity(0.58))
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundStyle(.white.opacity(0.94))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
     private func formatted(_ value: Double?, suffix: String) -> String {
         guard let value, value >= 0 else { return "-" }
         return String(format: "%.1f%@", value, suffix)
+    }
+
+    private func frameTimeValue(_ value: Double?) -> String {
+        guard let value, value >= 0 else { return "Pending" }
+        return String(format: "%.1f ms", value)
+    }
+
+    private func liveEnhancementValue(_ value: String?, fallback: String) -> String {
+        guard let value, !value.isEmpty, value != "unknown", value != "pending" else { return fallback }
+        return value
     }
 
     private func startIfNeeded(nativeView: NativeWebRTCStreamView) async {
@@ -437,6 +510,21 @@ private struct StreamRuntimeSettings: Equatable {
     var microphonePushToTalkModifierMask = 0
     var suppressInputWhenInactive = true
     var directMouseInput = true
+    var upscalingMode = 1
+    var upscalingSharpness = 4
+    var upscalingDenoise = 0
+    var upscalingTargetHeight = 2160
+
+    var upscalingModeLabel: String {
+        switch upscalingMode {
+        case 0: return "Off"
+        case 1: return "Auto"
+        case 2: return "Spatial"
+        case 3: return "MetalFX"
+        case 4: return "Temporal"
+        default: return "Mode \(upscalingMode)"
+        }
+    }
 
     init() {}
 
@@ -452,6 +540,10 @@ private struct StreamRuntimeSettings: Equatable {
         microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
+        upscalingMode = Self.int(dictionary["upscalingMode"], fallback: 1)
+        upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 4)
+        upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
+        upscalingTargetHeight = Self.int(dictionary["upscalingTargetHeight"], fallback: 2160)
     }
 
     private static func string(_ value: Any?, fallback: String = "") -> String {
