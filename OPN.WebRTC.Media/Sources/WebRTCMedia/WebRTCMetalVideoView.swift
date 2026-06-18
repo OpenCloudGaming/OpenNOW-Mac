@@ -135,7 +135,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         objc_sync_exit(self)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.metalView.setNeedsDisplay(self.metalView.bounds)
+            self.metalView.draw()
         }
     }
 
