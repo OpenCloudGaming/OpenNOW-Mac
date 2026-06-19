@@ -1094,60 +1094,8 @@ private struct CatalogStorePickerOverlay: View {
                             .padding(.top, max(64, proxy.size.height * 0.15))
 
                         VStack(alignment: .leading, spacing: 0) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(game.title.isEmpty ? "Selected Game" : game.title)
-                                    .font(.nvidia(size: 18, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.96))
-                                    .lineLimit(1)
-                                Text("PC Digital Version")
-                                    .font(.nvidia(size: 14, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.72))
-                            }
-                            .padding(.bottom, 14)
-
-                            Rectangle()
-                                .fill(Color.white.opacity(0.28))
-                                .frame(height: 1)
-                                .padding(.bottom, 24)
-
-                            Text("Choose a game store")
-                                .font(.nvidia(size: 24, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.96))
-                                .padding(.bottom, 12)
-
-                            Text("Where do you own this game and want to play?")
-                                .font(.nvidia(size: 15, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.72))
-                                .padding(.bottom, 30)
-
-                            VStack(alignment: .leading, spacing: 28) {
-                                CatalogStorePickerSection(label: "Game stores:") {
-                                    VStack(alignment: .leading, spacing: 16) {
-                                        ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
-                                            CatalogStorePickerRow(
-                                                title: storeTitle(variant),
-                                                systemImage: storeIcon(variant),
-                                                status: storeStatus(game: game, variant: variant, selected: selectedIndex(game: game) == index),
-                                                isSelected: selectedIndex(game: game) == index,
-                                                isAvailable: game.isInLibrary || variant.inLibrary || variant.librarySelected
-                                            ) {
-                                                viewModel.selectGameStoreVariant(at: index)
-                                            }
-                                        }
-                                    }
-                                }
-
-                                CatalogStorePickerSection(label: "Subscriptions:") {
-                                    CatalogStorePickerRow(
-                                        title: subscriptionTitle,
-                                        systemImage: "checkmark.square.fill",
-                                        status: subscriptionStatus,
-                                        isSelected: false,
-                                        isAvailable: viewModel.subscriptionStatus.isAvailable,
-                                        action: nil
-                                    )
-                                }
-                            }
+                            header(game: game)
+                            content(game: game)
                         }
                         .frame(width: min(680, max(480, proxy.size.width * 0.40)), alignment: .leading)
                         .padding(.top, max(68, proxy.size.height * 0.15))
@@ -1171,6 +1119,173 @@ private struct CatalogStorePickerOverlay: View {
         }
     }
 
+    private func header(game: OPNCatalogGameObject) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(game.title.isEmpty ? "Selected Game" : game.title)
+                .font(.nvidia(size: 18, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .lineLimit(1)
+                .padding(.bottom, 8)
+            FlowLayout(spacing: 8) {
+                if viewModel.ownershipFlowStage == .success, let variant = selectedVariant(game: game) {
+                    storeInlineLabel(variant: variant, owned: true)
+                } else {
+                    Text("PC Digital Version")
+                        .font(.nvidia(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                    if viewModel.ownershipFlowStage == .manualMark, let variant = selectedVariant(game: game) {
+                        Text("|")
+                            .font(.nvidia(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.72))
+                        storeInlineLabel(variant: variant, owned: false)
+                    }
+                }
+            }
+            Rectangle()
+                .fill(Color.white.opacity(0.28))
+                .frame(height: 1)
+                .padding(.top, 14)
+                .padding(.bottom, 24)
+        }
+    }
+
+    @ViewBuilder
+    private func content(game: OPNCatalogGameObject) -> some View {
+        switch viewModel.ownershipFlowStage {
+        case .resyncing:
+            resyncingContent(game: game)
+        case .storeSelection:
+            storeSelectionContent(game: game)
+        case .manualMark:
+            manualMarkContent(game: game)
+        case .success:
+            successContent(game: game)
+        case .hidden:
+            storeSelectionContent(game: game)
+        }
+    }
+
+    private func resyncingContent(game: OPNCatalogGameObject) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Finding where you own this game")
+                .font(.nvidia(size: 24, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .padding(.bottom, 12)
+            Text("Checking all your connected accounts to sync this game. This may take some time...")
+                .font(.nvidia(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.72))
+            VStack(spacing: 18) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(1.7)
+                    .tint(Color.openNowGreen)
+                Text(viewModel.ownershipFlowMessage.isEmpty ? "Syncing connected game libraries..." : viewModel.ownershipFlowMessage)
+                    .font(.nvidia(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.84))
+            }
+            .frame(maxWidth: .infinity, minHeight: 330, alignment: .center)
+            HStack {
+                Spacer()
+                Button("STOP RESYNC") { viewModel.stopOwnershipResync() }
+                    .buttonStyle(CatalogOwnershipTextButtonStyle())
+            }
+        }
+    }
+
+    private func storeSelectionContent(game: OPNCatalogGameObject) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Choose a game store")
+                .font(.nvidia(size: 24, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .padding(.bottom, 12)
+            Text("Where do you own this game and want to play?")
+                .font(.nvidia(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.72))
+                .padding(.bottom, 30)
+            CatalogStorePickerSection(label: "Game stores:") {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
+                        CatalogStorePickerRow(
+                            title: storeTitle(variant),
+                            systemImage: storeIcon(variant),
+                            status: storeStatus(game: game, variant: variant, selected: selectedIndex(game: game) == index),
+                            isSelected: selectedIndex(game: game) == index,
+                            isAvailable: variantIsOwned(game: game, variant: variant)
+                        ) {
+                            viewModel.selectGameStoreVariant(at: index)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func manualMarkContent(game: OPNCatalogGameObject) -> some View {
+        let variant = selectedVariant(game: game)
+        let storeName = variant.map(storeTitle) ?? "this store"
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("Mark as owned")
+                .font(.nvidia(size: 24, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .padding(.bottom, 14)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("Press CONTINUE to manually mark this game as owned only if you have this in your \(storeName) library or it may fail to launch. Don't own it? ")
+                    .font(.nvidia(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
+                Button("Get this game.") { viewModel.openStoreForSelectedVariant() }
+                    .buttonStyle(.plain)
+                    .font(.nvidia(size: 15, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+            }
+            .lineLimit(3)
+            .frame(maxWidth: 650, alignment: .leading)
+            Spacer(minLength: 300)
+            HStack(spacing: 28) {
+                Spacer()
+                Button("CONTINUE") { viewModel.confirmSelectedVariantOwned() }
+                    .buttonStyle(CatalogOwnershipTextButtonStyle())
+                Button("EXIT") { viewModel.closeStorePicker() }
+                    .buttonStyle(CatalogOwnershipPrimaryButtonStyle())
+            }
+        }
+    }
+
+    private func successContent(game: OPNCatalogGameObject) -> some View {
+        let variant = selectedVariant(game: game)
+        let storeName = variant.map(storeTitle) ?? "Game Store"
+        let account = variant.flatMap { viewModel.accountStatus(forStore: $0.appStore) }
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("You're all set to play")
+                .font(.nvidia(size: 24, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .padding(.bottom, 30)
+            HStack(alignment: .top, spacing: 16) {
+                if let variant { storeIconView(systemImage: storeIcon(variant)) }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(successAccountTitle(storeName: storeName, account: account))
+                        .font(.nvidia(size: 18, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.96))
+                    Text(successAccountSubtitle(storeName: storeName, account: account))
+                        .font(.nvidia(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.74))
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.nvidia(size: 15, weight: .bold))
+                        Text(successSyncText(account: account))
+                            .font(.nvidia(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.74))
+                }
+            }
+            Spacer(minLength: 330)
+            HStack {
+                Spacer()
+                Button("DONE") { viewModel.finishOwnershipFlow() }
+                    .buttonStyle(CatalogOwnershipPrimaryButtonStyle())
+            }
+        }
+    }
+
     private func selectedIndex(game: OPNCatalogGameObject) -> Int {
         let preferred = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
         return max(preferred, 0)
@@ -1189,18 +1304,92 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func storeStatus(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject, selected: Bool) -> String {
-        if game.isInLibrary || variant.inLibrary || variant.librarySelected { return "Owned" }
+        if variantIsOwned(game: game, variant: variant) { return "Owned" }
         return selected ? "Game not found" : ""
     }
 
-    private var subscriptionTitle: String {
-        let tier = viewModel.subscriptionStatus.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
-        if tier.isEmpty || tier.caseInsensitiveCompare("Free") == .orderedSame { return "GeForce NOW" }
-        return tier
+    private func variantIsOwned(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> Bool {
+        variant.inLibrary || variant.librarySelected || (game.isInLibrary && game.variants.count == 1)
     }
 
-    private var subscriptionStatus: String {
-        viewModel.subscriptionStatus.isAvailable ? "Subscribed" : "Unavailable"
+    private func selectedVariant(game: OPNCatalogGameObject) -> OPNCatalogGameVariantObject? {
+        let index = selectedIndex(game: game)
+        guard game.variants.indices.contains(index) else { return nil }
+        return game.variants[index]
+    }
+
+    private func storeInlineLabel(variant: OPNCatalogGameVariantObject, owned: Bool) -> some View {
+        HStack(spacing: 8) {
+            storeIconView(systemImage: storeIcon(variant))
+            Text(storeTitle(variant))
+                .font(.nvidia(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.82))
+            if owned {
+                Text("Owned")
+                    .font(.nvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 8)
+                    .frame(height: 22)
+                    .background(Color.black.opacity(0.24))
+                Image(systemName: "checkmark")
+                    .font(.nvidia(size: 13, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func storeIconView(systemImage: String) -> some View {
+        if systemImage == "steam" {
+            Text("◔")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+        } else if systemImage == "xbox.logo" {
+            Text("X")
+                .font(.system(size: 17, weight: .black))
+                .foregroundStyle(.white.opacity(0.96))
+        } else {
+            Image(systemName: systemImage)
+                .font(.nvidia(size: 15, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+        }
+    }
+
+    private func successAccountTitle(storeName: String, account: CatalogStoreAccount?) -> String {
+        guard let account, !account.userDisplayName.isEmpty else { return storeName }
+        return "\(storeName) | \(account.userDisplayName)"
+    }
+
+    private func successAccountSubtitle(storeName: String, account: CatalogStoreAccount?) -> String {
+        account?.hasAccountLinkingData == true ? "Your \(storeName) account is connected." : "Your game store is selected."
+    }
+
+    private func successSyncText(account: CatalogStoreAccount?) -> String {
+        guard let account else { return "Manual ownership selected" }
+        if account.hasAccountSyncingData { return "Automatic game library sync enabled" }
+        return "Automatic sign-in available when supported"
+    }
+}
+
+private struct CatalogOwnershipTextButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.nvidia(size: 14, weight: .bold))
+            .tracking(0.6)
+            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.62 : 0.96))
+            .frame(height: 46)
+            .padding(.horizontal, 8)
+    }
+}
+
+private struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.nvidia(size: 14, weight: .bold))
+            .tracking(0.8)
+            .foregroundStyle(.black.opacity(0.88))
+            .frame(width: 112, height: 46)
+            .background(Color.openNowGreen.opacity(configuration.isPressed ? 0.78 : 1))
     }
 }
 

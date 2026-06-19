@@ -55,6 +55,15 @@ enum CatalogLaunchFlowState: Equatable {
 }
 
 @MainActor
+enum CatalogOwnershipFlowStage: Equatable {
+    case hidden
+    case resyncing
+    case storeSelection
+    case manualMark
+    case success
+}
+
+@MainActor
 enum CatalogMainPage: String, CaseIterable, Identifiable {
     case games
     case settings
@@ -133,6 +142,8 @@ final class CatalogViewModel: ObservableObject {
     @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     @Published var favoriteGameIdentities: Set<String> = []
     @Published var isStorePickerVisible = false
+    @Published var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
+    @Published var ownershipFlowMessage = ""
 
     let account: LoginAccount
     let session: LoginSession
@@ -672,18 +683,29 @@ final class CatalogViewModel: ObservableObject {
             actionMessage = "No alternate store is available."
             return
         }
+        ownershipFlowStage = .storeSelection
+        ownershipFlowMessage = ""
         isStorePickerVisible = true
     }
 
     func closeStorePicker() {
         isStorePickerVisible = false
+        ownershipFlowStage = .hidden
+        ownershipFlowMessage = ""
     }
 
     func selectGameStoreVariant(at index: Int) {
         guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
         selectedVariantIndex = index
         let variant = selectedGame.variants[index]
-        if variant.inLibrary || variant.librarySelected { selectOwnedVariant(variant) }
+        if variant.inLibrary || variant.librarySelected || selectedGame.isInLibrary {
+            selectOwnedVariant(variant)
+            ownershipFlowStage = .storeSelection
+            ownershipFlowMessage = ""
+        } else if ownershipFlowStage != .hidden {
+            ownershipFlowStage = .manualMark
+            ownershipFlowMessage = ""
+        }
         actionMessage = "Changed store to \(displayName(forStore: variant.appStore))."
     }
 
@@ -720,6 +742,40 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func markSelectedVariantOwned() {
+        beginMarkSelectedVariantOwnedFlow()
+    }
+
+    func beginMarkSelectedVariantOwnedFlow() {
+        guard let selectedGame, selectedVariant(in: selectedGame) != nil else { return }
+        ownershipFlowStage = .resyncing
+        isStorePickerVisible = true
+        ownershipFlowMessage = syncingOwnershipMessage(for: selectedGame)
+        let stores = Self.uniqueNonEmpty(selectedGame.variants.map(\.appStore))
+        let syncableStores = stores.filter { accountStatus(forStore: $0)?.hasAccountSyncingData == true }
+        guard let store = syncableStores.first else {
+            ownershipFlowStage = .storeSelection
+            ownershipFlowMessage = ""
+            return
+        }
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.syncAccountProvider(store: store) { _, _ in
+            Task { @MainActor in
+                guard let self = selfBox.value, self.ownershipFlowStage == .resyncing else { return }
+                self.loadAccountAndStores()
+                self.loadLibrary()
+                self.browseCatalog()
+                self.ownershipFlowStage = .storeSelection
+                self.ownershipFlowMessage = ""
+            }
+        }
+    }
+
+    func stopOwnershipResync() {
+        ownershipFlowStage = .storeSelection
+        ownershipFlowMessage = ""
+    }
+
+    func confirmSelectedVariantOwned() {
         guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
         let gameIdentity = Self.identity(for: selectedGame)
         let variantId = variant.id
@@ -731,6 +787,8 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.updateSelectedGameOwnership(gameIdentity: gameIdentity, variantId: variantId, inLibrary: true)
+                    self.ownershipFlowStage = .success
+                    self.ownershipFlowMessage = ""
                     self.actionMessage = "Added to library."
                     self.refreshCatalogAfterOwnershipChange()
                 } else {
@@ -738,6 +796,10 @@ final class CatalogViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func finishOwnershipFlow() {
+        closeStorePicker()
     }
 
     func removeSelectedVariantOwned() {
@@ -1098,6 +1160,23 @@ final class CatalogViewModel: ObservableObject {
     private func setActionMessage(_ message: String) {
         actionMessage = message
         errorMessage = ""
+    }
+
+    private func syncingOwnershipMessage(for game: OPNCatalogGameObject) -> String {
+        let stores = Self.uniqueNonEmpty(game.variants.map { displayName(forStore: $0.appStore) })
+        if stores.isEmpty { return "Syncing connected game libraries..." }
+        if stores.count == 1 { return "Syncing \(stores[0]) game library..." }
+        return "Syncing \(stores.dropLast().joined(separator: ", ")) and \(stores.last ?? "") game libraries..."
+    }
+
+    private static func uniqueNonEmpty(_ values: [String]) -> [String] {
+        var result: [String] = []
+        for value in values {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { continue }
+            result.append(trimmed)
+        }
+        return result
     }
 
     private func matchingGame(for shortcut: GFNGameShortcut, in games: [OPNCatalogGameObject]) -> OPNCatalogGameObject? {
