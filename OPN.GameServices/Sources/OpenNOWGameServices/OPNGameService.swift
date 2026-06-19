@@ -740,10 +740,13 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.campaignIds.isEmpty { merged.campaignIds = metadataGame.campaignIds }
                 if merged.skuTags.isEmpty { merged.skuTags = metadataGame.skuTags }
                 if !metadataGame.description.isEmpty { merged.description = metadataGame.description }
+                if merged.shortDescription.isEmpty { merged.shortDescription = metadataGame.shortDescription }
+                if merged.longDescription.isEmpty { merged.longDescription = metadataGame.longDescription }
                 if merged.genres.isEmpty { merged.genres = metadataGame.genres }
                 if merged.featureLabels.isEmpty { merged.featureLabels = metadataGame.featureLabels }
                 if merged.developerName.isEmpty { merged.developerName = metadataGame.developerName }
                 if merged.publisherName.isEmpty { merged.publisherName = metadataGame.publisherName }
+                if merged.releaseDate.isEmpty { merged.releaseDate = metadataGame.releaseDate }
                 if merged.imageUrl.isEmpty { merged.imageUrl = metadataGame.imageUrl }
                 if merged.heroImageUrl.isEmpty { merged.heroImageUrl = metadataGame.heroImageUrl }
                 if !metadataGame.screenshotUrls.isEmpty { merged.screenshotUrls = metadataGame.screenshotUrls }
@@ -852,16 +855,21 @@ final class OPNGameService: @unchecked Sendable {
         game.title = safeString(app["title"]) ?? ""
         game.shortName = safeString(app["shortName"]) ?? ""
         game.promoTag = safeString(app["promoTag"]) ?? ""
-        game.description = firstSafeString(app, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
+        game.shortDescription = firstSafeString(app, keys: ["shortDescription", "summary"]) ?? ""
+        game.longDescription = firstSafeString(app, keys: ["longDescription", "description"]) ?? ""
+        game.description = game.longDescription.isEmpty ? game.shortDescription : game.longDescription
         game.developerName = safeString(app["developerName"]) ?? ""
         game.publisherName = safeString(app["publisherName"]) ?? ""
+        game.releaseDate = firstSafeString(app, keys: ["streetDate", "releaseDate", "releasedAt"]) ?? ""
         game.maxLocalPlayers = safeInt(app["maxLocalPlayers"])
         game.maxOnlinePlayers = safeInt(app["maxOnlinePlayers"])
         appendStringValues(&game.supportedControls, app["supportedControls"])
         assignContentRatings(app["contentRatings"], to: &game)
         game.nvidiaTech = parseFeatureFlags(app["nvidiaTech"])
-        if game.description.isEmpty, let itemMetadata = app["itemMetadata"] as? NSDictionary {
-            game.description = firstSafeString(itemMetadata, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
+        if let itemMetadata = app["itemMetadata"] as? NSDictionary {
+            if game.shortDescription.isEmpty { game.shortDescription = firstSafeString(itemMetadata, keys: ["shortDescription", "summary"]) ?? "" }
+            if game.longDescription.isEmpty { game.longDescription = firstSafeString(itemMetadata, keys: ["longDescription", "description"]) ?? "" }
+            if game.description.isEmpty { game.description = game.longDescription.isEmpty ? game.shortDescription : game.longDescription }
         }
         if let itemMetadata = app["itemMetadata"] as? NSDictionary {
             appendStringValues(&game.campaignIds, itemMetadata["campaignIds"])
@@ -1493,6 +1501,8 @@ final class OPNGameService: @unchecked Sendable {
                 if !game.screenshotUrls.isEmpty { existing.screenshotUrls = game.screenshotUrls }
                 for (key, value) in game.imageUrlsByType where existing.imageUrlsByType[key] == nil { existing.imageUrlsByType[key] = value }
                 if existing.description.isEmpty { existing.description = game.description }
+                if existing.shortDescription.isEmpty { existing.shortDescription = game.shortDescription }
+                if existing.longDescription.isEmpty { existing.longDescription = game.longDescription }
                 byId[game.id] = existing
             } else {
                 byId[game.id] = game
@@ -1525,7 +1535,9 @@ final class OPNGameService: @unchecked Sendable {
                     guard self.safeString(item["status"]) == "AVAILABLE", let title = self.safeString(item["title"]), !title.isEmpty else { return nil }
                     var game = OPNGameInfo()
                     game.title = title
-                    game.description = self.firstSafeString(item, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
+                    game.shortDescription = self.firstSafeString(item, keys: ["shortDescription", "summary"]) ?? ""
+                    game.longDescription = self.firstSafeString(item, keys: ["longDescription", "description"]) ?? ""
+                    game.description = game.longDescription.isEmpty ? game.shortDescription : game.longDescription
                     let rawId = item["id"]
                     let sid = (rawId as? NSNumber)?.stringValue ?? (rawId as? String) ?? title
                     let steamURL = self.safeString(item["steamUrl"])
@@ -2072,7 +2084,7 @@ private extension OPNGameService {
         query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
-                items { id title images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
+                items { id title shortDescription longDescription description streetDate images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
             }
         }
         """
@@ -2083,7 +2095,7 @@ private extension OPNGameService {
         query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $searchString: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, searchQuery: $searchString, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
-                items { id title images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
+                items { id title shortDescription longDescription description streetDate images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
             }
         }
         """

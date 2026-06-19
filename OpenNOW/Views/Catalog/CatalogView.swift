@@ -2242,11 +2242,7 @@ private struct GameDetailPanel: View {
                         variantStatusRow(game: game)
                         detailActions(game: game)
                         accessMessage(game: game)
-                        detailDescription(game: game)
-                            .padding(.top, 4)
-                        nvidiaTechRows(game: game)
-                            .padding(.top, 4)
-                        ratingBlock(game: game)
+                        detailMetadataScrollArea(game: game)
                             .padding(.top, 4)
                         readMoreButton
                             .padding(.top, 2)
@@ -2508,13 +2504,68 @@ private struct GameDetailPanel: View {
         return "Access requires a GeForce NOW membership and supported game ownership."
     }
 
-    private func detailDescription(game: OPNCatalogGameObject) -> some View {
-        Text(game.gameDescription.isEmpty ? "Play instantly through GeForce NOW cloud streaming." : game.gameDescription)
+    private func detailMetadataScrollArea(game: OPNCatalogGameObject) -> some View {
+        ScrollView(.vertical, showsIndicators: isDescriptionExpanded) {
+            VStack(alignment: .leading, spacing: 14) {
+                shortDescription(game: game)
+                divider
+                nvidiaTechRows(game: game)
+                ratingBlock(game: game)
+                detailRows(game: game)
+                fullDescription(game: game)
+            }
+            .frame(maxWidth: 660, alignment: .leading)
+            .padding(.trailing, isDescriptionExpanded ? 8 : 0)
+        }
+        .scrollDisabled(!isDescriptionExpanded)
+        .frame(maxWidth: 660, minHeight: 128, maxHeight: isDescriptionExpanded ? 248 : 128, alignment: .topLeading)
+        .clipped()
+    }
+
+    private func shortDescription(game: OPNCatalogGameObject) -> some View {
+        Text(detailShortDescription(game: game))
             .font(.nvidia(size: 15, weight: .medium))
             .foregroundStyle(.white.opacity(0.90))
             .lineSpacing(3)
-            .lineLimit(isDescriptionExpanded ? 6 : 2)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: 660, alignment: .leading)
+    }
+
+    private func fullDescription(game: OPNCatalogGameObject) -> some View {
+        let description = detailLongDescription(game: game)
+        return VStack(alignment: .leading, spacing: 8) {
+            if !description.isEmpty {
+                Text("FULL DESCRIPTION")
+                    .font(.nvidia(size: 11, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(.white.opacity(0.56))
+                Text(description)
+                    .font(.nvidia(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: 660, alignment: .leading)
+    }
+
+    private func detailShortDescription(game: OPNCatalogGameObject) -> String {
+        let value = game.shortDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.isEmpty { return value }
+        return "Play instantly through GeForce NOW cloud streaming."
+    }
+
+    private func detailLongDescription(game: OPNCatalogGameObject) -> String {
+        let longDescription = game.longDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !longDescription.isEmpty { return longDescription }
+        let gameDescription = game.gameDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return gameDescription == detailShortDescription(game: game) ? "" : gameDescription
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.24))
+            .frame(height: 1)
     }
 
     private func nvidiaTechRows(game: OPNCatalogGameObject) -> some View {
@@ -2524,14 +2575,8 @@ private struct GameDetailPanel: View {
                 CatalogFeatureAvailabilityRow(title: technology, message: featureMessage(technology), locked: featureIsLocked(technology))
             }
         }
-        .padding(.vertical, technologies.isEmpty ? 0 : 8)
+        .padding(.vertical, technologies.isEmpty ? 0 : 2)
         .frame(maxWidth: 660, alignment: .leading)
-        .overlay(alignment: .top) {
-            if !technologies.isEmpty { Rectangle().fill(Color.white.opacity(0.26)).frame(height: 1) }
-        }
-        .overlay(alignment: .bottom) {
-            if !technologies.isEmpty { Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1) }
-        }
     }
 
     private func nvidiaTechnologies(game: OPNCatalogGameObject) -> [String] {
@@ -2693,13 +2738,51 @@ private struct GameDetailPanel: View {
 
     private func detailRows(game: OPNCatalogGameObject) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            CatalogDetailRow(label: "Developer", value: game.developerName)
             CatalogDetailRow(label: "Publisher", value: game.publisherName)
+            CatalogDetailRow(label: "Developer", value: game.developerName)
+            CatalogDetailRow(label: "Input", value: inputLine(game: game))
+            CatalogDetailRow(label: "Players", value: playerLine(game: game))
+            CatalogDetailRow(label: "Release Date", value: releaseDateLine(game: game))
             CatalogDetailRow(label: "Stores", value: game.storeLine)
-            CatalogDetailRow(label: "Controls", value: game.supportedControls.joined(separator: ", "))
-            CatalogDetailRow(label: "Rating", value: game.ratingLabel)
             CatalogDetailRow(label: "Genres", value: game.genreLine)
         }
+    }
+
+    private func releaseDateLine(game: OPNCatalogGameObject) -> String {
+        let value = game.releaseDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "" }
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) {
+            return date.formatted(date: .abbreviated, time: .omitted)
+        }
+        return value
+    }
+
+    private func inputLine(game: OPNCatalogGameObject) -> String {
+        var labels: [String] = []
+        for control in game.supportedControls { appendUnique(readableControlLabel(control), to: &labels) }
+        return labels.joined(separator: ", ")
+    }
+
+    private func readableControlLabel(_ value: String) -> String {
+        let normalized = value.replacingOccurrences(of: "_", with: " ").lowercased()
+        if normalized.contains("keyboard") || normalized.contains("mouse") { return "Keyboard & Mouse" }
+        if normalized.contains("gamepad partial") { return "Partial Gamepad" }
+        if normalized.contains("gamepad") || normalized.contains("controller") { return "Gamepad" }
+        if normalized.contains("touch") { return "Touchscreen" }
+        if normalized.contains("wheel") { return "Wheel" }
+        if normalized.contains("flight") || normalized.contains("hotas") { return "Flight Controls" }
+        return value.capitalized
+    }
+
+    private func playerLine(game: OPNCatalogGameObject) -> String {
+        let local = game.maxLocalPlayers
+        let online = game.maxOnlinePlayers
+        guard local > 0 || online > 0 else { return "" }
+        if online > 1, local > 1 { return "1-\(local) local, online multiplayer" }
+        if online > 1 { return "Single player, online multiplayer" }
+        if local > 1 { return "1-\(local) local players" }
+        return "Single player"
     }
 }
 

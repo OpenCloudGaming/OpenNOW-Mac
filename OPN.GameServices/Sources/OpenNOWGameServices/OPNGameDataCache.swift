@@ -236,8 +236,11 @@ final class OPNGameDataCache: NSObject {
         putString(game.title, key: "t", into: &dictionary)
         putString(game.shortName, key: "n", into: &dictionary)
         putString(game.description, key: "d", into: &dictionary)
+        putString(game.shortDescription, key: "sd", into: &dictionary)
+        putString(game.longDescription, key: "ld", into: &dictionary)
         putString(game.developerName, key: "v", into: &dictionary)
         putString(game.publisherName, key: "p", into: &dictionary)
+        putString(game.releaseDate, key: "sr", into: &dictionary)
         if game.maxLocalPlayers > 0 { dictionary["ml"] = game.maxLocalPlayers }
         if game.maxOnlinePlayers > 0 { dictionary["mo"] = game.maxOnlinePlayers }
         putString(game.playType, key: "pt", into: &dictionary)
@@ -276,8 +279,11 @@ final class OPNGameDataCache: NSObject {
         game.title = dictionary["t"] as? String ?? ""
         game.shortName = dictionary["n"] as? String ?? ""
         game.description = dictionary["d"] as? String ?? ""
+        game.shortDescription = dictionary["sd"] as? String ?? ""
+        game.longDescription = dictionary["ld"] as? String ?? ""
         game.developerName = dictionary["v"] as? String ?? ""
         game.publisherName = dictionary["p"] as? String ?? ""
+        game.releaseDate = dictionary["sr"] as? String ?? ""
         game.maxLocalPlayers = (dictionary["ml"] as? NSNumber)?.intValue ?? 0
         game.maxOnlinePlayers = (dictionary["mo"] as? NSNumber)?.intValue ?? 0
         game.playType = dictionary["pt"] as? String ?? ""

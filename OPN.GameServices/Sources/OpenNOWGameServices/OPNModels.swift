@@ -90,8 +90,11 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var title = ""
     public var shortName = ""
     public var description = ""
+    public var shortDescription = ""
+    public var longDescription = ""
     public var developerName = ""
     public var publisherName = ""
+    public var releaseDate = ""
     public var maxLocalPlayers = 0
     public var maxOnlinePlayers = 0
     public var playType = ""
@@ -339,8 +342,11 @@ public final class OPNCatalogGameObject: NSObject {
     public var title: String
     public var shortName: String
     public var gameDescription: String
+    public var shortDescription: String
+    public var longDescription: String
     public var developerName: String
     public var publisherName: String
+    public var releaseDate: String
     public var maxLocalPlayers: Int
     public var maxOnlinePlayers: Int
     public var playType: String
@@ -379,8 +385,11 @@ public final class OPNCatalogGameObject: NSObject {
         title = game.title
         shortName = game.shortName
         gameDescription = game.description
+        shortDescription = game.shortDescription
+        longDescription = game.longDescription
         developerName = game.developerName
         publisherName = game.publisherName
+        releaseDate = game.releaseDate
         maxLocalPlayers = game.maxLocalPlayers
         maxOnlinePlayers = game.maxOnlinePlayers
         playType = game.playType
@@ -418,8 +427,11 @@ public final class OPNCatalogGameObject: NSObject {
         game.title = title
         game.shortName = shortName
         game.description = gameDescription
+        game.shortDescription = shortDescription
+        game.longDescription = longDescription
         game.developerName = developerName
         game.publisherName = publisherName
+        game.releaseDate = releaseDate
         game.maxLocalPlayers = maxLocalPlayers
         game.maxOnlinePlayers = maxOnlinePlayers
         game.playType = playType
