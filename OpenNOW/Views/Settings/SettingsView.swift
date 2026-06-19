@@ -1,4 +1,5 @@
 import Common
+import AppKit
 import CoreText
 import SwiftUI
 
@@ -506,35 +507,244 @@ private struct SystemSettingsPage: View {
 
 private struct AboutSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @State private var revealSensitive = false
+    @State private var copiedKey = ""
 
     var body: some View {
-        SettingsCard(title: "About OpenNOW") {
-            HStack(spacing: 18) {
-                VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
-                    .scaledToFit()
-                    .frame(width: 132, height: 40, alignment: .leading)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("OpenNOW Mac")
-                        .font(.settingsNvidia(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text("Vendor-style GeForce NOW client shell")
-                        .font(.settingsNvidia(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.62))
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Product") {
+                HStack(alignment: .top, spacing: 22) {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.black.opacity(0.22))
+                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.72), lineWidth: 1) }
+                        VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
+                            .scaledToFit()
+                            .padding(.horizontal, 14)
+                    }
+                    .frame(width: 180, height: 88)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("OpenNOW Mac")
+                                .font(.settingsNvidia(size: 25, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("UNOFFICIAL CLIENT SHELL")
+                                .font(.settingsNvidia(size: 10, weight: .bold))
+                                .foregroundStyle(.black)
+                                .tracking(0.8)
+                                .padding(.horizontal, 8)
+                                .frame(height: 20)
+                                .background(Color.openNowGreen)
+                        }
+                        Text("A macOS runtime for launching and streaming GeForce NOW sessions with local catalog, account, and diagnostics surfaces.")
+                            .font(.settingsNvidia(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.66))
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            AboutStatusPill(title: "Streaming", value: "WebRTC")
+                            AboutStatusPill(title: "Build", value: appVersion)
+                            AboutStatusPill(title: "Region", value: cloudmatchLabel)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
             }
-            SettingsDivider()
-            SettingsInfoRow(label: "Version", value: appVersion)
-            SettingsInfoRow(label: "Account", value: viewModel.account.displayName)
-            SettingsInfoRow(label: "User ID", value: viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId)
-            SettingsInfoRow(label: "Streaming", value: "WebRTC")
-            SettingsInfoRow(label: "Cloudmatch", value: viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl)
+
+            SettingsCard(title: "Runtime") {
+                AboutDetailRow(label: "Version", value: appVersion, copyValue: appVersion, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey)
+            }
+
+            SettingsCard(title: "Account & Privacy") {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Sensitive identifiers are masked by default.")
+                            .font(.settingsNvidia(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Reveal only when collecting support diagnostics on your own machine.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.56))
+                    }
+                    Spacer()
+                    Button { revealSensitive.toggle() } label: {
+                        Text(revealSensitive ? "HIDE IDS" : "REVEAL IDS")
+                            .font(.settingsNvidia(size: 11, weight: .bold))
+                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
+                            .tracking(0.8)
+                            .padding(.horizontal, 12)
+                            .frame(height: 30)
+                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
+                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
+                    }
+                    .buttonStyle(.plain)
+                }
+                SettingsDivider()
+                AboutDetailRow(label: "Account", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Membership", value: membershipTier, copyValue: membershipTier, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
+            }
+
+            SettingsCard(title: "Services") {
+                AboutDetailRow(label: "Streaming", value: "WebRTC", copyValue: "WebRTC", copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Cloudmatch", value: cloudmatchDisplayValue, copyValue: cloudmatchCopyValue, copiedKey: $copiedKey)
+                SettingsDivider()
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: copiedKey == "diagnostics" ? "COPIED" : "COPY DIAGNOSTICS") {
+                        copy(diagnosticsText, key: "diagnostics")
+                    }
+                    Text("Copies non-secret app, runtime, and service identifiers for bug reports.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.54))
+                }
+            }
         }
+    }
+
+    private var userId: String {
+        viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+    }
+
+    private var displayedUserId: String {
+        revealSensitive ? userId : maskedIdentifier(userId)
+    }
+
+    private var membershipTier: String {
+        viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier
+    }
+
+    private var accountDisplayName: String {
+        viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
+    }
+
+    private var cloudmatchLabel: String {
+        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
+    }
+
+    private var cloudmatchDisplayValue: String {
+        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
+        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
+    }
+
+    private var cloudmatchCopyValue: String {
+        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
+    }
+
+    private var bundleIdentifier: String {
+        Bundle.main.bundleIdentifier ?? "Unknown"
+    }
+
+    private var operatingSystemVersion: String {
+        ProcessInfo.processInfo.operatingSystemVersionString
+    }
+
+    private var diagnosticsText: String {
+        [
+            "OpenNOW Mac Diagnostics",
+            "Version: \(appVersion)",
+            "Bundle: \(bundleIdentifier)",
+            "macOS: \(operatingSystemVersion)",
+            "Account: \(accountDisplayName)",
+            "Membership: \(membershipTier)",
+            "User ID: \(maskedIdentifier(userId))",
+            "Streaming: WebRTC",
+            "Cloudmatch: \(cloudmatchCopyValue)"
+        ].joined(separator: "\n")
+    }
+
+    private func copy(_ value: String, key: String) {
+        guard !value.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        copiedKey = key
+    }
+
+    private func maskedIdentifier(_ value: String) -> String {
+        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
+        return "\(value.prefix(6))****\(value.suffix(4))"
+    }
+
+    private func endpointHost(_ value: String) -> String {
+        URL(string: value)?.host ?? value
     }
 
     private var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "\(version) (\(build))"
+    }
+}
+
+private struct AboutStatusPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title.uppercased())
+                .font(.settingsNvidia(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.44))
+                .tracking(0.8)
+            Text(value.isEmpty ? "Unknown" : value)
+                .font(.settingsNvidia(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(Color.white.opacity(0.065))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+    }
+}
+
+private struct AboutDetailRow: View {
+    let label: String
+    let value: String
+    let copyValue: String
+    @Binding var copiedKey: String
+    var copyDisabled = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            Text(label.uppercased())
+                .font(.settingsNvidia(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.44))
+                .tracking(0.5)
+                .frame(width: 150, alignment: .leading)
+            Text(value.isEmpty ? "Unavailable" : value)
+                .font(.settingsNvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.84))
+                .lineLimit(2)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+            Button { copy(copyValue) } label: {
+                Text(copiedKey == label ? "COPIED" : "COPY")
+                    .font(.settingsNvidia(size: 10, weight: .bold))
+                    .foregroundStyle(copyDisabled ? .white.opacity(0.28) : .white.opacity(0.74))
+                    .tracking(0.7)
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
+                    .background(Color.white.opacity(copyDisabled ? 0.03 : 0.06))
+                    .overlay { Rectangle().stroke(Color.white.opacity(copyDisabled ? 0.05 : 0.12), lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .disabled(copyDisabled)
+        }
+    }
+
+    private func copy(_ value: String) {
+        guard !value.isEmpty, !copyDisabled else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        copiedKey = label
     }
 }
 
