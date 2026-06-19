@@ -2774,7 +2774,6 @@ private struct CatalogGameTile: View {
                     Rectangle()
                         .fill(Color.openNowGreen)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
-                        .offset(y: CatalogVendorLayout.wideTileHeight - 4)
                 }
             }
             .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
