@@ -439,10 +439,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 validationTrace?.setStatus(false)
                 validationTrace?.finish()
             }
-            if preClaimStatus == 1 || self.isReadyActiveSessionStatus(preClaimStatus) {
-                self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
-                return
-            }
             self.sendClaimSession(sessionId: sessionId, serverIp: serverIp, appId: launchAppId, settings: claimSettings, token: token, deviceId: deviceId, clientId: clientId, completion: completion)
         }.resume()
     }
@@ -537,8 +533,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             guard http?.statusCode == 200 else {
                 trace?.setStatus(false)
                 trace?.finish()
-                if body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
-                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
+                if self.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
+                    completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
                 }
                 completion(false, [:], "Claim HTTP \(http?.statusCode ?? 0): \(body)")
@@ -549,9 +545,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let statusCode = int(requestStatus?["statusCode"])
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
-                    trace?.setStatus(true)
+                    trace?.setStatus(false)
                     trace?.finish()
-                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
+                    completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
                 }
                 trace?.setStatus(false)
@@ -592,7 +588,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             var info = sessionInfo(from: session, requestedSessionId: context.sessionId, baseUrl: context.base, clientId: context.clientId, deviceId: context.deviceId, initialProfile: context.initialProfile)
             mergeAndStoreAdState(&info)
             context.complete(true, info, "")
-        } else if status == 1 || status == 6 {
+        } else if canContinuePollingActiveSessionStatus(status) {
             context.retry(after: pollDelay(attempt), attempt: attempt + 1)
         } else {
             context.complete(false, [:], "Session in terminal error state")
@@ -779,34 +775,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func activeSessionEntries(from sessions: [Any], streamingBaseUrl: String) -> [[String: Any]] {
         sessions.compactMap { item -> [String: Any]? in
             guard let session = item as? [String: Any] else { return nil }
-            let sessionId = string(session["sessionId"])
-            let status = int(session["status"])
-            guard !sessionId.isEmpty, isReusableActiveSessionStatus(status) else { return nil }
-            var streamingHost = ""
-            for connection in array(session["connectionInfo"]).compactMap({ $0 as? [String: Any] }) where int(connection["usage"]) == 14 {
-                let ip = usableEndpointHost(string(connection["ip"]))
-                if !ip.isEmpty {
-                    streamingHost = ip
-                    break
-                }
-                if let host = extractHost(from: string(connection["resourcePath"])), !host.isEmpty {
-                    streamingHost = host
-                    break
-                }
-            }
-            let controlInfo = session["sessionControlInfo"] as? [String: Any]
-            let controlHost = string(controlInfo?["ip"])
-            let serverIp = controlHost.isEmpty ? streamingHost : controlHost
-            guard !serverIp.isEmpty else { return nil }
-            let requestData = session["sessionRequestData"] as? [String: Any]
+            guard let descriptor = OPNActiveSessionParser.descriptor(from: session, streamingBaseUrl: streamingBaseUrl) else { return nil }
             return [
-                "sessionId": sessionId,
-                "appId": int(requestData?["appId"]),
-                "status": status,
-                "serverIp": serverIp,
-                "gpuType": string(session["gpuType"]),
-                "streamingBaseUrl": streamingBaseUrl,
-                "signalingUrl": streamingHost.isEmpty ? (controlHost.isEmpty ? "" : "wss://\(controlHost):443/nvst/") : "wss://\(streamingHost):443/nvst/",
+                "sessionId": descriptor.sessionId,
+                "appId": descriptor.appId,
+                "status": descriptor.status,
+                "serverIp": descriptor.resumeServer,
+                "gpuType": descriptor.gpuType,
+                "streamingBaseUrl": descriptor.streamingBaseUrl,
+                "signalingUrl": descriptor.signalingUrl,
             ]
         }
     }
@@ -841,8 +818,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         return statusCode == 11 || description.contains("SESSION_LIMIT")
     }
 
-    private func isReusableActiveSessionStatus(_ status: Int) -> Bool { [1, 2, 3, 6].contains(status) }
-    private func isReadyActiveSessionStatus(_ status: Int) -> Bool { status == 2 || status == 3 }
+    private func isReusableActiveSessionStatus(_ status: Int) -> Bool { OPNCloudMatchSessionState(rawValue: status)?.isVendorResumable == true }
+    private func isReadyActiveSessionStatus(_ status: Int) -> Bool { OPNCloudMatchSessionState(rawValue: status)?.isReadyForConnection == true }
+
+    private func canContinuePollingActiveSessionStatus(_ status: Int) -> Bool { OPNCloudMatchSessionState(rawValue: status)?.canContinuePolling == true }
+
+    private func isSessionNotPausedResponse(_ data: Data?) -> Bool {
+        guard let data, let requestStatus = jsonDictionary(data)?["requestStatus"] as? [String: Any] else { return false }
+        return int(requestStatus["statusCode"]) == 34 || string(requestStatus["statusDescription"]).contains("SESSION_NOT_PAUSED")
+    }
 
     private func pollDelay(_ attempt: Int) -> TimeInterval {
         attempt <= 12 ? 0.3 : (attempt <= 20 ? 0.5 : 1.0)

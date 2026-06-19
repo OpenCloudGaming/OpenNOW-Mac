@@ -148,45 +148,15 @@ enum OPNActiveSessionService {
     }
 
     private static func activeSession(from dictionary: [String: Any], streamingBaseUrl: String) -> OPNActiveSessionObject? {
-        let sessionId = string(dictionary["sessionId"])
-        let status = int(dictionary["status"])
-        let requestData = dictionary["sessionRequestData"] as? [String: Any]
-        let appId = int(requestData?["appId"])
-        var streamingHost = ""
-        for item in dictionary["connectionInfo"] as? [[String: Any]] ?? [] {
-            guard int(item["usage"]) == 14 else { continue }
-            let ip = string(item["ip"])
-            if isUsableEndpointHost(ip) {
-                streamingHost = ip
-                break
-            }
-            let resourcePath = string(item["resourcePath"])
-            if let host = URL(string: resourcePath)?.host, !host.isEmpty {
-                streamingHost = host
-                break
-            }
-        }
-        let controlInfo = dictionary["sessionControlInfo"] as? [String: Any]
-        let controlHost = string(controlInfo?["ip"])
-        let serverIp = controlHost.isEmpty ? streamingHost : controlHost
-        guard !sessionId.isEmpty, !serverIp.isEmpty, reusableStatuses.contains(status) else { return nil }
-        let signalingUrl = streamingHost.isEmpty ? (controlHost.isEmpty ? "" : "wss://\(controlHost):443/nvst/") : "wss://\(streamingHost):443/nvst/"
-        return OPNActiveSessionObject(sessionId: sessionId, appId: appId, status: status, serverIp: serverIp, streamingBaseUrl: streamingBaseUrl, signalingUrl: signalingUrl)
+        guard let descriptor = OPNActiveSessionParser.descriptor(from: dictionary, streamingBaseUrl: streamingBaseUrl) else { return nil }
+        return OPNActiveSessionObject(sessionId: descriptor.sessionId, appId: descriptor.appId, status: descriptor.status, serverIp: descriptor.resumeServer, streamingBaseUrl: descriptor.streamingBaseUrl, signalingUrl: descriptor.signalingUrl)
     }
-
-    private static let reusableStatuses: Set<Int> = [1, 2, 3, 6]
 
     private static func normalizedBaseURL(_ value: String) -> String {
         let raw = value.isEmpty ? OPNStreamPreferences.defaultStreamingBaseUrl : value
         var normalized = raw.hasPrefix("http://") || raw.hasPrefix("https://") ? raw : "https://\(raw)"
         if !normalized.hasSuffix("/") { normalized += "/" }
         return normalized
-    }
-
-    private static func isUsableEndpointHost(_ host: String) -> Bool {
-        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        return !trimmed.contains("/") && !trimmed.hasPrefix(".")
     }
 
     private static func userAgent() -> String {
