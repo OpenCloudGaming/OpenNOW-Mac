@@ -58,5 +58,7 @@
 	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>OpenNOW writes GeForce NOW shortcut files to your Desktop when you choose Add shortcut.</string>
 </dict>
 </plist>
