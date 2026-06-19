@@ -21,7 +21,8 @@ struct ContentView: View {
     var body: some View {
         LoginView(viewModel: viewModel, accounts: accounts)
             .frame(minWidth: 980, minHeight: 660)
-            .background(OpaqueTitlebarConfigurator())
+            .ignoresSafeArea(.container, edges: .top)
+            .background(HiddenTitlebarConfigurator())
             .task {
                 syncViewModel()
                 viewModel.bootstrap()
@@ -48,7 +49,7 @@ struct ContentView: View {
     }
 }
 
-private struct OpaqueTitlebarConfigurator: NSViewRepresentable {
+private struct HiddenTitlebarConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async { configure(window: view.window) }
@@ -61,9 +62,11 @@ private struct OpaqueTitlebarConfigurator: NSViewRepresentable {
 
     private func configure(window: NSWindow?) {
         guard let window else { return }
-        window.titlebarAppearsTransparent = false
+        window.styleMask.insert(.fullSizeContentView)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
         window.backgroundColor = NSColor(red: 45 / 255, green: 45 / 255, blue: 45 / 255, alpha: 1)
-        window.toolbarStyle = .unified
     }
 }
 

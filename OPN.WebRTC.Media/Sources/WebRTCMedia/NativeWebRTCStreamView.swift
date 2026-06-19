@@ -233,7 +233,7 @@ public final class NativeWebRTCStreamView: NSView {
 
     private func installPointerLockMonitor() {
         guard pointerLockMonitor == nil else { return }
-        pointerLockMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel, .keyDown]) { [weak self] event in
+        pointerLockMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel, .keyDown, .keyUp]) { [weak self] event in
             guard let self, self.isPointerLocked else { return event }
             guard NSApplication.shared.isActive, self.window?.isKeyWindow == true else {
                 self.setPointerLocked(false)
@@ -245,6 +245,13 @@ public final class NativeWebRTCStreamView: NSView {
                 return nil
             case .scrollWheel:
                 self.emitScrollWheel(event)
+                return nil
+            case .keyDown:
+                if self.handleCommand(event) { return nil }
+                self.emitKey(event, isPressed: true)
+                return nil
+            case .keyUp:
+                self.emitKey(event, isPressed: false)
                 return nil
             default:
                 return event
