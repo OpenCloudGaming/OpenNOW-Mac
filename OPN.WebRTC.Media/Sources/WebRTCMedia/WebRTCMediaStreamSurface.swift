@@ -130,7 +130,7 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "waveform.path.ecg", title: "Stats") {
                 statsVisible.toggle()
             }
-            sidebarButton(systemName: "record.circle", title: recordingButtonTitle, isActive: recordingStatus.isRecording) {
+            sidebarButton(systemName: "record.circle", title: recordingButtonTitle, isActive: recordingCanStop) {
                 toggleRecording()
             }
             .disabled(!isStreamReady || recordingIsBusy)
@@ -336,17 +336,21 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var recordingIsBusy: Bool {
-        if case .starting = recordingStatus { return true }
         if case .finishing = recordingStatus { return true }
         return false
     }
 
+    private var recordingCanStop: Bool {
+        if case .starting = recordingStatus { return true }
+        return recordingStatus.isRecording
+    }
+
     private var recordingButtonTitle: String {
-        recordingStatus.isRecording ? "Stop" : "Record"
+        recordingCanStop ? "Stop" : "Record"
     }
 
     private func toggleRecording() {
-        if recordingStatus.isRecording {
+        if recordingCanStop {
             transport?.stopRecording()
             return
         }

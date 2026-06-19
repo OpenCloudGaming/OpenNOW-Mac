@@ -152,7 +152,9 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 self.writer = writer
                 self.videoInput = videoInput
                 self.pixelBufferAdaptor = adaptor
-                self.emit(.starting)
+                self.startedAt = self.createdAt
+                self.firstHostTime = CACurrentMediaTime()
+                self.emit(.recording(startedAt: self.createdAt, elapsedSeconds: 0))
             } catch {
                 self.reset()
                 self.emit(.failed(Self.message(for: error)))
