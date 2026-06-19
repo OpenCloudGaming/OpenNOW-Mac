@@ -401,10 +401,12 @@ public struct WebRTCMediaStreamSurface: View {
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
-        guard pointerLocked else { return .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
-        if let mouse = mouseEvent(from: event), !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
+        if let mouse = mouseEvent(from: event) {
+            guard pointerLocked else { return .drop }
+            if !runtimeSettings.directMouseInput, isMouseMove(mouse) { return .drop }
+        }
         return .send
     }
 
@@ -501,10 +503,22 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func pauseFromQuitMenu() {
+        guard !isEndingStream else { return }
+        isEndingStream = true
         quitMenuVisible = false
-        pendingApplicationQuitCompletion?(false)
+        let completion = pendingApplicationQuitCompletion
         pendingApplicationQuitCompletion = nil
-        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.pause", level: .info, message: "Application quit paused from stream quit menu.", attributes: ["applicationID": configuration.applicationID])
+        nativeView?.setPointerLocked(false)
+        microphoneEnabled = false
+        transport?.setMicrophoneEnabled(false)
+        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.pause", level: .info, message: "Stream paused from quit menu.", attributes: ["applicationID": configuration.applicationID])
+        Task {
+            let report = await finishStream(reason: .paused, message: "Stream paused.")
+            await MainActor.run {
+                completion?(false)
+                onEnd(report.success, report.message, report)
+            }
+        }
     }
 
     private func quitStreamFromMenu() {
@@ -515,6 +529,7 @@ public struct WebRTCMediaStreamSurface: View {
         pendingApplicationQuitCompletion = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
+        transport?.setMicrophoneEnabled(false)
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.quit_stream", level: .info, message: "Stream quit requested from quit menu.", attributes: ["applicationID": configuration.applicationID])
         Task {
             let report = await finishStream(reason: .userRequested, message: "Stream ended by user.")

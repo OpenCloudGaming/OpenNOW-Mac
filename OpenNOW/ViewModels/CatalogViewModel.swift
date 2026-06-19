@@ -607,7 +607,8 @@ final class CatalogViewModel: ObservableObject {
             accountLinked: configuration.accountLinked,
             selectedStore: configuration.selectedStore,
             resumeSessionID: configuration.resumeSessionId,
-            resumeServer: configuration.resumeServer
+            resumeServer: configuration.resumeServer,
+            metadata: configuration.metadata
         )
     }
 

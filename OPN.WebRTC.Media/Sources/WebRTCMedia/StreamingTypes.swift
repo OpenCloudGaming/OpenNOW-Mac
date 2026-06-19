@@ -137,6 +137,7 @@ public struct StreamIceCandidate: Codable, Equatable, Hashable, Sendable {
 
 public enum StreamEndReason: String, Codable, Equatable, Hashable, Sendable {
     case completed
+    case paused
     case userRequested
     case remoteEnded
     case failed

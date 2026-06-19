@@ -21,8 +21,9 @@ public struct OPNStreamLaunchConfiguration: Identifiable, Equatable, Sendable {
     public let selectedStore: String
     public let resumeSessionId: String
     public let resumeServer: String
+    public let metadata: [String: String]
 
-    public init(title: String, appId: String, apiToken: String, accountLinked: Bool, selectedStore: String, resumeSessionId: String = "", resumeServer: String = "") {
+    public init(title: String, appId: String, apiToken: String, accountLinked: Bool, selectedStore: String, resumeSessionId: String = "", resumeServer: String = "", metadata: [String: String] = [:]) {
         self.id = UUID()
         self.title = title
         self.appId = appId
@@ -31,6 +32,7 @@ public struct OPNStreamLaunchConfiguration: Identifiable, Equatable, Sendable {
         self.selectedStore = selectedStore
         self.resumeSessionId = resumeSessionId
         self.resumeServer = resumeServer
+        self.metadata = metadata
     }
 }
 
@@ -89,12 +91,14 @@ public final class OPNGameLaunchBridge {
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
         let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
         let selectedStore = selectedVariant?.appStore ?? ""
+        let launchMetadata = Self.launchMetadata(for: game)
         let replacement = OPNStreamLaunchConfiguration(
             title: title,
             appId: appId,
             apiToken: token,
             accountLinked: accountLinked,
-            selectedStore: selectedStore
+            selectedStore: selectedStore,
+            metadata: launchMetadata
         )
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
         let gameBox = OPNGameLaunchBridgeSendableValue(game)
@@ -113,7 +117,8 @@ public final class OPNGameLaunchBridge {
                             accountLinked: true,
                             selectedStore: "",
                             resumeSessionId: requestedSession.sessionId,
-                            resumeServer: requestedSession.serverIp
+                            resumeServer: requestedSession.serverIp,
+                            metadata: launchMetadata
                         )))
                         return
                     }
@@ -127,7 +132,8 @@ public final class OPNGameLaunchBridge {
                             accountLinked: true,
                             selectedStore: "",
                             resumeSessionId: activeSession.sessionId,
-                            resumeServer: activeSession.serverIp
+                            resumeServer: activeSession.serverIp,
+                            metadata: launchMetadata
                         )
                         completion(true, "Another GeForce NOW session is already active.", .activeSession(active: active, resume: resume, replacement: replacement))
                         return
@@ -169,5 +175,33 @@ public final class OPNGameLaunchBridge {
         guard session.appId > 0 else { return false }
         let activeAppId = String(session.appId)
         return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
+    }
+
+    private static func launchMetadata(for game: OPNCatalogGameObject) -> [String: String] {
+        var imageUrls: [String] = []
+        var seen = Set<String>()
+
+        func append(_ value: String) {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { return }
+            seen.insert(trimmed)
+            imageUrls.append(trimmed)
+        }
+
+        func appendValues(forKey key: String) {
+            for value in game.imageUrlsByType[key] ?? [] { append(value) }
+            for value in game.imageUrlsByType[key.lowercased()] ?? [] { append(value) }
+        }
+
+        appendValues(forKey: "SCREENSHOTS")
+        for value in game.screenshotUrls { append(value) }
+        appendValues(forKey: "HERO_IMAGE")
+        appendValues(forKey: "MARQUEE_HERO_IMAGE")
+        appendValues(forKey: "FEATURE_IMAGE")
+        append(game.heroImageUrl)
+        append(game.imageUrl)
+
+        guard !imageUrls.isEmpty else { return [:] }
+        return ["loadingScreenshotUrls": imageUrls.joined(separator: "\n")]
     }
 }

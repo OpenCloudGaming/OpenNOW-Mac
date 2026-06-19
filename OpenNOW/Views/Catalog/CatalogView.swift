@@ -324,6 +324,25 @@ private struct VendorStreamLaunchLoadingOverlay: View {
             ZStack {
                 Color.black
 
+                if let screenshotURL = loadingScreenshotURL {
+                    AsyncImage(url: screenshotURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                .clipped()
+                        default:
+                            EmptyView()
+                        }
+                    }
+                    .transition(.opacity)
+                }
+
+                Rectangle()
+                    .fill(.black.opacity(0.42))
+
                 RadialGradient(
                     stops: [
                         .init(color: .white.opacity(0.18), location: 0.00),
@@ -383,6 +402,17 @@ private struct VendorStreamLaunchLoadingOverlay: View {
             .clipped()
         }
         .background(.black)
+    }
+
+    private var loadingScreenshotURL: URL? {
+        guard let configuration = viewModel.activeStreamConfiguration else { return nil }
+        let urls = (configuration.metadata["loadingScreenshotUrls"] ?? "")
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !urls.isEmpty else { return nil }
+        let index = abs(configuration.id.uuidString.hashValue) % urls.count
+        return URL(string: urls[index])
     }
 }
 

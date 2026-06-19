@@ -80,9 +80,9 @@ public final class NativeWebRTCGamepadMonitor {
                 leftTrigger: gamepad.leftTrigger.value,
                 rightTrigger: gamepad.rightTrigger.value,
                 leftStickX: gamepad.leftThumbstick.xAxis.value,
-                leftStickY: -gamepad.leftThumbstick.yAxis.value,
+                leftStickY: gamepad.leftThumbstick.yAxis.value,
                 rightStickX: gamepad.rightThumbstick.xAxis.value,
-                rightStickY: -gamepad.rightThumbstick.yAxis.value,
+                rightStickY: gamepad.rightThumbstick.yAxis.value,
                 timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
             )))
         }
