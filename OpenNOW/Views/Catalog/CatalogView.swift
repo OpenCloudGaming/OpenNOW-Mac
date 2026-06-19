@@ -2466,6 +2466,7 @@ private struct GameDetailPanel: View {
 
             Menu {
                 Button("Change game store") { viewModel.changeSelectedGameStore() }
+                Button("Share") { viewModel.shareSelectedGame() }
                 Button("Add shortcut") { viewModel.addShortcutForSelectedGame() }
                 if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
                     Button("Unmark as owned") { viewModel.removeSelectedVariantOwned() }

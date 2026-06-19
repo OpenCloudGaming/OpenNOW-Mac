@@ -1018,6 +1018,12 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func restoreStreamingProfileDefaults() {
+        OPNStreamPreferences.restoreStreamingProfileDefaults()
+        actionMessage = "Streaming profile defaults restored."
+        loadSettingsPreferences()
+    }
+
     func refreshCatalogImageCacheSummary() {
         Task { @MainActor in
             let statistics = await CatalogImageCache.shared.statistics()

@@ -630,6 +630,25 @@ private struct GameplaySettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Streaming Profile") {
+                SettingsInfoRow(label: "Mode", value: streamingProfileMode)
+                SettingsDivider()
+                SettingsInfoRow(label: "Data Usage", value: estimatedDataUsage)
+                SettingsDivider()
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Restore default streaming settings")
+                            .font(.settingsNvidia(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.56))
+                    }
+                    Spacer()
+                    SettingsActionButton(title: "RESTORE DEFAULTS") { viewModel.restoreStreamingProfileDefaults() }
+                }
+            }
+
             SettingsCard(title: "Streaming Quality") {
                 SettingsOptionRow(title: "Aspect Ratio", subtitle: "Controls the available resolution list.", options: OPNStreamPreferences.aspectOptions.map(\.label), selectedIndex: viewModel.streamProfile.aspectIndex, action: viewModel.setAspectIndex)
                 SettingsDivider()
@@ -676,6 +695,15 @@ private struct GameplaySettingsPage: View {
 
     private var selectedMicrophoneDeviceIndex: Int {
         viewModel.microphoneDeviceOptions.firstIndex { $0.uniqueId == viewModel.streamProfile.microphoneDeviceId } ?? 0
+    }
+
+    private var streamingProfileMode: String {
+        viewModel.streamProfile == OPNStreamPreferenceProfile() ? "Balanced defaults" : "Custom"
+    }
+
+    private var estimatedDataUsage: String {
+        let gbPerHour = Double(viewModel.streamProfile.maxBitrateMbps) * 0.45
+        return String(format: "Up to %.1f GB per hour at %d Mbps", gbPerHour, viewModel.streamProfile.maxBitrateMbps)
     }
 
     private func percentText(_ value: Double) -> String {

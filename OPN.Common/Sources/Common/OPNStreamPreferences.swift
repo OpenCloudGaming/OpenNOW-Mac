@@ -290,6 +290,37 @@ public enum OPNStreamPreferences {
     private static let defaultUpscalingTargetIndex = 1
     private static let maxConcurrentRegionMeasurements = 4
     private static let k = Keys.self
+    private static let streamingProfileKeys = [
+        Keys.aspectIndex,
+        Keys.resolutionIndex,
+        Keys.fpsIndex,
+        Keys.codecIndex,
+        Keys.bitrateIndex,
+        Keys.colorQualityIndex,
+        Keys.prefilterModeIndex,
+        Keys.prefilterSharpness,
+        Keys.prefilterDenoise,
+        Keys.upscalingModeIndex,
+        Keys.upscalingTargetIndex,
+        Keys.upscalingSharpness,
+        Keys.upscalingDenoise,
+        Keys.recordingVideoBitrateMbps,
+        Keys.recordingAudioBitrateKbps,
+        Keys.recordingEnhancedVideoEnabled,
+        Keys.l4sEnabled,
+        Keys.hdrEnabled,
+        Keys.lowLatencyModeEnabled,
+        Keys.powerSaverEnabled,
+        Keys.suppressInputWhenInactive,
+        Keys.directMouseInput,
+        Keys.gameVolume,
+        Keys.microphoneVolume,
+        Keys.microphoneShortcutEnabled,
+        Keys.microphoneMode,
+        Keys.microphoneDeviceId,
+        Keys.microphonePushToTalkKeyCode,
+        Keys.microphonePushToTalkModifierMask
+    ]
 
     public static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
         switch aspectIndex {
@@ -712,6 +743,13 @@ public enum OPNStreamPreferences {
     public static func saveMicrophoneDeviceId(_ deviceId: String) { deviceId.isEmpty ? storage.removeObject(forKey: k.microphoneDeviceId) : storage.set(deviceId, forKey: k.microphoneDeviceId) }
     public static func saveMicrophonePushToTalkKeyCode(_ value: Int) { storage.set(clamp(value, 0, 127), forKey: k.microphonePushToTalkKeyCode) }
     public static func saveMicrophonePushToTalkModifierMask(_ value: Int) { storage.set(sanitizedPushToTalkModifierMask(value), forKey: k.microphonePushToTalkModifierMask) }
+
+    public static func restoreStreamingProfileDefaults() {
+        for key in streamingProfileKeys {
+            storage.removeObject(forKey: key)
+        }
+        storage.synchronize()
+    }
 
     public static func microphonePushToTalkKeyLabel(_ keyCode: Int) -> String {
         keyLabels[keyCode] ?? "Key \(keyCode)"
