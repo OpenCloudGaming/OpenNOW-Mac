@@ -3,7 +3,9 @@ import Foundation
 public enum OPNNetworkLog {
     public static func start(_ request: URLRequest, operation: String) -> Date {
         let startedAt = Date()
-        OPNSentry.logInfoMessage("[OpenNOW][network][start] operation=\(operation) request=\(requestSummary(request))")
+        if shouldLogStart(operation: operation) {
+            OPNSentry.logInfoMessage("[OpenNOW][network][start] operation=\(operation) request=\(requestSummary(request))")
+        }
         return startedAt
     }
 
@@ -15,8 +17,12 @@ public enum OPNNetworkLog {
             OPNSentry.logErrorMessage("[OpenNOW][network][error] operation=\(operation) request=\(requestSummary(request)) status=\(statusCode) durationMs=\(durationMilliseconds) bytes=\(byteCount) error=\(error.localizedDescription)")
             return
         }
+        let succeeded = (200..<400).contains(statusCode) || statusCode == -1
         let message = "[OpenNOW][network][finish] operation=\(operation) request=\(requestSummary(request)) status=\(statusCode) durationMs=\(durationMilliseconds) bytes=\(byteCount)"
-        if (200..<400).contains(statusCode) || statusCode == -1 {
+        if succeeded && !shouldLogSuccessfulFinish(operation: operation, durationMilliseconds: durationMilliseconds) {
+            return
+        }
+        if succeeded {
             OPNSentry.logInfoMessage(message)
         } else {
             OPNSentry.logWarningMessage(message)
@@ -26,7 +32,9 @@ public enum OPNNetworkLog {
     public static func graphQLStart(_ request: URLRequest, operationName: String, queryHash: String, variables: NSDictionary?) -> Date {
         let variableKeys = sortedKeys(in: variables)
         let startedAt = Date()
-        OPNSentry.logInfoMessage("[OpenNOW][graphql][start] operation=\(operationName) hash=\(queryHash) variableKeys=\(variableKeys) request=\(requestSummary(request))")
+        if shouldLogGraphQLStart(operationName: operationName) {
+            OPNSentry.logInfoMessage("[OpenNOW][graphql][start] operation=\(operationName) hash=\(queryHash) variableKeys=\(variableKeys) request=\(requestSummary(request))")
+        }
         return startedAt
     }
 
@@ -38,7 +46,9 @@ public enum OPNNetworkLog {
             OPNSentry.logErrorMessage("[OpenNOW][graphql][error] operation=\(operationName) hash=\(queryHash) status=\(statusCode) durationMs=\(durationMilliseconds) bytes=\(byteCount) error=\(error.localizedDescription) request=\(requestSummary(request))")
             return
         }
-        let message = "[OpenNOW][graphql][finish] operation=\(operationName) hash=\(queryHash) status=\(statusCode) durationMs=\(durationMilliseconds) bytes=\(byteCount) message=\(responseMessage.isEmpty ? "ok" : responseMessage) request=\(requestSummary(request))"
+        let responseDetail = graphQLErrorDetail(data: data)
+        let detailText = responseDetail.isEmpty ? "" : " detail=\(responseDetail)"
+        let message = "[OpenNOW][graphql][finish] operation=\(operationName) hash=\(queryHash) status=\(statusCode) durationMs=\(durationMilliseconds) bytes=\(byteCount) message=\(responseMessage.isEmpty ? "ok" : responseMessage) request=\(requestSummary(request))\(detailText)"
         if responseMessage.isEmpty && ((200..<400).contains(statusCode) || statusCode == -1) {
             OPNSentry.logInfoMessage(message)
         } else {
@@ -47,7 +57,7 @@ public enum OPNNetworkLog {
     }
 
     public static func webSocketEvent(_ event: String, url: URL?, detail: String = "") {
-        let detailText = detail.isEmpty ? "" : " detail=\(detail)"
+        let detailText = detail.isEmpty ? "" : " detail=\(sanitizedDetail(detail))"
         OPNSentry.logInfoMessage("[OpenNOW][websocket][\(event)] url=\(sanitizedURL(url))\(detailText)")
     }
 
@@ -74,5 +84,33 @@ public enum OPNNetworkLog {
         guard let dictionary else { return "[]" }
         let keys = dictionary.allKeys.compactMap { $0 as? String }.sorted()
         return "[\(keys.joined(separator: ","))]"
+    }
+
+    private static func shouldLogStart(operation: String) -> Bool {
+        !["stream.measureRegion", "catalog.image"].contains(operation)
+    }
+
+    private static func shouldLogSuccessfulFinish(operation: String, durationMilliseconds: Int) -> Bool {
+        if operation == "stream.measureRegion" { return durationMilliseconds >= 1_000 }
+        return true
+    }
+
+    private static func shouldLogGraphQLStart(operationName: String) -> Bool {
+        operationName != "appMetaData"
+    }
+
+    private static func sanitizedDetail(_ detail: String) -> String {
+        detail.replacingOccurrences(
+            of: #"(?i)(x-nv-sessionid[.=])[^\s,;]+"#,
+            with: "$1[redacted-secret]",
+            options: [.regularExpression]
+        )
+    }
+
+    private static func graphQLErrorDetail(data: Data?) -> String {
+        guard let data, let text = String(data: data, encoding: .utf8), !text.isEmpty else { return "" }
+        guard text.contains("errors") || text.contains("error") else { return "" }
+        let singleLine = text.replacingOccurrences(of: #"\s+"#, with: " ", options: [.regularExpression])
+        return String(singleLine.prefix(500))
     }
 }

@@ -19,7 +19,6 @@ final class OPNGameService: @unchecked Sendable {
 
     private static let panelsHash = "f8e26265a5db5c20e1334a6872cf04b6e3970507697f6ae55a6ddefa5420daf0"
     private static let marqueeHash = "dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f"
-    private static let libraryWithTimeHash = "039e8c0d553972975485fee56e59f2549d2fdb518e247a42ab5022056a74406f"
     private static let appMetaDataHash = "cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63"
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
@@ -265,14 +264,7 @@ final class OPNGameService: @unchecked Sendable {
                     self.dispatchCatalog(completion, true, self.deduplicateGames(enriched), "")
                 }
             }
-            self.postGraphQL(operationName: "panels/Library", queryHash: Self.libraryWithTimeHash, variables: variables) { data, error in
-                if error.isEmpty {
-                    flatten(data, error)
-                } else {
-                    let retryVariables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNLocale(), "panelNames": ["LIBRARY"]]
-                    self.postGraphQL(operationName: "panels/Library", queryHash: Self.panelsHash, variables: retryVariables, completion: flatten)
-                }
-            }
+            self.postGraphQL(operationName: "panels/Library", queryHash: Self.panelsHash, variables: variables, completion: flatten)
         }
     }
 
@@ -673,7 +665,7 @@ final class OPNGameService: @unchecked Sendable {
         let fetchPage = RecursiveCatalogPageFetcher()
         fetchPage.action = { [weak self, state, fetchPage] page, cursor in
             guard let self else { return }
-            var variables: [String: Any] = ["vpcId": vpcId, "locale": locale, "sortString": sortString, "fetchCount": fetchCount, "cursor": cursor, "filters": filterBox.value]
+            var variables: [String: Any] = ["vpcId": vpcId, "locale": locale, "sortString": sortString, "fetchCount": fetchCount, "cursor": cursor.isEmpty ? NSNull() : cursor, "filters": filterBox.value]
             if !searchString.isEmpty { variables["searchString"] = searchString }
             postGraphQlJson(query: query, variables: variables as NSDictionary) { [weak self] data, error in
                 guard let self else { return }
@@ -2104,7 +2096,7 @@ private extension Array where Element: Hashable {
 private extension OPNGameService {
     static var catalogQuery: String {
         """
-        query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $filters: AppFilterFields!) {
+        query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
                 items { id title shortDescription longDescription description streetDate images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
@@ -2115,7 +2107,7 @@ private extension OPNGameService {
 
     static var catalogSearchQuery: String {
         """
-        query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $searchString: String!, $filters: AppFilterFields!) {
+        query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String, $searchString: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, searchQuery: $searchString, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
                 items { id title shortDescription longDescription description streetDate images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }

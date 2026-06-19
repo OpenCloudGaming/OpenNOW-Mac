@@ -52,11 +52,12 @@ enum OpenNOWLog {
         var sanitized = message
         let replacements: [(String, String)] = [
             (#"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"#, "[redacted-email]"),
-            (#"\b(?:\+?\d[\d .()\-]{7,}\d)\b"#, "[redacted-phone]"),
+            (#"\b(?:\+\d[\d .()\-]{7,}\d|\d[\d .()\-]{2,}\d[ .()\-]+\d[\d .()\-]*\d)\b"#, "[redacted-phone]"),
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
             (#"\b[0-9A-F]{8}-[0-9A-F]{4}-[1-5][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}\b"#, "[redacted-id]"),
-            (#"\b[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"#, "[redacted-token]"),
+            (#"\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b"#, "[redacted-token]"),
             (#"(?i)(bearer|basic)\s+[^\s,;]+"#, "$1 [redacted-token]"),
+            (#"(?i)(x-nv-sessionid[.=])[^\s,;]+"#, "$1[redacted-secret]"),
             (#"(?i)((?:access|refresh|id)?_?token|authorization|password|secret|api[_-]?key|session[_-]?id)([=:]\s*|""\s*:\s*"")[^\s,;\}"""]+"#, "$1$2[redacted-secret]"),
             (#"/Users/[^/\s]+"#, "/Users/[redacted-user]")
         ]
