@@ -32,6 +32,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var runtimeSettings = StreamRuntimeSettings()
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
+    @State private var recordingNotificationTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -459,7 +460,7 @@ public struct WebRTCMediaStreamSurface: View {
             handleTransportEnded(message: message)
         }
         transport.onRecordingStatusChanged = { status in
-            recordingStatus = status
+            handleRecordingStatusChanged(status)
         }
         nativeView.onInputEvent = { event in
             switch inputAction(for: event) {
@@ -505,6 +506,18 @@ public struct WebRTCMediaStreamSurface: View {
             for await snapshot in transport.statsSnapshots(intervalSeconds: 1) {
                 latestStats = snapshot
             }
+        }
+    }
+
+    private func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {
+        recordingNotificationTask?.cancel()
+        recordingStatus = status
+        guard case .failed = status else { return }
+        recordingNotificationTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard recordingStatus == status else { return }
+            recordingStatus = .idle
+            recordingNotificationTask = nil
         }
     }
 
@@ -697,6 +710,8 @@ public struct WebRTCMediaStreamSurface: View {
         pendingApplicationQuitCompletion = nil
         statsTask?.cancel()
         statsTask = nil
+        recordingNotificationTask?.cancel()
+        recordingNotificationTask = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)

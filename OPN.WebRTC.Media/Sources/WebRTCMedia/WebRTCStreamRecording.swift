@@ -252,7 +252,9 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             appendPixelBuffer(buffer.pixelBuffer)
             return
         }
+        let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
         queue.async {
+            let frame = Unmanaged<RTCVideoFrame>.fromOpaque(UnsafeRawPointer(bitPattern: retainedFrame)!).takeRetainedValue()
             guard self.isRecording else { return }
             let i420Frame = frame.newI420()
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
