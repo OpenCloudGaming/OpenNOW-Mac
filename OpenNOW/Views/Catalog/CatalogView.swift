@@ -569,7 +569,7 @@ private struct CatalogTopBar: View {
                     .foregroundStyle(.white.opacity(0.92))
                 Spacer()
             }
-            .padding(.leading, 12)
+            .padding(.leading, 86)
 
             if viewModel.selectedMainPage == .games {
                 catalogSearchField
@@ -2391,20 +2391,9 @@ private struct GameDetailPanel: View {
     private func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
         var labels: [String] = []
         if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
-        for technology in game.nvidiaTech.prefix(2) { appendUnique(shortTechnologyLabel(technology), to: &labels) }
-        for feature in game.featureLabels.prefix(2) { appendUnique(feature, to: &labels) }
+        for technology in supportedTechnologyLabels(game: game).prefix(2) { appendUnique(technology, to: &labels) }
         if labels.isEmpty { labels.append("Cloud Ready") }
         return labels
-    }
-
-    private func shortTechnologyLabel(_ technology: String) -> String {
-        let lowercased = technology.lowercased()
-        if lowercased.contains("ray") || lowercased.contains("rtx") { return "RTX" }
-        if lowercased.contains("reflex") { return "Reflex" }
-        if lowercased.contains("freestyle") { return "Freestyle" }
-        if lowercased.contains("highlight") { return "Highlights" }
-        if lowercased.contains("photo") { return "Photo Mode" }
-        return technology
     }
 
     private func detailEyebrow(game: OPNCatalogGameObject) -> some View {
@@ -2453,12 +2442,11 @@ private struct GameDetailPanel: View {
                 }
                 Button("Visit game store") { viewModel.openStoreForSelectedVariant() }
             } label: {
-                Image(systemName: "ellipsis.vertical")
-                    .font(.nvidia(size: 18, weight: .bold))
+                Text("⋮")
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white.opacity(0.88))
+                    .offset(y: -1)
                     .frame(width: 40, height: 40)
-                    .background(Color.black.opacity(0.28))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.22), lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
@@ -2467,8 +2455,8 @@ private struct GameDetailPanel: View {
 
     private func variantStatusRow(game: OPNCatalogGameObject) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(game.variants.prefix(1).enumerated()), id: \.offset) { index, variant in
-                Button { selectVariant(at: index, in: game) } label: {
+            if let variant = selectedVariant {
+                Button { viewModel.changeSelectedGameStore() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: storeIconName(variant: variant))
                             .font(.nvidia(size: 13, weight: .bold))
@@ -2546,10 +2534,22 @@ private struct GameDetailPanel: View {
     }
 
     private func nvidiaTechnologies(game: OPNCatalogGameObject) -> [String] {
+        supportedTechnologyLabels(game: game)
+    }
+
+    private func supportedTechnologyLabels(game: OPNCatalogGameObject) -> [String] {
         var values: [String] = []
-        for technology in game.nvidiaTech { appendUnique(technology, to: &values) }
-        for feature in game.featureLabels { appendUnique(feature, to: &values) }
+        for rawValue in game.nvidiaTech + game.featureLabels + game.skuTags {
+            if let label = supportedTechnologyLabel(rawValue) { appendUnique(label, to: &values) }
+        }
         return values
+    }
+
+    private func supportedTechnologyLabel(_ rawValue: String) -> String? {
+        let value = rawValue.lowercased()
+        if value.contains("reflex") { return "Reflex" }
+        if value.contains("rtx") || value.contains("ray tracing") || value.contains("raytracing") { return "RTX" }
+        return nil
     }
 
     private func featureMessage(_ feature: String) -> String {

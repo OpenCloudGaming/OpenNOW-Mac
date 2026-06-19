@@ -753,6 +753,7 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.supportedControls.isEmpty { merged.supportedControls = metadataGame.supportedControls }
                 if merged.contentRatings.isEmpty { merged.contentRatings = metadataGame.contentRatings }
                 if merged.ratingSystemName.isEmpty { merged.ratingSystemName = metadataGame.ratingSystemName }
+                if merged.ratingCategoryKey.isEmpty { merged.ratingCategoryKey = metadataGame.ratingCategoryKey }
                 if merged.ratingCategoryTitle.isEmpty { merged.ratingCategoryTitle = metadataGame.ratingCategoryTitle }
                 if merged.ratingDescriptors.isEmpty { merged.ratingDescriptors = metadataGame.ratingDescriptors }
                 if merged.ratingInteractiveElements.isEmpty { merged.ratingInteractiveElements = metadataGame.ratingInteractiveElements }
@@ -767,8 +768,52 @@ final class OPNGameService: @unchecked Sendable {
                     merged.promoTag = game.campaignIds.compactMap { tagsByCampaignId[$0] }.first ?? ""
                     return merged
                 }
-                completion(campaignEnriched)
+                self.enrichRatingMetadata(campaignEnriched, locale: Self.currentGFNLocale(), completion: completion)
             }
+        }
+    }
+
+    private func enrichRatingMetadata(_ games: [OPNGameInfo], locale: String, completion: @escaping @Sendable ([OPNGameInfo]) -> Void) {
+        guard games.contains(where: { !$0.ratingSystemName.isEmpty }) else {
+            completion(games)
+            return
+        }
+        fetchRatingDefinitions(locale: locale) { metadataByType in
+            let enriched = games.map { game in
+                guard let metadata = metadataByType[game.ratingSystemName.uppercased()] else { return game }
+                var output = game
+                metadata.apply(to: &output)
+                return output
+            }
+            completion(enriched)
+        }
+    }
+
+    private func fetchRatingDefinitions(locale: String, completion: @escaping @Sendable ([String: RatingMetadata]) -> Void) {
+        let query = """
+        query GetRatingDefinitions($locale: String!) {
+          ratingDefinitions(language: $locale) {
+            ratingSystem
+            label
+            displayInterval
+            contentDescriptors { key label sortOrder }
+            interactiveElements { key label sortOrder }
+            ratings { categoryKey description label minimumAge largeImageUrl smallImageUrl }
+          }
+        }
+        """
+        let variables: NSDictionary = ["locale": locale]
+        postGraphQlJson(query: query, variables: variables) { [weak self] data, _ in
+            guard let self else {
+                completion([:])
+                return
+            }
+            var metadataByType: [String: RatingMetadata] = [:]
+            for item in data?["ratingDefinitions"] as? [NSDictionary] ?? [] {
+                guard let type = self.safeString(item["ratingSystem"]), !type.isEmpty else { continue }
+                metadataByType[type.uppercased()] = self.parseRatingMetadata(item)
+            }
+            completion(metadataByType)
         }
     }
 
@@ -1244,6 +1289,7 @@ final class OPNGameService: @unchecked Sendable {
             let type = firstSafeString(dictionary, keys: ["type", "ratingSystem", "system"]) ?? ""
             let categoryLabel = ratingCategoryLabel(categoryKey: categoryKey, type: type) ?? ""
             if game.ratingSystemName.isEmpty { game.ratingSystemName = readableRatingSystem(type) }
+            if game.ratingCategoryKey.isEmpty { game.ratingCategoryKey = categoryKey }
             if game.ratingCategoryTitle.isEmpty { game.ratingCategoryTitle = categoryLabel }
             if game.ratingImageUrl.isEmpty { game.ratingImageUrl = ratingImageString(dictionary["rating"] ?? dictionary["image"] ?? dictionary["images"] ?? dictionary["largeImageUrl"]) }
             if !categoryLabel.isEmpty { appendUnique(&values, categoryLabel) }
@@ -1268,6 +1314,30 @@ final class OPNGameService: @unchecked Sendable {
         var values: [String] = []
         appendStringValues(&values, rawValue)
         return values.map(readableMetadataLabel)
+    }
+
+    private func parseRatingMetadata(_ dictionary: NSDictionary?) -> RatingMetadata {
+        var metadata = RatingMetadata()
+        for entry in dictionary?["ratings"] as? [NSDictionary] ?? [] {
+            let key = (safeString(entry["categoryKey"]) ?? "").uppercased()
+            guard !key.isEmpty else { continue }
+            metadata.ratingsByCategoryKey[key] = RatingCategoryMetadata(
+                label: safeString(entry["label"]) ?? "",
+                largeImageUrl: safeString(entry["largeImageUrl"]) ?? "",
+                smallImageUrl: safeString(entry["smallImageUrl"]) ?? ""
+            )
+        }
+        for entry in dictionary?["contentDescriptors"] as? [NSDictionary] ?? [] {
+            let key = (safeString(entry["key"]) ?? "").uppercased()
+            let label = safeString(entry["label"]) ?? ""
+            if !key.isEmpty, !label.isEmpty { metadata.contentDescriptorsByKey[key] = label }
+        }
+        for entry in dictionary?["interactiveElements"] as? [NSDictionary] ?? [] {
+            let key = (safeString(entry["key"]) ?? "").uppercased()
+            let label = safeString(entry["label"]) ?? ""
+            if !key.isEmpty, !label.isEmpty { metadata.interactiveElementsByKey[key] = label }
+        }
+        return metadata
     }
 
     private func appendMetadataLabels(_ values: inout [String], _ rawValue: Any?) {
@@ -1838,6 +1908,35 @@ private final class RecursiveCatalogPageFetcher: @unchecked Sendable {
 
 private final class MetadataState: @unchecked Sendable {
     var metadataById: [String: NSDictionary] = [:]
+}
+
+private struct RatingCategoryMetadata: Sendable {
+    var label = ""
+    var largeImageUrl = ""
+    var smallImageUrl = ""
+}
+
+private struct RatingMetadata: Sendable {
+    var ratingsByCategoryKey: [String: RatingCategoryMetadata] = [:]
+    var contentDescriptorsByKey: [String: String] = [:]
+    var interactiveElementsByKey: [String: String] = [:]
+
+    func apply(to game: inout OPNGameInfo) {
+        let normalizedCategory = game.ratingCategoryKey.uppercased().replacingOccurrences(of: "-", with: "_")
+        let rating = ratingsByCategoryKey[normalizedCategory] ?? ratingsByCategoryKey.first { $0.value.label.caseInsensitiveCompare(game.ratingCategoryTitle) == .orderedSame }?.value
+        if let rating {
+            if !rating.label.isEmpty { game.ratingCategoryTitle = rating.label }
+            if game.ratingImageUrl.isEmpty { game.ratingImageUrl = rating.largeImageUrl.isEmpty ? rating.smallImageUrl : rating.largeImageUrl }
+        }
+        game.ratingDescriptors = game.ratingDescriptors.map { contentDescriptorsByKey[$0.uppercased().replacingOccurrences(of: " ", with: "_")] ?? $0 }
+        game.ratingInteractiveElements = game.ratingInteractiveElements.map { interactiveElementsByKey[$0.uppercased().replacingOccurrences(of: " ", with: "_")] ?? $0 }
+        var contentRatings: [String] = []
+        if !game.ratingCategoryTitle.isEmpty { contentRatings.append(game.ratingCategoryTitle) }
+        if !game.ratingSystemName.isEmpty { contentRatings.append(game.ratingSystemName) }
+        contentRatings.append(contentsOf: game.ratingDescriptors)
+        contentRatings.append(contentsOf: game.ratingInteractiveElements)
+        if !contentRatings.isEmpty { game.contentRatings = contentRatings }
+    }
 }
 
 private final class NSDictionaryBox: @unchecked Sendable {

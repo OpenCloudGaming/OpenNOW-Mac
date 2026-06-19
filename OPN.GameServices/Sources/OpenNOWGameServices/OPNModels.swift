@@ -104,6 +104,7 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var supportedControls: [String] = []
     public var contentRatings: [String] = []
     public var ratingSystemName = ""
+    public var ratingCategoryKey = ""
     public var ratingCategoryTitle = ""
     public var ratingDescriptors: [String] = []
     public var ratingInteractiveElements: [String] = []
@@ -346,6 +347,7 @@ public final class OPNCatalogGameObject: NSObject {
     public var supportedControls: [String]
     public var contentRatings: [String]
     public var ratingSystemName: String
+    public var ratingCategoryKey: String
     public var ratingCategoryTitle: String
     public var ratingDescriptors: [String]
     public var ratingInteractiveElements: [String]
@@ -385,6 +387,7 @@ public final class OPNCatalogGameObject: NSObject {
         supportedControls = game.supportedControls
         contentRatings = game.contentRatings
         ratingSystemName = game.ratingSystemName
+        ratingCategoryKey = game.ratingCategoryKey
         ratingCategoryTitle = game.ratingCategoryTitle
         ratingDescriptors = game.ratingDescriptors
         ratingInteractiveElements = game.ratingInteractiveElements
@@ -423,6 +426,7 @@ public final class OPNCatalogGameObject: NSObject {
         game.supportedControls = supportedControls
         game.contentRatings = contentRatings
         game.ratingSystemName = ratingSystemName
+        game.ratingCategoryKey = ratingCategoryKey
         game.ratingCategoryTitle = ratingCategoryTitle
         game.ratingDescriptors = ratingDescriptors
         game.ratingInteractiveElements = ratingInteractiveElements

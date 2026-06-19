@@ -252,6 +252,7 @@ final class OPNGameDataCache: NSObject {
         putArray(game.supportedControls, key: "c", into: &dictionary)
         putArray(game.contentRatings, key: "r", into: &dictionary)
         putString(game.ratingSystemName, key: "rs", into: &dictionary)
+        putString(game.ratingCategoryKey, key: "rk", into: &dictionary)
         putString(game.ratingCategoryTitle, key: "rc", into: &dictionary)
         putArray(game.ratingDescriptors, key: "rd", into: &dictionary)
         putArray(game.ratingInteractiveElements, key: "ri", into: &dictionary)
@@ -291,6 +292,7 @@ final class OPNGameDataCache: NSObject {
         game.supportedControls = dictionary["c"] as? [String] ?? []
         game.contentRatings = dictionary["r"] as? [String] ?? []
         game.ratingSystemName = dictionary["rs"] as? String ?? ""
+        game.ratingCategoryKey = dictionary["rk"] as? String ?? ""
         game.ratingCategoryTitle = dictionary["rc"] as? String ?? ""
         game.ratingDescriptors = dictionary["rd"] as? [String] ?? []
         game.ratingInteractiveElements = dictionary["ri"] as? [String] ?? []
