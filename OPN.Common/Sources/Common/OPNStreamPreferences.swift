@@ -288,6 +288,7 @@ public enum OPNStreamPreferences {
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
     private static let defaultUpscalingTargetIndex = 1
+    private static let maxConcurrentRegionMeasurements = 4
     private static let k = Keys.self
 
     public static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
@@ -895,10 +896,22 @@ public enum OPNStreamPreferences {
             return
         }
         let state = RegionMeasurementState(regions)
+        let orderedIndices = prioritizedRegionMeasurementIndices(regions)
         let group = DispatchGroup()
-        for index in regions.indices {
+        let queue = OperationQueue()
+        queue.name = "com.opennow.stream.region-measurements"
+        queue.qualityOfService = .utility
+        queue.maxConcurrentOperationCount = maxConcurrentRegionMeasurements
+        for index in orderedIndices {
             group.enter()
-            measureRegion(state: state, index: index, token: token, attempt: 0, bestLatencyMs: -1, group: group)
+            queue.addOperation {
+                let semaphore = DispatchSemaphore(value: 0)
+                measureRegion(state: state, index: index, token: token, attempt: 0, bestLatencyMs: -1) {
+                    semaphore.signal()
+                }
+                semaphore.wait()
+                group.leave()
+            }
         }
         group.notify(queue: .main) {
             let sorted = state.values.sorted {
@@ -912,7 +925,27 @@ public enum OPNStreamPreferences {
         }
     }
 
-    private static func measureRegion(state: RegionMeasurementState, index: Int, token: String, attempt: Int, bestLatencyMs: Int, group: DispatchGroup) {
+    private static func prioritizedRegionMeasurementIndices(_ regions: [OPNStreamRegionOption]) -> [Int] {
+        let selectedRegionUrl = loadSelectedRegionUrl()
+        let normalizedSelectedUrl = selectedRegionUrl.isEmpty ? "" : normalizedBaseUrl(selectedRegionUrl)
+        let cachedLatencyByUrl = Dictionary(uniqueKeysWithValues: loadCachedRegions().map { (normalizedBaseUrl($0.url), $0.latencyMs) })
+        return regions.indices.sorted { lhs, rhs in
+            let left = regions[lhs]
+            let right = regions[rhs]
+            let leftSelected = !normalizedSelectedUrl.isEmpty && normalizedBaseUrl(left.url) == normalizedSelectedUrl
+            let rightSelected = !normalizedSelectedUrl.isEmpty && normalizedBaseUrl(right.url) == normalizedSelectedUrl
+            if leftSelected != rightSelected { return leftSelected }
+            let leftLatency = cachedLatencyByUrl[normalizedBaseUrl(left.url)] ?? Int.max
+            let rightLatency = cachedLatencyByUrl[normalizedBaseUrl(right.url)] ?? Int.max
+            let leftHasLatency = leftLatency >= 0 && leftLatency < Int.max
+            let rightHasLatency = rightLatency >= 0 && rightLatency < Int.max
+            if leftHasLatency != rightHasLatency { return leftHasLatency }
+            if leftLatency != rightLatency { return leftLatency < rightLatency }
+            return left.name < right.name
+        }
+    }
+
+    private static func measureRegion(state: RegionMeasurementState, index: Int, token: String, attempt: Int, bestLatencyMs: Int, completion: @escaping @Sendable () -> Void) {
         let start = Date()
         let region = state.region(at: index)
         var request = serverInfoRequest(baseUrl: region.url, token: token)
@@ -928,10 +961,10 @@ public enum OPNStreamPreferences {
                 state.setLatency(updatedBest, at: index)
             }
             if updatedBest >= 0, attempt + 1 < 2 {
-                measureRegion(state: state, index: index, token: token, attempt: attempt + 1, bestLatencyMs: updatedBest, group: group)
+                measureRegion(state: state, index: index, token: token, attempt: attempt + 1, bestLatencyMs: updatedBest, completion: completion)
                 return
             }
-            group.leave()
+            completion()
         }.resume()
     }
 

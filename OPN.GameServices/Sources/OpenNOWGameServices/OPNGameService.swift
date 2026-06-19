@@ -157,26 +157,6 @@ final class OPNGameService: @unchecked Sendable {
             vpcId: resolvedVpcId
         )
 
-        if var fresh = OPNGameDataCache.shared.loadFreshCatalog(key: catalogCacheKey, maxAgeSeconds: Self.catalogCacheFreshSeconds),
-           let definitions = OPNGameDataCache.shared.loadCatalogDefinitions(locale: locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) {
-            _ = parseCatalogDefinitions(definitions, result: &fresh)
-            dispatchCatalogBrowse(completion, true, fresh, "")
-            return
-        }
-
-        let deliveredCachedResult = AtomicFlag()
-        if let cached = OPNGameDataCache.shared.loadCatalog(key: catalogCacheKey) {
-            deliveredCachedResult.setTrue()
-            dispatchCatalogBrowse(completion, true, cached, "")
-        }
-
-        let definitionsQuery = """
-        query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
-            filterGroupDefinitions(language: $locale) { id label filters { id label filters } }
-            sortOrderDefinitions(language: $locale) { id label orderBy }
-        }
-        """
-
         let parameters = CatalogDefinitionParameters(
             requestedSortId: requestedSortId,
             filterIds: filterIds,
@@ -187,13 +167,50 @@ final class OPNGameService: @unchecked Sendable {
             catalogCacheKey: catalogCacheKey
         )
 
-        if let cachedDefinitions = OPNGameDataCache.shared.loadCatalogDefinitions(locale: locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) {
-            handleCatalogDefinitions(cachedDefinitions, "", parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
-        } else {
-            postGraphQlJson(query: definitionsQuery, variables: ["locale": locale] as NSDictionary) { [weak self] data, error in
+        OPNGameDataCache.shared.loadFreshCatalogAndDefinitions(
+            key: catalogCacheKey,
+            locale: locale,
+            catalogMaxAgeSeconds: Self.catalogCacheFreshSeconds,
+            definitionsMaxAgeSeconds: Self.catalogDefinitionsFreshSeconds
+        ) { [weak self] freshCatalog, freshDefinitions in
+            guard let self else { return }
+            if var fresh = freshCatalog, let definitions = freshDefinitions {
+                _ = self.parseCatalogDefinitions(definitions, result: &fresh)
+                self.dispatchCatalogBrowse(completion, true, fresh, "")
+                return
+            }
+
+            self.continueBrowseAfterFreshCacheMiss(parameters: parameters, completion: completion)
+        }
+    }
+
+    private func continueBrowseAfterFreshCacheMiss(parameters: CatalogDefinitionParameters, completion: @escaping OPNCatalogBrowseCallback) {
+        let deliveredCachedResult = AtomicFlag()
+        OPNGameDataCache.shared.loadCatalogAsync(key: parameters.catalogCacheKey) { [weak self] cached in
+            guard let self else { return }
+            if let cached {
+                deliveredCachedResult.setTrue()
+                self.dispatchCatalogBrowse(completion, true, cached, "")
+            }
+
+            OPNGameDataCache.shared.loadCatalogDefinitionsAsync(locale: parameters.locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
                 guard let self else { return }
-                if error.isEmpty, let data { OPNGameDataCache.shared.saveCatalogDefinitions(locale: locale, definitions: data) }
-                self.handleCatalogDefinitions(data, error, parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
+                if let cachedDefinitions {
+                    self.handleCatalogDefinitions(cachedDefinitions, "", parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
+                    return
+                }
+
+                let definitionsQuery = """
+                query GetFilterGroupAndSortOrderDefinitions($locale: String!) {
+                    filterGroupDefinitions(language: $locale) { id label filters { id label filters } }
+                    sortOrderDefinitions(language: $locale) { id label orderBy }
+                }
+                """
+                self.postGraphQlJson(query: definitionsQuery, variables: ["locale": parameters.locale] as NSDictionary) { [weak self] data, error in
+                    guard let self else { return }
+                    if error.isEmpty, let data { OPNGameDataCache.shared.saveCatalogDefinitionsAsync(locale: parameters.locale, definitions: data) }
+                    self.handleCatalogDefinitions(data, error, parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
+                }
             }
         }
     }
@@ -698,7 +715,7 @@ final class OPNGameService: @unchecked Sendable {
                     self.enrichGames(games, vpcId: vpcId) { enriched in
                         var finalResult = state.result
                         finalResult.games = enriched
-                        OPNGameDataCache.shared.saveCatalog(key: catalogCacheKey, result: finalResult)
+                        OPNGameDataCache.shared.saveCatalogAsync(key: catalogCacheKey, result: finalResult)
                         self.dispatchCatalogBrowse(completion, true, finalResult, "")
                     }
                 }

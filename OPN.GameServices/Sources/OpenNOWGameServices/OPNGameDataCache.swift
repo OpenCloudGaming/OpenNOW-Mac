@@ -10,6 +10,7 @@ final class OPNGameDataCache: NSObject {
     private let catalogPath: String
     private let catalogDefinitionsPath: String
     private let imagePath: String
+    private let ioQueue = DispatchQueue(label: "com.opennow.game-data-cache.io", qos: .utility)
 
     private override init() {
         let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
@@ -81,6 +82,33 @@ final class OPNGameDataCache: NSObject {
         loadCatalog(key: key, requireFreshness: true, maxAgeSeconds: maxAgeSeconds)
     }
 
+    func loadFreshCatalogAndDefinitions(
+        key: String,
+        locale: String,
+        catalogMaxAgeSeconds: TimeInterval,
+        definitionsMaxAgeSeconds: TimeInterval,
+        completion: @escaping @Sendable (OPNCatalogBrowseResult?, NSDictionary?) -> Void
+    ) {
+        ioQueue.async { [self] in
+            completion(
+                loadFreshCatalog(key: key, maxAgeSeconds: catalogMaxAgeSeconds),
+                loadCatalogDefinitions(locale: locale, maxAgeSeconds: definitionsMaxAgeSeconds)
+            )
+        }
+    }
+
+    func loadCatalogAsync(key: String, completion: @escaping @Sendable (OPNCatalogBrowseResult?) -> Void) {
+        ioQueue.async { [self] in
+            completion(loadCatalog(key: key))
+        }
+    }
+
+    func saveCatalogAsync(key: String, result: OPNCatalogBrowseResult) {
+        ioQueue.async { [self] in
+            saveCatalog(key: key, result: result)
+        }
+    }
+
     func saveCatalog(key: String, result: OPNCatalogBrowseResult) {
         let dictionary: [String: Any] = [
             "ts": Date().timeIntervalSince1970,
@@ -130,6 +158,18 @@ final class OPNGameDataCache: NSObject {
             "ts": Date().timeIntervalSince1970,
             "data": definitions,
         ])
+    }
+
+    func loadCatalogDefinitionsAsync(locale: String, maxAgeSeconds: TimeInterval, completion: @escaping @Sendable (NSDictionary?) -> Void) {
+        ioQueue.async { [self] in
+            completion(loadCatalogDefinitions(locale: locale, maxAgeSeconds: maxAgeSeconds))
+        }
+    }
+
+    func saveCatalogDefinitionsAsync(locale: String, definitions: NSDictionary) {
+        ioQueue.async { [self] in
+            saveCatalogDefinitions(locale: locale, definitions: definitions)
+        }
     }
 
     @objc(loadCatalogDefinitionsWithLocale:maxAgeSeconds:)

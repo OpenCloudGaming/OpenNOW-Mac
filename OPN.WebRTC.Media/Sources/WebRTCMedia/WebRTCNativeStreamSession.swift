@@ -272,10 +272,12 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             if let track = impl.remoteVideoTrack, let renderer = impl.remoteVideoRenderer { track.remove(renderer) }
             impl.remoteAudioTrack?.isEnabled = false
             impl.localMicrophoneTrack?.isEnabled = false
+            let remoteVideoView = impl.remoteVideoView
+            impl.remoteVideoView = nil
             if Thread.isMainThread {
-                MainActor.assumeIsolated { impl.remoteVideoView?.removeFromSuperview() }
+                MainActor.assumeIsolated { remoteVideoView?.removeFromSuperview() }
             } else {
-                DispatchQueue.main.sync { impl.remoteVideoView?.removeFromSuperview() }
+                DispatchQueue.main.async { remoteVideoView?.removeFromSuperview() }
             }
             impl.reliableInputChannel?.close()
             impl.partialInputChannel?.close()

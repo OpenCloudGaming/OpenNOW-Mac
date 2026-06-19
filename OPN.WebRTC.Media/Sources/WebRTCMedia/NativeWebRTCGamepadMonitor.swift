@@ -7,6 +7,8 @@ public final class NativeWebRTCGamepadMonitor {
     nonisolated(unsafe) private var timer: Timer?
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
     private var controllerSlots: [ObjectIdentifier: Int] = [:]
+    private var cachedControllers: [GCController] = []
+    private var lastStates: [ObjectIdentifier: GamepadControlSnapshot] = [:]
     private var pollingAllowed = false
 
     public init() {
@@ -44,7 +46,10 @@ public final class NativeWebRTCGamepadMonitor {
 
     private func refreshControllerSlots() {
         controllerSlots.removeAll()
-        for (index, controller) in GCController.controllers().filter({ $0.extendedGamepad != nil }).prefix(4).enumerated() {
+        cachedControllers = Array(GCController.controllers().filter { $0.extendedGamepad != nil }.prefix(4))
+        let activeIdentifiers = Set(cachedControllers.map(ObjectIdentifier.init))
+        lastStates = lastStates.filter { activeIdentifiers.contains($0.key) }
+        for (index, controller) in cachedControllers.enumerated() {
             controllerSlots[ObjectIdentifier(controller)] = index
         }
         if pollingAllowed {
@@ -68,15 +73,27 @@ public final class NativeWebRTCGamepadMonitor {
     }
 
     private func pollControllers() {
-        let controllers = GCController.controllers().filter { $0.extendedGamepad != nil }
-        if controllers.count != controllerSlots.count { refreshControllerSlots() }
-        for controller in controllers {
+        if Self.connectedGamepadCount() != controllerSlots.count { refreshControllerSlots() }
+        for controller in cachedControllers {
             guard let gamepad = controller.extendedGamepad,
                   let playerIndex = controllerSlots[ObjectIdentifier(controller)] else { continue }
+            let buttons = buttons(from: gamepad)
+            let snapshot = GamepadControlSnapshot(
+                buttons: buttons,
+                leftTrigger: gamepad.leftTrigger.value,
+                rightTrigger: gamepad.rightTrigger.value,
+                leftStickX: gamepad.leftThumbstick.xAxis.value,
+                leftStickY: gamepad.leftThumbstick.yAxis.value,
+                rightStickX: gamepad.rightThumbstick.xAxis.value,
+                rightStickY: gamepad.rightThumbstick.yAxis.value
+            )
+            let identifier = ObjectIdentifier(controller)
+            guard lastStates[identifier] != snapshot else { continue }
+            lastStates[identifier] = snapshot
             onInputEvent?(.gamepad(GamepadState(
                 deviceID: InputDeviceID(controller.vendorName ?? "controller-\(playerIndex)"),
                 playerIndex: playerIndex,
-                buttons: buttons(from: gamepad),
+                buttons: buttons,
                 leftTrigger: gamepad.leftTrigger.value,
                 rightTrigger: gamepad.rightTrigger.value,
                 leftStickX: gamepad.leftThumbstick.xAxis.value,
@@ -106,4 +123,14 @@ public final class NativeWebRTCGamepadMonitor {
         if gamepad.buttonMenu.isPressed { buttons.insert(.start) }
         return buttons
     }
+}
+
+private struct GamepadControlSnapshot: Equatable {
+    let buttons: GamepadButtons
+    let leftTrigger: Float
+    let rightTrigger: Float
+    let leftStickX: Float
+    let leftStickY: Float
+    let rightStickX: Float
+    let rightStickY: Float
 }

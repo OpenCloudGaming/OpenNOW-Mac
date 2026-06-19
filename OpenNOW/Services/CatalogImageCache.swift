@@ -8,17 +8,16 @@ import Foundation
 import OpenNOWTelemetry
 import SwiftData
 
-struct CatalogCachedImageData: Sendable {
+struct CatalogCachedImageData: @unchecked Sendable {
     let data: Data
     let image: NSImage
 }
 
-@MainActor
-final class CatalogImageCache {
+actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
     private let memoryCache = NSCache<NSURL, CatalogCachedImageBox>()
-    private var modelContainer: ModelContainer?
+    private let containerStore = CatalogImageCacheContainerStore()
     private var inFlightLoads: [URL: Task<CatalogCachedImageData?, Never>] = [:]
     private var prefetchTask: Task<Void, Never>?
 
@@ -31,8 +30,14 @@ final class CatalogImageCache {
         memoryCache.totalCostLimit = 128 * 1024 * 1024
     }
 
-    func configure(container: ModelContainer) {
-        modelContainer = container
+    nonisolated func configure(container: ModelContainer) {
+        containerStore.configure(container: container)
+    }
+
+    nonisolated func prefetch(_ urls: [URL]) {
+        Task(priority: .background) { [weak self] in
+            await self?.startPrefetch(urls)
+        }
     }
 
     func image(for url: URL) async -> CatalogCachedImageData? {
@@ -54,7 +59,7 @@ final class CatalogImageCache {
         return result
     }
 
-    func prefetch(_ urls: [URL]) {
+    private func startPrefetch(_ urls: [URL]) {
         let uniqueUrls = Array(Dictionary(grouping: urls, by: { $0 }).keys)
         guard !uniqueUrls.isEmpty else { return }
         prefetchTask?.cancel()
@@ -62,7 +67,7 @@ final class CatalogImageCache {
             guard let self else { return }
             for url in uniqueUrls {
                 guard !Task.isCancelled else { return }
-                if self.memoryCache.object(forKey: url as NSURL) != nil { continue }
+                if await self.hasCachedImage(for: url) { continue }
                 _ = await self.image(for: url)
                 try? await Task.sleep(nanoseconds: 35_000_000)
             }
@@ -113,31 +118,35 @@ final class CatalogImageCache {
             let (data, response) = try await URLSession.shared.data(for: request)
             OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: data, response: response, error: nil)
             guard let httpResponse = response as? HTTPURLResponse else {
-                OpenNOWLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)")
+                await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)") }
                 return nil
             }
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
-                OpenNOWLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)")
+                await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
                 return loadStoredImage(for: url)?.imageData
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
-                OpenNOWLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)")
+                await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
                 return nil
             }
             guard let image = NSImage(data: data) else {
-                OpenNOWLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)")
+                await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)") }
                 return nil
             }
             let imageData = CatalogCachedImageData(data: data, image: image)
             store(imageData: imageData, response: httpResponse, for: url)
-            OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)")
+            await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
             return imageData
         } catch {
             OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: nil, response: nil, error: error)
-            OpenNOWLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)")
+            await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)") }
             return nil
         }
+    }
+
+    private func hasCachedImage(for url: URL) -> Bool {
+        memoryCache.object(forKey: url as NSURL) != nil
     }
 
     private func markStoredImageFresh(for url: URL) {
@@ -193,7 +202,7 @@ final class CatalogImageCache {
     }
 
     private func makeContext() -> ModelContext? {
-        guard let modelContainer else { return nil }
+        guard let modelContainer = containerStore.container() else { return nil }
         return ModelContext(modelContainer)
     }
 
@@ -205,7 +214,22 @@ final class CatalogImageCache {
     }
 }
 
-private final class CatalogCachedImageBox {
+nonisolated private final class CatalogImageCacheContainerStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var modelContainer: ModelContainer?
+
+    func configure(container: ModelContainer) {
+        lock.withLock {
+            modelContainer = container
+        }
+    }
+
+    func container() -> ModelContainer? {
+        lock.withLock { modelContainer }
+    }
+}
+
+nonisolated private final class CatalogCachedImageBox {
     let value: CatalogCachedImageData
 
     init(value: CatalogCachedImageData) {

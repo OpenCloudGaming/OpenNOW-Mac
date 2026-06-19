@@ -1939,7 +1939,14 @@ private struct CatalogRailView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .top, spacing: 0) {
                             ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                                CatalogGameTile(viewModel: viewModel, game: game, sectionId: section.id)
+                                CatalogGameTile(
+                                    game: game,
+                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
+                                    isSelected: isSelected(game),
+                                    isDimmed: viewModel.selectedGame != nil && !isSelected(game),
+                                    isSelectionActive: viewModel.selectedGame != nil,
+                                    onSelect: { viewModel.selectGame(game, inSection: section.id) }
+                                )
                                     .id(game.catalogIdentity)
                             }
                             if section.games.count > games.count {
@@ -1974,6 +1981,12 @@ private struct CatalogRailView: View {
         withAnimation(.easeInOut(duration: 0.22)) {
             proxy.scrollTo(games[scrollIndex].catalogIdentity, anchor: .leading)
         }
+    }
+
+    private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        if !viewModel.selectedSectionId.isEmpty, viewModel.selectedSectionId != section.id { return false }
+        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
     }
 
     private func prefetchNearVisibleImages() {
@@ -2043,29 +2056,22 @@ private struct CatalogSeeMoreTile: View {
 }
 
 private struct CatalogGameTile: View {
-    @ObservedObject var viewModel: CatalogViewModel
     let game: OPNCatalogGameObject
-    let sectionId: String
+    let imageURL: URL?
+    let isSelected: Bool
+    let isDimmed: Bool
+    let isSelectionActive: Bool
+    let onSelect: () -> Void
     @State private var isHovering = false
 
-    private var isSelected: Bool {
-        guard let selectedGame = viewModel.selectedGame else { return false }
-        if !viewModel.selectedSectionId.isEmpty, viewModel.selectedSectionId != sectionId { return false }
-        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
-    }
-
-    private var shouldDim: Bool {
-        viewModel.selectedGame != nil && !isSelected
-    }
-
     var body: some View {
-        Button { viewModel.selectGame(game, inSection: sectionId) } label: {
+        Button(action: onSelect) {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
-                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620), contentMode: .fill)
+                    CatalogRemoteImage(url: imageURL, contentMode: .fill)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                         .clipped()
-                    if shouldDim {
+                    if isDimmed {
                         Color.black.opacity(0.80)
                     }
                     if isHovering || isSelected {
@@ -2107,7 +2113,7 @@ private struct CatalogGameTile: View {
                 }
             }
             .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
-            .scaleEffect(isHovering && !viewModel.selectedGameExists ? CatalogVendorLayout.tileScaleFactor : 1.0)
+            .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
             .animation(.easeOut(duration: 0.2), value: isHovering)
         }
         .buttonStyle(.plain)
@@ -2119,10 +2125,6 @@ private struct CatalogGameTile: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(isSelected ? "Details open" : "")
     }
-}
-
-private extension CatalogViewModel {
-    var selectedGameExists: Bool { selectedGame != nil }
 }
 
 private struct CatalogGameCardBadge: View {
