@@ -2022,7 +2022,15 @@ private struct CatalogRailView: View {
 
     private var coordinateSpaceName: String { "catalog-rail-\(section.id)" }
 
-    private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
+    private var games: [OPNCatalogGameObject] {
+        var visibleGames = section.visibleGames(expanded: false)
+        guard let selectedGame = viewModel.selectedGame else { return visibleGames }
+        if !viewModel.selectedSectionId.isEmpty, viewModel.selectedSectionId != section.id { return visibleGames }
+        guard !visibleGames.contains(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }),
+              let sectionGame = section.games.first(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else { return visibleGames }
+        visibleGames.append(sectionGame)
+        return visibleGames
+    }
     private var canShowAll: Bool { section.games.count > games.count }
 
     var body: some View {
@@ -2073,7 +2081,10 @@ private struct CatalogRailView: View {
                                 .onChange(of: proxy.size.width) { _, width in viewportWidth = width }
                         }
                     )
-                    .onPreferenceChange(CatalogRailTileFramePreferenceKey.self) { tileFrames = $0 }
+                    .onPreferenceChange(CatalogRailTileFramePreferenceKey.self) { frames in
+                        tileFrames = frames
+                        revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest)
+                    }
                     if games.count > 3 {
                         HStack {
                             CatalogRailArrow(name: "lt_arrow") {
@@ -2089,6 +2100,7 @@ private struct CatalogRailView: View {
                 }
                 .onAppear { revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
                 .onChange(of: viewModel.selectedGameRevealRequest) { _, request in revealSelectedGameIfNeeded(proxy: proxy, request: request) }
+                .onChange(of: viewportWidth) { _, _ in revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
             }
         }
         .onAppear { prefetchNearVisibleImages() }
@@ -2131,10 +2143,18 @@ private struct CatalogRailView: View {
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
         guard let request, request.sectionId.isEmpty || request.sectionId == section.id else { return }
         guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
+        revealSelectedGameIfNeeded(proxy: proxy, identity: request.gameIdentity, remainingDeferredPasses: 3)
+    }
+
+    private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, identity: String, remainingDeferredPasses: Int) {
         DispatchQueue.main.async {
-            guard !isTileFullyVisible(request.gameIdentity) else { return }
+            guard games.contains(where: { $0.catalogIdentity == identity }) else { return }
+            guard !isTileFullyVisible(identity) else { return }
             withAnimation(.easeInOut(duration: 0.24)) {
-                proxy.scrollTo(request.gameIdentity, anchor: .center)
+                proxy.scrollTo(identity, anchor: .center)
+            }
+            if remainingDeferredPasses > 0 {
+                revealSelectedGameIfNeeded(proxy: proxy, identity: identity, remainingDeferredPasses: remainingDeferredPasses - 1)
             }
         }
     }
