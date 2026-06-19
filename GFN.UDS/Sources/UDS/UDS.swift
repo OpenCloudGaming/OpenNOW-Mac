@@ -1,5 +1,8 @@
 import Foundation
 
+import Foundation
+import OpenNOWTelemetry
+
 public enum UDS: Sendable {
     public static let systemName = "UDS"
 }
@@ -174,8 +177,20 @@ public struct UDSURLSessionTransport: UDSHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else { throw UDSServiceError.invalidHTTPResponse }
+        let networkStart = OPNNetworkLog.start(request, operation: "uds.transport")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "uds.transport", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            OPNNetworkLog.finish(request, operation: "uds.transport", startedAt: networkStart, data: data, response: response, error: UDSServiceError.invalidHTTPResponse)
+            throw UDSServiceError.invalidHTTPResponse
+        }
+        OPNNetworkLog.finish(request, operation: "uds.transport", startedAt: networkStart, data: data, response: response, error: nil)
         return (data, httpResponse)
     }
 }

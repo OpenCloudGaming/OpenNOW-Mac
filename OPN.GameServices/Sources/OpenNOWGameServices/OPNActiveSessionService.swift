@@ -63,7 +63,9 @@ enum OPNActiveSessionService {
         request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-model")
         request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
         request.setValue(OPNDeviceIdentity.stableCloudmatchDeviceId(), forHTTPHeaderField: "x-device-id")
+        let networkStart = OPNNetworkLog.start(request, operation: "activeSession.fetch")
         URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(request, operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
             if let error {
                 completion(false, [], error.localizedDescription)
                 return
@@ -123,7 +125,9 @@ enum OPNActiveSessionService {
         request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
         request.setValue(OPNDeviceIdentity.stableCloudmatchDeviceId(), forHTTPHeaderField: "x-device-id")
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch stop session")
+        let networkStart = OPNNetworkLog.start(request, operation: "activeSession.stop")
         URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(request, operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
             if let error {
                 trace?.setStatus(false)
                 trace?.finish()

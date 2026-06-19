@@ -75,7 +75,9 @@ final class OPNGameService: @unchecked Sendable {
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.gfnUserAgent, forHTTPHeaderField: "User-Agent")
+        let networkStart = OPNNetworkLog.start(request, operation: "provider.serviceUrls")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "provider.serviceUrls", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, let data, statusCode == 200 else {
@@ -308,7 +310,9 @@ final class OPNGameService: @unchecked Sendable {
             request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             Self.applyClientHeaders(to: &request, includeBrowserHeaders: false)
+            let networkStart = OPNNetworkLog.start(request, operation: "mes.subscriptions")
             URLSession.shared.dataTask(with: request) { data, response, error in
+                OPNNetworkLog.finish(request, operation: "mes.subscriptions", startedAt: networkStart, data: data, response: response, error: error)
                 Self.workQueue.async {
                     if let error {
                         self.dispatchSubscription(completion, false, OPNSubscriptionInfo(), error.localizedDescription)
@@ -471,7 +475,9 @@ final class OPNGameService: @unchecked Sendable {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let networkStart = OPNNetworkLog.start(request, operation: "als.sync")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "als.sync", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 self.dispatchOwnership(completion, false, error.localizedDescription)
@@ -518,7 +524,9 @@ final class OPNGameService: @unchecked Sendable {
         var request = URLRequest(url: url, timeoutInterval: Self.accountLinkingRequestTimeoutSeconds)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        let networkStart = OPNNetworkLog.start(request, operation: "als.loginUrl")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "als.loginUrl", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, statusCode == 200, let data else {
@@ -585,7 +593,7 @@ final class OPNGameService: @unchecked Sendable {
         request.httpMethod = "GET"
         applyBaseHeaders(to: &request)
         request.setValue("application/graphql", forHTTPHeaderField: "Content-Type")
-        runGraphQLRequest(request, completion: completion)
+        runGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variables, completion: completion)
     }
 
     private func postGraphQlJson(query: String, variables: NSDictionary?, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
@@ -600,10 +608,11 @@ final class OPNGameService: @unchecked Sendable {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         applyBaseHeaders(to: &request)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        runGraphQLRequest(request, completion: completion)
+        runGraphQLRequest(request, operationName: Self.graphQLOperationName(query), queryHash: "inline", variables: variables, completion: completion)
     }
 
-    private func runGraphQLRequest(_ request: URLRequest, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
+    private func runGraphQLRequest(_ request: URLRequest, operationName: String, queryHash: String, variables: NSDictionary?, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
+        let networkStart = OPNNetworkLog.graphQLStart(request, operationName: operationName, queryHash: queryHash, variables: variables)
         URLSession.shared.dataTask(with: request) { data, response, error in
             var payload: NSDictionary?
             var message = ""
@@ -622,6 +631,7 @@ final class OPNGameService: @unchecked Sendable {
                     message = "No data in GraphQL response"
                 }
             }
+            OPNNetworkLog.graphQLFinish(request, operationName: operationName, queryHash: queryHash, startedAt: networkStart, data: data, response: response, error: error, responseMessage: message)
             self.dispatchGraphQL(completion, payload, message)
         }.resume()
     }
@@ -1172,7 +1182,9 @@ final class OPNGameService: @unchecked Sendable {
         request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
         Self.applyClientHeaders(to: &request, includeBrowserHeaders: false)
         request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173", forHTTPHeaderField: "User-Agent")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.serverInfo")
         URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.serverInfo", startedAt: networkStart, data: data, response: response, error: error)
             guard error == nil, let data, (response as? HTTPURLResponse)?.statusCode == 200 else {
                 finish("GFN-PC")
                 return
@@ -1208,6 +1220,15 @@ final class OPNGameService: @unchecked Sendable {
 
     private static var gfnUserAgent: String {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 GFN-PC/2.0.80.173"
+    }
+
+    private static func graphQLOperationName(_ query: String) -> String {
+        let compact = query.replacingOccurrences(of: "\n", with: " ")
+        let tokens = compact.split(whereSeparator: { $0 == " " || $0 == "(" || $0 == "{" }).map(String.init)
+        guard let operationKeywordIndex = tokens.firstIndex(where: { $0 == "query" || $0 == "mutation" }), tokens.indices.contains(operationKeywordIndex + 1) else {
+            return "inlineGraphQL"
+        }
+        return tokens[operationKeywordIndex + 1]
     }
 
     private func normalizeStreamingBaseUrl(_ url: String) -> String {
@@ -1523,7 +1544,9 @@ final class OPNGameService: @unchecked Sendable {
         }
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+        let networkStart = OPNNetworkLog.start(request, operation: "static.publicGames")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "static.publicGames", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             Self.workQueue.async {
                 let json = error == nil ? data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [NSDictionary] : nil

@@ -1,5 +1,8 @@
 import Foundation
 
+import Foundation
+import OpenNOWTelemetry
+
 public enum Ragnarok: Sendable {
     public static let systemName = "Ragnarok"
     public static let productionEventsURLString = "https://events.telemetry.data.nvidia.com/v1.1/events/json"
@@ -153,8 +156,20 @@ public struct RagnarokURLSessionTransport: RagnarokHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else { throw RagnarokServiceError.invalidHTTPResponse }
+        let networkStart = OPNNetworkLog.start(request, operation: "ragnarok.transport")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "ragnarok.transport", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            OPNNetworkLog.finish(request, operation: "ragnarok.transport", startedAt: networkStart, data: data, response: response, error: RagnarokServiceError.invalidHTTPResponse)
+            throw RagnarokServiceError.invalidHTTPResponse
+        }
+        OPNNetworkLog.finish(request, operation: "ragnarok.transport", startedAt: networkStart, data: data, response: response, error: nil)
         return (data, httpResponse)
     }
 }

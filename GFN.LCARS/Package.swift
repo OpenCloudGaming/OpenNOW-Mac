@@ -8,8 +8,14 @@ let package = Package(
     products: [
         .library(name: "LCARS", targets: ["LCARS"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Telemetry"),
+    ],
     targets: [
-        .target(name: "LCARS"),
+        .target(
+            name: "LCARS",
+            dependencies: [.product(name: "OpenNOWTelemetry", package: "OPN.Telemetry")]
+        ),
         .testTarget(name: "LCARSTests", dependencies: ["LCARS"]),
     ],
     swiftLanguageModes: [.v6]

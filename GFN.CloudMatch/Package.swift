@@ -8,8 +8,14 @@ let package = Package(
     products: [
         .library(name: "CloudMatch", targets: ["CloudMatch"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Telemetry"),
+    ],
     targets: [
-        .target(name: "CloudMatch"),
+        .target(
+            name: "CloudMatch",
+            dependencies: [.product(name: "OpenNOWTelemetry", package: "OPN.Telemetry")]
+        ),
         .testTarget(name: "CloudMatchTests", dependencies: ["CloudMatch"]),
     ],
     swiftLanguageModes: [.v6]

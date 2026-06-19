@@ -8,8 +8,14 @@ let package = Package(
     products: [
         .library(name: "NetworkTest", targets: ["NetworkTest"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Telemetry"),
+    ],
     targets: [
-        .target(name: "NetworkTest"),
+        .target(
+            name: "NetworkTest",
+            dependencies: [.product(name: "OpenNOWTelemetry", package: "OPN.Telemetry")]
+        ),
         .testTarget(name: "NetworkTestTests", dependencies: ["NetworkTest"]),
     ],
     swiftLanguageModes: [.v6]

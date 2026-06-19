@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import OpenNOWTelemetry
 import SwiftData
 
 struct CatalogCachedImageData: Sendable {
@@ -107,9 +108,10 @@ final class CatalogImageCache {
         request.timeoutInterval = 30
         if !eTag.isEmpty { request.setValue(eTag, forHTTPHeaderField: "If-None-Match") }
         if !lastModified.isEmpty { request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since") }
-
+        let networkStart = OPNNetworkLog.start(request, operation: "catalog.image")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
+            OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: data, response: response, error: nil)
             guard let httpResponse = response as? HTTPURLResponse else {
                 OpenNOWLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)")
                 return nil
@@ -132,6 +134,7 @@ final class CatalogImageCache {
             OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)")
             return imageData
         } catch {
+            OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: nil, response: nil, error: error)
             OpenNOWLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)")
             return nil
         }

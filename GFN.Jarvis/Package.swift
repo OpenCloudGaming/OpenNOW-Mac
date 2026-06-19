@@ -9,8 +9,16 @@ let package = Package(
     products: [
         .library(name: "Jarvis", targets: ["Jarvis"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Telemetry"),
+    ],
     targets: [
-        .target(name: "Jarvis"),
+        .target(
+            name: "Jarvis",
+            dependencies: [
+                .product(name: "OpenNOWTelemetry", package: "OPN.Telemetry"),
+            ]
+        ),
         .testTarget(name: "JarvisTests", dependencies: ["Jarvis"]),
     ],
     swiftLanguageModes: [.v6]

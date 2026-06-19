@@ -198,7 +198,10 @@ public final class OPNAuthService: @unchecked Sendable {
             completion(false, "Invalid logout URL")
             return
         }
-        URLSession.shared.dataTask(with: URLRequest(url: url, timeoutInterval: 10)) { _, _, error in
+        let request = URLRequest(url: url, timeoutInterval: 10)
+        let networkStart = OPNNetworkLog.start(request, operation: "auth.serverLogout")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(request, operation: "auth.serverLogout", startedAt: networkStart, data: data, response: response, error: error)
             DispatchQueue.main.async {
                 self.clearSession()
                 if let error {

@@ -113,7 +113,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         nonisolated(unsafe) let createCompletion = completion
         nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch create session")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.createSession")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.createSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 trace?.setStatus(false)
@@ -186,7 +188,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: false)
         nonisolated(unsafe) let completion = completion
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch poll session")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollSession")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 trace?.setStatus(false)
@@ -239,7 +243,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: true)
         nonisolated(unsafe) let completion = completion
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch stop session")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.stopSession")
         URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: error)
             if let error {
                 trace?.setStatus(false)
                 trace?.finish()
@@ -274,7 +280,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: false)
         nonisolated(unsafe) let completion = completion
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch active sessions")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.activeSessions")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 trace?.setStatus(false)
@@ -333,7 +341,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let adSession = session
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch report session ad")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.reportSessionAd")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 trace?.setStatus(false)
@@ -400,7 +410,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let claimSettings = settings
         let validationTrace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: validationUrl), name: "Cloudmatch validate session claim")
+        let validationNetworkStart = OPNNetworkLog.start(validationRequest, operation: "cloudmatch.validateSessionClaim")
         URLSession.shared.dataTask(with: validationRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(validationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             var preClaimStatus = 0
             if let error {
@@ -503,7 +515,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         nonisolated(unsafe) let completion = completion
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch claim session")
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.claimSession")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 trace?.setStatus(false)
@@ -895,7 +909,9 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
         var request = URLRequest(url: url)
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: deviceId, includeOrigin: false)
         let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch poll claim session")
-        URLSession.shared.dataTask(with: request) { [self] data, _, error in
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollClaimSession")
+        URLSession.shared.dataTask(with: request) { [self] data, response, error in
+            OPNNetworkLog.finish(request, operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
             trace?.setStatus(error == nil && data != nil)
             trace?.finish()
             manager.pollClaimSessionRequestFinished(context: self, attempt: attempt, data: data, error: error)

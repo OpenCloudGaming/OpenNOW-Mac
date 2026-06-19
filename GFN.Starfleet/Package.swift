@@ -8,8 +8,14 @@ let package = Package(
     products: [
         .library(name: "Starfleet", targets: ["Starfleet"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Telemetry"),
+    ],
     targets: [
-        .target(name: "Starfleet"),
+        .target(
+            name: "Starfleet",
+            dependencies: [.product(name: "OpenNOWTelemetry", package: "OPN.Telemetry")]
+        ),
         .testTarget(name: "StarfleetTests", dependencies: ["Starfleet"]),
     ],
     swiftLanguageModes: [.v6]

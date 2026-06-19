@@ -8,8 +8,14 @@ let package = Package(
     products: [
         .library(name: "GDN", targets: ["GDN"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Telemetry"),
+    ],
     targets: [
-        .target(name: "GDN"),
+        .target(
+            name: "GDN",
+            dependencies: [.product(name: "OpenNOWTelemetry", package: "OPN.Telemetry")]
+        ),
         .testTarget(name: "GDNTests", dependencies: ["GDN"]),
     ],
     swiftLanguageModes: [.v6]

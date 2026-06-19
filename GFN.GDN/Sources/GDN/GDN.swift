@@ -1,5 +1,8 @@
 import Foundation
 
+import Foundation
+import OpenNOWTelemetry
+
 public enum GDN: Sendable {
     public static let systemName = "GDN"
     public static let productName = "NVIDIAGDN"
@@ -61,8 +64,20 @@ public struct GDNURLSessionTransport: GDNHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else { throw GDNServiceError.invalidHTTPResponse }
+        let networkStart = OPNNetworkLog.start(request, operation: "gdn.transport")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "gdn.transport", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            OPNNetworkLog.finish(request, operation: "gdn.transport", startedAt: networkStart, data: data, response: response, error: GDNServiceError.invalidHTTPResponse)
+            throw GDNServiceError.invalidHTTPResponse
+        }
+        OPNNetworkLog.finish(request, operation: "gdn.transport", startedAt: networkStart, data: data, response: response, error: nil)
         return (data, httpResponse)
     }
 }

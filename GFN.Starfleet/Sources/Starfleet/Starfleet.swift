@@ -1,5 +1,8 @@
 import Foundation
 
+import Foundation
+import OpenNOWTelemetry
+
 public enum Starfleet: Sendable {
     public static let systemName = "Starfleet"
     public static let loginBaseURLString = "https://login.nvidia.com"
@@ -311,10 +314,20 @@ public struct StarfleetURLSessionTransport: StarfleetHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let networkStart = OPNNetworkLog.start(request, operation: "starfleet.transport")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "starfleet.transport", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
+            OPNNetworkLog.finish(request, operation: "starfleet.transport", startedAt: networkStart, data: data, response: response, error: StarfleetAuthError.invalidHTTPResponse)
             throw StarfleetAuthError.invalidHTTPResponse
         }
+        OPNNetworkLog.finish(request, operation: "starfleet.transport", startedAt: networkStart, data: data, response: response, error: nil)
         return (data, httpResponse)
     }
 }

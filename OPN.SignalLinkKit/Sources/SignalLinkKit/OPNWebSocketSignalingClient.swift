@@ -1,5 +1,8 @@
 import Foundation
 
+import Foundation
+import OpenNOWTelemetry
+
 @objcMembers
 @objc(OPNWebSocketSignalingClient)
 public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
@@ -68,11 +71,13 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         let task = session.webSocketTask(with: request)
         urlSession = session
         webSocketTask = task
+        OPNNetworkLog.webSocketEvent("connect", url: url)
         task.resume()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) { [weak self] in
             guard let self, self.connectionGeneration == generation else { return }
             if self.webSocketTask != nil && !self.didOpen {
+                OPNNetworkLog.webSocketEvent("timeout", url: self.activeURL)
                 let timeoutCompletion = self.connectCompletion
                 self.webSocketTask?.cancel(with: .normalClosure, reason: nil)
                 self.disconnect()
@@ -82,6 +87,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
     }
 
     public func disconnect() {
+        OPNNetworkLog.webSocketEvent("disconnect", url: activeURL)
         connectionGeneration += 1
         clearHeartbeat()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
@@ -123,6 +129,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
             self.didOpen = true
+            OPNNetworkLog.webSocketEvent("open", url: self.activeURL, detail: "protocol=\(`protocol` ?? "none")")
             self.sendPeerInfo()
             self.setupHeartbeat()
             let completion = self.connectCompletion
@@ -139,15 +146,18 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
             if self.didOpen {
                 let nsError = error as NSError
                 if self.isSocketNotConnectedError(nsError) {
+                    OPNNetworkLog.webSocketEvent("complete", url: self.activeURL, detail: "clean=true")
                     NSLog("[Signaling] Post-connection socket closed: %@", nsError.localizedDescription)
                     self.onClosed?(true, "")
                 } else {
+                    OPNNetworkLog.webSocketError("complete", url: self.activeURL, error: nsError)
                     NSLog("[Signaling] Post-connection error: %@", nsError)
                     self.onClosed?(false, nsError.localizedDescription)
                 }
                 return
             }
             let message = self.signalingConnectionErrorDescription(error as NSError)
+            OPNNetworkLog.webSocketError("connectFailed", url: self.activeURL, error: error)
             NSLog("[Signaling] %@", message)
             let completion = self.connectCompletion
             self.connectCompletion = nil
@@ -160,6 +170,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
+            OPNNetworkLog.webSocketEvent("close", url: self.activeURL, detail: "code=\(closeCode.rawValue) reasonLength=\(reasonText.count)")
             NSLog("[Signaling] WebSocket closed: code=%ld, reason=%@", closeCode.rawValue, reasonText)
             self.clearHeartbeat()
             self.webSocketTask = nil
@@ -243,8 +254,10 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
                 case .failure(let error):
                     let nsError = error as NSError
                     if self.isSocketNotConnectedError(nsError) {
+                        OPNNetworkLog.webSocketEvent("receiveStopped", url: self.activeURL)
                         NSLog("[Signaling] Receive stopped after socket closed: %@", nsError.localizedDescription)
                     } else {
+                        OPNNetworkLog.webSocketError("receive", url: self.activeURL, error: nsError)
                         NSLog("[Signaling] Receive error: %@", nsError)
                     }
                 }
@@ -284,6 +297,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
            let name = peerInfo["name"] as? String,
            name == peerName {
             peerId = pid.intValue
+            OPNNetworkLog.webSocketEvent("peerAssigned", url: activeURL, detail: "peerId=\(peerId)")
             NSLog("[Signaling] Local peer id assigned: %d", peerId)
         }
 
@@ -316,6 +330,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
 
         if payload["type"] as? String == "offer" {
             guard let sdp = payload["sdp"] as? String else { return }
+            OPNNetworkLog.webSocketEvent("offerReceived", url: activeURL, detail: "sdpLength=\(sdp.count)")
             NSLog("[Signaling] Offer received, sdp length=%lu", sdp.count)
             onOffer?(sdp)
             return
@@ -325,6 +340,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         let sdpMid = payload["sdpMid"] as? String ?? ""
         let sdpMLineIndex = (payload["sdpMLineIndex"] as? NSNumber)?.intValue ?? 0
         let usernameFragment = payload["usernameFragment"] as? String ?? payload["ufrag"] as? String ?? ""
+        OPNNetworkLog.webSocketEvent("iceCandidateReceived", url: activeURL, detail: "mid=\(sdpMid.isEmpty ? "none" : sdpMid) mline=\(sdpMLineIndex) candidateLength=\(candidate.count)")
         NSLog("[Signaling] Remote ICE candidate received mid=%@ mline=%d ufrag=%@ length=%lu", sdpMid.isEmpty ? "(none)" : sdpMid, sdpMLineIndex, usernameFragment.isEmpty ? "(none)" : usernameFragment, candidate.count)
         onIceCandidate?([
             "candidate": candidate,

@@ -1,5 +1,8 @@
 import Foundation
 
+import Foundation
+import OpenNOWTelemetry
+
 public enum LCARS: Sendable {
     public static let systemName = "LCARS"
     public static let graphQLPath = "/graphql"
@@ -98,8 +101,20 @@ public struct LCARSURLSessionTransport: LCARSHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else { throw LCARSServiceError.invalidHTTPResponse }
+        let networkStart = OPNNetworkLog.start(request, operation: "lcars.transport")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "lcars.transport", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            OPNNetworkLog.finish(request, operation: "lcars.transport", startedAt: networkStart, data: data, response: response, error: LCARSServiceError.invalidHTTPResponse)
+            throw LCARSServiceError.invalidHTTPResponse
+        }
+        OPNNetworkLog.finish(request, operation: "lcars.transport", startedAt: networkStart, data: data, response: response, error: nil)
         return (data, httpResponse)
     }
 }
