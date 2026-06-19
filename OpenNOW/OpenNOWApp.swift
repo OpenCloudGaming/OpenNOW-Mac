@@ -44,6 +44,7 @@ struct OpenNOWApp: App {
             ContentView()
         }
         .defaultSize(width: 1100, height: 720)
+        .windowStyle(.hiddenTitleBar)
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}

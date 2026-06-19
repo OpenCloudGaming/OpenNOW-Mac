@@ -21,7 +21,7 @@ struct ContentView: View {
     var body: some View {
         LoginView(viewModel: viewModel, accounts: accounts)
             .frame(minWidth: 980, minHeight: 660)
-            .ignoresSafeArea(.container, edges: .top)
+            .ignoresSafeArea()
             .background(HiddenTitlebarConfigurator())
             .task {
                 syncViewModel()
@@ -63,10 +63,16 @@ private struct HiddenTitlebarConfigurator: NSViewRepresentable {
     private func configure(window: NSWindow?) {
         guard let window else { return }
         window.styleMask.insert(.fullSizeContentView)
+        window.title = ""
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.backgroundColor = NSColor(red: 45 / 255, green: 45 / 255, blue: 45 / 255, alpha: 1)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.toolbar = nil
+        if #available(macOS 11.0, *) {
+            window.titlebarSeparatorStyle = .none
+        }
     }
 }
 
