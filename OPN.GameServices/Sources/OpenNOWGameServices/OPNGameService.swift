@@ -808,8 +808,8 @@ final class OPNGameService: @unchecked Sendable {
         game.maxLocalPlayers = safeInt(app["maxLocalPlayers"])
         game.maxOnlinePlayers = safeInt(app["maxOnlinePlayers"])
         appendStringValues(&game.supportedControls, app["supportedControls"])
-        appendStringValues(&game.contentRatings, app["contentRatings"])
-        appendStringValues(&game.nvidiaTech, app["nvidiaTech"])
+        game.contentRatings = parseContentRatings(app["contentRatings"])
+        game.nvidiaTech = parseFeatureFlags(app["nvidiaTech"])
         if game.description.isEmpty, let itemMetadata = app["itemMetadata"] as? NSDictionary {
             game.description = firstSafeString(itemMetadata, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
         }
@@ -849,6 +849,7 @@ final class OPNGameService: @unchecked Sendable {
                     variant.librarySelected = safeBool(library["selected"])
                     if variant.librarySelected { variant.inLibrary = true }
                 }
+                if game.contentRatings.isEmpty { game.contentRatings = parseContentRatings(item["contentRatings"]) }
                 if !variant.appStore.isEmpty, variant.appStore != "UNKNOWN", variant.appStore != "NONE" {
                     if let index = game.variants.firstIndex(where: { $0.appStore.caseInsensitiveCompare(variant.appStore) == .orderedSame }) {
                         _ = mergeVariantFromSameStore(target: &game.variants[index], source: variant)
@@ -1222,6 +1223,79 @@ final class OPNGameService: @unchecked Sendable {
             if let text = item as? String { appendUnique(&values, text) }
             if let dictionary = item as? NSDictionary { appendUnique(&values, firstSafeString(dictionary, keys: ["name", "label", "value", "rating", "control", "type"]) ?? "") }
         }
+    }
+
+    private func parseContentRatings(_ rawValue: Any?) -> [String] {
+        guard let rawValue, !(rawValue is NSNull) else { return [] }
+        var values: [String] = []
+        let entries = rawValue as? [Any] ?? [rawValue]
+        for entry in entries {
+            if let text = entry as? String {
+                appendUnique(&values, readableMetadataLabel(text))
+                continue
+            }
+            guard let dictionary = entry as? NSDictionary else { continue }
+            let categoryKey = firstSafeString(dictionary, keys: ["categoryKey", "ratingCategoryKey", "rating", "category", "label", "name"]) ?? ""
+            let type = firstSafeString(dictionary, keys: ["type", "ratingSystem", "system"]) ?? ""
+            if let label = ratingCategoryLabel(categoryKey: categoryKey, type: type) { appendUnique(&values, label) }
+            appendUnique(&values, type)
+            appendMetadataLabels(&values, dictionary["contentDescriptorKeys"])
+            appendMetadataLabels(&values, dictionary["interactiveElementKeys"])
+        }
+        return values.filter { !$0.isEmpty }
+    }
+
+    private func parseFeatureFlags(_ rawValue: Any?) -> [String] {
+        guard let rawValue, !(rawValue is NSNull) else { return [] }
+        if let dictionary = rawValue as? NSDictionary {
+            var values: [String] = []
+            for case let key as String in dictionary.allKeys where safeBool(dictionary[key]) {
+                appendUnique(&values, readableMetadataLabel(key))
+            }
+            return values
+        }
+        var values: [String] = []
+        appendStringValues(&values, rawValue)
+        return values.map(readableMetadataLabel)
+    }
+
+    private func appendMetadataLabels(_ values: inout [String], _ rawValue: Any?) {
+        for value in safeStringArray(rawValue) {
+            appendUnique(&values, readableMetadataLabel(value))
+        }
+    }
+
+    private func ratingCategoryLabel(categoryKey: String, type: String) -> String? {
+        let key = categoryKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return nil }
+        let normalized = key.uppercased().replacingOccurrences(of: "-", with: "_")
+        let esrbLabels: [String: String] = [
+            "EARLY_CHILDHOOD": "Early Childhood",
+            "EVERYONE": "Everyone",
+            "EVERYONE_10": "Everyone 10+",
+            "EVERYONE_10_PLUS": "Everyone 10+",
+            "TEEN": "Teen",
+            "MATURE": "Mature 17+",
+            "MATURE_17": "Mature 17+",
+            "MATURE_17_PLUS": "Mature 17+",
+            "ADULTS_ONLY": "Adults Only 18+",
+            "ADULTS_ONLY_18": "Adults Only 18+",
+            "ADULTS_ONLY_18_PLUS": "Adults Only 18+",
+            "RATING_PENDING": "Rating Pending"
+        ]
+        if type.uppercased() == "ESRB", let label = esrbLabels[normalized] { return label }
+        return readableMetadataLabel(key)
+    }
+
+    private func readableMetadataLabel(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        return normalized
+            .split(separator: " ")
+            .map { word in word.prefix(1).uppercased() + word.dropFirst().lowercased() }
+            .joined(separator: " ")
     }
 
     private func appendUnique(_ values: inout [String], _ value: String) {

@@ -2605,6 +2605,7 @@ private struct GameDetailPanel: View {
 
     private func ratingDescriptors(game: OPNCatalogGameObject) -> [String] {
         var descriptors = game.contentRatings.filter { $0.caseInsensitiveCompare(game.ratingLabel) != .orderedSame }
+        descriptors.removeAll { ["ESRB", "PEGI", "USK", "CLASSIND", "GRAC", "IARC"].contains($0.uppercased()) }
         if descriptors.isEmpty { descriptors = game.genres.prefix(2).map { $0.capitalized } }
         return Array(descriptors.prefix(3))
     }
