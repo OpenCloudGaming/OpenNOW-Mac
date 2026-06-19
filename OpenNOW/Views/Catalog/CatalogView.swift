@@ -2112,6 +2112,12 @@ private struct CatalogGameCardBadge: View {
 }
 
 private enum CatalogCardBadgeMapper {
+    nonisolated static func label(promoTag: String, campaignIds: [String], skuTags: [String], genres: [String], featureLabels: [String]) -> String? {
+        let normalizedPromoTag = normalizedValue(promoTag)
+        if !normalizedPromoTag.isEmpty { return normalizedPromoTag }
+        return label(campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
+    }
+
     nonisolated static func label(campaignIds: [String], skuTags: [String], genres: [String], featureLabels: [String]) -> String? {
         let explicitValues = (skuTags + campaignIds).map(normalizedValue).filter { !$0.isEmpty }
         let taxonomyValues = (genres + featureLabels).map(normalizedValue).filter { !$0.isEmpty }
@@ -3160,7 +3166,7 @@ private extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
 
     var cardBadgeLabel: String? {
-        CatalogCardBadgeMapper.label(campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
+        CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
     }
 
     var bestHeroImageURL: String {

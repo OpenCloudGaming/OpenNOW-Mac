@@ -105,6 +105,7 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var contentRatings: [String] = []
     public var nvidiaTech: [String] = []
     public var availableStores: [String] = []
+    public var promoTag = ""
     public var campaignIds: [String] = []
     public var skuTags: [String] = []
     public var isInLibrary = false
@@ -341,6 +342,7 @@ public final class OPNCatalogGameObject: NSObject {
     public var contentRatings: [String]
     public var nvidiaTech: [String]
     public var availableStores: [String]
+    public var promoTag: String
     public var campaignIds: [String]
     public var skuTags: [String]
     public var isInLibrary: Bool
@@ -374,6 +376,7 @@ public final class OPNCatalogGameObject: NSObject {
         contentRatings = game.contentRatings
         nvidiaTech = game.nvidiaTech
         availableStores = game.availableStores
+        promoTag = game.promoTag
         campaignIds = game.campaignIds
         skuTags = game.skuTags
         isInLibrary = game.isInLibrary
@@ -406,6 +409,7 @@ public final class OPNCatalogGameObject: NSObject {
         game.contentRatings = contentRatings
         game.nvidiaTech = nvidiaTech
         game.availableStores = availableStores
+        game.promoTag = promoTag
         game.campaignIds = campaignIds
         game.skuTags = skuTags
         game.isInLibrary = isInLibrary

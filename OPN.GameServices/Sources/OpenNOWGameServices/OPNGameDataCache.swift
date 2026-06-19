@@ -253,6 +253,7 @@ final class OPNGameDataCache: NSObject {
         putArray(game.contentRatings, key: "r", into: &dictionary)
         putArray(game.nvidiaTech, key: "x", into: &dictionary)
         putArray(game.availableStores, key: "as", into: &dictionary)
+        putString(game.promoTag, key: "pr", into: &dictionary)
         putArray(game.campaignIds, key: "ci", into: &dictionary)
         putArray(game.skuTags, key: "sk", into: &dictionary)
         if game.isInLibrary { dictionary["il"] = true }
@@ -286,6 +287,7 @@ final class OPNGameDataCache: NSObject {
         game.contentRatings = dictionary["r"] as? [String] ?? []
         game.nvidiaTech = dictionary["x"] as? [String] ?? []
         game.availableStores = dictionary["as"] as? [String] ?? []
+        game.promoTag = dictionary["pr"] as? String ?? ""
         game.campaignIds = dictionary["ci"] as? [String] ?? []
         game.skuTags = dictionary["sk"] as? [String] ?? []
         game.isInLibrary = (dictionary["il"] as? NSNumber)?.boolValue ?? false

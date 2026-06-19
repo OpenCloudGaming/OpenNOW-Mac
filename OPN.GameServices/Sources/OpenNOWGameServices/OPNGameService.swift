@@ -631,6 +631,32 @@ final class OPNGameService: @unchecked Sendable {
         postGraphQL(operationName: "appMetaData", queryHash: Self.appMetaDataHash, variables: variables, completion: completion)
     }
 
+    private func fetchCampaignPromoTags(vpcId: String, locale: String, completion: @escaping @Sendable ([String: String]) -> Void) {
+        let query = """
+        query GetCampaignsInfo($locale: String!, $vpcId: String!) {
+          campaigns(vpcId: $vpcId, language: $locale) {
+            items { id promoText { tag } }
+          }
+        }
+        """
+        let variables: NSDictionary = ["vpcId": vpcId.isEmpty ? "GFN-PC" : vpcId, "locale": locale]
+        postGraphQlJson(query: query, variables: variables) { [weak self] data, _ in
+            guard let self else {
+                completion([:])
+                return
+            }
+            var tagsByCampaignId: [String: String] = [:]
+            let items = (data?["campaigns"] as? NSDictionary)?["items"] as? [NSDictionary] ?? []
+            for item in items {
+                guard let id = self.safeString(item["id"]), !id.isEmpty else { continue }
+                let promoText = item["promoText"] as? NSDictionary
+                let tag = self.safeString(promoText?["tag"]) ?? ""
+                if !tag.isEmpty { tagsByCampaignId[id] = tag }
+            }
+            completion(tagsByCampaignId)
+        }
+    }
+
     private func fetchCatalogPages(baseResult: OPNCatalogBrowseResult, query: String, vpcId: String, locale: String, sortString: String, fetchCount: Int, searchString: String, filters: NSDictionary, catalogCacheKey: String, deliveredCachedResult: AtomicFlag, completion: @escaping OPNCatalogBrowseCallback) {
         let state = CatalogPageState(result: baseResult)
         let filterBox = NSDictionaryBox(filters)
@@ -710,6 +736,9 @@ final class OPNGameService: @unchecked Sendable {
                 var merged = game
                 let metadataGame = self.parseGameItem(metadata)
                 self.mergeMissingStoreMetadata(target: &merged, metadata: metadataGame)
+                if merged.promoTag.isEmpty { merged.promoTag = metadataGame.promoTag }
+                if merged.campaignIds.isEmpty { merged.campaignIds = metadataGame.campaignIds }
+                if merged.skuTags.isEmpty { merged.skuTags = metadataGame.skuTags }
                 if !metadataGame.description.isEmpty { merged.description = metadataGame.description }
                 if merged.genres.isEmpty { merged.genres = metadataGame.genres }
                 if merged.featureLabels.isEmpty { merged.featureLabels = metadataGame.featureLabels }
@@ -726,7 +755,15 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.nvidiaTech.isEmpty { merged.nvidiaTech = metadataGame.nvidiaTech }
                 return merged
             }
-            completion(enriched)
+            self.fetchCampaignPromoTags(vpcId: vpcId, locale: Self.currentGFNLocale()) { tagsByCampaignId in
+                let campaignEnriched = enriched.map { game in
+                    guard game.promoTag.isEmpty else { return game }
+                    var merged = game
+                    merged.promoTag = game.campaignIds.compactMap { tagsByCampaignId[$0] }.first ?? ""
+                    return merged
+                }
+                completion(campaignEnriched)
+            }
         }
     }
 
@@ -764,6 +801,7 @@ final class OPNGameService: @unchecked Sendable {
         game.uuid = game.id
         game.title = safeString(app["title"]) ?? ""
         game.shortName = safeString(app["shortName"]) ?? ""
+        game.promoTag = safeString(app["promoTag"]) ?? ""
         game.description = firstSafeString(app, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
         game.developerName = safeString(app["developerName"]) ?? ""
         game.publisherName = safeString(app["publisherName"]) ?? ""
@@ -777,11 +815,13 @@ final class OPNGameService: @unchecked Sendable {
         }
         if let itemMetadata = app["itemMetadata"] as? NSDictionary {
             appendStringValues(&game.campaignIds, itemMetadata["campaignIds"])
+            if game.promoTag.isEmpty { game.promoTag = safeString(itemMetadata["promoTag"]) ?? "" }
         }
         if let gfn = app["gfn"] as? NSDictionary {
             game.playabilityState = safeString(gfn["playabilityState"]) ?? ""
             game.membershipTierLabel = safeString(gfn["minimumMembershipTierLabel"]) ?? ""
             game.playType = safeString(gfn["playType"]) ?? ""
+            if game.promoTag.isEmpty { game.promoTag = safeString(gfn["promoTag"]) ?? "" }
             if let catalogSkuStrings = gfn["catalogSkuStrings"] as? NSDictionary {
                 appendStringValues(&game.skuTags, catalogSkuStrings["SKU_BASED_TAG"])
             }
