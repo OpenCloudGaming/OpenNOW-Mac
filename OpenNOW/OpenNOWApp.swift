@@ -53,6 +53,18 @@ struct OpenNOWApp: App {
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private var isCompletingUserApprovedTermination = false
 
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        postOpenedFile(URL(fileURLWithPath: filename))
+        return true
+    }
+
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        for filename in filenames {
+            postOpenedFile(URL(fileURLWithPath: filename))
+        }
+        sender.reply(toOpenOrPrint: .success)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
@@ -75,4 +87,12 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateLater
     }
+
+    private func postOpenedFile(_ url: URL) {
+        NotificationCenter.default.post(name: .openNOWDidOpenFile, object: url)
+    }
+}
+
+extension Notification.Name {
+    static let openNOWDidOpenFile = Notification.Name("OpenNOWDidOpenFile")
 }

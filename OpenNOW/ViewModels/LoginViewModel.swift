@@ -28,6 +28,7 @@ final class LoginViewModel: ObservableObject {
     @Published var isAuthenticating = false
     @Published var requestedFocus: LoginField?
     @Published var currentAuthorizationURL = ""
+    @Published var pendingGameShortcut: GFNGameShortcut?
 
     private let authService = OPNAuthService.shared
     private let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
@@ -109,6 +110,18 @@ final class LoginViewModel: ObservableObject {
     func handleOAuthCallback(_ url: URL) {
         guard url.scheme == "com.nvidia.geforcenow" || url.scheme == "opennow" else { return }
         Task { await completeOAuth(callbackText: url.absoluteString) }
+    }
+
+    func handleOpenedFile(_ url: URL) {
+        guard url.pathExtension.caseInsensitiveCompare("gfnpc") == .orderedSame else { return }
+        do {
+            pendingGameShortcut = try GFNGameShortcut(fileURL: url)
+            if activeSession == nil {
+                validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its GeForce NOW shortcut."
+            }
+        } catch {
+            validationMessage = error.localizedDescription
+        }
     }
 
     func activateAccount(_ account: LoginAccount) {

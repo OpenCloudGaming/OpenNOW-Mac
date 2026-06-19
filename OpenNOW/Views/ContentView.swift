@@ -30,6 +30,10 @@ struct ContentView: View {
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
             .onChange(of: devices.count) { _, _ in syncViewModel() }
             .onOpenURL { url in viewModel.handleOAuthCallback(url) }
+            .onReceive(NotificationCenter.default.publisher(for: .openNOWDidOpenFile)) { notification in
+                guard let url = notification.object as? URL else { return }
+                viewModel.handleOpenedFile(url)
+            }
     }
 
     private func syncViewModel() {

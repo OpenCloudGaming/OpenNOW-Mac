@@ -101,6 +101,8 @@ struct CatalogView: View {
     let onForget: (LoginAccount) -> Void
     let onRefreshAuth: () -> Void
 
+    @Binding private var pendingGameShortcut: GFNGameShortcut?
+
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsPreviousSessionOverlay = false
@@ -109,6 +111,7 @@ struct CatalogView: View {
         account: LoginAccount,
         session: LoginSession,
         accounts: [LoginAccount],
+        pendingGameShortcut: Binding<GFNGameShortcut?>,
         onSwitch: @escaping (LoginAccount) -> Void,
         onSignOut: @escaping () -> Void,
         onForget: @escaping (LoginAccount) -> Void,
@@ -119,6 +122,7 @@ struct CatalogView: View {
         self.onSignOut = onSignOut
         self.onForget = onForget
         self.onRefreshAuth = onRefreshAuth
+        _pendingGameShortcut = pendingGameShortcut
         _viewModel = StateObject(wrappedValue: CatalogViewModel(account: account, session: session, onRefreshAuth: onRefreshAuth))
     }
 
@@ -175,8 +179,18 @@ struct CatalogView: View {
             }
         }
         .background(Color.gfnBackgroundGreen)
-        .task { viewModel.loadIfNeeded() }
+        .task {
+            viewModel.loadIfNeeded()
+            consumePendingGameShortcut()
+        }
+        .onChange(of: pendingGameShortcut) { _, _ in consumePendingGameShortcut() }
         .preferredColorScheme(.dark)
+    }
+
+    private func consumePendingGameShortcut() {
+        guard let shortcut = pendingGameShortcut else { return }
+        pendingGameShortcut = nil
+        viewModel.openGameShortcut(shortcut)
     }
 }
 

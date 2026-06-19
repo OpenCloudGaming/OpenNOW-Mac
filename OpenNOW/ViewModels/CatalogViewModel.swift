@@ -19,6 +19,15 @@ private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
     }
 }
 
+private extension OPNCatalogGameObject {
+    func matchesGFNShortcutIdentifiers(_ identifiers: Set<String>) -> Bool {
+        for value in [id, uuid, launchAppId, shortName] where identifiers.contains(value.lowercased()) {
+            return true
+        }
+        return variants.contains { identifiers.contains($0.id.lowercased()) }
+    }
+}
+
 private final class CatalogSendableValue<T>: @unchecked Sendable {
     nonisolated(unsafe) let value: T
 
@@ -375,6 +384,36 @@ final class CatalogViewModel: ObservableObject {
         beginVendorLaunch(game: game, variantIndex: variantIndex)
     }
 
+    func openGameShortcut(_ shortcut: GFNGameShortcut) {
+        configureCatalogService()
+        let title = shortcut.lookupTitle.isEmpty ? shortcut.displayName : shortcut.lookupTitle
+        setActionMessage("Opening \(title.isEmpty ? "GeForce NOW shortcut" : title)...")
+        if let game = matchingGame(for: shortcut, in: allKnownGames) {
+            selectGame(game)
+            launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
+            return
+        }
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
+            let resultBox = CatalogSendableValue(result)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                guard success else {
+                    self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
+                    return
+                }
+                let games = resultBox.value.games
+                guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
+                    self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
+                    return
+                }
+                self.catalogGames = games
+                self.selectGame(game)
+                self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
+            }
+        }
+    }
+
     var isLaunchFlowVisible: Bool {
         launchFlowState != .idle
     }
@@ -631,22 +670,22 @@ final class CatalogViewModel: ObservableObject {
     func addShortcutForSelectedGame() {
         guard let selectedGame else { return }
         let title = selectedGame.title.isEmpty ? "GeForce NOW Game" : selectedGame.title
-        resolveSelectedStoreURL { [weak self] url in
-            guard let self else { return }
-            guard let url else {
-                self.errorMessage = "No URL is available for this game."
+        do {
+            let desktopURL = try FileManager.default.url(for: .desktopDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let shortcutURL = desktopURL.appendingPathComponent(Self.safeShortcutFilename(title))
+            let variantIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
+            let variant = variantIndex >= 0 && variantIndex < selectedGame.variants.count ? selectedGame.variants[variantIndex] : nil
+            let cmsId = variant?.id.isEmpty == false ? variant?.id ?? "" : Self.identity(for: selectedGame)
+            let shortName = !selectedGame.shortName.isEmpty ? selectedGame.shortName : (!selectedGame.uuid.isEmpty ? selectedGame.uuid : selectedGame.id)
+            guard !cmsId.isEmpty || !shortName.isEmpty else {
+                errorMessage = "No GeForce NOW identifier is available for this game."
                 return
             }
-            do {
-                let desktopURL = try FileManager.default.url(for: .desktopDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                let shortcutURL = desktopURL.appendingPathComponent(Self.safeShortcutFilename(title))
-                let payload = ["URL": url.absoluteString]
-                let data = try PropertyListSerialization.data(fromPropertyList: payload, format: .xml, options: 0)
-                try data.write(to: shortcutURL, options: .atomic)
-                self.actionMessage = "Added shortcut to Desktop."
-            } catch {
-                self.errorMessage = "Unable to add shortcut: \(error.localizedDescription)"
-            }
+            let shortcut = GFNGameShortcut(sourceURL: nil, displayName: title, cmsId: cmsId, shortName: shortName, parentGameId: shortName)
+            try shortcut.write(to: shortcutURL)
+            actionMessage = "Added GeForce NOW shortcut to Desktop."
+        } catch {
+            errorMessage = "Unable to add shortcut: \(error.localizedDescription)"
         }
     }
 
@@ -1031,6 +1070,23 @@ final class CatalogViewModel: ObservableObject {
         errorMessage = ""
     }
 
+    private func matchingGame(for shortcut: GFNGameShortcut, in games: [OPNCatalogGameObject]) -> OPNCatalogGameObject? {
+        let identifiers = Set([shortcut.cmsId, shortcut.shortName, shortcut.parentGameId].map { $0.lowercased() }.filter { !$0.isEmpty })
+        if !identifiers.isEmpty {
+            for game in games where game.matchesGFNShortcutIdentifiers(identifiers) { return game }
+        }
+        let title = shortcut.lookupTitle
+        guard !title.isEmpty else { return nil }
+        return games.first { $0.title.caseInsensitiveCompare(title) == .orderedSame }
+    }
+
+    private func variantIndex(for shortcut: GFNGameShortcut, in game: OPNCatalogGameObject) -> Int {
+        if !shortcut.cmsId.isEmpty, let index = game.variants.firstIndex(where: { $0.id.caseInsensitiveCompare(shortcut.cmsId) == .orderedSame }) {
+            return index
+        }
+        return Self.preferredVariantIndex(for: game)
+    }
+
     private func resolveSelectedStoreURL(completion: @escaping (URL?) -> Void) {
         guard let selectedGame else {
             completion(nil)
@@ -1110,7 +1166,7 @@ final class CatalogViewModel: ObservableObject {
         let invalidCharacters = CharacterSet(charactersIn: ":/").union(.newlines).union(.controlCharacters)
         let sanitized = title.components(separatedBy: invalidCharacters).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = sanitized.isEmpty ? "GeForce NOW Game" : sanitized
-        return "\(baseName).webloc"
+        return "\(baseName) on GeForce NOW.gfnpc"
     }
 
     private func resolveGameForDetails(_ game: OPNCatalogGameObject) -> OPNCatalogGameObject {
