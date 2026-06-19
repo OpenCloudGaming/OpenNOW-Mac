@@ -497,47 +497,47 @@
 /* Begin XCSwiftPackageProductDependency section */
 		7778758B2FDCA4F900B177D8 /* Jarvis */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Jarvis" */;
+			package = 7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Jarvis" */;
 			productName = Jarvis;
 		};
 		7778758E2FDCA4F900B177D8 /* Starfleet */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "Starfleet" */;
+			package = 7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */;
 			productName = Starfleet;
 		};
 		777875912FDCA4F900B177D8 /* NesAuth */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "NesAuth" */;
+			package = 777875902FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.NesAuth" */;
 			productName = NesAuth;
 		};
 		A00000000000000000000201 /* CloudMatch */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000301 /* XCLocalSwiftPackageReference "CloudMatch" */;
+			package = A00000000000000000000301 /* XCLocalSwiftPackageReference "GFN.CloudMatch" */;
 			productName = CloudMatch;
 		};
 		A00000000000000000000202 /* LCARS */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000302 /* XCLocalSwiftPackageReference "LCARS" */;
+			package = A00000000000000000000302 /* XCLocalSwiftPackageReference "GFN.LCARS" */;
 			productName = LCARS;
 		};
 		A00000000000000000000203 /* GDN */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000303 /* XCLocalSwiftPackageReference "GDN" */;
+			package = A00000000000000000000303 /* XCLocalSwiftPackageReference "GFN.GDN" */;
 			productName = GDN;
 		};
 		A00000000000000000000204 /* Ragnarok */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000304 /* XCLocalSwiftPackageReference "Ragnarok" */;
+			package = A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */;
 			productName = Ragnarok;
 		};
 		A00000000000000000000205 /* UDS */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000305 /* XCLocalSwiftPackageReference "UDS" */;
+			package = A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */;
 			productName = UDS;
 		};
 		A00000000000000000000206 /* NetworkTest */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "NetworkTest" */;
+			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "GFN.NetworkTest" */;
 			productName = NetworkTest;
 		};
 		A00000000000000000000208 /* SignalLinkKit */ = {
@@ -547,12 +547,12 @@
 		};
 		A00000000000000000000209 /* Common */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "Common" */;
+			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */;
 			productName = Common;
 		};
 		A00000000000000000000210 /* WebRTCMedia */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000310 /* XCLocalSwiftPackageReference "WebRTC.Media" */;
+			package = A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */;
 			productName = WebRTCMedia;
 		};
 		A00000000000000000000211 /* OpenNOWAuth */ = {

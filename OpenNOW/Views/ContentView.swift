@@ -26,6 +26,7 @@ struct ContentView: View {
             windowTitle = title ?? Self.defaultWindowTitle
         }
             .frame(minWidth: 980, minHeight: 660)
+            .frame(idealWidth: 1200, idealHeight: 760)
             .ignoresSafeArea()
             .background(HiddenTitlebarConfigurator(title: windowTitle))
             .task {

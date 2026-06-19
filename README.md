@@ -1,25 +1,39 @@
-# OpenNOW
-
-OpenNOW is a cloud gaming client codebase. The previous native macOS frontend has been removed so the UI can be rebuilt from zero.
+OpenNOW is a native macOS cloud gaming client for launching and streaming GeForce NOW sessions.
 
 ## Current State
 
-The repository currently keeps the service, protocol, authentication, streaming, and shared package modules. There is no app target, frontend source tree, or bundled UI asset set in this reset state.
+The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and shared package modules. The visible frontend lives under `OpenNOW/Views` and includes:
+
+- OAuth sign-in and branded loading surfaces
+- Catalog hero carousel, game rails, search, filters, and detail panels
+- Store ownership picker and launch/session overlays
+- Settings for account, connections, gameplay, server location, upscaling, system, and diagnostics
 
 ## Packages
 
-- `Backend`
-- `CloudMatch`
-- `Common`
-- `GDN`
-- `Jarvis`
-- `LCARS`
-- `NesAuth`
-- `NetworkTest`
-- `Ragnarok`
-- `SignalLinkKit`
-- `Starfleet`
-- `UDS`
+- `GFN.CloudMatch`
+- `GFN.GDN`
+- `GFN.Jarvis`
+- `GFN.LCARS`
+- `GFN.NesAuth`
+- `GFN.NetworkTest`
+- `GFN.Ragnarok`
+- `GFN.Starfleet`
+- `GFN.UDS`
+- `OPN.Auth`
+- `OPN.Common`
+- `OPN.GameServices`
+- `OPN.SignalLinkKit`
+- `OPN.Telemetry`
+- `OPN.WebRTC.Media`
+
+## Building
+
+Build the macOS app from the repository root:
+
+```sh
+xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -derivedDataPath build/DerivedData build
+```
 
 ## Testing
 
@@ -28,8 +42,6 @@ Run package tests from an individual package directory:
 ```sh
 swift test
 ```
-
-The `Backend` package still depends on a macOS WebRTC framework at `third_party/webrtc-official`.
 
 ## Contributing
 

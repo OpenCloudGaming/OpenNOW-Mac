@@ -52,10 +52,23 @@ struct LoginFormView: View {
                 Spacer()
 
                 VStack(alignment: .leading, spacing: 0) {
+                    Text("OpenNOW Mac")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .tracking(1.4)
+                        .padding(.bottom, 10)
+
                     Text("GeForce NOW")
                         .font(.system(size: 34, weight: .bold))
                         .foregroundStyle(.white)
                         .lineSpacing(0)
+                        .padding(.bottom, 10)
+
+                    Text("Launch your cloud gaming library from a focused macOS client.")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 24)
 
                     VStack(alignment: .leading, spacing: 16) {
@@ -67,11 +80,19 @@ struct LoginFormView: View {
                 .padding(.bottom, 32)
 
                 Button(action: startVendorLogin) {
-                    Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
+                    Text(viewModel.hasPendingOAuth ? "REOPEN SIGN-IN" : "SIGN IN WITH NVIDIA")
                 }
                 .buttonStyle(VendorGetInButtonStyle())
                 .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                .accessibilityHint("Opens NVIDIA authentication in your browser")
                 .padding(.bottom, 32)
+
+                Text("OpenNOW stores local session metadata on this Mac and uses NVIDIA OAuth for account access.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.gfnTextTertiary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 18)
 
                 if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                     Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
@@ -89,7 +110,7 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("Version OpenNOW")
+                Text("OpenNOW Mac")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.gfnTextSecondary)
                     .lineLimit(1)
@@ -145,8 +166,9 @@ private struct VendorLoginWallMetrics {
         }
 
         let columnSize = (size.width - (2 * sideSpacing) - (gutter * (columnCount - 1))) / columnCount
-        let panelColumnCount: CGFloat = size.width >= 960 && size.width < 1440 ? 5 : 4
-        panelWidth = (panelColumnCount * columnSize) + ((panelColumnCount - 1) * gutter) + sideSpacing
+        let panelColumnCount: CGFloat = size.width >= 1200 ? 4 : 5
+        let rawPanelWidth = (panelColumnCount * columnSize) + ((panelColumnCount - 1) * gutter) + sideSpacing
+        panelWidth = min(max(rawPanelWidth, 360), max(size.width * 0.62, 360))
         contentLeft = 24 + sideSpacing
         contentRight = 40
         contentBottom = 48

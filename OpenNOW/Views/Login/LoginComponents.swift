@@ -10,7 +10,7 @@ import SwiftUI
 
 struct LoginBackdrop: View {
     var body: some View {
-        Color.black
+        OpenNOWDesign.Surface.app
         .ignoresSafeArea()
     }
 }

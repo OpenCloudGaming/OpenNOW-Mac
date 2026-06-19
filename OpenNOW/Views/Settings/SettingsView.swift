@@ -96,6 +96,10 @@ private struct SettingsSidebar: View {
                         Rectangle()
                             .fill(viewModel.selectedSettingsPage == page ? Color.openNowGreen : .clear)
                             .frame(width: 4, height: 34)
+                        Image(systemName: icon(for: page))
+                            .font(.settingsNvidia(size: 13, weight: .bold))
+                            .foregroundStyle(viewModel.selectedSettingsPage == page ? Color.openNowGreen : .white.opacity(0.52))
+                            .frame(width: 18)
                         Text(page.title)
                             .font(.settingsNvidia(size: 14, weight: viewModel.selectedSettingsPage == page ? .bold : .medium))
                             .foregroundStyle(viewModel.selectedSettingsPage == page ? .white : .white.opacity(0.68))
@@ -126,6 +130,18 @@ private struct SettingsSidebar: View {
         .frame(width: 256)
         .background(SettingsVendorLayout.sidebar)
         .overlay(alignment: .trailing) { Rectangle().fill(Color.black.opacity(0.38)).frame(width: 1) }
+    }
+
+    private func icon(for page: CatalogSettingsPage) -> String {
+        switch page {
+        case .account: return "person.crop.circle.fill"
+        case .connections: return "link"
+        case .gameplay: return "slider.horizontal.3"
+        case .serverLocation: return "network"
+        case .resolutionUpscaling: return "sparkles.tv.fill"
+        case .system: return "desktopcomputer"
+        case .about: return "info.circle.fill"
+        }
     }
 }
 
@@ -1325,13 +1341,19 @@ private struct SettingsCard<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title.uppercased())
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.58))
-                .tracking(1.1)
-                .padding(.horizontal, 18)
-                .padding(.top, 17)
-                .padding(.bottom, 12)
+            HStack(spacing: 10) {
+                Rectangle()
+                    .fill(Color.openNowGreen)
+                    .frame(width: 4, height: 18)
+                Text(title.uppercased())
+                    .font(.settingsNvidia(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .tracking(1.1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 17)
+            .padding(.bottom, 12)
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
@@ -1340,7 +1362,8 @@ private struct SettingsCard<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SettingsVendorLayout.card)
-        .overlay { Rectangle().stroke(Color.white.opacity(0.09), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
     }
 }
 

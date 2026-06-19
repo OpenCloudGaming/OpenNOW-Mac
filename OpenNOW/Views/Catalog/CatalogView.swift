@@ -16,9 +16,9 @@ import WebRTCMedia
 
 private enum CatalogVendorLayout {
     static let appBarHeight: CGFloat = 56
-    static let appBarBackground = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
-    static let mallSurface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
-    static let tileTray = Color(red: 41 / 255, green: 41 / 255, blue: 41 / 255)
+    static let appBarBackground = OpenNOWDesign.Surface.appBar
+    static let mallSurface = OpenNOWDesign.Surface.app
+    static let tileTray = OpenNOWDesign.Surface.tileTray
     static let sectionHeaderMargin: CGFloat = 40
     static let carouselContainerMargin: CGFloat = 32
     static let tileHorizontalMargin: CGFloat = 8
@@ -37,7 +37,23 @@ private enum CatalogVendorLayout {
     }
 
     static func heroImageLeading(for width: CGFloat) -> CGFloat {
-        width > 0 ? 56 + width * 0.14 : 258
+        width > 0 ? OpenNOWDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
+    }
+
+    static func searchWidth(for width: CGFloat) -> CGFloat {
+        OpenNOWDesign.clamped(width * 0.42, minimum: 280, maximum: 540)
+    }
+
+    static func launchPanelWidth(for width: CGFloat) -> CGFloat {
+        OpenNOWDesign.clamped(width - 64, minimum: 360, maximum: 640)
+    }
+
+    static func heroTextLeading(for width: CGFloat) -> CGFloat {
+        OpenNOWDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
+    }
+
+    static func heroTextWidth(for width: CGFloat) -> CGFloat {
+        OpenNOWDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
     }
 }
 
@@ -467,7 +483,7 @@ private struct VendorLaunchPanel<Content: View>: View {
                     .frame(width: 108, height: 32, alignment: .leading)
                 Spacer()
                 Button { } label: {
-                    Text("LAUNCH FLOW")
+                    Text("LAUNCH STATUS")
                         .font(.nvidia(size: 10, weight: .bold))
                         .foregroundStyle(Color.openNowGreen)
                         .tracking(1.4)
@@ -497,7 +513,7 @@ private struct VendorLaunchPanel<Content: View>: View {
                 .padding(.horizontal, 26)
                 .padding(.bottom, 26)
         }
-        .frame(width: 640)
+        .frame(minWidth: 360, idealWidth: 640, maxWidth: 640)
         .background(Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255))
         .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
         .shadow(color: .black.opacity(0.55), radius: 28, y: 18)
@@ -600,78 +616,80 @@ private struct CatalogTopBar: View {
     let onForget: (LoginAccount) -> Void
 
     var body: some View {
-        ZStack {
-            HStack(spacing: 18) {
-                Button { showsMainMenu.toggle() } label: {
-                    CatalogHamburgerLabel(isOpen: showsMainMenu)
+        GeometryReader { proxy in
+            ZStack {
+                HStack(spacing: 18) {
+                    Button { showsMainMenu.toggle() } label: {
+                        CatalogHamburgerLabel(isOpen: showsMainMenu)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
+                    Text(viewModel.selectedMainPage == .settings ? "Settings" : viewModel.selectedCatalogDestination.title)
+                        .font(.nvidia(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                    Spacer()
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
-                Text(viewModel.selectedMainPage == .settings ? "Settings" : viewModel.selectedCatalogDestination.title)
-                    .font(.nvidia(size: 17, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
-                Spacer()
-            }
-            .padding(.leading, 86)
+                .padding(.leading, 86)
 
-            if viewModel.selectedMainPage == .games {
-                catalogSearchField
-                    .frame(width: 540)
-            } else {
-                Text(viewModel.selectedSettingsPage.title)
-                    .font(.nvidia(size: 15, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.70))
-                    .tracking(1.1)
-                    .frame(width: 540)
-            }
+                if viewModel.selectedMainPage == .games {
+                    catalogSearchField
+                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
+                } else {
+                    Text(viewModel.selectedSettingsPage.title)
+                        .font(.nvidia(size: 15, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .tracking(1.1)
+                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
+                }
 
-            HStack(spacing: 24) {
-                Spacer()
-                Button { showsPreviousSessionOverlay.toggle() } label: {
-                    Image(systemName: "questionmark.circle.fill")
-                        .font(.nvidia(size: 22, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.94))
-                        .overlay(alignment: .topTrailing) {
-                            if viewModel.previousGameSession != nil {
-                                Circle()
-                                    .fill(Color.openNowGreen)
-                                    .frame(width: 8, height: 8)
-                                    .offset(x: 2, y: -2)
+                HStack(spacing: 24) {
+                    Spacer()
+                    Button { showsPreviousSessionOverlay.toggle() } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.nvidia(size: 22, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.94))
+                            .overlay(alignment: .topTrailing) {
+                                if viewModel.previousGameSession != nil {
+                                    Circle()
+                                        .fill(Color.openNowGreen)
+                                        .frame(width: 8, height: 8)
+                                        .offset(x: 2, y: -2)
+                                }
                             }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Previous game session")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Previous game session")
 
-                Menu {
-                    ForEach(accounts) { account in
-                        Button(account.displayName) { onSwitch(account) }
-                    }
-                    Divider()
-                    Button("Sign Out", action: onSignOut)
-                    ForEach(accounts) { account in
-                        Button("Forget \(account.displayName)", role: .destructive) { onForget(account) }
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        CatalogAccountAvatar(account: viewModel.account, size: 32)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(viewModel.account.displayName)
-                                .font(.nvidia(size: 15, weight: .medium))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Text(viewModel.subscriptionStatus.membershipTier)
-                                .font(.nvidia(size: 12, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.78))
+                    Menu {
+                        ForEach(accounts) { account in
+                            Button(account.displayName) { onSwitch(account) }
                         }
-                        Image(systemName: "chevron.down")
-                            .font(.nvidia(size: 10, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.88))
+                        Divider()
+                        Button("Sign Out", action: onSignOut)
+                        ForEach(accounts) { account in
+                            Button("Forget \(account.displayName)", role: .destructive) { onForget(account) }
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            CatalogAccountAvatar(account: viewModel.account, size: 32)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(viewModel.account.displayName)
+                                    .font(.nvidia(size: 15, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Text(viewModel.subscriptionStatus.membershipTier)
+                                    .font(.nvidia(size: 12, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.78))
+                            }
+                            Image(systemName: "chevron.down")
+                                .font(.nvidia(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.trailing, 22)
             }
-            .padding(.trailing, 22)
         }
         .frame(height: CatalogVendorLayout.appBarHeight)
         .background(CatalogVendorLayout.appBarBackground)
@@ -1564,6 +1582,7 @@ private struct CatalogContentView: View {
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
     @State private var showAllSection: CatalogSectionModel?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -1628,7 +1647,7 @@ private struct CatalogContentView: View {
                         }
 
                         if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
-                            CatalogEmptyDestinationView(destination: viewModel.selectedCatalogDestination)
+                            CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
                                 .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                 .padding(.top, viewModel.selectedCatalogDestination == .home ? 52 : 118)
                         }
@@ -1673,7 +1692,7 @@ private struct CatalogContentView: View {
         }
         .background(Color.gfnBackgroundGreen)
         .onReceive(heroTimer) { _ in
-            guard heroAutoScrollEnabled, heroes.count > 1 else { return }
+            guard !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { return }
             withAnimation(.easeInOut(duration: 0.2)) {
                 heroIndex = (heroIndex + 1) % heroes.count
             }
@@ -1754,6 +1773,7 @@ private struct CatalogHeroView: View {
             GeometryReader { proxy in
                 let heroHeight = CatalogVendorLayout.heroHeight(for: proxy.size.width)
                 let imageLeading = CatalogVendorLayout.heroImageLeading(for: proxy.size.width)
+                let textWidth = CatalogVendorLayout.heroTextWidth(for: proxy.size.width)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
                     CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1920), contentMode: .fill) { color in
@@ -1785,10 +1805,10 @@ private struct CatalogHeroView: View {
                         }
                         .buttonStyle(VendorGetInButtonStyle())
                     }
-                    .frame(width: 470)
+                    .frame(width: textWidth)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, 102)
-                    .padding(.leading, 108)
+                    .padding(.top, proxy.size.width < 760 ? 76 : 102)
+                    .padding(.leading, CatalogVendorLayout.heroTextLeading(for: proxy.size.width))
 
                     HStack {
                         if activeIndex > 0 {
@@ -1962,6 +1982,7 @@ private struct CatalogBrowseControlsView: View {
 }
 
 private struct CatalogEmptyDestinationView: View {
+    @ObservedObject var viewModel: CatalogViewModel
     let destination: CatalogDestination
 
     var body: some View {
@@ -1980,6 +2001,15 @@ private struct CatalogEmptyDestinationView: View {
                         .foregroundStyle(.white.opacity(0.62))
                 }
             }
+            HStack(spacing: 10) {
+                Button(primaryActionTitle) { primaryAction() }
+                    .buttonStyle(VendorGetInButtonStyle())
+                if viewModel.isBrowseMode {
+                    Button("CLEAR FILTERS") { viewModel.clearSearchAndFilters() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                }
+            }
+            .padding(.top, 4)
         }
         .padding(22)
         .frame(maxWidth: 620, alignment: .leading)
@@ -2008,6 +2038,25 @@ private struct CatalogEmptyDestinationView: View {
         case .home: return "Refresh the catalog or adjust search and filters to find supported GeForce NOW games."
         case .library: return "Connect or sync your game store accounts to populate My Library."
         case .favorites: return "Open a game detail panel and use the heart button to add it to My Favorites."
+        }
+    }
+
+    private var primaryActionTitle: String {
+        switch destination {
+        case .home: return viewModel.isBrowseMode ? "REFRESH" : "REFRESH CATALOG"
+        case .library: return "OPEN CONNECTIONS"
+        case .favorites: return "BROWSE GAMES"
+        }
+    }
+
+    private func primaryAction() {
+        switch destination {
+        case .home:
+            viewModel.refresh()
+        case .library:
+            viewModel.showSettings(.connections)
+        case .favorites:
+            viewModel.showCatalogDestination(.home)
         }
     }
 }
@@ -2683,6 +2732,7 @@ private struct CatalogGameTile: View {
     let isSelectionActive: Bool
     let onSelect: () -> Void
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         Button(action: onSelect) {
@@ -2691,33 +2741,31 @@ private struct CatalogGameTile: View {
                     CatalogRemoteImage(url: imageURL, contentMode: .fill)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                         .clipped()
-                    if isHovering || isSelected {
+                    if isHovering || isSelected || isFocused {
                         Color.black.opacity(0.50)
                         LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
                     }
                     if let badge = game.cardBadgeLabel {
                         CatalogGameCardBadge(label: badge)
                     }
-                    if isHovering || isSelected {
-                        VStack {
+                    VStack {
+                        Spacer(minLength: 0)
+                        HStack(spacing: 8) {
+                            Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                                .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
+                                .lineLimit(1)
+                                .foregroundStyle((isHovering || isSelected || isFocused) ? .white.opacity(0.90) : .white.opacity(0.74))
                             Spacer(minLength: 0)
-                            HStack(spacing: 8) {
-                                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                                    .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
-                                    .lineLimit(1)
-                                    .foregroundStyle(isSelected ? .white.opacity(0.90) : .white.opacity(0.60))
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.down")
-                                    .font(.nvidia(size: 10, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.76))
-                            }
-                            .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
-                            .padding(.horizontal, 16)
-                            .background(CatalogVendorLayout.tileTray)
-                            .frame(width: CatalogVendorLayout.wideTileWidth)
+                            Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                                .font(.nvidia(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity((isHovering || isSelected || isFocused) ? 0.76 : 0.48))
                         }
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                        .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
+                        .padding(.horizontal, 16)
+                        .background(CatalogVendorLayout.tileTray.opacity((isHovering || isSelected || isFocused) ? 1 : 0.92))
+                        .frame(width: CatalogVendorLayout.wideTileWidth)
                     }
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                 }
             }
             .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
@@ -2738,7 +2786,9 @@ private struct CatalogGameTile: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focused($isFocused)
         .onHover { isHovering = $0 }
+        .openNowFocusRing(isFocused)
         .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(isSelected ? "Details open" : "")
@@ -2840,6 +2890,8 @@ private struct GameDetailPanel: View {
     @ObservedObject var viewModel: CatalogViewModel
     @State private var activeImageIndex = 0
     @State private var isDescriptionExpanded = false
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let imageTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -2961,8 +3013,9 @@ private struct GameDetailPanel: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.detailPanelHeight, maxHeight: CatalogVendorLayout.detailPanelHeight)
+            .onHover { isHovering = $0 }
             .onReceive(imageTimer) { _ in
-                guard game.detailImageURLs.count > 1 else { return }
+                guard !reduceMotion, !isHovering, game.detailImageURLs.count > 1 else { return }
                 moveImage(delta: 1, count: game.detailImageURLs.count)
             }
             .onChange(of: game.catalogIdentity) { _, _ in
@@ -3139,9 +3192,9 @@ private struct GameDetailPanel: View {
                 .font(.nvidia(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.76))
                 .lineLimit(1)
-            Text("Learn more")
+            Text("Configure stores from Connections.")
                 .font(.nvidia(size: 13, weight: .bold))
-                .foregroundStyle(Color.openNowGreen)
+                .foregroundStyle(.white.opacity(0.68))
             Spacer(minLength: 0)
         }
     }
@@ -3839,9 +3892,23 @@ private struct CatalogLoadingStrip: View {
                 .foregroundStyle(.white.opacity(0.62))
             VendorIndeterminateProgressBar()
                 .frame(width: 260, height: 4)
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 0)
+                        .fill(Color.white.opacity(index == 0 ? 0.10 : 0.065))
+                        .frame(width: 96, height: 54)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.08))
+                                .frame(height: 12)
+                        }
+                }
+            }
+            .accessibilityHidden(true)
         }
         .padding(12)
         .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -3987,8 +4054,9 @@ private extension OPNCatalogGameObject {
     var bestWideImageURL: String {
         for key in ["TV_BANNER"] {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
+            if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
         }
-        return ""
+        return bestTileImageURL
     }
 
     var bestDetailImageURL: String {
