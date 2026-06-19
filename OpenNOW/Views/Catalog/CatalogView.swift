@@ -1667,6 +1667,9 @@ private struct CatalogContentView: View {
             .onChange(of: selectedRailScrollAnchor) { _, anchor in
                 scrollToSelectedRail(anchor, proxy: proxy)
             }
+            .onChange(of: viewModel.selectedGameRevealRequest) { _, _ in
+                scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
+            }
         }
         .background(Color.gfnBackgroundGreen)
         .onReceive(heroTimer) { _ in
@@ -1704,9 +1707,16 @@ private struct CatalogContentView: View {
 
     private func scrollToSelectedRail(_ anchor: String?, proxy: ScrollViewProxy) {
         guard let anchor else { return }
+        scrollToSelectedRail(anchor, proxy: proxy, remainingDeferredPasses: 2)
+    }
+
+    private func scrollToSelectedRail(_ anchor: String, proxy: ScrollViewProxy, remainingDeferredPasses: Int) {
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.24)) {
                 proxy.scrollTo(anchor, anchor: .top)
+            }
+            if remainingDeferredPasses > 0 {
+                scrollToSelectedRail(anchor, proxy: proxy, remainingDeferredPasses: remainingDeferredPasses - 1)
             }
         }
     }
