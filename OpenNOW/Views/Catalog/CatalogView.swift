@@ -158,14 +158,17 @@ struct CatalogView: View {
                     )
                     .id(streamConfiguration.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(.all)
 
                     if viewModel.isStreamLaunchLoadingVisible {
                         VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
                             .transition(.opacity)
                             .zIndex(10)
+                            .ignoresSafeArea(.all)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.all)
                 .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
@@ -204,6 +207,7 @@ struct CatalogView: View {
             }
         }
         .background(Color.gfnBackgroundGreen)
+        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
         .task {
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
@@ -255,6 +259,58 @@ private struct VendorLaunchFlowOverlay: View {
                 EmptyView()
             }
         }
+    }
+}
+
+private struct StreamWindowAspectConfigurator: NSViewRepresentable {
+    let aspectRatio: Double
+    let isLocked: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { configure(window: view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { configure(window: view.window) }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
+        nsView.window?.contentAspectRatio = .zero
+    }
+
+    private func configure(window: NSWindow?) {
+        guard let window else { return }
+        guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
+            window.contentAspectRatio = .zero
+            return
+        }
+        let aspectSize = NSSize(width: aspectRatio, height: 1)
+        if abs((window.contentAspectRatio.width / max(window.contentAspectRatio.height, 1)) - aspectRatio) > 0.001 {
+            window.contentAspectRatio = aspectSize
+        }
+        resize(window: window, toAspectRatio: CGFloat(aspectRatio))
+    }
+
+    private func resize(window: NSWindow, toAspectRatio aspectRatio: CGFloat) {
+        guard aspectRatio.isFinite, aspectRatio > 0 else { return }
+        let contentSize = window.contentLayoutRect.size
+        guard contentSize.width > 0, contentSize.height > 0 else { return }
+        let currentAspect = contentSize.width / contentSize.height
+        guard abs(currentAspect - aspectRatio) > 0.01 else { return }
+
+        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
+        let maximumContentWidth = max(640, visibleFrame.width - 80)
+        let maximumContentHeight = max(360, visibleFrame.height - 80)
+        var nextWidth = min(max(contentSize.width, 640), maximumContentWidth)
+        var nextHeight = nextWidth / aspectRatio
+        if nextHeight > maximumContentHeight {
+            nextHeight = maximumContentHeight
+            nextWidth = nextHeight * aspectRatio
+        }
+        window.setContentSize(NSSize(width: nextWidth, height: nextHeight))
+        window.center()
     }
 }
 

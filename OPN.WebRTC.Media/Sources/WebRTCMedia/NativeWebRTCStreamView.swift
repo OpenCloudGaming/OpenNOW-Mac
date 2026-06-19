@@ -298,11 +298,11 @@ public final class NativeWebRTCStreamView: NSView {
         let viewAspect = bounds.width / bounds.height
         let contentAspect = streamContentSize.width / streamContentSize.height
         if contentAspect > viewAspect {
-            let height = bounds.width / contentAspect
-            return CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height).integral
+            let width = bounds.height * contentAspect
+            return CGRect(x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height).integral
         }
-        let width = bounds.height * contentAspect
-        return CGRect(x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height).integral
+        let height = bounds.width / contentAspect
+        return CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height).integral
     }
 
     private func emitMouseButton(_ button: MouseButton, isPressed: Bool) {
