@@ -2166,21 +2166,26 @@ private struct CatalogGameTile: View {
                     if let badge = game.cardBadgeLabel {
                         CatalogGameCardBadge(label: badge)
                     }
-                }
-                if isHovering || isSelected {
-                    HStack(spacing: 8) {
-                        Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                            .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
-                            .lineLimit(1)
-                            .foregroundStyle(isSelected ? .white.opacity(0.90) : .white.opacity(0.60))
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.down")
-                            .font(.nvidia(size: 10, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.76))
+                    if isHovering || isSelected {
+                        VStack {
+                            Spacer(minLength: 0)
+                            HStack(spacing: 8) {
+                                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                                    .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
+                                    .lineLimit(1)
+                                    .foregroundStyle(isSelected ? .white.opacity(0.90) : .white.opacity(0.60))
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.down")
+                                    .font(.nvidia(size: 10, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.76))
+                            }
+                            .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
+                            .padding(.horizontal, 16)
+                            .background(CatalogVendorLayout.tileTray)
+                            .frame(width: CatalogVendorLayout.wideTileWidth)
+                        }
+                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                     }
-                    .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
-                    .padding(.horizontal, 16)
-                    .background(CatalogVendorLayout.tileTray)
                 }
             }
             .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
@@ -2189,7 +2194,7 @@ private struct CatalogGameTile: View {
                     Rectangle()
                         .fill(Color.openNowGreen)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
-                        .offset(y: CatalogVendorLayout.wideTileHeight + 4)
+                        .offset(y: CatalogVendorLayout.wideTileHeight - 4)
                 }
             }
             .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
@@ -2199,7 +2204,7 @@ private struct CatalogGameTile: View {
         .buttonStyle(.plain)
         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
         .padding(.top, CatalogVendorLayout.tileTopMargin)
-        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.cardTrayHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
         .onHover { isHovering = $0 }
         .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
         .accessibilityAddTraits(.isButton)

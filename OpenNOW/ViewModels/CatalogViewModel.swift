@@ -762,7 +762,7 @@ final class CatalogViewModel: ObservableObject {
             let shortcutURL = desktopURL.appendingPathComponent(Self.safeShortcutFilename(title))
             let variantIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
             let variant = variantIndex >= 0 && variantIndex < selectedGame.variants.count ? selectedGame.variants[variantIndex] : nil
-            let cmsId = variant?.id.isEmpty == false ? variant?.id ?? "" : Self.identity(for: selectedGame)
+            let cmsId = Self.shortcutCMSId(for: selectedGame, variant: variant)
             let shortName = !selectedGame.shortName.isEmpty ? selectedGame.shortName : (!selectedGame.uuid.isEmpty ? selectedGame.uuid : selectedGame.id)
             guard !cmsId.isEmpty || !shortName.isEmpty else {
                 errorMessage = "No GeForce NOW identifier is available for this game."
@@ -1341,6 +1341,23 @@ final class CatalogViewModel: ObservableObject {
         let sanitized = title.components(separatedBy: invalidCharacters).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = sanitized.isEmpty ? "GeForce NOW Game" : sanitized
         return "\(baseName) on GeForce NOW.gfnpc"
+    }
+
+    private static func shortcutCMSId(for game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject?) -> String {
+        for value in [variant?.id ?? "", game.launchAppId, game.id] where isPositiveInteger(value) {
+            return value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let variantId = game.variants.map(\.id).first(where: isPositiveInteger) {
+            return variantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let variantId = variant?.id, !variantId.isEmpty { return variantId }
+        return identity(for: game)
+    }
+
+    private static func isPositiveInteger(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let intValue = Int(trimmed) else { return false }
+        return intValue > 0
     }
 
     private func resolveGameForDetails(_ game: OPNCatalogGameObject) -> OPNCatalogGameObject {
