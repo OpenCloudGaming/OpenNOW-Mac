@@ -2007,6 +2007,10 @@ private struct CatalogRailView: View {
     let section: CatalogSectionModel
     let onShowAll: () -> Void
     @State private var scrollIndex = 0
+    @State private var tileFrames: [String: CGRect] = [:]
+    @State private var viewportWidth: CGFloat = 0
+
+    private var coordinateSpaceName: String { "catalog-rail-\(section.id)" }
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
     private var canShowAll: Bool { section.games.count > games.count }
@@ -2042,6 +2046,7 @@ private struct CatalogRailView: View {
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) }
                                 )
                                     .id(game.catalogIdentity)
+                                    .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
                             }
                             if section.games.count > games.count {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
@@ -2050,6 +2055,15 @@ private struct CatalogRailView: View {
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
                         .padding(.bottom, 4)
                     }
+                    .coordinateSpace(name: coordinateSpaceName)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { viewportWidth = proxy.size.width }
+                                .onChange(of: proxy.size.width) { _, width in viewportWidth = width }
+                        }
+                    )
+                    .onPreferenceChange(CatalogRailTileFramePreferenceKey.self) { tileFrames = $0 }
                     if games.count > 3 {
                         HStack {
                             CatalogRailArrow(name: "lt_arrow") {
@@ -2063,6 +2077,8 @@ private struct CatalogRailView: View {
                         .padding(.horizontal, 8)
                     }
                 }
+                .onAppear { revealSelectedGameIfNeeded(proxy: proxy, request: viewModel.selectedGameRevealRequest) }
+                .onChange(of: viewModel.selectedGameRevealRequest) { _, request in revealSelectedGameIfNeeded(proxy: proxy, request: request) }
             }
         }
         .onAppear { prefetchNearVisibleImages() }
@@ -2100,6 +2116,41 @@ private struct CatalogRailView: View {
         guard !seen.contains(key) else { return }
         seen.insert(key)
         urls.append(url)
+    }
+
+    private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
+        guard let request, request.sectionId.isEmpty || request.sectionId == section.id else { return }
+        guard games.contains(where: { $0.catalogIdentity == request.gameIdentity }) else { return }
+        DispatchQueue.main.async {
+            guard !isTileFullyVisible(request.gameIdentity) else { return }
+            withAnimation(.easeInOut(duration: 0.24)) {
+                proxy.scrollTo(request.gameIdentity, anchor: .center)
+            }
+        }
+    }
+
+    private func isTileFullyVisible(_ identity: String) -> Bool {
+        guard viewportWidth > 0, let frame = tileFrames[identity] else { return false }
+        return frame.minX >= 0 && frame.maxX <= viewportWidth
+    }
+}
+
+private struct CatalogRailTileFrameReader: View {
+    let identity: String
+    let coordinateSpaceName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: CatalogRailTileFramePreferenceKey.self, value: [identity: proxy.frame(in: .named(coordinateSpaceName))])
+        }
+    }
+}
+
+private struct CatalogRailTileFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
     }
 }
 
@@ -2155,11 +2206,14 @@ private struct CatalogShowAllOverlay: View {
     let onDismiss: () -> Void
     let onSelect: (OPNCatalogGameObject) -> Void
     @State private var searchQuery = ""
+    @State private var userSize: CGSize?
+    @State private var resizeStartSize: CGSize?
 
     private let columns = [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2), spacing: 4, alignment: .top)]
 
     var body: some View {
         GeometryReader { proxy in
+            let panelSize = overlaySize(for: proxy.size)
             ZStack {
                 Color.black.opacity(0.50)
                     .ignoresSafeArea()
@@ -2230,9 +2284,15 @@ private struct CatalogShowAllOverlay: View {
                     }
                 }
                 .padding(22)
-                .frame(width: overlayWidth(for: proxy.size), height: overlayHeight(for: proxy.size), alignment: .topLeading)
+                .frame(width: panelSize.width, height: panelSize.height, alignment: .topLeading)
                 .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.96))
                 .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
+                .overlay(alignment: .bottomTrailing) {
+                    CatalogShowAllResizeHandle()
+                        .padding(8)
+                        .gesture(resizeGesture(containerSize: proxy.size, currentSize: panelSize))
+                        .accessibilityLabel("Resize show all window")
+                }
                 .shadow(color: .black.opacity(0.46), radius: 28, x: 0, y: 18)
             }
         }
@@ -2259,12 +2319,70 @@ private struct CatalogShowAllOverlay: View {
         return CatalogViewModel.looseIdentityMatches(selectedGame, game)
     }
 
-    private func overlayWidth(for size: CGSize) -> CGFloat {
-        min(max(size.width * 0.72, 760), min(size.width - 64, 1120))
+    private func overlaySize(for containerSize: CGSize) -> CGSize {
+        let fallback = CGSize(width: containerSize.width * 0.72, height: containerSize.height * 0.72)
+        let rawSize = userSize ?? fallback
+        return CGSize(
+            width: clamped(rawSize.width, minimum: minimumOverlayWidth(for: containerSize), maximum: maximumOverlayWidth(for: containerSize)),
+            height: clamped(rawSize.height, minimum: minimumOverlayHeight(for: containerSize), maximum: maximumOverlayHeight(for: containerSize))
+        )
     }
 
-    private func overlayHeight(for size: CGSize) -> CGFloat {
-        min(max(size.height * 0.72, 520), min(size.height - 64, 760))
+    private func resizeGesture(containerSize: CGSize, currentSize: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                let startSize = resizeStartSize ?? currentSize
+                resizeStartSize = startSize
+                userSize = CGSize(
+                    width: clamped(startSize.width + value.translation.width, minimum: minimumOverlayWidth(for: containerSize), maximum: maximumOverlayWidth(for: containerSize)),
+                    height: clamped(startSize.height + value.translation.height, minimum: minimumOverlayHeight(for: containerSize), maximum: maximumOverlayHeight(for: containerSize))
+                )
+            }
+            .onEnded { _ in resizeStartSize = nil }
+    }
+
+    private func clamped(_ value: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
+        min(max(value, minimum), maximum)
+    }
+
+    private func minimumOverlayWidth(for size: CGSize) -> CGFloat {
+        min(max(size.width - 64, 360), 760)
+    }
+
+    private func maximumOverlayWidth(for size: CGSize) -> CGFloat {
+        max(size.width - 64, minimumOverlayWidth(for: size))
+    }
+
+    private func minimumOverlayHeight(for size: CGSize) -> CGFloat {
+        min(max(size.height - 64, 360), 520)
+    }
+
+    private func maximumOverlayHeight(for size: CGSize) -> CGFloat {
+        max(size.height - 64, minimumOverlayHeight(for: size))
+    }
+}
+
+private struct CatalogShowAllResizeHandle: View {
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .trailing, spacing: 4) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.28))
+                    .frame(width: 9, height: 1)
+                Rectangle()
+                    .fill(Color.white.opacity(0.42))
+                    .frame(width: 15, height: 1)
+                Rectangle()
+                    .fill(Color.openNowGreen.opacity(0.86))
+                    .frame(width: 21, height: 1)
+            }
+            .rotationEffect(.degrees(-45))
+            .offset(x: -2, y: -2)
+        }
+        .contentShape(Rectangle())
     }
 }
 

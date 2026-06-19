@@ -158,6 +158,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
     @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     @Published var favoriteGameIdentities: Set<String> = []
+    @Published var selectedGameRevealRequest: CatalogGameRevealRequest?
     @Published var catalogImageCacheSummary = "Calculating"
     @Published var isStorePickerVisible = false
     @Published var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
@@ -177,6 +178,7 @@ final class CatalogViewModel: ObservableObject {
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
     private var settingsPreferencesGeneration = 0
+    private var selectedGameRevealSequence = 0
     private var settingsPreferencesTask: Task<Void, Never>?
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
@@ -415,6 +417,7 @@ final class CatalogViewModel: ObservableObject {
 
     func selectGameFromHero(_ game: OPNCatalogGameObject) {
         selectGame(game)
+        requestSelectedGameReveal(for: game, sectionId: "")
     }
 
     func closeGameDetailsFromBackground() {
@@ -1343,6 +1346,11 @@ final class CatalogViewModel: ObservableObject {
         return "\(baseName) on GeForce NOW.gfnpc"
     }
 
+    private func requestSelectedGameReveal(for game: OPNCatalogGameObject, sectionId: String) {
+        selectedGameRevealSequence += 1
+        selectedGameRevealRequest = CatalogGameRevealRequest(sectionId: sectionId, gameIdentity: Self.identity(for: game), sequence: selectedGameRevealSequence)
+    }
+
     private static func shortcutCMSId(for game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject?) -> String {
         for value in [variant?.id ?? "", game.launchAppId, game.id] where isPositiveInteger(value) {
             return value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1430,6 +1438,12 @@ struct CatalogSectionModel: Identifiable, Equatable {
     func visibleGames(expanded: Bool) -> [OPNCatalogGameObject] {
         expanded ? games : Array(games.prefix(18))
     }
+}
+
+struct CatalogGameRevealRequest: Equatable {
+    let sectionId: String
+    let gameIdentity: String
+    let sequence: Int
 }
 
 struct CatalogStoreAccount: Identifiable, Equatable {
