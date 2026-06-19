@@ -2207,7 +2207,7 @@ private struct CatalogShowAllOverlay: View {
     let onDismiss: () -> Void
     let onSelect: (OPNCatalogGameObject) -> Void
     @State private var searchQuery = ""
-    @State private var userSize: CGSize?
+    @State private var userSize: CGSize? = CatalogShowAllWindowPreferences.loadSize()
     @State private var resizeStartSize: CGSize?
     @State private var userOffset = CGSize.zero
     @State private var resizeStartOffset = CGSize.zero
@@ -2349,6 +2349,7 @@ private struct CatalogShowAllOverlay: View {
                 userOffset = clampedOffset(nextOffset, panelSize: nextSize, containerSize: containerSize)
             }
             .onEnded { _ in
+                if let userSize { CatalogShowAllWindowPreferences.saveSize(userSize) }
                 resizeStartSize = nil
                 resizeStartOffset = .zero
             }
@@ -2387,6 +2388,23 @@ private struct CatalogShowAllOverlay: View {
 
     private func maximumOverlayHeight(for size: CGSize) -> CGFloat {
         max(size.height - 64, minimumOverlayHeight(for: size))
+    }
+}
+
+private enum CatalogShowAllWindowPreferences {
+    private static let widthKey = "OpenNOW.catalog.showAllWindow.width"
+    private static let heightKey = "OpenNOW.catalog.showAllWindow.height"
+
+    static func loadSize() -> CGSize? {
+        let width = UserDefaults.standard.double(forKey: widthKey)
+        let height = UserDefaults.standard.double(forKey: heightKey)
+        guard width > 0, height > 0 else { return nil }
+        return CGSize(width: width, height: height)
+    }
+
+    static func saveSize(_ size: CGSize) {
+        UserDefaults.standard.set(Double(size.width), forKey: widthKey)
+        UserDefaults.standard.set(Double(size.height), forKey: heightKey)
     }
 }
 
