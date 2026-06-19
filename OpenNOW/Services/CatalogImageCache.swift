@@ -13,6 +13,11 @@ struct CatalogCachedImageData: @unchecked Sendable {
     let image: NSImage
 }
 
+struct CatalogImageCacheStatistics: Sendable {
+    let entryCount: Int
+    let totalBytes: Int
+}
+
 actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
@@ -20,6 +25,8 @@ actor CatalogImageCache {
     private let containerStore = CatalogImageCacheContainerStore()
     private var inFlightLoads: [URL: Task<CatalogCachedImageData?, Never>] = [:]
     private var prefetchTask: Task<Void, Never>?
+    private var prefetchQueue: [URL] = []
+    private var queuedPrefetchURLs: Set<URL> = []
 
     private let maximumCacheAge: TimeInterval = 14 * 24 * 60 * 60
     private let maximumStoredBytes = 512 * 1024 * 1024
@@ -59,19 +66,67 @@ actor CatalogImageCache {
         return result
     }
 
+    func statistics() -> CatalogImageCacheStatistics {
+        guard let context = makeContext() else { return CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0) }
+        let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
+        guard let entries = try? context.fetch(descriptor) else { return CatalogImageCacheStatistics(entryCount: 0, totalBytes: 0) }
+        return CatalogImageCacheStatistics(entryCount: entries.count, totalBytes: entries.reduce(0) { $0 + $1.byteCount })
+    }
+
+    func clear() -> Bool {
+        guard let context = makeContext() else { return false }
+        let descriptor = FetchDescriptor<CatalogImageCacheEntry>()
+        guard let entries = try? context.fetch(descriptor) else { return false }
+        for entry in entries {
+            context.delete(entry)
+        }
+        do {
+            try context.save()
+            memoryCache.removeAllObjects()
+            prefetchQueue.removeAll()
+            queuedPrefetchURLs.removeAll()
+            prefetchTask?.cancel()
+            prefetchTask = nil
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func startPrefetch(_ urls: [URL]) {
         let uniqueUrls = Array(Dictionary(grouping: urls, by: { $0 }).keys)
         guard !uniqueUrls.isEmpty else { return }
-        prefetchTask?.cancel()
+        for url in uniqueUrls where !queuedPrefetchURLs.contains(url) {
+            queuedPrefetchURLs.insert(url)
+            prefetchQueue.append(url)
+        }
+        startPrefetchTaskIfNeeded()
+    }
+
+    private func startPrefetchTaskIfNeeded() {
+        guard prefetchTask == nil, !prefetchQueue.isEmpty else { return }
         prefetchTask = Task(priority: .background) { [weak self] in
             guard let self else { return }
-            for url in uniqueUrls {
+            while let url = await self.nextPrefetchURL() {
                 guard !Task.isCancelled else { return }
                 if await self.hasCachedImage(for: url) { continue }
                 _ = await self.image(for: url)
                 try? await Task.sleep(nanoseconds: 35_000_000)
             }
+            await self.prefetchDidFinish()
         }
+    }
+
+    private func nextPrefetchURL() -> URL? {
+        guard !prefetchQueue.isEmpty else { return nil }
+        let url = prefetchQueue.removeFirst()
+        queuedPrefetchURLs.remove(url)
+        return url
+    }
+
+    private func prefetchDidFinish() {
+        prefetchTask = nil
+        startPrefetchTaskIfNeeded()
     }
 
     private func loadImage(for url: URL) async -> CatalogCachedImageData? {

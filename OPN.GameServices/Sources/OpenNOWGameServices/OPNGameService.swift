@@ -1558,22 +1558,21 @@ final class OPNGameService: @unchecked Sendable {
             OPNNetworkLog.finish(request, operation: "static.publicGames", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             Self.workQueue.async {
-                let json = error == nil ? data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [NSDictionary] : nil
-                guard let json else {
+                guard error == nil,
+                      let data,
+                      let publicGames = try? JSONDecoder().decode([PublicGameListItem].self, from: data) else {
                     self.fetchPublicGamesLocale(locales: locales, index: index + 1, completion: completion)
                     return
                 }
-                let games = json.compactMap { item -> OPNGameInfo? in
-                    guard self.safeString(item["status"]) == "AVAILABLE", let title = self.safeString(item["title"]), !title.isEmpty else { return nil }
+                let games = publicGames.compactMap { item -> OPNGameInfo? in
+                    guard item.status == "AVAILABLE", !item.title.isEmpty else { return nil }
                     var game = OPNGameInfo()
-                    game.title = title
-                    game.shortDescription = self.firstSafeString(item, keys: ["shortDescription", "summary"]) ?? ""
-                    game.longDescription = self.firstSafeString(item, keys: ["longDescription", "description"]) ?? ""
+                    game.title = item.title
+                    game.shortDescription = item.shortDescription.isEmpty ? item.summary : item.shortDescription
+                    game.longDescription = item.longDescription.isEmpty ? item.description : item.longDescription
                     game.description = game.longDescription.isEmpty ? game.shortDescription : game.longDescription
-                    let rawId = item["id"]
-                    let sid = (rawId as? NSNumber)?.stringValue ?? (rawId as? String) ?? title
-                    let steamURL = self.safeString(item["steamUrl"])
-                    let steamAppId = steamURL?.components(separatedBy: "/app/").dropFirst().first?.components(separatedBy: "/").first
+                    let sid = item.id.isEmpty ? item.title : item.id
+                    let steamAppId = item.steamUrl.components(separatedBy: "/app/").dropFirst().first?.components(separatedBy: "/").first
                     let finalAppId = steamAppId?.isEmpty == false ? steamAppId ?? sid : sid
                     game.id = finalAppId
                     game.uuid = sid
@@ -1929,6 +1928,47 @@ private struct CatalogDefinitionParameters: Sendable {
     let resolvedVpcId: String
     let locale: String
     let catalogCacheKey: String
+}
+
+private struct PublicGameListItem: Decodable, Sendable {
+    let id: String
+    let status: String
+    let title: String
+    let shortDescription: String
+    let summary: String
+    let longDescription: String
+    let description: String
+    let steamUrl: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case status
+        case title
+        case shortDescription
+        case summary
+        case longDescription
+        case description
+        case steamUrl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = Self.stringValue(for: .id, in: container)
+        status = Self.stringValue(for: .status, in: container)
+        title = Self.stringValue(for: .title, in: container)
+        shortDescription = Self.stringValue(for: .shortDescription, in: container)
+        summary = Self.stringValue(for: .summary, in: container)
+        longDescription = Self.stringValue(for: .longDescription, in: container)
+        description = Self.stringValue(for: .description, in: container)
+        steamUrl = Self.stringValue(for: .steamUrl, in: container)
+    }
+
+    private static func stringValue(for key: CodingKeys, in container: KeyedDecodingContainer<CodingKeys>) -> String {
+        if let string = try? container.decode(String.self, forKey: key) { return string }
+        if let int = try? container.decode(Int.self, forKey: key) { return String(int) }
+        if let double = try? container.decode(Double.self, forKey: key), double.isFinite { return String(Int(double)) }
+        return ""
+    }
 }
 
 private final class AtomicFlag: @unchecked Sendable {

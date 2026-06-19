@@ -1002,6 +1002,19 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey)
             }
 
+            SettingsCard(title: "Cache") {
+                AboutDetailRow(label: "Catalog Images", value: viewModel.catalogImageCacheSummary, copyValue: viewModel.catalogImageCacheSummary, copiedKey: $copiedKey)
+                SettingsDivider()
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: "CLEAR IMAGE CACHE") {
+                        viewModel.clearCatalogImageCache()
+                    }
+                    Text("Removes cached catalog artwork from disk and memory. Images will download again as needed.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.54))
+                }
+            }
+
             SettingsCard(title: "Account & Privacy") {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -1060,6 +1073,7 @@ private struct AboutSettingsPage: View {
         } message: {
             Text("OpenNOW will upload the full sanitized current-run log to paste.rs and copy a diagnostics summary that includes the public link. IP addresses and location fields are redacted before upload.")
         }
+        .onAppear { viewModel.refreshCatalogImageCacheSummary() }
     }
 
     private var userId: String {

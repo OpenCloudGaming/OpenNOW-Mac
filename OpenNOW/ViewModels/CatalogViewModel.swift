@@ -140,6 +140,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
     @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     @Published var favoriteGameIdentities: Set<String> = []
+    @Published var catalogImageCacheSummary = "Calculating"
     @Published var isStorePickerVisible = false
     @Published var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
     @Published var ownershipFlowMessage = ""
@@ -1017,10 +1018,34 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func refreshCatalogImageCacheSummary() {
+        Task { @MainActor in
+            let statistics = await CatalogImageCache.shared.statistics()
+            catalogImageCacheSummary = Self.formattedCacheSummary(statistics)
+        }
+    }
+
+    func clearCatalogImageCache() {
+        Task { @MainActor in
+            let cleared = await CatalogImageCache.shared.clear()
+            actionMessage = cleared ? "Catalog image cache cleared." : "Unable to clear catalog image cache."
+            refreshCatalogImageCacheSummary()
+        }
+    }
+
     func optimizedImageURL(_ rawValue: String, width: Int) -> URL? {
         guard !rawValue.isEmpty else { return nil }
         let optimized = OPNGameServiceSwiftAdapter.optimizeImageURL(rawValue, width: width)
         return URL(string: optimized.isEmpty ? rawValue : optimized)
+    }
+
+    private static func formattedCacheSummary(_ statistics: CatalogImageCacheStatistics) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        let bytes = formatter.string(fromByteCount: Int64(statistics.totalBytes))
+        let entryLabel = statistics.entryCount == 1 ? "entry" : "entries"
+        return "\(bytes) / \(statistics.entryCount) \(entryLabel)"
     }
 
     private func loadPanels() {
