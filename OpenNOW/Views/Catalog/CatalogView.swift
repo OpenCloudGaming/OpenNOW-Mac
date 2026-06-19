@@ -2190,12 +2190,12 @@ private struct CatalogSeeMoreTile: View {
             .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
             .scaleEffect(isHovering ? CatalogVendorLayout.tileScaleFactor : 1.0)
             .animation(.easeOut(duration: 0.2), value: isHovering)
+            .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+            .padding(.top, CatalogVendorLayout.tileTopMargin)
+            .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
-        .padding(.top, CatalogVendorLayout.tileTopMargin)
-        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
-        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .accessibilityLabel("See all")
     }
@@ -2702,12 +2702,12 @@ private struct CatalogGameTile: View {
             .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
             .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
             .animation(.easeOut(duration: 0.2), value: isHovering)
+            .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+            .padding(.top, CatalogVendorLayout.tileTopMargin)
+            .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
-        .padding(.top, CatalogVendorLayout.tileTopMargin)
-        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
-        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
         .accessibilityAddTraits(.isButton)
