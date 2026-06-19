@@ -53,7 +53,7 @@ extension OPNSentryTransaction: @unchecked Sendable {}
 @objcMembers
 @objc(OPNSentry)
 public final class OPNSentry: NSObject {
-    private static let fallbackDsn = "https://9db09e478cd379b8abdb101361ae5248@o4509317113184256.ingest.us.sentry.io/4511552111247360"
+    private static let fallbackDsn = "https://75bd4534356a68eb8887bea8f6977b59@o4509317113184256.ingest.us.sentry.io/4511592927264768"
     private nonisolated(unsafe) static var initialized = false
 
     public static func initializeSentry() {
@@ -63,7 +63,7 @@ public final class OPNSentry: NSObject {
             options.dsn = dsn
             options.debug = environmentFlagEnabled("OPN_SENTRY_DEBUG")
             options.diagnosticLevel = options.debug ? .debug : .error
-            options.sendDefaultPii = environmentFlagEnabled("OPN_SENTRY_SEND_PII")
+            options.sendDefaultPii = !environmentFlagDisabled("OPN_SENTRY_SEND_PII")
             options.environment = resolvedEnvironment()
             options.releaseName = resolvedReleaseName()
             options.dist = resolvedDist()
@@ -95,6 +95,14 @@ public final class OPNSentry: NSObject {
         !environmentFlagEnabled("OPN_DISABLE_INFO_LOGS")
     }
 
+    public static func logDebugMessage(_ message: String) {
+        guard shouldLogInfo() else { return }
+        let sanitized = sanitizedMessage(message)
+        fputs("\(sanitized)\n", stderr)
+        guard initialized, SentrySDK.isEnabled else { return }
+        SentrySDK.logger.debug(sanitized)
+    }
+
     public static func logInfoMessage(_ message: String) {
         guard shouldLogInfo() else { return }
         let sanitized = sanitizedMessage(message)
@@ -103,11 +111,26 @@ public final class OPNSentry: NSObject {
         SentrySDK.logger.info(sanitized)
     }
 
+    public static func logWarningMessage(_ message: String) {
+        let sanitized = sanitizedMessage(message)
+        fputs("\(sanitized)\n", stderr)
+        guard initialized, SentrySDK.isEnabled else { return }
+        SentrySDK.logger.warn(sanitized)
+    }
+
     public static func logErrorMessage(_ message: String) {
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         guard initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.error(sanitized)
+        SentrySDK.capture(message: sanitized)
+    }
+
+    public static func logFatalMessage(_ message: String) {
+        let sanitized = sanitizedMessage(message)
+        fputs("\(sanitized)\n", stderr)
+        guard initialized, SentrySDK.isEnabled else { return }
+        SentrySDK.logger.fatal(sanitized)
         SentrySDK.capture(message: sanitized)
     }
 
@@ -225,6 +248,11 @@ public final class OPNSentry: NSObject {
     private static func environmentFlagEnabled(_ name: String) -> Bool {
         guard let value = ProcessInfo.processInfo.environment[name] else { return false }
         return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+    }
+
+    private static func environmentFlagDisabled(_ name: String) -> Bool {
+        guard let value = ProcessInfo.processInfo.environment[name] else { return false }
+        return value == "0" || value.caseInsensitiveCompare("false") == .orderedSame || value.caseInsensitiveCompare("no") == .orderedSame
     }
 
     private static func environmentDouble(_ name: String) -> Double? {

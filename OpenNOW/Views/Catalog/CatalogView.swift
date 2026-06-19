@@ -11,7 +11,6 @@ import CoreText
 import CryptoKit
 import ImageIO
 import OpenNOWGameServices
-import OSLog
 import SwiftUI
 import WebRTCMedia
 
@@ -210,7 +209,7 @@ struct CatalogView: View {
 
     private func consumePendingGameShortcut() {
         guard let shortcut = pendingGameShortcut else { return }
-        OpenNOWLog.shortcut.info("CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId, privacy: .public) shortName=\(shortcut.shortName, privacy: .public) title=\(shortcut.lookupTitle, privacy: .public)")
+        OpenNOWLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
         pendingGameShortcut = nil
         viewModel.openGameShortcut(shortcut)
     }

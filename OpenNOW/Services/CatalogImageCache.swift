@@ -110,16 +110,29 @@ final class CatalogImageCache {
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else { return nil }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                OpenNOWLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)")
+                return nil
+            }
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
+                OpenNOWLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)")
                 return loadStoredImage(for: url)?.imageData
             }
-            guard (200..<300).contains(httpResponse.statusCode), let image = NSImage(data: data) else { return nil }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                OpenNOWLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)")
+                return nil
+            }
+            guard let image = NSImage(data: data) else {
+                OpenNOWLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)")
+                return nil
+            }
             let imageData = CatalogCachedImageData(data: data, image: image)
             store(imageData: imageData, response: httpResponse, for: url)
+            OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)")
             return imageData
         } catch {
+            OpenNOWLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)")
             return nil
         }
     }

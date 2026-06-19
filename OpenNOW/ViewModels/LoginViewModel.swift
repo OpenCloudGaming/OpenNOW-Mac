@@ -11,7 +11,6 @@ import Foundation
 import Jarvis
 import NesAuth
 import OpenNOWAuth
-import OSLog
 import SwiftData
 import SwiftUI
 
@@ -84,8 +83,10 @@ final class LoginViewModel: ObservableObject {
     }
 
     func bootstrap() {
+        OpenNOWLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
         ensureDeviceRegistration()
         prefillLastAccount()
+        OpenNOWLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
     func toggleAccountPicker() {
@@ -114,24 +115,24 @@ final class LoginViewModel: ObservableObject {
     }
 
     func handleOpenedFile(_ url: URL) {
-        OpenNOWLog.shortcut.info("LoginViewModel received opened file: \(url.path, privacy: .public)")
+        OpenNOWLog.info(.shortcut, "LoginViewModel received opened file: \(url.path)")
         guard url.pathExtension.caseInsensitiveCompare("gfnpc") == .orderedSame else {
-            OpenNOWLog.shortcut.info("Ignoring non-gfnpc opened file: \(url.pathExtension, privacy: .public)")
+            OpenNOWLog.info(.shortcut, "Ignoring non-gfnpc opened file: \(url.pathExtension)")
             return
         }
         do {
             pendingGameShortcut = try GFNGameShortcut(fileURL: url)
             if let shortcut = pendingGameShortcut {
-                OpenNOWLog.shortcut.info("Parsed gfnpc shortcut cmsId=\(shortcut.cmsId, privacy: .public) shortName=\(shortcut.shortName, privacy: .public) parentGameId=\(shortcut.parentGameId, privacy: .public) title=\(shortcut.lookupTitle, privacy: .public)")
+                OpenNOWLog.info(.shortcut, "Parsed gfnpc shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
             }
             if activeSession == nil {
-                OpenNOWLog.shortcut.info("Shortcut parsed but no active session is available")
+                OpenNOWLog.info(.shortcut, "Shortcut parsed but no active session is available")
                 validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its GeForce NOW shortcut."
             } else {
-                OpenNOWLog.shortcut.info("Shortcut queued for active catalog session")
+                OpenNOWLog.info(.shortcut, "Shortcut queued for active catalog session")
             }
         } catch {
-            OpenNOWLog.shortcut.error("Failed to parse gfnpc shortcut: \(error.localizedDescription, privacy: .public)")
+            OpenNOWLog.error(.shortcut, "Failed to parse gfnpc shortcut: \(error.localizedDescription)")
             validationMessage = error.localizedDescription
         }
     }
@@ -161,8 +162,10 @@ final class LoginViewModel: ObservableObject {
     private func beginOAuth() async {
         validationMessage = ""
         successMessage = ""
+        OpenNOWLog.info(.auth, "Beginning OAuth launch provider=\(selectedProvider.idpId)")
 
         guard acceptedTerms else {
+            OpenNOWLog.warning(.auth, "OAuth launch blocked because terms were not accepted")
             validationMessage = "Accept NVIDIA account terms and local session storage before continuing."
             return
         }
@@ -180,6 +183,7 @@ final class LoginViewModel: ObservableObject {
 
                 guard success else {
                     self.validationMessage = error.isEmpty ? "NVIDIA sign-in failed." : error
+                    OpenNOWLog.error(.auth, "OAuth start failed provider=\(self.selectedProvider.idpId) error=\(self.validationMessage)")
                     return
                 }
 
@@ -187,6 +191,7 @@ final class LoginViewModel: ObservableObject {
                 self.persistSignedInSession(session: session, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
                 self.validationMessage = ""
                 self.successMessage = "NVIDIA account connected. Client token and session metadata are ready."
+                OpenNOWLog.info(.auth, "OAuth start completed provider=\(self.selectedProvider.idpId)")
             }
         }
     }
@@ -197,11 +202,13 @@ final class LoginViewModel: ObservableObject {
 
         let device = primaryDevice
         guard !device.pendingOAuthState.isEmpty, !device.pendingOAuthCodeVerifier.isEmpty else {
+            OpenNOWLog.warning(.auth, "OAuth callback ignored because pending state is missing")
             validationMessage = "Start browser sign-in before completing authorization."
             return
         }
 
         guard let query = Self.callbackQuery(from: callbackText.trimmed) else {
+            OpenNOWLog.warning(.auth, "OAuth callback rejected because callback text could not be parsed")
             validationMessage = "Paste the full callback URL or authorization query from NVIDIA."
             requestedFocus = .callback
             return
@@ -209,6 +216,7 @@ final class LoginViewModel: ObservableObject {
 
         isAuthenticating = true
         defer { isAuthenticating = false }
+        OpenNOWLog.info(.auth, "Completing OAuth callback provider=\(device.pendingOAuthProviderIdpId.isEmpty ? selectedProvider.idpId : device.pendingOAuthProviderIdpId)")
 
         do {
             let callback = try await jarvisAuthService.parseCallback(query: query, expectedState: device.pendingOAuthState)
@@ -228,10 +236,12 @@ final class LoginViewModel: ObservableObject {
             trySave()
             _ = await jarvisAuthService.finishLogin(success: true)
             successMessage = "NVIDIA account connected. Client token and session metadata are ready."
+            OpenNOWLog.info(.auth, "OAuth callback completed userId=\(session.userId) provider=\(providerIdpId)")
         } catch {
             _ = await jarvisAuthService.finishLogin(success: false)
             validationMessage = Self.userFacingError(error)
             requestedFocus = .callback
+            OpenNOWLog.error(.auth, "OAuth callback failed: \(validationMessage)")
         }
     }
 
@@ -243,6 +253,7 @@ final class LoginViewModel: ObservableObject {
         rememberSession = account.rememberSession
 
         guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
+            OpenNOWLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
             validationMessage = "No saved session exists for this account. Sign in with NVIDIA again."
             return
         }
@@ -271,22 +282,27 @@ final class LoginViewModel: ObservableObject {
         }
 
         do {
+            OpenNOWLog.info(.auth, "Refreshing saved session account=\(account.email)")
             await jarvisAuthService.setSession(jarvisSession)
             let refreshed = try await jarvisAuthService.refreshSession(force: false)
             persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
             successMessage = "Session refreshed for \(account.displayName)."
+            OpenNOWLog.info(.auth, "Session refreshed account=\(account.email)")
         } catch {
             if storedSession.canContinueOffline && !storedSession.isExpired {
                 markActive(accountEmail: account.email)
                 trySave()
                 successMessage = "Using saved offline session for \(account.displayName)."
+                OpenNOWLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
             } else {
                 validationMessage = "Saved session expired. Sign in with NVIDIA again."
+                OpenNOWLog.error(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
             }
         }
     }
 
     private func signOutCurrentSession() async {
+        OpenNOWLog.info(.auth, "Signing out current session")
         for account in accounts {
             account.isActive = false
             account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
@@ -300,11 +316,13 @@ final class LoginViewModel: ObservableObject {
         trySave()
         await jarvisAuthService.clearSession()
         successMessage = "Signed out."
+        OpenNOWLog.info(.auth, "Sign out completed")
     }
 
     private func persistSignedInSession(session: JarvisSession, userInfo: JarvisUserInfo?, authMethod: String) {
         guard let modelContext else {
             validationMessage = "SwiftData context is unavailable."
+            OpenNOWLog.error(.auth, "Cannot persist signed-in session because SwiftData context is unavailable")
             return
         }
 
@@ -365,6 +383,7 @@ final class LoginViewModel: ObservableObject {
         sessions.insert(storedSession, at: 0)
         primaryDevice.lastUsedAt = now
         trySave()
+        OpenNOWLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
     }
 
     private func markActive(accountEmail: String) {
@@ -390,6 +409,7 @@ final class LoginViewModel: ObservableObject {
         modelContext.insert(device)
         devices = [device]
         trySave()
+        OpenNOWLog.info(.auth, "Created login device registration deviceId=\(device.deviceId)")
     }
 
     private func prefillLastAccount() {
@@ -404,6 +424,7 @@ final class LoginViewModel: ObservableObject {
             try modelContext?.save()
         } catch {
             validationMessage = error.localizedDescription
+            OpenNOWLog.error(.app, "SwiftData save failed: \(error.localizedDescription)")
         }
     }
 

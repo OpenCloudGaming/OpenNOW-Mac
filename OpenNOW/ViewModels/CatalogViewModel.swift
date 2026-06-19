@@ -9,7 +9,6 @@ import Combine
 import Common
 import Foundation
 import OpenNOWGameServices
-import OSLog
 import WebRTCMedia
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
@@ -400,33 +399,33 @@ final class CatalogViewModel: ObservableObject {
     func openGameShortcut(_ shortcut: GFNGameShortcut) {
         configureCatalogService()
         let title = shortcut.lookupTitle.isEmpty ? shortcut.displayName : shortcut.lookupTitle
-        OpenNOWLog.shortcut.info("CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId, privacy: .public) shortName=\(shortcut.shortName, privacy: .public) parentGameId=\(shortcut.parentGameId, privacy: .public) title=\(title, privacy: .public)")
+        OpenNOWLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
         setActionMessage("Opening \(title.isEmpty ? "GeForce NOW shortcut" : title)...")
         if let game = matchingGame(for: shortcut, in: allKnownGames) {
-            OpenNOWLog.shortcut.info("Resolved shortcut from loaded catalog: gameId=\(game.id, privacy: .public) uuid=\(game.uuid, privacy: .public) launchAppId=\(game.launchAppId, privacy: .public) title=\(game.title, privacy: .public)")
+            OpenNOWLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
             return
         }
-        OpenNOWLog.shortcut.info("Shortcut not found in loaded catalog; browsing with query=\(title, privacy: .public)")
+        OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
             let resultBox = CatalogSendableValue(result)
             Task { @MainActor in
                 guard let self = selfBox.value else { return }
                 guard success else {
-                    OpenNOWLog.shortcut.error("Shortcut catalog browse failed: \(error, privacy: .public)")
+                    OpenNOWLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
                     self.errorMessage = error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error
                     return
                 }
                 let games = resultBox.value.games
-                OpenNOWLog.shortcut.info("Shortcut catalog browse returned \(games.count, privacy: .public) game(s)")
+                OpenNOWLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
                 guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
-                    OpenNOWLog.shortcut.error("Shortcut catalog browse returned no matching games")
+                    OpenNOWLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
                     self.errorMessage = "No matching GeForce NOW catalog game was found for this shortcut."
                     return
                 }
-                OpenNOWLog.shortcut.info("Resolved shortcut from browse: gameId=\(game.id, privacy: .public) uuid=\(game.uuid, privacy: .public) launchAppId=\(game.launchAppId, privacy: .public) title=\(game.title, privacy: .public)")
+                OpenNOWLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
                 self.catalogGames = games
                 self.selectGame(game)
                 self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
@@ -444,7 +443,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
-        OpenNOWLog.shortcut.info("Beginning launch for gameId=\(game.id, privacy: .public) uuid=\(game.uuid, privacy: .public) launchAppId=\(game.launchAppId, privacy: .public) title=\(game.title, privacy: .public) requestedVariantIndex=\(variantIndex ?? -1, privacy: .public)")
+        OpenNOWLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
         pendingLaunchGame = game
         pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
         activeLaunchSession = nil
@@ -498,17 +497,17 @@ final class CatalogViewModel: ObservableObject {
             guard let self else { return }
             self.launchMessage = ""
             guard success, let plan else {
-                OpenNOWLog.shortcut.error("Launch plan failed: \(message, privacy: .public)")
+                OpenNOWLog.error(.launch, "Launch plan failed: \(message)")
                 self.clearLaunchFlow()
                 self.errorMessage = message.isEmpty ? "Unable to prepare GeForce NOW launch." : message
                 return
             }
             switch plan {
             case .ready(let configuration):
-                OpenNOWLog.shortcut.info("Launch plan ready appId=\(configuration.appId, privacy: .public) title=\(configuration.title, privacy: .public)")
+                OpenNOWLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
                 self.startPreparedStream(Self.mediaConfiguration(from: configuration), message: message)
             case .activeSession(let active, let resume, let replacement):
-                OpenNOWLog.shortcut.info("Launch plan found active session activeAppId=\(active.appId, privacy: .public) replacementAppId=\(replacement.appId, privacy: .public) resumeAppId=\(resume.appId, privacy: .public)")
+                OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 self.activeLaunchSession = active
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume)
                 self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
