@@ -32,6 +32,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var runtimeSettings = StreamRuntimeSettings()
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
+    @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -451,6 +452,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func startIfNeeded(nativeView: NativeWebRTCStreamView) async {
         guard !hasStarted else { return }
         hasStarted = true
+        beginStreamingPerformanceMode()
         let transport = NativeWebRTCTransport(nativeView: nativeView)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         transport.onEnded = { message in
@@ -492,6 +494,7 @@ public struct WebRTCMediaStreamSurface: View {
         } catch {
             let message = Self.message(for: error)
             statusMessage = message
+            endStreamingPerformanceMode()
             onEnd(false, message, StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: ["applicationID": configuration.applicationID]))
         }
     }
@@ -679,6 +682,7 @@ public struct WebRTCMediaStreamSurface: View {
         }
         guard shouldFinish else { return fallbackReport }
         guard let path else { return fallbackReport }
+        defer { Task { @MainActor in endStreamingPerformanceMode() } }
         do {
             return try await path.stop(reason: reason, message: message)
         } catch {
@@ -687,6 +691,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func stopStream() {
+        endStreamingPerformanceMode()
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
@@ -699,6 +704,19 @@ public struct WebRTCMediaStreamSurface: View {
         guard !didEndStream else { return }
         didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }
+    }
+
+    private func beginStreamingPerformanceMode() {
+        guard streamingPerformanceActivity == nil else { return }
+        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical, .idleSystemSleepDisabled], reason: "OpenNOW active cloud gaming stream")
+        WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func endStreamingPerformanceMode() {
+        guard let streamingPerformanceActivity else { return }
+        ProcessInfo.processInfo.endActivity(streamingPerformanceActivity)
+        self.streamingPerformanceActivity = nil
+        WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.end", level: .info, message: "Streaming performance mode disabled.", attributes: ["applicationID": configuration.applicationID])
     }
 
     private static func message(for error: Error) -> String {
