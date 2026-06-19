@@ -189,6 +189,7 @@ struct CatalogView: View {
 
     private func consumePendingGameShortcut() {
         guard let shortcut = pendingGameShortcut else { return }
+        OpenNOWLog.shortcut.info("CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId, privacy: .public) shortName=\(shortcut.shortName, privacy: .public) title=\(shortcut.lookupTitle, privacy: .public)")
         pendingGameShortcut = nil
         viewModel.openGameShortcut(shortcut)
     }

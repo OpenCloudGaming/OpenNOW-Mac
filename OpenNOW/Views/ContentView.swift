@@ -25,6 +25,7 @@ struct ContentView: View {
             .task {
                 syncViewModel()
                 viewModel.bootstrap()
+                drainOpenedFiles()
             }
             .onChange(of: accounts.count) { _, _ in syncViewModel() }
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
@@ -34,6 +35,12 @@ struct ContentView: View {
                 guard let url = notification.object as? URL else { return }
                 viewModel.handleOpenedFile(url)
             }
+    }
+
+    private func drainOpenedFiles() {
+        for url in OpenNOWFileOpenCoordinator.shared.drainPendingFileURLs() {
+            viewModel.handleOpenedFile(url)
+        }
     }
 
     private func syncViewModel() {

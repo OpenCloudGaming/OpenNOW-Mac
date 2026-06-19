@@ -54,11 +54,13 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private var isCompletingUserApprovedTermination = false
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        OpenNOWLog.shortcut.info("application(openFile:) received: \(filename, privacy: .public)")
         postOpenedFile(URL(fileURLWithPath: filename))
         return true
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        OpenNOWLog.shortcut.info("application(openFiles:) received \(filenames.count, privacy: .public) file(s)")
         for filename in filenames {
             postOpenedFile(URL(fileURLWithPath: filename))
         }
@@ -89,7 +91,9 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func postOpenedFile(_ url: URL) {
-        NotificationCenter.default.post(name: .openNOWDidOpenFile, object: url)
+        Task { @MainActor in
+            OpenNOWFileOpenCoordinator.shared.enqueue(url)
+        }
     }
 }
 

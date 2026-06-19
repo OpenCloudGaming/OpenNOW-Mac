@@ -113,13 +113,24 @@ final class LoginViewModel: ObservableObject {
     }
 
     func handleOpenedFile(_ url: URL) {
-        guard url.pathExtension.caseInsensitiveCompare("gfnpc") == .orderedSame else { return }
+        OpenNOWLog.shortcut.info("LoginViewModel received opened file: \(url.path, privacy: .public)")
+        guard url.pathExtension.caseInsensitiveCompare("gfnpc") == .orderedSame else {
+            OpenNOWLog.shortcut.info("Ignoring non-gfnpc opened file: \(url.pathExtension, privacy: .public)")
+            return
+        }
         do {
             pendingGameShortcut = try GFNGameShortcut(fileURL: url)
+            if let shortcut = pendingGameShortcut {
+                OpenNOWLog.shortcut.info("Parsed gfnpc shortcut cmsId=\(shortcut.cmsId, privacy: .public) shortName=\(shortcut.shortName, privacy: .public) parentGameId=\(shortcut.parentGameId, privacy: .public) title=\(shortcut.lookupTitle, privacy: .public)")
+            }
             if activeSession == nil {
+                OpenNOWLog.shortcut.info("Shortcut parsed but no active session is available")
                 validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its GeForce NOW shortcut."
+            } else {
+                OpenNOWLog.shortcut.info("Shortcut queued for active catalog session")
             }
         } catch {
+            OpenNOWLog.shortcut.error("Failed to parse gfnpc shortcut: \(error.localizedDescription, privacy: .public)")
             validationMessage = error.localizedDescription
         }
     }
