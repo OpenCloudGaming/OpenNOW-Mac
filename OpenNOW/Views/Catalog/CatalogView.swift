@@ -101,6 +101,7 @@ struct CatalogView: View {
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
     let onRefreshAuth: () -> Void
+    let onWindowTitleChange: (String?) -> Void
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
@@ -116,13 +117,15 @@ struct CatalogView: View {
         onSwitch: @escaping (LoginAccount) -> Void,
         onSignOut: @escaping () -> Void,
         onForget: @escaping (LoginAccount) -> Void,
-        onRefreshAuth: @escaping () -> Void
+        onRefreshAuth: @escaping () -> Void,
+        onWindowTitleChange: @escaping (String?) -> Void
     ) {
         self.accounts = accounts
         self.onSwitch = onSwitch
         self.onSignOut = onSignOut
         self.onForget = onForget
         self.onRefreshAuth = onRefreshAuth
+        self.onWindowTitleChange = onWindowTitleChange
         _pendingGameShortcut = pendingGameShortcut
         _viewModel = StateObject(wrappedValue: CatalogViewModel(account: account, session: session, onRefreshAuth: onRefreshAuth))
     }
@@ -191,7 +194,18 @@ struct CatalogView: View {
             consumePendingGameShortcut()
         }
         .onChange(of: pendingGameShortcut) { _, _ in consumePendingGameShortcut() }
+        .onChange(of: viewModel.activeStreamConfiguration?.id) { _, _ in updateWindowTitleForActiveStream() }
+        .onDisappear { onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
+    }
+
+    private func updateWindowTitleForActiveStream() {
+        guard let configuration = viewModel.activeStreamConfiguration else {
+            onWindowTitleChange(nil)
+            return
+        }
+        let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        onWindowTitleChange("\(title.isEmpty ? "GeForce NOW" : title) on GeForce NOW")
     }
 
     private func consumePendingGameShortcut() {

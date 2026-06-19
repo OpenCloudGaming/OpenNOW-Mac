@@ -11,18 +11,23 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
+    private static let defaultWindowTitle = "OpenNOW"
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LoginAccount.lastLoginAt, order: .reverse) private var accounts: [LoginAccount]
     @Query(sort: \LoginSession.issuedAt, order: .reverse) private var sessions: [LoginSession]
     @Query private var devices: [LoginDeviceRegistration]
 
     @StateObject private var viewModel = LoginViewModel()
+    @State private var windowTitle = Self.defaultWindowTitle
 
     var body: some View {
-        LoginView(viewModel: viewModel, accounts: accounts)
+        LoginView(viewModel: viewModel, accounts: accounts) { title in
+            windowTitle = title ?? Self.defaultWindowTitle
+        }
             .frame(minWidth: 980, minHeight: 660)
             .ignoresSafeArea()
-            .background(HiddenTitlebarConfigurator())
+            .background(HiddenTitlebarConfigurator(title: windowTitle))
             .task {
                 syncViewModel()
                 viewModel.bootstrap()
@@ -50,6 +55,8 @@ struct ContentView: View {
 }
 
 private struct HiddenTitlebarConfigurator: NSViewRepresentable {
+    let title: String
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async { configure(window: view.window) }
@@ -63,7 +70,7 @@ private struct HiddenTitlebarConfigurator: NSViewRepresentable {
     private func configure(window: NSWindow?) {
         guard let window else { return }
         window.styleMask.insert(.fullSizeContentView)
-        window.title = ""
+        window.title = title
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true

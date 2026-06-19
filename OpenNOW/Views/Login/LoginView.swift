@@ -11,6 +11,7 @@ import SwiftUI
 struct LoginView: View {
     @ObservedObject var viewModel: LoginViewModel
     let accounts: [LoginAccount]
+    let onWindowTitleChange: (String?) -> Void
 
     @FocusState private var focusedField: LoginField?
 
@@ -26,7 +27,8 @@ struct LoginView: View {
                     onSwitch: viewModel.activateAccount,
                     onSignOut: viewModel.signOut,
                     onForget: viewModel.forgetAccount,
-                    onRefreshAuth: viewModel.refreshActiveSession
+                    onRefreshAuth: viewModel.refreshActiveSession,
+                    onWindowTitleChange: onWindowTitleChange
                 )
                 .id(activeSession.id)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
@@ -42,6 +44,7 @@ struct LoginView: View {
             }
         }
         .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }
+        .onChange(of: viewModel.activeSession?.id) { _, _ in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }
 
