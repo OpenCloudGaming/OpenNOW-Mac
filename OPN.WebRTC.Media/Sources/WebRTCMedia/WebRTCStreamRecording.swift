@@ -25,8 +25,8 @@ public struct WebRTCStreamRecording: Codable, Equatable, Identifiable, Sendable 
 
 public enum WebRTCStreamRecordingLibrary {
     public static var recordingsDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
-        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("Recordings", isDirectory: true)
+        let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
+        return base.appendingPathComponent("OpenNOW Recordings", isDirectory: true)
     }
 
     public static func metadataURL(for id: UUID) -> URL {
