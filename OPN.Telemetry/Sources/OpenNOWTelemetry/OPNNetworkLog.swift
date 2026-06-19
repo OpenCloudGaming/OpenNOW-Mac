@@ -108,8 +108,12 @@ public enum OPNNetworkLog {
     }
 
     private static func graphQLErrorDetail(data: Data?) -> String {
-        guard let data, let text = String(data: data, encoding: .utf8), !text.isEmpty else { return "" }
-        guard text.contains("errors") || text.contains("error") else { return "" }
+        guard let data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errors = json["errors"] as? [[String: Any]],
+              !errors.isEmpty,
+              let errorData = try? JSONSerialization.data(withJSONObject: ["errors": errors]),
+              let text = String(data: errorData, encoding: .utf8) else { return "" }
         let singleLine = text.replacingOccurrences(of: #"\s+"#, with: " ", options: [.regularExpression])
         return String(singleLine.prefix(500))
     }
