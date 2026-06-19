@@ -103,6 +103,11 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var featureLabels: [String] = []
     public var supportedControls: [String] = []
     public var contentRatings: [String] = []
+    public var ratingSystemName = ""
+    public var ratingCategoryTitle = ""
+    public var ratingDescriptors: [String] = []
+    public var ratingInteractiveElements: [String] = []
+    public var ratingImageUrl = ""
     public var nvidiaTech: [String] = []
     public var availableStores: [String] = []
     public var promoTag = ""
@@ -340,6 +345,11 @@ public final class OPNCatalogGameObject: NSObject {
     public var featureLabels: [String]
     public var supportedControls: [String]
     public var contentRatings: [String]
+    public var ratingSystemName: String
+    public var ratingCategoryTitle: String
+    public var ratingDescriptors: [String]
+    public var ratingInteractiveElements: [String]
+    public var ratingImageUrl: String
     public var nvidiaTech: [String]
     public var availableStores: [String]
     public var promoTag: String
@@ -374,6 +384,11 @@ public final class OPNCatalogGameObject: NSObject {
         featureLabels = game.featureLabels
         supportedControls = game.supportedControls
         contentRatings = game.contentRatings
+        ratingSystemName = game.ratingSystemName
+        ratingCategoryTitle = game.ratingCategoryTitle
+        ratingDescriptors = game.ratingDescriptors
+        ratingInteractiveElements = game.ratingInteractiveElements
+        ratingImageUrl = game.ratingImageUrl
         nvidiaTech = game.nvidiaTech
         availableStores = game.availableStores
         promoTag = game.promoTag
@@ -407,6 +422,11 @@ public final class OPNCatalogGameObject: NSObject {
         game.featureLabels = featureLabels
         game.supportedControls = supportedControls
         game.contentRatings = contentRatings
+        game.ratingSystemName = ratingSystemName
+        game.ratingCategoryTitle = ratingCategoryTitle
+        game.ratingDescriptors = ratingDescriptors
+        game.ratingInteractiveElements = ratingInteractiveElements
+        game.ratingImageUrl = ratingImageUrl
         game.nvidiaTech = nvidiaTech
         game.availableStores = availableStores
         game.promoTag = promoTag

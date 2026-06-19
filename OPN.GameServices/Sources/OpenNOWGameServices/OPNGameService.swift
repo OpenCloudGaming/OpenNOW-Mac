@@ -752,6 +752,11 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.maxOnlinePlayers <= 0 { merged.maxOnlinePlayers = metadataGame.maxOnlinePlayers }
                 if merged.supportedControls.isEmpty { merged.supportedControls = metadataGame.supportedControls }
                 if merged.contentRatings.isEmpty { merged.contentRatings = metadataGame.contentRatings }
+                if merged.ratingSystemName.isEmpty { merged.ratingSystemName = metadataGame.ratingSystemName }
+                if merged.ratingCategoryTitle.isEmpty { merged.ratingCategoryTitle = metadataGame.ratingCategoryTitle }
+                if merged.ratingDescriptors.isEmpty { merged.ratingDescriptors = metadataGame.ratingDescriptors }
+                if merged.ratingInteractiveElements.isEmpty { merged.ratingInteractiveElements = metadataGame.ratingInteractiveElements }
+                if merged.ratingImageUrl.isEmpty { merged.ratingImageUrl = metadataGame.ratingImageUrl }
                 if merged.nvidiaTech.isEmpty { merged.nvidiaTech = metadataGame.nvidiaTech }
                 return merged
             }
@@ -808,7 +813,7 @@ final class OPNGameService: @unchecked Sendable {
         game.maxLocalPlayers = safeInt(app["maxLocalPlayers"])
         game.maxOnlinePlayers = safeInt(app["maxOnlinePlayers"])
         appendStringValues(&game.supportedControls, app["supportedControls"])
-        game.contentRatings = parseContentRatings(app["contentRatings"])
+        assignContentRatings(app["contentRatings"], to: &game)
         game.nvidiaTech = parseFeatureFlags(app["nvidiaTech"])
         if game.description.isEmpty, let itemMetadata = app["itemMetadata"] as? NSDictionary {
             game.description = firstSafeString(itemMetadata, keys: ["description", "longDescription", "shortDescription", "summary"]) ?? ""
@@ -849,7 +854,7 @@ final class OPNGameService: @unchecked Sendable {
                     variant.librarySelected = safeBool(library["selected"])
                     if variant.librarySelected { variant.inLibrary = true }
                 }
-                if game.contentRatings.isEmpty { game.contentRatings = parseContentRatings(item["contentRatings"]) }
+                if game.contentRatings.isEmpty { assignContentRatings(item["contentRatings"], to: &game) }
                 if !variant.appStore.isEmpty, variant.appStore != "UNKNOWN", variant.appStore != "NONE" {
                     if let index = game.variants.firstIndex(where: { $0.appStore.caseInsensitiveCompare(variant.appStore) == .orderedSame }) {
                         _ = mergeVariantFromSameStore(target: &game.variants[index], source: variant)
@@ -1225,8 +1230,8 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
-    private func parseContentRatings(_ rawValue: Any?) -> [String] {
-        guard let rawValue, !(rawValue is NSNull) else { return [] }
+    private func assignContentRatings(_ rawValue: Any?, to game: inout OPNGameInfo) {
+        guard let rawValue, !(rawValue is NSNull) else { return }
         var values: [String] = []
         let entries = rawValue as? [Any] ?? [rawValue]
         for entry in entries {
@@ -1237,12 +1242,18 @@ final class OPNGameService: @unchecked Sendable {
             guard let dictionary = entry as? NSDictionary else { continue }
             let categoryKey = firstSafeString(dictionary, keys: ["categoryKey", "ratingCategoryKey", "rating", "category", "label", "name"]) ?? ""
             let type = firstSafeString(dictionary, keys: ["type", "ratingSystem", "system"]) ?? ""
-            if let label = ratingCategoryLabel(categoryKey: categoryKey, type: type) { appendUnique(&values, label) }
-            appendUnique(&values, type)
-            appendMetadataLabels(&values, dictionary["contentDescriptorKeys"])
-            appendMetadataLabels(&values, dictionary["interactiveElementKeys"])
+            let categoryLabel = ratingCategoryLabel(categoryKey: categoryKey, type: type) ?? ""
+            if game.ratingSystemName.isEmpty { game.ratingSystemName = readableRatingSystem(type) }
+            if game.ratingCategoryTitle.isEmpty { game.ratingCategoryTitle = categoryLabel }
+            if game.ratingImageUrl.isEmpty { game.ratingImageUrl = ratingImageString(dictionary["rating"] ?? dictionary["image"] ?? dictionary["images"] ?? dictionary["largeImageUrl"]) }
+            if !categoryLabel.isEmpty { appendUnique(&values, categoryLabel) }
+            appendUnique(&values, readableRatingSystem(type))
+            appendMetadataLabels(&game.ratingDescriptors, dictionary["contentDescriptorKeys"])
+            appendMetadataLabels(&game.ratingInteractiveElements, dictionary["interactiveElementKeys"])
+            for descriptor in game.ratingDescriptors { appendUnique(&values, descriptor) }
+            for element in game.ratingInteractiveElements { appendUnique(&values, element) }
         }
-        return values.filter { !$0.isEmpty }
+        game.contentRatings = values.filter { !$0.isEmpty }
     }
 
     private func parseFeatureFlags(_ rawValue: Any?) -> [String] {
@@ -1285,6 +1296,17 @@ final class OPNGameService: @unchecked Sendable {
         ]
         if type.uppercased() == "ESRB", let label = esrbLabels[normalized] { return label }
         return readableMetadataLabel(key)
+    }
+
+    private func readableRatingSystem(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count <= 8 ? trimmed.uppercased() : readableMetadataLabel(trimmed)
+    }
+
+    private func ratingImageString(_ rawValue: Any?) -> String {
+        if let text = safeString(rawValue) { return text }
+        guard let dictionary = rawValue as? NSDictionary else { return "" }
+        return firstSafeString(dictionary, keys: ["largeImageUrl", "smallImageUrl", "imageUrl", "url", "src"]) ?? ""
     }
 
     private func readableMetadataLabel(_ value: String) -> String {

@@ -251,6 +251,11 @@ final class OPNGameDataCache: NSObject {
         putArray(game.featureLabels, key: "f", into: &dictionary)
         putArray(game.supportedControls, key: "c", into: &dictionary)
         putArray(game.contentRatings, key: "r", into: &dictionary)
+        putString(game.ratingSystemName, key: "rs", into: &dictionary)
+        putString(game.ratingCategoryTitle, key: "rc", into: &dictionary)
+        putArray(game.ratingDescriptors, key: "rd", into: &dictionary)
+        putArray(game.ratingInteractiveElements, key: "ri", into: &dictionary)
+        putString(game.ratingImageUrl, key: "ru", into: &dictionary)
         putArray(game.nvidiaTech, key: "x", into: &dictionary)
         putArray(game.availableStores, key: "as", into: &dictionary)
         putString(game.promoTag, key: "pr", into: &dictionary)
@@ -285,6 +290,11 @@ final class OPNGameDataCache: NSObject {
         game.featureLabels = dictionary["f"] as? [String] ?? []
         game.supportedControls = dictionary["c"] as? [String] ?? []
         game.contentRatings = dictionary["r"] as? [String] ?? []
+        game.ratingSystemName = dictionary["rs"] as? String ?? ""
+        game.ratingCategoryTitle = dictionary["rc"] as? String ?? ""
+        game.ratingDescriptors = dictionary["rd"] as? [String] ?? []
+        game.ratingInteractiveElements = dictionary["ri"] as? [String] ?? []
+        game.ratingImageUrl = dictionary["ru"] as? String ?? ""
         game.nvidiaTech = dictionary["x"] as? [String] ?? []
         game.availableStores = dictionary["as"] as? [String] ?? []
         game.promoTag = dictionary["pr"] as? String ?? ""

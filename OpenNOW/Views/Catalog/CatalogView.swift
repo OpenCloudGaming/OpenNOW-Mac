@@ -2195,7 +2195,7 @@ private struct GameDetailPanel: View {
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             GeometryReader { proxy in
                 let panelWidth = max(1, proxy.size.width)
-                let contentWidth = min(panelWidth * 0.47, 790)
+                let contentWidth = min(panelWidth * 0.43, 820)
                 let imageWidth = max(panelWidth * 0.64, panelWidth - contentWidth * 0.52)
                 ZStack(alignment: .topTrailing) {
                     CatalogRemoteImage(url: viewModel.optimizedImageURL(imageURL, width: 1600), contentMode: .fill)
@@ -2250,7 +2250,7 @@ private struct GameDetailPanel: View {
                     }
                     .frame(width: contentWidth, alignment: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, 22)
+                    .padding(.top, 21)
                     .padding(.leading, 44)
                     .padding(.trailing, 28)
 
@@ -2351,9 +2351,9 @@ private struct GameDetailPanel: View {
                     .font(.nvidia(size: 12, weight: .bold))
             }
             metadataSeparator
-            Image(systemName: "person.3.fill")
-            Image(systemName: "keyboard")
-            Image(systemName: "gamecontroller.fill")
+            if game.maxOnlinePlayers > 1 { Image(systemName: "person.3.fill") }
+            if game.supportsKeyboard { Image(systemName: "keyboard") }
+            if game.supportsGamepad { Image(systemName: "gamecontroller.fill") }
             metadataSeparator
             Text(game.genres.prefix(2).joined(separator: ", "))
                 .lineLimit(1)
@@ -2391,9 +2391,20 @@ private struct GameDetailPanel: View {
     private func capabilityLabels(game: OPNCatalogGameObject) -> [String] {
         var labels: [String] = []
         if !game.membershipTierLabel.isEmpty { labels.append("For Premium Members") }
+        for technology in game.nvidiaTech.prefix(2) { appendUnique(shortTechnologyLabel(technology), to: &labels) }
         for feature in game.featureLabels.prefix(2) { appendUnique(feature, to: &labels) }
         if labels.isEmpty { labels.append("Cloud Ready") }
         return labels
+    }
+
+    private func shortTechnologyLabel(_ technology: String) -> String {
+        let lowercased = technology.lowercased()
+        if lowercased.contains("ray") || lowercased.contains("rtx") { return "RTX" }
+        if lowercased.contains("reflex") { return "Reflex" }
+        if lowercased.contains("freestyle") { return "Freestyle" }
+        if lowercased.contains("highlight") { return "Highlights" }
+        if lowercased.contains("photo") { return "Photo Mode" }
+        return technology
     }
 
     private func detailEyebrow(game: OPNCatalogGameObject) -> some View {
@@ -2500,12 +2511,12 @@ private struct GameDetailPanel: View {
 
     private func accessBody(game: OPNCatalogGameObject) -> String {
         if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true {
-            return "Launch this title instantly from your synced GeForce NOW library."
+            return "Access unlocked with your membership. Game ownership required to play."
         }
         if let selectedVariant, !selectedVariant.appStore.isEmpty {
-            return "Select ownership for \(viewModel.displayName(forStore: selectedVariant.appStore)) to add it to your library."
+            return "Game ownership required on \(viewModel.displayName(forStore: selectedVariant.appStore)) to play."
         }
-        return "Play instantly through GeForce NOW cloud streaming when access is available."
+        return "Access requires a GeForce NOW membership and supported game ownership."
     }
 
     private func detailDescription(game: OPNCatalogGameObject) -> some View {
@@ -2552,17 +2563,7 @@ private struct GameDetailPanel: View {
     private func ratingBlock(game: OPNCatalogGameObject) -> some View {
         HStack(alignment: .top, spacing: 18) {
             if !game.ratingLabel.isEmpty {
-                Text(esrbShortRating(game.ratingLabel))
-                    .font(.system(size: 32, weight: .black, design: .default))
-                    .foregroundStyle(.black)
-                    .frame(width: 48, height: 64)
-                    .background(.white)
-                    .overlay(alignment: .top) {
-                        Text(game.ratingLabel.uppercased())
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundStyle(.black)
-                            .padding(.top, 4)
-                    }
+                CatalogRatingBadge(game: game, shortRating: esrbShortRating(game.ratingLabel))
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
@@ -2604,7 +2605,8 @@ private struct GameDetailPanel: View {
     }
 
     private func ratingDescriptors(game: OPNCatalogGameObject) -> [String] {
-        var descriptors = game.contentRatings.filter { $0.caseInsensitiveCompare(game.ratingLabel) != .orderedSame }
+        var descriptors = game.ratingDescriptors + game.ratingInteractiveElements
+        if descriptors.isEmpty { descriptors = game.contentRatings.filter { $0.caseInsensitiveCompare(game.ratingLabel) != .orderedSame } }
         descriptors.removeAll { ["ESRB", "PEGI", "USK", "CLASSIND", "GRAC", "IARC"].contains($0.uppercased()) }
         if descriptors.isEmpty { descriptors = game.genres.prefix(2).map { $0.capitalized } }
         return Array(descriptors.prefix(3))
@@ -3163,6 +3165,48 @@ private struct FlowLayout: Layout {
     }
 }
 
+private struct CatalogRatingBadge: View {
+    let game: OPNCatalogGameObject
+    let shortRating: String
+
+    var body: some View {
+        if let url = URL(string: game.ratingImageUrl), !game.ratingImageUrl.isEmpty {
+            CatalogCachedImageView(url: url, contentMode: .fit, placeholder: fallbackBadge, failure: fallbackBadge)
+                .frame(width: 58, height: 76)
+                .background(.white)
+        } else {
+            fallbackBadge
+        }
+    }
+
+    private var fallbackBadge: some View {
+        VStack(spacing: 0) {
+            Text(game.ratingLabel.uppercased())
+                .font(.system(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black))
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+            Spacer(minLength: 0)
+            Text(shortRating)
+                .font(.system(size: shortRating.count > 2 ? 24 : 33, weight: .black, design: .default))
+                .foregroundStyle(.black)
+                .minimumScaleFactor(0.65)
+            Spacer(minLength: 0)
+            Text(game.ratingSystemName.isEmpty ? "CONTENT RATED" : "CONTENT RATED BY")
+                .font(.system(size: 5.5, weight: .black))
+                .foregroundStyle(.black)
+                .lineLimit(1)
+            Text(game.ratingSystemName.isEmpty ? "" : game.ratingSystemName.uppercased())
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(.black)
+                .padding(.bottom, 4)
+        }
+        .frame(width: 58, height: 76)
+        .background(.white)
+        .overlay { Rectangle().stroke(.black, lineWidth: 2) }
+    }
+}
+
 private extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
 
@@ -3246,7 +3290,22 @@ private extension OPNCatalogGameObject {
     }
 
     var ratingLabel: String {
-        contentRatings.first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
+        if !ratingCategoryTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return ratingCategoryTitle }
+        return contentRatings.first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
+    }
+
+    var supportsKeyboard: Bool {
+        supportedControls.contains { control in
+            let value = control.lowercased()
+            return value.contains("keyboard") || value.contains("mouse")
+        }
+    }
+
+    var supportsGamepad: Bool {
+        supportedControls.contains { control in
+            let value = control.lowercased()
+            return value.contains("gamepad") || value.contains("controller")
+        }
     }
 
     var genreLine: String { genres.prefix(3).joined(separator: " / ") }
