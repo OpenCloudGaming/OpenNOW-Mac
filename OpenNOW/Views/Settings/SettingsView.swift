@@ -206,47 +206,99 @@ private struct SettingsHeader: View {
 
 private struct AccountSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @State private var revealSensitive = false
+    @State private var copiedKey = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SettingsCard(title: "NVIDIA Account") {
-                HStack(alignment: .center, spacing: 18) {
-                    VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
-                        .scaledToFit()
-                        .frame(width: 54, height: 54)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(viewModel.account.displayName)
-                            .font(.settingsNvidia(size: 20, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(viewModel.account.email)
+            SettingsCard(title: "Membership") {
+                HStack(alignment: .top, spacing: 20) {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.black.opacity(0.22))
+                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.72), lineWidth: 1) }
+                        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
+                            .scaledToFit()
+                            .frame(width: 58, height: 58)
+                    }
+                    .frame(width: 92, height: 92)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(accountDisplayName)
+                                .font(.settingsNvidia(size: 25, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Text(membershipTier.uppercased())
+                                .font(.settingsNvidia(size: 10, weight: .bold))
+                                .foregroundStyle(.black)
+                                .tracking(0.8)
+                                .padding(.horizontal, 8)
+                                .frame(height: 20)
+                                .background(Color.openNowGreen)
+                        }
+                        Text(accountSummaryText)
                             .font(.settingsNvidia(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.62))
+                            .foregroundStyle(.white.opacity(0.66))
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            AboutStatusPill(title: "Provider", value: providerName)
+                            AboutStatusPill(title: "Auth", value: normalizedState(viewModel.account.authorizationState))
+                            AboutStatusPill(title: "Region", value: regionSummary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    AccountHealthBadge(title: accountHealthTitle, subtitle: accountHealthSubtitle, positive: accountHealthPositive)
+                }
+            }
+
+            SettingsCard(title: "Profile & Privacy") {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Personal account details are masked by default.")
+                            .font(.settingsNvidia(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Reveal only when validating account state on your own machine.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.56))
                     }
                     Spacer()
-                    Text((viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier).uppercased())
-                        .font(.settingsNvidia(size: 11, weight: .bold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 12)
-                        .frame(height: 28)
-                        .background(Color.openNowGreen)
+                    Button { revealSensitive.toggle() } label: {
+                        Text(revealSensitive ? "HIDE DETAILS" : "REVEAL DETAILS")
+                            .font(.settingsNvidia(size: 11, weight: .bold))
+                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
+                            .tracking(0.8)
+                            .padding(.horizontal, 12)
+                            .frame(height: 30)
+                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
+                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
+                    }
+                    .buttonStyle(.plain)
                 }
                 SettingsDivider()
-                SettingsInfoRow(label: "Provider", value: viewModel.account.providerName.isEmpty ? "NVIDIA" : viewModel.account.providerName)
-                SettingsInfoRow(label: "Authorization", value: viewModel.account.authorizationState)
-                SettingsInfoRow(label: "Status", value: viewModel.account.authStatus)
-                SettingsInfoRow(label: "Preferred Region", value: viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl)
+                AboutDetailRow(label: "Display Name", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Email", value: displayedEmail, copyValue: viewModel.account.email, copiedKey: $copiedKey, copyDisabled: viewModel.account.email.isEmpty)
+                SettingsDivider()
+                AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
+            }
+
+            SettingsCard(title: "Session") {
+                SettingsFlowLayout(spacing: 10) {
+                    AccountStatusTile(label: "Provider", value: providerName, positive: true)
+                    AccountStatusTile(label: "Authorization", value: normalizedState(viewModel.account.authorizationState), positive: isAuthorized)
+                    AccountStatusTile(label: "Status", value: normalizedState(viewModel.account.authStatus), positive: isLoggedIn)
+                    AccountStatusTile(label: "Remember", value: viewModel.account.rememberSession ? "Enabled" : "Off", positive: viewModel.account.rememberSession)
+                }
+                SettingsDivider()
+                AboutDetailRow(label: "Preferred Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey)
             }
 
             SettingsCard(title: "Playtime Statistics") {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("No completed streams recorded yet.")
-                            .font(.settingsNvidia(size: 15, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.86))
-                        Text("OpenNOW will track local playtime after your next GeForce NOW session ends.")
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.58))
-                    }
+                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "OpenNOW will track local playtime after your next GeForce NOW session ends.")
                 } else {
                     SettingsFlowLayout(spacing: 10) {
                         SettingsStatisticTile(label: "Total Playtime", value: durationText(viewModel.playtimeStatistics.totalSeconds), emphasized: true)
@@ -258,19 +310,106 @@ private struct AccountSettingsPage: View {
                     }
                     if !viewModel.playtimeStatistics.lastPlayedTitle.isEmpty {
                         SettingsDivider()
-                        SettingsInfoRow(label: "Most Recent Game", value: viewModel.playtimeStatistics.lastPlayedTitle)
+                        AboutDetailRow(label: "Most Recent Game", value: viewModel.playtimeStatistics.lastPlayedTitle, copyValue: viewModel.playtimeStatistics.lastPlayedTitle, copiedKey: $copiedKey)
                     }
                 }
             }
         }
     }
 
+    private var accountDisplayName: String {
+        viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
+    }
+
+    private var membershipTier: String {
+        viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier
+    }
+
+    private var providerName: String {
+        viewModel.account.providerName.isEmpty ? "NVIDIA" : viewModel.account.providerName
+    }
+
+    private var userId: String {
+        viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+    }
+
+    private var displayedUserId: String {
+        revealSensitive ? userId : maskedIdentifier(userId)
+    }
+
+    private var displayedEmail: String {
+        revealSensitive ? viewModel.account.email : maskedEmail(viewModel.account.email)
+    }
+
+    private var displayedRegion: String {
+        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
+        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
+    }
+
+    private var regionCopyValue: String {
+        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
+    }
+
+    private var regionSummary: String {
+        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
+    }
+
+    private var isAuthorized: Bool {
+        viewModel.account.authorizationState.caseInsensitiveCompare("AUTHORIZED") == .orderedSame
+    }
+
+    private var isLoggedIn: Bool {
+        viewModel.account.authStatus.caseInsensitiveCompare("LOGGED_IN") == .orderedSame
+    }
+
+    private var accountHealthPositive: Bool {
+        isAuthorized && isLoggedIn
+    }
+
+    private var accountHealthTitle: String {
+        accountHealthPositive ? "ACTIVE" : "ATTENTION"
+    }
+
+    private var accountHealthSubtitle: String {
+        accountHealthPositive ? "Session authorized" : "Re-auth may be required"
+    }
+
+    private var accountSummaryText: String {
+        "\(providerName) account on \(membershipTier) membership. Authorization is \(normalizedState(viewModel.account.authorizationState).lowercased()) and current session state is \(normalizedState(viewModel.account.authStatus).lowercased())."
+    }
+
     private var lastPlayedText: String {
         guard let date = viewModel.playtimeStatistics.lastPlayedAt else { return "-" }
+        return dateText(date)
+    }
+
+    private func dateText(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func normalizedState(_ value: String) -> String {
+        let normalized = value.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "Unknown" : normalized.capitalized
+    }
+
+    private func maskedIdentifier(_ value: String) -> String {
+        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
+        return "\(value.prefix(6))****\(value.suffix(4))"
+    }
+
+    private func maskedEmail(_ value: String) -> String {
+        guard let atIndex = value.firstIndex(of: "@") else { return value.isEmpty ? "Unavailable" : "****" }
+        let name = String(value[..<atIndex])
+        let domain = String(value[value.index(after: atIndex)...])
+        let visibleName = name.prefix(2)
+        return "\(visibleName)****@\(domain)"
+    }
+
+    private func endpointHost(_ value: String) -> String {
+        URL(string: value)?.host ?? value
     }
 
     private func durationText(_ seconds: Double) -> String {
@@ -280,6 +419,79 @@ private struct AccountSettingsPage: View {
         if hours > 0, minutes > 0 { return "\(hours)h \(minutes)m" }
         if hours > 0 { return "\(hours)h" }
         return "\(minutes)m"
+    }
+}
+
+private struct AccountHealthBadge: View {
+    let title: String
+    let subtitle: String
+    let positive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.settingsNvidia(size: 12, weight: .bold))
+                .foregroundStyle(positive ? .black : .white.opacity(0.88))
+                .tracking(1.1)
+            Text(subtitle)
+                .font(.settingsNvidia(size: 11, weight: .bold))
+                .foregroundStyle(positive ? .black.opacity(0.74) : .white.opacity(0.54))
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 14)
+        .frame(width: 172, height: 64, alignment: .leading)
+        .background(positive ? Color.openNowGreen : Color.white.opacity(0.07))
+        .overlay { Rectangle().stroke(positive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
+    }
+}
+
+private struct AccountStatusTile: View {
+    let label: String
+    let value: String
+    let positive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label.uppercased())
+                .font(.settingsNvidia(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.44))
+            Text(value.isEmpty ? "Unknown" : value)
+                .font(.settingsNvidia(size: 16, weight: .bold))
+                .foregroundStyle(positive ? Color.openNowGreen : .white.opacity(0.78))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(width: 188, height: 74, alignment: .leading)
+        .background(Color.white.opacity(positive ? 0.065 : 0.045))
+        .overlay { Rectangle().stroke(positive ? Color.openNowGreen.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
+    }
+}
+
+private struct AccountEmptyState: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(Color.white.opacity(0.18))
+                .frame(width: 4, height: 44)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.88))
+                Text(subtitle)
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.045))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 
