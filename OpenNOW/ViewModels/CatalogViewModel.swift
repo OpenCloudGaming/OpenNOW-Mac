@@ -131,6 +131,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
     @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     @Published var favoriteGameIdentities: Set<String> = []
+    @Published var isStorePickerVisible = false
 
     let account: LoginAccount
     let session: LoginSession
@@ -670,12 +671,29 @@ final class CatalogViewModel: ObservableObject {
             actionMessage = "No alternate store is available."
             return
         }
-        let currentIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
-        let nextIndex = (max(currentIndex, 0) + 1) % selectedGame.variants.count
-        selectedVariantIndex = nextIndex
-        let variant = selectedGame.variants[nextIndex]
+        isStorePickerVisible = true
+    }
+
+    func closeStorePicker() {
+        isStorePickerVisible = false
+    }
+
+    func selectGameStoreVariant(at index: Int) {
+        guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
+        selectedVariantIndex = index
+        let variant = selectedGame.variants[index]
         if variant.inLibrary || variant.librarySelected { selectOwnedVariant(variant) }
         actionMessage = "Changed store to \(displayName(forStore: variant.appStore))."
+    }
+
+    func cycleSelectedGameStore() {
+        guard let selectedGame, selectedGame.variants.count > 1 else {
+            actionMessage = "No alternate store is available."
+            return
+        }
+        let currentIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: selectedGame)
+        let nextIndex = (max(currentIndex, 0) + 1) % selectedGame.variants.count
+        selectGameStoreVariant(at: nextIndex)
     }
 
     func addShortcutForSelectedGame() {

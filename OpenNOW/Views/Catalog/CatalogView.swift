@@ -176,6 +176,12 @@ struct CatalogView: View {
                         .transition(.opacity)
                         .zIndex(15)
                 }
+
+                if viewModel.isStorePickerVisible {
+                    CatalogStorePickerOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(18)
+                }
             }
         }
         .background(Color.gfnBackgroundGreen)
@@ -1065,6 +1071,243 @@ private struct CatalogPreviousSessionOverlay: View {
 
     private func formattedDate(_ date: Date) -> String {
         date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+private struct CatalogStorePickerOverlay: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        if let game = viewModel.selectedGame {
+            GeometryReader { proxy in
+                ZStack(alignment: .topTrailing) {
+                    CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                    Color.black.opacity(0.68)
+                    LinearGradient(colors: [.black.opacity(0.42), .clear, .black.opacity(0.58)], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [.black.opacity(0.18), .clear, .black.opacity(0.52)], startPoint: .top, endPoint: .bottom)
+
+                    HStack(alignment: .top, spacing: max(42, min(proxy.size.width * 0.07, 120))) {
+                        CatalogStorePickerPoster(viewModel: viewModel, game: game)
+                            .padding(.top, max(64, proxy.size.height * 0.15))
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(game.title.isEmpty ? "Selected Game" : game.title)
+                                    .font(.nvidia(size: 18, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.96))
+                                    .lineLimit(1)
+                                Text("PC Digital Version")
+                                    .font(.nvidia(size: 14, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.72))
+                            }
+                            .padding(.bottom, 14)
+
+                            Rectangle()
+                                .fill(Color.white.opacity(0.28))
+                                .frame(height: 1)
+                                .padding(.bottom, 24)
+
+                            Text("Choose a game store")
+                                .font(.nvidia(size: 24, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.96))
+                                .padding(.bottom, 12)
+
+                            Text("Where do you own this game and want to play?")
+                                .font(.nvidia(size: 15, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .padding(.bottom, 30)
+
+                            VStack(alignment: .leading, spacing: 28) {
+                                CatalogStorePickerSection(label: "Game stores:") {
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
+                                            CatalogStorePickerRow(
+                                                title: storeTitle(variant),
+                                                systemImage: storeIcon(variant),
+                                                status: storeStatus(game: game, variant: variant, selected: selectedIndex(game: game) == index),
+                                                isSelected: selectedIndex(game: game) == index,
+                                                isAvailable: game.isInLibrary || variant.inLibrary || variant.librarySelected
+                                            ) {
+                                                viewModel.selectGameStoreVariant(at: index)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                CatalogStorePickerSection(label: "Subscriptions:") {
+                                    CatalogStorePickerRow(
+                                        title: subscriptionTitle,
+                                        systemImage: "checkmark.square.fill",
+                                        status: subscriptionStatus,
+                                        isSelected: false,
+                                        isAvailable: viewModel.subscriptionStatus.isAvailable,
+                                        action: nil
+                                    )
+                                }
+                            }
+                        }
+                        .frame(width: min(680, max(480, proxy.size.width * 0.40)), alignment: .leading)
+                        .padding(.top, max(68, proxy.size.height * 0.15))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.horizontal, max(38, min(proxy.size.width * 0.08, 150)))
+
+                    Button { viewModel.closeStorePicker() } label: {
+                        Image(systemName: "xmark")
+                            .font(.nvidia(size: 24, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .frame(width: 48, height: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 14)
+                    .padding(.trailing, 18)
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+            .background(Color.black)
+        }
+    }
+
+    private func selectedIndex(game: OPNCatalogGameObject) -> Int {
+        let preferred = viewModel.selectedVariantIndex >= 0 ? viewModel.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
+        return max(preferred, 0)
+    }
+
+    private func storeTitle(_ variant: OPNCatalogGameVariantObject) -> String {
+        variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
+    }
+
+    private func storeIcon(_ variant: OPNCatalogGameVariantObject) -> String {
+        let store = variant.appStore.lowercased()
+        if store.contains("steam") { return "steam" }
+        if store.contains("xbox") || store.contains("microsoft") { return "xbox.logo" }
+        if store.contains("epic") { return "bag.fill" }
+        return "gamecontroller.fill"
+    }
+
+    private func storeStatus(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject, selected: Bool) -> String {
+        if game.isInLibrary || variant.inLibrary || variant.librarySelected { return "Owned" }
+        return selected ? "Game not found" : ""
+    }
+
+    private var subscriptionTitle: String {
+        let tier = viewModel.subscriptionStatus.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+        if tier.isEmpty || tier.caseInsensitiveCompare("Free") == .orderedSame { return "GeForce NOW" }
+        return tier
+    }
+
+    private var subscriptionStatus: String {
+        viewModel.subscriptionStatus.isAvailable ? "Subscribed" : "Unavailable"
+    }
+}
+
+private struct CatalogStorePickerPoster: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    let game: OPNCatalogGameObject
+
+    var body: some View {
+        ZStack {
+            Color.white.opacity(0.08)
+            CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestTileImageURL, width: 720), contentMode: .fit)
+                .padding(0)
+        }
+        .frame(width: 292, height: 410)
+        .background(Color.white.opacity(0.06))
+        .shadow(color: .black.opacity(0.42), radius: 20, x: 0, y: 10)
+    }
+}
+
+private struct CatalogStorePickerSection<Content: View>: View {
+    let label: String
+    private let content: Content
+
+    init(label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 32) {
+            Text(label)
+                .font(.nvidia(size: 14, weight: .bold))
+                .foregroundStyle(.white.opacity(0.92))
+                .frame(width: 142, alignment: .leading)
+                .padding(.top, 3)
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct CatalogStorePickerRow: View {
+    let title: String
+    let systemImage: String
+    let status: String
+    let isSelected: Bool
+    let isAvailable: Bool
+    let action: (() -> Void)?
+    @State private var isHovering = false
+
+    var body: some View {
+        Group {
+            if let action {
+                Button(action: action) { rowContent }
+                    .buttonStyle(.plain)
+            } else {
+                rowContent
+            }
+        }
+        .onHover { isHovering = $0 }
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 14) {
+            storeIcon
+            Text(title)
+                .font(.nvidia(size: 16, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+                .frame(width: 210, alignment: .leading)
+            if !status.isEmpty {
+                Text(status)
+                    .font(.nvidia(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, status == "Game not found" ? 9 : 0)
+                    .frame(height: 24)
+                    .background(status == "Game not found" ? Color.black.opacity(0.28) : Color.clear)
+                if isAvailable {
+                    Image(systemName: "checkmark")
+                        .font(.nvidia(size: 14, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 30)
+        .padding(.horizontal, isHovering || isSelected ? 8 : 0)
+        .background(Color.white.opacity(isHovering || isSelected ? 0.08 : 0))
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var storeIcon: some View {
+        if systemImage == "steam" {
+            Text("◔")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .frame(width: 22)
+        } else if systemImage == "xbox.logo" {
+            Text("X")
+                .font(.system(size: 20, weight: .black))
+                .foregroundStyle(.white.opacity(0.96))
+                .frame(width: 22)
+        } else {
+            Image(systemName: systemImage)
+                .font(.nvidia(size: 18, weight: .bold))
+                .foregroundStyle(.white.opacity(0.96))
+                .frame(width: 22)
+        }
     }
 }
 
