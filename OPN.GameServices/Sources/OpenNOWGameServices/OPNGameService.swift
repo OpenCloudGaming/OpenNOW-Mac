@@ -894,10 +894,17 @@ final class OPNGameService: @unchecked Sendable {
                 variant.id = safeString(item["id"]) ?? ""
                 variant.appStore = safeString(item["appStore"]) ?? ""
                 variant.storeUrl = safeString(item["storeUrl"]) ?? ""
-                if let gfn = item["gfn"] as? NSDictionary, let library = gfn["library"] as? NSDictionary {
-                    variant.serviceStatus = safeString(library["status"]) ?? ""
-                    variant.librarySelected = safeBool(library["selected"])
-                    if variant.librarySelected { variant.inLibrary = true }
+                if let appStoreInfo = item["appStoreInfo"] as? NSDictionary {
+                    variant.appStoreLabel = safeString(appStoreInfo["label"]) ?? ""
+                    variant.appStoreSmallImageUrl = safeString(appStoreInfo["smallImageUrl"]) ?? ""
+                }
+                if let gfn = item["gfn"] as? NSDictionary {
+                    variant.serviceStatus = safeString(gfn["status"]) ?? ""
+                    if let library = gfn["library"] as? NSDictionary {
+                        variant.serviceStatus = firstSafeString(library, keys: ["status"]) ?? variant.serviceStatus
+                        variant.librarySelected = safeBool(library["selected"])
+                        if variant.librarySelected { variant.inLibrary = true }
+                    }
                 }
                 if game.contentRatings.isEmpty { assignContentRatings(item["contentRatings"], to: &game) }
                 if !variant.appStore.isEmpty, variant.appStore != "UNKNOWN", variant.appStore != "NONE" {
@@ -1408,6 +1415,8 @@ final class OPNGameService: @unchecked Sendable {
     private func mergeVariantFromSameStore(target: inout OPNGameVariant, source: OPNGameVariant) -> Bool {
         var changed = false
         if !source.id.isEmpty, target.id.isEmpty || (!target.librarySelected && source.librarySelected) { target.id = source.id; changed = true }
+        if target.appStoreLabel.isEmpty, !source.appStoreLabel.isEmpty { target.appStoreLabel = source.appStoreLabel; changed = true }
+        if target.appStoreSmallImageUrl.isEmpty, !source.appStoreSmallImageUrl.isEmpty { target.appStoreSmallImageUrl = source.appStoreSmallImageUrl; changed = true }
         if target.storeUrl.isEmpty, !source.storeUrl.isEmpty { target.storeUrl = source.storeUrl; changed = true }
         if !source.serviceStatus.isEmpty, target.serviceStatus.isEmpty || (!target.librarySelected && source.librarySelected) { target.serviceStatus = source.serviceStatus; changed = true }
         if !target.librarySelected, source.librarySelected { target.librarySelected = true; changed = true }
@@ -1422,6 +1431,8 @@ final class OPNGameService: @unchecked Sendable {
             if let index = target.variants.firstIndex(where: { variantMatchesStoreMetadata(target: $0, metadata: metadataVariant) }) {
                 if target.variants[index].id.isEmpty { target.variants[index].id = metadataVariant.id }
                 if target.variants[index].appStore.isEmpty { target.variants[index].appStore = metadataVariant.appStore }
+                if target.variants[index].appStoreLabel.isEmpty { target.variants[index].appStoreLabel = metadataVariant.appStoreLabel }
+                if target.variants[index].appStoreSmallImageUrl.isEmpty { target.variants[index].appStoreSmallImageUrl = metadataVariant.appStoreSmallImageUrl }
                 if target.variants[index].storeUrl.isEmpty { target.variants[index].storeUrl = metadataVariant.storeUrl }
                 if target.variants[index].serviceStatus.isEmpty { target.variants[index].serviceStatus = metadataVariant.serviceStatus }
                 if !target.variants[index].librarySelected { target.variants[index].librarySelected = metadataVariant.librarySelected }
@@ -2061,7 +2072,7 @@ private extension OPNGameService {
         query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
-                items { id title images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
+                items { id title images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
             }
         }
         """
@@ -2072,7 +2083,7 @@ private extension OPNGameService {
         query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $searchString: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, searchQuery: $searchString, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
-                items { id title images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
+                items { id title images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore appStoreInfo { label smallImageUrl } storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
             }
         }
         """

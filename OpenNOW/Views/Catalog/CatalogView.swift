@@ -1089,16 +1089,16 @@ private struct CatalogStorePickerOverlay: View {
                     LinearGradient(colors: [.black.opacity(0.42), .clear, .black.opacity(0.58)], startPoint: .leading, endPoint: .trailing)
                     LinearGradient(colors: [.black.opacity(0.18), .clear, .black.opacity(0.52)], startPoint: .top, endPoint: .bottom)
 
-                    HStack(alignment: .top, spacing: max(42, min(proxy.size.width * 0.07, 120))) {
+                    HStack(alignment: .top, spacing: max(52, min(proxy.size.width * 0.07, 104))) {
                         CatalogStorePickerPoster(viewModel: viewModel, game: game)
-                            .padding(.top, max(64, proxy.size.height * 0.15))
+                            .padding(.top, max(88, proxy.size.height * 0.17))
 
                         VStack(alignment: .leading, spacing: 0) {
                             header(game: game)
                             content(game: game)
                         }
-                        .frame(width: min(680, max(480, proxy.size.width * 0.40)), alignment: .leading)
-                        .padding(.top, max(68, proxy.size.height * 0.15))
+                        .frame(width: min(650, max(500, proxy.size.width * 0.38)), alignment: .leading)
+                        .padding(.top, max(92, proxy.size.height * 0.17))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.horizontal, max(38, min(proxy.size.width * 0.08, 150)))
@@ -1122,10 +1122,10 @@ private struct CatalogStorePickerOverlay: View {
     private func header(game: OPNCatalogGameObject) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(game.title.isEmpty ? "Selected Game" : game.title)
-                .font(.nvidia(size: 18, weight: .bold))
+                .font(.nvidia(size: 17, weight: .bold))
                 .foregroundStyle(.white.opacity(0.96))
                 .lineLimit(1)
-                .padding(.bottom, 8)
+                .padding(.bottom, 10)
             FlowLayout(spacing: 8) {
                 if viewModel.ownershipFlowStage == .success, let variant = selectedVariant(game: game) {
                     storeInlineLabel(variant: variant, owned: true)
@@ -1142,10 +1142,10 @@ private struct CatalogStorePickerOverlay: View {
                 }
             }
             Rectangle()
-                .fill(Color.white.opacity(0.28))
+                .fill(Color.white.opacity(0.24))
                 .frame(height: 1)
                 .padding(.top, 14)
-                .padding(.bottom, 24)
+                .padding(.bottom, 26)
         }
     }
 
@@ -1201,14 +1201,14 @@ private struct CatalogStorePickerOverlay: View {
             Text("Where do you own this game and want to play?")
                 .font(.nvidia(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.72))
-                .padding(.bottom, 30)
+                .padding(.bottom, 32)
             CatalogStorePickerSection(label: "Game stores:") {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 19) {
                     ForEach(Array(game.variants.enumerated()), id: \.offset) { index, variant in
                         CatalogStorePickerRow(
                             title: storeTitle(variant),
-                            systemImage: storeIcon(variant),
-                            status: storeStatus(game: game, variant: variant, selected: selectedIndex(game: game) == index),
+                            iconURL: storeIconURL(variant),
+                            status: storeStatus(game: game, variant: variant),
                             isSelected: selectedIndex(game: game) == index,
                             isAvailable: variantIsOwned(game: game, variant: variant)
                         ) {
@@ -1260,7 +1260,7 @@ private struct CatalogStorePickerOverlay: View {
                 .foregroundStyle(.white.opacity(0.96))
                 .padding(.bottom, 30)
             HStack(alignment: .top, spacing: 16) {
-                if let variant { storeIconView(systemImage: storeIcon(variant)) }
+                if let variant { storeIconView(iconURL: storeIconURL(variant)) }
                 VStack(alignment: .leading, spacing: 10) {
                     Text(successAccountTitle(storeName: storeName, account: account))
                         .font(.nvidia(size: 18, weight: .medium))
@@ -1292,20 +1292,19 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     private func storeTitle(_ variant: OPNCatalogGameVariantObject) -> String {
-        variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
+        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
+        return variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
     }
 
-    private func storeIcon(_ variant: OPNCatalogGameVariantObject) -> String {
-        let store = variant.appStore.lowercased()
-        if store.contains("steam") { return "steam" }
-        if store.contains("xbox") || store.contains("microsoft") { return "xbox.logo" }
-        if store.contains("epic") { return "bag.fill" }
-        return "gamecontroller.fill"
+    private func storeIconURL(_ variant: OPNCatalogGameVariantObject) -> String {
+        variant.appStoreSmallImageUrl
     }
 
-    private func storeStatus(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject, selected: Bool) -> String {
+    private func storeStatus(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> String {
         if variantIsOwned(game: game, variant: variant) { return "Owned" }
-        return selected ? "Game not found" : ""
+        let status = variant.serviceStatus.lowercased()
+        if status.contains("not") || status.contains("unavailable") || status.contains("unsupported") { return "Game not found" }
+        return ""
     }
 
     private func variantIsOwned(game: OPNCatalogGameObject, variant: OPNCatalogGameVariantObject) -> Bool {
@@ -1320,7 +1319,7 @@ private struct CatalogStorePickerOverlay: View {
 
     private func storeInlineLabel(variant: OPNCatalogGameVariantObject, owned: Bool) -> some View {
         HStack(spacing: 8) {
-            storeIconView(systemImage: storeIcon(variant))
+            storeIconView(iconURL: storeIconURL(variant))
             Text(storeTitle(variant))
                 .font(.nvidia(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
@@ -1339,19 +1338,10 @@ private struct CatalogStorePickerOverlay: View {
     }
 
     @ViewBuilder
-    private func storeIconView(systemImage: String) -> some View {
-        if systemImage == "steam" {
-            Text("◔")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.white.opacity(0.96))
-        } else if systemImage == "xbox.logo" {
-            Text("X")
-                .font(.system(size: 17, weight: .black))
-                .foregroundStyle(.white.opacity(0.96))
-        } else {
-            Image(systemName: systemImage)
-                .font(.nvidia(size: 15, weight: .bold))
-                .foregroundStyle(.white.opacity(0.96))
+    private func storeIconView(iconURL: String) -> some View {
+        if !iconURL.isEmpty {
+            CatalogStoreIconImage(url: URL(string: iconURL), size: 20)
+                .frame(width: 20, height: 20)
         }
     }
 
@@ -1399,12 +1389,12 @@ private struct CatalogStorePickerPoster: View {
 
     var body: some View {
         ZStack {
-            Color.white.opacity(0.08)
-            CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestTileImageURL, width: 720), contentMode: .fit)
-                .padding(0)
+            Color.black.opacity(0.25)
+            CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestStorePickerPosterURL, width: 720), contentMode: .fill)
+                .frame(width: 292, height: 410)
+                .clipped()
         }
         .frame(width: 292, height: 410)
-        .background(Color.white.opacity(0.06))
         .shadow(color: .black.opacity(0.42), radius: 20, x: 0, y: 10)
     }
 }
@@ -1423,7 +1413,7 @@ private struct CatalogStorePickerSection<Content: View>: View {
             Text(label)
                 .font(.nvidia(size: 14, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 142, alignment: .leading)
+                .frame(width: 132, alignment: .leading)
                 .padding(.top, 3)
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1433,7 +1423,7 @@ private struct CatalogStorePickerSection<Content: View>: View {
 
 private struct CatalogStorePickerRow: View {
     let title: String
-    let systemImage: String
+    let iconURL: String
     let status: String
     let isSelected: Bool
     let isAvailable: Bool
@@ -1458,14 +1448,13 @@ private struct CatalogStorePickerRow: View {
             Text(title)
                 .font(.nvidia(size: 16, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 210, alignment: .leading)
+                .frame(width: 232, alignment: .leading)
             if !status.isEmpty {
                 Text(status)
                     .font(.nvidia(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, status == "Game not found" ? 9 : 0)
+                    .padding(.horizontal, 0)
                     .frame(height: 24)
-                    .background(status == "Game not found" ? Color.black.opacity(0.28) : Color.clear)
                 if isAvailable {
                     Image(systemName: "checkmark")
                         .font(.nvidia(size: 14, weight: .bold))
@@ -1475,29 +1464,29 @@ private struct CatalogStorePickerRow: View {
             Spacer(minLength: 0)
         }
         .frame(height: 30)
-        .padding(.horizontal, isHovering || isSelected ? 8 : 0)
-        .background(Color.white.opacity(isHovering || isSelected ? 0.08 : 0))
+        .padding(.horizontal, isHovering ? 8 : 0)
+        .background(Color.white.opacity(isHovering ? 0.08 : 0))
         .contentShape(Rectangle())
     }
 
     @ViewBuilder
     private var storeIcon: some View {
-        if systemImage == "steam" {
-            Text("◔")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(.white.opacity(0.96))
-                .frame(width: 22)
-        } else if systemImage == "xbox.logo" {
-            Text("X")
-                .font(.system(size: 20, weight: .black))
-                .foregroundStyle(.white.opacity(0.96))
-                .frame(width: 22)
+        if !iconURL.isEmpty {
+            CatalogStoreIconImage(url: URL(string: iconURL), size: 22)
+                .frame(width: 22, height: 22)
         } else {
-            Image(systemName: systemImage)
-                .font(.nvidia(size: 18, weight: .bold))
-                .foregroundStyle(.white.opacity(0.96))
-                .frame(width: 22)
+            Color.clear.frame(width: 22, height: 22)
         }
+    }
+}
+
+private struct CatalogStoreIconImage: View {
+    let url: URL?
+    let size: CGFloat
+
+    var body: some View {
+        CatalogCachedImageView(url: url, contentMode: .fit, placeholder: Color.clear, failure: Color.clear)
+            .frame(width: size, height: size)
     }
 }
 
@@ -2458,8 +2447,10 @@ private struct GameDetailPanel: View {
             if let variant = selectedVariant {
                 Button { viewModel.changeSelectedGameStore() } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: storeIconName(variant: variant))
-                            .font(.nvidia(size: 13, weight: .bold))
+                        if !variant.appStoreSmallImageUrl.isEmpty {
+                            CatalogStoreIconImage(url: URL(string: variant.appStoreSmallImageUrl), size: 16)
+                                .frame(width: 16, height: 16)
+                        }
                         Text(storePickerTitle(variant: variant))
                             .font(.nvidia(size: 12, weight: .bold))
                     }
@@ -2478,10 +2469,6 @@ private struct GameDetailPanel: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: 520, alignment: .leading)
-    }
-
-    private func storeIconName(variant: OPNCatalogGameVariantObject) -> String {
-        variant.appStore.lowercased().contains("steam") ? "circle.grid.cross.fill" : "play.circle.fill"
     }
 
     private func accessMessage(game: OPNCatalogGameObject) -> some View {
@@ -2664,7 +2651,8 @@ private struct GameDetailPanel: View {
     }
 
     private func storePickerTitle(variant: OPNCatalogGameVariantObject) -> String {
-        variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
+        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
+        return variant.appStore.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: variant.appStore)
     }
 
     private func storeAccountStatus(store: String) -> some View {
@@ -3237,6 +3225,14 @@ private extension OPNCatalogGameObject {
         }
         if let value = screenshotUrls.first, !value.isEmpty { return value }
         return heroImageUrl
+    }
+
+    var bestStorePickerPosterURL: String {
+        for key in ["GAME_BOX_ART", "BOX_ART", "BOXART", "KEY_ART", "KEY_IMAGE"] {
+            if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
+            if let value = imageUrlsByType[key.lowercased()]?.first, !value.isEmpty { return value }
+        }
+        return bestTileImageURL
     }
 
     var bestWideImageURL: String {

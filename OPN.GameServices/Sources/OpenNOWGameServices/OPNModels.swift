@@ -32,6 +32,8 @@ public struct OPNSubscriptionInfo: Equatable, Sendable {
 public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var id = ""
     public var appStore = ""
+    public var appStoreLabel = ""
+    public var appStoreSmallImageUrl = ""
     public var storeUrl = ""
     public var serviceStatus = ""
     public var librarySelected = false
@@ -291,6 +293,8 @@ public struct OPNFeaturedGamesResult: Equatable, Sendable {
 public final class OPNCatalogGameVariantObject: NSObject {
     public var id: String
     public var appStore: String
+    public var appStoreLabel: String
+    public var appStoreSmallImageUrl: String
     public var storeUrl: String
     public var serviceStatus: String
     public var librarySelected: Bool
@@ -303,6 +307,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public init(variant: OPNGameVariant) {
         id = variant.id
         appStore = variant.appStore
+        appStoreLabel = variant.appStoreLabel
+        appStoreSmallImageUrl = variant.appStoreSmallImageUrl
         storeUrl = variant.storeUrl
         serviceStatus = variant.serviceStatus
         librarySelected = variant.librarySelected
@@ -314,6 +320,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
         OPNGameVariant(
             id: id,
             appStore: appStore,
+            appStoreLabel: appStoreLabel,
+            appStoreSmallImageUrl: appStoreSmallImageUrl,
             storeUrl: storeUrl,
             serviceStatus: serviceStatus,
             librarySelected: librarySelected,

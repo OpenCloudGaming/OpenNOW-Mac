@@ -311,6 +311,8 @@ final class OPNGameDataCache: NSObject {
         var dictionary: [String: Any] = [:]
         putString(variant.id, key: "i", into: &dictionary)
         putString(variant.appStore, key: "s", into: &dictionary)
+        putString(variant.appStoreLabel, key: "n", into: &dictionary)
+        putString(variant.appStoreSmallImageUrl, key: "m", into: &dictionary)
         putString(variant.storeUrl, key: "u", into: &dictionary)
         putString(variant.serviceStatus, key: "t", into: &dictionary)
         if variant.librarySelected { dictionary["l"] = true }
@@ -323,6 +325,8 @@ final class OPNGameDataCache: NSObject {
         return OPNGameVariant(
             id: dictionary["i"] as? String ?? "",
             appStore: dictionary["s"] as? String ?? "",
+            appStoreLabel: dictionary["n"] as? String ?? "",
+            appStoreSmallImageUrl: dictionary["m"] as? String ?? "",
             storeUrl: dictionary["u"] as? String ?? "",
             serviceStatus: dictionary["t"] as? String ?? "",
             librarySelected: (dictionary["l"] as? NSNumber)?.boolValue ?? false,
