@@ -18,15 +18,20 @@ public struct WebRTCStreamRecording: Codable, Equatable, Identifiable, Sendable 
     public let enhancedVideo: Bool
     public let fileName: String
     public let fileSizeBytes: Int64
+    public let storageDirectoryPath: String?
 
-    public var videoURL: URL { WebRTCStreamRecordingLibrary.recordingsDirectory.appendingPathComponent(fileName) }
-    public var metadataURL: URL { WebRTCStreamRecordingLibrary.metadataURL(for: id) }
+    public var videoURL: URL { storageDirectory.appendingPathComponent(fileName) }
+    public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
+
+    private var storageDirectory: URL {
+        guard let storageDirectoryPath, !storageDirectoryPath.isEmpty else { return WebRTCStreamRecordingLibrary.recordingsDirectory }
+        return URL(fileURLWithPath: storageDirectoryPath, isDirectory: true)
+    }
 }
 
 public enum WebRTCStreamRecordingLibrary {
     public static var recordingsDirectory: URL {
-        let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
-        return base.appendingPathComponent("OpenNOW Recordings", isDirectory: true)
+        writableRecordingsDirectory() ?? fallbackRecordingsDirectory
     }
 
     public static func metadataURL(for id: UUID) -> URL {
@@ -34,16 +39,35 @@ public enum WebRTCStreamRecordingLibrary {
     }
 
     public static func ensureDirectory() throws {
-        try FileManager.default.createDirectory(at: recordingsDirectory, withIntermediateDirectories: true)
+        try ensureWritableDirectory(at: recordingsDirectory)
     }
 
     public static func loadRecordings() -> [WebRTCStreamRecording] {
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: recordingsDirectory, includingPropertiesForKeys: nil) else { return [] }
-        return urls
+        allRecordingsDirectories()
+            .compactMap { try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
+            .flatMap { $0 }
             .filter { $0.pathExtension.caseInsensitiveCompare("json") == .orderedSame }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                return try? JSONDecoder.recordingDecoder.decode(WebRTCStreamRecording.self, from: data)
+                guard let recording = try? JSONDecoder.recordingDecoder.decode(WebRTCStreamRecording.self, from: data) else { return nil }
+                if recording.storageDirectoryPath == nil {
+                    return WebRTCStreamRecording(
+                        id: recording.id,
+                        title: recording.title,
+                        applicationID: recording.applicationID,
+                        createdAt: recording.createdAt,
+                        durationSeconds: recording.durationSeconds,
+                        width: recording.width,
+                        height: recording.height,
+                        videoBitrateMbps: recording.videoBitrateMbps,
+                        audioBitrateKbps: recording.audioBitrateKbps,
+                        enhancedVideo: recording.enhancedVideo,
+                        fileName: recording.fileName,
+                        fileSizeBytes: recording.fileSizeBytes,
+                        storageDirectoryPath: url.deletingLastPathComponent().path
+                    )
+                }
+                return recording
             }
             .filter { FileManager.default.fileExists(atPath: $0.videoURL.path) }
             .sorted { $0.createdAt > $1.createdAt }
@@ -52,6 +76,40 @@ public enum WebRTCStreamRecordingLibrary {
     public static func delete(_ recording: WebRTCStreamRecording) throws {
         if FileManager.default.fileExists(atPath: recording.videoURL.path) { try FileManager.default.removeItem(at: recording.videoURL) }
         if FileManager.default.fileExists(atPath: recording.metadataURL.path) { try FileManager.default.removeItem(at: recording.metadataURL) }
+    }
+
+    private static var moviesRecordingsDirectory: URL {
+        let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
+        return base.appendingPathComponent("OpenNOW Recordings", isDirectory: true)
+    }
+
+    private static var fallbackRecordingsDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("Recordings", isDirectory: true)
+    }
+
+    private static func allRecordingsDirectories() -> [URL] {
+        var seen = Set<String>()
+        return [recordingsDirectory, moviesRecordingsDirectory, fallbackRecordingsDirectory].filter { url in
+            let path = url.standardizedFileURL.path
+            guard !seen.contains(path) else { return false }
+            seen.insert(path)
+            return true
+        }
+    }
+
+    private static func writableRecordingsDirectory() -> URL? {
+        for directory in [moviesRecordingsDirectory, fallbackRecordingsDirectory] {
+            if (try? ensureWritableDirectory(at: directory)) != nil { return directory }
+        }
+        return nil
+    }
+
+    private static func ensureWritableDirectory(at directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let probe = directory.appendingPathComponent(".opennow-write-test", isDirectory: false)
+        try Data().write(to: probe, options: .atomic)
+        try? FileManager.default.removeItem(at: probe)
     }
 }
 
@@ -259,7 +317,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             audioBitrateKbps: configuration.audioBitrateKbps,
             enhancedVideo: configuration.enhancedVideoEnabled,
             fileName: outputURL.lastPathComponent,
-            fileSizeBytes: fileSize
+            fileSizeBytes: fileSize,
+            storageDirectoryPath: outputURL.deletingLastPathComponent().path
         )
         do {
             let data = try JSONEncoder.recordingEncoder.encode(recording)
