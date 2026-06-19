@@ -31,6 +31,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var runtimeSettings = StreamRuntimeSettings()
     @State private var microphoneEnabled = false
+    @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
@@ -59,6 +60,7 @@ public struct WebRTCMediaStreamSurface: View {
             if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
+            recordingIndicator
             micStatusIndicator
         }
         .background(Color.black)
@@ -128,6 +130,10 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "waveform.path.ecg", title: "Stats") {
                 statsVisible.toggle()
             }
+            sidebarButton(systemName: "record.circle", title: recordingButtonTitle, isActive: recordingStatus.isRecording) {
+                toggleRecording()
+            }
+            .disabled(!isStreamReady || recordingIsBusy)
             sidebarButton(systemName: "sparkles", title: "Video") {
                 videoEnhancementSettingsVisible.toggle()
                 WebRTCMediaTelemetry.capture("webrtc.ui.video_enhancement.toggle", level: .info, message: videoEnhancementSettingsVisible ? "Video enhancement settings shown." : "Video enhancement settings hidden.", attributes: ["visible": String(videoEnhancementSettingsVisible)])
@@ -266,7 +272,55 @@ public struct WebRTCMediaStreamSurface: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
     }
 
-    private func sidebarButton(systemName: String, title: String, action: @escaping () -> Void) -> some View {
+    private var recordingIndicator: some View {
+        Group {
+            switch recordingStatus {
+            case .recording(_, let elapsedSeconds):
+                HStack(spacing: 8) {
+                    Circle().fill(Color.red).frame(width: 8, height: 8)
+                    Text(recordingElapsedText(elapsedSeconds))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.94))
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(.black.opacity(0.62), in: Capsule())
+                .overlay(Capsule().stroke(Color.red.opacity(0.36), lineWidth: 1))
+            case .finishing:
+                Text("Saving recording...")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(.black.opacity(0.62), in: Capsule())
+            case .failed(let message):
+                Text(message)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(Color.red.opacity(0.72), in: Capsule())
+            case .finished(let recording):
+                Text("Saved: \(recording.title)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(.black.opacity(0.62), in: Capsule())
+                    .overlay(Capsule().stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.32), lineWidth: 1))
+            default:
+                EmptyView()
+            }
+        }
+        .padding(.top, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func sidebarButton(systemName: String, title: String, isActive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemName)
@@ -274,11 +328,46 @@ public struct WebRTCMediaStreamSurface: View {
                 Text(title)
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
             }
-            .foregroundStyle(.white.opacity(0.92))
+            .foregroundStyle(isActive ? .white : .white.opacity(0.92))
             .frame(width: 58, height: 54)
-            .background(.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(isActive ? Color.red.opacity(0.72) : .white.opacity(0.075), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private var recordingIsBusy: Bool {
+        if case .starting = recordingStatus { return true }
+        if case .finishing = recordingStatus { return true }
+        return false
+    }
+
+    private var recordingButtonTitle: String {
+        recordingStatus.isRecording ? "Stop" : "Record"
+    }
+
+    private func toggleRecording() {
+        if recordingStatus.isRecording {
+            transport?.stopRecording()
+            return
+        }
+        guard !recordingIsBusy else { return }
+        let recordingConfiguration = WebRTCStreamRecordingConfiguration(
+            title: configuration.title,
+            applicationID: configuration.applicationID,
+            width: runtimeSettings.resolutionWidth,
+            height: runtimeSettings.resolutionHeight,
+            fps: runtimeSettings.fps,
+            videoBitrateMbps: runtimeSettings.recordingVideoBitrateMbps,
+            audioBitrateKbps: runtimeSettings.recordingAudioBitrateKbps,
+            enhancedVideoEnabled: runtimeSettings.recordingEnhancedVideoEnabled
+        )
+        transport?.startRecording(configuration: recordingConfiguration)
+        WebRTCMediaTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording started.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func recordingElapsedText(_ elapsedSeconds: Double) -> String {
+        let seconds = max(0, Int(elapsedSeconds.rounded(.down)))
+        return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
     }
 
     private func statsRow(_ label: String, _ value: String) -> some View {
@@ -351,6 +440,9 @@ public struct WebRTCMediaStreamSurface: View {
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         transport.onEnded = { message in
             handleTransportEnded(message: message)
+        }
+        transport.onRecordingStatusChanged = { status in
+            recordingStatus = status
         }
         nativeView.onInputEvent = { event in
             switch inputAction(for: event) {
@@ -511,6 +603,7 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
+        transport?.stopRecording()
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.pause", level: .info, message: "Stream paused from quit menu.", attributes: ["applicationID": configuration.applicationID])
         Task {
             let report = await finishStream(reason: .paused, message: "Stream paused.")
@@ -530,6 +623,7 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
+        transport?.stopRecording()
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.quit_stream", level: .info, message: "Stream quit requested from quit menu.", attributes: ["applicationID": configuration.applicationID])
         Task {
             let report = await finishStream(reason: .userRequested, message: "Stream ended by user.")
@@ -549,6 +643,7 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
+        transport?.stopRecording()
         Task {
             let report = await finishStream(reason: .remoteEnded, message: message.isEmpty ? "Stream ended." : message)
             await MainActor.run { onEnd(report.success, report.message, report) }
@@ -580,6 +675,7 @@ public struct WebRTCMediaStreamSurface: View {
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
+        transport?.stopRecording()
         guard !didEndStream else { return }
         didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }
@@ -615,6 +711,7 @@ private struct StreamRuntimeSettings: Equatable {
 
     var resolutionWidth = 1920
     var resolutionHeight = 1080
+    var fps = 60
     var microphoneMode = "disabled"
     var microphonePushToTalkKeyCode = 9
     var microphonePushToTalkModifierMask = 0
@@ -624,6 +721,9 @@ private struct StreamRuntimeSettings: Equatable {
     var upscalingSharpness = 4
     var upscalingDenoise = 0
     var upscalingTargetHeight = 2160
+    var recordingVideoBitrateMbps = 0
+    var recordingAudioBitrateKbps = 160
+    var recordingEnhancedVideoEnabled = true
 
     var upscalingModeLabel: String {
         switch upscalingMode {
@@ -658,6 +758,7 @@ private struct StreamRuntimeSettings: Equatable {
         let resolution = Self.resolution(Self.string(dictionary["resolution"], fallback: "1920x1080"))
         resolutionWidth = resolution.width
         resolutionHeight = resolution.height
+        fps = Self.int(dictionary["fps"], fallback: 60)
         microphoneMode = Self.string(dictionary["microphoneMode"], fallback: "disabled")
         microphonePushToTalkKeyCode = Self.int(dictionary["microphonePushToTalkKeyCode"], fallback: 9)
         microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
@@ -667,6 +768,9 @@ private struct StreamRuntimeSettings: Equatable {
         upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 4)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
         upscalingTargetHeight = Self.int(dictionary["upscalingTargetHeight"], fallback: 2160)
+        recordingVideoBitrateMbps = Self.int(dictionary["recordingVideoBitrateMbps"])
+        recordingAudioBitrateKbps = Self.int(dictionary["recordingAudioBitrateKbps"], fallback: 160)
+        recordingEnhancedVideoEnabled = Self.bool(dictionary["recordingEnhancedVideoEnabled"], fallback: true)
     }
 
     private static func string(_ value: Any?, fallback: String = "") -> String {

@@ -175,6 +175,8 @@ struct CatalogView: View {
                     CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, showsPreviousSessionOverlay: $showsPreviousSessionOverlay, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                     if viewModel.selectedMainPage == .settings {
                         SettingsView(viewModel: viewModel)
+                    } else if viewModel.selectedMainPage == .recordings {
+                        RecordingsView()
                     } else {
                         CatalogContentView(viewModel: viewModel)
                     }
@@ -680,7 +682,7 @@ private struct CatalogTopBar: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
-                    Text(viewModel.selectedMainPage == .settings ? "Settings" : viewModel.selectedCatalogDestination.title)
+                    Text(mainPageTitle)
                         .font(.nvidia(size: 17, weight: .medium))
                         .foregroundStyle(.white.opacity(0.92))
                     Spacer()
@@ -691,7 +693,7 @@ private struct CatalogTopBar: View {
                     catalogSearchField
                         .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
                 } else {
-                    Text(viewModel.selectedSettingsPage.title)
+                    Text(viewModel.selectedMainPage == .recordings ? "Saved gameplay videos" : viewModel.selectedSettingsPage.title)
                         .font(.nvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white.opacity(0.70))
                         .tracking(1.1)
@@ -750,6 +752,14 @@ private struct CatalogTopBar: View {
         .frame(height: CatalogVendorLayout.appBarHeight)
         .background(CatalogVendorLayout.appBarBackground)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.42)).frame(height: 1) }
+    }
+
+    private var mainPageTitle: String {
+        switch viewModel.selectedMainPage {
+        case .games: return viewModel.selectedCatalogDestination.title
+        case .recordings: return "Recordings"
+        case .settings: return "Settings"
+        }
     }
 
     private var catalogSearchField: some View {
@@ -914,6 +924,10 @@ private struct CatalogMainMenuPanel: View {
                         }
                         CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
                             viewModel.showSettings()
+                            isPresented = false
+                        }
+                        CatalogMainMenuRow(title: "Recordings", subtitle: "Watch saved stream videos", systemImage: "play.rectangle.fill", isActive: viewModel.selectedMainPage == .recordings) {
+                            viewModel.showRecordings()
                             isPresented = false
                         }
                     }

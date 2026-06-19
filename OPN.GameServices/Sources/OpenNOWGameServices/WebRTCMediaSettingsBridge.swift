@@ -55,7 +55,10 @@ func webRTCMediaProfile(from profile: OPNStreamPreferenceProfile) -> WebRTCMedia
         upscalingDenoise: profile.upscalingDenoise,
         upscalingTargetHeight: profile.upscalingTargetHeight,
         suppressInputWhenInactive: profile.suppressInputWhenInactive,
-        directMouseInput: profile.directMouseInput
+        directMouseInput: profile.directMouseInput,
+        recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
+        recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
+        recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled
     )
 }
 
@@ -86,7 +89,10 @@ func webRTCMediaProfile(from settings: [String: Any]) -> WebRTCMediaStreamProfil
         upscalingDenoise: bridgeInt(settings["upscalingDenoise"]),
         upscalingTargetHeight: bridgeInt(settings["upscalingTargetHeight"], fallback: 2160),
         suppressInputWhenInactive: bridgeBool(settings["suppressInputWhenInactive"], fallback: true),
-        directMouseInput: bridgeBool(settings["directMouseInput"], fallback: true)
+        directMouseInput: bridgeBool(settings["directMouseInput"], fallback: true),
+        recordingVideoBitrateMbps: bridgeInt(settings["recordingVideoBitrateMbps"]),
+        recordingAudioBitrateKbps: bridgeInt(settings["recordingAudioBitrateKbps"], fallback: 160),
+        recordingEnhancedVideoEnabled: bridgeBool(settings["recordingEnhancedVideoEnabled"], fallback: true)
     )
 }
 

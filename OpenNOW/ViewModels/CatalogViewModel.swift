@@ -65,6 +65,7 @@ enum CatalogOwnershipFlowStage: Equatable {
 @MainActor
 enum CatalogMainPage: String, CaseIterable, Identifiable {
     case games
+    case recordings
     case settings
 
     var id: String { rawValue }
@@ -581,6 +582,12 @@ final class CatalogViewModel: ObservableObject {
         launchMessage = ""
     }
 
+    func showRecordings() {
+        selectedMainPage = .recordings
+        actionMessage = ""
+        errorMessage = ""
+    }
+
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
         activeStreamConfiguration = nil
@@ -1032,6 +1039,21 @@ final class CatalogViewModel: ObservableObject {
 
     func setDirectMouseInputEnabled(_ enabled: Bool) {
         OPNStreamPreferences.saveDirectMouseInputEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setRecordingVideoBitrateMbps(_ value: Double) {
+        OPNStreamPreferences.saveRecordingVideoBitrateMbps(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setRecordingAudioBitrateKbps(_ value: Double) {
+        OPNStreamPreferences.saveRecordingAudioBitrateKbps(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setRecordingEnhancedVideoEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveRecordingEnhancedVideoEnabled(enabled)
         loadSettingsPreferences()
     }
 

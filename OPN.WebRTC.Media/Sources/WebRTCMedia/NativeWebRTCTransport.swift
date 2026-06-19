@@ -1,10 +1,14 @@
 import AppKit
+import CoreVideo
 import Foundation
+@preconcurrency import WebRTC
 
 public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unchecked Sendable {
     public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
+    public var onRecordingStatusChanged: (@MainActor @Sendable (_ status: WebRTCStreamRecordingStatus) -> Void)?
 
     private let session = OPNLibWebRTCStreamSession()
+    private let recorder = WebRTCStreamRecorder()
     private weak var nativeView: NativeWebRTCStreamView?
     private let localIceLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
@@ -16,6 +20,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     public init(nativeView: NativeWebRTCStreamView) {
         self.nativeView = nativeView
         super.init()
+        recorder.onStatusChanged = { [weak self] status in
+            self?.onRecordingStatusChanged?(status)
+        }
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
@@ -25,6 +32,19 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             self.continuation = continuation
             self.isDisconnecting = false
             self.didEmitEnd = false
+            self.session.onVideoFrame = { [weak self] framePointer in
+                guard let framePointer else { return }
+                let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
+                self?.recorder.appendVideoFrame(frame)
+            }
+            self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
+                guard let pixelBufferPointer else { return }
+                let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeUnretainedValue()
+                self?.recorder.appendEnhancedPixelBuffer(pixelBuffer)
+            }
+            self.session.onGameAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
+                self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             session.start(
                 sessionInfo: offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata,
@@ -71,7 +91,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     public func sendNow(_ event: UserInputEvent) {
         switch event {
         case .keyboard(let keyboard):
-            session.sendKey(keycode: keyboard.keyCode, scancode: keyboard.scanCode, modifiers: keyboard.modifiers.rawValue, down: keyboard.isPressed)
+            let codes = Self.keyboardCodes(forMacKeyCode: keyboard.keyCode)
+            session.sendKey(keycode: codes.keyCode, scancode: codes.scanCode, modifiers: keyboard.modifiers.rawValue, down: keyboard.isPressed)
         case .mouse(let mouse):
             send(mouse)
         case .text(_, let value, _):
@@ -89,11 +110,23 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         session.setLocalVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
     }
 
+    public func startRecording(configuration: WebRTCStreamRecordingConfiguration) {
+        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled)
+        recorder.start(configuration: configuration)
+    }
+
+    public func stopRecording() {
+        recorder.stop()
+        session.setEnhancedVideoFrameCaptureEnabled(false)
+    }
+
     public func disconnect() async {
         WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
         isDisconnecting = true
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
+        recorder.stop()
+        session.setEnhancedVideoFrameCaptureEnabled(false)
         localIceLock.withLock {
             localIceContinuation?.finish()
             localIceContinuation = nil
@@ -208,6 +241,109 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         if let value = value as? String { return Int(value) ?? 0 }
         return 0
     }
+
+    private static func keyboardCodes(forMacKeyCode macKeyCode: UInt16) -> (keyCode: UInt16, scanCode: UInt16) {
+        keyboardCodeMap[macKeyCode] ?? (macKeyCode, macKeyCode)
+    }
+
+    private static let keyboardCodeMap: [UInt16: (keyCode: UInt16, scanCode: UInt16)] = [
+        0: (65, 0x1e),
+        1: (83, 0x1f),
+        2: (68, 0x20),
+        3: (70, 0x21),
+        4: (72, 0x23),
+        5: (71, 0x22),
+        6: (90, 0x2c),
+        7: (88, 0x2d),
+        8: (67, 0x2e),
+        9: (86, 0x2f),
+        10: (192, 0x29),
+        11: (66, 0x30),
+        12: (81, 0x10),
+        13: (87, 0x11),
+        14: (69, 0x12),
+        15: (82, 0x13),
+        16: (89, 0x15),
+        17: (84, 0x14),
+        18: (49, 0x02),
+        19: (50, 0x03),
+        20: (51, 0x04),
+        21: (52, 0x05),
+        22: (54, 0x07),
+        23: (53, 0x06),
+        24: (187, 0x0d),
+        25: (57, 0x0a),
+        26: (55, 0x08),
+        27: (189, 0x0c),
+        28: (56, 0x09),
+        29: (48, 0x0b),
+        30: (221, 0x1b),
+        31: (79, 0x18),
+        32: (85, 0x16),
+        33: (219, 0x1a),
+        34: (73, 0x17),
+        35: (80, 0x19),
+        36: (13, 0x1c),
+        37: (76, 0x26),
+        38: (74, 0x24),
+        39: (222, 0x28),
+        40: (75, 0x25),
+        41: (186, 0x27),
+        42: (220, 0x2b),
+        43: (188, 0x33),
+        44: (191, 0x35),
+        45: (78, 0x31),
+        46: (77, 0x32),
+        47: (190, 0x34),
+        48: (9, 0x0f),
+        49: (32, 0x39),
+        50: (192, 0x29),
+        51: (8, 0x0e),
+        53: (27, 0x01),
+        65: (110, 0x53),
+        67: (106, 0x37),
+        69: (107, 0x4e),
+        71: (12, 0x45),
+        75: (111, 0x35),
+        76: (13, 0x1c),
+        78: (109, 0x4a),
+        81: (187, 0x0d),
+        82: (96, 0x52),
+        83: (97, 0x4f),
+        84: (98, 0x50),
+        85: (99, 0x51),
+        86: (100, 0x4b),
+        87: (101, 0x4c),
+        88: (102, 0x4d),
+        89: (103, 0x47),
+        91: (104, 0x48),
+        92: (105, 0x49),
+        96: (116, 0x3f),
+        97: (117, 0x40),
+        98: (118, 0x41),
+        99: (114, 0x3d),
+        100: (119, 0x42),
+        101: (120, 0x43),
+        103: (122, 0x44),
+        105: (124, 0x64),
+        106: (127, 0x6a),
+        107: (145, 0x46),
+        109: (121, 0x44),
+        111: (123, 0x58),
+        114: (45, 0x52),
+        115: (36, 0x47),
+        116: (33, 0x49),
+        117: (46, 0x53),
+        118: (115, 0x3e),
+        119: (35, 0x4f),
+        120: (113, 0x3c),
+        121: (34, 0x51),
+        122: (112, 0x3b),
+        123: (37, 0x4b),
+        124: (39, 0x4d),
+        125: (40, 0x50),
+        126: (38, 0x48)
+    ]
 
     private func resumeAnswer(_ answer: StreamAnswer) {
         guard let continuation else { return }

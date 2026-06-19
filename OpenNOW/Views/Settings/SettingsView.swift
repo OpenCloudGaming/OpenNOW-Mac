@@ -693,6 +693,14 @@ private struct GameplaySettingsPage: View {
                 SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, action: viewModel.setSuppressInputWhenInactive)
             }
 
+            SettingsCard(title: "Recording") {
+                SettingsSliderRow(title: "Video Bitrate", valueText: recordingVideoBitrateText, value: Double(viewModel.streamProfile.recordingVideoBitrateMbps), range: 0...200, step: 1, action: viewModel.setRecordingVideoBitrateMbps)
+                SettingsDivider()
+                SettingsSliderRow(title: "Audio Bitrate", valueText: "\(viewModel.streamProfile.recordingAudioBitrateKbps) Kbps", value: Double(viewModel.streamProfile.recordingAudioBitrateKbps), range: 64...320, step: 16, action: viewModel.setRecordingAudioBitrateKbps)
+                SettingsDivider()
+                SettingsToggleRow(title: "Record Enhanced Video", subtitle: "Capture the enhanced/upscaled stream frame when available, with native decoded frames as fallback.", isOn: viewModel.streamProfile.recordingEnhancedVideoEnabled, action: viewModel.setRecordingEnhancedVideoEnabled)
+            }
+
             SettingsCard(title: "Audio") {
                 SettingsSliderRow(title: "Game Volume", valueText: percentText(viewModel.streamProfile.gameVolume), value: viewModel.streamProfile.gameVolume, range: 0...1, step: 0.01, action: viewModel.setGameVolume)
                 SettingsDivider()
@@ -720,6 +728,10 @@ private struct GameplaySettingsPage: View {
     private var estimatedDataUsage: String {
         let gbPerHour = Double(viewModel.streamProfile.maxBitrateMbps) * 0.45
         return String(format: "Up to %.1f GB per hour at %d Mbps", gbPerHour, viewModel.streamProfile.maxBitrateMbps)
+    }
+
+    private var recordingVideoBitrateText: String {
+        viewModel.streamProfile.recordingVideoBitrateMbps == 0 ? "Auto" : "\(viewModel.streamProfile.recordingVideoBitrateMbps) Mbps"
     }
 
     private func percentText(_ value: Double) -> String {
