@@ -105,6 +105,18 @@ private actor ProgressRecorder {
     }
 }
 
+private actor RecordingStatusRecorder {
+    private(set) var values: [WebRTCStreamRecordingStatus] = []
+
+    func append(_ status: WebRTCStreamRecordingStatus) {
+        values.append(status)
+    }
+
+    func terminalStatus() -> WebRTCStreamRecordingStatus? {
+        values.first { $0.isTerminal }
+    }
+}
+
 @Suite("WebRTCMediaSession")
 struct WebRTCMediaSessionTests {
     @Test("extracts numeric IPv4 addresses for direct ICE fallback")
@@ -159,6 +171,37 @@ struct WebRTCMediaSessionTests {
         #expect(received == .gamepad(state))
         #expect(state.rightTrigger == 1)
         #expect(state.leftStickX == -1)
+    }
+
+    @Test("stopping recording before first video frame fails without crashing")
+    func stoppingRecordingBeforeFirstFrameFailsWithoutCrashing() async throws {
+        let recorder = WebRTCStreamRecorder()
+        let statuses = RecordingStatusRecorder()
+        recorder.onStatusChanged = { status in
+            Task { await statuses.append(status) }
+        }
+
+        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+            title: "Crash Regression",
+            applicationID: "100",
+            width: 1280,
+            height: 720,
+            fps: 60,
+            videoBitrateMbps: 8,
+            audioBitrateKbps: 128,
+            enhancedVideoEnabled: false
+        ))
+        try await Task.sleep(for: .milliseconds(100))
+        recorder.stop()
+
+        var terminalStatus: WebRTCStreamRecordingStatus?
+        for _ in 0..<20 {
+            terminalStatus = await statuses.terminalStatus()
+            if terminalStatus != nil { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        #expect(terminalStatus == .failed("Recording stopped before any video frames were captured."))
     }
 }
 

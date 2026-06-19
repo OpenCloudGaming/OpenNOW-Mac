@@ -21,6 +21,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         self.nativeView = nativeView
         super.init()
         recorder.onStatusChanged = { [weak self] status in
+            if status.isTerminal {
+                self?.session.setEnhancedVideoFrameCaptureEnabled(false)
+            }
             self?.onRecordingStatusChanged?(status)
         }
     }

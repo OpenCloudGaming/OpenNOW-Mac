@@ -275,6 +275,13 @@ public struct WebRTCMediaStreamSurface: View {
     private var recordingIndicator: some View {
         Group {
             switch recordingStatus {
+            case .starting:
+                Text("Starting recording...")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(.black.opacity(0.62), in: Capsule())
             case .recording(_, let elapsedSeconds):
                 HStack(spacing: 8) {
                     Circle().fill(Color.red).frame(width: 8, height: 8)

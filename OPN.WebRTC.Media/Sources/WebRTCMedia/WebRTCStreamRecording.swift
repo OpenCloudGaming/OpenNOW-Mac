@@ -38,8 +38,11 @@ public enum WebRTCStreamRecordingLibrary {
         recordingsDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json")
     }
 
-    public static func ensureDirectory() throws {
-        try ensureWritableDirectory(at: recordingsDirectory)
+    @discardableResult
+    public static func ensureDirectory() throws -> URL {
+        let directory = recordingsDirectory
+        try ensureWritableDirectory(at: directory)
+        return directory
     }
 
     public static func loadRecordings() -> [WebRTCStreamRecording] {
@@ -147,6 +150,15 @@ public enum WebRTCStreamRecordingStatus: Equatable, Sendable {
         if case .recording = self { return true }
         return false
     }
+
+    public var isTerminal: Bool {
+        switch self {
+        case .finished, .failed:
+            true
+        case .idle, .starting, .recording, .finishing:
+            false
+        }
+    }
 }
 
 final class WebRTCStreamRecorder: @unchecked Sendable {
@@ -165,17 +177,21 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     private var firstHostTime: CFTimeInterval?
     private var lastPresentationTime = CMTime.zero
     private var lastStatusHostTime: CFTimeInterval = 0
+    private var capturedVideoFrame = false
     private var finishing = false
     private var failed = false
 
     var wantsEnhancedVideo: Bool { configuration?.enhancedVideoEnabled == true && isRecording }
-    var isRecording: Bool { writer != nil && !finishing && !failed }
+    var isRecording: Bool {
+        guard let writer, !finishing, !failed else { return false }
+        return writer.status == .unknown || writer.status == .writing
+    }
 
     func start(configuration: WebRTCStreamRecordingConfiguration) {
         queue.async {
             guard self.writer == nil else { return }
             do {
-                try WebRTCStreamRecordingLibrary.ensureDirectory()
+                let directory = try WebRTCStreamRecordingLibrary.ensureDirectory()
                 self.id = UUID()
                 self.configuration = configuration
                 self.createdAt = Date()
@@ -183,9 +199,10 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 self.firstHostTime = nil
                 self.lastPresentationTime = .zero
                 self.lastStatusHostTime = 0
+                self.capturedVideoFrame = false
                 self.finishing = false
                 self.failed = false
-                let url = WebRTCStreamRecordingLibrary.recordingsDirectory.appendingPathComponent(self.id.uuidString).appendingPathExtension("mp4")
+                let url = directory.appendingPathComponent(self.id.uuidString).appendingPathExtension("mp4")
                 if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
                 self.outputURL = url
                 let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -212,7 +229,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 self.pixelBufferAdaptor = adaptor
                 self.startedAt = self.createdAt
                 self.firstHostTime = CACurrentMediaTime()
-                self.emit(.recording(startedAt: self.createdAt, elapsedSeconds: 0))
+                self.emit(.starting)
             } catch {
                 self.reset()
                 self.emit(.failed(Self.message(for: error)))
@@ -238,7 +255,11 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         let copied = Self.audioData(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), channels: max(1, Int(channels)))
         guard !copied.isEmpty else { return }
         queue.async {
-            guard self.isRecording, let input = self.audioInput, input.isReadyForMoreMediaData else { return }
+            guard self.isRecording,
+                  self.capturedVideoFrame,
+                  self.writer?.status == .writing,
+                  let input = self.audioInput,
+                  input.isReadyForMoreMediaData else { return }
             guard let time = self.presentationTime() else { return }
             guard let sampleBuffer = Self.makeAudioSampleBuffer(data: copied, frameCount: frameCount, sampleRate: sampleRate, channels: channels, presentationTime: time) else { return }
             input.append(sampleBuffer)
@@ -254,7 +275,6 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                   let input = self.videoInput,
                   let adaptor = self.pixelBufferAdaptor,
                   input.isReadyForMoreMediaData else { return }
-            guard let time = self.presentationTime() else { return }
             if writer.status == .unknown {
                 guard writer.startWriting() else {
                     self.fail(writer.error)
@@ -262,6 +282,13 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 }
                 writer.startSession(atSourceTime: .zero)
             }
+            if !self.capturedVideoFrame {
+                self.capturedVideoFrame = true
+                self.startedAt = Date()
+                self.firstHostTime = CACurrentMediaTime()
+                self.emit(.recording(startedAt: self.startedAt ?? self.createdAt, elapsedSeconds: 0))
+            }
+            guard let time = self.presentationTime() else { return }
             let normalizedTime = CMTimeSubtract(time, self.firstPresentationTime)
             guard adaptor.append(pixelBuffer, withPresentationTime: normalizedTime) else {
                 self.fail(writer.error)
@@ -290,10 +317,25 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         guard !finishing else { return }
         finishing = true
         emit(.finishing)
-        videoInput?.markAsFinished()
-        audioInput?.markAsFinished()
-        writer.finishWriting { [self] in
-            queue.async { self.finishCompletedRecording() }
+        switch writer.status {
+        case .unknown:
+            writer.cancelWriting()
+            reset()
+            emit(.failed(Self.message(for: WebRTCStreamRecorderError.noFramesCaptured)))
+        case .writing:
+            videoInput?.markAsFinished()
+            audioInput?.markAsFinished()
+            writer.finishWriting { [self] in
+                queue.async { self.finishCompletedRecording() }
+            }
+        case .completed:
+            finishCompletedRecording()
+        case .failed, .cancelled:
+            finishCompletedRecording()
+        @unknown default:
+            writer.cancelWriting()
+            reset()
+            emit(.failed(Self.message(for: writer.error)))
         }
     }
 
@@ -322,7 +364,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         )
         do {
             let data = try JSONEncoder.recordingEncoder.encode(recording)
-            try data.write(to: WebRTCStreamRecordingLibrary.metadataURL(for: recording.id), options: .atomic)
+            try data.write(to: recording.metadataURL, options: .atomic)
             emit(.finished(recording))
         } catch {
             emit(.failed(Self.message(for: error)))
@@ -345,6 +387,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         outputURL = nil
         startedAt = nil
         firstHostTime = nil
+        capturedVideoFrame = false
         finishing = false
         failed = false
     }
@@ -422,10 +465,12 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
 }
 
 private enum WebRTCStreamRecorderError: LocalizedError {
+    case noFramesCaptured
     case unableToAddVideoInput
 
     var errorDescription: String? {
         switch self {
+        case .noFramesCaptured: return "Recording stopped before any video frames were captured."
         case .unableToAddVideoInput: return "Unable to create the recording video encoder."
         }
     }
