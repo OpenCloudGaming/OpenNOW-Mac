@@ -998,6 +998,7 @@ private struct CatalogMainMenuRow: View {
             }
             .padding(.leading, 8)
             .padding(.trailing, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: compact ? 38 : 50)
             .background(rowBackground)
             .overlay(alignment: .leading) {
@@ -1005,6 +1006,7 @@ private struct CatalogMainMenuRow: View {
                     .fill(isActive ? Color.openNowGreen : Color.clear)
                     .frame(width: 3)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }

@@ -1,6 +1,7 @@
 import Common
 import AppKit
 import CoreText
+import OpenNOWTelemetry
 import SwiftUI
 
 private enum SettingsVendorLayout {
@@ -99,8 +100,10 @@ private struct SettingsSidebar: View {
                             .foregroundStyle(viewModel.selectedSettingsPage == page ? .white : .white.opacity(0.68))
                         Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 48)
                     .background(viewModel.selectedSettingsPage == page ? Color.white.opacity(0.065) : .clear)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -509,6 +512,8 @@ private struct AboutSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
     @State private var revealSensitive = false
     @State private var copiedKey = ""
+    @State private var diagnosticsState = AboutDiagnosticsState.ready
+    @State private var showingDiagnosticsUploadConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -595,15 +600,27 @@ private struct AboutSettingsPage: View {
                 SettingsDivider()
                 AboutDetailRow(label: "Cloudmatch", value: cloudmatchDisplayValue, copyValue: cloudmatchCopyValue, copiedKey: $copiedKey)
                 SettingsDivider()
-                HStack(spacing: 10) {
-                    SettingsActionButton(title: copiedKey == "diagnostics" ? "COPIED" : "COPY DIAGNOSTICS") {
-                        copy(diagnosticsText, key: "diagnostics")
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        SettingsActionButton(title: diagnosticsButtonTitle) {
+                            showingDiagnosticsUploadConfirmation = true
+                        }
+                        .disabled(diagnosticsState.isWorking)
+                        Text("Uploads the full sanitized current-run log, then copies diagnostics with the link.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.54))
                     }
-                    Text("Copies non-secret app, runtime, and service identifiers for bug reports.")
+                    Text(diagnosticsState.message)
                         .font(.settingsNvidia(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.54))
+                        .foregroundStyle(diagnosticsState.isError ? Color(red: 1, green: 0.54, blue: 0.50) : .white.opacity(0.62))
                 }
             }
+        }
+        .confirmationDialog("Upload diagnostics logs?", isPresented: $showingDiagnosticsUploadConfirmation) {
+            Button("Upload Logs") { generateUploadedDiagnostics() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("OpenNOW will upload the full sanitized current-run log to paste.rs and copy a diagnostics summary that includes the public link. IP addresses and location fields are redacted before upload.")
         }
     }
 
@@ -645,6 +662,10 @@ private struct AboutSettingsPage: View {
     }
 
     private var diagnosticsText: String {
+        diagnosticsText(logURL: nil)
+    }
+
+    private func diagnosticsText(logURL: URL?) -> String {
         [
             "OpenNOW Mac Diagnostics",
             "Version: \(appVersion)",
@@ -654,8 +675,39 @@ private struct AboutSettingsPage: View {
             "Membership: \(membershipTier)",
             "User ID: \(maskedIdentifier(userId))",
             "Streaming: WebRTC",
-            "Cloudmatch: \(cloudmatchCopyValue)"
+            "Cloudmatch: \(cloudmatchCopyValue)",
+            "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ].joined(separator: "\n")
+    }
+
+    private var diagnosticsButtonTitle: String {
+        switch diagnosticsState {
+        case .ready, .failed: return "GENERATE DIAGNOSTICS"
+        case .preparing, .readingLog, .uploading, .copying: return "WORKING"
+        case .copied: return "COPIED"
+        }
+    }
+
+    private func generateUploadedDiagnostics() {
+        guard !diagnosticsState.isWorking else { return }
+        Task { @MainActor in
+            diagnosticsState = .preparing
+            OPNSentry.logInfoMessage("[Diagnostics] Preparing user-requested diagnostics upload")
+            diagnosticsState = .readingLog
+            let logText = OPNSentry.diagnosticsLogForUpload()
+            diagnosticsState = .uploading
+            do {
+                let logURL = try await OPNSentry.uploadDiagnosticsLog(logText)
+                diagnosticsState = .copying
+                copy(diagnosticsText(logURL: logURL), key: "diagnostics")
+                diagnosticsState = .copied(logURL.absoluteString)
+                OPNSentry.logInfoMessage("[Diagnostics] Uploaded sanitized diagnostics log url=\(logURL.absoluteString)")
+            } catch {
+                let message = error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
+                diagnosticsState = .failed(message)
+                OPNSentry.logErrorMessage("[Diagnostics] Diagnostics upload failed error=\(message)")
+            }
+        }
     }
 
     private func copy(_ value: String, key: String) {
@@ -679,6 +731,40 @@ private struct AboutSettingsPage: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "\(version) (\(build))"
+    }
+}
+
+private enum AboutDiagnosticsState: Equatable {
+    case ready
+    case preparing
+    case readingLog
+    case uploading
+    case copying
+    case copied(String)
+    case failed(String)
+
+    var message: String {
+        switch self {
+        case .ready: return "Ready to generate diagnostics. Confirmation is required before logs are uploaded."
+        case .preparing: return "Preparing diagnostics metadata..."
+        case .readingLog: return "Reading full current-run log..."
+        case .uploading: return "Uploading sanitized logs to paste.rs..."
+        case .copying: return "Copying diagnostics and uploaded log link to clipboard..."
+        case .copied(let url): return "Diagnostics copied. Uploaded log: \(url)"
+        case .failed(let reason): return "Upload failed: \(reason)"
+        }
+    }
+
+    var isWorking: Bool {
+        switch self {
+        case .preparing, .readingLog, .uploading, .copying: return true
+        case .ready, .copied, .failed: return false
+        }
+    }
+
+    var isError: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
 

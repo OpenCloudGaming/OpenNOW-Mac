@@ -54,6 +54,8 @@ extension OPNSentryTransaction: @unchecked Sendable {}
 @objc(OPNSentry)
 public final class OPNSentry: NSObject {
     private static let fallbackDsn = "https://75bd4534356a68eb8887bea8f6977b59@o4509317113184256.ingest.us.sentry.io/4511592927264768"
+    private static let diagnosticsLogQueue = DispatchQueue(label: "opn.telemetry.diagnostics-log")
+    private static let maxDiagnosticsLogBytes = 8 * 1024 * 1024
     private nonisolated(unsafe) static var initialized = false
 
     public static func initializeSentry() {
@@ -80,6 +82,7 @@ public final class OPNSentry: NSObject {
             options.onLastRunStatusDetermined = { status, _ in
                 let message = "[Sentry] Last run status: \(status.description)"
                 fputs("\(message)\n", stderr)
+                appendDiagnosticsLogLine(message)
             }
         }
         initialized = true
@@ -99,6 +102,7 @@ public final class OPNSentry: NSObject {
         guard shouldLogInfo() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
+        appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.debug(sanitized)
     }
@@ -107,6 +111,7 @@ public final class OPNSentry: NSObject {
         guard shouldLogInfo() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
+        appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.info(sanitized)
     }
@@ -114,6 +119,7 @@ public final class OPNSentry: NSObject {
     public static func logWarningMessage(_ message: String) {
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
+        appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.warn(sanitized)
     }
@@ -121,6 +127,7 @@ public final class OPNSentry: NSObject {
     public static func logErrorMessage(_ message: String) {
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
+        appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.error(sanitized)
         SentrySDK.capture(message: sanitized)
@@ -129,6 +136,7 @@ public final class OPNSentry: NSObject {
     public static func logFatalMessage(_ message: String) {
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
+        appendDiagnosticsLogLine(sanitized)
         guard initialized, SentrySDK.isEnabled else { return }
         SentrySDK.logger.fatal(sanitized)
         SentrySDK.capture(message: sanitized)
@@ -139,6 +147,7 @@ public final class OPNSentry: NSObject {
         if externalLogLineLooksLikeError(line) || shouldLogInfo() {
             let sanitized = sanitizedMessage(line)
             fputs("\(sanitized)\n", stderr)
+            appendDiagnosticsLogLine(sanitized)
             guard initialized, SentrySDK.isEnabled else { return }
             if externalLogLineLooksLikeError(line) {
                 SentrySDK.logger.error(sanitized)
@@ -147,6 +156,28 @@ public final class OPNSentry: NSObject {
                 SentrySDK.logger.info(sanitized)
             }
         }
+    }
+
+    public static func diagnosticsLogForUpload() -> String {
+        let log = diagnosticsLogQueue.sync { diagnosticsLogText() }
+        return sanitizedUploadLog(log.isEmpty ? "No OpenNOW diagnostics log lines recorded for this run." : log)
+    }
+
+    public static func uploadDiagnosticsLog(_ logText: String) async throws -> URL {
+        let sanitized = sanitizedUploadLog(logText)
+        guard let data = sanitized.data(using: .utf8), !data.isEmpty else { throw OPNSentryDiagnosticsUploadError.emptyLog }
+        guard let url = URL(string: "https://paste.rs") else { throw OPNSentryDiagnosticsUploadError.invalidServiceURL }
+        var request = URLRequest(url: url, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else { throw OPNSentryDiagnosticsUploadError.httpStatus(http.statusCode) }
+        guard let responseText = String(data: responseData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let pasteURL = URL(string: responseText),
+              pasteURL.scheme == "https" else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
+        return pasteURL
     }
 
     @objc(addTraceHeadersToRequest:)
@@ -404,6 +435,62 @@ public final class OPNSentry: NSObject {
         return sanitized
     }
 
+    private static func appendDiagnosticsLogLine(_ line: String) {
+        guard !line.isEmpty else { return }
+        diagnosticsLogQueue.async {
+            let url = diagnosticsLogURL()
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            let entry = "\(timestamp) \(line)\n"
+            guard let data = entry.data(using: .utf8) else { return }
+            let manager = FileManager.default
+            let directory = url.deletingLastPathComponent()
+            try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            if !manager.fileExists(atPath: url.path) {
+                manager.createFile(atPath: url.path, contents: nil)
+            }
+            guard let handle = try? FileHandle(forWritingTo: url) else { return }
+            defer { try? handle.close() }
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            trimDiagnosticsLogIfNeeded(url: url)
+        }
+    }
+
+    private static func diagnosticsLogText() -> String {
+        let url = diagnosticsLogURL()
+        guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return "" }
+        return text
+    }
+
+    private static func diagnosticsLogURL() -> URL {
+        let manager = FileManager.default
+        let base = manager.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("OpenNOW-diagnostics-current.log")
+    }
+
+    private static func trimDiagnosticsLogIfNeeded(url: URL) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber,
+              size.intValue > maxDiagnosticsLogBytes,
+              let data = try? Data(contentsOf: url) else { return }
+        try? Data(data.suffix(maxDiagnosticsLogBytes)).write(to: url, options: .atomic)
+    }
+
+    private static func sanitizedUploadLog(_ text: String) -> String {
+        var sanitized = sanitizedMessage(text)
+        let replacements: [(String, String)] = [
+            (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
+            (#"\b[0-9A-F]{1,4}(?::[0-9A-F]{1,4}){2,7}\b"#, "[redacted-ip]"),
+            (#"(?i)\b(latitude|longitude|lat|lon|lng)([=:]\s*|""\s*:\s*"")-?\d{1,3}(?:\.\d+)?"#, "$1$2[redacted-location]"),
+            (#"(?i)\b(city|country|state|province|postal[_-]?code|zip|timezone|location|region|server[_-]?location)([=:]\s*|""\s*:\s*"")[^\s,;\}\]"]+"#, "$1$2[redacted-location]"),
+            (#"(?i)\b[a-z]+-[a-z]+\.cloudmatch[^\s,;\}\]"]*"#, "[redacted-location-host]")
+        ]
+        for replacement in replacements {
+            sanitized = sanitized.replacingOccurrences(of: replacement.0, with: replacement.1, options: [.regularExpression, .caseInsensitive])
+        }
+        return sanitized
+    }
+
     private static func externalLogLineLooksLikeError(_ line: String) -> Bool {
         let lower = line.lowercased()
         return lower.contains("error") || lower.contains("exception") || lower.contains("failed") || lower.contains("failure") || lower.contains("crash") || lower.contains("fatal")
@@ -426,5 +513,21 @@ public final class OPNSentry: NSObject {
         components.query = nil
         components.fragment = nil
         return components.string ?? url.host ?? ""
+    }
+}
+
+public enum OPNSentryDiagnosticsUploadError: LocalizedError {
+    case emptyLog
+    case invalidServiceURL
+    case invalidResponse
+    case httpStatus(Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyLog: return "Diagnostics log is empty."
+        case .invalidServiceURL: return "Diagnostics upload service URL is invalid."
+        case .invalidResponse: return "Diagnostics upload service returned an invalid response."
+        case .httpStatus(let status): return "Diagnostics upload failed with HTTP \(status)."
+        }
     }
 }
