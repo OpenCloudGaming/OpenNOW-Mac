@@ -11,6 +11,7 @@ import CoreText
 import CryptoKit
 import ImageIO
 import OpenNOWGameServices
+import OSLog
 import SwiftUI
 import WebRTCMedia
 

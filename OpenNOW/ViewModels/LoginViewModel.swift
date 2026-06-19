@@ -11,6 +11,7 @@ import Foundation
 import Jarvis
 import NesAuth
 import OpenNOWAuth
+import OSLog
 import SwiftData
 import SwiftUI
 
