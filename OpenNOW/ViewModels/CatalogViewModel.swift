@@ -71,6 +71,23 @@ enum CatalogMainPage: String, CaseIterable, Identifiable {
 }
 
 @MainActor
+enum CatalogDestination: String, CaseIterable, Identifiable {
+    case home
+    case library
+    case favorites
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .home: return "Games"
+        case .library: return "My Library"
+        case .favorites: return "My Favorites"
+        }
+    }
+}
+
+@MainActor
 enum CatalogSettingsPage: String, CaseIterable, Identifiable {
     case account
     case connections
@@ -98,6 +115,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
 @MainActor
 final class CatalogViewModel: ObservableObject {
     @Published var selectedMainPage = CatalogMainPage.games
+    @Published var selectedCatalogDestination = CatalogDestination.home
     @Published var selectedSettingsPage = CatalogSettingsPage.account
     @Published var searchQuery = ""
     @Published var selectedSortId = "last_played"
@@ -192,6 +210,14 @@ final class CatalogViewModel: ObservableObject {
     }
 
     var catalogSections: [CatalogSectionModel] {
+        if selectedCatalogDestination == .library, !isBrowseMode {
+            return libraryGames.isEmpty ? [] : [CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library)]
+        }
+        if selectedCatalogDestination == .favorites, !isBrowseMode {
+            let games = favoriteGames
+            return games.isEmpty ? [] : [CatalogSectionModel(id: "local-favorites", title: "My Favorites", games: games, kind: .panel)]
+        }
+
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
         let localFavoriteGames = favoriteGames
@@ -282,6 +308,14 @@ final class CatalogViewModel: ObservableObject {
 
     func showGames() {
         selectedMainPage = .games
+        selectedCatalogDestination = .home
+    }
+
+    func showCatalogDestination(_ destination: CatalogDestination) {
+        selectedMainPage = .games
+        selectedCatalogDestination = destination
+        selectedGame = nil
+        selectedSectionId = ""
     }
 
     func showSettings(_ page: CatalogSettingsPage = .account) {

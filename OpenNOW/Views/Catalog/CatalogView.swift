@@ -607,7 +607,7 @@ private struct CatalogTopBar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
-                Text(viewModel.selectedMainPage == .settings ? "Settings" : "Games")
+                Text(viewModel.selectedMainPage == .settings ? "Settings" : viewModel.selectedCatalogDestination.title)
                     .font(.nvidia(size: 17, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
                 Spacer()
@@ -827,9 +827,16 @@ private struct CatalogMainMenuPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("NAVIGATION")
-                        CatalogMainMenuRow(title: "Games", subtitle: "Browse and launch cloud games", systemImage: "gamecontroller.fill", isActive: viewModel.selectedMainPage == .games) {
-                            viewModel.showGames()
-                            isPresented = false
+                        ForEach(CatalogDestination.allCases) { destination in
+                            CatalogMainMenuRow(
+                                title: destination.title,
+                                subtitle: catalogDestinationSubtitle(destination),
+                                systemImage: catalogDestinationIcon(destination),
+                                isActive: viewModel.selectedMainPage == .games && viewModel.selectedCatalogDestination == destination
+                            ) {
+                                viewModel.showCatalogDestination(destination)
+                                isPresented = false
+                            }
                         }
                         CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
                             viewModel.showSettings()
@@ -905,6 +912,22 @@ private struct CatalogMainMenuPanel: View {
         case .resolutionUpscaling: return "sparkles.tv.fill"
         case .system: return "desktopcomputer"
         case .about: return "info.circle.fill"
+        }
+    }
+
+    private func catalogDestinationIcon(_ destination: CatalogDestination) -> String {
+        switch destination {
+        case .home: return "gamecontroller.fill"
+        case .library: return "rectangle.stack.fill"
+        case .favorites: return "heart.fill"
+        }
+    }
+
+    private func catalogDestinationSubtitle(_ destination: CatalogDestination) -> String {
+        switch destination {
+        case .home: return "Browse and launch cloud games"
+        case .library: return "Games synced from connected stores"
+        case .favorites: return "Saved games for quick access"
         }
     }
 }
@@ -1602,6 +1625,12 @@ private struct CatalogContentView: View {
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         }
+
+                        if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
+                            CatalogEmptyDestinationView(destination: viewModel.selectedCatalogDestination)
+                                .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+                                .padding(.top, viewModel.selectedCatalogDestination == .home ? 52 : 118)
+                        }
                     }
                     .padding(.bottom, 44)
                 }
@@ -1904,6 +1933,57 @@ private struct CatalogBrowseControlsView: View {
     private func filterTitle(option: OPNCatalogFilterOptionObject) -> String {
         let selectedPrefix = viewModel.selectedFilterIds.contains(option.id) ? "✓ " : ""
         return selectedPrefix + (option.label.isEmpty ? option.id : option.label)
+    }
+}
+
+private struct CatalogEmptyDestinationView: View {
+    let destination: CatalogDestination
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.nvidia(size: 22, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.nvidia(size: 24, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(message)
+                        .font(.nvidia(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+            }
+        }
+        .padding(22)
+        .frame(maxWidth: 620, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+    }
+
+    private var icon: String {
+        switch destination {
+        case .home: return "gamecontroller.fill"
+        case .library: return "rectangle.stack.fill"
+        case .favorites: return "heart.fill"
+        }
+    }
+
+    private var title: String {
+        switch destination {
+        case .home: return "No games to show"
+        case .library: return "Your library is empty"
+        case .favorites: return "No favorites yet"
+        }
+    }
+
+    private var message: String {
+        switch destination {
+        case .home: return "Refresh the catalog or adjust search and filters to find supported GeForce NOW games."
+        case .library: return "Connect or sync your game store accounts to populate My Library."
+        case .favorites: return "Open a game detail panel and use the heart button to add it to My Favorites."
+        }
     }
 }
 
