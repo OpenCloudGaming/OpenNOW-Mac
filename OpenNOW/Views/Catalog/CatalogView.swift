@@ -2269,7 +2269,7 @@ private struct CatalogShowAllOverlay: View {
 
                     ScrollView {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                            ForEach(filteredGames, id: \.catalogIdentity) { game in
+                            ForEach(Array(filteredGames.enumerated()), id: \.offset) { _, game in
                                 CatalogGameTile(
                                     game: game,
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
