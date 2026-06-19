@@ -135,8 +135,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             .disabled(!isStreamReady || recordingIsBusy)
             sidebarButton(systemName: "sparkles", title: "Video") {
-                videoEnhancementSettingsVisible.toggle()
-                WebRTCMediaTelemetry.capture("webrtc.ui.video_enhancement.toggle", level: .info, message: videoEnhancementSettingsVisible ? "Video enhancement settings shown." : "Video enhancement settings hidden.", attributes: ["visible": String(videoEnhancementSettingsVisible)])
+                toggleVideoEnhancementSettings()
             }
         }
         .padding(10)
@@ -376,6 +375,11 @@ public struct WebRTCMediaStreamSurface: View {
         WebRTCMediaTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording started.", attributes: ["applicationID": configuration.applicationID])
     }
 
+    private func toggleVideoEnhancementSettings() {
+        videoEnhancementSettingsVisible.toggle()
+        WebRTCMediaTelemetry.capture("webrtc.ui.video_enhancement.toggle", level: .info, message: videoEnhancementSettingsVisible ? "Video enhancement settings shown." : "Video enhancement settings hidden.", attributes: ["visible": String(videoEnhancementSettingsVisible)])
+    }
+
     private func recordingElapsedText(_ elapsedSeconds: Double) -> String {
         let seconds = max(0, Int(elapsedSeconds.rounded(.down)))
         return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
@@ -559,6 +563,11 @@ public struct WebRTCMediaStreamSurface: View {
             WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
         case .toggleMicrophone:
             toggleMicrophone()
+        case .toggleRecording:
+            guard isStreamReady, !recordingIsBusy else { return }
+            toggleRecording()
+        case .toggleVideoEnhancement:
+            toggleVideoEnhancementSettings()
         case .showQuitMenu:
             showQuitMenu()
         }

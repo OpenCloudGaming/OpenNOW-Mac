@@ -22,6 +22,8 @@ public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
     case toggleSidebar
     case toggleMicrophone
+    case toggleRecording
+    case toggleVideoEnhancement
     case showQuitMenu
 }
 
@@ -310,22 +312,21 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func handleCommand(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) else { return false }
+        guard let command = streamCommand(for: event) else { return false }
+        if event.type == .keyDown { onCommand?(command) }
+        return true
+    }
+
+    private func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) else { return nil }
         switch event.keyCode {
-        case 46:
-            onCommand?(.toggleMicrophone)
-            return true
-        case 45:
-            onCommand?(.toggleStatsHUD)
-            return true
-        case 5:
-            onCommand?(.toggleSidebar)
-            return true
-        case 12:
-            onCommand?(.showQuitMenu)
-            return true
-        default:
-            return false
+        case 46: return .toggleMicrophone
+        case 45: return .toggleStatsHUD
+        case 5: return .toggleSidebar
+        case 15: return .toggleRecording
+        case 9: return .toggleVideoEnhancement
+        case 12: return .showQuitMenu
+        default: return nil
         }
     }
 
@@ -334,7 +335,7 @@ public final class NativeWebRTCStreamView: NSView {
         keyEquivalentMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, self.window?.isKeyWindow == true else { return event }
             guard NSApplication.shared.isActive else { return event }
-            if event.type == .keyDown, self.handleCommand(event) { return nil }
+            if self.handleCommand(event) { return nil }
             self.emitKey(event, isPressed: event.type == .keyDown)
             return nil
         }
