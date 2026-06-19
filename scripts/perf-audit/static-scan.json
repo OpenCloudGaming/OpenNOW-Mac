@@ -1,26 +1,37 @@
 {
-  "generatedAt": "2026-06-18T16:07:01.108937+00:00",
+  "generatedAt": "2026-06-19T18:19:21.803536+00:00",
   "packages": [
     {
       "counts": {
-        "disk_read": 2,
-        "geometry_reader": 10,
+        "disk_read": 4,
+        "geometry_reader": 11,
         "image_disk_read": 1,
         "json_decoder": 3,
         "json_encoder": 2,
-        "main_dispatch": 1,
-        "published_state": 57,
+        "json_serialization": 2,
+        "main_dispatch": 3,
+        "published_state": 59,
         "repeat_animation": 10,
-        "swiftui_body": 76,
-        "task_modifier": 3,
+        "swiftui_body": 90,
+        "task_modifier": 2,
         "timer": 1
       },
       "package": "OpenNOW",
       "samples": {
         "disk_read": [
           {
+            "file": "OpenNOW/ViewModels/CatalogViewModel.swift",
+            "line": 248,
+            "text": "for section in panel.sections { games.append(contentsOf: section.games) }"
+          },
+          {
+            "file": "OpenNOW/Models/GFNGameShortcut.swift",
+            "line": 44,
+            "text": "let data = try Data(contentsOf: fileURL)"
+          },
+          {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 2593,
+            "line": 3447,
             "text": "chips.append(contentsOf: genres.prefix(3).map { $0.uppercased() })"
           },
           {
@@ -32,27 +43,32 @@
         "geometry_reader": [
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 327,
+            "line": 318,
             "text": "GeometryReader { proxy in"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 755,
+            "line": 778,
             "text": "GeometryReader { proxy in"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1244,
+            "line": 1128,
             "text": "GeometryReader { proxy in"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1670,
+            "line": 1700,
             "text": "GeometryReader { proxy in"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 2177,
+            "line": 2230,
+            "text": "GeometryReader { proxy in"
+          },
+          {
+            "file": "OpenNOW/Views/Catalog/CatalogView.swift",
+            "line": 2962,
             "text": "GeometryReader { proxy in"
           },
           {
@@ -91,36 +107,58 @@
         "json_decoder": [
           {
             "file": "OpenNOW/ViewModels/CatalogViewModel.swift",
-            "line": 1219,
+            "line": 1405,
             "text": "let statistics = try? JSONDecoder().decode(CatalogPlaytimeStatistics.self, from: data) else {"
           },
           {
             "file": "OpenNOW/ViewModels/CatalogViewModel.swift",
-            "line": 1313,
+            "line": 1499,
             "text": "return try? JSONDecoder().decode(CatalogPreviousGameSession.self, from: data)"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 2262,
+            "line": 3047,
             "text": "let metadata = try? JSONDecoder().decode(Metadata.self, from: data),"
           }
         ],
         "json_encoder": [
           {
             "file": "OpenNOW/ViewModels/CatalogViewModel.swift",
-            "line": 1226,
+            "line": 1412,
             "text": "guard let data = try? JSONEncoder().encode(self) else { return }"
           },
           {
             "file": "OpenNOW/ViewModels/CatalogViewModel.swift",
-            "line": 1317,
+            "line": 1503,
             "text": "guard let data = try? JSONEncoder().encode(self) else { return }"
+          }
+        ],
+        "json_serialization": [
+          {
+            "file": "OpenNOW/Models/GFNGameShortcut.swift",
+            "line": 45,
+            "text": "let object = try JSONSerialization.jsonObject(with: data)"
+          },
+          {
+            "file": "OpenNOW/Models/GFNGameShortcut.swift",
+            "line": 68,
+            "text": "let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])"
           }
         ],
         "main_dispatch": [
           {
+            "file": "OpenNOW/Views/ContentView.swift",
+            "line": 62,
+            "text": "DispatchQueue.main.async { configure(window: view.window) }"
+          },
+          {
+            "file": "OpenNOW/Views/ContentView.swift",
+            "line": 67,
+            "text": "DispatchQueue.main.async { configure(window: view.window) }"
+          },
+          {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1207,
+            "line": 1663,
             "text": "DispatchQueue.main.async {"
           }
         ],
@@ -189,59 +227,59 @@
         "repeat_animation": [
           {
             "file": "OpenNOW/ViewModels/LoginViewModel.swift",
-            "line": 90,
+            "line": 93,
             "text": "withAnimation(.snappy) {"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1179,
+            "line": 1630,
             "text": "withAnimation(.easeInOut(duration: 0.2)) {"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1208,
+            "line": 1664,
             "text": "withAnimation(.easeInOut(duration: 0.24)) {"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1257,
+            "line": 1713,
             "text": ".transition(.opacity.animation(.easeInOut(duration: 0.2)))"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1516,
+            "line": 1974,
             "text": "withAnimation(.easeInOut(duration: 0.22)) {"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1557,
+            "line": 2034,
             "text": ".animation(.easeOut(duration: 0.2), value: isHovering)"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1631,
+            "line": 2111,
             "text": ".animation(.easeOut(duration: 0.2), value: isHovering)"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1677,
+            "line": 2240,
             "text": ".transition(.opacity.animation(.easeInOut(duration: 0.22)))"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1768,
+            "line": 2317,
             "text": "withAnimation(.easeInOut(duration: 0.18)) { activeImageIndex = index }"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 1803,
+            "line": 2357,
             "text": "withAnimation(.easeInOut(duration: 0.18)) {"
           }
         ],
         "swiftui_body": [
           {
             "file": "OpenNOW/Views/ContentView.swift",
-            "line": 20,
+            "line": 24,
             "text": "var body: some View {"
           },
           {
@@ -251,69 +289,64 @@
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 63,
+            "line": 66,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 76,
+            "line": 79,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 130,
+            "line": 135,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 187,
+            "line": 192,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 206,
+            "line": 213,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 287,
+            "line": 429,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 310,
+            "line": 459,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 341,
+            "line": 492,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 376,
+            "line": 516,
             "text": "var body: some View {"
           },
           {
             "file": "OpenNOW/Views/Settings/SettingsView.swift",
-            "line": 434,
+            "line": 542,
             "text": "var body: some View {"
           }
         ],
         "task_modifier": [
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 178,
-            "text": ".task(id: viewModel.imageCacheSignature) {"
-          },
-          {
-            "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 2108,
+            "line": 2893,
             "text": ".task(id: url) { await loadImage() }"
           },
           {
             "file": "OpenNOW/Views/Catalog/CatalogView.swift",
-            "line": 2378,
+            "line": 3163,
             "text": ".task(id: url) { await loadImage() }"
           }
         ],
@@ -325,8 +358,8 @@
           }
         ]
       },
-      "swiftFiles": 16,
-      "swiftLines": 6296
+      "swiftFiles": 18,
+      "swiftLines": 8430
     },
     {
       "counts": {
@@ -337,13 +370,13 @@
         "json_serialization": [
           {
             "file": "GFN.CloudMatch/Sources/CloudMatch/CloudMatch.swift",
-            "line": 245,
+            "line": 260,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CloudMatchServiceError.invalidJSONResponse }"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 264
+      "swiftLines": 285
     },
     {
       "counts": {
@@ -355,20 +388,20 @@
         "disk_read": [
           {
             "file": "GFN.GDN/Sources/GDN/GDN.swift",
-            "line": 40,
+            "line": 43,
             "text": "items.append(contentsOf: additionalItems)"
           }
         ],
         "json_serialization": [
           {
             "file": "GFN.GDN/Sources/GDN/GDN.swift",
-            "line": 104,
+            "line": 119,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw GDNServiceError.invalidJSONResponse }"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 123
+      "swiftLines": 144
     },
     {
       "counts": {
@@ -379,7 +412,7 @@
         "json_serialization": [
           {
             "file": "GFN.Jarvis/Sources/Jarvis/JarvisService.swift",
-            "line": 1034,
+            "line": 1046,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {"
           },
           {
@@ -395,7 +428,7 @@
         ]
       },
       "swiftFiles": 3,
-      "swiftLines": 1587
+      "swiftLines": 1607
     },
     {
       "counts": {
@@ -407,20 +440,20 @@
         "disk_read": [
           {
             "file": "GFN.LCARS/Sources/LCARS/LCARS.swift",
-            "line": 80,
+            "line": 83,
             "text": "items.append(contentsOf: queryItems)"
           }
         ],
         "json_serialization": [
           {
             "file": "GFN.LCARS/Sources/LCARS/LCARS.swift",
-            "line": 140,
+            "line": 155,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw LCARSServiceError.invalidJSONResponse }"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 159
+      "swiftLines": 180
     },
     {
       "counts": {},
@@ -438,13 +471,13 @@
         "json_serialization": [
           {
             "file": "GFN.NetworkTest/Sources/NetworkTest/NetworkTest.swift",
-            "line": 226,
+            "line": 241,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw NetworkTestServiceError.invalidJSONResponse }"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 245
+      "swiftLines": 266
     },
     {
       "counts": {
@@ -455,13 +488,13 @@
         "json_serialization": [
           {
             "file": "GFN.Ragnarok/Sources/Ragnarok/Ragnarok.swift",
-            "line": 143,
+            "line": 146,
             "text": "request.httpBody = try? JSONSerialization.data(withJSONObject: body)"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 207
+      "swiftLines": 228
     },
     {
       "counts": {
@@ -472,18 +505,18 @@
         "json_serialization": [
           {
             "file": "GFN.Starfleet/Sources/Starfleet/Starfleet.swift",
-            "line": 265,
+            "line": 268,
             "text": "let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {"
           },
           {
             "file": "GFN.Starfleet/Sources/Starfleet/Starfleet.swift",
-            "line": 784,
+            "line": 797,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 820
+      "swiftLines": 839
     },
     {
       "counts": {
@@ -494,18 +527,18 @@
         "json_serialization": [
           {
             "file": "GFN.UDS/Sources/UDS/UDS.swift",
-            "line": 163,
+            "line": 166,
             "text": "request.httpBody = try? JSONSerialization.data(withJSONObject: body)"
           },
           {
             "file": "GFN.UDS/Sources/UDS/UDS.swift",
-            "line": 233,
+            "line": 248,
             "text": "guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw UDSServiceError.invalidJSONResponse }"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 252
+      "swiftLines": 273
     },
     {
       "counts": {
@@ -518,7 +551,7 @@
         "disk_read": [
           {
             "file": "OPN.Auth/Sources/OpenNOWAuth/OPNAuthService.swift",
-            "line": 656,
+            "line": 659,
             "text": "guard FileManager.default.fileExists(atPath: path), let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }"
           }
         ],
@@ -580,20 +613,20 @@
           },
           {
             "file": "OPN.Auth/Sources/OpenNOWAuth/OPNAuthService.swift",
-            "line": 202,
+            "line": 205,
             "text": "DispatchQueue.main.async {"
           }
         ],
         "url_session": [
           {
             "file": "OPN.Auth/Sources/OpenNOWAuth/OPNAuthService.swift",
-            "line": 201,
-            "text": "URLSession.shared.dataTask(with: URLRequest(url: url, timeoutInterval: 10)) { _, _, error in"
+            "line": 203,
+            "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           }
         ]
       },
       "swiftFiles": 5,
-      "swiftLines": 1051
+      "swiftLines": 1054
     },
     {
       "counts": {
@@ -611,17 +644,17 @@
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 623,
+            "line": 628,
             "text": "guard error == nil, let data, status == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let metadata = json[\"metaData\"] as? [[String: Any]] else {"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 964,
+            "line": 971,
             "text": "request.httpBody = (try? JSONSerialization.data(withJSONObject: body)) ?? Data(\"{}\".utf8)"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 1001,
+            "line": 1010,
             "text": "return try? JSONSerialization.jsonObject(with: data)"
           },
           {
@@ -643,76 +676,76 @@
         "main_dispatch": [
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 593,
+            "line": 594,
             "text": "DispatchQueue.main.async { completion(cached) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 597,
+            "line": 598,
             "text": "DispatchQueue.main.async { completion(cached) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 613,
+            "line": 616,
             "text": "DispatchQueue.main.async { completion(result) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 624,
+            "line": 629,
             "text": "DispatchQueue.main.async { completion(loadCachedRegions()) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 633,
+            "line": 638,
             "text": "DispatchQueue.main.async { completion(loadCachedRegions()) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 889,
+            "line": 894,
             "text": "DispatchQueue.main.async { completion([]) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 955,
+            "line": 962,
             "text": "DispatchQueue.main.async { completion(preflight) }"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 972,
+            "line": 981,
             "text": "DispatchQueue.main.async { completion(result) }"
           }
         ],
         "url_session": [
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 602,
+            "line": 604,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 621,
+            "line": 625,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 915,
-            "text": "URLSession.shared.dataTask(with: request) { _, response, error in"
+            "line": 921,
+            "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.Common/Sources/Common/OPNStreamPreferences.swift",
-            "line": 965,
+            "line": 973,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           }
         ]
       },
       "swiftFiles": 6,
-      "swiftLines": 1882
+      "swiftLines": 1899
     },
     {
       "counts": {
-        "disk_read": 4,
+        "disk_read": 6,
         "json_serialization": 22,
-        "main_dispatch": 11,
+        "main_dispatch": 12,
         "url_session": 17
       },
       "package": "OPN.GameServices",
@@ -730,13 +763,23 @@
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 654,
+            "line": 682,
             "text": "if let items = apps[\"items\"] as? [NSDictionary] { state.collectedApps.append(contentsOf: items) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1266,
+            "line": 1510,
             "text": "existing.variants.append(contentsOf: game.variants.filter { !existingVariantIds.contains($0.id) })"
+          },
+          {
+            "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
+            "line": 1974,
+            "text": "contentRatings.append(contentsOf: game.ratingDescriptors)"
+          },
+          {
+            "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
+            "line": 1975,
+            "text": "contentRatings.append(contentsOf: game.ratingInteractiveElements)"
           }
         ],
         "json_serialization": [
@@ -747,12 +790,12 @@
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 89,
+            "line": 90,
             "text": "let json = (try? JSONSerialization.jsonObject(with: data)) as? NSDictionary"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 318,
+            "line": 314,
             "text": "let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? NSDictionary"
           },
           {
@@ -777,27 +820,27 @@
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 614,
+            "line": 615,
             "text": "let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? NSDictionary"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 874,
+            "line": 988,
             "text": "guard let data = payloadString.data(using: .utf8), let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1068,
+            "line": 1184,
             "text": "let json = (try? JSONSerialization.jsonObject(with: data)) as? NSDictionary"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1296,
+            "line": 1544,
             "text": "let json = error == nil ? data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [NSDictionary] : nil"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNActiveSessionService.swift",
-            "line": 79,
+            "line": 81,
             "text": "guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {"
           }
         ],
@@ -809,52 +852,57 @@
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1350,
+            "line": 1600,
             "text": "DispatchQueue.main.async { completion(success, panels, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1354,
+            "line": 1604,
             "text": "DispatchQueue.main.async { completion(success, games, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1358,
+            "line": 1608,
             "text": "DispatchQueue.main.async { completion(success, result, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1362,
+            "line": 1612,
             "text": "DispatchQueue.main.async { completion(success, subscription, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1366,
+            "line": 1616,
             "text": "DispatchQueue.main.async { completion(success, storeURL, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1370,
+            "line": 1620,
             "text": "DispatchQueue.main.async { completion(success, providerInfo, selectedEndpoint, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1374,
+            "line": 1624,
             "text": "DispatchQueue.main.async { completion(success, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1378,
+            "line": 1628,
             "text": "DispatchQueue.main.async { completion(success, accountInfo, error) }"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1382,
+            "line": 1632,
             "text": "DispatchQueue.main.async { completion(success, definitions, error) }"
           },
           {
+            "file": "OPN.GameServices/Sources/OpenNOWGameServices/OpenNOWStreamSessionCoordinator.swift",
+            "line": 261,
+            "text": "DispatchQueue.main.asyncAfter(deadline: .now() + 20.0) { [weak self, weak client] in"
+          },
+          {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNSessionManager.swift",
-            "line": 906,
+            "line": 922,
             "text": "DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in poll(attempt: attempt) }"
           }
         ],
@@ -866,63 +914,63 @@
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 311,
+            "line": 306,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 474,
+            "line": 471,
             "text": "URLSession.shared.dataTask(with: request) { [weak self] data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 521,
+            "line": 520,
             "text": "URLSession.shared.dataTask(with: request) { [weak self] data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 607,
+            "line": 608,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1063,
+            "line": 1178,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNGameService.swift",
-            "line": 1293,
-            "text": "URLSession.shared.dataTask(with: request) { [weak self] data, _, error in"
+            "line": 1540,
+            "text": "URLSession.shared.dataTask(with: request) { [weak self] data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNActiveSessionService.swift",
-            "line": 66,
+            "line": 67,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNActiveSessionService.swift",
-            "line": 126,
+            "line": 129,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNSessionManager.swift",
-            "line": 116,
+            "line": 117,
             "text": "URLSession.shared.dataTask(with: request) { [weak self] data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNSessionManager.swift",
-            "line": 189,
+            "line": 192,
             "text": "URLSession.shared.dataTask(with: request) { [weak self] data, response, error in"
           },
           {
             "file": "OPN.GameServices/Sources/OpenNOWGameServices/OPNSessionManager.swift",
-            "line": 242,
+            "line": 247,
             "text": "URLSession.shared.dataTask(with: request) { data, response, error in"
           }
         ]
       },
       "swiftFiles": 13,
-      "swiftLines": 5548
+      "swiftLines": 6019
     },
     {
       "counts": {
@@ -935,69 +983,102 @@
         "json_serialization": [
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 280,
+            "line": 293,
             "text": "let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 315,
+            "line": 329,
             "text": "let payload = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] else { return }"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 338,
+            "line": 354,
             "text": "guard let payloadData = try? JSONSerialization.data(withJSONObject: payload),"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 353,
+            "line": 369,
             "text": "guard let data = try? JSONSerialization.data(withJSONObject: object),"
           }
         ],
         "main_dispatch": [
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 73,
+            "line": 77,
             "text": "DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) { [weak self] in"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 122,
+            "line": 128,
             "text": "DispatchQueue.main.async { [weak self] in"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 136,
+            "line": 143,
             "text": "DispatchQueue.main.async { [weak self] in"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 160,
+            "line": 170,
             "text": "DispatchQueue.main.async { [weak self] in"
           },
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 235,
+            "line": 246,
             "text": "DispatchQueue.main.async { [weak self] in"
           }
         ],
         "timer": [
           {
             "file": "OPN.SignalLinkKit/Sources/SignalLinkKit/OPNWebSocketSignalingClient.swift",
-            "line": 212,
+            "line": 223,
             "text": "let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)"
           }
         ]
       },
       "swiftFiles": 2,
-      "swiftLines": 399
+      "swiftLines": 424
     },
     {
-      "counts": {},
+      "counts": {
+        "disk_read": 3,
+        "json_serialization": 2
+      },
       "package": "OPN.Telemetry",
-      "samples": {},
-      "swiftFiles": 3,
-      "swiftLines": 470
+      "samples": {
+        "disk_read": [
+          {
+            "file": "OPN.Telemetry/Sources/OpenNOWTelemetry/OPNSentry.swift",
+            "line": 454,
+            "text": "try? handle.write(contentsOf: data)"
+          },
+          {
+            "file": "OPN.Telemetry/Sources/OpenNOWTelemetry/OPNSentry.swift",
+            "line": 461,
+            "text": "guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return \"\" }"
+          },
+          {
+            "file": "OPN.Telemetry/Sources/OpenNOWTelemetry/OPNSentry.swift",
+            "line": 475,
+            "text": "let data = try? Data(contentsOf: url) else { return }"
+          }
+        ],
+        "json_serialization": [
+          {
+            "file": "OPN.Telemetry/Sources/OpenNOWTelemetry/OPNNetworkLog.swift",
+            "line": 112,
+            "text": "let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],"
+          },
+          {
+            "file": "OPN.Telemetry/Sources/OpenNOWTelemetry/OPNNetworkLog.swift",
+            "line": 115,
+            "text": "let errorData = try? JSONSerialization.data(withJSONObject: [\"errors\": errors]),"
+          }
+        ]
+      },
+      "swiftFiles": 4,
+      "swiftLines": 722
     },
     {
       "counts": {
@@ -1013,34 +1094,34 @@
         "disk_read": [
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 674,
+            "line": 689,
             "text": "lines.append(contentsOf: ["
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 685,
+            "line": 700,
             "text": "lines.append(contentsOf: ["
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 692,
+            "line": 707,
             "text": "lines.append(contentsOf: ["
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 711,
+            "line": 726,
             "text": "lines.append(contentsOf: ["
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 734,
+            "line": 749,
             "text": "lines.append(contentsOf: ["
           }
         ],
         "json_serialization": [
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/NativeWebRTCTransport.swift",
-            "line": 174,
+            "line": 195,
             "text": "return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]"
           },
           {
@@ -1050,7 +1131,7 @@
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCMediaStreamSurface.swift",
-            "line": 581,
+            "line": 657,
             "text": "let dictionary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }"
           }
         ],
@@ -1077,7 +1158,7 @@
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 267,
+            "line": 278,
             "text": "DispatchQueue.main.sync { impl.remoteVideoView?.removeFromSuperview() }"
           },
           {
@@ -1104,7 +1185,7 @@
         "main_sync": [
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 267,
+            "line": 278,
             "text": "DispatchQueue.main.sync { impl.remoteVideoView?.removeFromSuperview() }"
           }
         ],
@@ -1148,27 +1229,27 @@
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 251,
+            "line": 262,
             "text": "cancelDisconnectGraceTimer()"
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 384,
+            "line": 399,
             "text": "func cancelDisconnectGraceTimer() {"
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 389,
+            "line": 404,
             "text": "func startDisconnectGraceTimer(reason: String) {"
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 390,
+            "line": 405,
             "text": "cancelDisconnectGraceTimer()"
           },
           {
             "file": "OPN.WebRTC.Media/Sources/WebRTCMedia/WebRTCNativeStreamSession.swift",
-            "line": 392,
+            "line": 407,
             "text": "let timer = DispatchSource.makeTimerSource(queue: .main)"
           },
           {
@@ -1179,7 +1260,7 @@
         ]
       },
       "swiftFiles": 25,
-      "swiftLines": 7362
+      "swiftLines": 7599
     }
   ]
 }

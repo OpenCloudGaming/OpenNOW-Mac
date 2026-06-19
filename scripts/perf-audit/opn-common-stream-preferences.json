@@ -1,32 +1,32 @@
 {
-  "generatedAt" : "2026-06-18T16:06:28Z",
+  "generatedAt" : "2026-06-19T18:18:34Z",
   "measurements" : [
     {
       "iterations" : 200,
-      "maxMilliseconds" : 76.7055,
-      "meanMilliseconds" : 0.514398745,
-      "minMilliseconds" : 0.060916,
+      "maxMilliseconds" : 74.539958,
+      "meanMilliseconds" : 0.48993251000000015,
+      "minMilliseconds" : 0.09625,
       "operation" : "OPNStreamPreferences.loadDeviceCapabilities",
       "package" : "OPN.Common",
-      "totalMilliseconds" : 102.87974900000002
+      "totalMilliseconds" : 97.98650200000003
     },
     {
       "iterations" : 100,
-      "maxMilliseconds" : 86.673458,
-      "meanMilliseconds" : 0.9679391500000001,
-      "minMilliseconds" : 0.07725,
+      "maxMilliseconds" : 82.351833,
+      "meanMilliseconds" : 0.945113289999999,
+      "minMilliseconds" : 0.086291,
       "operation" : "OPNStreamPreferences.loadMicrophoneDeviceOptions",
       "package" : "OPN.Common",
-      "totalMilliseconds" : 96.79391500000001
+      "totalMilliseconds" : 94.5113289999999
     },
     {
       "iterations" : 1000,
-      "maxMilliseconds" : 10.856333,
-      "meanMilliseconds" : 0.8323569459999997,
-      "minMilliseconds" : 0.512375,
+      "maxMilliseconds" : 17.984209,
+      "meanMilliseconds" : 0.6777117599999998,
+      "minMilliseconds" : 0.479416,
       "operation" : "OPNStreamPreferences.loadProfile\/effectiveProfile",
       "package" : "OPN.Common",
-      "totalMilliseconds" : 832.3569459999997
+      "totalMilliseconds" : 677.7117599999998
     }
   ]
 }
