@@ -1,6 +1,7 @@
 import Common
 import AppKit
 import CoreText
+import CryptoKit
 import OpenNOWTelemetry
 import SwiftUI
 
@@ -217,9 +218,7 @@ private struct AccountSettingsPage: View {
                         Rectangle()
                             .fill(Color.black.opacity(0.22))
                             .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.72), lineWidth: 1) }
-                        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
-                            .scaledToFit()
-                            .frame(width: 58, height: 58)
+                        SettingsAccountAvatar(email: viewModel.account.email, size: 58)
                     }
                     .frame(width: 92, height: 92)
 
@@ -442,6 +441,46 @@ private struct AccountHealthBadge: View {
         .frame(width: 172, height: 64, alignment: .leading)
         .background(positive ? Color.openNowGreen : Color.white.opacity(0.07))
         .overlay { Rectangle().stroke(positive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
+    }
+}
+
+private struct SettingsAccountAvatar: View {
+    let email: String
+    let size: CGFloat
+
+    private var gravatarURL: URL? {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedEmail.isEmpty else { return nil }
+        let digest = Insecure.MD5.hash(data: Data(normalizedEmail.utf8))
+        let hash = digest.map { String(format: "%02x", $0) }.joined()
+        return URL(string: "https://www.gravatar.com/avatar/\(hash)?s=\(Int(size * 3))&d=404")
+    }
+
+    var body: some View {
+        Group {
+            if let gravatarURL {
+                AsyncImage(url: gravatarURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallbackAvatar
+                    }
+                }
+            } else {
+                fallbackAvatar
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(.white.opacity(0.16), lineWidth: 1))
+    }
+
+    private var fallbackAvatar: some View {
+        VendorResourceImage(name: "avatar_generic_118", fileExtension: "svg")
+            .scaledToFill()
     }
 }
 
