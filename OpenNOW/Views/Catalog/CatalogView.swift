@@ -1563,6 +1563,7 @@ private struct CatalogContentView: View {
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
+    @State private var showAllSection: CatalogSectionModel?
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -1615,7 +1616,7 @@ private struct CatalogContentView: View {
                                     .frame(height: 0)
                                     .id(railAnchor)
                             }
-                            CatalogRailView(viewModel: viewModel, section: section)
+                            CatalogRailView(viewModel: viewModel, section: section, onShowAll: { showAllSection = section })
                             if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                 GameDetailPanel(viewModel: viewModel)
                                     .padding(.top, -8)
@@ -1647,6 +1648,20 @@ private struct CatalogContentView: View {
                 if (viewModel.isLoading || viewModel.isLoadingPanels) && sections.isEmpty {
                     VendorSplashLoadingView()
                         .transition(.opacity)
+                }
+
+                if let showAllSection {
+                    CatalogShowAllOverlay(
+                        viewModel: viewModel,
+                        section: showAllSection,
+                        onDismiss: { self.showAllSection = nil },
+                        onSelect: { game in
+                            viewModel.selectGame(game, inSection: showAllSection.id)
+                            self.showAllSection = nil
+                        }
+                    )
+                    .transition(.opacity)
+                    .zIndex(30)
                 }
             }
             .onChange(of: selectedRailScrollAnchor) { _, anchor in
@@ -1990,11 +2005,11 @@ private struct CatalogEmptyDestinationView: View {
 private struct CatalogRailView: View {
     @ObservedObject var viewModel: CatalogViewModel
     let section: CatalogSectionModel
+    let onShowAll: () -> Void
     @State private var scrollIndex = 0
 
-    private var isExpanded: Bool { viewModel.expandedSectionIds.contains(section.id) }
-    private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: isExpanded) }
-    private var canSeeAll: Bool { section.games.count > games.count || isExpanded }
+    private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
+    private var canShowAll: Bool { section.games.count > games.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2004,8 +2019,8 @@ private struct CatalogRailView: View {
                     .foregroundStyle(.white.opacity(0.96))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if canSeeAll {
-                    Button(isExpanded ? "SHOW LESS" : "SEE ALL") { viewModel.toggleSectionExpansion(section.id) }
+                if canShowAll {
+                    Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .font(.nvidia(size: 13, weight: .bold))
                         .foregroundStyle(.white.opacity(0.92))
@@ -2023,14 +2038,13 @@ private struct CatalogRailView: View {
                                     game: game,
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
-                                    isDimmed: viewModel.selectedGame != nil && !isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) }
                                 )
                                     .id(game.catalogIdentity)
                             }
                             if section.games.count > games.count {
-                                CatalogSeeMoreTile(title: "See All") { viewModel.toggleSectionExpansion(section.id) }
+                                CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
@@ -2129,9 +2143,177 @@ private struct CatalogSeeMoreTile: View {
         .buttonStyle(.plain)
         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
         .padding(.top, CatalogVendorLayout.tileTopMargin)
-        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.cardTrayHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
         .onHover { isHovering = $0 }
         .accessibilityLabel("See all")
+    }
+}
+
+private struct CatalogShowAllOverlay: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    let section: CatalogSectionModel
+    let onDismiss: () -> Void
+    let onSelect: (OPNCatalogGameObject) -> Void
+    @State private var searchQuery = ""
+
+    private let columns = [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2), spacing: 4, alignment: .top)]
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.opacity(0.50)
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: onDismiss)
+
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(section.title.uppercased())
+                                .font(.nvidia(size: 24, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Text(resultSummary)
+                                .font(.nvidia(size: 12, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.56))
+                        }
+                        Spacer(minLength: 0)
+                        Button(action: onDismiss) {
+                            Image(systemName: "xmark")
+                                .font(.nvidia(size: 15, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.78))
+                                .frame(width: 34, height: 34)
+                                .background(Color.white.opacity(0.08))
+                                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Close show all")
+                    }
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.nvidia(size: 14, weight: .bold))
+                            .foregroundStyle(Color.openNowGreen)
+                        TextField("Search titles, genres, publishers, stores, controls, ratings, tags", text: $searchQuery)
+                            .textFieldStyle(.plain)
+                            .font(.nvidia(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                        if !searchQuery.isEmpty {
+                            Button("CLEAR") { searchQuery = "" }
+                                .buttonStyle(.plain)
+                                .font(.nvidia(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.64))
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 42)
+                    .background(Color.black.opacity(0.34))
+                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+
+                    ScrollView {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                            ForEach(filteredGames, id: \.catalogIdentity) { game in
+                                CatalogGameTile(
+                                    game: game,
+                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
+                                    isSelected: isSelected(game),
+                                    isSelectionActive: viewModel.selectedGame != nil,
+                                    onSelect: { onSelect(game) }
+                                )
+                            }
+                        }
+                        .padding(.bottom, 10)
+                    }
+                    .overlay {
+                        if filteredGames.isEmpty {
+                            CatalogShowAllEmptySearchView(query: searchQuery)
+                        }
+                    }
+                }
+                .padding(22)
+                .frame(width: overlayWidth(for: proxy.size), height: overlayHeight(for: proxy.size), alignment: .topLeading)
+                .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.96))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.46), radius: 28, x: 0, y: 18)
+            }
+        }
+    }
+
+    private var filteredGames: [OPNCatalogGameObject] {
+        let terms = CatalogSearchQueryParser.terms(from: searchQuery)
+        guard !terms.isEmpty else { return section.games }
+        return section.games.filter { game in
+            let searchableText = game.advancedSearchText
+            return terms.allSatisfy { searchableText.contains($0) }
+        }
+    }
+
+    private var resultSummary: String {
+        let count = filteredGames.count
+        let total = section.games.count
+        if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "\(total) games" }
+        return "\(count) of \(total) games"
+    }
+
+    private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
+    }
+
+    private func overlayWidth(for size: CGSize) -> CGFloat {
+        min(max(size.width * 0.72, 760), min(size.width - 64, 1120))
+    }
+
+    private func overlayHeight(for size: CGSize) -> CGFloat {
+        min(max(size.height * 0.72, 520), min(size.height - 64, 760))
+    }
+}
+
+private struct CatalogShowAllEmptySearchView: View {
+    let query: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.nvidia(size: 34, weight: .bold))
+                .foregroundStyle(Color.openNowGreen.opacity(0.84))
+            Text("No matching games")
+                .font(.nvidia(size: 18, weight: .bold))
+                .foregroundStyle(.white.opacity(0.88))
+            Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Try searching by title, genre, store, publisher, input type, rating, or tag." : "No metadata matched \"\(query)\".")
+                .font(.nvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.58))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+        }
+        .padding(28)
+    }
+}
+
+private enum CatalogSearchQueryParser {
+    static func terms(from query: String) -> [String] {
+        var terms: [String] = []
+        var current = ""
+        var isQuoted = false
+        for character in query.lowercased() {
+            if character == "\"" {
+                append(current, to: &terms)
+                current = ""
+                isQuoted.toggle()
+            } else if character.isWhitespace && !isQuoted {
+                append(current, to: &terms)
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        append(current, to: &terms)
+        return terms
+    }
+
+    private static func append(_ value: String, to terms: inout [String]) {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+        terms.append(normalized)
     }
 }
 
@@ -2139,7 +2321,6 @@ private struct CatalogGameTile: View {
     let game: OPNCatalogGameObject
     let imageURL: URL?
     let isSelected: Bool
-    let isDimmed: Bool
     let isSelectionActive: Bool
     let onSelect: () -> Void
     @State private var isHovering = false
@@ -2151,17 +2332,9 @@ private struct CatalogGameTile: View {
                     CatalogRemoteImage(url: imageURL, contentMode: .fill)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                         .clipped()
-                    if isDimmed {
-                        Color.black.opacity(0.80)
-                    }
                     if isHovering || isSelected {
                         Color.black.opacity(0.50)
                         LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
-                    }
-                    if game.isInLibrary {
-                        MallRibbonShape()
-                            .fill(Color.openNowGreen)
-                            .frame(width: 7, height: 24)
                     }
                     if let badge = game.cardBadgeLabel {
                         CatalogGameCardBadge(label: badge)
@@ -2294,9 +2467,9 @@ private enum CatalogCardBadgeMapper {
 private struct MallRibbonShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.28))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.72))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
         return path
@@ -3525,6 +3698,48 @@ private extension OPNCatalogGameObject {
     var storeLine: String {
         let stores = availableStores.isEmpty ? variants.map(\.appStore) : availableStores
         return stores.filter { !$0.isEmpty }.map { $0.uppercased() }.joined(separator: ", ")
+    }
+
+    var advancedSearchText: String {
+        var values = [
+            id,
+            uuid,
+            launchAppId,
+            title,
+            shortName,
+            gameDescription,
+            shortDescription,
+            longDescription,
+            developerName,
+            publisherName,
+            releaseDate,
+            playType,
+            membershipTierLabel,
+            playabilityState,
+            ratingSystemName,
+            ratingCategoryKey,
+            ratingCategoryTitle,
+            promoTag,
+            primaryStoreLabel,
+            genreLine,
+            storeLine
+        ]
+        values.append(contentsOf: genres)
+        values.append(contentsOf: featureLabels)
+        values.append(contentsOf: supportedControls)
+        values.append(contentsOf: contentRatings)
+        values.append(contentsOf: ratingDescriptors)
+        values.append(contentsOf: ratingInteractiveElements)
+        values.append(contentsOf: nvidiaTech)
+        values.append(contentsOf: availableStores)
+        values.append(contentsOf: campaignIds)
+        values.append(contentsOf: skuTags)
+        for variant in variants {
+            values.append(contentsOf: [variant.id, variant.appStore, variant.appStoreLabel, variant.serviceStatus])
+            if variant.inLibrary || variant.librarySelected { values.append("owned in library") }
+        }
+        if isInLibrary { values.append("owned in library") }
+        return values.joined(separator: " ").lowercased()
     }
 
     var detailChips: [String] {
