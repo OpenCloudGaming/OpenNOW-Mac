@@ -921,18 +921,6 @@ private struct CatalogMainMenuPanel: View {
                     .padding(.top, 14)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        CatalogMainMenuSectionLabel("SETTINGS")
-                        ForEach(CatalogSettingsPage.allCases) { page in
-                            CatalogMainMenuRow(title: page.title, subtitle: "", systemImage: settingsIcon(for: page), isActive: viewModel.selectedMainPage == .settings && viewModel.selectedSettingsPage == page, compact: true) {
-                                viewModel.showSettings(page)
-                                isPresented = false
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 14)
-
-                    VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("ACTIONS")
                         CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
                             viewModel.refresh()
