@@ -768,22 +768,15 @@ private struct GameplaySettingsPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SettingsCard(title: "Streaming Profile") {
-                SettingsInfoRow(label: "Mode", value: streamingProfileMode)
-                SettingsDivider()
-                SettingsInfoRow(label: "Data Usage", value: estimatedDataUsage)
-                SettingsDivider()
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Restore default streaming settings")
-                            .font(.settingsNvidia(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.")
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.56))
-                    }
-                    Spacer()
-                    SettingsActionButton(title: "RESTORE DEFAULTS") { viewModel.restoreStreamingProfileDefaults() }
-                }
+                GameplayProfileOverview(
+                    mode: streamingProfileMode,
+                    resolution: viewModel.streamProfile.resolution.label,
+                    frameRate: "\(viewModel.streamProfile.fps) FPS",
+                    codec: viewModel.streamProfile.codec.label,
+                    bitrate: "\(viewModel.streamProfile.maxBitrateMbps) Mbps",
+                    colorPrecision: viewModel.streamProfile.colorQuality.label,
+                    dataUsage: estimatedDataUsage
+                )
             }
 
             SettingsCard(title: "Streaming Quality") {
@@ -831,6 +824,28 @@ private struct GameplaySettingsPage: View {
                 SettingsDivider()
                 SettingsOptionRow(title: "Microphone Device", subtitle: "Current input device for OpenNOW streams.", options: viewModel.microphoneDeviceOptions.map(\.label), selectedIndex: selectedMicrophoneDeviceIndex, action: { viewModel.setMicrophoneDeviceId(viewModel.microphoneDeviceOptions[$0].uniqueId) })
             }
+
+            SettingsCard(title: "Profile Maintenance") {
+                HStack(alignment: .center, spacing: 16) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(width: 4, height: 48)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Restore default streaming settings")
+                            .font(.settingsNvidia(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.56))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    SettingsActionButton(title: "RESTORE DEFAULTS", minimumWidth: 150) { viewModel.restoreStreamingProfileDefaults() }
+                }
+                .padding(12)
+                .background(SettingsVendorLayout.row)
+                .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+            }
         }
     }
 
@@ -857,6 +872,68 @@ private struct GameplaySettingsPage: View {
 
     private func percentText(_ value: Double) -> String {
         "\(Int((value * 100).rounded()))%"
+    }
+}
+
+private struct GameplayProfileOverview: View {
+    let mode: String
+    let resolution: String
+    let frameRate: String
+    let codec: String
+    let bitrate: String
+    let colorPrecision: String
+    let dataUsage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Active streaming profile")
+                        .font(.settingsNvidia(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("These values are sent to GeForce NOW when a new stream starts.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                }
+                Spacer(minLength: 0)
+                SettingsStatusPill(title: "MODE", value: mode, positive: mode != "Balanced defaults")
+            }
+
+            SettingsFlowLayout(spacing: 10) {
+                GameplayProfileMetricTile(label: "Resolution", value: resolution, emphasized: true)
+                GameplayProfileMetricTile(label: "Frame Rate", value: frameRate, emphasized: true)
+                GameplayProfileMetricTile(label: "Codec", value: codec)
+                GameplayProfileMetricTile(label: "Bitrate", value: bitrate)
+                GameplayProfileMetricTile(label: "Color", value: colorPrecision)
+                GameplayProfileMetricTile(label: "Data Usage", value: dataUsage, width: 260)
+            }
+        }
+    }
+}
+
+private struct GameplayProfileMetricTile: View {
+    let label: String
+    let value: String
+    var emphasized = false
+    var width: CGFloat?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label.uppercased())
+                .font(.settingsNvidia(size: 9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.44))
+            Text(value.isEmpty ? "-" : value)
+                .font(.settingsNvidia(size: emphasized ? 16 : 14, weight: .bold))
+                .foregroundStyle(emphasized ? Color.openNowGreen : .white.opacity(0.86))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .frame(width: width ?? (emphasized ? 180 : 154), height: 72, alignment: .leading)
+        .background(Color.white.opacity(emphasized ? 0.065 : 0.045))
+        .overlay { Rectangle().stroke(emphasized ? Color.openNowGreen.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 
@@ -1138,7 +1215,8 @@ private struct AboutSettingsPage: View {
     @State private var showingDiagnosticsUploadConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ZStack {
+            VStack(alignment: .leading, spacing: 16) {
             SettingsCard(title: "Product") {
                 HStack(alignment: .top, spacing: 22) {
                     ZStack {
@@ -1260,12 +1338,21 @@ private struct AboutSettingsPage: View {
                 }
             }
         }
-        .confirmationDialog("Upload diagnostics logs?", isPresented: $showingDiagnosticsUploadConfirmation) {
-            Button("Upload Logs") { generateUploadedDiagnostics() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("OpenNOW will upload the full sanitized current-run log to paste.rs and copy a diagnostics summary that includes the public link. IP addresses and location fields are redacted before upload.")
+            .disabled(showingDiagnosticsUploadConfirmation)
+
+            if showingDiagnosticsUploadConfirmation {
+                DiagnosticsUploadConfirmationDialog(
+                    cancel: { showingDiagnosticsUploadConfirmation = false },
+                    upload: {
+                        showingDiagnosticsUploadConfirmation = false
+                        generateUploadedDiagnostics()
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(1)
+            }
         }
+        .animation(.easeOut(duration: 0.16), value: showingDiagnosticsUploadConfirmation)
         .onAppear { viewModel.refreshCatalogImageCacheSummary() }
     }
 
@@ -1376,6 +1463,109 @@ private struct AboutSettingsPage: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "\(version) (\(build))"
+    }
+}
+
+private struct DiagnosticsUploadConfirmationDialog: View {
+    let cancel: () -> Void
+    let upload: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.62)
+                .onTapGesture(perform: cancel)
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 14) {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.openNowGreen.opacity(0.16))
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.settingsNvidia(size: 18, weight: .bold))
+                            .foregroundStyle(Color.openNowGreen)
+                    }
+                    .frame(width: 44, height: 44)
+                    .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.42), lineWidth: 1) }
+
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Upload diagnostics logs?")
+                            .font(.settingsNvidia(size: 19, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("OpenNOW will upload the full sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
+                            .font(.settingsNvidia(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 10) {
+                    Rectangle()
+                        .fill(Color.openNowGreen)
+                        .frame(width: 4, height: 42)
+                    Text("IP addresses and location fields are redacted before upload. Only generate this when preparing support diagnostics.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.045))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+                    SettingsDialogButton(title: "CANCEL", tone: .secondary, action: cancel)
+                    SettingsDialogButton(title: "UPLOAD LOGS", tone: .primary, action: upload)
+                }
+            }
+            .padding(22)
+            .frame(width: 430, alignment: .leading)
+            .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))
+            .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
+            .shadow(color: .black.opacity(0.62), radius: 34, x: 0, y: 18)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct SettingsDialogButton: View {
+    enum Tone {
+        case primary
+        case secondary
+    }
+
+    let title: String
+    let tone: Tone
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.settingsNvidia(size: 12, weight: .bold))
+                .foregroundStyle(tone == .primary ? .black : .white.opacity(0.82))
+                .tracking(0.8)
+                .padding(.horizontal, 14)
+                .frame(minWidth: 104)
+                .frame(height: 34)
+                .background(backgroundColor)
+                .overlay { Rectangle().stroke(strokeColor, lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+
+    private var backgroundColor: Color {
+        switch tone {
+        case .primary: return Color.openNowGreen.opacity(isHovering ? 0.88 : 1)
+        case .secondary: return Color.white.opacity(isHovering ? 0.10 : 0.06)
+        }
+    }
+
+    private var strokeColor: Color {
+        switch tone {
+        case .primary: return Color.openNowGreen
+        case .secondary: return Color.white.opacity(0.14)
+        }
     }
 }
 

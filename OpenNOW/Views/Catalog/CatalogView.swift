@@ -961,12 +961,12 @@ private struct CatalogMainMenuPanel: View {
                                 isPresented = false
                             }
                         }
-                        CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
-                            viewModel.showSettings()
-                            isPresented = false
-                        }
                         CatalogMainMenuRow(title: "Recordings", subtitle: "Watch saved stream videos", systemImage: "play.rectangle.fill", isActive: viewModel.selectedMainPage == .recordings) {
                             viewModel.showRecordings()
+                            isPresented = false
+                        }
+                        CatalogMainMenuRow(title: "Settings", subtitle: "Streaming, account, and system options", systemImage: "gearshape.fill", isActive: viewModel.selectedMainPage == .settings) {
+                            viewModel.showSettings()
                             isPresented = false
                         }
                     }
