@@ -59,6 +59,10 @@ struct OpenNOWApp: App {
 }
 
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
+    private let githubUpdater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "OpenNOW-Mac")
+    private var applicationUpdateCheckTimer: Timer?
+    private var updateCheckTask: Task<Void, Never>?
+    private var updateInstallTask: Task<Void, Never>?
     private var isCompletingUserApprovedTermination = false
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
@@ -77,10 +81,12 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication did finish launching")
+        startApplicationUpdateChecks()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication will terminate")
+        stopApplicationUpdateChecks()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -117,6 +123,121 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private func postOpenedFile(_ url: URL) {
         Task { @MainActor in
             OpenNOWFileOpenCoordinator.shared.enqueue(url)
+        }
+    }
+
+    static func requestApplicationUpdateCheck() {
+        (NSApp.delegate as? OpenNOWAppDelegate)?.checkForApplicationUpdates()
+    }
+
+    private func startApplicationUpdateChecks() {
+        guard applicationUpdateCheckTimer == nil else { return }
+        checkForApplicationUpdates(showingCurrentStatus: false)
+        applicationUpdateCheckTimer = Timer.scheduledTimer(timeInterval: 60 * 60, target: self, selector: #selector(applicationUpdateCheckTimerFired(_:)), userInfo: nil, repeats: true)
+    }
+
+    @objc private func applicationUpdateCheckTimerFired(_ timer: Timer) {
+        checkForApplicationUpdates(showingCurrentStatus: false)
+    }
+
+    private func stopApplicationUpdateChecks() {
+        applicationUpdateCheckTimer?.invalidate()
+        applicationUpdateCheckTimer = nil
+        updateCheckTask?.cancel()
+        updateCheckTask = nil
+        updateInstallTask?.cancel()
+        updateInstallTask = nil
+    }
+
+    private func checkForApplicationUpdates() {
+        checkForApplicationUpdates(showingCurrentStatus: true)
+    }
+
+    private func checkForApplicationUpdates(showingCurrentStatus: Bool) {
+        guard updateCheckTask == nil, updateInstallTask == nil else { return }
+        updateCheckTask = Task { @MainActor in
+            defer { updateCheckTask = nil }
+            do {
+                let release = try await githubUpdater.checkForUpdate()
+                guard let release else {
+                    if showingCurrentStatus {
+                        let currentVersion = githubUpdater.currentVersion
+                        let alert = NSAlert()
+                        alert.messageText = "OpenNOW is up to date"
+                        alert.informativeText = "Version \(currentVersion) is the latest release available on GitHub."
+                        alert.addButton(withTitle: "OK")
+                        presentAlert(alert)
+                    }
+                    return
+                }
+                presentUpdateAlert(for: release)
+            } catch is CancellationError {
+            } catch {
+                guard showingCurrentStatus else { return }
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Update check failed"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK")
+                presentAlert(alert)
+            }
+        }
+    }
+
+    private func presentUpdateAlert(for release: OpenNOWGitHubRelease) {
+        updateInstallTask?.cancel()
+        Task { @MainActor in
+            let currentVersion = githubUpdater.currentVersion
+            var notes = release.releaseNotes.isEmpty ? "No release notes were provided." : release.releaseNotes
+            if notes.count > 1400 {
+                notes = String(notes.prefix(1400)) + "\n..."
+            }
+
+            let alert = NSAlert()
+            alert.messageText = "OpenNOW \(release.version) is available"
+            alert.informativeText = "Current version: \(currentVersion)\n\nThis update is required to continue using OpenNOW.\n\n\(notes)"
+            alert.addButton(withTitle: "Install and Relaunch")
+            presentAlert(alert) { [weak self] _ in
+                self?.installUpdate(release)
+            }
+        }
+    }
+
+    private func installUpdate(_ release: OpenNOWGitHubRelease) {
+        guard updateInstallTask == nil else { return }
+        updateInstallTask = Task { @MainActor in
+            defer { updateInstallTask = nil }
+            do {
+                let launchedInstaller = try await githubUpdater.installRelease(release)
+                guard launchedInstaller else {
+                    showUpdateInstallFailed(message: "OpenNOW could not launch the update installer.")
+                    return
+                }
+                NSApp.terminate(self)
+            } catch is CancellationError {
+            } catch {
+                showUpdateInstallFailed(message: error.localizedDescription.isEmpty ? "OpenNOW could not install the downloaded update." : error.localizedDescription)
+            }
+        }
+    }
+
+    private func showUpdateInstallFailed(message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Update install failed"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        presentAlert(alert)
+    }
+
+    private func presentAlert(_ alert: NSAlert, completion: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible }) {
+            alert.beginSheetModal(for: window) { response in
+                completion?(response)
+            }
+        } else {
+            let response = alert.runModal()
+            completion?(response)
         }
     }
 }
