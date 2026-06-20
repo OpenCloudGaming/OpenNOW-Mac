@@ -147,18 +147,15 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
                 let nsError = error as NSError
                 if self.isSocketNotConnectedError(nsError) {
                     OPNNetworkLog.webSocketEvent("complete", url: self.activeURL, detail: "clean=true")
-                    NSLog("[Signaling] Post-connection socket closed: %@", nsError.localizedDescription)
                     self.onClosed?(true, "")
                 } else {
                     OPNNetworkLog.webSocketError("complete", url: self.activeURL, error: nsError)
-                    NSLog("[Signaling] Post-connection error: %@", nsError)
                     self.onClosed?(false, nsError.localizedDescription)
                 }
                 return
             }
             let message = self.signalingConnectionErrorDescription(error as NSError)
             OPNNetworkLog.webSocketError("connectFailed", url: self.activeURL, error: error)
-            NSLog("[Signaling] %@", message)
             let completion = self.connectCompletion
             self.connectCompletion = nil
             completion?(false, message)
@@ -171,7 +168,6 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
             guard let self else { return }
             guard self.webSocketTask === webSocketTask else { return }
             OPNNetworkLog.webSocketEvent("close", url: self.activeURL, detail: "code=\(closeCode.rawValue) reasonLength=\(reasonText.count)")
-            NSLog("[Signaling] WebSocket closed: code=%ld, reason=%@", closeCode.rawValue, reasonText)
             self.clearHeartbeat()
             self.webSocketTask = nil
             if self.didOpen {
@@ -255,10 +251,8 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
                     let nsError = error as NSError
                     if self.isSocketNotConnectedError(nsError) {
                         OPNNetworkLog.webSocketEvent("receiveStopped", url: self.activeURL)
-                        NSLog("[Signaling] Receive stopped after socket closed: %@", nsError.localizedDescription)
                     } else {
                         OPNNetworkLog.webSocketError("receive", url: self.activeURL, error: nsError)
-                        NSLog("[Signaling] Receive error: %@", nsError)
                     }
                 }
             }
@@ -298,7 +292,6 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
            name == peerName {
             peerId = pid.intValue
             OPNNetworkLog.webSocketEvent("peerAssigned", url: activeURL, detail: "peerId=\(peerId)")
-            NSLog("[Signaling] Local peer id assigned: %d", peerId)
         }
 
         if let ack = json["ackid"] as? NSNumber {
@@ -322,7 +315,6 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
 
         if let from = peerMessage["from"] as? NSNumber {
             remotePeerId = from.intValue
-            NSLog("[Signaling] Remote peer id: %d", remotePeerId)
         }
 
         guard let messageData = messageText.data(using: .utf8),
@@ -331,7 +323,6 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         if payload["type"] as? String == "offer" {
             guard let sdp = payload["sdp"] as? String else { return }
             OPNNetworkLog.webSocketEvent("offerReceived", url: activeURL, detail: "sdpLength=\(sdp.count)")
-            NSLog("[Signaling] Offer received, sdp length=%lu", sdp.count)
             onOffer?(sdp)
             return
         }
@@ -341,7 +332,6 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         let sdpMLineIndex = (payload["sdpMLineIndex"] as? NSNumber)?.intValue ?? 0
         let usernameFragment = payload["usernameFragment"] as? String ?? payload["ufrag"] as? String ?? ""
         OPNNetworkLog.webSocketEvent("iceCandidateReceived", url: activeURL, detail: "mid=\(sdpMid.isEmpty ? "none" : sdpMid) mline=\(sdpMLineIndex) candidateLength=\(candidate.count)")
-        NSLog("[Signaling] Remote ICE candidate received mid=%@ mline=%d ufrag=%@ length=%lu", sdpMid.isEmpty ? "(none)" : sdpMid, sdpMLineIndex, usernameFragment.isEmpty ? "(none)" : usernameFragment, candidate.count)
         onIceCandidate?([
             "candidate": candidate,
             "sdpMid": sdpMid,

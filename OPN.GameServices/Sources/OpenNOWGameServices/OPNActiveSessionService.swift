@@ -63,9 +63,10 @@ enum OPNActiveSessionService {
         request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-model")
         request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
         request.setValue(OPNDeviceIdentity.stableCloudmatchDeviceId(), forHTTPHeaderField: "x-device-id")
-        let networkStart = OPNNetworkLog.start(request, operation: "activeSession.fetch")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.fetch")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
             if let error {
                 completion(false, [], error.localizedDescription)
                 return
@@ -124,25 +125,19 @@ enum OPNActiveSessionService {
         request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-model")
         request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
         request.setValue(OPNDeviceIdentity.stableCloudmatchDeviceId(), forHTTPHeaderField: "x-device-id")
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch stop session")
-        let networkStart = OPNNetworkLog.start(request, operation: "activeSession.stop")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.stop")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, error.localizedDescription)
                 return
             }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                trace?.setStatus(false)
-                trace?.finish()
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
                 completion(false, "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
-            trace?.setStatus(true)
-            trace?.finish()
             completion(true, "")
         }.resume()
     }

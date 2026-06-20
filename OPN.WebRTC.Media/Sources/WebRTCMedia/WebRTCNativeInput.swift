@@ -160,12 +160,12 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         let version: UInt16
         if firstWord == 526 {
             version = data.count >= 4 ? UInt16(data[2]) | (UInt16(data[3]) << 8) : 2
-            NSLog("[LibWebRTC] input handshake detected firstWord=526 version=%u", version)
+            WebRTCMediaTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "firstWord526"])
         } else if data[0] == 0x0e {
             version = firstWord
-            NSLog("[LibWebRTC] input handshake detected byte[0]=0x0e version=%u", version)
+            WebRTCMediaTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "byte0x0e"])
         } else {
-            NSLog("[LibWebRTC] input channel message before handshake len=%zu firstWord=0x%04x", data.count, firstWord)
+            WebRTCMediaTelemetry.capture("webrtc.native.input.before_handshake", level: .debug, message: "Input channel message received before handshake.", attributes: ["bytes": String(data.count), "firstWord": String(firstWord)])
             return
         }
 
@@ -176,7 +176,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         }
         sendInput(data: data, partiallyReliable: false, lowLatencyMode: false, sessionImpl: sessionImpl)
         startHeartbeat(sessionImpl: sessionImpl)
-        NSLog("[LibWebRTC] input handshake complete protocol=v%u inputReady=%d", version, isInputReady ? 1 : 0)
+        WebRTCMediaTelemetry.capture("webrtc.native.input.ready", level: .debug, message: "Input handshake complete.", attributes: ["version": String(version), "inputReady": String(isInputReady)])
     }
 
     @objc(stop)
@@ -205,7 +205,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         }
         if !clipboardText.isEmpty {
             owner?.handleClipboardText(clipboardText)
-            NSLog("[LibWebRTC] remote clipboard text received bytes=%zu", data.count)
+            WebRTCMediaTelemetry.capture("webrtc.native.input.clipboard", level: .debug, message: "Remote clipboard text received.", attributes: ["bytes": String(data.count)])
         }
     }
 

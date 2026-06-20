@@ -1,6 +1,5 @@
 import Foundation
-
-import Foundation
+import OpenNOWTelemetry
 
 enum OPNProtocolDebugMapper {
     private static let sequence = ProtocolCaptureSequence()
@@ -58,14 +57,14 @@ enum OPNProtocolDebugMapper {
         guard loggingEnabled() else { return }
         let payload = sanitizedJSONString(fromJSONObject: object)
         writeCapture(label: label, payload: payload)
-        NSLog("[ProtocolDebug] %@: %@", label ?? "payload", payload)
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "\(label ?? "payload"): \(payload)"))
     }
 
     static func logJSONData(label: String?, data: Data?) {
         guard loggingEnabled() else { return }
         let payload = sanitizedJSONString(from: data)
         writeCapture(label: label, payload: payload)
-        NSLog("[ProtocolDebug] %@: %@", label ?? "payload", payload)
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "\(label ?? "payload"): \(payload)"))
     }
 
     private static func environmentFlagEnabled(_ name: String) -> Bool {
@@ -127,9 +126,9 @@ enum OPNProtocolDebugMapper {
             let filename = captureFilename(label: label, sequence: sequence.next())
             let path = NSString(string: directory).appendingPathComponent(filename)
             try payload.write(toFile: path, atomically: true, encoding: .utf8)
-            NSLog("[ProtocolDebug] Wrote sanitized capture: %@", path)
+            OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "Wrote sanitized capture path=\(path)"))
         } catch {
-            NSLog("[ProtocolDebug] Failed to write capture in %@: %@", directory, error.localizedDescription)
+            OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ProtocolDebug", message: "Failed to write capture directory=\(directory) error=\(error.localizedDescription)"))
         }
     }
 }

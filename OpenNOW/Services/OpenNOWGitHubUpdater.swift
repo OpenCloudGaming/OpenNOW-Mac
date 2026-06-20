@@ -1,4 +1,5 @@
 import Foundation
+import OpenNOWTelemetry
 
 struct OpenNOWGitHubRelease: Sendable {
     let version: String
@@ -61,7 +62,17 @@ actor OpenNOWGitHubUpdater {
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("OpenNOW-Updater", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await session.data(for: request)
+        logInfo("Checking GitHub release metadata repository=\(owner)/\(repository) currentVersion=\(currentVersion)")
+        let networkStart = OPNNetworkLog.start(&request, operation: "updater.releaseMetadata")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+            OPNNetworkLog.finish(request, operation: "updater.releaseMetadata", startedAt: networkStart, data: data, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "updater.releaseMetadata", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode), !data.isEmpty else {
             throw UpdateError.invalidResponse("GitHub did not return a valid release response.")
         }
@@ -72,6 +83,7 @@ actor OpenNOWGitHubUpdater {
         }
 
         let release = try release(from: json)
+        logInfo("GitHub release metadata received latestVersion=\(release.version) currentVersion=\(currentVersion)")
         return compareVersion(release.version, to: currentVersion) > 0 ? release : nil
     }
 
@@ -84,7 +96,18 @@ actor OpenNOWGitHubUpdater {
             throw UpdateError.invalidResponse("The release asset download URL is invalid.")
         }
 
-        let (archiveURL, response) = try await session.download(for: URLRequest(url: downloadURL))
+        var request = URLRequest(url: downloadURL)
+        logInfo("Downloading update archive version=\(release.version) asset=\(release.assetName)")
+        let networkStart = OPNNetworkLog.start(&request, operation: "updater.archiveDownload")
+        let archiveURL: URL
+        let response: URLResponse
+        do {
+            (archiveURL, response) = try await session.download(for: request)
+            OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             throw UpdateError.downloadFailed("GitHub did not return the update archive.")
         }
@@ -100,6 +123,7 @@ actor OpenNOWGitHubUpdater {
 
         try fileManager.createDirectory(at: extractURL, withIntermediateDirectories: true)
         try fileManager.copyItem(at: downloadedArchiveURL, to: archiveCopyURL)
+        logInfo("Staging update archive version=\(release.version) asset=\(release.assetName)")
 
         let extractProcess = Process()
         extractProcess.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -146,10 +170,20 @@ actor OpenNOWGitHubUpdater {
         installerProcess.arguments = [scriptURL.path]
         do {
             try installerProcess.run()
+            logInfo("Update installer launched version=\(release.version)")
             return true
         } catch {
+            logError("Update installer launch failed version=\(release.version) error=\(error.localizedDescription)")
             throw UpdateError.installerLaunchFailed(error.localizedDescription)
         }
+    }
+
+    private func logInfo(_ message: String) {
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Update", message: message))
+    }
+
+    private func logError(_ message: String) {
+        OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Update", message: message))
     }
 
     private func release(from json: [String: Any]) throws -> OpenNOWGitHubRelease {

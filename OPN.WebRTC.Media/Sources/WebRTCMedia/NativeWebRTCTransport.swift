@@ -373,7 +373,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             sdpMid: Self.stringValue(payload["sdpMid"]),
             sdpMLineIndex: Self.intValue(payload["sdpMLineIndex"])
         )
-        localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
+        _ = localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
     }
 
     private func handleEnded(message: String) {

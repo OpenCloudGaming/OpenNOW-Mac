@@ -632,9 +632,10 @@ public enum OPNStreamPreferences {
         }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         applyCloudmatchHeaders(to: &request, token: token)
-        let networkStart = OPNNetworkLog.start(request, operation: "stream.cloudVariables")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "stream.cloudVariables", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "stream.cloudVariables")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "stream.cloudVariables", startedAt: networkStart, data: data, response: response, error: error)
             var result = cached
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if error == nil, let data, (200..<300).contains(status), let json = String(data: data, encoding: .utf8) {
@@ -653,9 +654,10 @@ public enum OPNStreamPreferences {
         let baseUrl = providerStreamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : providerStreamingBaseUrl
         var request = serverInfoRequest(baseUrl: baseUrl, token: token)
         request.timeoutInterval = 4
-        let networkStart = OPNNetworkLog.start(request, operation: "stream.fetchRegions")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "stream.fetchRegions", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "stream.fetchRegions")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "stream.fetchRegions", startedAt: networkStart, data: data, response: response, error: error)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, let data, status == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let metadata = json["metaData"] as? [[String: Any]] else {
                 DispatchQueue.main.async { completion(loadCachedRegions()) }
@@ -988,9 +990,10 @@ public enum OPNStreamPreferences {
         let region = state.region(at: index)
         var request = serverInfoRequest(baseUrl: region.url, token: token)
         request.timeoutInterval = 4
-        let networkStart = OPNNetworkLog.start(request, operation: "stream.measureRegion")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "stream.measureRegion")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: error)
             var updatedBest = bestLatencyMs
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if error == nil, status >= 200, status < 500 {
@@ -1040,9 +1043,10 @@ public enum OPNStreamPreferences {
         let body = networkTestRequestBody(preflight: preflight, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
         OPNProtocolDebug.logJSONObject(label: "nettestsession request", object: body)
         request.httpBody = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
-        let networkStart = OPNNetworkLog.start(request, operation: "stream.networkTestSession")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "stream.networkTestSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "stream.networkTestSession")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "stream.networkTestSession", startedAt: networkStart, data: data, response: response, error: error)
             var result = preflight
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if error == nil, let data, (200..<300).contains(status), let json = String(data: data, encoding: .utf8) {

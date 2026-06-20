@@ -1012,7 +1012,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
             descriptor.colorAttachments[0].pixelFormat = pixelFormat
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            NSLog("[LibWebRTC] spatial enhancement pipeline %@ failed: %@", fragmentFunctionName, error.localizedDescription)
+            WebRTCMediaTelemetry.capture("webrtc.native.video_enhancement.pipeline.error", level: .warning, message: "Spatial enhancement pipeline failed.", attributes: ["function": fragmentFunctionName, "error": error.localizedDescription])
             return nil
         }
     }
@@ -1022,7 +1022,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         do {
             return try device.makeLibrary(source: OPNVideoTextureSource.spatialShaderSource, options: nil)
         } catch {
-            NSLog("[LibWebRTC] spatial enhancement shader library failed: %@", error.localizedDescription)
+            WebRTCMediaTelemetry.capture("webrtc.native.video_enhancement.library.error", level: .warning, message: "Spatial enhancement shader library failed.", attributes: ["error": error.localizedDescription])
             return nil
         }
     }

@@ -1,5 +1,4 @@
 import Foundation
-import Foundation
 @preconcurrency import Sentry
 
 @objcMembers
@@ -35,6 +34,10 @@ public final class OPNSentryTransaction: NSObject {
     @objc(addTraceHeaders:)
     public func addTraceHeaders(_ request: NSMutableURLRequest) {
         OPNSentry.addTraceHeaders(from: span, to: request)
+    }
+
+    public func addTraceHeaders(to request: inout URLRequest) {
+        OPNSentry.addTraceHeaders(from: span, to: &request)
     }
 
     public func finish() {
@@ -98,8 +101,26 @@ public final class OPNSentry: NSObject {
         !environmentFlagEnabled("OPN_DISABLE_INFO_LOGS")
     }
 
+    public static func shouldLogDebug() -> Bool {
+        environmentFlagEnabled("OPN_DEBUG_LOGS") || environmentFlagEnabled("OPN_VERBOSE_LOGS")
+    }
+
+    public static func shouldLogVerbose() -> Bool {
+        environmentFlagEnabled("OPN_VERBOSE_LOGS")
+    }
+
+    public static func sanitizedLogMessage(_ message: String) -> String {
+        sanitizedMessage(message)
+    }
+
+    public static func formattedLogMessage(level: String, area: String, message: String) -> String {
+        let resolvedLevel = level.isEmpty ? "info" : level.lowercased()
+        let resolvedArea = area.isEmpty ? "General" : area
+        return "[OpenNOW][\(resolvedLevel)][\(resolvedArea)] \(message)"
+    }
+
     public static func logDebugMessage(_ message: String) {
-        guard shouldLogInfo() else { return }
+        guard shouldLogDebug() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -171,7 +192,16 @@ public final class OPNSentry: NSObject {
         request.httpMethod = "POST"
         request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
-        let (responseData, response) = try await URLSession.shared.data(for: request)
+        let networkStart = OPNNetworkLog.start(&request, operation: "diagnostics.upload")
+        let responseData: Data
+        let response: URLResponse
+        do {
+            (responseData, response) = try await URLSession.shared.data(for: request)
+            OPNNetworkLog.finish(request, operation: "diagnostics.upload", startedAt: networkStart, data: responseData, response: response, error: nil)
+        } catch {
+            OPNNetworkLog.finish(request, operation: "diagnostics.upload", startedAt: networkStart, data: nil, response: nil, error: error)
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
         guard (200...299).contains(http.statusCode) else { throw OPNSentryDiagnosticsUploadError.httpStatus(http.statusCode) }
         guard let responseText = String(data: responseData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -193,6 +223,14 @@ public final class OPNSentry: NSObject {
         }
     }
 
+    static func addTraceHeaders(from span: Span?, to request: inout URLRequest) {
+        guard initialized, SentrySDK.isEnabled, let span else { return }
+        request.setValue(span.toTraceHeader().value(), forHTTPHeaderField: "sentry-trace")
+        if let baggage = span.baggageHttpHeader(), !baggage.isEmpty {
+            request.setValue(baggage, forHTTPHeaderField: "baggage")
+        }
+    }
+
     @objc(startTransactionWithName:operation:makeCurrent:)
     public static func startTransaction(name: String, operation: String, makeCurrent: Bool) -> OPNSentryTransaction? {
         let resolvedName = name.isEmpty ? "OpenNOW operation" : name
@@ -203,20 +241,21 @@ public final class OPNSentry: NSObject {
 
     @objc(traceHTTPRequest:name:)
     public static func traceHTTPRequest(_ request: NSMutableURLRequest, name: String) -> OPNSentryTransaction? {
-        let transaction = startTransaction(name: httpTransactionName(for: request, fallbackName: name), operation: "http.client", makeCurrent: false)
+        let transaction = startHTTPTransaction(url: request.url, method: request.httpMethod, fallbackName: name)
         guard let transaction else { return nil }
-        let requestMethod = request.httpMethod
-        let method = (requestMethod.isEmpty ? "GET" : requestMethod).uppercased()
-        transaction.setTag("http.method", value: method)
-        if let host = request.url?.host, !host.isEmpty {
-            transaction.setTag("server.address", value: host)
-        }
-        let sanitizedUrl = sanitizedURLForTrace(request.url)
-        if !sanitizedUrl.isEmpty {
-            transaction.setData("url.full", value: sanitizedUrl)
-        }
         transaction.addTraceHeaders(request)
         return transaction
+    }
+
+    public static func traceHTTPRequest(_ request: inout URLRequest, name: String) -> OPNSentryTransaction? {
+        let transaction = startHTTPTransaction(url: request.url, method: request.httpMethod, fallbackName: name)
+        guard let transaction else { return nil }
+        transaction.addTraceHeaders(to: &request)
+        return transaction
+    }
+
+    public static func startHTTPTransaction(for request: URLRequest, name: String) -> OPNSentryTransaction? {
+        startHTTPTransaction(url: request.url, method: request.httpMethod, fallbackName: name)
     }
 
     @objc(recordCounterMetricWithKey:value:attributes:)
@@ -450,7 +489,7 @@ public final class OPNSentry: NSObject {
             }
             guard let handle = try? FileHandle(forWritingTo: url) else { return }
             defer { try? handle.close() }
-            try? handle.seekToEnd()
+            _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
             trimDiagnosticsLogIfNeeded(url: url)
         }
@@ -496,12 +535,26 @@ public final class OPNSentry: NSObject {
         return lower.contains("error") || lower.contains("exception") || lower.contains("failed") || lower.contains("failure") || lower.contains("crash") || lower.contains("fatal")
     }
 
-    private static func httpTransactionName(for request: NSMutableURLRequest, fallbackName: String) -> String {
-        let requestMethod = request.httpMethod
-        let method = (requestMethod.isEmpty ? "GET" : requestMethod).uppercased()
-        let host = request.url?.host?.isEmpty == false ? request.url?.host ?? "unknown-host" : "unknown-host"
-        let path = request.url?.path.isEmpty == false ? request.url?.path ?? "/" : "/"
-        let name = "HTTP \(method) \(host)\(path)"
+    private static func startHTTPTransaction(url: URL?, method: String?, fallbackName: String) -> OPNSentryTransaction? {
+        let transaction = startTransaction(name: httpTransactionName(url: url, method: method, fallbackName: fallbackName), operation: "http.client", makeCurrent: false)
+        guard let transaction else { return nil }
+        let resolvedMethod = (method?.isEmpty == false ? method ?? "GET" : "GET").uppercased()
+        transaction.setTag("http.method", value: resolvedMethod)
+        if let host = url?.host, !host.isEmpty {
+            transaction.setTag("server.address", value: host)
+        }
+        let sanitizedUrl = sanitizedURLForTrace(url)
+        if !sanitizedUrl.isEmpty {
+            transaction.setData("url.full", value: sanitizedUrl)
+        }
+        return transaction
+    }
+
+    private static func httpTransactionName(url: URL?, method: String?, fallbackName: String) -> String {
+        let resolvedMethod = (method?.isEmpty == false ? method ?? "GET" : "GET").uppercased()
+        let host = url?.host?.isEmpty == false ? url?.host ?? "unknown-host" : "unknown-host"
+        let path = url?.path.isEmpty == false ? sanitizedURLPath(url?.path ?? "/") : "/"
+        let name = "HTTP \(resolvedMethod) \(host)\(path)"
         return name.isEmpty ? fallbackName : name
     }
 
@@ -512,7 +565,16 @@ public final class OPNSentry: NSObject {
         components.password = nil
         components.query = nil
         components.fragment = nil
+        components.path = sanitizedURLPath(components.path)
         return components.string ?? url.host ?? ""
+    }
+
+    private static func sanitizedURLPath(_ path: String) -> String {
+        path.replacingOccurrences(
+            of: #"(?i)((?:/v\d+)?/session/)[^/]+"#,
+            with: "$1redacted-id",
+            options: [.regularExpression]
+        )
     }
 }
 

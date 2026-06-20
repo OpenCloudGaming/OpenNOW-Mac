@@ -5,12 +5,16 @@ import WebRTCMedia
 struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
-        let message = "[WebRTCMedia] \(event.name): \(event.message)\(suffix)"
+        let message = OPNSentry.formattedLogMessage(level: event.level.rawValue, area: "WebRTC", message: "\(event.name): \(event.message)\(suffix)")
         switch event.level {
+        case .debug:
+            OPNSentry.logDebugMessage(message)
+        case .info:
+            OPNSentry.logInfoMessage(message)
+        case .warning:
+            OPNSentry.logWarningMessage(message)
         case .error:
             OPNSentry.logErrorMessage(message)
-        case .warning, .info, .debug:
-            OPNSentry.logInfoMessage(message)
         }
     }
 

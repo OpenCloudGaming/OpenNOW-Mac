@@ -127,7 +127,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
             }
             if restartPlayout { _ = startPlayoutLocked() }
             if restartRecording { _ = startRecordingLocked() }
-            NSLog("[LibWebRTC] CoreAudio RTC device hot-swapped input=%u output=%u play=%d record=%d", inputDevice, outputDevice, isPlaying ? 1 : 0, isRecording ? 1 : 0)
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.hot_swap", level: .debug, message: "CoreAudio RTC device hot-swapped.", attributes: ["inputDevice": String(inputDevice), "outputDevice": String(outputDevice), "playout": String(isPlaying), "recording": String(isRecording)])
         }
     }
 
@@ -197,7 +197,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         guard initializePlayoutLocked(), let playoutUnit else { return false }
         let status = AudioOutputUnitStart(playoutUnit)
         isPlaying = status == noErr
-        if status != noErr { NSLog("[LibWebRTC] CoreAudio playout start failed status=%d", status) }
+        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.playout_start.error", level: .warning, message: "CoreAudio playout start failed.", attributes: ["status": String(status)]) }
         return isPlaying
     }
 
@@ -205,7 +205,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         guard initializeRecordingLocked(), let recordingUnit else { return false }
         let status = AudioOutputUnitStart(recordingUnit)
         isRecording = status == noErr
-        if status != noErr { NSLog("[LibWebRTC] CoreAudio recording start failed status=%d", status) }
+        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.recording_start.error", level: .warning, message: "CoreAudio recording start failed.", attributes: ["status": String(status)]) }
         return isRecording
     }
 
@@ -230,14 +230,14 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &disable, UInt32(MemoryLayout<UInt32>.size))
         var device = outputDevice
         var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-        if status != noErr { NSLog("[LibWebRTC] CoreAudio set output device failed status=%d device=%u", status, outputDevice) }
+        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.output_device.error", level: .warning, message: "CoreAudio set output device failed.", attributes: ["status": String(status), "device": String(outputDevice)]) }
         var format = streamFormat(sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
         var callback = AURenderCallbackStruct(inputProc: coreAudioPlayoutCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         status = AudioUnitInitialize(unit)
         guard status == noErr else {
-            NSLog("[LibWebRTC] CoreAudio playout initialize failed status=%d", status)
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.playout_initialize.error", level: .warning, message: "CoreAudio playout initialize failed.", attributes: ["status": String(status)])
             disposePlayoutUnitLocked()
             return false
         }
@@ -256,14 +256,14 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &enable, UInt32(MemoryLayout<UInt32>.size))
         var device = inputDevice
         var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-        if status != noErr { NSLog("[LibWebRTC] CoreAudio set input device failed status=%d device=%u", status, inputDevice) }
+        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.input_device.error", level: .warning, message: "CoreAudio set input device failed.", attributes: ["status": String(status), "device": String(inputDevice)]) }
         var format = streamFormat(sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
         var callback = AURenderCallbackStruct(inputProc: coreAudioRecordingCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         status = AudioUnitInitialize(unit)
         guard status == noErr else {
-            NSLog("[LibWebRTC] CoreAudio recording initialize failed status=%d", status)
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.recording_initialize.error", level: .warning, message: "CoreAudio recording initialize failed.", attributes: ["status": String(status)])
             disposeRecordingUnitLocked()
             return false
         }
@@ -277,7 +277,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         var unit: AudioUnit?
         let status = AudioComponentInstanceNew(component, &unit)
         guard status == noErr else {
-            NSLog("[LibWebRTC] CoreAudio HAL unit creation failed status=%d", status)
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.hal_unit.error", level: .warning, message: "CoreAudio HAL unit creation failed.", attributes: ["status": String(status)])
             return nil
         }
         return unit
@@ -425,16 +425,16 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
     func refreshAudioDevices(sessionImpl: OPNLibWebRTCSessionImpl?) {
         self.sessionImpl = sessionImpl
         guard audioMonitoringActive else {
-            NSLog("[LibWebRTC] audio device refresh skipped: monitor inactive")
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.refresh_skipped", level: .debug, message: "Audio device refresh skipped because monitoring is inactive.")
             return
         }
         guard let sessionImpl, sessionImpl.peerConnection != nil else {
-            NSLog("[LibWebRTC] audio device refresh skipped: peer connection missing")
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.refresh_skipped", level: .debug, message: "Audio device refresh skipped because the peer connection is missing.")
             return
         }
         if let audioDevice = sessionImpl.audioDevice {
             audioDevice.handleDefaultDeviceChange()
-            NSLog("[LibWebRTC] audio device refresh delegated to CoreAudio RTC device input=%u output=%u", defaultInputDevice, defaultOutputDevice)
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.refresh_delegated", level: .debug, message: "Audio device refresh delegated to CoreAudio RTC device.", attributes: ["inputDevice": String(defaultInputDevice), "outputDevice": String(defaultOutputDevice)])
             return
         }
         let refreshGeneration = audioDeviceChangeGeneration
@@ -442,7 +442,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         sessionImpl.remoteAudioTrack?.isEnabled = false
         sessionImpl.localMicrophoneTrack?.isEnabled = false
         setRTCAudioSessionEnabled(false)
-        NSLog("[LibWebRTC] audio device refresh scheduled input=%u output=%u rtcAudioSession=1", defaultInputDevice, defaultOutputDevice)
+        WebRTCMediaTelemetry.capture("webrtc.native.audio.refresh_scheduled", level: .debug, message: "Audio device refresh scheduled.", attributes: ["inputDevice": String(defaultInputDevice), "outputDevice": String(defaultOutputDevice)])
 
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(200)) { [weak self, weak sessionImpl] in
             guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == refreshGeneration else { return }
@@ -453,12 +453,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
                 localMicrophoneTrack.isEnabled = self.microphoneEnabled && shouldRestoreMicrophone
                 localMicrophoneTrack.source.volume = self.microphoneVolume
             }
-            NSLog("[LibWebRTC] audio device refresh applied input=%u output=%u remoteTrack=%d micTrack=%d micEnabled=%d",
-                  self.defaultInputDevice,
-                  self.defaultOutputDevice,
-                  sessionImpl?.remoteAudioTrack == nil ? 0 : 1,
-                  sessionImpl?.localMicrophoneTrack == nil ? 0 : 1,
-                  sessionImpl?.localMicrophoneTrack?.isEnabled == true ? 1 : 0)
+            WebRTCMediaTelemetry.capture("webrtc.native.audio.refresh_applied", level: .debug, message: "Audio device refresh applied.", attributes: ["inputDevice": String(self.defaultInputDevice), "outputDevice": String(self.defaultOutputDevice), "remoteTrack": String(sessionImpl?.remoteAudioTrack != nil), "microphoneTrack": String(sessionImpl?.localMicrophoneTrack != nil), "microphoneEnabled": String(sessionImpl?.localMicrophoneTrack?.isEnabled == true)])
         }
     }
 
@@ -475,7 +470,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         let devicesStatus = AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &devicesAddress, audioDeviceChangedCallback, context)
         let inputStatus = AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &inputAddress, audioDeviceChangedCallback, context)
         let outputStatus = AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &outputAddress, audioDeviceChangedCallback, context)
-        NSLog("[LibWebRTC] audio device monitoring started devices=%d input=%d output=%d currentInput=%u currentOutput=%u", devicesStatus, inputStatus, outputStatus, defaultInputDevice, defaultOutputDevice)
+        WebRTCMediaTelemetry.capture("webrtc.native.audio.monitor.start", level: .debug, message: "Audio device monitoring started.", attributes: ["devicesStatus": String(devicesStatus), "inputStatus": String(inputStatus), "outputStatus": String(outputStatus), "inputDevice": String(defaultInputDevice), "outputDevice": String(defaultOutputDevice)])
     }
 
     @objc func stopAudioDeviceMonitoring() {
@@ -490,7 +485,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &outputAddress, audioDeviceChangedCallback, context)
         defaultInputDevice = AudioDeviceID(kAudioObjectUnknown)
         defaultOutputDevice = AudioDeviceID(kAudioObjectUnknown)
-        NSLog("[LibWebRTC] audio device monitoring stopped")
+        WebRTCMediaTelemetry.capture("webrtc.native.audio.monitor.stop", level: .debug, message: "Audio device monitoring stopped.")
     }
 
     func scheduleAudioDeviceChange() {
@@ -511,13 +506,13 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
             let generation = audioDeviceChangeGeneration
             if audioDeviceUnavailableRetryCount < 10 {
                 audioDeviceUnavailableRetryCount += 1
-                NSLog("[LibWebRTC] default output device unavailable during hotplug input=%u output=%u retry=%d", inputDevice, outputDevice, audioDeviceUnavailableRetryCount)
+                WebRTCMediaTelemetry.capture("webrtc.native.audio.output_unavailable", level: .debug, message: "Default output device unavailable during hotplug; retrying.", attributes: ["inputDevice": String(inputDevice), "outputDevice": String(outputDevice), "retry": String(audioDeviceUnavailableRetryCount)])
                 DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) { [weak self] in
                     guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == generation else { return }
                     self.handleAudioDeviceChange(sessionImpl: self.sessionImpl)
                 }
             } else {
-                NSLog("[LibWebRTC] default output device remained unavailable after headset hotplug retries")
+                WebRTCMediaTelemetry.capture("webrtc.native.audio.output_unavailable", level: .warning, message: "Default output device remained unavailable after hotplug retries.")
             }
             return
         }
@@ -526,7 +521,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         let inputChanged = inputDevice != defaultInputDevice
         let outputChanged = outputDevice != defaultOutputDevice
         guard inputChanged || outputChanged else { return }
-        NSLog("[LibWebRTC] default audio device changed input=%u->%u output=%u->%u", defaultInputDevice, inputDevice, defaultOutputDevice, outputDevice)
+        WebRTCMediaTelemetry.capture("webrtc.native.audio.device_changed", level: .info, message: "Default audio device changed.", attributes: ["previousInput": String(defaultInputDevice), "inputDevice": String(inputDevice), "previousOutput": String(defaultOutputDevice), "outputDevice": String(outputDevice)])
         defaultInputDevice = inputDevice
         defaultOutputDevice = outputDevice
         refreshAudioDevices(sessionImpl: sessionImpl)
@@ -537,7 +532,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         if !customAudioDeviceActive, Self.envFlagEnabled("OPN_ENABLE_WEBRTC_AUDIO_HOTSWAP_RECOVERY", defaultValue: true) {
             DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(700)) { [weak self] in
                 guard let self, self.audioMonitoringActive, self.audioDeviceChangeGeneration == generation else { return }
-                NSLog("[LibWebRTC] forcing stream recovery after audio device change input=%u output=%u", self.defaultInputDevice, self.defaultOutputDevice)
+                WebRTCMediaTelemetry.capture("webrtc.native.audio.recovery", level: .warning, message: "Forcing stream recovery after audio device change.", attributes: ["inputDevice": String(self.defaultInputDevice), "outputDevice": String(self.defaultOutputDevice)])
                 self.owner?.handleConnectionState(false, error: "webrtc audio device changed")
             }
         }
@@ -567,7 +562,7 @@ final class OPNLibWebRTCAudio: NSObject, @unchecked Sendable {
         }
         microphoneLevelTimer = timer
         timer.resume()
-        NSLog("[LibWebRTC] microphone level polling started")
+        WebRTCMediaTelemetry.capture("webrtc.native.audio.microphone_level", level: .debug, message: "Microphone level polling started.")
     }
 
     @objc func stopMicrophoneLevelPolling() {

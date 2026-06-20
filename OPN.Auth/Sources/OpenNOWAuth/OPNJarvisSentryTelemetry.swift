@@ -17,7 +17,7 @@ final class OPNJarvisSentryTelemetry: JarvisTelemetry, @unchecked Sendable {
 
     func recordBreadcrumb(_ message: String, attributes: [String: String]) {
         let suffix = attributes.isEmpty ? "" : " " + attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
-        OPNSentry.logInfoMessage("[Jarvis] \(message)\(suffix)")
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Jarvis", message: "\(message)\(suffix)"))
     }
 
     func recordCounter(name: String, attributes: [String: String]) {
@@ -28,7 +28,7 @@ final class OPNJarvisSentryTelemetry: JarvisTelemetry, @unchecked Sendable {
         var parts = attributes
         if let operation { parts["jarvis.operation"] = operation.rawValue }
         let suffix = parts.isEmpty ? "" : " " + parts.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
-        OPNSentry.logErrorMessage("[Jarvis] \(error.localizedDescription)\(suffix)")
+        OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Jarvis", message: "\(error.localizedDescription)\(suffix)"))
     }
 }
 

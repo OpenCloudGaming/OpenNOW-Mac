@@ -2,9 +2,9 @@ import CryptoKit
 import Foundation
 
 @objc(OPNGameDataCache)
-final class OPNGameDataCache: NSObject {
+final class OPNGameDataCache: NSObject, @unchecked Sendable {
     @objc(shared)
-    nonisolated(unsafe) static let shared = OPNGameDataCache()
+    static let shared = OPNGameDataCache()
 
     private let rootPath: String
     private let catalogPath: String
@@ -167,8 +167,9 @@ final class OPNGameDataCache: NSObject {
     }
 
     func saveCatalogDefinitionsAsync(locale: String, definitions: NSDictionary) {
+        nonisolated(unsafe) let unsafeDefinitions = definitions.copy() as? NSDictionary ?? definitions
         ioQueue.async { [self] in
-            saveCatalogDefinitions(locale: locale, definitions: definitions)
+            saveCatalogDefinitions(locale: locale, definitions: unsafeDefinitions)
         }
     }
 

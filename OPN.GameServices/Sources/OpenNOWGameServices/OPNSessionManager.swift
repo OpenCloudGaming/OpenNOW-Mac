@@ -27,7 +27,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
-            OPNSentry.logErrorMessage("[SessionManager] Refusing CreateSession with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))")
+            OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
             return
         }
@@ -47,7 +47,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
 
-        OPNSentry.logInfoMessage("[SessionManager] CreateSession called with appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))")
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
 
         let sessionRequestData: [String: Any] = [
             "appId": launchAppId.stringValue,
@@ -112,20 +112,16 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
         nonisolated(unsafe) let createCompletion = completion
         nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch create session")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.createSession")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.createSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.createSession")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.createSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 createCompletion(false, [:], error.localizedDescription)
                 return
             }
             guard let data else {
-                trace?.setStatus(false)
-                trace?.finish()
                 createCompletion(false, [:], "No session response")
                 return
             }
@@ -135,8 +131,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
                 if let json = self.jsonDictionary(data), self.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
-                    trace?.setStatus(true)
-                    trace?.finish()
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
                         self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
                     } else {
@@ -144,27 +138,19 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     }
                     return
                 }
-                trace?.setStatus(false)
-                trace?.finish()
                 createCompletion(false, [:], errorMessage)
                 return
             }
             guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
-                trace?.setStatus(false)
-                trace?.finish()
                 createCompletion(false, [:], self.requestStatusError(data: data, fallback: "Failed to parse session response"))
                 return
             }
             guard let session = json["session"] as? [String: Any] else {
-                trace?.setStatus(false)
-                trace?.finish()
                 createCompletion(false, [:], "No session in response")
                 return
             }
             var info = self.sessionInfo(from: session, requestedSessionId: "", baseUrl: baseUrl, clientId: clientId, deviceId: deviceId, initialProfile: [:])
             self.mergeAndStoreAdState(&info)
-            trace?.setStatus(true)
-            trace?.finish()
             createCompletion(true, info, "")
         }.resume()
     }
@@ -187,41 +173,31 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         var request = URLRequest(url: url)
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: false)
         nonisolated(unsafe) let completion = completion
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch poll session")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollSession")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollSession")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], error.localizedDescription)
                 return
             }
             guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
             guard let json = self.jsonDictionary(data), let session = json["session"] as? [String: Any] else {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], "No session in poll response")
                 return
             }
             var info = self.sessionInfo(from: session, requestedSessionId: sessionId, baseUrl: base, clientId: "", deviceId: "", initialProfile: [:])
             guard string(info["sessionId"]) == sessionId else {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], "SESSION_ID_MISMATCH: requested \(escapedLogString(sessionId)) but response contained \(escapedLogString(string(info["sessionId"])))")
                 return
             }
             self.mergeAndStoreAdState(&info)
             self.logPollSessionSummary(httpStatus: http.statusCode, info: info)
-            trace?.setStatus(true)
-            trace?.finish()
             completion(true, info, "")
         }.resume()
     }
@@ -242,25 +218,19 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         request.httpMethod = "DELETE"
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: true)
         nonisolated(unsafe) let completion = completion
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch stop session")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.stopSession")
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.stopSession")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: error)
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, error.localizedDescription)
                 return
             }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                trace?.setStatus(false)
-                trace?.finish()
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
                 completion(false, "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
-            trace?.setStatus(true)
-            trace?.finish()
             completion(true, "")
         }.resume()
     }
@@ -279,31 +249,23 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         var request = URLRequest(url: url)
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: false)
         nonisolated(unsafe) let completion = completion
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch active sessions")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.activeSessions")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.activeSessions")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [], error.localizedDescription)
                 return
             }
             guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
                 return
             }
             guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [], "API error from sessions endpoint")
                 return
             }
-            trace?.setStatus(true)
-            trace?.finish()
             completion(true, self.activeSessionEntries(from: array(json["sessions"]), streamingBaseUrl: base), "")
         }.resume()
     }
@@ -340,27 +302,21 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let adSession = session
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch report session ad")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.reportSessionAd")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.reportSessionAd")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], error.localizedDescription)
                 return
             }
             guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                trace?.setStatus(false)
-                trace?.finish()
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
                 completion(false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
             guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
-                trace?.setStatus(false)
-                trace?.finish()
                 let body = String(data: data, encoding: .utf8) ?? ""
                 completion(false, [:], "Ad update API error: \(body)")
                 return
@@ -375,15 +331,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 updated["adState"] = self.sessionAdState(from: sessionJson)
                 self.mergeAndStoreAdState(&updated)
             }
-            trace?.setStatus(true)
-            trace?.finish()
             completion(true, updated, "")
         }.resume()
     }
 
     func claimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], recoveryMode: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
-            OPNSentry.logErrorMessage("[ClaimSession] Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))")
+            OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ClaimSession", message: "Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
             return
         }
@@ -403,22 +357,20 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "Invalid validation URL")
             return
         }
-        OPNSentry.logInfoMessage("[ClaimSession] Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)")
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
         var validationRequest = URLRequest(url: validationUrl)
         validationRequest.timeoutInterval = 30
         applyCommonCloudMatchHeaders(to: &validationRequest, token: token, deviceId: deviceId, includeOrigin: false)
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let claimSettings = settings
-        let validationTrace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: validationUrl), name: "Cloudmatch validate session claim")
-        let validationNetworkStart = OPNNetworkLog.start(validationRequest, operation: "cloudmatch.validateSessionClaim")
-        URLSession.shared.dataTask(with: validationRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(validationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
+        let validationNetworkStart = OPNNetworkLog.start(&validationRequest, operation: "cloudmatch.validateSessionClaim")
+        let tracedValidationRequest = validationRequest
+        URLSession.shared.dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             var preClaimStatus = 0
             if let error {
-                OPNSentry.logErrorMessage("[ClaimSession] Validation request failed: \(error.localizedDescription)")
-                validationTrace?.setStatus(false)
-                validationTrace?.finish()
+                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
             } else if let data {
                 let json = self.jsonDictionary(data)
                 let session = json?["session"] as? [String: Any]
@@ -428,16 +380,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let http = response as? HTTPURLResponse
                 if (http?.statusCode ?? 0) >= 400 || (statusCode != 0 && statusCode != 1 && preClaimStatus == 0) {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    validationTrace?.setStatus(false)
-                    validationTrace?.finish()
                     completion(false, [:], "STALE_ACTIVE_SESSION: validation HTTP \(http?.statusCode ?? 0): \(body)")
                     return
                 }
-                validationTrace?.setStatus(true)
-                validationTrace?.finish()
             } else {
-                validationTrace?.setStatus(false)
-                validationTrace?.finish()
             }
             self.sendClaimSession(sessionId: sessionId, serverIp: serverIp, appId: launchAppId, settings: claimSettings, token: token, deviceId: deviceId, clientId: clientId, completion: completion)
         }.resume()
@@ -510,20 +456,16 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return
         }
         nonisolated(unsafe) let completion = completion
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch claim session")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.claimSession")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.claimSession")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], error.localizedDescription)
                 return
             }
             guard let data else {
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], "No claim response")
                 return
             }
@@ -531,8 +473,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let body = String(data: data, encoding: .utf8) ?? ""
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
-                trace?.setStatus(false)
-                trace?.finish()
                 if self.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
                     completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
@@ -545,18 +485,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let statusCode = int(requestStatus?["statusCode"])
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
-                    trace?.setStatus(false)
-                    trace?.finish()
                     completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
                 }
-                trace?.setStatus(false)
-                trace?.finish()
                 completion(false, [:], "Claim API error \(statusCode): \(description.isEmpty ? "unknown" : description)")
                 return
             }
-            trace?.setStatus(true)
-            trace?.finish()
             let claimProfile = (json["session"] as? [String: Any]).map { self.negotiatedStreamProfile(from: $0) } ?? [:]
             self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: claimProfile, completion: completion)
         }.resume()
@@ -833,12 +767,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     private func logPollSessionSummary(httpStatus: Int, info: [String: Any]) {
-        var summary = "[PollSession] status=\(int(info["status"])) \(string(info["sessionId"]).prefix(8))"
+        var summary = "status=\(int(info["status"])) sessionId=\(string(info["sessionId"]).prefix(8))"
         if httpStatus != 200 { summary += " http=\(httpStatus)" }
         let queuePosition = int(info["queuePosition"])
         if queuePosition > 0 { summary += " queue=\(queuePosition)" }
         if let adState = info["adState"] as? [String: Any], bool(adState["isAdsRequired"]) { summary += " ads=required" }
-        OPNSentry.logInfoMessage(summary)
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "PollSession", message: summary))
     }
 
     private func storePersistedActiveSessionId(_ sessionId: String) {
@@ -847,7 +781,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         guard current != sessionId else { return }
         UserDefaults.standard.set(sessionId, forKey: Self.persistedActiveSessionIdKey)
         UserDefaults.standard.synchronize()
-        OPNSentry.logInfoMessage("[SessionManager] Persisted active sessionId=\(sessionId)")
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Persisted active sessionId=\(sessionId)"))
     }
 
     private func clearPersistedActiveSessionId(_ sessionId: String) {
@@ -855,7 +789,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         guard !current.isEmpty, sessionId.isEmpty || current == sessionId else { return }
         UserDefaults.standard.removeObject(forKey: Self.persistedActiveSessionIdKey)
         UserDefaults.standard.synchronize()
-        OPNSentry.logInfoMessage("[SessionManager] Cleared persisted active sessionId=\(current)")
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Cleared persisted active sessionId=\(current)"))
     }
 }
 
@@ -892,12 +826,10 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
         }
         var request = URLRequest(url: url)
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: deviceId, includeOrigin: false)
-        let trace = OPNSentry.traceHTTPRequest(NSMutableURLRequest(url: url), name: "Cloudmatch poll claim session")
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollClaimSession")
-        URLSession.shared.dataTask(with: request) { [self] data, response, error in
-            OPNNetworkLog.finish(request, operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
-            trace?.setStatus(error == nil && data != nil)
-            trace?.finish()
+        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollClaimSession")
+        let tracedRequest = request
+        URLSession.shared.dataTask(with: tracedRequest) { [self] data, response, error in
+            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
             manager.pollClaimSessionRequestFinished(context: self, attempt: attempt, data: data, error: error)
         }.resume()
     }

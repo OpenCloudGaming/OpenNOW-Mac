@@ -64,20 +64,21 @@ public struct GDNURLSessionTransport: GDNHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let networkStart = OPNNetworkLog.start(request, operation: "gdn.transport")
+        var tracedRequest = request
+        let networkStart = OPNNetworkLog.start(&tracedRequest, operation: "gdn.transport")
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await URLSession.shared.data(for: tracedRequest)
         } catch {
-            OPNNetworkLog.finish(request, operation: "gdn.transport", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(tracedRequest, operation: "gdn.transport", startedAt: networkStart, data: nil, response: nil, error: error)
             throw error
         }
         guard let httpResponse = response as? HTTPURLResponse else {
-            OPNNetworkLog.finish(request, operation: "gdn.transport", startedAt: networkStart, data: data, response: response, error: GDNServiceError.invalidHTTPResponse)
+            OPNNetworkLog.finish(tracedRequest, operation: "gdn.transport", startedAt: networkStart, data: data, response: response, error: GDNServiceError.invalidHTTPResponse)
             throw GDNServiceError.invalidHTTPResponse
         }
-        OPNNetworkLog.finish(request, operation: "gdn.transport", startedAt: networkStart, data: data, response: response, error: nil)
+        OPNNetworkLog.finish(tracedRequest, operation: "gdn.transport", startedAt: networkStart, data: data, response: response, error: nil)
         return (data, httpResponse)
     }
 }

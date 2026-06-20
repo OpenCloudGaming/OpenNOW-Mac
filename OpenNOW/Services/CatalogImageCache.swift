@@ -168,7 +168,7 @@ actor CatalogImageCache {
         request.timeoutInterval = 30
         if !eTag.isEmpty { request.setValue(eTag, forHTTPHeaderField: "If-None-Match") }
         if !lastModified.isEmpty { request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since") }
-        let networkStart = OPNNetworkLog.start(request, operation: "catalog.image")
+        let networkStart = OPNNetworkLog.start(&request, operation: "catalog.image")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: data, response: response, error: nil)

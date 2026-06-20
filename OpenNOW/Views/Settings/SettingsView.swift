@@ -1209,7 +1209,7 @@ private struct AboutSettingsPage: View {
         guard !diagnosticsState.isWorking else { return }
         Task { @MainActor in
             diagnosticsState = .preparing
-            OPNSentry.logInfoMessage("[Diagnostics] Preparing user-requested diagnostics upload")
+            OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Preparing user-requested diagnostics upload"))
             diagnosticsState = .readingLog
             let logText = OPNSentry.diagnosticsLogForUpload()
             diagnosticsState = .uploading
@@ -1218,11 +1218,11 @@ private struct AboutSettingsPage: View {
                 diagnosticsState = .copying
                 copy(diagnosticsText(logURL: logURL), key: "diagnostics")
                 diagnosticsState = .copied(logURL.absoluteString)
-                OPNSentry.logInfoMessage("[Diagnostics] Uploaded sanitized diagnostics log url=\(logURL.absoluteString)")
+                OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Uploaded sanitized diagnostics log url=\(logURL.absoluteString)"))
             } catch {
                 let message = error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
                 diagnosticsState = .failed(message)
-                OPNSentry.logErrorMessage("[Diagnostics] Diagnostics upload failed error=\(message)")
+                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Diagnostics", message: "Diagnostics upload failed error=\(message)"))
             }
         }
     }

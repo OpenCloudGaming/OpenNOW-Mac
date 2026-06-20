@@ -117,11 +117,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         impl.audioDevice = audioDevice
         impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)
         if impl.factory == nil {
-            NSLog("[LibWebRTC] CoreAudio RTC device factory failed; falling back to default WebRTC audio device")
+            WebRTCMediaTelemetry.capture("webrtc.native.factory.audio_device_fallback", level: .warning, message: "CoreAudio RTC device factory failed; using default WebRTC audio device.")
             impl.audioDevice = nil
             impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
         } else {
-            NSLog("[LibWebRTC] CoreAudio RTC audio device enabled")
+            WebRTCMediaTelemetry.capture("webrtc.native.factory.audio_device", level: .debug, message: "CoreAudio RTC audio device enabled.")
         }
         guard let factory = impl.factory else {
             handleConnectionState(false, error: "failed to create libwebrtc factory")
@@ -131,7 +131,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let configuration = RTCConfiguration()
         let configuredIceServers = iceServers(from: sessionInfo)
         configuration.iceServers = configuredIceServers
-        NSLog("[LibWebRTC] configured ICE servers=%d", configuration.iceServers.count)
+        WebRTCMediaTelemetry.capture("webrtc.native.ice_servers", level: .debug, message: "Configured ICE servers.", attributes: ["count": String(configuration.iceServers.count)])
         configuration.sdpSemantics = .unifiedPlan
         configuration.bundlePolicy = .maxBundle
         configuration.rtcpMuxPolicy = .require
@@ -160,11 +160,15 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         if isSupportedCodecPreference(requestedCodec), requestedCodecSupported, envFlagEnabled("OPN_ENABLE_LIBWEBRTC_CODEC_FILTER", defaultValue: false) {
             processedOfferSdp = preferCodecInOffer(processedOfferSdp, normalizedCodec: requestedCodec)
         } else if !requestedCodec.isEmpty, !requestedCodecSupported {
-            NSLog("[LibWebRTC] Requested codec %@ is not supported by this WebRTC.framework; retaining full offer", requestedCodec)
+            WebRTCMediaTelemetry.capture("webrtc.native.codec.unsupported_offer", level: .warning, message: "Requested codec is not supported; retaining full offer.", attributes: ["codec": requestedCodec])
         }
         let remoteOfferSdp = processedOfferSdp
         let canRetryOriginalOffer = processedOfferSdp != offerSdp
         logVideoSdpSummary("offer-video", remoteOfferSdp)
+        let manualIceMedia = dictionary(sessionInfo["mediaConnectionInfo"])
+        let manualIceIp = extractPublicIp(string(manualIceMedia["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(manualIceMedia["ip"]))
+        let manualIcePort = int(manualIceMedia["port"], fallback: 47998)
+        let shouldInjectDirectCandidates = configuredIceServers.isEmpty
 
         @Sendable func handleRemoteDescriptionSet(impl: OPNLibWebRTCSessionImpl, peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
             self.prepareMicrophoneIfNeeded(impl: impl, factory: factory)
@@ -174,10 +178,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                 if videoSdpContainsCodec(remoteOfferSdp, normalizedCodec: answerCodec) {
                     codecPreferenceApplied = OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec)
                     if !codecPreferenceApplied {
-                        NSLog("[LibWebRTC] No video transceiver accepted %@ codec preference before answer", answerCodec)
+                        WebRTCMediaTelemetry.capture("webrtc.native.codec.preference_unaccepted", level: .warning, message: "No video transceiver accepted codec preference before answer.", attributes: ["codec": answerCodec])
                     }
                 } else {
-                    NSLog("[LibWebRTC] Skipping %@ codec preference because remote offer does not include it", answerCodec)
+                    WebRTCMediaTelemetry.capture("webrtc.native.codec.preference_skipped", level: .debug, message: "Skipping codec preference because the remote offer does not include it.", attributes: ["codec": answerCodec])
                     codecPreferenceApplied = false
                 }
             } else {
@@ -197,7 +201,6 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                     guard videoSdpHasMediaCodec(answerSdp) else {
                         if codecPreferenceApplied, !retriedWithoutCodecPreference, OPNWebRTCCodecSupport.resetVideoCodecPreferences(peerConnection: peerConnection) {
                             let message = "[LibWebRTC] createAnswer rejected video after codec preference; retrying with default codec preferences"
-                            NSLog("%@", message)
                             OPNLogCapture.appendEvent(message)
                             createAndSendAnswer(retriedWithoutCodecPreference: true)
                             return
@@ -222,11 +225,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             createAndSendAnswer(retriedWithoutCodecPreference: false)
         }
 
-        func injectDirectCandidatesIfNeeded(offerSdp: String) {
-            guard configuredIceServers.isEmpty else { return }
+        @Sendable func injectDirectCandidatesIfNeeded(offerSdp: String) {
+            guard shouldInjectDirectCandidates, !manualIceIp.isEmpty else { return }
             let serverIceUfrag = Self.iceUfrag(fromOfferSdp: offerSdp)
             guard !serverIceUfrag.isEmpty else { return }
-            self.injectManualIceCandidate(sessionInfo: sessionInfo, offerSdp: offerSdp, serverIceUfrag: serverIceUfrag)
+            self.injectManualIceCandidate(offerSdp: offerSdp, serverIceUfrag: serverIceUfrag, ip: manualIceIp, port: manualIcePort)
         }
 
         let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
@@ -296,19 +299,16 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let sdpMLineIndex = Int32(int(payload["sdpMLineIndex"]))
         let rtcCandidate = RTCIceCandidate(sdp: candidate, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid.isEmpty ? nil : sdpMid)
         peerConnection.add(rtcCandidate) { error in
-            if let error { NSLog("[LibWebRTC] addIceCandidate failed: %@", error.localizedDescription) }
+            if let error { WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.add.error", level: .warning, message: "Failed to add remote ICE candidate.", attributes: ["error": error.localizedDescription]) }
         }
     }
 
-    func injectManualIceCandidate(sessionInfo: [String: Any], offerSdp: String, serverIceUfrag: String) {
-        let media = dictionary(sessionInfo["mediaConnectionInfo"])
-        let ip = extractPublicIp(string(media["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(media["ip"]))
+    func injectManualIceCandidate(offerSdp: String, serverIceUfrag: String, ip: String, port: Int) {
         guard !ip.isEmpty else { return }
         let targets = extractIceTargets(from: offerSdp)
         guard !targets.isEmpty else { return }
-        let port = int(media["port"], fallback: 47998)
         let candidate = "candidate:1 1 udp 2130706431 \(ip) \(port) typ host generation 0 ufrag \(serverIceUfrag) network-cost 999"
-        NSLog("[LibWebRTC] injecting direct ICE candidates count=%d ip=%@ port=%d ufrag=%@", targets.count, ip, port, serverIceUfrag)
+        WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.inject", level: .debug, message: "Injecting direct ICE candidates.", attributes: ["count": String(targets.count), "port": String(port)])
         for target in targets {
             addRemoteIceCandidatePayload(["candidate": candidate, "sdpMid": target.mid, "sdpMLineIndex": target.mLineIndex, "usernameFragment": serverIceUfrag])
         }
@@ -551,7 +551,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                 audioController.startMicrophoneLevelPolling(sessionImpl: impl, statsQueue: statsQueue)
             }
         } else {
-            NSLog("[LibWebRTC] failed to attach local microphone track")
+            WebRTCMediaTelemetry.capture("webrtc.native.microphone.attach.error", level: .warning, message: "Failed to attach local microphone track.")
         }
     }
 
@@ -564,7 +564,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             if target != transceiver.direction {
                 var directionError: NSError?
                 transceiver.setDirection(target, error: &directionError)
-                if let directionError { NSLog("[LibWebRTC] failed to set microphone transceiver direction: %@", directionError.localizedDescription) }
+                if let directionError { WebRTCMediaTelemetry.capture("webrtc.native.microphone.direction.error", level: .warning, message: "Failed to set microphone transceiver direction.", attributes: ["error": directionError.localizedDescription]) }
             }
             transceiver.sender.track = audioTrack
             transceiver.sender.streamIds = ["mic"]
@@ -1013,7 +1013,6 @@ private func videoSdpHasMediaCodec(_ sdp: String) -> Bool {
 
 private func logVideoSdpSummary(_ label: String, _ sdp: String) {
     let message = "[LibWebRTC] \(buildSdpMediaSummary(sdp, label: label))"
-    NSLog("%@", message)
     OPNLogCapture.appendEvent(message)
 }
 
@@ -1155,7 +1154,9 @@ private func resolvedIPv4Address(for host: String) -> String? {
         if info.pointee.ai_family == AF_INET, let address = info.pointee.ai_addr?.withMemoryRebound(to: sockaddr_in.self, capacity: 1, { $0 }) {
             var ipv4 = address.pointee.sin_addr
             if inet_ntop(AF_INET, &ipv4, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil {
-                return String(cString: buffer)
+                let length = buffer.firstIndex(of: 0) ?? buffer.count
+                let bytes = buffer.prefix(length).map { UInt8(bitPattern: $0) }
+                return String(decoding: bytes, as: UTF8.self)
             }
         }
         current = info.pointee.ai_next

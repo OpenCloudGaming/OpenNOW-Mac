@@ -77,8 +77,11 @@ public enum WebRTCMediaTelemetry {
                                message: String,
                                attributes: [String: String] = [:]) {
         let event = WebRTCMediaTelemetryEvent(name: name, level: level, message: message, attributes: attributes)
-        NSLog("%@", "[WebRTCMedia][\(level.rawValue)] \(name): \(message)")
-        currentSink()?.capture(event)
+        if let sink = currentSink() {
+            sink.capture(event)
+        } else if level != .debug {
+            NSLog("%@", "[WebRTCMedia][\(level.rawValue)] \(name): \(message)")
+        }
     }
 
     public static func record(_ key: String,
