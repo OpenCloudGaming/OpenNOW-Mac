@@ -577,35 +577,16 @@ private struct SettingsStatisticTile: View {
 
 private struct ConnectionsSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
-    @State private var searchText = ""
-    @State private var selectedFilter = ConnectionFilter.all
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ConnectionsSummaryStrip(
-                connectedCount: connectedCount,
-                totalCount: connectionStores.count,
-                syncEnabledCount: syncEnabledCount,
-                actionRequiredCount: actionRequiredCount
-            )
-
-            SettingsCard(title: "Store Connections") {
-                if viewModel.storeDefinitions.isEmpty && viewModel.accountStores.isEmpty {
-                    AccountEmptyState(title: "No store providers available", subtitle: "GeForce NOW did not return account providers for this session.")
-                } else {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ConnectionToolbar(searchText: $searchText, selectedFilter: $selectedFilter)
-                        SettingsDivider()
-                        let stores = filteredConnectionStores
-                        if stores.isEmpty {
-                            AccountEmptyState(title: "No matching stores", subtitle: "Clear the search or choose a different connection filter.")
-                        } else {
-                            ForEach(stores, id: \.self) { store in
-                                StoreConnectionRow(viewModel: viewModel, store: store)
-                                if store != stores.last { SettingsDivider() }
-                            }
-                        }
-                    }
+        SettingsCard(title: "Store Connections") {
+            if viewModel.storeDefinitions.isEmpty && viewModel.accountStores.isEmpty {
+                SettingsInfoRow(label: "Stores", value: "No account providers returned by GeForce NOW.")
+            } else {
+                let stores = connectionStores
+                ForEach(stores, id: \.self) { store in
+                    StoreConnectionRow(viewModel: viewModel, store: store)
+                    if store != stores.last { SettingsDivider() }
                 }
             }
         }
@@ -622,129 +603,6 @@ private struct ConnectionsSettingsPage: View {
         }
         return stores.sorted { viewModel.displayName(forStore: $0) < viewModel.displayName(forStore: $1) }
     }
-
-    private var filteredConnectionStores: [String] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return connectionStores.filter { store in
-            let account = viewModel.accountStatus(forStore: store)
-            let definition = definition(forStore: store)
-            let matchesFilter = selectedFilter.includes(account: account, definition: definition)
-            let matchesSearch = query.isEmpty || viewModel.displayName(forStore: store).localizedCaseInsensitiveContains(query) || store.localizedCaseInsensitiveContains(query)
-            return matchesFilter && matchesSearch
-        }
-    }
-
-    private var connectedCount: Int {
-        connectionStores.filter { viewModel.accountStatus(forStore: $0) != nil }.count
-    }
-
-    private var syncEnabledCount: Int {
-        connectionStores.filter { viewModel.accountStatus(forStore: $0)?.hasAccountSyncingData == true }.count
-    }
-
-    private var actionRequiredCount: Int {
-        connectionStores.filter { store in
-            let account = viewModel.accountStatus(forStore: store)
-            let definition = definition(forStore: store)
-            return definition?.isAccountLinkingRequired == true && account == nil
-        }.count
-    }
-
-    private func definition(forStore store: String) -> CatalogStoreDefinition? {
-        viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
-    }
-}
-
-private enum ConnectionFilter: String, CaseIterable, Identifiable {
-    case all
-    case connected
-    case available
-    case required
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: return "All"
-        case .connected: return "Connected"
-        case .available: return "Available"
-        case .required: return "Required"
-        }
-    }
-
-    func includes(account: CatalogStoreAccount?, definition: CatalogStoreDefinition?) -> Bool {
-        switch self {
-        case .all: return true
-        case .connected: return account != nil
-        case .available: return account == nil && definition?.isAccountLinkingSupported == true
-        case .required: return account == nil && definition?.isAccountLinkingRequired == true
-        }
-    }
-}
-
-private struct ConnectionsSummaryStrip: View {
-    let connectedCount: Int
-    let totalCount: Int
-    let syncEnabledCount: Int
-    let actionRequiredCount: Int
-
-    var body: some View {
-        SettingsFlowLayout(spacing: 10) {
-            SettingsStatisticTile(label: "Connected", value: "\(connectedCount)/\(totalCount)", emphasized: true)
-            SettingsStatisticTile(label: "Sync Enabled", value: "\(syncEnabledCount)")
-            SettingsStatisticTile(label: "Required", value: "\(actionRequiredCount)")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct ConnectionToolbar: View {
-    @Binding var searchText: String
-    @Binding var selectedFilter: ConnectionFilter
-
-    var body: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.settingsNvidia(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.42))
-                TextField("Search stores", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.settingsNvidia(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.88))
-                if !searchText.isEmpty {
-                    Button { searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.settingsNvidia(size: 12, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.42))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear search")
-                }
-            }
-            .padding(.horizontal, 12)
-            .frame(width: 260, height: 34)
-            .background(Color.black.opacity(0.20))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
-
-            SettingsFlowLayout(spacing: 8) {
-                ForEach(ConnectionFilter.allCases) { filter in
-                    Button { selectedFilter = filter } label: {
-                        Text(filter.title.uppercased())
-                            .font(.settingsNvidia(size: 10, weight: .bold))
-                            .foregroundStyle(selectedFilter == filter ? .black : .white.opacity(0.72))
-                            .tracking(0.7)
-                            .padding(.horizontal, 11)
-                            .frame(height: 30)
-                            .background(selectedFilter == filter ? Color.openNowGreen : Color.white.opacity(0.055))
-                            .overlay { Rectangle().stroke(selectedFilter == filter ? Color.openNowGreen : Color.white.opacity(0.11), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
 }
 
 private struct StoreConnectionRow: View {
@@ -755,150 +613,31 @@ private struct StoreConnectionRow: View {
         let account = viewModel.accountStatus(forStore: store)
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
         HStack(alignment: .center, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                ConnectionLogoMark(title: viewModel.displayName(forStore: store), connected: account != nil)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(viewModel.displayName(forStore: store))
-                            .font(.settingsNvidia(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        ConnectionStatusBadge(account: account, definition: definition)
-                    }
-                    Text(statusText(account, definition: definition))
-                        .font(.settingsNvidia(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .fixedSize(horizontal: false, vertical: true)
-                    SettingsFlowLayout(spacing: 6) {
-                        StoreConnectionCapabilityPill(title: account?.hasAccountSyncingData == true ? "Library Sync" : "Sync Unavailable", enabled: account?.hasAccountSyncingData == true)
-                        StoreConnectionCapabilityPill(title: linkingTitle(account: account, definition: definition), enabled: definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true)
-                        if account?.totalSyncedGames ?? 0 > 0 {
-                            StoreConnectionCapabilityPill(title: "\(account?.totalSyncedGames ?? 0) Games", enabled: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+            VStack(alignment: .leading, spacing: 5) {
+                Text(viewModel.displayName(forStore: store))
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(statusText(account))
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            SettingsFlowLayout(spacing: 8) {
-                if account?.hasAccountSyncingData == true {
-                    SettingsActionButton(title: "SYNC") { viewModel.syncStoreAccount(store) }
-                        .help("Sync owned games from \(viewModel.displayName(forStore: store))")
-                }
-                if definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true {
-                    SettingsActionButton(title: account == nil ? "CONNECT" : "MANAGE") { viewModel.linkStoreAccount(store) }
-                        .help(account == nil ? "Connect \(viewModel.displayName(forStore: store))" : "Manage \(viewModel.displayName(forStore: store))")
-                }
+            Spacer()
+            if account?.hasAccountSyncingData == true {
+                SettingsActionButton(title: "SYNC") { viewModel.syncStoreAccount(store) }
             }
-            .frame(width: 188, alignment: .trailing)
+            if definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true {
+                SettingsActionButton(title: account == nil ? "CONNECT" : "MANAGE") { viewModel.linkStoreAccount(store) }
+            }
         }
-        .padding(.vertical, 2)
     }
 
-    private func statusText(_ account: CatalogStoreAccount?, definition: CatalogStoreDefinition?) -> String {
-        guard let account else {
-            if definition?.isAccountLinkingRequired == true { return "Connection required before GeForce NOW can verify ownership." }
-            if definition?.isAccountLinkingSupported == true { return "Ready to connect for library sync and ownership detection." }
-            return "Not connected"
-        }
+    private func statusText(_ account: CatalogStoreAccount?) -> String {
+        guard let account else { return "Not connected" }
         if !account.userDisplayName.isEmpty { return "Connected as \(account.userDisplayName)" }
         if !account.userIdentifier.isEmpty { return "Connected as \(account.userIdentifier)" }
         if account.totalSyncedGames > 0 { return "\(account.totalSyncedGames) synced games" }
         if !account.syncState.isEmpty { return account.syncState.replacingOccurrences(of: "_", with: " ").capitalized }
         return "Connected"
-    }
-
-    private func linkingTitle(account: CatalogStoreAccount?, definition: CatalogStoreDefinition?) -> String {
-        if account?.hasAccountLinkingData == true { return "Linked" }
-        if definition?.isAccountLinkingRequired == true { return "Link Required" }
-        if definition?.isAccountLinkingSupported == true { return "Link Supported" }
-        return "Link Unavailable"
-    }
-}
-
-private struct ConnectionLogoMark: View {
-    let title: String
-    let connected: Bool
-
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(connected ? Color.openNowGreen.opacity(0.16) : Color.white.opacity(0.055))
-            Rectangle()
-                .stroke(connected ? Color.openNowGreen.opacity(0.48) : Color.white.opacity(0.10), lineWidth: 1)
-            Text(initials)
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.60))
-        }
-        .frame(width: 38, height: 38)
-    }
-
-    private var initials: String {
-        let words = title.split(separator: " ").prefix(2)
-        let value = words.compactMap(\.first).map(String.init).joined()
-        return value.isEmpty ? "--" : value.uppercased()
-    }
-}
-
-private struct ConnectionStatusBadge: View {
-    let account: CatalogStoreAccount?
-    let definition: CatalogStoreDefinition?
-
-    var body: some View {
-        Text(title)
-            .font(.settingsNvidia(size: 9, weight: .bold))
-            .foregroundStyle(foreground)
-            .tracking(0.7)
-            .padding(.horizontal, 8)
-            .frame(height: 22)
-            .background(background)
-            .overlay { Rectangle().stroke(stroke, lineWidth: 1) }
-    }
-
-    private var title: String {
-        if account != nil { return "CONNECTED" }
-        if definition?.isAccountLinkingRequired == true { return "REQUIRED" }
-        return "OFFLINE"
-    }
-
-    private var foreground: Color {
-        if account != nil { return Color.openNowGreen }
-        if definition?.isAccountLinkingRequired == true { return Color(red: 1.0, green: 0.68, blue: 0.30) }
-        return .white.opacity(0.56)
-    }
-
-    private var background: Color {
-        if account != nil { return Color.openNowGreen.opacity(0.13) }
-        if definition?.isAccountLinkingRequired == true { return Color(red: 1.0, green: 0.68, blue: 0.30).opacity(0.12) }
-        return Color.white.opacity(0.045)
-    }
-
-    private var stroke: Color {
-        if account != nil { return Color.openNowGreen.opacity(0.35) }
-        if definition?.isAccountLinkingRequired == true { return Color(red: 1.0, green: 0.68, blue: 0.30).opacity(0.34) }
-        return Color.white.opacity(0.08)
-    }
-}
-
-private struct StoreConnectionCapabilityPill: View {
-    let title: String
-    let enabled: Bool
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(enabled ? Color.openNowGreen : Color.white.opacity(0.22))
-                .frame(width: 5, height: 5)
-            Text(title.uppercased())
-                .font(.settingsNvidia(size: 9, weight: .bold))
-                .foregroundStyle(enabled ? .white.opacity(0.72) : .white.opacity(0.38))
-                .tracking(0.55)
-        }
-        .padding(.horizontal, 8)
-        .frame(height: 24)
-        .background(Color.white.opacity(enabled ? 0.055 : 0.032))
-        .overlay { Rectangle().stroke(Color.white.opacity(enabled ? 0.09 : 0.05), lineWidth: 1) }
     }
 }
 
@@ -1317,6 +1056,15 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey)
+                SettingsDivider()
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: "CHECK FOR UPDATES") {
+                        OpenNOWAppDelegate.requestApplicationUpdateCheck()
+                    }
+                    Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.54))
+                }
             }
 
             SettingsCard(title: "Cache") {
