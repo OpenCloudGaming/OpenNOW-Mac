@@ -368,8 +368,10 @@ private struct VendorActiveSessionCard: View {
                     Button("CANCEL") { viewModel.cancelVendorLaunch() }
                         .buttonStyle(VendorLaunchSecondaryButtonStyle())
                     Spacer()
-                    Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    if viewModel.canResumeActiveLaunchSession {
+                        Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
+                            .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    }
                     Button("END AND LAUNCH") { viewModel.endActiveSessionAndLaunchSelectedGame() }
                         .buttonStyle(VendorLaunchPrimaryButtonStyle())
                 }

@@ -380,6 +380,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let http = response as? HTTPURLResponse
                 if (http?.statusCode ?? 0) >= 400 || (statusCode != 0 && statusCode != 1 && preClaimStatus == 0) {
                     let body = String(data: data, encoding: .utf8) ?? ""
+                    if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                        self.clearPersistedActiveSessionId(sessionId)
+                        completion(false, [:], staleMessage)
+                        return
+                    }
                     completion(false, [:], "STALE_ACTIVE_SESSION: validation HTTP \(http?.statusCode ?? 0): \(body)")
                     return
                 }
@@ -477,6 +482,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
                 }
+                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                    self.clearPersistedActiveSessionId(sessionId)
+                    completion(false, [:], staleMessage)
+                    return
+                }
                 completion(false, [:], "Claim HTTP \(http?.statusCode ?? 0): \(body)")
                 return
             }
@@ -486,6 +496,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
                     completion(false, [:], "Session is not paused and cannot be resumed.")
+                    return
+                }
+                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                    self.clearPersistedActiveSessionId(sessionId)
+                    completion(false, [:], staleMessage)
                     return
                 }
                 completion(false, [:], "Claim API error \(statusCode): \(description.isEmpty ? "unknown" : description)")
@@ -722,11 +737,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
     }
 
-    private func selectSessionLimitReuseEntry(_ sessions: [[String: Any]], requestedAppId: Int) -> [String: Any]? {
-        sessions.first { int($0["appId"]) == requestedAppId && isReadyActiveSessionStatus(int($0["status"])) }
-            ?? sessions.first { isReadyActiveSessionStatus(int($0["status"])) }
-            ?? sessions.first { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }
-            ?? sessions.first { int($0["status"]) == 1 }
+    func selectSessionLimitReuseEntry(_ sessions: [[String: Any]], requestedAppId: Int) -> [String: Any]? {
+        let validSessions = sessions.filter { int($0["appId"]) > 0 }
+        return validSessions.first { int($0["appId"]) == requestedAppId && isReadyActiveSessionStatus(int($0["status"])) }
+            ?? validSessions.first { isReadyActiveSessionStatus(int($0["status"])) }
+            ?? validSessions.first { int($0["appId"]) == requestedAppId && int($0["status"]) == 1 }
+            ?? validSessions.first { int($0["status"]) == 1 }
     }
 
     private func currentAccessToken() -> String { lock.withLock { accessToken } }
@@ -760,6 +776,18 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func isSessionNotPausedResponse(_ data: Data?) -> Bool {
         guard let data, let requestStatus = jsonDictionary(data)?["requestStatus"] as? [String: Any] else { return false }
         return int(requestStatus["statusCode"]) == 34 || string(requestStatus["statusDescription"]).contains("SESSION_NOT_PAUSED")
+    }
+
+    private func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data) else { return nil }
+        let requestStatus = json["requestStatus"] as? [String: Any]
+        let statusCode = int(requestStatus?["statusCode"])
+        let description = string(requestStatus?["statusDescription"])
+        let session = json["session"] as? [String: Any]
+        let sessionRequestData = session?["sessionRequestData"] as? [String: Any]
+        guard let responseAppId = sessionRequestData?["appId"], int(responseAppId) <= 0 else { return nil }
+        let isInternalSessionFailure = statusCode == 4 || description.contains("INTERNAL_ERROR_STATUS") || description.contains("8A8C0000")
+        return isInternalSessionFailure ? "This GeForce NOW session is no longer resumable. End it and launch again." : nil
     }
 
     private func pollDelay(_ attempt: Int) -> TimeInterval {

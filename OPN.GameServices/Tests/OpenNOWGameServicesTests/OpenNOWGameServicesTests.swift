@@ -75,6 +75,19 @@ import WebRTCMedia
     #expect(descriptor?.signalingUrl == "wss://signaling.example.test:443/nvst/")
 }
 
+@Test func activeSessionParserKeepsZeroAppIdSessionForTermination() {
+    let descriptor = OPNActiveSessionParser.descriptor(from: [
+        "sessionId": "session-1",
+        "status": 2,
+        "sessionRequestData": ["appId": 0],
+        "sessionControlInfo": ["ip": "control.example.test"],
+    ], streamingBaseUrl: "https://cloudmatch.example.test/")
+
+    #expect(descriptor?.sessionId == "session-1")
+    #expect(descriptor?.appId == 0)
+    #expect(descriptor?.resumeServer == "control.example.test")
+}
+
 @Test func sessionManagerReadyResumeSendsExplicitPutBeforePolling() async {
     let host = "resume-success.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
@@ -138,6 +151,48 @@ import WebRTCMedia
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 }
 
+@Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
+    let host = "resume-stale-internal.example.test"
+    UserDefaults.standard.set("resume-session", forKey: "OpenNOW.Stream.ActiveSessionId")
+    SessionManagerURLProtocol.install(host: host) { request in
+        let path = request.url?.path ?? ""
+        if request.httpMethod == "GET", path == "/v2/session/resume-session" {
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        }
+        return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
+    }
+    defer {
+        UserDefaults.standard.removeObject(forKey: "OpenNOW.Stream.ActiveSessionId")
+        SessionManagerURLProtocol.uninstall(host: host)
+    }
+
+    OPNSessionManager.shared.setAccessToken("token")
+    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    #expect(result.0 == false)
+    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+    #expect(UserDefaults.standard.string(forKey: "OpenNOW.Stream.ActiveSessionId") == nil)
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+}
+
+@Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
+    let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([[
+        "sessionId": "stale-session",
+        "appId": 0,
+        "status": 2,
+        "serverIp": "control.example.test",
+    ]], requestedAppId: 123)
+
+    #expect(selected == nil)
+}
+
 private func minimalSettings() -> [String: Any] {
     [
         "resolution": "1920x1080",
@@ -176,6 +231,20 @@ private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: S
                 "framesPerSecond": 60,
                 "dpi": 96,
             ]],
+        ],
+    ]
+}
+
+private func staleSessionResponse() -> [String: Any] {
+    [
+        "requestStatus": [
+            "statusCode": 4,
+            "statusDescription": "INTERNAL_ERROR_STATUS 8A8C0000",
+        ],
+        "session": [
+            "sessionId": "resume-session",
+            "status": 4,
+            "sessionRequestData": ["appId": 0],
         ],
     ]
 }

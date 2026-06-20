@@ -499,6 +499,10 @@ final class CatalogViewModel: ObservableObject {
         return isActiveStreamLaunchOverlayVisible
     }
 
+    var canResumeActiveLaunchSession: Bool {
+        (activeLaunchSession?.appId ?? 0) > 0 && activeSessionResumeConfiguration != nil
+    }
+
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
         OpenNOWLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
         pendingLaunchGame = game
@@ -569,12 +573,18 @@ final class CatalogViewModel: ObservableObject {
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume)
                 self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
                 self.launchFlowState = .activeSessionPrompt
-                self.launchFlowMessage = "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
+                self.launchFlowMessage = active.appId > 0
+                    ? "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
+                    : "GeForce NOW reports a stale active session that cannot be resumed. End it before launching \(self.launchFlowTitle)."
             }
         }
     }
 
     func resumeActiveLaunchSession() {
+        guard canResumeActiveLaunchSession else {
+            launchFlowError = "This GeForce NOW session is no longer resumable. End it and launch again."
+            return
+        }
         guard let configuration = activeSessionResumeConfiguration else { return }
         startPreparedStream(configuration, message: "Resuming \(configuration.title)...")
     }
