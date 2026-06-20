@@ -166,6 +166,9 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     var onStatusChanged: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?
 
     private let queue = DispatchQueue(label: "io.opencg.opennow.recording.writer")
+    private let conversionQueue = DispatchQueue(label: "io.opencg.opennow.recording.conversion", qos: .userInitiated)
+    private let frameLock = NSLock()
+    private let firstFrameTimeout: DispatchTimeInterval
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -188,6 +191,12 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     private var recordingHeight = 0
     private var finishing = false
     private var failed = false
+    private var activeRecordingId: UUID?
+    private var pendingVideoRecordingId: UUID?
+
+    init(firstFrameTimeout: DispatchTimeInterval = .seconds(5)) {
+        self.firstFrameTimeout = firstFrameTimeout
+    }
 
     var wantsEnhancedVideo: Bool { configuration?.enhancedVideoEnabled == true && isRecording }
     var isRecording: Bool {
@@ -202,6 +211,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             do {
                 let directory = try WebRTCStreamRecordingLibrary.ensureDirectory()
                 self.id = UUID()
+                self.setActiveRecordingId(self.id)
                 self.configuration = configuration
                 self.createdAt = Date()
                 self.startedAt = nil
@@ -232,23 +242,31 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     }
 
     func appendVideoFrame(_ frame: RTCVideoFrame) {
+        guard let recordingId = beginVideoFrameAppend() else { return }
         if let buffer = frame.buffer as? RTCCVPixelBuffer, Self.isWritableBGRA(buffer.pixelBuffer) {
-            appendPixelBuffer(buffer.pixelBuffer)
+            appendPixelBuffer(buffer.pixelBuffer, recordingId: recordingId)
             return
         }
         let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
-        queue.async {
+        conversionQueue.async {
             let frame = Unmanaged<RTCVideoFrame>.fromOpaque(UnsafeRawPointer(bitPattern: retainedFrame)!).takeRetainedValue()
-            guard self.isRecording else { return }
             let i420Frame = frame.newI420()
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
-                  let pixelBuffer = self.newBGRAFramebuffer(from: i420) else { return }
-            self.appendPixelBufferOnQueue(pixelBuffer)
+                  let pixelBuffer = self.newBGRAFramebuffer(from: i420) else {
+                self.finishVideoFrameAppend(recordingId: recordingId)
+                return
+            }
+            self.queue.async {
+                defer { self.finishVideoFrameAppend(recordingId: recordingId) }
+                guard self.isActiveRecording(recordingId) else { return }
+                self.appendPixelBufferOnQueue(pixelBuffer)
+            }
         }
     }
 
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        appendPixelBuffer(pixelBuffer)
+        guard let recordingId = beginVideoFrameAppend() else { return }
+        appendPixelBuffer(pixelBuffer, recordingId: recordingId)
     }
 
     func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
@@ -267,10 +285,12 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         }
     }
 
-    private func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+    private func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, recordingId: UUID) {
         let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
         queue.async {
+            defer { self.finishVideoFrameAppend(recordingId: recordingId) }
             let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
+            guard self.isActiveRecording(recordingId) else { return }
             self.appendPixelBufferOnQueue(pixelBuffer)
         }
     }
@@ -398,9 +418,6 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         audioInput = nil
         configuration = nil
         outputURL = nil
-        i420PixelBufferPool = nil
-        i420PixelBufferPoolWidth = 0
-        i420PixelBufferPoolHeight = 0
         recordingWidth = 0
         recordingHeight = 0
         startedAt = nil
@@ -408,6 +425,32 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         capturedVideoFrame = false
         finishing = false
         failed = false
+        setActiveRecordingId(nil)
+    }
+
+    private func setActiveRecordingId(_ recordingId: UUID?) {
+        frameLock.withLock {
+            activeRecordingId = recordingId
+            pendingVideoRecordingId = nil
+        }
+    }
+
+    private func beginVideoFrameAppend() -> UUID? {
+        frameLock.withLock {
+            guard let activeRecordingId, pendingVideoRecordingId == nil else { return nil }
+            pendingVideoRecordingId = activeRecordingId
+            return activeRecordingId
+        }
+    }
+
+    private func finishVideoFrameAppend(recordingId: UUID) {
+        frameLock.withLock {
+            if pendingVideoRecordingId == recordingId { pendingVideoRecordingId = nil }
+        }
+    }
+
+    private func isActiveRecording(_ recordingId: UUID) -> Bool {
+        frameLock.withLock { activeRecordingId == recordingId }
     }
 
     private func emitElapsedIfNeeded() {
@@ -494,7 +537,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     }
 
     private func scheduleFirstFrameTimeout(recordingId: UUID) {
-        queue.asyncAfter(deadline: .now() + 5) {
+        queue.asyncAfter(deadline: .now() + firstFrameTimeout) {
             guard self.configuration != nil,
                   self.id == recordingId,
                   !self.capturedVideoFrame,
