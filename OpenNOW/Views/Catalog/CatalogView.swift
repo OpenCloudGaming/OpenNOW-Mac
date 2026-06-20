@@ -325,8 +325,9 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         private func apply() {
             guard let window else { return }
             guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
-                guard appliedLockState != false else { return }
-                window.contentAspectRatio = .zero
+                if appliedLockState == true {
+                    window.contentAspectRatio = .zero
+                }
                 appliedAspectRatio = nil
                 appliedLockState = false
                 return
