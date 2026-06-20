@@ -1328,7 +1328,7 @@ private struct AboutSettingsPage: View {
                             showingDiagnosticsUploadConfirmation = true
                         }
                         .disabled(diagnosticsState.isWorking)
-                        Text("Uploads the full sanitized current-run log, then copies diagnostics with the link.")
+                        Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
                             .font(.settingsNvidia(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                     }
@@ -1491,7 +1491,7 @@ private struct DiagnosticsUploadConfirmationDialog: View {
                         Text("Upload diagnostics logs?")
                             .font(.settingsNvidia(size: 19, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("OpenNOW will upload the full sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
+                        Text("OpenNOW will upload the recent sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)
@@ -1582,7 +1582,7 @@ private enum AboutDiagnosticsState: Equatable {
         switch self {
         case .ready: return "Ready to generate diagnostics. Confirmation is required before logs are uploaded."
         case .preparing: return "Preparing diagnostics metadata..."
-        case .readingLog: return "Reading full current-run log..."
+        case .readingLog: return "Reading sanitized current-run log..."
         case .uploading: return "Uploading sanitized logs to paste.rs..."
         case .copying: return "Copying diagnostics and uploaded log link to clipboard..."
         case .copied(let url): return "Diagnostics copied. Uploaded log: \(url)"
