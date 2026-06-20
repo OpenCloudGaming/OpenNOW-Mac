@@ -1,13 +1,29 @@
-OpenNOW is a native macOS cloud gaming client for launching and streaming GeForce NOW sessions.
+# OpenNOW
+
+OpenNOW is a native macOS cloud gaming client for browsing, launching, streaming, and recording GeForce NOW sessions.
 
 ## Current State
 
 The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and shared package modules. The visible frontend lives under `OpenNOW/Views` and includes:
 
 - OAuth sign-in and branded loading surfaces
-- Catalog hero carousel, game rails, search, filters, and detail panels
+- Catalog home with a six-image hero rotation, game rails, search, filters, and detail panels
+- Persistent favorites and library rails for quick game access across restarts
 - Store ownership picker and launch/session overlays
+- Native WebRTC streaming with input, microphone, audio, video enhancement, and diagnostics paths
+- Local gameplay recordings with saved metadata and a recordings browser
 - Settings for account, connections, gameplay, server location, upscaling, system, and diagnostics
+
+## Project Layout
+
+- `OpenNOW` - SwiftUI macOS app, views, view models, resources, and app services
+- `OPN.GameServices` - GeForce NOW catalog, library, launch, session, and store ownership services
+- `OPN.WebRTC.Media` - native WebRTC transport, stream surface, rendering, audio, input, and recording code
+- `OPN.Common` - shared stream preferences and common utilities
+- `OPN.Auth` - authentication/session support
+- `OPN.Telemetry` - local logging and Sentry-backed telemetry
+- `OPN.SignalLinkKit` - signaling support
+- `GFN.*` packages - protocol-specific GeForce NOW service modules
 
 ## Packages
 
@@ -32,17 +48,32 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 Build the macOS app from the repository root:
 
 ```sh
-xcodebuild -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -derivedDataPath build/DerivedData build
+xcodebuild build -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO
 ```
 
 ## Testing
 
-Run package tests from an individual package directory:
+Run package tests from an individual package directory. For example:
 
 ```sh
+cd OPN.WebRTC.Media
 swift test
 ```
 
+Useful focused checks:
+
+```sh
+cd OPN.GameServices
+swift test
+```
+
+```sh
+cd OPN.WebRTC.Media
+swift test --filter WebRTCStreamRecording
+```
+
+Performance audit entry points are documented under `scripts/perf-audit/PERFORMANCE_AUDIT.md`.
+
 ## Contributing
 
-Open issues for bugs or feature requests and submit pull requests for improvements.
+Use conventional commit prefixes such as `fix:`, `feat:`, `docs:`, `test:`, `refactor:`, `style:`, and `chore:`. Keep changes focused and verify the relevant package tests or app build before submitting changes.
