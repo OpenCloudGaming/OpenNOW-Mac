@@ -599,10 +599,9 @@ private struct ConnectionsSettingsPage: View {
     private var connectionStores: [String] {
         var seen = Set<String>()
         var stores: [String] = []
-        let hiddenStoreKeys: Set<String> = ["none", "unknown"]
         for store in viewModel.storeDefinitions.map(\.store) + viewModel.accountStores.map(\.store) where !store.isEmpty {
             let key = store.lowercased()
-            guard !seen.contains(key), !hiddenStoreKeys.contains(key) else { continue }
+            guard !seen.contains(key), !isHiddenConnectionStore(store) else { continue }
             seen.insert(key)
             stores.append(store)
         }
@@ -617,6 +616,29 @@ private struct ConnectionsSettingsPage: View {
     private func connectedStoreCount(in stores: [String]) -> Int {
         stores.filter { viewModel.accountStatus(forStore: $0) != nil }.count
     }
+
+    private func isHiddenConnectionStore(_ store: String) -> Bool {
+        let rawKey = normalizedStoreKey(store)
+        let displayKey = normalizedStoreKey(viewModel.displayName(forStore: store))
+        return Self.hiddenConnectionStoreKeys.contains(rawKey) || Self.hiddenConnectionStoreKeys.contains(displayKey)
+    }
+
+    private func normalizedStoreKey(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
+    private static let hiddenConnectionStoreKeys: Set<String> = [
+        "ea",
+        "eaapp",
+        "electronicarts",
+        "gog",
+        "gogcom",
+        "none",
+        "nvidia",
+        "origin",
+        "stove",
+        "unknown"
+    ]
 }
 
 private struct StoreConnectionsOverview: View {
@@ -646,15 +668,16 @@ private struct StoreConnectionRow: View {
     var body: some View {
         let account = viewModel.accountStatus(forStore: store)
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+        let displayName = viewModel.displayName(forStore: store)
         let isConnected = account != nil
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16) {
             Rectangle()
                 .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
                 .frame(width: 4, height: 46)
-            StoreGlyph(title: viewModel.displayName(forStore: store), connected: isConnected)
+            StoreIcon(title: displayName, imageURL: definition?.smallImageUrl ?? "", connected: isConnected)
             VStack(alignment: .leading, spacing: 5) {
-                Text(viewModel.displayName(forStore: store))
+                Text(displayName)
                     .font(.settingsNvidia(size: 15, weight: .bold))
                     .foregroundStyle(isConnected ? .white : .white.opacity(0.86))
                 Text(statusText(account))
@@ -692,17 +715,44 @@ private struct StoreConnectionRow: View {
     }
 }
 
-private struct StoreGlyph: View {
+private struct StoreIcon: View {
     let title: String
+    let imageURL: String
     let connected: Bool
 
     var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(connected ? Color.openNowGreen.opacity(0.18) : Color.white.opacity(0.075))
+            if let iconURL {
+                AsyncImage(url: iconURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .padding(7)
+                    default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: 34, height: 34)
+        .overlay { Rectangle().stroke(connected ? Color.openNowGreen.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var fallback: some View {
         Text(initials)
             .font(.settingsNvidia(size: 11, weight: .bold))
-            .foregroundStyle(connected ? .black : .white.opacity(0.64))
-            .frame(width: 34, height: 34)
-            .background(connected ? Color.openNowGreen : Color.white.opacity(0.075))
-            .overlay { Rectangle().stroke(connected ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: 1) }
+            .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.64))
+    }
+
+    private var iconURL: URL? {
+        URL(string: imageURL)
     }
 
     private var initials: String {
