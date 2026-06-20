@@ -1,6 +1,7 @@
-name: Unit Tests
+name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -17,22 +18,26 @@ jobs:
   test:
     name: Run Package Unit Tests
     runs-on: macos-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         package:
-          - Backend
-          - CloudMatch
-          - Common
-          - GDN
-          - Jarvis
-          - LCARS
-          - NesAuth
-          - NetworkTest
-          - Ragnarok
-          - SignalLinkKit
-          - Starfleet
-          - UDS
+          - GFN.CloudMatch
+          - GFN.GDN
+          - GFN.Jarvis
+          - GFN.LCARS
+          - GFN.NesAuth
+          - GFN.NetworkTest
+          - GFN.Ragnarok
+          - GFN.Starfleet
+          - GFN.UDS
+          - OPN.Auth
+          - OPN.Common
+          - OPN.GameServices
+          - OPN.SignalLinkKit
+          - OPN.Telemetry
+          - OPN.WebRTC.Media
 
     steps:
       - name: Checkout repository
@@ -51,4 +56,31 @@ jobs:
           else
             swift build --package-path "${{ matrix.package }}"
           fi
+        shell: bash
+
+  app-build:
+    name: Build macOS App
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          echo "Using macOS runner"
+          uname -a
+          xcodebuild -version
+        shell: bash
+
+      - name: Build OpenNOW
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project OpenNOW.xcodeproj \
+            -scheme OpenNOW \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
         shell: bash
