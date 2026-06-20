@@ -689,10 +689,11 @@ private struct ConnectionsSummaryStrip: View {
     let actionRequiredCount: Int
 
     var body: some View {
-        SettingsFlowLayout(spacing: 10) {
+        HStack(spacing: 10) {
             SettingsStatisticTile(label: "Connected", value: "\(connectedCount)/\(totalCount)", emphasized: true)
             SettingsStatisticTile(label: "Sync Enabled", value: "\(syncEnabledCount)")
             SettingsStatisticTile(label: "Required", value: "\(actionRequiredCount)")
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -727,7 +728,7 @@ private struct ConnectionToolbar: View {
             .background(Color.black.opacity(0.20))
             .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
 
-            SettingsFlowLayout(spacing: 8) {
+            HStack(spacing: 8) {
                 ForEach(ConnectionFilter.allCases) { filter in
                     Button { selectedFilter = filter } label: {
                         Text(filter.title.uppercased())
@@ -741,6 +742,7 @@ private struct ConnectionToolbar: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -769,19 +771,21 @@ private struct StoreConnectionRow: View {
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
-                    SettingsFlowLayout(spacing: 6) {
+                    HStack(spacing: 6) {
                         StoreConnectionCapabilityPill(title: account?.hasAccountSyncingData == true ? "Library Sync" : "Sync Unavailable", enabled: account?.hasAccountSyncingData == true)
                         StoreConnectionCapabilityPill(title: linkingTitle(account: account, definition: definition), enabled: definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true)
                         if account?.totalSyncedGames ?? 0 > 0 {
                             StoreConnectionCapabilityPill(title: "\(account?.totalSyncedGames ?? 0) Games", enabled: true)
                         }
+                        Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            SettingsFlowLayout(spacing: 8) {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
                 if account?.hasAccountSyncingData == true {
                     SettingsActionButton(title: "SYNC") { viewModel.syncStoreAccount(store) }
                         .help("Sync owned games from \(viewModel.displayName(forStore: store))")
