@@ -1056,15 +1056,6 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey)
-                SettingsDivider()
-                HStack(spacing: 10) {
-                    SettingsActionButton(title: "CHECK FOR UPDATES") {
-                        OpenNOWAppDelegate.requestApplicationUpdateCheck()
-                    }
-                    Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
-                        .font(.settingsNvidia(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.54))
-                }
             }
 
             SettingsCard(title: "Cache") {
