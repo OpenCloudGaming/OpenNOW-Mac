@@ -19,6 +19,35 @@ private actor RecordingSessionProvider: StreamSessionProvider {
     }
 }
 
+private actor CancellableSessionProvider: StreamSessionProvider, StreamSessionStartCancellable {
+    private var startContinuation: CheckedContinuation<StreamOffer, Error>?
+    private var waitingContinuation: CheckedContinuation<Void, Never>?
+    private(set) var cancelCount = 0
+
+    func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
+        try await withCheckedThrowingContinuation { continuation in
+            startContinuation = continuation
+            waitingContinuation?.resume()
+            waitingContinuation = nil
+        }
+    }
+
+    func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {}
+
+    func cancelSessionStart() async {
+        cancelCount += 1
+        startContinuation?.resume(throwing: CancellationError())
+        startContinuation = nil
+    }
+
+    func waitUntilStarted() async {
+        guard startContinuation == nil else { return }
+        await withCheckedContinuation { continuation in
+            waitingContinuation = continuation
+        }
+    }
+}
+
 private actor RecordingTransport: WebRTCStreamTransport {
     private(set) var connectedOffer: StreamOffer?
     private(set) var sentEvents: [UserInputEvent] = []
@@ -284,6 +313,29 @@ struct WebRTCStreamingPathTests {
         #expect(progressValues.map(\.currentStepIndex) == [0, 1, 2, 3, 4])
         #expect(progressValues.last?.isReady == true)
         #expect(firstFrame?.kind == .audio)
+    }
+
+    @Test("cancels in-flight stream startup")
+    func cancelsInFlightStreamStartup() async throws {
+        let provider = CancellableSessionProvider()
+        let transport = RecordingTransport()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "500", accessToken: "token", accountLinked: true, selectedStore: "steam")
+
+        let task = Task { try await path.start(configuration: configuration) }
+        await provider.waitUntilStarted()
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected stream startup cancellation")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+
+        #expect(await provider.cancelCount == 1)
+        #expect(await transport.disconnected == true)
     }
 
     @Test("forwards remote ICE candidates through signaling")

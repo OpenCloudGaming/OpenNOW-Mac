@@ -7,6 +7,10 @@ public protocol StreamSessionProvider: Sendable {
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws
 }
 
+public protocol StreamSessionStartCancellable: Sendable {
+    func cancelSessionStart() async
+}
+
 public protocol WebRTCStreamTransport: Sendable {
     func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer
     func addRemoteIceCandidate(_ candidate: StreamIceCandidate) async throws
@@ -52,18 +56,31 @@ public actor WebRTCStreamingPath {
 
     public func start(configuration: StreamLaunchConfiguration,
                       progress: (@Sendable (StreamProgress) async -> Void)? = nil) async throws -> StreamSessionDescriptor {
+        try await withTaskCancellationHandler {
+            try await startStreaming(configuration: configuration, progress: progress)
+        } onCancel: {
+            Task { await self.cancelStartingSession() }
+        }
+    }
+
+    private func startStreaming(configuration: StreamLaunchConfiguration,
+                                progress: (@Sendable (StreamProgress) async -> Void)?) async throws -> StreamSessionDescriptor {
         guard activeSession == nil else { throw StreamingPathError.alreadyRunning }
         WebRTCMediaTelemetry.capture("webrtc.path.start", level: .info, message: "Starting WebRTC streaming path.", attributes: ["configurationId": configuration.id.uuidString, "applicationID": configuration.applicationID])
 
+        try Task.checkCancellation()
         try await publishProgress(configuration: configuration, step: .checkNetworkRoute, message: "Checking network route...", progress: progress)
+        try Task.checkCancellation()
         try await publishProgress(configuration: configuration, step: .allocateCloudSession, message: "Allocating cloud session...", progress: progress)
         let offer: StreamOffer
         do {
             offer = try await sessionProvider.startSession(configuration: configuration)
         } catch {
+            if error is CancellationError || Task.isCancelled { throw error }
             WebRTCMediaTelemetry.capture("webrtc.path.session_provider.error", level: .error, message: error.localizedDescription, attributes: ["applicationID": configuration.applicationID])
             throw error
         }
+        try await stopOfferSessionIfCancelled(offer.session)
         guard !offer.sdp.isEmpty else { throw StreamingPathError.invalidOffer }
         if let signaling {
             startRemoteIceCandidateForwarding(session: offer.session, signaling: signaling)
@@ -73,24 +90,38 @@ public actor WebRTCStreamingPath {
         }
 
         try await publishProgress(configuration: configuration, step: .receiveStreamOffer, message: "Received stream offer.", progress: progress)
+        try await stopOfferSessionIfCancelled(offer.session)
         try await publishProgress(configuration: configuration, step: .negotiateWebRTC, message: "Negotiating WebRTC...", progress: progress)
+        try await stopOfferSessionIfCancelled(offer.session)
         let answer: StreamAnswer
         do {
             answer = try await transport.connect(offer: offer, mediaReceiver: mediaSession)
         } catch {
             cancelIceCandidateForwarding()
+            if error is CancellationError || Task.isCancelled {
+                await transport.disconnect()
+                try? await sessionProvider.finishSession(offer.session, reason: .userRequested)
+                throw error
+            }
             WebRTCMediaTelemetry.capture("webrtc.path.transport.error", level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
             throw error
         }
+        try await stopOfferSessionIfCancelled(offer.session)
         if let signaling {
             do {
                 try await signaling.sendAnswer(answer, for: offer.session)
             } catch {
                 cancelIceCandidateForwarding()
+                if error is CancellationError || Task.isCancelled {
+                    await transport.disconnect()
+                    try? await sessionProvider.finishSession(offer.session, reason: .userRequested)
+                    throw error
+                }
                 WebRTCMediaTelemetry.capture("webrtc.path.signaling_answer.error", level: .error, message: error.localizedDescription, attributes: ["sessionId": offer.session.id])
                 throw error
             }
         }
+        try await stopOfferSessionIfCancelled(offer.session)
 
         let runningSession = StreamSessionDescriptor(
             id: offer.session.id,
@@ -105,6 +136,22 @@ public actor WebRTCStreamingPath {
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected.", isReady: true, progress: progress)
         WebRTCMediaTelemetry.capture("webrtc.path.connected", level: .info, message: "WebRTC streaming path connected.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
         return runningSession
+    }
+
+    private func cancelStartingSession() async {
+        cancelIceCandidateForwarding()
+        await transport.disconnect()
+        if let cancellable = sessionProvider as? any StreamSessionStartCancellable {
+            await cancellable.cancelSessionStart()
+        }
+    }
+
+    private func stopOfferSessionIfCancelled(_ session: StreamSessionDescriptor) async throws {
+        guard Task.isCancelled else { return }
+        cancelIceCandidateForwarding()
+        await transport.disconnect()
+        try? await sessionProvider.finishSession(session, reason: .userRequested)
+        throw CancellationError()
     }
 
     public func send(_ event: UserInputEvent) async throws {

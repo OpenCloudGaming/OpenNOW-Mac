@@ -582,6 +582,17 @@ final class CatalogViewModel: ObservableObject {
         launchMessage = ""
     }
 
+    func cancelActiveStreamLaunch() {
+        guard activeStreamConfiguration != nil else { return }
+        streamProgressGeneration += 1
+        activeStreamConfiguration = nil
+        activeStreamProgress = nil
+        isActiveStreamLaunchOverlayVisible = false
+        clearLaunchFlow()
+        launchMessage = ""
+        actionMessage = "Stream launch cancelled."
+    }
+
     func showRecordings() {
         selectedMainPage = .recordings
         actionMessage = ""

@@ -27,6 +27,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var didEndStream = false
     @State private var latestStats: OPNStreamStatsSnapshot?
     @State private var statsTask: Task<Void, Never>?
+    @State private var startTask: Task<Void, Never>?
     @State private var nativeView: NativeWebRTCStreamView?
     @State private var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
     @State private var runtimeSettings = StreamRuntimeSettings()
@@ -55,7 +56,9 @@ public struct WebRTCMediaStreamSurface: View {
                 view.onCommand = { command in
                     handle(command)
                 }
-                Task { await startIfNeeded(nativeView: view) }
+                if startTask == nil {
+                    startTask = Task { await startIfNeeded(nativeView: view) }
+                }
             }
             if !isStreamReady { launchOverlay }
             if statsVisible { statsHUD }
@@ -453,6 +456,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func startIfNeeded(nativeView: NativeWebRTCStreamView) async {
         guard !hasStarted else { return }
         hasStarted = true
+        defer { startTask = nil }
         beginStreamingPerformanceMode()
         let transport = NativeWebRTCTransport(nativeView: nativeView)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
@@ -493,6 +497,11 @@ public struct WebRTCMediaStreamSurface: View {
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
             }
         } catch {
+            guard !(error is CancellationError), !Task.isCancelled else {
+                statusMessage = "Stream launch cancelled."
+                endStreamingPerformanceMode()
+                return
+            }
             let message = Self.message(for: error)
             statusMessage = message
             endStreamingPerformanceMode()
@@ -708,6 +717,8 @@ public struct WebRTCMediaStreamSurface: View {
         WebRTCMediaStreamLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
+        startTask?.cancel()
+        startTask = nil
         statsTask?.cancel()
         statsTask = nil
         recordingNotificationTask?.cancel()

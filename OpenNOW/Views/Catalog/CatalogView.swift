@@ -494,6 +494,10 @@ private struct VendorStreamLaunchLoadingOverlay: View {
                     VendorIndeterminateProgressBar()
                         .frame(width: 320, height: 4)
 
+                    Button("CANCEL STREAM") { viewModel.cancelActiveStreamLaunch() }
+                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                        .accessibilityLabel("Cancel stream launch")
+
                     if !steps.isEmpty {
                         VStack(alignment: .leading, spacing: 9) {
                             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in

@@ -128,6 +128,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         isDisconnecting = true
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
+        let pendingContinuation = continuation
+        continuation = nil
         recorder.stop()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         localIceLock.withLock {
@@ -135,6 +137,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             localIceContinuation = nil
         }
         session.stop()
+        pendingContinuation?.resume(throwing: CancellationError())
     }
 
     public func latestStatsSnapshot() -> OPNStreamStatsSnapshot {

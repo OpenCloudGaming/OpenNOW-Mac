@@ -3,7 +3,7 @@ import Foundation
 import SignalLinkKit
 import WebRTCMedia
 
-public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, @unchecked Sendable {
+public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
     private static let maxBufferedIceCandidates = 120
 
     private let lock = NSLock()
@@ -21,10 +21,27 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
         let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
         let launch = await prepareLaunch(configuration: configuration)
+        try Task.checkCancellation()
         let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
         let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
+        if Task.isCancelled {
+            try? await finishSession(descriptor, reason: .userRequested)
+            throw CancellationError()
+        }
         activeSession = descriptor
-        return try await connectSignaling(sessionInfo: sessionInfo, settings: launch.settings, descriptor: descriptor)
+        do {
+            let offer = try await connectSignaling(sessionInfo: sessionInfo, settings: launch.settings, descriptor: descriptor)
+            if Task.isCancelled {
+                try? await finishSession(descriptor, reason: .userRequested)
+                throw CancellationError()
+            }
+            return offer
+        } catch {
+            if error is CancellationError || Task.isCancelled {
+                try? await finishSession(descriptor, reason: .userRequested)
+            }
+            throw error
+        }
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
@@ -35,6 +52,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             iceContinuation = nil
             pendingIceCandidates.removeAll()
             offerContinuation = nil
+            if activeSession?.id == session.id { activeSession = nil }
         }
         guard reason == .userRequested || reason == .completed || reason == .remoteEnded else { return }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -45,6 +63,25 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                     continuation.resume(throwing: OpenNOWStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
                 }
             }
+        }
+    }
+
+    public func cancelSessionStart() async {
+        let cancelled = lock.withLock { () -> (CheckedContinuation<StreamOffer, Error>?, StreamSessionDescriptor?) in
+            signaling?.disconnect()
+            signaling = nil
+            iceContinuation?.finish()
+            iceContinuation = nil
+            pendingIceCandidates.removeAll()
+            let continuation = offerContinuation
+            offerContinuation = nil
+            let session = activeSession
+            activeSession = nil
+            return (continuation, session)
+        }
+        cancelled.0?.resume(throwing: CancellationError())
+        if let session = cancelled.1 {
+            try? await finishSession(session, reason: .userRequested)
         }
     }
 
