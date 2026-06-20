@@ -4095,29 +4095,126 @@ private struct CatalogErrorPresentation {
 
 private struct CatalogLoadingStrip: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Loading GeForce NOW catalog")
-                .font(.nvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.62))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.openNowGreen.opacity(0.16))
+                    Circle()
+                        .stroke(Color.openNowGreen.opacity(0.38), lineWidth: 1)
+                    Image(systemName: "bolt.horizontal.fill")
+                        .font(.nvidia(size: 12, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                }
+                .frame(width: 30, height: 30)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Loading GeForce NOW catalog")
+                        .font(.nvidia(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.92))
+                    Text("Building your game rails")
+                        .font(.nvidia(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.52))
+                }
+
+                Spacer(minLength: 18)
+
+                Text("SYNCING")
+                    .font(.nvidia(size: 10, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.84))
+                    .tracking(0.9)
+                    .padding(.horizontal, 8)
+                    .frame(height: 20)
+                    .background(Color.openNowGreen)
+            }
+
             VendorIndeterminateProgressBar()
-                .frame(width: 260, height: 4)
+                .frame(height: 3)
+
             HStack(spacing: 12) {
                 ForEach(0..<3, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 0)
-                        .fill(Color.white.opacity(index == 0 ? 0.10 : 0.065))
-                        .frame(width: 96, height: 54)
-                        .overlay(alignment: .bottom) {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.08))
-                                .frame(height: 12)
-                        }
+                    CatalogLoadingCard(index: index)
                 }
             }
             .accessibilityHidden(true)
         }
-        .padding(12)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .padding(16)
+        .frame(width: 420, alignment: .leading)
+        .background {
+            ZStack(alignment: .topLeading) {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.10),
+                        Color.white.opacity(0.055),
+                        Color.black.opacity(0.10)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                LinearGradient(
+                    colors: [Color.openNowGreen.opacity(0.16), .clear],
+                    startPoint: .topLeading,
+                    endPoint: .center
+                )
+            }
+        }
+        .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
+        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.34), radius: 18, x: 0, y: 14)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct CatalogLoadingCard: View {
+    let index: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CatalogLoadingSkeleton(opacity: 0.095 + Double(index) * 0.018)
+                .frame(height: 58)
+                .overlay(alignment: .topLeading) {
+                    Rectangle()
+                        .fill(index == 0 ? Color.openNowGreen.opacity(0.82) : Color.white.opacity(0.18))
+                        .frame(width: index == 0 ? 18 : 12, height: 3)
+                        .padding(8)
+                }
+            VStack(alignment: .leading, spacing: 6) {
+                CatalogLoadingSkeleton(opacity: 0.16)
+                    .frame(width: 74 - CGFloat(index * 7), height: 7)
+                CatalogLoadingSkeleton(opacity: 0.09)
+                    .frame(width: 46 + CGFloat(index * 5), height: 5)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.black.opacity(0.22))
+        }
+        .frame(width: 120, height: 106)
+        .background(Color.white.opacity(0.045))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.075), lineWidth: 1) }
+    }
+}
+
+private struct CatalogLoadingSkeleton: View {
+    let opacity: Double
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let cycleDuration = 1.6
+            let progress = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
+            let highlight = 0.45 + 0.28 * sin((progress * .pi * 2) + opacity * 12)
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(opacity), location: 0),
+                            .init(color: Color.white.opacity(opacity + highlight * 0.08), location: 0.46),
+                            .init(color: Color.white.opacity(opacity * 0.72), location: 1)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
     }
 }
 
