@@ -665,10 +665,19 @@ private struct VendorLaunchInlineMessage: View {
     let warning: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        let presentation = CatalogErrorPresentation(rawMessage: message)
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
-            Text(message)
-                .font(.nvidia(size: 12, weight: .medium))
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(presentation.title)
+                    .font(.nvidia(size: 12, weight: .bold))
+                if let hint = presentation.hint {
+                    Text(hint)
+                        .font(.nvidia(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+            }
         }
         .foregroundStyle(warning ? Color.yellow.opacity(0.86) : .white.opacity(0.72))
         .padding(12)
@@ -3965,19 +3974,122 @@ private struct CatalogImageFallback: View {
 private struct CatalogMessageView: View {
     let message: String
     let systemImage: String
+    @State private var copiedDetails = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .foregroundStyle(Color.openNowGreen)
-            Text(message)
-                .font(.nvidia(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.78))
-            Spacer()
+        let presentation = CatalogErrorPresentation(rawMessage: message)
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Rectangle()
+                    .fill(Color.openNowGreen.opacity(0.13))
+                Image(systemName: systemImage)
+                    .font(.nvidia(size: 15, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen)
+            }
+            .frame(width: 36, height: 36)
+            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(presentation.title)
+                    .font(.nvidia(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.90))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let hint = presentation.hint {
+                    Text(hint)
+                        .font(.nvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.60))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            if let details = presentation.technicalDetails {
+                Button { copy(details) } label: {
+                    Text(copiedDetails ? "COPIED" : "COPY DETAILS")
+                        .font(.nvidia(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.76))
+                        .tracking(0.7)
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Color.white.opacity(0.065))
+                        .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .padding(12)
-        .background(Color.white.opacity(0.07))
+        .padding(14)
+        .background(Color.white.opacity(0.060))
+        .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
         .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+    }
+
+    private func copy(_ value: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        copiedDetails = true
+    }
+}
+
+private struct CatalogErrorPresentation {
+    let title: String
+    let hint: String?
+    let technicalDetails: String?
+
+    init(rawMessage: String) {
+        let message = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.looksLikeClaimFailure(message) {
+            title = "GeForce NOW could not start this session."
+            hint = Self.claimFailureHint(from: message)
+            technicalDetails = message
+            return
+        }
+        if Self.looksTechnical(message) {
+            title = "OpenNOW received an unexpected service response."
+            hint = "Try again in a moment. If it keeps happening, copy the details for diagnostics."
+            technicalDetails = message
+            return
+        }
+        title = message.isEmpty ? "Something went wrong." : message
+        hint = nil
+        technicalDetails = nil
+    }
+
+    private static func looksLikeClaimFailure(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("Claim HTTP") || message.localizedCaseInsensitiveContains("Claim API error")
+    }
+
+    private static func looksTechnical(_ message: String) -> Bool {
+        message.count > 220 || message.contains("{\"") || message.contains("requestStatus") || message.contains("HTTP 400")
+    }
+
+    private static func claimFailureHint(from message: String) -> String {
+        if message.localizedCaseInsensitiveContains("SESSION_NOT_PAUSED") {
+            return "The existing cloud session is still shutting down. Wait a moment, then try again."
+        }
+        if message.localizedCaseInsensitiveContains("SESSION_LIMIT") {
+            return "Your account appears to have reached the active session limit. End another session, then try again."
+        }
+        if let statusDescription = requestStatusDescription(from: message), !statusDescription.isEmpty {
+            if statusDescription.localizedCaseInsensitiveContains("INTERNAL_ERROR_STATUS") {
+                return "GeForce NOW returned an internal session error while claiming the launch slot. Try again, or switch server location if it repeats."
+            }
+            return "GeForce NOW rejected the launch request (\(statusDescription)). Try again or switch server location."
+        }
+        return "Try again in a moment. If it repeats, refresh your NVIDIA session or switch server location."
+    }
+
+    private static func requestStatusDescription(from message: String) -> String? {
+        guard let json = jsonPayload(from: message),
+              let requestStatus = json["requestStatus"] as? [String: Any] else { return nil }
+        return requestStatus["statusDescription"] as? String
+    }
+
+    private static func jsonPayload(from message: String) -> [String: Any]? {
+        guard let start = message.firstIndex(of: "{") else { return nil }
+        let jsonString = String(message[start...])
+        guard let data = jsonString.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return object
     }
 }
 
