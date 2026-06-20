@@ -268,51 +268,85 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
     let aspectRatio: Double
     let isLocked: Bool
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { configure(window: view.window) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> WindowAspectView {
+        let view = WindowAspectView(frame: .zero)
+        let coordinator = context.coordinator
+        view.onWindowChanged = { window in coordinator.attach(window) }
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { configure(window: view.window) }
+    func updateNSView(_ view: WindowAspectView, context: Context) {
+        context.coordinator.update(aspectRatio: aspectRatio, isLocked: isLocked)
     }
 
-    static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
-        nsView.window?.contentAspectRatio = .zero
+    static func dismantleNSView(_ nsView: WindowAspectView, coordinator: Coordinator) {
+        nsView.onWindowChanged = nil
+        coordinator.detach()
     }
 
-    private func configure(window: NSWindow?) {
-        guard let window else { return }
-        guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
-            window.contentAspectRatio = .zero
-            return
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var aspectRatio: Double = 0
+        private var isLocked = false
+        private var appliedAspectRatio: Double?
+        private var appliedLockState: Bool?
+
+        func attach(_ window: NSWindow?) {
+            guard self.window !== window else { return }
+            if appliedLockState == true {
+                self.window?.contentAspectRatio = .zero
+            }
+            self.window = window
+            appliedAspectRatio = nil
+            appliedLockState = nil
+            apply()
         }
-        let aspectSize = NSSize(width: aspectRatio, height: 1)
-        if abs((window.contentAspectRatio.width / max(window.contentAspectRatio.height, 1)) - aspectRatio) > 0.001 {
-            window.contentAspectRatio = aspectSize
+
+        func update(aspectRatio: Double, isLocked: Bool) {
+            self.aspectRatio = aspectRatio
+            self.isLocked = isLocked
+            apply()
         }
-        resize(window: window, toAspectRatio: CGFloat(aspectRatio))
+
+        func detach() {
+            if appliedLockState == true {
+                window?.contentAspectRatio = .zero
+            }
+            window = nil
+            appliedAspectRatio = nil
+            appliedLockState = nil
+        }
+
+        private func apply() {
+            guard let window else { return }
+            guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
+                guard appliedLockState != false else { return }
+                window.contentAspectRatio = .zero
+                appliedAspectRatio = nil
+                appliedLockState = false
+                return
+            }
+
+            let alreadyApplied = appliedLockState == true && appliedAspectRatio.map { abs($0 - aspectRatio) <= 0.001 } == true
+            guard !alreadyApplied else { return }
+            window.contentAspectRatio = NSSize(width: aspectRatio, height: 1)
+            appliedAspectRatio = aspectRatio
+            appliedLockState = true
+        }
     }
 
-    private func resize(window: NSWindow, toAspectRatio aspectRatio: CGFloat) {
-        guard aspectRatio.isFinite, aspectRatio > 0 else { return }
-        let contentSize = window.contentLayoutRect.size
-        guard contentSize.width > 0, contentSize.height > 0 else { return }
-        let currentAspect = contentSize.width / contentSize.height
-        guard abs(currentAspect - aspectRatio) > 0.01 else { return }
+    final class WindowAspectView: NSView {
+        var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
 
-        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
-        let maximumContentWidth = max(640, visibleFrame.width - 80)
-        let maximumContentHeight = max(360, visibleFrame.height - 80)
-        var nextWidth = min(max(contentSize.width, 640), maximumContentWidth)
-        var nextHeight = nextWidth / aspectRatio
-        if nextHeight > maximumContentHeight {
-            nextHeight = maximumContentHeight
-            nextWidth = nextHeight * aspectRatio
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChanged?(window)
         }
-        window.setContentSize(NSSize(width: nextWidth, height: nextHeight))
-        window.center()
     }
 }
 

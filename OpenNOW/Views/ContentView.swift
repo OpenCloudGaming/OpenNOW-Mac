@@ -58,28 +58,82 @@ struct ContentView: View {
 private struct HiddenTitlebarConfigurator: NSViewRepresentable {
     let title: String
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { configure(window: view.window) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> WindowConfigurationView {
+        let view = WindowConfigurationView(frame: .zero)
+        let coordinator = context.coordinator
+        view.onWindowChanged = { window in coordinator.attach(window) }
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { configure(window: view.window) }
+    func updateNSView(_ view: WindowConfigurationView, context: Context) {
+        context.coordinator.update(title: title)
     }
 
-    private func configure(window: NSWindow?) {
-        guard let window else { return }
-        window.styleMask.insert(.fullSizeContentView)
-        window.title = title
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.toolbar = nil
-        if #available(macOS 11.0, *) {
-            window.titlebarSeparatorStyle = .none
+    static func dismantleNSView(_ nsView: WindowConfigurationView, coordinator: Coordinator) {
+        nsView.onWindowChanged = nil
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var configuredWindow: ObjectIdentifier?
+        private var title = ""
+
+        func attach(_ window: NSWindow?) {
+            guard self.window !== window else { return }
+            self.window = window
+            configuredWindow = nil
+            guard let window else { return }
+            configure(window)
+            update(title: title)
+        }
+
+        func update(title: String) {
+            self.title = title
+            guard let window else { return }
+            configure(window)
+            if window.title != title {
+                window.title = title
+            }
+        }
+
+        func detach() {
+            window = nil
+            configuredWindow = nil
+        }
+
+        private func configure(_ window: NSWindow) {
+            let windowIdentifier = ObjectIdentifier(window)
+            guard configuredWindow != windowIdentifier else { return }
+            configuredWindow = windowIdentifier
+            if !window.styleMask.contains(.fullSizeContentView) {
+                window.styleMask.insert(.fullSizeContentView)
+            }
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isMovableByWindowBackground = true
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            if window.toolbar != nil {
+                window.toolbar = nil
+            }
+            if #available(macOS 11.0, *) {
+                window.titlebarSeparatorStyle = .none
+            }
+        }
+    }
+
+    final class WindowConfigurationView: NSView {
+        var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChanged?(window)
         }
     }
 }
