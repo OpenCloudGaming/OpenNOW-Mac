@@ -1813,7 +1813,7 @@ private struct CatalogContentView: View {
     }
 
     private var heroGames: [OPNCatalogGameObject] {
-        viewModel.marqueeGames
+        viewModel.heroRotationGames
     }
 
     private var selectedRailScrollAnchor: String? {
