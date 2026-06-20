@@ -1213,6 +1213,7 @@ private struct AboutSettingsPage: View {
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
+    @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     var body: some View {
         ZStack {
@@ -1315,6 +1316,8 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "Membership", value: membershipTier, copyValue: membershipTier, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
+                SettingsDivider()
+                SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, action: setTelemetryDisabled)
             }
 
             SettingsCard(title: "Services") {
@@ -1353,7 +1356,10 @@ private struct AboutSettingsPage: View {
             }
         }
         .animation(.easeOut(duration: 0.16), value: showingDiagnosticsUploadConfirmation)
-        .onAppear { viewModel.refreshCatalogImageCacheSummary() }
+        .onAppear {
+            viewModel.refreshCatalogImageCacheSummary()
+            telemetryDisabled = OPNSentry.isTelemetryDisabled()
+        }
     }
 
     private var userId: String {
@@ -1418,6 +1424,11 @@ private struct AboutSettingsPage: View {
         case .preparing, .readingLog, .uploading, .copying: return "WORKING"
         case .copied: return "COPIED"
         }
+    }
+
+    private func setTelemetryDisabled(_ disabled: Bool) {
+        telemetryDisabled = disabled
+        OPNSentry.setTelemetryDisabled(disabled)
     }
 
     private func generateUploadedDiagnostics() {

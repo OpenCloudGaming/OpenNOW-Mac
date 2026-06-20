@@ -2,6 +2,18 @@ import Foundation
 import Testing
 @testable import OpenNOWTelemetry
 
+@Test func telemetryDisabledPreferenceRoundTrips() throws {
+    let suiteName = "OpenNOWTelemetryTests.telemetryDisabled.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    #expect(OPNSentry.telemetryDisabled(defaults: defaults) == false)
+    OPNSentry.setTelemetryDisabled(true, defaults: defaults)
+    #expect(OPNSentry.telemetryDisabled(defaults: defaults) == true)
+    OPNSentry.setTelemetryDisabled(false, defaults: defaults)
+    #expect(OPNSentry.telemetryDisabled(defaults: defaults) == false)
+}
+
 @Test func diagnosticsUploadAcceptsCreatedPasteResponse() async throws {
     let host = "diagnostics-created.example.test"
     DiagnosticsUploadURLProtocol.install(host: host) { _, _ in

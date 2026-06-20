@@ -18,16 +18,17 @@ public final class OPNSentryTransaction: NSObject {
     }
 
     public func setTag(_ key: String, value: String) {
-        guard !key.isEmpty else { return }
+        guard OPNSentry.isTelemetryEnabled(), !key.isEmpty else { return }
         span?.setTag(value: value, key: key)
     }
 
     public func setData(_ key: String, value: String) {
-        guard !key.isEmpty else { return }
+        guard OPNSentry.isTelemetryEnabled(), !key.isEmpty else { return }
         span?.setData(value: value, key: key)
     }
 
     public func setStatus(_ success: Bool) {
+        guard OPNSentry.isTelemetryEnabled() else { return }
         self.success = success
     }
 
@@ -43,6 +44,7 @@ public final class OPNSentryTransaction: NSObject {
     public func finish() {
         guard !finished else { return }
         finished = true
+        guard OPNSentry.isTelemetryEnabled() else { return }
         if let success {
             span?.finish(status: success ? .ok : .internalError)
         } else {
@@ -60,9 +62,40 @@ public final class OPNSentry: NSObject {
     private static let diagnosticsLogQueue = DispatchQueue(label: "opn.telemetry.diagnostics-log")
     private static let maxDiagnosticsLogBytes = 8 * 1024 * 1024
     private static let maxDiagnosticsUploadBytes = 384 * 1024
+    private static let telemetryDisabledKey = "OpenNOW.Telemetry.Disabled"
     private nonisolated(unsafe) static var initialized = false
 
+    public static func isTelemetryDisabled() -> Bool {
+        telemetryDisabled(defaults: .standard)
+    }
+
+    public static func isTelemetryEnabled() -> Bool {
+        !isTelemetryDisabled()
+    }
+
+    public static func setTelemetryDisabled(_ disabled: Bool) {
+        setTelemetryDisabled(disabled, defaults: .standard)
+        if disabled {
+            closeSentry()
+        } else {
+            initializeSentry()
+        }
+    }
+
+    static func telemetryDisabled(defaults: UserDefaults) -> Bool {
+        booleanValue(defaults.object(forKey: telemetryDisabledKey), defaultValue: false)
+    }
+
+    static func setTelemetryDisabled(_ disabled: Bool, defaults: UserDefaults) {
+        defaults.set(disabled, forKey: telemetryDisabledKey)
+        defaults.synchronize()
+    }
+
     public static func initializeSentry() {
+        guard isTelemetryEnabled() else {
+            closeSentry()
+            return
+        }
         guard !initialized else { return }
         guard let dsn = resolvedDsn(), !dsn.isEmpty else { return }
         SentrySDK.start { options in
@@ -99,15 +132,15 @@ public final class OPNSentry: NSObject {
     }
 
     static func shouldLogInfo() -> Bool {
-        !environmentFlagEnabled("OPN_DISABLE_INFO_LOGS")
+        isTelemetryEnabled() && !environmentFlagEnabled("OPN_DISABLE_INFO_LOGS")
     }
 
     public static func shouldLogDebug() -> Bool {
-        environmentFlagEnabled("OPN_DEBUG_LOGS") || environmentFlagEnabled("OPN_VERBOSE_LOGS")
+        isTelemetryEnabled() && (environmentFlagEnabled("OPN_DEBUG_LOGS") || environmentFlagEnabled("OPN_VERBOSE_LOGS"))
     }
 
     public static func shouldLogVerbose() -> Bool {
-        environmentFlagEnabled("OPN_VERBOSE_LOGS")
+        isTelemetryEnabled() && environmentFlagEnabled("OPN_VERBOSE_LOGS")
     }
 
     public static func sanitizedLogMessage(_ message: String) -> String {
@@ -139,6 +172,7 @@ public final class OPNSentry: NSObject {
     }
 
     public static func logWarningMessage(_ message: String) {
+        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -147,6 +181,7 @@ public final class OPNSentry: NSObject {
     }
 
     public static func logErrorMessage(_ message: String) {
+        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -156,6 +191,7 @@ public final class OPNSentry: NSObject {
     }
 
     public static func logFatalMessage(_ message: String) {
+        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -165,6 +201,7 @@ public final class OPNSentry: NSObject {
     }
 
     static func captureExternalLogLine(_ line: String) {
+        guard isTelemetryEnabled() else { return }
         guard !line.isEmpty else { return }
         if externalLogLineLooksLikeError(line) || shouldLogInfo() {
             let sanitized = sanitizedMessage(line)
@@ -227,11 +264,12 @@ public final class OPNSentry: NSObject {
 
     @objc(addTraceHeadersToRequest:)
     public static func addTraceHeaders(to request: NSMutableURLRequest) {
+        guard isTelemetryEnabled() else { return }
         addTraceHeaders(from: SentrySDK.span, to: request)
     }
 
     static func addTraceHeaders(from span: Span?, to request: NSMutableURLRequest) {
-        guard initialized, SentrySDK.isEnabled, let span else { return }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled, let span else { return }
         request.setValue(span.toTraceHeader().value(), forHTTPHeaderField: "sentry-trace")
         if let baggage = span.baggageHttpHeader(), !baggage.isEmpty {
             request.setValue(baggage, forHTTPHeaderField: "baggage")
@@ -239,7 +277,7 @@ public final class OPNSentry: NSObject {
     }
 
     static func addTraceHeaders(from span: Span?, to request: inout URLRequest) {
-        guard initialized, SentrySDK.isEnabled, let span else { return }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled, let span else { return }
         request.setValue(span.toTraceHeader().value(), forHTTPHeaderField: "sentry-trace")
         if let baggage = span.baggageHttpHeader(), !baggage.isEmpty {
             request.setValue(baggage, forHTTPHeaderField: "baggage")
@@ -248,6 +286,7 @@ public final class OPNSentry: NSObject {
 
     @objc(startTransactionWithName:operation:makeCurrent:)
     public static func startTransaction(name: String, operation: String, makeCurrent: Bool) -> OPNSentryTransaction? {
+        guard isTelemetryEnabled() else { return nil }
         let resolvedName = name.isEmpty ? "OpenNOW operation" : name
         let resolvedOperation = operation.isEmpty ? "task" : operation
         let span = initialized && SentrySDK.isEnabled ? SentrySDK.startTransaction(name: resolvedName, operation: resolvedOperation, bindToScope: makeCurrent) : nil
@@ -275,21 +314,21 @@ public final class OPNSentry: NSObject {
 
     @objc(recordCounterMetricWithKey:value:attributes:)
     public static func recordCounterMetric(key: String, value: Int64, attributes: [String: Any]?) -> Bool {
-        guard initialized, SentrySDK.isEnabled, value >= 0 else { return false }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled, value >= 0 else { return false }
         SentrySDK.metrics.count(key: key, value: UInt(value), attributes: sentryAttributes(from: attributes))
         return true
     }
 
     @objc(recordGaugeMetricWithKey:value:unit:attributes:)
     public static func recordGaugeMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
-        guard initialized, SentrySDK.isEnabled else { return false }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return false }
         SentrySDK.metrics.gauge(key: key, value: value, unit: sentryUnit(from: unit), attributes: sentryAttributes(from: attributes))
         return true
     }
 
     @objc(recordDistributionMetricWithKey:value:unit:attributes:)
     public static func recordDistributionMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
-        guard initialized, SentrySDK.isEnabled else { return false }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return false }
         SentrySDK.metrics.distribution(key: key, value: value, unit: sentryUnit(from: unit), attributes: sentryAttributes(from: attributes))
         return true
     }
@@ -348,6 +387,12 @@ public final class OPNSentry: NSObject {
     private static func environmentString(_ name: String) -> String? {
         guard let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
+    }
+
+    private static func booleanValue(_ value: Any?, defaultValue: Bool) -> Bool {
+        if let bool = value as? Bool { return bool }
+        if let number = value as? NSNumber { return number.boolValue }
+        return defaultValue
     }
 
     private static func clampedSampleRate(_ value: Double) -> Double {
