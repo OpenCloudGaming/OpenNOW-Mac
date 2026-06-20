@@ -17,7 +17,7 @@ permissions:
 jobs:
   test:
     name: Run Package Unit Tests
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -47,6 +47,9 @@ jobs:
         run: |
           echo "Using macOS runner"
           uname -a
+          swift --version
+          xcodebuild -version
+        shell: bash
 
       - name: Run unit tests
         run: |
@@ -60,7 +63,7 @@ jobs:
 
   app-build:
     name: Build macOS App
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 45
 
     steps:
@@ -71,6 +74,7 @@ jobs:
         run: |
           echo "Using macOS runner"
           uname -a
+          swift --version
           xcodebuild -version
         shell: bash
 
