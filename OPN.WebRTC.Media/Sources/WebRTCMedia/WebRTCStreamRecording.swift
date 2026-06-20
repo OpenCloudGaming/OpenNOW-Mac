@@ -383,7 +383,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             title: configuration.title,
             applicationID: configuration.applicationID,
             createdAt: createdAt,
-            durationSeconds: max(0, lastPresentationTime.seconds),
+            durationSeconds: completedRecordingDurationSeconds(),
             width: recordingWidth > 0 ? recordingWidth : configuration.width,
             height: recordingHeight > 0 ? recordingHeight : configuration.height,
             videoBitrateMbps: configuration.videoBitrateMbps,
@@ -400,6 +400,12 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         } catch {
             emit(.failed(Self.message(for: error)))
         }
+    }
+
+    private func completedRecordingDurationSeconds() -> Double {
+        let presentationDuration = max(0, lastPresentationTime.seconds)
+        guard presentationDuration == 0, capturedVideoFrame, let startedAt else { return presentationDuration }
+        return max(0, Date().timeIntervalSince(startedAt))
     }
 
     private func fail(_ error: Error?) {
