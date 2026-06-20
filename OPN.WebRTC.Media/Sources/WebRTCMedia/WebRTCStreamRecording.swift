@@ -302,8 +302,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
               prepareWriterIfNeeded(pixelBuffer: pixelBuffer, configuration: configuration, outputURL: outputURL),
               let writer,
               let input = videoInput,
-              let adaptor = pixelBufferAdaptor,
-              input.isReadyForMoreMediaData else { return }
+              let adaptor = pixelBufferAdaptor else { return }
         if writer.status == .unknown {
             guard writer.startWriting() else {
                 fail(writer.error)
@@ -311,6 +310,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             }
             writer.startSession(atSourceTime: .zero)
         }
+        guard input.isReadyForMoreMediaData else { return }
         if !capturedVideoFrame {
             capturedVideoFrame = true
             startedAt = Date()
