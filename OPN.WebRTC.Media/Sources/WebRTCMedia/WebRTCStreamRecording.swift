@@ -184,18 +184,21 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     private var lastPresentationTime = CMTime.zero
     private var lastStatusHostTime: CFTimeInterval = 0
     private var capturedVideoFrame = false
+    private var recordingWidth = 0
+    private var recordingHeight = 0
     private var finishing = false
     private var failed = false
 
     var wantsEnhancedVideo: Bool { configuration?.enhancedVideoEnabled == true && isRecording }
     var isRecording: Bool {
-        guard let writer, !finishing, !failed else { return false }
+        guard configuration != nil, !finishing, !failed else { return false }
+        guard let writer else { return true }
         return writer.status == .unknown || writer.status == .writing
     }
 
     func start(configuration: WebRTCStreamRecordingConfiguration) {
         queue.async {
-            guard self.writer == nil else { return }
+            guard self.configuration == nil, self.writer == nil else { return }
             do {
                 let directory = try WebRTCStreamRecordingLibrary.ensureDirectory()
                 self.id = UUID()
@@ -206,36 +209,17 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 self.lastPresentationTime = .zero
                 self.lastStatusHostTime = 0
                 self.capturedVideoFrame = false
+                self.recordingWidth = 0
+                self.recordingHeight = 0
                 self.finishing = false
                 self.failed = false
                 let url = directory.appendingPathComponent(self.id.uuidString).appendingPathExtension("mp4")
                 if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
                 self.outputURL = url
-                let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-                writer.shouldOptimizeForNetworkUse = false
-
-                let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: self.videoSettings(configuration: configuration))
-                videoInput.expectsMediaDataInRealTime = true
-                let attributes: [String: Any] = [
-                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                    kCVPixelBufferWidthKey as String: configuration.width,
-                    kCVPixelBufferHeightKey as String: configuration.height,
-                    kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-                ]
-                let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: attributes)
-                guard writer.canAdd(videoInput) else { throw WebRTCStreamRecorderError.unableToAddVideoInput }
-                writer.add(videoInput)
-
-                let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: self.audioSettings(configuration: configuration))
-                audioInput.expectsMediaDataInRealTime = true
-                if writer.canAdd(audioInput) { writer.add(audioInput); self.audioInput = audioInput } else { self.audioInput = nil }
-
-                self.writer = writer
-                self.videoInput = videoInput
-                self.pixelBufferAdaptor = adaptor
                 self.startedAt = self.createdAt
                 self.firstHostTime = CACurrentMediaTime()
                 self.emit(.starting)
+                self.scheduleFirstFrameTimeout(recordingId: self.id)
             } catch {
                 self.reset()
                 self.emit(.failed(Self.message(for: error)))
@@ -248,7 +232,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     }
 
     func appendVideoFrame(_ frame: RTCVideoFrame) {
-        if let buffer = frame.buffer as? RTCCVPixelBuffer {
+        if let buffer = frame.buffer as? RTCCVPixelBuffer, Self.isWritableBGRA(buffer.pixelBuffer) {
             appendPixelBuffer(buffer.pixelBuffer)
             return
         }
@@ -293,6 +277,9 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
 
     private func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer) {
         guard isRecording,
+              let configuration,
+              let outputURL,
+              prepareWriterIfNeeded(pixelBuffer: pixelBuffer, configuration: configuration, outputURL: outputURL),
               let writer,
               let input = videoInput,
               let adaptor = pixelBufferAdaptor,
@@ -334,10 +321,15 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     }
 
     private func finish() {
-        guard let writer else { return }
+        guard writer != nil || configuration != nil else { return }
         guard !finishing else { return }
         finishing = true
         emit(.finishing)
+        guard let writer else {
+            reset()
+            emit(.failed(Self.message(for: WebRTCStreamRecorderError.noFramesCaptured)))
+            return
+        }
         switch writer.status {
         case .unknown:
             writer.cancelWriting()
@@ -374,8 +366,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             applicationID: configuration.applicationID,
             createdAt: createdAt,
             durationSeconds: max(0, lastPresentationTime.seconds),
-            width: configuration.width,
-            height: configuration.height,
+            width: recordingWidth > 0 ? recordingWidth : configuration.width,
+            height: recordingHeight > 0 ? recordingHeight : configuration.height,
             videoBitrateMbps: configuration.videoBitrateMbps,
             audioBitrateKbps: configuration.audioBitrateKbps,
             enhancedVideo: configuration.enhancedVideoEnabled,
@@ -409,6 +401,8 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         i420PixelBufferPool = nil
         i420PixelBufferPoolWidth = 0
         i420PixelBufferPoolHeight = 0
+        recordingWidth = 0
+        recordingHeight = 0
         startedAt = nil
         firstHostTime = nil
         capturedVideoFrame = false
@@ -427,12 +421,12 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         Task { @MainActor [onStatusChanged] in onStatusChanged?(status) }
     }
 
-    private func videoSettings(configuration: WebRTCStreamRecordingConfiguration) -> [String: Any] {
-        let bitrate = configuration.videoBitrateMbps > 0 ? configuration.videoBitrateMbps * 1_000_000 : max(4_000_000, configuration.width * configuration.height * configuration.fps / 8)
+    private func videoSettings(configuration: WebRTCStreamRecordingConfiguration, width: Int, height: Int) -> [String: Any] {
+        let bitrate = configuration.videoBitrateMbps > 0 ? configuration.videoBitrateMbps * 1_000_000 : max(4_000_000, width * height * configuration.fps / 8)
         return [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: configuration.width,
-            AVVideoHeightKey: configuration.height,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: bitrate,
                 AVVideoExpectedSourceFrameRateKey: configuration.fps,
@@ -440,6 +434,42 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
             ],
         ]
+    }
+
+    private func prepareWriterIfNeeded(pixelBuffer: CVPixelBuffer, configuration: WebRTCStreamRecordingConfiguration, outputURL: URL) -> Bool {
+        if writer != nil { return true }
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width > 0, height > 0 else { return false }
+        do {
+            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            writer.shouldOptimizeForNetworkUse = false
+            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings(configuration: configuration, width: width, height: height))
+            videoInput.expectsMediaDataInRealTime = true
+            let attributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+            ]
+            let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: attributes)
+            guard writer.canAdd(videoInput) else { throw WebRTCStreamRecorderError.unableToAddVideoInput }
+            writer.add(videoInput)
+
+            let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings(configuration: configuration))
+            audioInput.expectsMediaDataInRealTime = true
+            if writer.canAdd(audioInput) { writer.add(audioInput); self.audioInput = audioInput } else { self.audioInput = nil }
+
+            self.writer = writer
+            self.videoInput = videoInput
+            self.pixelBufferAdaptor = adaptor
+            self.recordingWidth = width
+            self.recordingHeight = height
+            return true
+        } catch {
+            fail(error)
+            return false
+        }
     }
 
     private func audioSettings(configuration: WebRTCStreamRecordingConfiguration) -> [String: Any] {
@@ -461,6 +491,21 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
               CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer) == kCVReturnSuccess,
               let pixelBuffer else { return nil }
         return copyI420Buffer(i420, toBGRAOutput: pixelBuffer) ? pixelBuffer : nil
+    }
+
+    private func scheduleFirstFrameTimeout(recordingId: UUID) {
+        queue.asyncAfter(deadline: .now() + 5) {
+            guard self.configuration != nil,
+                  self.id == recordingId,
+                  !self.capturedVideoFrame,
+                  !self.finishing,
+                  !self.failed else { return }
+            self.fail(WebRTCStreamRecorderError.videoFramesUnavailable)
+        }
+    }
+
+    private static func isWritableBGRA(_ pixelBuffer: CVPixelBuffer) -> Bool {
+        CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA
     }
 
     private func i420BGRAFramebufferPool(width: Int, height: Int) -> CVPixelBufferPool? {
@@ -569,11 +614,13 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
 private enum WebRTCStreamRecorderError: LocalizedError {
     case noFramesCaptured
     case unableToAddVideoInput
+    case videoFramesUnavailable
 
     var errorDescription: String? {
         switch self {
         case .noFramesCaptured: return "Recording stopped before any video frames were captured."
         case .unableToAddVideoInput: return "Unable to create the recording video encoder."
+        case .videoFramesUnavailable: return "Recording could not capture video frames."
         }
     }
 }
