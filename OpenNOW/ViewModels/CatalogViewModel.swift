@@ -159,7 +159,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var playtimeStatistics = CatalogPlaytimeStatistics.empty
     @Published var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     @Published var favoriteGameIdentities: Set<String> = []
-    @Published var favoriteGameSnapshots: [String: OPNCatalogGameObject] = [:]
+    @Published var favoriteGames: [OPNCatalogGameObject] = []
     @Published var selectedGameRevealRequest: CatalogGameRevealRequest?
     @Published var catalogImageCacheSummary = "Calculating"
     @Published var isStorePickerVisible = false
@@ -188,11 +188,7 @@ final class CatalogViewModel: ObservableObject {
         self.session = session
         self.onRefreshAuth = onRefreshAuth
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
-        let favoriteAccountIdentifiers = Self.favoriteAccountIdentifiers(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
-        favoriteGameIdentities = Self.loadFavoriteGameIdentities(accountIdentifiers: favoriteAccountIdentifiers)
-        favoriteGameSnapshots = Self.loadFavoriteGameSnapshots(accountIdentifiers: favoriteAccountIdentifiers)
-        favoriteGameIdentities.formUnion(favoriteGameSnapshots.keys)
         $searchQuery
             .dropFirst()
             .removeDuplicates()
@@ -230,14 +226,14 @@ final class CatalogViewModel: ObservableObject {
         }
         if selectedCatalogDestination == .favorites, !isBrowseMode {
             let games = favoriteGames
-            return games.isEmpty ? [] : [CatalogSectionModel(id: "local-favorites", title: "My Favorites", games: games, kind: .panel)]
+            return games.isEmpty ? [] : [CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: games, kind: .panel)]
         }
 
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
-        let localFavoriteGames = favoriteGames
-        if !isBrowseMode, !localFavoriteGames.isEmpty {
-            sections.append(CatalogSectionModel(id: "local-favorites", title: "My Favorites", games: localFavoriteGames, kind: .panel))
+        let remoteFavoriteGames = favoriteGames
+        if !isBrowseMode, !remoteFavoriteGames.isEmpty {
+            sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: remoteFavoriteGames, kind: .panel))
             seenTitles.insert("My Favorites")
         }
         for panel in mainPanels {
@@ -271,26 +267,8 @@ final class CatalogViewModel: ObservableObject {
         filterGroups.filter { !$0.options.isEmpty }
     }
 
-    var favoriteGames: [OPNCatalogGameObject] {
-        guard !favoriteGameIdentities.isEmpty else { return [] }
-        var games: [OPNCatalogGameObject] = []
-        var seen = Set<String>()
-        for game in allKnownGames {
-            let identity = Self.identity(for: game)
-            guard favoriteGameIdentities.contains(identity), !seen.contains(identity) else { continue }
-            seen.insert(identity)
-            games.append(game)
-        }
-        for identity in favoriteGameIdentities.sorted() where !seen.contains(identity) {
-            guard let snapshot = favoriteGameSnapshots[identity] else { continue }
-            seen.insert(identity)
-            games.append(snapshot)
-        }
-        return games
-    }
-
     private var allKnownGames: [OPNCatalogGameObject] {
-        marqueeGames + catalogGames + libraryGames + mainPanelGames
+        marqueeGames + catalogGames + libraryGames + favoriteGames + mainPanelGames
     }
 
     private var mainPanelGames: [OPNCatalogGameObject] {
@@ -312,6 +290,7 @@ final class CatalogViewModel: ObservableObject {
         configureCatalogService()
         loadPanels()
         loadLibrary()
+        loadFavorites()
         loadAccountAndStores()
         loadSettingsPreferences()
         browseCatalog()
@@ -321,6 +300,7 @@ final class CatalogViewModel: ObservableObject {
         configureCatalogService()
         loadPanels()
         loadLibrary()
+        loadFavorites()
         loadAccountAndStores()
         loadSettingsPreferences()
         browseCatalog()
@@ -376,7 +356,6 @@ final class CatalogViewModel: ObservableObject {
                 self.sortOptions = browseResult.sortOptions
                 if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
                 self.selectedFilterIds = browseResult.selectedFilterIds
-                self.refreshFavoriteSnapshotsFromKnownGames()
             }
         }
     }
@@ -750,22 +729,49 @@ final class CatalogViewModel: ObservableObject {
 
     func toggleFavoriteSelectedGame() {
         guard let selectedGame else { return }
+        let appId = Self.favoriteAppId(for: selectedGame)
         let identity = Self.identity(for: selectedGame)
-        guard !identity.isEmpty else { return }
+        guard !appId.isEmpty, !identity.isEmpty else { return }
+        let previousGames = CatalogSendableValue(favoriteGames)
+        let previousIdentities = favoriteGameIdentities
+        let selfBox = CatalogWeakObject(self)
         if favoriteGameIdentities.contains(identity) {
             favoriteGameIdentities.remove(identity)
-            var snapshots = favoriteGameSnapshots
-            snapshots.removeValue(forKey: identity)
-            favoriteGameSnapshots = snapshots
-            actionMessage = "Removed from favorites."
+            favoriteGames.removeAll { Self.identity(for: $0) == identity }
+            actionMessage = "Removing from favorites..."
+            OPNGameServiceSwiftAdapter.removeFavoriteApp(appId) { success, error in
+                Task { @MainActor in
+                    guard let self = selfBox.value else { return }
+                    if success {
+                        self.actionMessage = "Removed from favorites."
+                        self.loadFavorites()
+                    } else {
+                        self.favoriteGames = previousGames.value
+                        self.favoriteGameIdentities = previousIdentities
+                        if self.refreshAuthIfNeeded(error: error) { return }
+                        self.errorMessage = error.isEmpty ? "Unable to remove this game from favorites." : error
+                    }
+                }
+            }
         } else {
             favoriteGameIdentities.insert(identity)
-            var snapshots = favoriteGameSnapshots
-            snapshots[identity] = Self.snapshotObject(for: selectedGame)
-            favoriteGameSnapshots = snapshots
-            actionMessage = "Added to favorites."
+            favoriteGames.insert(Self.snapshotObject(for: selectedGame), at: 0)
+            actionMessage = "Adding to favorites..."
+            OPNGameServiceSwiftAdapter.addFavoriteApp(appId) { success, error in
+                Task { @MainActor in
+                    guard let self = selfBox.value else { return }
+                    if success {
+                        self.actionMessage = "Added to favorites."
+                        self.loadFavorites()
+                    } else {
+                        self.favoriteGames = previousGames.value
+                        self.favoriteGameIdentities = previousIdentities
+                        if self.refreshAuthIfNeeded(error: error) { return }
+                        self.errorMessage = error.isEmpty ? "Unable to add this game to favorites." : error
+                    }
+                }
+            }
         }
-        saveFavorites()
     }
 
     func changeSelectedGameStore() {
@@ -1169,7 +1175,6 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.marqueePanels = panelBox.value
-                    self.refreshFavoriteSnapshotsFromKnownGames()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
@@ -1184,7 +1189,6 @@ final class CatalogViewModel: ObservableObject {
                 self.isLoadingPanels = false
                 if success {
                     self.mainPanels = panelBox.value
-                    self.refreshFavoriteSnapshotsFromKnownGames()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
@@ -1203,12 +1207,41 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.libraryGames = gamesBox.value
-                    self.refreshFavoriteSnapshotsFromKnownGames()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.libraryGames = []
                 }
             }
         }
+    }
+
+    private func loadFavorites() {
+        configureCatalogService()
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.fetchFavoriteGameObjects { success, games, error in
+            let gamesBox = CatalogSendableValue(games)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                if success {
+                    self.updateFavoriteGames(gamesBox.value)
+                } else if self.refreshAuthIfNeeded(error: error) {
+                    self.updateFavoriteGames([])
+                } else if self.selectedCatalogDestination == .favorites, self.errorMessage.isEmpty {
+                    self.errorMessage = error.isEmpty ? "Unable to load GeForce NOW favorites." : error
+                }
+            }
+        }
+    }
+
+    private func updateFavoriteGames(_ games: [OPNCatalogGameObject]) {
+        var uniqueGames: [OPNCatalogGameObject] = []
+        var identities = Set<String>()
+        for game in games {
+            let identity = Self.identity(for: game)
+            guard !identity.isEmpty, identities.insert(identity).inserted else { continue }
+            uniqueGames.append(game)
+        }
+        favoriteGames = uniqueGames
+        favoriteGameIdentities = identities
     }
 
     private func loadAccountAndStores() {
@@ -1284,27 +1317,6 @@ final class CatalogViewModel: ObservableObject {
             let refreshedGame = (libraryGames + catalogGames).first { Self.identity(for: $0) == selectedIdentity }
             if let refreshedGame { selectGame(refreshedGame) }
         }
-    }
-
-    private func refreshFavoriteSnapshotsFromKnownGames() {
-        guard !favoriteGameIdentities.isEmpty else { return }
-        var snapshots = favoriteGameSnapshots
-        var changed = false
-        for game in allKnownGames {
-            let identity = Self.identity(for: game)
-            guard favoriteGameIdentities.contains(identity), snapshots[identity] == nil else { continue }
-            snapshots[identity] = Self.snapshotObject(for: game)
-            changed = true
-        }
-        guard changed else { return }
-        favoriteGameSnapshots = snapshots
-        saveFavorites()
-    }
-
-    private func saveFavorites() {
-        let identifiers = Self.favoriteAccountIdentifiers(account: account, session: session)
-        Self.saveFavoriteGameIdentities(favoriteGameIdentities, accountIdentifiers: identifiers)
-        Self.saveFavoriteGameSnapshots(favoriteGameSnapshots, accountIdentifiers: identifiers)
     }
 
     private func updateSelectedGameOwnership(gameIdentity: String, variantId: String, inLibrary: Bool) {
@@ -1420,6 +1432,11 @@ final class CatalogViewModel: ObservableObject {
         return game.title
     }
 
+    private static func favoriteAppId(for game: OPNCatalogGameObject) -> String {
+        if !game.id.isEmpty { return game.id }
+        return game.uuid
+    }
+
     static func looseIdentityMatches(_ lhs: OPNCatalogGameObject, _ rhs: OPNCatalogGameObject) -> Bool {
         let lhsIdentity = identity(for: lhs)
         let rhsIdentity = identity(for: rhs)
@@ -1433,63 +1450,6 @@ final class CatalogViewModel: ObservableObject {
             if !trimmed.isEmpty { return trimmed.lowercased() }
         }
         return "default"
-    }
-
-    private static func favoriteAccountIdentifiers(account: LoginAccount, session: LoginSession) -> [String] {
-        var identifiers: [String] = []
-        for value in [session.userId, account.userId, account.externalUserId, account.email] {
-            let identifier = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !identifier.isEmpty, !identifiers.contains(identifier) else { continue }
-            identifiers.append(identifier)
-        }
-        return identifiers.isEmpty ? ["default"] : identifiers
-    }
-
-    private static func favoritesKey(accountIdentifier: String) -> String {
-        "OpenNOW.catalog.favoriteGameIdentities.\(accountIdentifier)"
-    }
-
-    private static func favoriteSnapshotsKey(accountIdentifier: String) -> String {
-        "OpenNOW.catalog.favoriteGameSnapshots.\(accountIdentifier)"
-    }
-
-    private static func loadFavoriteGameIdentities(accountIdentifiers: [String]) -> Set<String> {
-        var identities = Set<String>()
-        for accountIdentifier in accountIdentifiers {
-            identities.formUnion(UserDefaults.standard.stringArray(forKey: favoritesKey(accountIdentifier: accountIdentifier)) ?? [])
-        }
-        return identities
-    }
-
-    private static func saveFavoriteGameIdentities(_ identities: Set<String>, accountIdentifiers: [String]) {
-        let values = Array(identities).sorted()
-        for accountIdentifier in accountIdentifiers {
-            UserDefaults.standard.set(values, forKey: favoritesKey(accountIdentifier: accountIdentifier))
-        }
-    }
-
-    private static func loadFavoriteGameSnapshots(accountIdentifiers: [String]) -> [String: OPNCatalogGameObject] {
-        var snapshots: [String: OPNCatalogGameObject] = [:]
-        let decoder = JSONDecoder()
-        for accountIdentifier in accountIdentifiers {
-            guard let data = UserDefaults.standard.data(forKey: favoriteSnapshotsKey(accountIdentifier: accountIdentifier)),
-                  let games = try? decoder.decode([OPNGameInfo].self, from: data) else { continue }
-            for game in games {
-                let object = OPNCatalogGameObject(game: game)
-                let identity = identity(for: object)
-                guard !identity.isEmpty, snapshots[identity] == nil else { continue }
-                snapshots[identity] = object
-            }
-        }
-        return snapshots
-    }
-
-    private static func saveFavoriteGameSnapshots(_ snapshots: [String: OPNCatalogGameObject], accountIdentifiers: [String]) {
-        let games = snapshots.keys.sorted().compactMap { snapshots[$0]?.swiftValue }
-        guard let data = try? JSONEncoder().encode(games) else { return }
-        for accountIdentifier in accountIdentifiers {
-            UserDefaults.standard.set(data, forKey: favoriteSnapshotsKey(accountIdentifier: accountIdentifier))
-        }
     }
 
     private static func snapshotObject(for game: OPNCatalogGameObject) -> OPNCatalogGameObject {
