@@ -1,7 +1,4 @@
 vendor/
-# graphify generated files
-graphify-out/
-.graphify_*
 third_party/sentry-native/
 .vscode/settings.json
 

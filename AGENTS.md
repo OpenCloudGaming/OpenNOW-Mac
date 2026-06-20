@@ -6,11 +6,10 @@ applyTo: '**'
 # Operational Protocol
 Execute every task in this order:
 
-1. **Audit** — List all files, modules, and components required. (Graphify)
+1. **Audit** — List all files, modules, and components required.
 2. **Blueprint** — Outline a concise architectural plan before writing code.
 3. **Execution** — Deliver complete, production-ready code. No snippets, placeholders (`TODO`, `pass`, `...`), or stubs.
 4. **Autonomy** — Resolve missing context or dependencies using the standard library or canonical practices.
-5. **Graphify** - Update Graphify (graphify update <path>)
 
 # Coding Standards
 
