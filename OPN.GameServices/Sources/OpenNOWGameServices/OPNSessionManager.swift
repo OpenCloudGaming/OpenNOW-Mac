@@ -395,7 +395,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
         let payload: [String: Any] = [
             "action": 2,
-            "data": "MANUAL",
+            "data": "RESUME",
             "sessionRequestData": [
                 "audioMode": 2,
                 "remoteControllersBitmap": int(settings["remoteControllersBitmap"]),

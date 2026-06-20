@@ -99,8 +99,12 @@ import WebRTCMedia
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
+    let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
+    #expect(claimPayload?["data"] as? String == "RESUME")
+    #expect(claimRequestData?["appId"] as? Int == 123)
 }
 
 @Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
@@ -182,12 +186,14 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
     nonisolated(unsafe) private static var requestsByHost: [String: [URLRequest]] = [:]
+    nonisolated(unsafe) private static var bodiesByHost: [String: [Data]] = [:]
     nonisolated(unsafe) private static var installed = false
 
     static func install(host: String, handler: @escaping Handler) {
         lock.withLock {
             handlers[host] = handler
             requestsByHost[host] = []
+            bodiesByHost[host] = []
             if !installed {
                 URLProtocol.registerClass(Self.self)
                 installed = true
@@ -199,6 +205,7 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
         lock.withLock {
             handlers[host] = nil
             requestsByHost[host] = nil
+            bodiesByHost[host] = nil
             if handlers.isEmpty, installed {
                 URLProtocol.unregisterClass(Self.self)
                 installed = false
@@ -208,6 +215,11 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
 
     static func recordedRequests(host: String) -> [URLRequest] {
         lock.withLock { requestsByHost[host] ?? [] }
+    }
+
+    static func recordedJSONBodies(host: String) -> [[String: Any]] {
+        lock.withLock { bodiesByHost[host] ?? [] }
+            .compactMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
     }
 
     static func response(json: [String: Any], status: Int = 200) -> (Int, Data) {
@@ -229,8 +241,10 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
+        let body = Self.bodyData(from: request)
         let handler = Self.lock.withLock { () -> Handler? in
             Self.requestsByHost[host, default: []].append(request)
+            if let body { Self.bodiesByHost[host, default: []].append(body) }
             return Self.handlers[host]
         }
         guard let handler else {
@@ -248,4 +262,22 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
     }
 
     override func stopLoading() {}
+
+    private static func bodyData(from request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufferSize = 4096
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        while stream.hasBytesAvailable {
+            let count = stream.read(buffer, maxLength: bufferSize)
+            if count < 0 { return nil }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
 }
