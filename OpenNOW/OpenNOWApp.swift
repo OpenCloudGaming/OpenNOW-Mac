@@ -60,7 +60,6 @@ struct OpenNOWApp: App {
 
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private let githubUpdater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "OpenNOW-Mac")
-    private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
     private var isCompletingUserApprovedTermination = false
@@ -81,12 +80,11 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication did finish launching")
-        startApplicationUpdateChecks()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication will terminate")
-        stopApplicationUpdateChecks()
+        cancelApplicationUpdateTasks()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -130,19 +128,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         (NSApp.delegate as? OpenNOWAppDelegate)?.checkForApplicationUpdates()
     }
 
-    private func startApplicationUpdateChecks() {
-        guard applicationUpdateCheckTimer == nil else { return }
-        checkForApplicationUpdates(showingCurrentStatus: false)
-        applicationUpdateCheckTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.checkForApplicationUpdates(showingCurrentStatus: false)
-            }
-        }
-    }
-
-    private func stopApplicationUpdateChecks() {
-        applicationUpdateCheckTimer?.invalidate()
-        applicationUpdateCheckTimer = nil
+    private func cancelApplicationUpdateTasks() {
         updateCheckTask?.cancel()
         updateCheckTask = nil
         updateInstallTask?.cancel()
@@ -161,7 +147,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
                 let release = try await githubUpdater.checkForUpdate()
                 guard let release else {
                     if showingCurrentStatus {
-                        let currentVersion = await githubUpdater.currentVersion
+                        let currentVersion = githubUpdater.currentVersion
                         let alert = NSAlert()
                         alert.messageText = "OpenNOW is up to date"
                         alert.informativeText = "Version \(currentVersion) is the latest release available on GitHub."
@@ -187,7 +173,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private func presentUpdateAlert(for release: OpenNOWGitHubRelease) {
         updateInstallTask?.cancel()
         Task { @MainActor in
-            let currentVersion = await githubUpdater.currentVersion
+            let currentVersion = githubUpdater.currentVersion
             var notes = release.releaseNotes.isEmpty ? "No release notes were provided." : release.releaseNotes
             if notes.count > 1400 {
                 notes = String(notes.prefix(1400)) + "\n..."
