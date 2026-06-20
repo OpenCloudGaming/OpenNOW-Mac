@@ -42,7 +42,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let clientId = UUID().uuidString.lowercased()
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        let effectiveSettings = settingsByApplyingCloudVariables(settings, requestedCodec: string(settings["codec"]), capabilities: capabilities)
+        let effectiveSettings = settingsByApplyingCloudVariables(settings, capabilities: capabilities)
         let hdrEnabled = bool(effectiveSettings["enableHdr"]) && capabilities.hdrDisplaySupported
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
@@ -884,7 +884,7 @@ private func userAgent() -> String {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173"
 }
 
-private func settingsByApplyingCloudVariables(_ settings: [String: Any], requestedCodec: String, capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
+private func settingsByApplyingCloudVariables(_ settings: [String: Any], capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
     let resolved = WebRTCMediaStreamSettingsResolver.resolve(
         profile: webRTCMediaProfile(from: settings),
         capabilities: webRTCMediaCapabilities(from: capabilities),
@@ -893,7 +893,6 @@ private func settingsByApplyingCloudVariables(_ settings: [String: Any], request
     )
     var result = settings
     result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"]), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }
-    if !requestedCodec.isEmpty { result["codec"] = requestedCodec }
     return result
 }
 

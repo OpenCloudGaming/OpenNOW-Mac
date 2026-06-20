@@ -220,6 +220,30 @@ struct WebRTCStreamingPathTests {
         #expect(settings.upscalingMode == 0)
     }
 
+    @Test("falls back from H265 for native WebRTC")
+    func fallsBackFromH265ForNativeWebRTC() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(codec: "H265", colorQuality: "10bit_420"),
+            capabilities: WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true),
+            libWebRTCAvailable: true
+        )
+
+        #expect(settings.codec == "H264")
+        #expect(settings.colorQuality == "8bit_420")
+    }
+
+    @Test("keeps AV1 ten bit color when available")
+    func keepsAV1TenBitColorWhenAvailable() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(codec: "AV1", colorQuality: "10bit_420"),
+            capabilities: WebRTCMediaDeviceCapabilities(av1HardwareDecodeSupported: true),
+            libWebRTCAvailable: true
+        )
+
+        #expect(settings.codec == "AV1")
+        #expect(settings.colorQuality == "10bit_420")
+    }
+
     @Test("maps mouse buttons to GFN protocol values")
     func mapsMouseButtonsToGFNProtocolValues() {
         #expect(NativeWebRTCTransport.gfnMouseButton(.left) == 1)

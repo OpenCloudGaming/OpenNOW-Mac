@@ -243,13 +243,14 @@ public enum WebRTCMediaStreamSettingsResolver {
         var codec = resolvedCodec(profile: profile, capabilities: capabilities, libWebRTCAvailable: libWebRTCAvailable)
         if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
         if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
+        let colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
         let lowLatency = profile.lowLatencyMode
         let controllerCount = capabilities.connectedGamepadCount
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
             codec: codec,
-            colorQuality: profile.colorQuality.isEmpty ? "8bit_420" : profile.colorQuality,
+            colorQuality: colorQuality,
             maxBitrateMbps: max(1, min(profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
             prefilterMode: lowLatency || (cloudVariables.fetched && !cloudVariables.allowPrefilter) ? 0 : profile.prefilterMode,
             prefilterSharpness: lowLatency || profile.prefilterMode == 0 ? 0 : profile.prefilterSharpness,
@@ -281,17 +282,26 @@ public enum WebRTCMediaStreamSettingsResolver {
     }
 
     private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
-        let requested = profile.codec.isEmpty ? "H264" : profile.codec.uppercased()
+        let requested = normalizedCodec(profile.codec)
+        if requested == "H265", libWebRTCAvailable { return "H264" }
         if requested != "AUTO" { return codecSupported(requested, capabilities: capabilities) ? requested : "H264" }
         if !libWebRTCAvailable { return "H264" }
         let pixels = max(1, profile.resolution.width) * max(1, profile.resolution.height)
-        let prefersTenBit = profile.colorQuality.hasPrefix("10bit")
-        let prefersHighResolution = pixels >= 2560 * 1440
         let prefersVeryHighResolution = pixels >= 3840 * 2160
         let highFps = profile.fps >= 144
         if !highFps, prefersVeryHighResolution, capabilities.av1HardwareDecodeSupported { return "AV1" }
-        if !highFps, (prefersTenBit || prefersHighResolution || profile.maxBitrateMbps >= 75), capabilities.h265HardwareDecodeSupported { return "H265" }
         return "H264"
+    }
+
+    private static func normalizedCodec(_ codec: String) -> String {
+        let requested = codec.isEmpty ? "H264" : codec.uppercased()
+        return requested == "HEVC" ? "H265" : requested
+    }
+
+    private static func resolvedColorQuality(_ colorQuality: String, codec: String) -> String {
+        let resolved = colorQuality.isEmpty ? "8bit_420" : colorQuality
+        guard resolved.lowercased().hasPrefix("10bit"), codec != "H265", codec != "AV1" else { return resolved }
+        return "8bit_420"
     }
 
     private static func codecSupported(_ codec: String, capabilities: WebRTCMediaDeviceCapabilities) -> Bool {
