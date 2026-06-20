@@ -775,7 +775,7 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.imageUrl.isEmpty { merged.imageUrl = metadataGame.imageUrl }
                 if merged.heroImageUrl.isEmpty { merged.heroImageUrl = metadataGame.heroImageUrl }
                 if !metadataGame.screenshotUrls.isEmpty { merged.screenshotUrls = metadataGame.screenshotUrls }
-                if !metadataGame.imageUrlsByType.isEmpty { merged.imageUrlsByType = metadataGame.imageUrlsByType }
+                for (key, value) in metadataGame.imageUrlsByType where merged.imageUrlsByType[key] == nil { merged.imageUrlsByType[key] = value }
                 if merged.maxLocalPlayers <= 0 { merged.maxLocalPlayers = metadataGame.maxLocalPlayers }
                 if merged.maxOnlinePlayers <= 0 { merged.maxOnlinePlayers = metadataGame.maxOnlinePlayers }
                 if merged.supportedControls.isEmpty { merged.supportedControls = metadataGame.supportedControls }
@@ -920,6 +920,18 @@ final class OPNGameService: @unchecked Sendable {
             if let landscape { game.heroImageUrl = Self.optimizeImageURL(landscape, width: 1200) }
             if let primary { game.imageUrl = Self.optimizeImageURL(primary, width: 900) }
             game.screenshotUrls = imageStrings(from: images["SCREENSHOTS"]).map { Self.optimizeImageURL($0, width: 720) }.uniqueValues()
+        }
+        appendDirectImage(firstSafeString(app, keys: ["marqueeHeroImage", "marqueeHeroImageUrl", "marqueeImage", "marqueeImageUrl"]), type: "MARQUEE_HERO_IMAGE", width: 1920, game: &game)
+        appendDirectImage(firstSafeString(app, keys: ["heroImage", "heroImageUrl"]), type: "HERO_IMAGE", width: 1920, game: &game)
+        appendDirectImage(firstSafeString(app, keys: ["logoImage", "logoImageUrl", "gameLogo", "gameLogoUrl"]), type: "GAME_LOGO", width: 620, game: &game)
+        appendDirectImage(firstSafeString(app, keys: ["imageUrl", "tileImage", "tileImageUrl"]), type: "KEY_IMAGE", width: 900, game: &game)
+        if let marqueeHeroImage = game.imageUrlsByType["MARQUEE_HERO_IMAGE"]?.first, !marqueeHeroImage.isEmpty {
+            game.heroImageUrl = marqueeHeroImage
+        } else if let heroImage = game.imageUrlsByType["HERO_IMAGE"]?.first, !heroImage.isEmpty {
+            game.heroImageUrl = heroImage
+        }
+        if game.imageUrl.isEmpty {
+            game.imageUrl = game.imageUrlsByType["TV_BANNER"]?.first ?? game.imageUrlsByType["KEY_IMAGE"]?.first ?? game.imageUrlsByType["GAME_BOX_ART"]?.first ?? ""
         }
         if let variants = app["variants"] as? [NSDictionary] {
             for item in variants {
@@ -1285,6 +1297,13 @@ final class OPNGameService: @unchecked Sendable {
             if let value = safeString(dictionary[key]), !value.isEmpty { return value }
         }
         return nil
+    }
+
+    private func appendDirectImage(_ value: String?, type: String, width: Int, game: inout OPNGameInfo) {
+        guard let value, !value.isEmpty else { return }
+        var urls = game.imageUrlsByType[type] ?? []
+        appendUnique(&urls, Self.optimizeImageURL(value, width: width))
+        if !urls.isEmpty { game.imageUrlsByType[type] = urls }
     }
 
     private func imageStrings(from rawValue: Any?) -> [String] {

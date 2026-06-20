@@ -182,7 +182,6 @@ final class CatalogViewModel: ObservableObject {
     private var settingsPreferencesGeneration = 0
     private var selectedGameRevealSequence = 0
     private var settingsPreferencesTask: Task<Void, Never>?
-    private static let heroRotationCount = 6
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
@@ -221,14 +220,8 @@ final class CatalogViewModel: ObservableObject {
     var heroRotationGames: [OPNCatalogGameObject] {
         var games: [OPNCatalogGameObject] = []
         var seen = Set<String>()
-        Self.appendUniqueHeroGames(from: marqueeGames, requireHeroArtwork: true, into: &games, seen: &seen)
-        Self.appendUniqueHeroGames(from: mainPanelGames, requireHeroArtwork: true, into: &games, seen: &seen)
-        Self.appendUniqueHeroGames(from: catalogGames, requireHeroArtwork: true, into: &games, seen: &seen)
-        Self.appendUniqueHeroGames(from: libraryGames, requireHeroArtwork: true, into: &games, seen: &seen)
-        if games.count < Self.heroRotationCount {
-            Self.appendUniqueHeroGames(from: marqueeGames + mainPanelGames + catalogGames + libraryGames, requireHeroArtwork: false, into: &games, seen: &seen)
-        }
-        return Array(games.prefix(Self.heroRotationCount))
+        Self.appendUniqueHeroGames(from: marqueeGames, into: &games, seen: &seen)
+        return games
     }
 
     var catalogSections: [CatalogSectionModel] {
@@ -1318,23 +1311,19 @@ final class CatalogViewModel: ObservableObject {
         errorMessage = ""
     }
 
-    private static func appendUniqueHeroGames(from source: [OPNCatalogGameObject], requireHeroArtwork: Bool, into games: inout [OPNCatalogGameObject], seen: inout Set<String>) {
-        guard games.count < heroRotationCount else { return }
+    private static func appendUniqueHeroGames(from source: [OPNCatalogGameObject], into games: inout [OPNCatalogGameObject], seen: inout Set<String>) {
         for game in source {
-            guard !requireHeroArtwork || hasHeroArtwork(game) else { continue }
+            guard hasMarqueeHeroArtwork(game) else { continue }
             let identity = identity(for: game)
             guard !identity.isEmpty, !seen.contains(identity) else { continue }
             seen.insert(identity)
             games.append(game)
-            if games.count >= heroRotationCount { return }
         }
     }
 
-    private static func hasHeroArtwork(_ game: OPNCatalogGameObject) -> Bool {
-        if !game.heroImageUrl.isEmpty || !game.imageUrl.isEmpty || !game.screenshotUrls.isEmpty { return true }
-        for key in ["MARQUEE_HERO_IMAGE", "HERO_IMAGE", "FEATURE_IMAGE", "KEY_ART", "TV_BANNER", "BOX_ART", "BOXART", "TILE", "GAME_BOX_ART"] {
+    private static func hasMarqueeHeroArtwork(_ game: OPNCatalogGameObject) -> Bool {
+        for key in ["MARQUEE_HERO_IMAGE", "marquee_hero_image"] {
             if game.imageUrlsByType[key]?.contains(where: { !$0.isEmpty }) == true { return true }
-            if game.imageUrlsByType[key.lowercased()]?.contains(where: { !$0.isEmpty }) == true { return true }
         }
         return false
     }
