@@ -9,6 +9,7 @@ private enum SettingsVendorLayout {
     static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
     static let sidebar = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
     static let card = Color(red: 28 / 255, green: 28 / 255, blue: 28 / 255)
+    static let row = Color.white.opacity(0.045)
 }
 
 private enum SettingsVendorFont {
@@ -579,14 +580,17 @@ private struct ConnectionsSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
+        let stores = connectionStores
         SettingsCard(title: "Store Connections") {
-            if viewModel.storeDefinitions.isEmpty && viewModel.accountStores.isEmpty {
-                SettingsInfoRow(label: "Stores", value: "No account providers returned by GeForce NOW.")
+            if stores.isEmpty {
+                AccountEmptyState(title: "No store providers available.", subtitle: "GeForce NOW did not return any account providers for this session.")
             } else {
-                let stores = connectionStores
-                ForEach(stores, id: \.self) { store in
-                    StoreConnectionRow(viewModel: viewModel, store: store)
-                    if store != stores.last { SettingsDivider() }
+                StoreConnectionsOverview(connectedCount: connectedStoreCount(in: stores), totalCount: stores.count)
+                SettingsDivider()
+                VStack(spacing: 8) {
+                    ForEach(stores, id: \.self) { store in
+                        StoreConnectionRow(viewModel: viewModel, store: store)
+                    }
                 }
             }
         }
@@ -595,13 +599,43 @@ private struct ConnectionsSettingsPage: View {
     private var connectionStores: [String] {
         var seen = Set<String>()
         var stores: [String] = []
+        let hiddenStoreKeys: Set<String> = ["none", "unknown"]
         for store in viewModel.storeDefinitions.map(\.store) + viewModel.accountStores.map(\.store) where !store.isEmpty {
             let key = store.lowercased()
-            guard !seen.contains(key) else { continue }
+            guard !seen.contains(key), !hiddenStoreKeys.contains(key) else { continue }
             seen.insert(key)
             stores.append(store)
         }
-        return stores.sorted { viewModel.displayName(forStore: $0) < viewModel.displayName(forStore: $1) }
+        return stores.sorted { lhs, rhs in
+            let lhsConnected = viewModel.accountStatus(forStore: lhs) != nil
+            let rhsConnected = viewModel.accountStatus(forStore: rhs) != nil
+            if lhsConnected != rhsConnected { return lhsConnected }
+            return viewModel.displayName(forStore: lhs).localizedStandardCompare(viewModel.displayName(forStore: rhs)) == .orderedAscending
+        }
+    }
+
+    private func connectedStoreCount(in stores: [String]) -> Int {
+        stores.filter { viewModel.accountStatus(forStore: $0) != nil }.count
+    }
+}
+
+private struct StoreConnectionsOverview: View {
+    let connectedCount: Int
+    let totalCount: Int
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Library ownership sync")
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Connected stores can sync library ownership before launch.")
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+            Spacer(minLength: 0)
+            SettingsStatusPill(title: "CONNECTED", value: "\(connectedCount)/\(totalCount)", positive: connectedCount > 0)
+        }
     }
 }
 
@@ -612,23 +646,33 @@ private struct StoreConnectionRow: View {
     var body: some View {
         let account = viewModel.accountStatus(forStore: store)
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+        let isConnected = account != nil
+        let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16) {
+            Rectangle()
+                .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
+                .frame(width: 4, height: 46)
+            StoreGlyph(title: viewModel.displayName(forStore: store), connected: isConnected)
             VStack(alignment: .leading, spacing: 5) {
                 Text(viewModel.displayName(forStore: store))
                     .font(.settingsNvidia(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isConnected ? .white : .white.opacity(0.86))
                 Text(statusText(account))
                     .font(.settingsNvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(isConnected ? .white.opacity(0.62) : .white.opacity(0.44))
             }
-            Spacer()
+            Spacer(minLength: 12)
+            SettingsStatusPill(title: isConnected ? "LINKED" : "AVAILABLE", value: isConnected ? connectionDetail(account) : "Not linked", positive: isConnected)
             if account?.hasAccountSyncingData == true {
-                SettingsActionButton(title: "SYNC") { viewModel.syncStoreAccount(store) }
+                SettingsActionButton(title: "SYNC", tone: .secondary, minimumWidth: 86) { viewModel.syncStoreAccount(store) }
             }
-            if definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true {
-                SettingsActionButton(title: account == nil ? "CONNECT" : "MANAGE") { viewModel.linkStoreAccount(store) }
+            if supportsLinking {
+                SettingsActionButton(title: account == nil ? "CONNECT" : "MANAGE", minimumWidth: 96) { viewModel.linkStoreAccount(store) }
             }
         }
+        .padding(12)
+        .background(isConnected ? Color.openNowGreen.opacity(0.095) : SettingsVendorLayout.row)
+        .overlay { Rectangle().stroke(isConnected ? Color.openNowGreen.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 
     private func statusText(_ account: CatalogStoreAccount?) -> String {
@@ -638,6 +682,33 @@ private struct StoreConnectionRow: View {
         if account.totalSyncedGames > 0 { return "\(account.totalSyncedGames) synced games" }
         if !account.syncState.isEmpty { return account.syncState.replacingOccurrences(of: "_", with: " ").capitalized }
         return "Connected"
+    }
+
+    private func connectionDetail(_ account: CatalogStoreAccount?) -> String {
+        guard let account else { return "Not linked" }
+        if account.totalSyncedGames > 0 { return "\(account.totalSyncedGames) games" }
+        if !account.syncDate.isEmpty { return "Synced" }
+        return "Ready"
+    }
+}
+
+private struct StoreGlyph: View {
+    let title: String
+    let connected: Bool
+
+    var body: some View {
+        Text(initials)
+            .font(.settingsNvidia(size: 11, weight: .bold))
+            .foregroundStyle(connected ? .black : .white.opacity(0.64))
+            .frame(width: 34, height: 34)
+            .background(connected ? Color.openNowGreen : Color.white.opacity(0.075))
+            .overlay { Rectangle().stroke(connected ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: 1) }
+    }
+
+    private var initials: String {
+        let parts = title.split(separator: " ")
+        if parts.count >= 2 { return String(parts.prefix(2).compactMap(\.first)).uppercased() }
+        return String(title.prefix(2)).uppercased()
     }
 }
 
@@ -743,6 +814,7 @@ private struct ServerLocationSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
+        let selectedOption = viewModel.settingsRegionOptions.first { $0.url == viewModel.selectedSettingsRegionUrl }
         SettingsCard(title: "Server Location") {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -753,12 +825,13 @@ private struct ServerLocationSettingsPage: View {
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
-                Spacer()
-                SettingsActionButton(title: viewModel.isRefreshingSettingsRegions ? "PINGING" : "REFRESH") { viewModel.refreshSettingsRegions() }
+                Spacer(minLength: 12)
+                SettingsStatusPill(title: "ACTIVE", value: selectedRegionTitle(selectedOption), positive: true)
+                SettingsActionButton(title: viewModel.isRefreshingSettingsRegions ? "PINGING" : "REFRESH", minimumWidth: 104) { viewModel.refreshSettingsRegions() }
                     .disabled(viewModel.isRefreshingSettingsRegions)
             }
             SettingsDivider()
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(viewModel.settingsRegionOptions, id: \.url) { option in
                     SettingsRegionRow(option: option, selected: option.url == viewModel.selectedSettingsRegionUrl) {
                         viewModel.selectSettingsRegion(option.url)
@@ -766,6 +839,11 @@ private struct ServerLocationSettingsPage: View {
                 }
             }
         }
+    }
+
+    private func selectedRegionTitle(_ option: OPNStreamRegionOption?) -> String {
+        guard let option else { return "Automatic" }
+        return option.automatic ? "Automatic" : option.name
     }
 }
 
@@ -1507,20 +1585,78 @@ private struct SettingsSliderRow: View {
 }
 
 private struct SettingsActionButton: View {
+    enum Tone {
+        case primary
+        case secondary
+    }
+
     let title: String
+    var tone: Tone = .primary
+    var minimumWidth: CGFloat = 0
     let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(foregroundColor)
                 .tracking(0.8)
                 .padding(.horizontal, 14)
+                .frame(minWidth: minimumWidth)
                 .frame(height: 32)
-                .background(Color.openNowGreen)
+                .background(backgroundColor)
+                .overlay { Rectangle().stroke(strokeColor, lineWidth: 1) }
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+
+    private var backgroundColor: Color {
+        guard isEnabled else { return Color.white.opacity(0.045) }
+        switch tone {
+        case .primary: return Color.openNowGreen.opacity(isHovering ? 0.88 : 1)
+        case .secondary: return Color.openNowGreen.opacity(isHovering ? 0.22 : 0.14)
+        }
+    }
+
+    private var foregroundColor: Color {
+        guard isEnabled else { return .white.opacity(0.32) }
+        switch tone {
+        case .primary: return .black
+        case .secondary: return Color.openNowGreen
+        }
+    }
+
+    private var strokeColor: Color {
+        guard isEnabled else { return Color.white.opacity(0.08) }
+        return tone == .primary ? Color.openNowGreen : Color.openNowGreen.opacity(0.34)
+    }
+}
+
+private struct SettingsStatusPill: View {
+    let title: String
+    let value: String
+    let positive: Bool
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text(title.uppercased())
+                .font(.settingsNvidia(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.42))
+                .tracking(0.8)
+            Text(value.isEmpty ? "-" : value)
+                .font(.settingsNvidia(size: 12, weight: .bold))
+                .foregroundStyle(positive ? Color.openNowGreen : .white.opacity(0.66))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 10)
+        .frame(minWidth: 94, alignment: .trailing)
+        .frame(height: 40)
+        .background(Color.white.opacity(positive ? 0.055 : 0.035))
+        .overlay { Rectangle().stroke(positive ? Color.openNowGreen.opacity(0.24) : Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 
@@ -1528,31 +1664,63 @@ private struct SettingsRegionRow: View {
     let option: OPNStreamRegionOption
     let selected: Bool
     let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 Rectangle()
                     .fill(selected ? Color.openNowGreen : Color.white.opacity(0.18))
-                    .frame(width: 4, height: 36)
+                    .frame(width: 4, height: 48)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(option.automatic ? "Automatic" : option.name)
                         .font(.settingsNvidia(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(selected ? .white : .white.opacity(0.90))
                     Text(option.automatic ? "Best measured route" : "Cloudmatch region")
                         .font(.settingsNvidia(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.56))
+                        .foregroundStyle(.white.opacity(selected ? 0.64 : 0.52))
                 }
                 Spacer()
-                Text(option.latencyMs >= 0 ? "\(option.latencyMs) ms" : "Measuring")
-                    .font(.settingsNvidia(size: 12, weight: .bold))
-                    .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.70))
+                RegionLatencyBadge(latencyMs: option.latencyMs, selected: selected)
             }
-            .padding(12)
-            .background(selected ? Color.openNowGreen.opacity(0.12) : Color.white.opacity(0.045))
-            .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.72) : Color.white.opacity(0.08), lineWidth: 1) }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(selected ? Color.openNowGreen.opacity(0.13) : Color.white.opacity(isHovering ? 0.065 : 0.045))
+            .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.74) : Color.white.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
+private struct RegionLatencyBadge: View {
+    let latencyMs: Int
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(indicatorColor)
+                .frame(width: 7, height: 7)
+            Text(latencyText)
+                .font(.settingsNvidia(size: 12, weight: .bold))
+                .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.74))
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(selected ? Color.black.opacity(0.20) : Color.white.opacity(0.045))
+        .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.30) : Color.white.opacity(0.08), lineWidth: 1) }
+    }
+
+    private var latencyText: String {
+        latencyMs >= 0 ? "\(latencyMs) ms" : "Measuring"
+    }
+
+    private var indicatorColor: Color {
+        guard latencyMs >= 0 else { return .white.opacity(0.36) }
+        if latencyMs <= 40 { return Color.openNowGreen }
+        if latencyMs <= 65 { return Color(red: 1.0, green: 0.77, blue: 0.24) }
+        return Color(red: 1.0, green: 0.32, blue: 0.26)
     }
 }
 
