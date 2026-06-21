@@ -99,8 +99,14 @@ import WebRTCMedia
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    let putBody = jsonBody(from: requests.first { $0.httpMethod == "PUT" })
+    let requestData = putBody["sessionRequestData"] as? [String: Any]
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
+    #expect(putBody["action"] as? Int == 2)
+    #expect(putBody["data"] as? String == "RESUME")
+    #expect(requestData?["appId"] as? Int == 123)
+    #expect(requestData?["clientIdentification"] as? String == "GFN-PC")
 }
 
 @Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
@@ -174,6 +180,31 @@ private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: S
             ]],
         ],
     ]
+}
+
+private func jsonBody(from request: URLRequest?) -> [String: Any] {
+    guard let data = request.flatMap(httpBodyData) else { return [:] }
+    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+}
+
+private func httpBodyData(from request: URLRequest) -> Data? {
+    if let httpBody = request.httpBody { return httpBody }
+    guard let stream = request.httpBodyStream else { return nil }
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    let bufferSize = 4096
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+    defer { buffer.deallocate() }
+    while stream.hasBytesAvailable {
+        let count = stream.read(buffer, maxLength: bufferSize)
+        if count > 0 {
+            data.append(buffer, count: count)
+        } else {
+            break
+        }
+    }
+    return data
 }
 
 private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
