@@ -5,6 +5,7 @@ import SwiftUI
 import WebRTCMedia
 
 private enum RecordingsLayout {
+    static let topInset: CGFloat = 10
     static let sidebar = Color(red: 18 / 255, green: 20 / 255, blue: 19 / 255)
     static let surface = Color(red: 12 / 255, green: 13 / 255, blue: 13 / 255)
     static let card = Color.white.opacity(0.055)
@@ -101,6 +102,7 @@ struct RecordingsView: View {
                 playerPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .padding(.top, RecordingsLayout.topInset)
         }
         .background(RecordingsBackdrop())
         .onAppear { reload(showMessage: false) }
