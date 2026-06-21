@@ -20,19 +20,27 @@ struct ContentView: View {
 
     @StateObject private var viewModel = LoginViewModel()
     @State private var windowTitle = Self.defaultWindowTitle
+    @State private var didBootstrap = false
+    @State private var isShowingStartupLoading = true
 
     var body: some View {
-        LoginView(viewModel: viewModel, accounts: accounts) { title in
-            windowTitle = title ?? Self.defaultWindowTitle
+        ZStack {
+            LoginView(viewModel: viewModel, accounts: accounts) { title in
+                windowTitle = title ?? Self.defaultWindowTitle
+            }
+
+            if isShowingStartupLoading {
+                OpenNOWStartupLoadingView()
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
         }
             .frame(minWidth: 980, minHeight: 660)
             .frame(idealWidth: 1200, idealHeight: 760)
             .ignoresSafeArea()
             .background(HiddenTitlebarConfigurator(title: windowTitle))
             .task {
-                syncViewModel()
-                viewModel.bootstrap()
-                drainOpenedFiles()
+                await bootstrapAppStartIfNeeded()
             }
             .onChange(of: accounts.count) { _, _ in syncViewModel() }
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
@@ -42,6 +50,23 @@ struct ContentView: View {
                 guard let url = notification.object as? URL else { return }
                 viewModel.handleOpenedFile(url)
             }
+    }
+
+    private func bootstrapAppStartIfNeeded() async {
+        guard !didBootstrap else { return }
+        didBootstrap = true
+        syncViewModel()
+        viewModel.bootstrap()
+        drainOpenedFiles()
+        await dismissStartupLoading()
+    }
+
+    private func dismissStartupLoading() async {
+        try? await Task.sleep(nanoseconds: 2_200_000_000)
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeInOut(duration: 0.52)) {
+            isShowingStartupLoading = false
+        }
     }
 
     private func drainOpenedFiles() {
