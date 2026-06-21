@@ -147,7 +147,9 @@ private struct OpenNOWStartupCloudReactor: View {
         let ignition = reduceMotion ? 1 : startupSmoothStep(0.05, 0.34, progress)
         let boost = isPressing ? 1.0 : 0.0
         let pointer = startupPointerOffset(pointerUnit, in: size)
-        let logoWidth = CGFloat(compact ? 178 : 260) * CGFloat(0.88 + ignition * 0.16 + boost * 0.05 - arrival * 0.12)
+        let baseLogoWidth = CGFloat(compact ? 178 : 260)
+        let logoScaleValue = 0.88 + (ignition * 0.16) + (boost * 0.05) - (arrival * 0.12)
+        let logoWidth = baseLogoWidth * CGFloat(logoScaleValue)
         let pullX = reduceMotion ? 0 : pointer.x * 0.030
         let pullY = reduceMotion ? 0 : pointer.y * 0.036
 
@@ -281,7 +283,10 @@ private struct OpenNOWStartupOrbitModifier: ViewModifier {
         let baseY = sin(angle) * radius * 0.62
         let pointer = startupPointerOffset(pointerUnit, in: size)
         let pull = reduceMotion ? CGFloat(0) : CGFloat(0.10 + node.orbit * 0.08) * (isPressing ? 1.6 : 1.0)
-        let scale = CGFloat((0.58 + reveal * 0.42) * (1.0 - absorb * 0.20) + (isPressing ? 0.04 : 0))
+        let revealScale = 0.58 + (reveal * 0.42)
+        let absorbScale = 1.0 - (absorb * 0.20)
+        let pressScale = isPressing ? 0.04 : 0.0
+        let scale = CGFloat((revealScale * absorbScale) + pressScale)
 
         content
             .scaleEffect(scale)
