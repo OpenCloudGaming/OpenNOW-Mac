@@ -793,12 +793,10 @@ private struct CatalogTopBar: View {
                 .padding(.leading, 86)
 
                 if viewModel.selectedMainPage == .games {
-                    VStack(spacing: 0) {
-                        CatalogVendorLayout.appBarBackground
-                            .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.searchTopGapHeight)
-                        Spacer(minLength: 0)
-                    }
-                    .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.appBarHeight)
+                    CatalogVendorLayout.appBarBackground
+                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.windowTopInset + CatalogVendorLayout.searchTopGapHeight)
+                        .offset(y: -CatalogVendorLayout.windowTopInset)
+                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.appBarHeight, alignment: .top)
 
                     catalogSearchField
                         .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
