@@ -288,15 +288,18 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         private var isLocked = false
         private var appliedAspectRatio: Double?
         private var appliedLockState: Bool?
+        private var fullScreenTransitionObserverTokens: [NSObjectProtocol] = []
+        private var isFullScreenTransitioning = false
 
         func attach(_ window: NSWindow?) {
             guard self.window !== window else { return }
-            if appliedLockState == true {
-                self.window?.contentAspectRatio = .zero
-            }
+            clearAppliedAspectRatio()
+            removeFullScreenTransitionObservers()
             self.window = window
             appliedAspectRatio = nil
             appliedLockState = nil
+            isFullScreenTransitioning = false
+            addFullScreenTransitionObservers(for: window)
             apply()
         }
 
@@ -307,22 +310,25 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         }
 
         func detach() {
-            if appliedLockState == true {
-                window?.contentAspectRatio = .zero
-            }
+            clearAppliedAspectRatio()
+            removeFullScreenTransitionObservers()
             window = nil
             appliedAspectRatio = nil
             appliedLockState = nil
+            isFullScreenTransitioning = false
         }
 
         private func apply() {
             guard let window else { return }
             guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
-                if appliedLockState == true {
-                    window.contentAspectRatio = .zero
-                }
+                clearAppliedAspectRatio()
                 appliedAspectRatio = nil
                 appliedLockState = false
+                return
+            }
+
+            guard !isFullScreenTransitioning, !window.styleMask.contains(.fullScreen) else {
+                clearAppliedAspectRatio()
                 return
             }
 
@@ -331,6 +337,57 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             window.contentAspectRatio = NSSize(width: aspectRatio, height: 1)
             appliedAspectRatio = aspectRatio
             appliedLockState = true
+        }
+
+        private func clearAppliedAspectRatio() {
+            if appliedLockState == true {
+                window?.contentAspectRatio = .zero
+            }
+            appliedAspectRatio = nil
+            appliedLockState = false
+        }
+
+        private func addFullScreenTransitionObservers(for window: NSWindow?) {
+            guard let window else { return }
+            let notificationCenter = NotificationCenter.default
+            let willEnterToken = notificationCenter.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.beginFullScreenTransition()
+                }
+            }
+            let willExitToken = notificationCenter.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.beginFullScreenTransition()
+                }
+            }
+            let didExitToken = notificationCenter.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.finishFullScreenTransition()
+                }
+            }
+            fullScreenTransitionObserverTokens = [willEnterToken, willExitToken, didExitToken]
+        }
+
+        private func removeFullScreenTransitionObservers() {
+            let notificationCenter = NotificationCenter.default
+            for token in fullScreenTransitionObserverTokens {
+                notificationCenter.removeObserver(token)
+            }
+            fullScreenTransitionObserverTokens = []
+        }
+
+        private func beginFullScreenTransition() {
+            isFullScreenTransitioning = true
+            clearAppliedAspectRatio()
+        }
+
+        private func finishFullScreenTransition() {
+            DispatchQueue.main.async { [weak self] in
+                Task { @MainActor in
+                    self?.isFullScreenTransitioning = false
+                    self?.apply()
+                }
+            }
         }
     }
 
