@@ -17,8 +17,6 @@ import WebRTCMedia
 private enum CatalogVendorLayout {
     static let windowTopInset: CGFloat = 10
     static let appBarHeight: CGFloat = 56
-    static let searchFieldHeight: CGFloat = 40
-    static let searchTopGapHeight: CGFloat = (appBarHeight - searchFieldHeight) / 2
     static let appBarBackground = OpenNOWDesign.Surface.appBar
     static let mallSurface = OpenNOWDesign.Surface.app
     static let tileTray = OpenNOWDesign.Surface.tileTray
@@ -793,11 +791,6 @@ private struct CatalogTopBar: View {
                 .padding(.leading, 86)
 
                 if viewModel.selectedMainPage == .games {
-                    CatalogVendorLayout.appBarBackground
-                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.windowTopInset + CatalogVendorLayout.searchTopGapHeight)
-                        .offset(y: -CatalogVendorLayout.windowTopInset)
-                        .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.appBarHeight, alignment: .top)
-
                     catalogSearchField
                         .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width))
                 } else {
@@ -873,7 +866,7 @@ private struct CatalogTopBar: View {
             }
         }
         .padding(.horizontal, 15)
-        .frame(height: CatalogVendorLayout.searchFieldHeight)
+        .frame(height: 40)
         .background(Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255))
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
     }
