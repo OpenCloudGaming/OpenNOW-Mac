@@ -14,10 +14,13 @@ enum OpenNOWStartupAnimation {
 struct OpenNOWStartupLoadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var startDate = Date()
+    @State private var pointerUnit = CGPoint(x: 0.5, y: 0.5)
+    @State private var isPressing = false
 
     var body: some View {
         GeometryReader { proxy in
             let compact = min(proxy.size.width, proxy.size.height) < 620
+            let interactivePoint = reduceMotion ? CGPoint(x: 0.5, y: 0.5) : pointerUnit
 
             TimelineView(.animation) { timeline in
                 let elapsed = max(timeline.date.timeIntervalSince(startDate), 0)
@@ -28,17 +31,39 @@ struct OpenNOWStartupLoadingView: View {
                     OpenNOWStartupMetalSurface(reduceMotion: reduceMotion)
                         .ignoresSafeArea()
 
-                    OpenNOWStartupAtmosphere(progress: progress)
+                    OpenNOWStartupAtmosphere(progress: progress, pointerUnit: interactivePoint, isPressing: isPressing)
 
-                    OpenNOWStartupHologramFlight(progress: progress, size: proxy.size, compact: compact, reduceMotion: reduceMotion)
+                    OpenNOWStartupCatalogMosaic(progress: progress, size: proxy.size, pointerUnit: interactivePoint, compact: compact, reduceMotion: reduceMotion)
 
-                    OpenNOWStartupDestinationTelevision(progress: progress, size: proxy.size, compact: compact, reduceMotion: reduceMotion)
+                    OpenNOWStartupGameConstellation(progress: progress, size: proxy.size, pointerUnit: interactivePoint, compact: compact, reduceMotion: reduceMotion, isPressing: isPressing)
 
-                    OpenNOWStartupLogoHUD(progress: progress, compact: compact, reduceMotion: reduceMotion)
+                    OpenNOWStartupCloudReactor(progress: progress, size: proxy.size, pointerUnit: interactivePoint, compact: compact, reduceMotion: reduceMotion, isPressing: isPressing)
 
-                    OpenNOWStartupStatusOverlay(progress: progress, compact: compact, reduceMotion: reduceMotion)
+                    OpenNOWStartupCommandOverlay(progress: progress, pointerUnit: interactivePoint, compact: compact, reduceMotion: reduceMotion, isPressing: isPressing)
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    guard !reduceMotion else { return }
+                    switch phase {
+                    case .active(let location):
+                        pointerUnit = startupUnitPoint(location, in: proxy.size)
+                    case .ended:
+                        withAnimation(.spring(response: 0.55, dampingFraction: 0.80)) {
+                            pointerUnit = CGPoint(x: 0.5, y: 0.5)
+                            isPressing = false
+                        }
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard !reduceMotion else { return }
+                            pointerUnit = startupUnitPoint(value.location, in: proxy.size)
+                            isPressing = true
+                        }
+                        .onEnded { _ in isPressing = false }
+                )
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
@@ -52,8 +77,12 @@ struct OpenNOWStartupLoadingView: View {
 
 private struct OpenNOWStartupAtmosphere: View {
     let progress: Double
+    let pointerUnit: CGPoint
+    let isPressing: Bool
 
     var body: some View {
+        let glow = isPressing ? 0.16 : 0
+
         ZStack {
             LinearGradient(
                 stops: [
@@ -72,9 +101,21 @@ private struct OpenNOWStartupAtmosphere: View {
                     .init(color: Color.openNowGreen.opacity(0.12), location: 0.34),
                     .init(color: .clear, location: 1.00)
                 ],
-                center: .center,
+                center: UnitPoint(x: pointerUnit.x, y: pointerUnit.y),
                 startRadius: 12,
                 endRadius: 760
+            )
+            .blendMode(.screen)
+
+            RadialGradient(
+                stops: [
+                    .init(color: Color.openNowGreen.opacity(0.18 + glow), location: 0.00),
+                    .init(color: Color.openNowGreen.opacity(0.06 + glow * 0.36), location: 0.26),
+                    .init(color: .clear, location: 0.72)
+                ],
+                center: UnitPoint(x: pointerUnit.x, y: pointerUnit.y),
+                startRadius: 0,
+                endRadius: 360
             )
             .blendMode(.screen)
 
@@ -90,6 +131,350 @@ private struct OpenNOWStartupAtmosphere: View {
             )
         }
         .ignoresSafeArea()
+    }
+}
+
+private struct OpenNOWStartupCloudReactor: View {
+    let progress: Double
+    let size: CGSize
+    let pointerUnit: CGPoint
+    let compact: Bool
+    let reduceMotion: Bool
+    let isPressing: Bool
+
+    var body: some View {
+        let arrival = reduceMotion ? 1 : startupSmoothStep(0.68, 1.0, progress)
+        let ignition = reduceMotion ? 1 : startupSmoothStep(0.05, 0.34, progress)
+        let boost = isPressing ? 1.0 : 0.0
+        let pointer = startupPointerOffset(pointerUnit, in: size)
+        let logoWidth = CGFloat(compact ? 178 : 260) * CGFloat(0.88 + ignition * 0.16 + boost * 0.05 - arrival * 0.12)
+        let pullX = reduceMotion ? 0 : pointer.x * 0.030
+        let pullY = reduceMotion ? 0 : pointer.y * 0.036
+
+        ZStack {
+            OpenNOWStartupPortalRings(progress: progress, compact: compact, isPressing: isPressing)
+
+            ForEach(0..<9, id: \.self) { index in
+                OpenNOWStartupEnergyRay(index: index, pointerUnit: pointerUnit, progress: progress, isPressing: isPressing)
+                    .stroke(Color.openNowGreen.opacity(0.16 + boost * 0.08), style: StrokeStyle(lineWidth: CGFloat(index.isMultiple(of: 3) ? 1.8 : 1.0), lineCap: .round))
+                    .frame(width: min(size.width, size.height) * 0.72, height: min(size.width, size.height) * 0.72)
+                    .rotationEffect(.degrees(Double(index) * 40 + progress * 160))
+                    .blur(radius: index.isMultiple(of: 2) ? 0 : 1.8)
+                    .blendMode(.screen)
+            }
+
+            VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
+                .scaledToFit()
+                .frame(width: logoWidth, height: logoWidth * 0.62)
+                .shadow(color: Color.openNowGreen.opacity(0.84), radius: compact ? 28 : 44)
+                .shadow(color: .white.opacity(0.20 + boost * 0.14), radius: compact ? 8 : 14)
+
+            Circle()
+                .stroke(Color.white.opacity(0.12 + boost * 0.10), lineWidth: compact ? 1.2 : 1.6)
+                .frame(width: logoWidth * 1.72, height: logoWidth * 1.72)
+                .scaleEffect(CGFloat(1.0 + arrival * 0.36 + boost * 0.08))
+                .blur(radius: 0.4)
+        }
+        .scaleEffect(CGFloat(0.76 + ignition * 0.24 + arrival * 0.10))
+        .offset(x: pullX, y: pullY - CGFloat(compact ? 22 : 34))
+        .opacity(0.98 - arrival * 0.12)
+        .blendMode(.screen)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct OpenNOWStartupPortalRings: View {
+    let progress: Double
+    let compact: Bool
+    let isPressing: Bool
+
+    var body: some View {
+        let boost = isPressing ? 1.0 : 0.0
+        let base = CGFloat(compact ? 250 : 360)
+
+        ZStack {
+            ForEach(0..<5, id: \.self) { index in
+                Circle()
+                    .trim(from: CGFloat(0.04 + Double(index) * 0.025), to: CGFloat(0.78 - Double(index) * 0.035))
+                    .stroke(
+                        AngularGradient(colors: [.clear, Color.openNowGreen.opacity(0.30 + boost * 0.10), .white.opacity(0.42), Color.openNowGreen.opacity(0.18), .clear], center: .center),
+                        style: StrokeStyle(lineWidth: CGFloat(index == 0 ? 2.4 : 1.2), lineCap: .round, dash: index.isMultiple(of: 2) ? [18, 20] : [6, 26])
+                    )
+                    .frame(width: base + CGFloat(index * 44), height: base + CGFloat(index * 44))
+                    .rotationEffect(.degrees((index.isMultiple(of: 2) ? 1 : -1) * (progress * 280 + Double(index) * 19)))
+                    .scaleEffect(CGFloat(1.0 + startupSmoothStep(0.70, 1.0, progress) * 0.26 + boost * 0.06))
+            }
+        }
+    }
+}
+
+private struct OpenNOWStartupEnergyRay: Shape {
+    let index: Int
+    let pointerUnit: CGPoint
+    let progress: Double
+    let isPressing: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let pointer = CGPoint(x: rect.minX + rect.width * pointerUnit.x, y: rect.minY + rect.height * pointerUnit.y)
+        let radius = min(rect.width, rect.height) * (0.22 + CGFloat(index) * 0.026 + CGFloat(progress) * 0.04)
+        let boost = isPressing ? CGFloat(0.18) : 0
+        var path = Path()
+        path.move(to: center)
+        path.addCurve(
+            to: CGPoint(x: center.x + cos(CGFloat(index) * 0.86) * radius * (1.8 + boost), y: center.y + sin(CGFloat(index) * 0.86) * radius * (1.8 + boost)),
+            control1: CGPoint(x: (center.x + pointer.x) * 0.50, y: (center.y + pointer.y) * 0.50),
+            control2: CGPoint(x: center.x + cos(CGFloat(index) * 1.4 + CGFloat(progress)) * radius, y: center.y + sin(CGFloat(index) * 1.2 - CGFloat(progress)) * radius)
+        )
+        return path
+    }
+}
+
+private struct OpenNOWStartupGameConstellation: View {
+    let progress: Double
+    let size: CGSize
+    let pointerUnit: CGPoint
+    let compact: Bool
+    let reduceMotion: Bool
+    let isPressing: Bool
+
+    private static let nodes: [OpenNOWStartupGameNode] = [
+        .init(title: "CYBER SIEGE", symbol: "hexagon.fill", orbit: 0.18, angle: -150, accent: Color(red: 0.63, green: 1.00, blue: 0.18)),
+        .init(title: "DRIFT//2099", symbol: "bolt.fill", orbit: 0.32, angle: -96, accent: Color(red: 0.92, green: 1.00, blue: 0.30)),
+        .init(title: "ASTRAL CO-OP", symbol: "sparkles", orbit: 0.28, angle: -36, accent: Color(red: 0.36, green: 0.95, blue: 1.00)),
+        .init(title: "BOSS RUSH", symbol: "flame.fill", orbit: 0.40, angle: 18, accent: Color(red: 0.78, green: 1.00, blue: 0.22)),
+        .init(title: "MY LIBRARY", symbol: "rectangle.stack.fill", orbit: 0.24, angle: 72, accent: Color.openNowGreen),
+        .init(title: "CLOUD SAVE", symbol: "externaldrive.fill", orbit: 0.36, angle: 130, accent: Color(red: 0.70, green: 1.00, blue: 0.42)),
+        .init(title: "INSTANT PLAY", symbol: "play.fill", orbit: 0.44, angle: 178, accent: Color(red: 0.48, green: 1.00, blue: 0.12)),
+        .init(title: "RTX READY", symbol: "cube.transparent.fill", orbit: 0.30, angle: 226, accent: Color(red: 0.86, green: 1.00, blue: 0.48))
+    ]
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(Self.nodes.enumerated()), id: \.element.id) { index, node in
+                OpenNOWStartupGameNodeCard(node: node, compact: compact)
+                    .frame(width: compact ? 136 : 178, height: compact ? 58 : 74)
+                    .modifier(OpenNOWStartupOrbitModifier(index: index, node: node, progress: progress, size: size, pointerUnit: pointerUnit, reduceMotion: reduceMotion, isPressing: isPressing))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct OpenNOWStartupOrbitModifier: ViewModifier {
+    let index: Int
+    let node: OpenNOWStartupGameNode
+    let progress: Double
+    let size: CGSize
+    let pointerUnit: CGPoint
+    let reduceMotion: Bool
+    let isPressing: Bool
+
+    func body(content: Content) -> some View {
+        let reveal = reduceMotion ? 1 : startupSmoothStep(0.05 + Double(index) * 0.035, 0.34 + Double(index) * 0.035, progress)
+        let absorb = reduceMotion ? 0 : startupSmoothStep(0.70, 1.0, progress)
+        let spin = reduceMotion ? 0 : progress * 110
+        let angle = (node.angle + spin + Double(index).truncatingRemainder(dividingBy: 2) * -progress * 70) * .pi / 180
+        let radius = min(size.width, size.height) * CGFloat(node.orbit) * CGFloat(1.0 - absorb * 0.72)
+        let baseX = cos(angle) * radius
+        let baseY = sin(angle) * radius * 0.62
+        let pointer = startupPointerOffset(pointerUnit, in: size)
+        let pull = reduceMotion ? CGFloat(0) : CGFloat(0.10 + node.orbit * 0.08) * (isPressing ? 1.6 : 1.0)
+        let scale = CGFloat((0.58 + reveal * 0.42) * (1.0 - absorb * 0.20) + (isPressing ? 0.04 : 0))
+
+        content
+            .scaleEffect(scale)
+            .rotation3DEffect(.degrees(node.angle * 0.16 + progress * 18), axis: (x: 0.12, y: baseX > 0 ? -1 : 1, z: 0.06), perspective: 0.72)
+            .offset(x: baseX + pointer.x * pull, y: baseY + pointer.y * pull - CGFloat(24 + absorb * 26))
+            .opacity(reveal * (1.0 - absorb * 0.18))
+            .blur(radius: CGFloat(absorb * 2.0))
+            .blendMode(.screen)
+    }
+}
+
+private struct OpenNOWStartupGameNode: Identifiable {
+    let id = UUID()
+    let title: String
+    let symbol: String
+    let orbit: Double
+    let angle: Double
+    let accent: Color
+}
+
+private struct OpenNOWStartupGameNodeCard: View {
+    let node: OpenNOWStartupGameNode
+    let compact: Bool
+
+    var body: some View {
+        HStack(spacing: compact ? 9 : 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous)
+                    .fill(node.accent.opacity(0.16))
+                    .overlay { RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous).stroke(node.accent.opacity(0.62), lineWidth: 1) }
+                Image(systemName: node.symbol)
+                    .font(.system(size: compact ? 14 : 17, weight: .bold))
+                    .foregroundStyle(node.accent)
+            }
+            .frame(width: compact ? 34 : 42, height: compact ? 34 : 42)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(node.title)
+                    .font(.system(size: compact ? 10 : 12, weight: .black, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.94))
+                HStack(spacing: 4) {
+                    ForEach(0..<4, id: \.self) { index in
+                        Capsule()
+                            .fill(index == 0 ? node.accent : .white.opacity(0.18))
+                            .frame(width: index == 0 ? 26 : 13, height: 3)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, compact ? 10 : 13)
+        .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: compact ? 17 : 22, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: compact ? 17 : 22, style: .continuous).stroke(node.accent.opacity(0.36), lineWidth: 1) }
+        .shadow(color: node.accent.opacity(0.28), radius: compact ? 12 : 18)
+    }
+}
+
+private struct OpenNOWStartupCatalogMosaic: View {
+    let progress: Double
+    let size: CGSize
+    let pointerUnit: CGPoint
+    let compact: Bool
+    let reduceMotion: Bool
+
+    var body: some View {
+        let reveal = reduceMotion ? 1 : startupSmoothStep(0.72, 1.0, progress)
+        let pointer = startupPointerOffset(pointerUnit, in: size)
+        let columns = compact ? 4 : 7
+
+        VStack(alignment: .leading, spacing: compact ? 11 : 15) {
+            HStack(spacing: 10) {
+                VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
+                    .scaledToFit()
+                    .frame(width: compact ? 72 : 94, height: compact ? 36 : 46)
+                Text("CATALOG ONLINE")
+                    .font(.system(size: compact ? 13 : 17, weight: .black, design: .rounded))
+                    .tracking(compact ? 2.8 : 4.4)
+                    .foregroundStyle(.white.opacity(0.92))
+                Spacer(minLength: 0)
+                Capsule()
+                    .fill(Color.openNowGreen.opacity(0.82))
+                    .frame(width: compact ? 62 : 96, height: 5)
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: compact ? 8 : 12), count: columns), spacing: compact ? 8 : 12) {
+                ForEach(0..<(columns * 3), id: \.self) { index in
+                    OpenNOWStartupMosaicTile(index: index)
+                        .aspectRatio(0.72, contentMode: .fit)
+                }
+            }
+        }
+        .padding(compact ? 18 : 28)
+        .frame(width: min(size.width * 0.82, compact ? 620 : 980))
+        .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: compact ? 28 : 38, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: compact ? 28 : 38, style: .continuous).stroke(Color.openNowGreen.opacity(0.32), lineWidth: 1) }
+        .shadow(color: Color.openNowGreen.opacity(0.32), radius: compact ? 30 : 52)
+        .scaleEffect(CGFloat(0.62 + reveal * 0.48))
+        .offset(x: reduceMotion ? 0 : pointer.x * 0.018, y: reduceMotion ? 0 : pointer.y * 0.016)
+        .opacity(reveal)
+        .blur(radius: CGFloat((1.0 - reveal) * 16))
+        .allowsHitTesting(false)
+    }
+}
+
+private struct OpenNOWStartupMosaicTile: View {
+    let index: Int
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [tileAccent.opacity(0.78), Color.black.opacity(0.28), Color.openNowGreen.opacity(index.isMultiple(of: 2) ? 0.30 : 0.14)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(alignment: .bottomLeading) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Capsule().fill(.white.opacity(0.48)).frame(width: 42, height: 4)
+                    Capsule().fill(.white.opacity(0.22)).frame(width: 28, height: 3)
+                }
+                .padding(8)
+            }
+            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.white.opacity(0.10), lineWidth: 1) }
+    }
+
+    private var tileAccent: Color {
+        switch index % 5 {
+        case 0: return Color.openNowGreen
+        case 1: return Color(red: 0.88, green: 1.00, blue: 0.28)
+        case 2: return Color(red: 0.34, green: 0.92, blue: 1.00)
+        case 3: return Color(red: 0.58, green: 1.00, blue: 0.18)
+        default: return Color(red: 0.96, green: 1.00, blue: 0.52)
+        }
+    }
+}
+
+private struct OpenNOWStartupCommandOverlay: View {
+    let progress: Double
+    let pointerUnit: CGPoint
+    let compact: Bool
+    let reduceMotion: Bool
+    let isPressing: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: compact ? 7 : 9) {
+                    Text("OPENNOW CLOUD ACCELERATOR")
+                        .font(.system(size: compact ? 13 : 16, weight: .black, design: .rounded))
+                        .tracking(compact ? 2.2 : 3.5)
+                        .foregroundStyle(.white)
+                    Text(reduceMotion ? "Reduced motion preview" : isPressing ? "Boost engaged - release to stabilize" : "Move or press to bend the game stream")
+                        .font(.system(size: compact ? 10 : 12, weight: .bold))
+                        .tracking(1.1)
+                        .foregroundStyle(Color.openNowGreen.opacity(0.86))
+                }
+                Spacer(minLength: 0)
+                OpenNOWStartupVectorReadout(pointerUnit: pointerUnit, compact: compact)
+            }
+            .padding(.horizontal, compact ? 22 : 38)
+            .padding(.top, compact ? 26 : 38)
+
+            Spacer(minLength: 0)
+
+            OpenNOWStartupProgressRail(reduceMotion: reduceMotion, progress: progress)
+                .frame(width: compact ? 248 : 380, height: 5)
+                .padding(.bottom, compact ? 28 : 44)
+                .opacity(1.0 - startupSmoothStep(0.88, 1.0, progress) * 0.65)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct OpenNOWStartupVectorReadout: View {
+    let pointerUnit: CGPoint
+    let compact: Bool
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            Text("VECTOR")
+                .font(.system(size: compact ? 8 : 9, weight: .black))
+                .tracking(1.6)
+                .foregroundStyle(.white.opacity(0.48))
+            Text(String(format: "%03.0f / %03.0f", pointerUnit.x * 100, pointerUnit.y * 100))
+                .font(.system(size: compact ? 10 : 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.openNowGreen.opacity(0.86))
+        }
+        .padding(.vertical, compact ? 8 : 10)
+        .padding(.horizontal, compact ? 10 : 12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.openNowGreen.opacity(0.18), lineWidth: 1) }
     }
 }
 
@@ -594,6 +979,20 @@ private func startupSmoothStep(_ edge0: Double, _ edge1: Double, _ value: Double
 
 private func startupEaseOutCubic(_ value: Double) -> Double {
     1 - pow(1 - startupClamped(value), 3)
+}
+
+private func startupUnitPoint(_ location: CGPoint, in size: CGSize) -> CGPoint {
+    CGPoint(
+        x: startupClamped(Double(location.x / max(size.width, 1))),
+        y: startupClamped(Double(location.y / max(size.height, 1)))
+    )
+}
+
+private func startupPointerOffset(_ unitPoint: CGPoint, in size: CGSize) -> CGPoint {
+    CGPoint(
+        x: (unitPoint.x - 0.5) * size.width,
+        y: (unitPoint.y - 0.5) * size.height
+    )
 }
 
 private struct OpenNOWStartupMetalSurface: NSViewRepresentable {
