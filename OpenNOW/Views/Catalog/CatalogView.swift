@@ -794,7 +794,7 @@ private struct CatalogTopBar: View {
 
                 if viewModel.selectedMainPage == .games {
                     VStack(spacing: 0) {
-                        Color.black
+                        CatalogVendorLayout.appBarBackground
                             .frame(width: CatalogVendorLayout.searchWidth(for: proxy.size.width), height: CatalogVendorLayout.searchTopGapHeight)
                         Spacer(minLength: 0)
                     }
