@@ -11,6 +11,7 @@ typealias OPNStoreURLCallback = @Sendable (_ success: Bool, _ storeURL: String, 
 typealias OPNLaunchAppIdCallback = @Sendable (_ appId: String) -> Void
 typealias OPNProviderInfoCallback = @Sendable (_ success: Bool, _ providerInfo: OPNGameProviderInfo, _ selectedEndpoint: OPNGameProviderEndpoint, _ error: String) -> Void
 typealias OPNOwnershipActionCallback = @Sendable (_ success: Bool, _ error: String) -> Void
+typealias OPNFavoriteActionCallback = @Sendable (_ success: Bool, _ error: String) -> Void
 typealias OPNUserAccountCallback = @Sendable (_ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) -> Void
 typealias OPNStoreDefinitionsCallback = @Sendable (_ success: Bool, _ definitions: [OPNStoreDefinition], _ error: String) -> Void
 
@@ -18,6 +19,7 @@ final class OPNGameService: @unchecked Sendable {
     static let shared = OPNGameService()
 
     private static let panelsHash = "f8e26265a5db5c20e1334a6872cf04b6e3970507697f6ae55a6ddefa5420daf0"
+    private static let favoritesPanelHash = "46ec15f267a056e7d5e46e629efa929529e5e7542a4850faece90b9f8fa5f810"
     private static let marqueeHash = "dd4bddfdef4707dfe340cc2040d6bb9c4c45f706976fca15b2ef33221c385d7f"
     private static let appMetaDataHash = "cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63"
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
@@ -286,6 +288,29 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
+    func fetchFavoriteGames(completion: @escaping OPNCatalogCallback) {
+        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+            guard let self else { return }
+            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNLocale(), "panelNames": ["FAVORITES"]]
+            let flatten: @Sendable (NSDictionary?, String) -> Void = { [weak self] data, error in
+                guard let self else { return }
+                if !error.isEmpty {
+                    self.dispatchCatalog(completion, false, [], error)
+                    return
+                }
+                guard let panels = data?["panels"] as? [NSDictionary] else {
+                    self.dispatchCatalog(completion, false, [], "No panels in favorites response")
+                    return
+                }
+                let games = self.parsePanelResults(panels).flatMap { $0.sections }.flatMap { $0.games }
+                self.enrichGames(games, vpcId: resolvedVpcId) { enriched in
+                    self.dispatchCatalog(completion, true, self.deduplicateGames(enriched), "")
+                }
+            }
+            self.postGraphQL(operationName: "panels/Favorites", queryHash: Self.favoritesPanelHash, variables: variables, completion: flatten)
+        }
+    }
+
     func fetchPublicGames(completion: @escaping OPNCatalogCallback) {
         let locales = Self.currentGFNLocaleURLPathComponentFallbacks()
         fetchPublicGamesLocale(locales: locales.isEmpty ? ["en-US"] : locales, index: 0, completion: completion)
@@ -463,6 +488,14 @@ final class OPNGameService: @unchecked Sendable {
 
     func selectOwnedVariant(_ variantId: String, completion: @escaping OPNOwnershipActionCallback) {
         ownedVariantMutation(mutationName: "SelectOwnedVariant", fieldName: "selectOwnedVariant", variantId: variantId, completion: completion)
+    }
+
+    func addFavoriteApp(_ appId: String, completion: @escaping OPNFavoriteActionCallback) {
+        favoriteAppMutation(mutationName: "AddFavoriteApp", fieldName: "addFavoriteApp", appId: appId, completion: completion)
+    }
+
+    func removeFavoriteApp(_ appId: String, completion: @escaping OPNFavoriteActionCallback) {
+        favoriteAppMutation(mutationName: "RemoveFavoriteApp", fieldName: "removeFavoriteApp", appId: appId, completion: completion)
     }
 
     func syncAccountProvider(store: String, completion: @escaping OPNOwnershipActionCallback) {
@@ -775,7 +808,7 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.imageUrl.isEmpty { merged.imageUrl = metadataGame.imageUrl }
                 if merged.heroImageUrl.isEmpty { merged.heroImageUrl = metadataGame.heroImageUrl }
                 if !metadataGame.screenshotUrls.isEmpty { merged.screenshotUrls = metadataGame.screenshotUrls }
-                if !metadataGame.imageUrlsByType.isEmpty { merged.imageUrlsByType = metadataGame.imageUrlsByType }
+                for (key, value) in metadataGame.imageUrlsByType where merged.imageUrlsByType[key] == nil { merged.imageUrlsByType[key] = value }
                 if merged.maxLocalPlayers <= 0 { merged.maxLocalPlayers = metadataGame.maxLocalPlayers }
                 if merged.maxOnlinePlayers <= 0 { merged.maxOnlinePlayers = metadataGame.maxOnlinePlayers }
                 if merged.supportedControls.isEmpty { merged.supportedControls = metadataGame.supportedControls }
@@ -920,6 +953,18 @@ final class OPNGameService: @unchecked Sendable {
             if let landscape { game.heroImageUrl = Self.optimizeImageURL(landscape, width: 1200) }
             if let primary { game.imageUrl = Self.optimizeImageURL(primary, width: 900) }
             game.screenshotUrls = imageStrings(from: images["SCREENSHOTS"]).map { Self.optimizeImageURL($0, width: 720) }.uniqueValues()
+        }
+        appendDirectImage(firstSafeString(app, keys: ["marqueeHeroImage", "marqueeHeroImageUrl", "marqueeImage", "marqueeImageUrl"]), type: "MARQUEE_HERO_IMAGE", width: 1920, game: &game)
+        appendDirectImage(firstSafeString(app, keys: ["heroImage", "heroImageUrl"]), type: "HERO_IMAGE", width: 1920, game: &game)
+        appendDirectImage(firstSafeString(app, keys: ["logoImage", "logoImageUrl", "gameLogo", "gameLogoUrl"]), type: "GAME_LOGO", width: 620, game: &game)
+        appendDirectImage(firstSafeString(app, keys: ["imageUrl", "tileImage", "tileImageUrl"]), type: "KEY_IMAGE", width: 900, game: &game)
+        if let marqueeHeroImage = game.imageUrlsByType["MARQUEE_HERO_IMAGE"]?.first, !marqueeHeroImage.isEmpty {
+            game.heroImageUrl = marqueeHeroImage
+        } else if let heroImage = game.imageUrlsByType["HERO_IMAGE"]?.first, !heroImage.isEmpty {
+            game.heroImageUrl = heroImage
+        }
+        if game.imageUrl.isEmpty {
+            game.imageUrl = game.imageUrlsByType["TV_BANNER"]?.first ?? game.imageUrlsByType["KEY_IMAGE"]?.first ?? game.imageUrlsByType["GAME_BOX_ART"]?.first ?? ""
         }
         if let variants = app["variants"] as? [NSDictionary] {
             for item in variants {
@@ -1162,6 +1207,28 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
+    private func favoriteAppMutation(mutationName: String, fieldName: String, appId: String, completion: @escaping OPNFavoriteActionCallback) {
+        guard !appId.isEmpty else {
+            dispatchFavorite(completion, false, "Missing app ID")
+            return
+        }
+        let mutation = "mutation \(mutationName)($appId: String!, $locale: String!) { \(fieldName) (language: $locale, appId: $appId) { app { id } } }"
+        let variables: NSDictionary = ["appId": appId, "locale": Self.currentGFNLocale()]
+        postGraphQlJson(query: mutation, variables: variables) { [weak self] data, error in
+            guard let self else { return }
+            if !error.isEmpty {
+                self.dispatchFavorite(completion, false, error)
+                return
+            }
+            let app = (data?[fieldName] as? NSDictionary)?["app"] as? NSDictionary
+            guard let responseAppId = self.safeString(app?["id"]), !responseAppId.isEmpty else {
+                self.dispatchFavorite(completion, false, "Favorite mutation response did not include an app ID")
+                return
+            }
+            self.dispatchFavorite(completion, true, "")
+        }
+    }
+
     private func getServerVpcId(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable (String) -> Void) {
         let normalized = normalizeStreamingBaseUrl(providerStreamingBaseUrl)
         let cacheKey = "\(normalized)|\(token.hashValue)"
@@ -1285,6 +1352,13 @@ final class OPNGameService: @unchecked Sendable {
             if let value = safeString(dictionary[key]), !value.isEmpty { return value }
         }
         return nil
+    }
+
+    private func appendDirectImage(_ value: String?, type: String, width: Int, game: inout OPNGameInfo) {
+        guard let value, !value.isEmpty else { return }
+        var urls = game.imageUrlsByType[type] ?? []
+        appendUnique(&urls, Self.optimizeImageURL(value, width: width))
+        if !urls.isEmpty { game.imageUrlsByType[type] = urls }
     }
 
     private func imageStrings(from rawValue: Any?) -> [String] {
@@ -1648,6 +1722,10 @@ final class OPNGameService: @unchecked Sendable {
         DispatchQueue.main.async { completion(success, error) }
     }
 
+    fileprivate func dispatchFavorite(_ completion: @escaping OPNFavoriteActionCallback, _ success: Bool, _ error: String) {
+        DispatchQueue.main.async { completion(success, error) }
+    }
+
     private func dispatchUserAccount(_ completion: @escaping OPNUserAccountCallback, _ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) {
         DispatchQueue.main.async { completion(success, accountInfo, error) }
     }
@@ -1746,6 +1824,13 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
         }
     }
 
+    @objc(fetchFavoriteGameObjectsWithCompletion:)
+    public static func fetchFavoriteGameObjects(completion: @escaping @Sendable (Bool, [OPNCatalogGameObject], String) -> Void) {
+        OPNGameService.shared.fetchFavoriteGames { success, games, error in
+            completion(success, games.map(OPNCatalogGameObject.init), error)
+        }
+    }
+
     @objc(fetchUserAccountDictionaryWithCompletion:)
     public static func fetchUserAccountDictionary(completion: @escaping @Sendable (Bool, NSDictionary, String) -> Void) {
         OPNGameService.shared.fetchUserAccount { success, account, error in
@@ -1773,6 +1858,16 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
     @objc(selectOwnedVariant:completion:)
     public static func selectOwnedVariant(_ variantId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
         OPNGameService.shared.selectOwnedVariant(variantId, completion: completion)
+    }
+
+    @objc(addFavoriteApp:completion:)
+    public static func addFavoriteApp(_ appId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+        OPNGameService.shared.addFavoriteApp(appId, completion: completion)
+    }
+
+    @objc(removeFavoriteApp:completion:)
+    public static func removeFavoriteApp(_ appId: String, completion: @escaping @Sendable (Bool, String) -> Void) {
+        OPNGameService.shared.removeFavoriteApp(appId, completion: completion)
     }
 
     @objc(syncAccountProviderWithStore:completion:)

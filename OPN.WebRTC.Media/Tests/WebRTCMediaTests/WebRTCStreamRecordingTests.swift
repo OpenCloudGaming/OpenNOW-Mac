@@ -68,6 +68,7 @@ struct WebRTCStreamRecordingTests {
         #expect(recording.durationSeconds > 0)
         #expect(recording.width == 64)
         #expect(recording.height == 64)
+        #expect(recording.videoURL.deletingLastPathComponent().path == WebRTCStreamRecordingLibrary.recordingsDirectory(forGameTitle: "Live Writer Regression").path)
     }
 
     @Test("recording fails automatically when the first video frame never arrives")

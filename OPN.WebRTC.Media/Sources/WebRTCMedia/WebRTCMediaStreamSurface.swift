@@ -521,7 +521,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {
         recordingNotificationTask?.cancel()
         recordingStatus = status
-        guard case .failed = status else { return }
+        guard status.isTerminal else { return }
         recordingNotificationTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard recordingStatus == status else { return }

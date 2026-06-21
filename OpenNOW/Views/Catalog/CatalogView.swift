@@ -122,7 +122,6 @@ struct CatalogView: View {
 
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
-    @State private var showsPreviousSessionOverlay = false
 
     init(
         account: LoginAccount,
@@ -172,7 +171,7 @@ struct CatalogView: View {
                 .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
-                    CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, showsPreviousSessionOverlay: $showsPreviousSessionOverlay, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                    CatalogTopBar(viewModel: viewModel, accounts: accounts, showsMainMenu: $showsMainMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                     if viewModel.selectedMainPage == .settings {
                         SettingsView(viewModel: viewModel)
                     } else if viewModel.selectedMainPage == .recordings {
@@ -193,12 +192,6 @@ struct CatalogView: View {
                     VendorLaunchFlowOverlay(viewModel: viewModel)
                         .transition(.opacity)
                         .zIndex(20)
-                }
-
-                if showsPreviousSessionOverlay {
-                    CatalogPreviousSessionOverlay(viewModel: viewModel, isPresented: $showsPreviousSessionOverlay)
-                        .transition(.opacity)
-                        .zIndex(15)
                 }
 
                 if viewModel.isStorePickerVisible {
@@ -375,8 +368,10 @@ private struct VendorActiveSessionCard: View {
                     Button("CANCEL") { viewModel.cancelVendorLaunch() }
                         .buttonStyle(VendorLaunchSecondaryButtonStyle())
                     Spacer()
-                    Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
-                        .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    if viewModel.canResumeActiveLaunchSession {
+                        Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
+                            .buttonStyle(VendorLaunchSecondaryButtonStyle())
+                    }
                     Button("END AND LAUNCH") { viewModel.endActiveSessionAndLaunchSelectedGame() }
                         .buttonStyle(VendorLaunchPrimaryButtonStyle())
                 }
@@ -716,7 +711,6 @@ private struct CatalogTopBar: View {
     @ObservedObject var viewModel: CatalogViewModel
     let accounts: [LoginAccount]
     @Binding var showsMainMenu: Bool
-    @Binding var showsPreviousSessionOverlay: Bool
     let onSwitch: (LoginAccount) -> Void
     let onSignOut: () -> Void
     let onForget: (LoginAccount) -> Void
@@ -750,22 +744,6 @@ private struct CatalogTopBar: View {
 
                 HStack(spacing: 24) {
                     Spacer()
-                    Button { showsPreviousSessionOverlay.toggle() } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.nvidia(size: 22, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.94))
-                            .overlay(alignment: .topTrailing) {
-                                if viewModel.previousGameSession != nil {
-                                    Circle()
-                                        .fill(Color.openNowGreen)
-                                        .frame(width: 8, height: 8)
-                                        .offset(x: 2, y: -2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Previous game session")
-
                     Menu {
                         ForEach(accounts) { account in
                             Button(account.displayName) { onSwitch(account) }
@@ -1174,96 +1152,6 @@ private struct CatalogMainMenuRow: View {
         if isActive { return .black.opacity(0.86) }
         if role == .destructive { return Color(red: 1, green: 0.54, blue: 0.50) }
         return .white.opacity(isHovering ? 0.94 : 0.72)
-    }
-}
-
-private struct CatalogPreviousSessionOverlay: View {
-    @ObservedObject var viewModel: CatalogViewModel
-    @Binding var isPresented: Bool
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.opacity(0.34)
-                .ignoresSafeArea()
-                .onTapGesture { isPresented = false }
-
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .center, spacing: 12) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.nvidia(size: 20, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Previous Game Session")
-                            .font(.nvidia(size: 18, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("Most recent GeForce NOW stream summary")
-                            .font(.nvidia(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.58))
-                    }
-                    Spacer()
-                    Button { isPresented = false } label: {
-                        Image(systemName: "xmark")
-                            .font(.nvidia(size: 13, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.10))
-                    .frame(height: 1)
-
-                if let previous = viewModel.previousGameSession {
-                    VStack(alignment: .leading, spacing: 10) {
-                        detailRow("Game", previous.title)
-                        detailRow("App ID", previous.appId)
-                        detailRow("Store", previous.store.isEmpty ? "GeForce NOW" : viewModel.displayName(forStore: previous.store))
-                        detailRow("Ended", formattedDate(previous.endedAt))
-                        detailRow("Result", previous.result)
-                        detailRow("Launch", previous.launchTime)
-                        detailRow("Latency", previous.averageLatency)
-                        detailRow("Bitrate", previous.averageBitrate)
-                        detailRow("Dropped", previous.droppedFrames)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("No completed game stream yet.")
-                            .font(.nvidia(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("The green indicator appears after OpenNOW has a previous game session to show.")
-                            .font(.nvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.64))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-            .padding(22)
-            .frame(width: 430, alignment: .leading)
-            .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255).opacity(0.98))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.48), radius: 22, x: 0, y: 14)
-            .padding(.top, CatalogVendorLayout.appBarHeight + 12)
-            .padding(.trailing, 22)
-        }
-    }
-
-    private func detailRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(label.uppercased())
-                .font(.nvidia(size: 10, weight: .bold))
-                .foregroundStyle(.white.opacity(0.46))
-                .frame(width: 72, alignment: .leading)
-            Text(value.isEmpty ? "-" : value)
-                .font(.nvidia(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.84))
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func formattedDate(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
@@ -1877,7 +1765,7 @@ private struct CatalogHeroView: View {
                 let textWidth = CatalogVendorLayout.heroTextWidth(for: proxy.size.width)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
-                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestHeroImageURL, width: 1920), contentMode: .fill) { color in
+                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill) { color in
                         scrimColor = color
                     }
                     .frame(width: max(proxy.size.width - imageLeading, 1), height: heroHeight)
@@ -2839,34 +2727,37 @@ private struct CatalogGameTile: View {
         Button(action: onSelect) {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
+                    let isActive = isHovering || isSelected || isFocused
                     CatalogRemoteImage(url: imageURL, contentMode: .fill)
                         .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                         .clipped()
-                    if isHovering || isSelected || isFocused {
+                    if isActive {
                         Color.black.opacity(0.50)
                         LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
                     }
                     if let badge = game.cardBadgeLabel {
                         CatalogGameCardBadge(label: badge)
                     }
-                    VStack {
-                        Spacer(minLength: 0)
-                        HStack(spacing: 8) {
-                            Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                                .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
-                                .lineLimit(1)
-                                .foregroundStyle((isHovering || isSelected || isFocused) ? .white.opacity(0.90) : .white.opacity(0.74))
+                    if isActive {
+                        VStack {
                             Spacer(minLength: 0)
-                            Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                                .font(.nvidia(size: 10, weight: .bold))
-                                .foregroundStyle(.white.opacity((isHovering || isSelected || isFocused) ? 0.76 : 0.48))
+                            HStack(spacing: 8) {
+                                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                                    .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
+                                    .lineLimit(1)
+                                    .foregroundStyle(.white.opacity(0.90))
+                                Spacer(minLength: 0)
+                                Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                                    .font(.nvidia(size: 10, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.76))
+                            }
+                            .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
+                            .padding(.horizontal, 16)
+                            .background(CatalogVendorLayout.tileTray.opacity(1))
+                            .frame(width: CatalogVendorLayout.wideTileWidth)
                         }
-                        .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
-                        .padding(.horizontal, 16)
-                        .background(CatalogVendorLayout.tileTray.opacity((isHovering || isSelected || isFocused) ? 1 : 0.92))
-                        .frame(width: CatalogVendorLayout.wideTileWidth)
+                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                     }
-                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                 }
             }
             .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
@@ -4195,11 +4086,17 @@ private extension OPNCatalogGameObject {
     }
 
     var bestHeroImageURL: String {
-        if !heroImageUrl.isEmpty { return heroImageUrl }
         for key in ["MARQUEE_HERO_IMAGE", "HERO_IMAGE"] {
             if let value = imageUrlsByType[key]?.first, !value.isEmpty { return value }
         }
+        if !heroImageUrl.isEmpty { return heroImageUrl }
         return bestTileImageURL
+    }
+
+    var bestMarqueeHeroImageURL: String {
+        if let value = imageUrlsByType["MARQUEE_HERO_IMAGE"]?.first, !value.isEmpty { return value }
+        if let value = imageUrlsByType["marquee_hero_image"]?.first, !value.isEmpty { return value }
+        return bestHeroImageURL
     }
 
     var bestLogoImageURL: String {

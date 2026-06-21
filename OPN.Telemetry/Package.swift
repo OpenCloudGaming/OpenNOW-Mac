@@ -18,6 +18,10 @@ let package = Package(
                 .product(name: "Sentry", package: "sentry-cocoa"),
             ]
         ),
+        .testTarget(
+            name: "OpenNOWTelemetryTests",
+            dependencies: ["OpenNOWTelemetry"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

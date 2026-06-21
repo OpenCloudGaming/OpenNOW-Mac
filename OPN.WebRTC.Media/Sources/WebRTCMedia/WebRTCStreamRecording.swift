@@ -25,14 +25,19 @@ public struct WebRTCStreamRecording: Codable, Equatable, Identifiable, Sendable 
     public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
 
     private var storageDirectory: URL {
-        guard let storageDirectoryPath, !storageDirectoryPath.isEmpty else { return WebRTCStreamRecordingLibrary.recordingsDirectory }
+        guard let storageDirectoryPath, !storageDirectoryPath.isEmpty else { return WebRTCStreamRecordingLibrary.recordingsDirectory(forGameTitle: title) }
         return URL(fileURLWithPath: storageDirectoryPath, isDirectory: true)
     }
 }
 
 public enum WebRTCStreamRecordingLibrary {
     public static var recordingsDirectory: URL {
-        writableRecordingsDirectory() ?? fallbackRecordingsDirectory
+        let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
+        return base.appendingPathComponent("NVIDIA", isDirectory: true).appendingPathComponent("GeForce NOW", isDirectory: true)
+    }
+
+    public static func recordingsDirectory(forGameTitle title: String) -> URL {
+        recordingsDirectory.appendingPathComponent(gameDirectoryName(title), isDirectory: true)
     }
 
     public static func metadataURL(for id: UUID) -> URL {
@@ -40,16 +45,14 @@ public enum WebRTCStreamRecordingLibrary {
     }
 
     @discardableResult
-    public static func ensureDirectory() throws -> URL {
-        let directory = recordingsDirectory
+    public static func ensureDirectory(forGameTitle title: String) throws -> URL {
+        let directory = recordingsDirectory(forGameTitle: title)
         try ensureWritableDirectory(at: directory)
         return directory
     }
 
     public static func loadRecordings() -> [WebRTCStreamRecording] {
-        allRecordingsDirectories()
-            .compactMap { try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
-            .flatMap { $0 }
+        recordingMetadataURLs()
             .filter { $0.pathExtension.caseInsensitiveCompare("json") == .orderedSame }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
@@ -80,33 +83,28 @@ public enum WebRTCStreamRecordingLibrary {
     public static func delete(_ recording: WebRTCStreamRecording) throws {
         if FileManager.default.fileExists(atPath: recording.videoURL.path) { try FileManager.default.removeItem(at: recording.videoURL) }
         if FileManager.default.fileExists(atPath: recording.metadataURL.path) { try FileManager.default.removeItem(at: recording.metadataURL) }
-    }
-
-    private static var moviesRecordingsDirectory: URL {
-        let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
-        return base.appendingPathComponent("OpenNOW Recordings", isDirectory: true)
-    }
-
-    private static var fallbackRecordingsDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
-        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("Recordings", isDirectory: true)
-    }
-
-    private static func allRecordingsDirectories() -> [URL] {
-        var seen = Set<String>()
-        return [recordingsDirectory, moviesRecordingsDirectory, fallbackRecordingsDirectory].filter { url in
-            let path = url.standardizedFileURL.path
-            guard !seen.contains(path) else { return false }
-            seen.insert(path)
-            return true
+        let directory = recording.videoURL.deletingLastPathComponent()
+        if let remaining = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil), remaining.isEmpty {
+            try? FileManager.default.removeItem(at: directory)
         }
     }
 
-    private static func writableRecordingsDirectory() -> URL? {
-        for directory in [moviesRecordingsDirectory, fallbackRecordingsDirectory] {
-            if (try? ensureWritableDirectory(at: directory)) != nil { return directory }
+    private static func recordingMetadataURLs() -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(at: recordingsDirectory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [] }
+        return enumerator.compactMap { item in
+            guard let url = item as? URL else { return nil }
+            guard url.pathExtension.caseInsensitiveCompare("json") == .orderedSame else { return nil }
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            return values?.isRegularFile == false ? nil : url
         }
-        return nil
+    }
+
+    private static func gameDirectoryName(_ title: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: "/:\\?%*|\"<>").union(.controlCharacters)
+        let cleaned = title.components(separatedBy: invalidCharacters).joined(separator: " ")
+        let collapsed = cleaned.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        let trimmed = collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "GeForce NOW Stream" : String(trimmed.prefix(120))
     }
 
     private static func ensureWritableDirectory(at directory: URL) throws {
@@ -209,7 +207,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         queue.async {
             guard self.configuration == nil, self.writer == nil else { return }
             do {
-                let directory = try WebRTCStreamRecordingLibrary.ensureDirectory()
+                let directory = try WebRTCStreamRecordingLibrary.ensureDirectory(forGameTitle: configuration.title)
                 self.id = UUID()
                 self.setActiveRecordingId(self.id)
                 self.configuration = configuration
@@ -385,7 +383,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             title: configuration.title,
             applicationID: configuration.applicationID,
             createdAt: createdAt,
-            durationSeconds: max(0, lastPresentationTime.seconds),
+            durationSeconds: completedRecordingDurationSeconds(),
             width: recordingWidth > 0 ? recordingWidth : configuration.width,
             height: recordingHeight > 0 ? recordingHeight : configuration.height,
             videoBitrateMbps: configuration.videoBitrateMbps,
@@ -402,6 +400,12 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         } catch {
             emit(.failed(Self.message(for: error)))
         }
+    }
+
+    private func completedRecordingDurationSeconds() -> Double {
+        let presentationDuration = max(0, lastPresentationTime.seconds)
+        guard presentationDuration == 0, capturedVideoFrame, let startedAt else { return presentationDuration }
+        return max(0, Date().timeIntervalSince(startedAt))
     }
 
     private func fail(_ error: Error?) {

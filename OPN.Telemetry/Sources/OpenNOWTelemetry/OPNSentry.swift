@@ -18,16 +18,17 @@ public final class OPNSentryTransaction: NSObject {
     }
 
     public func setTag(_ key: String, value: String) {
-        guard !key.isEmpty else { return }
+        guard OPNSentry.isTelemetryEnabled(), !key.isEmpty else { return }
         span?.setTag(value: value, key: key)
     }
 
     public func setData(_ key: String, value: String) {
-        guard !key.isEmpty else { return }
+        guard OPNSentry.isTelemetryEnabled(), !key.isEmpty else { return }
         span?.setData(value: value, key: key)
     }
 
     public func setStatus(_ success: Bool) {
+        guard OPNSentry.isTelemetryEnabled() else { return }
         self.success = success
     }
 
@@ -43,6 +44,7 @@ public final class OPNSentryTransaction: NSObject {
     public func finish() {
         guard !finished else { return }
         finished = true
+        guard OPNSentry.isTelemetryEnabled() else { return }
         if let success {
             span?.finish(status: success ? .ok : .internalError)
         } else {
@@ -59,9 +61,41 @@ public final class OPNSentry: NSObject {
     private static let fallbackDsn = "https://75bd4534356a68eb8887bea8f6977b59@o4509317113184256.ingest.us.sentry.io/4511592927264768"
     private static let diagnosticsLogQueue = DispatchQueue(label: "opn.telemetry.diagnostics-log")
     private static let maxDiagnosticsLogBytes = 8 * 1024 * 1024
+    private static let maxDiagnosticsUploadBytes = 384 * 1024
+    private static let telemetryDisabledKey = "OpenNOW.Telemetry.Disabled"
     private nonisolated(unsafe) static var initialized = false
 
+    public static func isTelemetryDisabled() -> Bool {
+        telemetryDisabled(defaults: .standard)
+    }
+
+    public static func isTelemetryEnabled() -> Bool {
+        !isTelemetryDisabled()
+    }
+
+    public static func setTelemetryDisabled(_ disabled: Bool) {
+        setTelemetryDisabled(disabled, defaults: .standard)
+        if disabled {
+            closeSentry()
+        } else {
+            initializeSentry()
+        }
+    }
+
+    static func telemetryDisabled(defaults: UserDefaults) -> Bool {
+        booleanValue(defaults.object(forKey: telemetryDisabledKey), defaultValue: false)
+    }
+
+    static func setTelemetryDisabled(_ disabled: Bool, defaults: UserDefaults) {
+        defaults.set(disabled, forKey: telemetryDisabledKey)
+        defaults.synchronize()
+    }
+
     public static func initializeSentry() {
+        guard isTelemetryEnabled() else {
+            closeSentry()
+            return
+        }
         guard !initialized else { return }
         guard let dsn = resolvedDsn(), !dsn.isEmpty else { return }
         SentrySDK.start { options in
@@ -98,15 +132,15 @@ public final class OPNSentry: NSObject {
     }
 
     static func shouldLogInfo() -> Bool {
-        !environmentFlagEnabled("OPN_DISABLE_INFO_LOGS")
+        isTelemetryEnabled() && !environmentFlagEnabled("OPN_DISABLE_INFO_LOGS")
     }
 
     public static func shouldLogDebug() -> Bool {
-        environmentFlagEnabled("OPN_DEBUG_LOGS") || environmentFlagEnabled("OPN_VERBOSE_LOGS")
+        isTelemetryEnabled() && (environmentFlagEnabled("OPN_DEBUG_LOGS") || environmentFlagEnabled("OPN_VERBOSE_LOGS"))
     }
 
     public static func shouldLogVerbose() -> Bool {
-        environmentFlagEnabled("OPN_VERBOSE_LOGS")
+        isTelemetryEnabled() && environmentFlagEnabled("OPN_VERBOSE_LOGS")
     }
 
     public static func sanitizedLogMessage(_ message: String) -> String {
@@ -138,6 +172,7 @@ public final class OPNSentry: NSObject {
     }
 
     public static func logWarningMessage(_ message: String) {
+        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -146,6 +181,7 @@ public final class OPNSentry: NSObject {
     }
 
     public static func logErrorMessage(_ message: String) {
+        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -155,6 +191,7 @@ public final class OPNSentry: NSObject {
     }
 
     public static func logFatalMessage(_ message: String) {
+        guard isTelemetryEnabled() else { return }
         let sanitized = sanitizedMessage(message)
         fputs("\(sanitized)\n", stderr)
         appendDiagnosticsLogLine(sanitized)
@@ -164,6 +201,7 @@ public final class OPNSentry: NSObject {
     }
 
     static func captureExternalLogLine(_ line: String) {
+        guard isTelemetryEnabled() else { return }
         guard !line.isEmpty else { return }
         if externalLogLineLooksLikeError(line) || shouldLogInfo() {
             let sanitized = sanitizedMessage(line)
@@ -185,11 +223,16 @@ public final class OPNSentry: NSObject {
     }
 
     public static func uploadDiagnosticsLog(_ logText: String) async throws -> URL {
-        let sanitized = sanitizedUploadLog(logText)
-        guard let data = sanitized.data(using: .utf8), !data.isEmpty else { throw OPNSentryDiagnosticsUploadError.emptyLog }
         guard let url = URL(string: "https://paste.rs") else { throw OPNSentryDiagnosticsUploadError.invalidServiceURL }
-        var request = URLRequest(url: url, timeoutInterval: 30)
+        return try await uploadDiagnosticsLog(logText, session: .shared, uploadURL: url)
+    }
+
+    static func uploadDiagnosticsLog(_ logText: String, session: URLSession, uploadURL: URL) async throws -> URL {
+        guard uploadURL.scheme == "https" else { throw OPNSentryDiagnosticsUploadError.invalidServiceURL }
+        let data = try diagnosticsUploadData(logText)
+        var request = URLRequest(url: uploadURL, timeoutInterval: 30)
         request.httpMethod = "POST"
+        request.setValue("text/plain", forHTTPHeaderField: "Accept")
         request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         let networkStart = OPNNetworkLog.start(&request, operation: "diagnostics.upload")
@@ -203,20 +246,30 @@ public final class OPNSentry: NSObject {
             throw error
         }
         guard let http = response as? HTTPURLResponse else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
-        guard (200...299).contains(http.statusCode) else { throw OPNSentryDiagnosticsUploadError.httpStatus(http.statusCode) }
-        guard let responseText = String(data: responseData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let pasteURL = URL(string: responseText),
-              pasteURL.scheme == "https" else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
-        return pasteURL
+        switch http.statusCode {
+        case 201:
+            return try diagnosticsPasteURL(from: responseData)
+        case 206:
+            throw OPNSentryDiagnosticsUploadError.partialUpload
+        case 413:
+            throw OPNSentryDiagnosticsUploadError.logTooLarge
+        case 429:
+            throw OPNSentryDiagnosticsUploadError.rateLimited
+        case 500...599:
+            throw OPNSentryDiagnosticsUploadError.serviceUnavailable(http.statusCode)
+        default:
+            throw OPNSentryDiagnosticsUploadError.httpStatus(http.statusCode)
+        }
     }
 
     @objc(addTraceHeadersToRequest:)
     public static func addTraceHeaders(to request: NSMutableURLRequest) {
+        guard isTelemetryEnabled() else { return }
         addTraceHeaders(from: SentrySDK.span, to: request)
     }
 
     static func addTraceHeaders(from span: Span?, to request: NSMutableURLRequest) {
-        guard initialized, SentrySDK.isEnabled, let span else { return }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled, let span else { return }
         request.setValue(span.toTraceHeader().value(), forHTTPHeaderField: "sentry-trace")
         if let baggage = span.baggageHttpHeader(), !baggage.isEmpty {
             request.setValue(baggage, forHTTPHeaderField: "baggage")
@@ -224,7 +277,7 @@ public final class OPNSentry: NSObject {
     }
 
     static func addTraceHeaders(from span: Span?, to request: inout URLRequest) {
-        guard initialized, SentrySDK.isEnabled, let span else { return }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled, let span else { return }
         request.setValue(span.toTraceHeader().value(), forHTTPHeaderField: "sentry-trace")
         if let baggage = span.baggageHttpHeader(), !baggage.isEmpty {
             request.setValue(baggage, forHTTPHeaderField: "baggage")
@@ -233,6 +286,7 @@ public final class OPNSentry: NSObject {
 
     @objc(startTransactionWithName:operation:makeCurrent:)
     public static func startTransaction(name: String, operation: String, makeCurrent: Bool) -> OPNSentryTransaction? {
+        guard isTelemetryEnabled() else { return nil }
         let resolvedName = name.isEmpty ? "OpenNOW operation" : name
         let resolvedOperation = operation.isEmpty ? "task" : operation
         let span = initialized && SentrySDK.isEnabled ? SentrySDK.startTransaction(name: resolvedName, operation: resolvedOperation, bindToScope: makeCurrent) : nil
@@ -260,21 +314,21 @@ public final class OPNSentry: NSObject {
 
     @objc(recordCounterMetricWithKey:value:attributes:)
     public static func recordCounterMetric(key: String, value: Int64, attributes: [String: Any]?) -> Bool {
-        guard initialized, SentrySDK.isEnabled, value >= 0 else { return false }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled, value >= 0 else { return false }
         SentrySDK.metrics.count(key: key, value: UInt(value), attributes: sentryAttributes(from: attributes))
         return true
     }
 
     @objc(recordGaugeMetricWithKey:value:unit:attributes:)
     public static func recordGaugeMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
-        guard initialized, SentrySDK.isEnabled else { return false }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return false }
         SentrySDK.metrics.gauge(key: key, value: value, unit: sentryUnit(from: unit), attributes: sentryAttributes(from: attributes))
         return true
     }
 
     @objc(recordDistributionMetricWithKey:value:unit:attributes:)
     public static func recordDistributionMetric(key: String, value: Double, unit: String?, attributes: [String: Any]?) -> Bool {
-        guard initialized, SentrySDK.isEnabled else { return false }
+        guard isTelemetryEnabled(), initialized, SentrySDK.isEnabled else { return false }
         SentrySDK.metrics.distribution(key: key, value: value, unit: sentryUnit(from: unit), attributes: sentryAttributes(from: attributes))
         return true
     }
@@ -333,6 +387,12 @@ public final class OPNSentry: NSObject {
     private static func environmentString(_ name: String) -> String? {
         guard let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
+    }
+
+    private static func booleanValue(_ value: Any?, defaultValue: Bool) -> Bool {
+        if let bool = value as? Bool { return bool }
+        if let number = value as? NSNumber { return number.boolValue }
+        return defaultValue
     }
 
     private static func clampedSampleRate(_ value: Double) -> Double {
@@ -515,6 +575,33 @@ public final class OPNSentry: NSObject {
         try? Data(data.suffix(maxDiagnosticsLogBytes)).write(to: url, options: .atomic)
     }
 
+    private static func diagnosticsUploadData(_ text: String) throws -> Data {
+        let sanitized = sanitizedUploadLog(text)
+        guard let sanitizedData = sanitized.data(using: .utf8), !sanitizedData.isEmpty else { throw OPNSentryDiagnosticsUploadError.emptyLog }
+        guard sanitizedData.count > maxDiagnosticsUploadBytes else { return sanitizedData }
+        let notice = "OpenNOW diagnostics upload\nNotice: upload is limited to the most recent \(maxDiagnosticsUploadBytes / 1024) KiB because paste.rs rejects larger payloads.\n\n"
+        guard let noticeData = notice.data(using: .utf8), noticeData.count < maxDiagnosticsUploadBytes else { throw OPNSentryDiagnosticsUploadError.emptyLog }
+        let suffixByteCount = max(0, maxDiagnosticsUploadBytes - noticeData.count - 16)
+        var suffixText = String(decoding: sanitizedData.suffix(suffixByteCount), as: UTF8.self)
+        if let newlineIndex = suffixText.firstIndex(of: "\n") {
+            suffixText.removeSubrange(suffixText.startIndex...newlineIndex)
+        }
+        while let uploadData = (notice + suffixText).data(using: .utf8) {
+            if !uploadData.isEmpty, uploadData.count <= maxDiagnosticsUploadBytes { return uploadData }
+            guard !suffixText.isEmpty else { break }
+            suffixText.removeFirst()
+        }
+        throw OPNSentryDiagnosticsUploadError.emptyLog
+    }
+
+    private static func diagnosticsPasteURL(from data: Data) throws -> URL {
+        guard let responseText = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let pasteURL = URL(string: responseText),
+              pasteURL.scheme == "https",
+              pasteURL.host == "paste.rs" else { throw OPNSentryDiagnosticsUploadError.invalidResponse }
+        return pasteURL
+    }
+
     private static func sanitizedUploadLog(_ text: String) -> String {
         var sanitized = sanitizedMessage(text)
         let replacements: [(String, String)] = [
@@ -582,6 +669,10 @@ public enum OPNSentryDiagnosticsUploadError: LocalizedError {
     case emptyLog
     case invalidServiceURL
     case invalidResponse
+    case partialUpload
+    case logTooLarge
+    case rateLimited
+    case serviceUnavailable(Int)
     case httpStatus(Int)
 
     public var errorDescription: String? {
@@ -589,6 +680,10 @@ public enum OPNSentryDiagnosticsUploadError: LocalizedError {
         case .emptyLog: return "Diagnostics log is empty."
         case .invalidServiceURL: return "Diagnostics upload service URL is invalid."
         case .invalidResponse: return "Diagnostics upload service returned an invalid response."
+        case .partialUpload: return "Diagnostics upload service would only save a partial log. Try again after reopening the app to start a smaller current-run log."
+        case .logTooLarge: return "Diagnostics log is too large for the upload service. Try again after reopening the app to start a smaller current-run log."
+        case .rateLimited: return "Diagnostics upload service is rate limited. Try again later."
+        case .serviceUnavailable(let status): return "Diagnostics upload service is temporarily unavailable (HTTP \(status)). Try again later."
         case .httpStatus(let status): return "Diagnostics upload failed with HTTP \(status)."
         }
     }

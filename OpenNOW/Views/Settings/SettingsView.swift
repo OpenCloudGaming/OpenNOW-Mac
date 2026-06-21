@@ -1214,6 +1214,7 @@ private struct AboutSettingsPage: View {
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
     @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
+    @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     var body: some View {
         ZStack {
@@ -1320,6 +1321,8 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "Membership", value: membershipTier, copyValue: membershipTier, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
+                SettingsDivider()
+                SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, action: setTelemetryDisabled)
             }
 
             SettingsCard(title: "Services") {
@@ -1333,7 +1336,7 @@ private struct AboutSettingsPage: View {
                             showingDiagnosticsUploadConfirmation = true
                         }
                         .disabled(diagnosticsState.isWorking)
-                        Text("Uploads the full sanitized current-run log, then copies diagnostics with the link.")
+                        Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
                             .font(.settingsNvidia(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                     }
@@ -1358,7 +1361,10 @@ private struct AboutSettingsPage: View {
             }
         }
         .animation(.easeOut(duration: 0.16), value: showingDiagnosticsUploadConfirmation)
-        .onAppear { viewModel.refreshCatalogImageCacheSummary() }
+        .onAppear {
+            viewModel.refreshCatalogImageCacheSummary()
+            telemetryDisabled = OPNSentry.isTelemetryDisabled()
+        }
     }
 
     private var userId: String {
@@ -1435,6 +1441,11 @@ private struct AboutSettingsPage: View {
         }
     }
 
+    private func setTelemetryDisabled(_ disabled: Bool) {
+        telemetryDisabled = disabled
+        OPNSentry.setTelemetryDisabled(disabled)
+    }
+
     private func generateUploadedDiagnostics() {
         guard !diagnosticsState.isWorking else { return }
         Task { @MainActor in
@@ -1506,7 +1517,7 @@ private struct DiagnosticsUploadConfirmationDialog: View {
                         Text("Upload diagnostics logs?")
                             .font(.settingsNvidia(size: 19, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("OpenNOW will upload the full sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
+                        Text("OpenNOW will upload the recent sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)
@@ -1597,7 +1608,7 @@ private enum AboutDiagnosticsState: Equatable {
         switch self {
         case .ready: return "Ready to generate diagnostics. Confirmation is required before logs are uploaded."
         case .preparing: return "Preparing diagnostics metadata..."
-        case .readingLog: return "Reading full current-run log..."
+        case .readingLog: return "Reading sanitized current-run log..."
         case .uploading: return "Uploading sanitized logs to paste.rs..."
         case .copying: return "Copying diagnostics and uploaded log link to clipboard..."
         case .copied(let url): return "Diagnostics copied. Uploaded log: \(url)"

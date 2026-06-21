@@ -75,6 +75,19 @@ import WebRTCMedia
     #expect(descriptor?.signalingUrl == "wss://signaling.example.test:443/nvst/")
 }
 
+@Test func activeSessionParserKeepsZeroAppIdSessionForTermination() {
+    let descriptor = OPNActiveSessionParser.descriptor(from: [
+        "sessionId": "session-1",
+        "status": 2,
+        "sessionRequestData": ["appId": 0],
+        "sessionControlInfo": ["ip": "control.example.test"],
+    ], streamingBaseUrl: "https://cloudmatch.example.test/")
+
+    #expect(descriptor?.sessionId == "session-1")
+    #expect(descriptor?.appId == 0)
+    #expect(descriptor?.resumeServer == "control.example.test")
+}
+
 @Test func sessionManagerReadyResumeSendsExplicitPutBeforePolling() async {
     let host = "resume-success.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
@@ -99,14 +112,14 @@ import WebRTCMedia
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
-    let putBody = jsonBody(from: requests.first { $0.httpMethod == "PUT" })
-    let requestData = putBody["sessionRequestData"] as? [String: Any]
+    let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
+    let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
-    #expect(putBody["action"] as? Int == 2)
-    #expect(putBody["data"] as? String == "RESUME")
-    #expect(requestData?["appId"] as? Int == 123)
-    #expect(requestData?["clientIdentification"] as? String == "GFN-PC")
+    #expect(claimPayload?["action"] as? Int == 2)
+    #expect(claimPayload?["data"] as? String == "RESUME")
+    #expect(claimRequestData?["appId"] as? Int == 123)
+    #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
 }
 
 @Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
@@ -138,6 +151,48 @@ import WebRTCMedia
     #expect(result.0 == false)
     #expect(result.1 == "Session is not paused and cannot be resumed.")
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+}
+
+@Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
+    let host = "resume-stale-internal.example.test"
+    UserDefaults.standard.set("resume-session", forKey: "OpenNOW.Stream.ActiveSessionId")
+    SessionManagerURLProtocol.install(host: host) { request in
+        let path = request.url?.path ?? ""
+        if request.httpMethod == "GET", path == "/v2/session/resume-session" {
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        }
+        return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
+    }
+    defer {
+        UserDefaults.standard.removeObject(forKey: "OpenNOW.Stream.ActiveSessionId")
+        SessionManagerURLProtocol.uninstall(host: host)
+    }
+
+    OPNSessionManager.shared.setAccessToken("token")
+    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    #expect(result.0 == false)
+    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+    #expect(UserDefaults.standard.string(forKey: "OpenNOW.Stream.ActiveSessionId") == nil)
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+}
+
+@Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
+    let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([[
+        "sessionId": "stale-session",
+        "appId": 0,
+        "status": 2,
+        "serverIp": "control.example.test",
+    ]], requestedAppId: 123)
+
+    #expect(selected == nil)
 }
 
 private func minimalSettings() -> [String: Any] {
@@ -182,29 +237,18 @@ private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: S
     ]
 }
 
-private func jsonBody(from request: URLRequest?) -> [String: Any] {
-    guard let data = request.flatMap(httpBodyData) else { return [:] }
-    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-}
-
-private func httpBodyData(from request: URLRequest) -> Data? {
-    if let httpBody = request.httpBody { return httpBody }
-    guard let stream = request.httpBodyStream else { return nil }
-    stream.open()
-    defer { stream.close() }
-    var data = Data()
-    let bufferSize = 4096
-    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-    defer { buffer.deallocate() }
-    while stream.hasBytesAvailable {
-        let count = stream.read(buffer, maxLength: bufferSize)
-        if count > 0 {
-            data.append(buffer, count: count)
-        } else {
-            break
-        }
-    }
-    return data
+private func staleSessionResponse() -> [String: Any] {
+    [
+        "requestStatus": [
+            "statusCode": 4,
+            "statusDescription": "INTERNAL_ERROR_STATUS 8A8C0000",
+        ],
+        "session": [
+            "sessionId": "resume-session",
+            "status": 4,
+            "sessionRequestData": ["appId": 0],
+        ],
+    ]
 }
 
 private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable {
@@ -213,12 +257,14 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
     nonisolated(unsafe) private static var requestsByHost: [String: [URLRequest]] = [:]
+    nonisolated(unsafe) private static var bodiesByHost: [String: [Data]] = [:]
     nonisolated(unsafe) private static var installed = false
 
     static func install(host: String, handler: @escaping Handler) {
         lock.withLock {
             handlers[host] = handler
             requestsByHost[host] = []
+            bodiesByHost[host] = []
             if !installed {
                 URLProtocol.registerClass(Self.self)
                 installed = true
@@ -230,6 +276,7 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
         lock.withLock {
             handlers[host] = nil
             requestsByHost[host] = nil
+            bodiesByHost[host] = nil
             if handlers.isEmpty, installed {
                 URLProtocol.unregisterClass(Self.self)
                 installed = false
@@ -239,6 +286,11 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
 
     static func recordedRequests(host: String) -> [URLRequest] {
         lock.withLock { requestsByHost[host] ?? [] }
+    }
+
+    static func recordedJSONBodies(host: String) -> [[String: Any]] {
+        lock.withLock { bodiesByHost[host] ?? [] }
+            .compactMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
     }
 
     static func response(json: [String: Any], status: Int = 200) -> (Int, Data) {
@@ -260,8 +312,10 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
+        let body = Self.bodyData(from: request)
         let handler = Self.lock.withLock { () -> Handler? in
             Self.requestsByHost[host, default: []].append(request)
+            if let body { Self.bodiesByHost[host, default: []].append(body) }
             return Self.handlers[host]
         }
         guard let handler else {
@@ -279,4 +333,22 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
     }
 
     override func stopLoading() {}
+
+    private static func bodyData(from request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufferSize = 4096
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        while stream.hasBytesAvailable {
+            let count = stream.read(buffer, maxLength: bufferSize)
+            if count < 0 { return nil }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
 }
