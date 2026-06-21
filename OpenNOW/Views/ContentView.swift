@@ -62,9 +62,9 @@ struct ContentView: View {
     }
 
     private func dismissStartupLoading() async {
-        try? await Task.sleep(nanoseconds: 3_700_000_000)
+        try? await Task.sleep(nanoseconds: OpenNOWStartupAnimation.dismissalDelayNanoseconds)
         guard !Task.isCancelled else { return }
-        withAnimation(.easeInOut(duration: 0.52)) {
+        withAnimation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration)) {
             isShowingStartupLoading = false
         }
     }
