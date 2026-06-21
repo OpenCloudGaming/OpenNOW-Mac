@@ -41,4 +41,5 @@ Execute every task in this order:
 
 # Commit Standards
 - Commit all completed work before considering a task done.
+- Push completed commits to the current branch's upstream remote after committing.
 - Prefix every message with a conventional tag: `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`.
