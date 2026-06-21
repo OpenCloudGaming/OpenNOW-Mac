@@ -42,9 +42,9 @@ struct OpenNOWStartupLoadingView: View {
                 VStack(spacing: compact ? 14 : 20) {
                     Spacer(minLength: compact ? 42 : 72)
 
-                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                    VendorResourceImage(name: "logo", fileExtension: "png")
                         .scaledToFit()
-                        .frame(width: compact ? 92 : 136, height: compact ? 70 : 102)
+                        .frame(width: compact ? 82 : 118, height: compact ? 82 : 118)
                         .shadow(color: Color.openNowGreen.opacity(0.52), radius: 24)
 
                     VStack(spacing: compact ? 8 : 10) {

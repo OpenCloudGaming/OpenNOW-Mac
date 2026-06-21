@@ -34,7 +34,7 @@ struct VendorResourceImage: View {
             return cachedImage
         }
 
-        for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+        for subdirectory in ["OpenNOW", "Resources/OpenNOW", "NVIDIA", "Resources/NVIDIA", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
                 imageCache.setObject(image, forKey: cacheKey)
@@ -84,9 +84,9 @@ struct VendorSplashLoadingView: View {
                 Color.black.opacity(0.18)
 
                 VStack(spacing: isCompact ? 16 : 24) {
-                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
+                    VendorResourceImage(name: "logo", fileExtension: "png")
                         .scaledToFit()
-                        .frame(width: isCompact ? 84 : 174, height: isCompact ? 64 : 131)
+                        .frame(width: isCompact ? 78 : 138, height: isCompact ? 78 : 138)
 
                     if showsMessage {
                         VStack(spacing: 14) {

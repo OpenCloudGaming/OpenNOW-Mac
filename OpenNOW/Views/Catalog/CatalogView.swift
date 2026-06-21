@@ -1642,11 +1642,12 @@ private struct CatalogContentView: View {
         let heroes = heroGames
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
+        let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
         ScrollViewReader { proxy in
             ZStack {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 26) {
-                        if hero != nil {
+                        if hero != nil && !isGridDestination {
                             CatalogHeroView(
                                 viewModel: viewModel,
                                 games: heroes,
@@ -1676,21 +1677,34 @@ private struct CatalogContentView: View {
                             CatalogBrowseControlsView(viewModel: viewModel)
                                 .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                         }
-                        ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                            let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
-                            if showsDetail, let railAnchor = selectedRailScrollAnchor {
-                                Color.clear
-                                    .frame(height: 0)
-                                    .id(railAnchor)
-                            }
-                            CatalogRailView(viewModel: viewModel, section: section, onShowAll: { showAllSection = section })
-                            if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
+                        if isGridDestination, let section = sections.first {
+                            CatalogDestinationGridView(viewModel: viewModel, section: section)
+                            if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
                                 GameDetailPanel(viewModel: viewModel)
-                                    .padding(.top, -8)
+                                    .padding(.top, -10)
                                     .padding(.bottom, 22)
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                     .onHover { isPointerInsideDetailPanel = $0 }
                                     .id(detailAnchor)
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            }
+                        } else {
+                            ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                                let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
+                                if showsDetail, let railAnchor = selectedRailScrollAnchor {
+                                    Color.clear
+                                        .frame(height: 0)
+                                        .id(railAnchor)
+                                }
+                                CatalogRailView(viewModel: viewModel, section: section, onShowAll: { showAllSection = section })
+                                if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
+                                    GameDetailPanel(viewModel: viewModel)
+                                        .padding(.top, -8)
+                                        .padding(.bottom, 22)
+                                        .onHover { isPointerInsideDetailPanel = $0 }
+                                        .id(detailAnchor)
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
                             }
                         }
 
@@ -1770,6 +1784,15 @@ private struct CatalogContentView: View {
     private var selectedDetailScrollAnchor: String? {
         guard let selectedGame = viewModel.selectedGame else { return nil }
         return "detail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
+    }
+
+    private func shouldUseGrid(for destination: CatalogDestination) -> Bool {
+        !viewModel.isBrowseMode && (destination == .library || destination == .favorites)
+    }
+
+    private func selectedGameBelongs(to section: CatalogSectionModel) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        return section.games.contains { CatalogViewModel.looseIdentityMatches($0, selectedGame) }
     }
 
     private func scrollToSelectedRail(_ anchor: String?, proxy: ScrollViewProxy) {
@@ -2279,6 +2302,73 @@ private struct CatalogRailTileFramePreferenceKey: PreferenceKey {
 
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
+    }
+}
+
+private struct CatalogDestinationGridView: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    let section: CatalogSectionModel
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2), spacing: 4, alignment: .top)]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .lastTextBaseline, spacing: 14) {
+                Text(section.title)
+                    .font(.nvidia(size: 24, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.96))
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
+                    .font(.nvidia(size: 12, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen.opacity(0.86))
+                    .tracking(0.8)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
+                    CatalogGameTile(
+                        game: game,
+                        imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
+                        isSelected: isSelected(game),
+                        isSelectionActive: viewModel.selectedGame != nil,
+                        onSelect: { viewModel.selectGame(game, inSection: section.id) },
+                        onPlay: { viewModel.launch(game: game) }
+                    )
+                }
+            }
+            .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
+            .padding(.bottom, 12)
+        }
+        .onAppear { prefetchGridImages() }
+        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchGridImages() }
+    }
+
+    private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
+    }
+
+    private func prefetchGridImages() {
+        var urls: [URL] = []
+        var seen = Set<String>()
+        for game in section.games.prefix(18) {
+            appendPrefetchURL(game.bestTileImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
+        }
+        CatalogImageCache.shared.prefetch(urls)
+    }
+
+    private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
+        guard let url = viewModel.optimizedImageURL(rawValue, width: width) else { return }
+        let key = url.absoluteString
+        guard !seen.contains(key) else { return }
+        seen.insert(key)
+        urls.append(url)
     }
 }
 
@@ -2813,8 +2903,9 @@ private struct CatalogGameTile: View {
                     .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
                 }
                 .buttonStyle(.plain)
-                .padding(.leading, CatalogVendorLayout.tileHorizontalMargin + 12)
-                .padding(.top, CatalogVendorLayout.tileTopMargin + 12)
+                .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                .padding(.leading, CatalogVendorLayout.tileHorizontalMargin)
+                .padding(.top, CatalogVendorLayout.tileTopMargin)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 .zIndex(2)
                 .accessibilityLabel("Play \(game.title.isEmpty ? "game" : game.title)")
