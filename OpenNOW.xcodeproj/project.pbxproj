@@ -352,11 +352,14 @@
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.28;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -390,11 +393,14 @@
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.28;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
