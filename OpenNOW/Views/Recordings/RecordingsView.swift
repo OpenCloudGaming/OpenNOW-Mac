@@ -1,11 +1,11 @@
 import AppKit
+import AppKit
 import AVKit
 import CoreText
 import SwiftUI
 import WebRTCMedia
 
 private enum RecordingsLayout {
-    static let topInset: CGFloat = 10
     static let sidebar = Color(red: 18 / 255, green: 20 / 255, blue: 19 / 255)
     static let surface = Color(red: 12 / 255, green: 13 / 255, blue: 13 / 255)
     static let card = Color.white.opacity(0.055)
@@ -102,7 +102,6 @@ struct RecordingsView: View {
                 playerPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.top, RecordingsLayout.topInset)
         }
         .background(RecordingsBackdrop())
         .onAppear { reload(showMessage: false) }
@@ -502,19 +501,32 @@ private struct RecordingThumbnail: View {
     let recording: WebRTCStreamRecording
     let isSelected: Bool
     let isHovering: Bool
+    @State private var thumbnail: NSImage?
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.white.opacity(0.13), Color.white.opacity(0.03), Color.openNowGreen.opacity(isSelected ? 0.24 : 0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            DiagonalGrid()
-                .stroke(Color.black.opacity(0.35), lineWidth: 1)
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 76, height: 46)
+                    .clipped()
+                    .overlay {
+                        LinearGradient(colors: [.black.opacity(0.10), .black.opacity(0.58)], startPoint: .top, endPoint: .bottom)
+                    }
+            } else {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.13), Color.white.opacity(0.03), Color.openNowGreen.opacity(isSelected ? 0.24 : 0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                DiagonalGrid()
+                    .stroke(Color.black.opacity(0.35), lineWidth: 1)
+            }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
                 .font(.recordingsNvidia(size: 19, weight: .bold))
-                .foregroundStyle(isSelected ? Color.openNowGreen : .white.opacity(0.76))
+                .foregroundStyle(isSelected ? Color.openNowGreen : .white.opacity(thumbnail == nil ? 0.76 : 0.92))
+                .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7, x: 0, y: 2)
         }
         .frame(width: 76, height: 46)
         .overlay(alignment: .bottomTrailing) {
@@ -526,6 +538,37 @@ private struct RecordingThumbnail: View {
                 .background(Color.openNowGreen)
         }
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+        .task(id: recording.id) {
+            thumbnail = await RecordingThumbnailLoader.thumbnail(for: recording)
+        }
+    }
+}
+
+@MainActor
+private enum RecordingThumbnailLoader {
+    private static let cache = NSCache<NSString, NSImage>()
+
+    static func thumbnail(for recording: WebRTCStreamRecording) async -> NSImage? {
+        let key = recording.id.uuidString as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        let image = await generateThumbnail(videoURL: recording.videoURL, durationSeconds: recording.durationSeconds)
+        if let image { cache.setObject(image, forKey: key) }
+        return image
+    }
+
+    private static func generateThumbnail(videoURL: URL, durationSeconds: Double) async -> NSImage? {
+        await Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: videoURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 360, height: 216)
+            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+            let targetSeconds = max(0.2, min(max(durationSeconds * 0.18, 0.2), max(durationSeconds - 0.2, 0.2)))
+            let time = CMTime(seconds: targetSeconds, preferredTimescale: 600)
+            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else { return nil }
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        }.value
     }
 }
 

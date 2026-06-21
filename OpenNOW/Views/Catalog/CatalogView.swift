@@ -15,6 +15,7 @@ import SwiftUI
 import WebRTCMedia
 
 private enum CatalogVendorLayout {
+    static let windowTopInset: CGFloat = 10
     static let appBarHeight: CGFloat = 56
     static let appBarBackground = OpenNOWDesign.Surface.appBar
     static let mallSurface = OpenNOWDesign.Surface.app
@@ -180,6 +181,7 @@ struct CatalogView: View {
                         CatalogContentView(viewModel: viewModel)
                     }
                 }
+                .padding(.top, CatalogVendorLayout.windowTopInset)
                 .transition(.opacity)
 
                 if showsMainMenu {
@@ -948,8 +950,8 @@ private struct CatalogMainMenuOverlay: View {
                     .ignoresSafeArea()
                     .onTapGesture { isPresented = false }
 
-                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight))
-                    .padding(.top, CatalogVendorLayout.appBarHeight)
+                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight - CatalogVendorLayout.windowTopInset))
+                    .padding(.top, CatalogVendorLayout.appBarHeight + CatalogVendorLayout.windowTopInset)
                     .padding(.leading, 0)
             }
         }
