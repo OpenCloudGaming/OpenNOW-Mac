@@ -601,7 +601,7 @@ private struct ConnectionsSettingsPage: View {
         var stores: [String] = []
         for store in viewModel.storeDefinitions.map(\.store) + viewModel.accountStores.map(\.store) where !store.isEmpty {
             let key = store.lowercased()
-            guard !seen.contains(key), !isHiddenConnectionStore(store) else { continue }
+            guard !seen.contains(key), !isHiddenConnectionStore(store), storeIconAsset(for: store) != nil else { continue }
             seen.insert(key)
             stores.append(store)
         }
@@ -621,6 +621,10 @@ private struct ConnectionsSettingsPage: View {
         let rawKey = normalizedStoreKey(store)
         let displayKey = normalizedStoreKey(viewModel.displayName(forStore: store))
         return Self.hiddenConnectionStoreKeys.contains(rawKey) || Self.hiddenConnectionStoreKeys.contains(displayKey)
+    }
+
+    private func storeIconAsset(for store: String) -> StoreIconAsset? {
+        StoreIconAsset.resolve(store: store, displayName: viewModel.displayName(forStore: store))
     }
 
     private func normalizedStoreKey(_ value: String) -> String {
@@ -669,13 +673,14 @@ private struct StoreConnectionRow: View {
         let account = viewModel.accountStatus(forStore: store)
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
         let displayName = viewModel.displayName(forStore: store)
+        let iconAsset = StoreIconAsset.resolve(store: store, displayName: displayName)
         let isConnected = account != nil
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16) {
             Rectangle()
                 .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
                 .frame(width: 4, height: 46)
-            StoreIcon(title: displayName, imageURL: definition?.smallImageUrl ?? "", connected: isConnected)
+            StoreIcon(asset: iconAsset, connected: isConnected)
             VStack(alignment: .leading, spacing: 5) {
                 Text(displayName)
                     .font(.settingsNvidia(size: 15, weight: .bold))
@@ -716,49 +721,91 @@ private struct StoreConnectionRow: View {
 }
 
 private struct StoreIcon: View {
-    let title: String
-    let imageURL: String
+    let asset: StoreIconAsset?
     let connected: Bool
 
     var body: some View {
         ZStack {
             Rectangle()
                 .fill(connected ? Color.openNowGreen.opacity(0.18) : Color.white.opacity(0.075))
-            if let iconURL {
-                AsyncImage(url: iconURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .padding(7)
-                    default:
-                        fallback
-                    }
-                }
-            } else {
-                fallback
+            if let asset {
+                StoreIconImage(assetName: asset.assetName)
+                    .scaledToFit()
+                    .padding(asset.padding)
+                    .saturation(connected ? 1 : 0.65)
+                    .opacity(connected ? 1 : 0.68)
             }
         }
-        .frame(width: 34, height: 34)
+        .frame(width: 42, height: 42)
         .overlay { Rectangle().stroke(connected ? Color.openNowGreen.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
         .accessibilityHidden(true)
     }
+}
 
-    @ViewBuilder private var fallback: some View {
-        Text(initials)
-            .font(.settingsNvidia(size: 11, weight: .bold))
-            .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.64))
+private struct StoreIconImage: View {
+    let assetName: String
+
+    var body: some View {
+        if let image = Self.loadImage(named: assetName) {
+            Image(nsImage: image)
+                .resizable()
+        }
     }
 
-    private var iconURL: URL? {
-        URL(string: imageURL)
+    private static func loadImage(named name: String) -> NSImage? {
+        let cacheKey = name as NSString
+        if let cached = cache.object(forKey: cacheKey) { return cached }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "StoreIcons") ?? Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Resources/StoreIcons"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        cache.setObject(image, forKey: cacheKey)
+        return image
     }
 
-    private var initials: String {
-        let parts = title.split(separator: " ")
-        if parts.count >= 2 { return String(parts.prefix(2).compactMap(\.first)).uppercased() }
-        return String(title.prefix(2)).uppercased()
+    private static let cache = NSCache<NSString, NSImage>()
+}
+
+private enum StoreIconAsset: CaseIterable {
+    case battlenet
+    case epicGames
+    case steam
+    case ubisoftConnect
+    case xbox
+    case gaijin
+
+    var assetName: String {
+        switch self {
+        case .battlenet: return "store-battlenet"
+        case .epicGames: return "store-epic-games"
+        case .steam: return "store-steam"
+        case .ubisoftConnect: return "store-ubisoft-connect"
+        case .xbox: return "store-xbox"
+        case .gaijin: return "store-gaijin"
+        }
+    }
+
+    var padding: CGFloat {
+        switch self {
+        case .epicGames: return 5
+        case .steam, .xbox: return 4
+        default: return 6
+        }
+    }
+
+    static func resolve(store: String, displayName: String) -> StoreIconAsset? {
+        let key = normalized(store)
+        let displayKey = normalized(displayName)
+        let combined = key + displayKey
+        if combined.contains("battlenet") || combined.contains("battle") || combined.contains("blizzard") { return .battlenet }
+        if combined.contains("epic") { return .epicGames }
+        if combined.contains("steam") { return .steam }
+        if combined.contains("ubisoft") || combined.contains("uplay") { return .ubisoftConnect }
+        if combined.contains("xbox") || combined.contains("microsoft") { return .xbox }
+        if combined.contains("gaijin") { return .gaijin }
+        return nil
+    }
+
+    private static func normalized(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 }
 

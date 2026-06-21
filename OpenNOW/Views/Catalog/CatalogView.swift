@@ -2158,7 +2158,8 @@ private struct CatalogRailView: View {
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
-                                    onSelect: { viewModel.selectGame(game, inSection: section.id) }
+                                    onSelect: { viewModel.selectGame(game, inSection: section.id) },
+                                    onPlay: { viewModel.launch(game: game) }
                                 )
                                     .id(game.catalogIdentity)
                                     .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
@@ -2402,7 +2403,8 @@ private struct CatalogShowAllOverlay: View {
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
-                                    onSelect: { onSelect(game) }
+                                    onSelect: { onSelect(game) },
+                                    onPlay: { viewModel.launch(game: game) }
                                 )
                             }
                         }
@@ -2779,70 +2781,102 @@ private struct CatalogGameTile: View {
     let isSelected: Bool
     let isSelectionActive: Bool
     let onSelect: () -> Void
+    let onPlay: () -> Void
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        Button(action: onSelect) {
-            VStack(spacing: 0) {
-                ZStack(alignment: .topLeading) {
-                    let isActive = isHovering || isSelected || isFocused
-                    CatalogRemoteImage(url: imageURL, contentMode: .fill)
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
-                        .clipped()
-                    if isActive {
-                        Color.black.opacity(0.50)
-                        LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
-                    }
-                    if let badge = game.cardBadgeLabel {
-                        CatalogGameCardBadge(label: badge)
-                    }
-                    if isActive {
-                        VStack {
-                            Spacer(minLength: 0)
-                            HStack(spacing: 8) {
-                                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                                    .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
-                                    .lineLimit(1)
-                                    .foregroundStyle(.white.opacity(0.90))
-                                Spacer(minLength: 0)
-                                Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                                    .font(.nvidia(size: 10, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.76))
-                            }
-                            .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
-                            .padding(.horizontal, 16)
-                            .background(CatalogVendorLayout.tileTray.opacity(1))
-                            .frame(width: CatalogVendorLayout.wideTileWidth)
-                        }
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
-                    }
-                }
+        ZStack(alignment: .topLeading) {
+            Button(action: onSelect) {
+                tileContent
             }
-            .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
-            .overlay(alignment: .top) {
-                if isSelected {
-                    Rectangle()
-                        .fill(Color.openNowGreen)
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
-                        .offset(y: CatalogVendorLayout.wideTileHeight - 4)
+            .buttonStyle(.plain)
+            .focused($isFocused)
+            .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(isSelected ? "Details open" : "")
+
+            if isHovering {
+                Button(action: onPlay) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "play.fill")
+                            .font(.nvidia(size: 10, weight: .bold))
+                        Text("PLAY")
+                            .font(.nvidia(size: 11, weight: .bold))
+                            .tracking(0.9)
+                    }
+                    .foregroundStyle(.black.opacity(0.88))
+                    .padding(.horizontal, 13)
+                    .frame(height: 30)
+                    .background(Color.openNowGreen)
+                    .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+                    .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
                 }
+                .buttonStyle(.plain)
+                .padding(.leading, CatalogVendorLayout.tileHorizontalMargin + 12)
+                .padding(.top, CatalogVendorLayout.tileTopMargin + 12)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(2)
+                .accessibilityLabel("Play \(game.title.isEmpty ? "game" : game.title)")
             }
-            .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
-            .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
-            .animation(.easeOut(duration: 0.2), value: isHovering)
-            .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
-            .padding(.top, CatalogVendorLayout.tileTopMargin)
-            .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focused($isFocused)
         .onHover { isHovering = $0 }
         .openNowFocusRing(isFocused)
-        .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityValue(isSelected ? "Details open" : "")
+        .animation(.easeOut(duration: 0.16), value: isHovering)
+    }
+
+    private var tileContent: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                let isActive = isHovering || isSelected || isFocused
+                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                    .clipped()
+                if isActive {
+                    Color.black.opacity(0.50)
+                    LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
+                }
+                if let badge = game.cardBadgeLabel {
+                    CatalogGameCardBadge(label: badge)
+                }
+                if isActive {
+                    VStack {
+                        Spacer(minLength: 0)
+                        HStack(spacing: 8) {
+                            Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                                .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
+                                .lineLimit(1)
+                                .foregroundStyle(.white.opacity(0.90))
+                            Spacer(minLength: 0)
+                            Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                                .font(.nvidia(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.76))
+                        }
+                        .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
+                        .padding(.horizontal, 16)
+                        .background(CatalogVendorLayout.tileTray.opacity(1))
+                        .frame(width: CatalogVendorLayout.wideTileWidth)
+                    }
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                }
+            }
+        }
+        .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
+        .overlay(alignment: .top) {
+            if isSelected {
+                Rectangle()
+                    .fill(Color.openNowGreen)
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
+                    .offset(y: CatalogVendorLayout.wideTileHeight - 4)
+            }
+        }
+        .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
+        .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
+        .animation(.easeOut(duration: 0.2), value: isHovering)
+        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+        .padding(.top, CatalogVendorLayout.tileTopMargin)
+        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+        .contentShape(Rectangle())
     }
 }
 
