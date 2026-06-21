@@ -137,6 +137,7 @@ actor OpenNOWGitHubUpdater {
         guard let newBundleURL = findAppBundle(in: extractURL) else {
             throw UpdateError.validationFailed("The update archive did not contain an app bundle.")
         }
+        clearQuarantine(for: newBundleURL)
         try validateCandidateBundle(newBundleURL, expectedVersion: release.version, currentBundleURL: currentBundleURL)
 
         let scriptURL = stagingURL.appendingPathComponent("install-opennow-update.sh", isDirectory: false)
@@ -235,17 +236,29 @@ actor OpenNOWGitHubUpdater {
         }
         let candidateBundle = Bundle(url: candidateURL)
         let candidateIdentifier = candidateBundle?.bundleIdentifier
-        let currentIdentifier = Bundle.main.bundleIdentifier
+        let currentBundle = Bundle(url: currentBundleURL)
+        let currentIdentifier = Bundle.main.bundleIdentifier ?? currentBundle?.bundleIdentifier
         let candidateVersion = candidateBundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let installedVersion = currentBundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? currentVersion
         let candidateExecutable = candidateBundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ?? ""
         let executablePath = candidateExecutable.isEmpty ? "" : candidateURL.appendingPathComponent("Contents/MacOS", isDirectory: true).appendingPathComponent(candidateExecutable).path
-        let executableExists = !executablePath.isEmpty && FileManager.default.isExecutableFile(atPath: executablePath)
+        var executableIsDirectory = ObjCBool(false)
+        let executableExists = !executablePath.isEmpty && FileManager.default.fileExists(atPath: executablePath, isDirectory: &executableIsDirectory) && !executableIsDirectory.boolValue
 
-        guard candidateIdentifier == currentIdentifier,
-              executableExists,
-              compareVersion(candidateVersion ?? "", to: expectedVersion) == 0,
-              compareVersion(candidateVersion ?? "", to: currentVersion) > 0 else {
-            throw UpdateError.validationFailed("The downloaded app bundle did not match OpenNOW or did not contain the expected newer version.")
+        logInfo("Validating update bundle expectedVersion=\(expectedVersion) runningVersion=\(currentVersion) installedVersion=\(installedVersion) candidateVersion=\(candidateVersion ?? "missing") currentIdentifier=\(currentIdentifier ?? "missing") candidateIdentifier=\(candidateIdentifier ?? "missing") executableExists=\(executableExists ? "true" : "false")")
+
+        guard candidateIdentifier == currentIdentifier else {
+            throw UpdateError.validationFailed("The downloaded app bundle identifier was \(candidateIdentifier ?? "missing"), but OpenNOW expected \(currentIdentifier ?? "missing").")
+        }
+        guard executableExists else {
+            throw UpdateError.validationFailed("The downloaded app bundle did not contain an executable OpenNOW app binary.")
+        }
+        guard let candidateVersion, compareVersion(candidateVersion, to: expectedVersion) == 0 else {
+            throw UpdateError.validationFailed("The downloaded app bundle version was \(candidateVersion ?? "missing"), but the GitHub release expected \(expectedVersion).")
+        }
+        let effectiveCurrentVersion = compareVersion(installedVersion, to: currentVersion) > 0 ? installedVersion : currentVersion
+        guard compareVersion(candidateVersion, to: effectiveCurrentVersion) > 0 else {
+            throw UpdateError.validationFailed("OpenNOW is already on version \(effectiveCurrentVersion). Relaunch OpenNOW and check for updates again if the app still shows an older version.")
         }
         guard verifyCodeSignature(for: candidateURL) else {
             throw UpdateError.validationFailed("The downloaded app bundle did not pass macOS code-signature verification.")
@@ -266,6 +279,21 @@ actor OpenNOWGitHubUpdater {
             return process.terminationStatus == 0
         } catch {
             return false
+        }
+    }
+
+    private func clearQuarantine(for bundleURL: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        process.arguments = ["-dr", "com.apple.quarantine", bundleURL.path]
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus != 0 {
+                logInfo("Update quarantine attribute was not present or could not be cleared.")
+            }
+        } catch {
+            logInfo("Update quarantine attribute could not be cleared error=\(error.localizedDescription)")
         }
     }
 
