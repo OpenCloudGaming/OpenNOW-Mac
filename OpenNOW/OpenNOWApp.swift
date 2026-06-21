@@ -6,10 +6,77 @@
 //
 
 import AppKit
+import Darwin
 import OpenNOWTelemetry
 import SwiftUI
 import SwiftData
 import WebRTCMedia
+
+enum OpenNOWUpdatePreferences {
+    static let automaticUpdateChecksEnabledKey = "OpenNOWAutomaticUpdateChecksEnabled"
+    static let defaultAutomaticUpdateChecksEnabled = true
+
+    private static let remindAfterKey = "OpenNOWUpdateRemindAfter"
+
+    static var automaticUpdateChecksEnabled: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: automaticUpdateChecksEnabledKey) != nil else {
+                return defaultAutomaticUpdateChecksEnabled
+            }
+            return UserDefaults.standard.bool(forKey: automaticUpdateChecksEnabledKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: automaticUpdateChecksEnabledKey)
+        }
+    }
+
+    static var updateChecksAreSuspendedForDebugging: Bool {
+        #if DEBUG
+        return true
+        #else
+        return isDebuggerAttached
+        #endif
+    }
+
+    static var automaticUpdateChecksCanBeScheduled: Bool {
+        automaticUpdateChecksEnabled && !updateChecksAreSuspendedForDebugging
+    }
+
+    static func shouldRunAutomaticUpdateCheck(now: Date = Date()) -> Bool {
+        guard automaticUpdateChecksCanBeScheduled else { return false }
+        guard let remindAfterDate else { return true }
+        if remindAfterDate <= now {
+            clearReminder()
+            return true
+        }
+        return false
+    }
+
+    static func remindTomorrow(from date: Date = Date()) {
+        let reminderDate = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(24 * 60 * 60)
+        UserDefaults.standard.set(reminderDate.timeIntervalSince1970, forKey: remindAfterKey)
+    }
+
+    private static var remindAfterDate: Date? {
+        guard UserDefaults.standard.object(forKey: remindAfterKey) != nil else { return nil }
+        let timestamp = UserDefaults.standard.double(forKey: remindAfterKey)
+        guard timestamp > 0 else { return nil }
+        return Date(timeIntervalSince1970: timestamp)
+    }
+
+    private static func clearReminder() {
+        UserDefaults.standard.removeObject(forKey: remindAfterKey)
+    }
+
+    private static var isDebuggerAttached: Bool {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        let result = sysctl(&mib, u_int(mib.count), &info, &size, nil, 0)
+        guard result == 0 else { return false }
+        return (info.kp_proc.p_flag & P_TRACED) != 0
+    }
+}
 
 @main
 struct OpenNOWApp: App {
@@ -130,30 +197,51 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         (NSApp.delegate as? OpenNOWAppDelegate)?.checkForApplicationUpdates()
     }
 
+    static func setAutomaticApplicationUpdateChecksEnabled(_ enabled: Bool) {
+        OpenNOWUpdatePreferences.automaticUpdateChecksEnabled = enabled
+        (NSApp.delegate as? OpenNOWAppDelegate)?.refreshApplicationUpdateCheckSchedule()
+    }
+
     private func startApplicationUpdateChecks() {
+        guard OpenNOWUpdatePreferences.automaticUpdateChecksCanBeScheduled else { return }
         guard applicationUpdateCheckTimer == nil else { return }
-        checkForApplicationUpdates(showingCurrentStatus: false)
+        checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
         applicationUpdateCheckTimer = Timer.scheduledTimer(timeInterval: 60 * 60, target: self, selector: #selector(applicationUpdateCheckTimerFired(_:)), userInfo: nil, repeats: true)
     }
 
     @objc private func applicationUpdateCheckTimerFired(_ timer: Timer) {
-        checkForApplicationUpdates(showingCurrentStatus: false)
+        checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
     }
 
     private func stopApplicationUpdateChecks() {
-        applicationUpdateCheckTimer?.invalidate()
-        applicationUpdateCheckTimer = nil
-        updateCheckTask?.cancel()
-        updateCheckTask = nil
+        stopAutomaticApplicationUpdateChecks(cancelActiveCheck: true)
         updateInstallTask?.cancel()
         updateInstallTask = nil
     }
 
-    private func checkForApplicationUpdates() {
-        checkForApplicationUpdates(showingCurrentStatus: true)
+    private func stopAutomaticApplicationUpdateChecks(cancelActiveCheck: Bool) {
+        applicationUpdateCheckTimer?.invalidate()
+        applicationUpdateCheckTimer = nil
+        if cancelActiveCheck {
+            updateCheckTask?.cancel()
+            updateCheckTask = nil
+        }
     }
 
-    private func checkForApplicationUpdates(showingCurrentStatus: Bool) {
+    private func refreshApplicationUpdateCheckSchedule() {
+        guard OpenNOWUpdatePreferences.automaticUpdateChecksCanBeScheduled else {
+            stopAutomaticApplicationUpdateChecks(cancelActiveCheck: true)
+            return
+        }
+        startApplicationUpdateChecks()
+    }
+
+    private func checkForApplicationUpdates() {
+        checkForApplicationUpdates(showingCurrentStatus: true, automatic: false)
+    }
+
+    private func checkForApplicationUpdates(showingCurrentStatus: Bool, automatic: Bool) {
+        if automatic, !OpenNOWUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
         guard updateCheckTask == nil, updateInstallTask == nil else { return }
         updateCheckTask = Task { @MainActor in
             defer { updateCheckTask = nil }
@@ -195,10 +283,19 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
             let alert = NSAlert()
             alert.messageText = "OpenNOW \(release.version) is available"
-            alert.informativeText = "Current version: \(currentVersion)\n\nThis update is required to continue using OpenNOW.\n\n\(notes)"
+            alert.informativeText = "Current version: \(currentVersion)\n\nA newer signed OpenNOW build is available.\n\n\(notes)"
             alert.addButton(withTitle: "Install and Relaunch")
-            presentAlert(alert) { [weak self] _ in
-                self?.installUpdate(release)
+            alert.addButton(withTitle: "Remind Me Tomorrow")
+            alert.addButton(withTitle: "Cancel")
+            presentAlert(alert) { [weak self] response in
+                switch response {
+                case .alertFirstButtonReturn:
+                    self?.installUpdate(release)
+                case .alertSecondButtonReturn:
+                    OpenNOWUpdatePreferences.remindTomorrow()
+                default:
+                    break
+                }
             }
         }
     }

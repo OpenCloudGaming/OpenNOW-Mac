@@ -1213,6 +1213,7 @@ private struct AboutSettingsPage: View {
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
+    @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
 
     var body: some View {
         ZStack {
@@ -1262,6 +1263,10 @@ private struct AboutSettingsPage: View {
                 AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey)
+                SettingsDivider()
+                SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled) { enabled in
+                    OpenNOWAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
+                }
                 SettingsDivider()
                 HStack(spacing: 10) {
                     SettingsActionButton(title: "CHECK FOR UPDATES") {
@@ -1391,6 +1396,16 @@ private struct AboutSettingsPage: View {
 
     private var operatingSystemVersion: String {
         ProcessInfo.processInfo.operatingSystemVersionString
+    }
+
+    private var automaticUpdateChecksSubtitle: String {
+        if OpenNOWUpdatePreferences.updateChecksAreSuspendedForDebugging {
+            return "Paused while running a debug build or attached debugger. Manual checks remain available."
+        }
+        if automaticUpdateChecksEnabled {
+            return "Checks GitHub releases on launch and hourly while OpenNOW is running."
+        }
+        return "OpenNOW will not check for new releases automatically. Manual checks remain available."
     }
 
     private var diagnosticsText: String {
