@@ -45,7 +45,7 @@ struct ContentView: View {
             .onChange(of: accounts.count) { _, _ in syncViewModel() }
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
             .onChange(of: devices.count) { _, _ in syncViewModel() }
-            .onOpenURL { url in viewModel.handleOAuthCallback(url) }
+            .onOpenURL { url in handleOpenURL(url) }
             .onReceive(NotificationCenter.default.publisher(for: .openNOWDidOpenFile)) { notification in
                 guard let url = notification.object as? URL else { return }
                 viewModel.handleOpenedFile(url)
@@ -77,6 +77,14 @@ struct ContentView: View {
 
     private func syncViewModel() {
         viewModel.update(modelContext: modelContext, accounts: accounts, sessions: sessions, devices: devices)
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        if TwitchOAuthService.isCallbackURL(url) {
+            NotificationCenter.default.post(name: .openNOWTwitchOAuthCallback, object: url)
+            return
+        }
+        viewModel.handleOAuthCallback(url)
     }
 }
 

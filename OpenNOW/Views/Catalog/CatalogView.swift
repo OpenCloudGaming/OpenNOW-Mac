@@ -1068,6 +1068,7 @@ private struct CatalogMainMenuPanel: View {
         switch page {
         case .account: return "person.crop.circle.fill"
         case .connections: return "link"
+        case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"

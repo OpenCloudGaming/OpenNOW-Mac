@@ -110,6 +110,7 @@ final class LoginViewModel: ObservableObject {
     }
 
     func handleOAuthCallback(_ url: URL) {
+        guard !TwitchOAuthService.isCallbackURL(url) else { return }
         guard url.scheme == "com.nvidia.geforcenow" || url.scheme == "opennow" else { return }
         Task { await completeOAuth(callbackText: url.absoluteString) }
     }

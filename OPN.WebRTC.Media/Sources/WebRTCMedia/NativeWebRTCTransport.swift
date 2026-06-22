@@ -6,9 +6,11 @@ import Foundation
 public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unchecked Sendable {
     public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
     public var onRecordingStatusChanged: (@MainActor @Sendable (_ status: WebRTCStreamRecordingStatus) -> Void)?
+    public var onBroadcastStatusChanged: (@MainActor @Sendable (_ status: WebRTCLiveBroadcastStatus) -> Void)?
 
     private let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
+    private let broadcaster = WebRTCLiveBroadcastSession()
     private weak var nativeView: NativeWebRTCStreamView?
     private let localIceLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
@@ -26,6 +28,12 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             }
             self?.onRecordingStatusChanged?(status)
         }
+        broadcaster.onStatusChanged = { [weak self] status in
+            if status.isTerminal {
+                self?.session.setEnhancedVideoFrameCaptureEnabled(self?.recorder.wantsEnhancedVideo == true)
+            }
+            self?.onBroadcastStatusChanged?(status)
+        }
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
@@ -39,14 +47,17 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 guard let framePointer else { return }
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
                 self?.recorder.appendVideoFrame(frame)
+                self?.broadcaster.appendVideoFrame(frame)
             }
             self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
                 guard let pixelBufferPointer else { return }
                 let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeUnretainedValue()
                 self?.recorder.appendEnhancedPixelBuffer(pixelBuffer)
+                self?.broadcaster.appendEnhancedPixelBuffer(pixelBuffer)
             }
             self.session.onGameAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
                 self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+                self?.broadcaster.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             session.start(
@@ -114,13 +125,23 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func startRecording(configuration: WebRTCStreamRecordingConfiguration) {
-        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled)
+        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled || broadcaster.wantsEnhancedVideo)
         recorder.start(configuration: configuration)
     }
 
     public func stopRecording() {
         recorder.stop()
-        session.setEnhancedVideoFrameCaptureEnabled(false)
+        session.setEnhancedVideoFrameCaptureEnabled(broadcaster.wantsEnhancedVideo)
+    }
+
+    public func startBroadcast(configuration: WebRTCLiveBroadcastConfiguration) {
+        session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled || recorder.wantsEnhancedVideo)
+        broadcaster.start(configuration: configuration)
+    }
+
+    public func stopBroadcast() {
+        broadcaster.stop()
+        session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo)
     }
 
     public func disconnect() async {
@@ -131,6 +152,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         let pendingContinuation = continuation
         continuation = nil
         recorder.stop()
+        broadcaster.stop()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         localIceLock.withLock {
             localIceContinuation?.finish()

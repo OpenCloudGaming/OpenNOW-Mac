@@ -92,6 +92,7 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
 enum CatalogSettingsPage: String, CaseIterable, Identifiable {
     case account
     case connections
+    case twitch
     case gameplay
     case serverLocation
     case resolutionUpscaling
@@ -104,6 +105,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .account: return "Account"
         case .connections: return "Connections"
+        case .twitch: return "Twitch"
         case .gameplay: return "Gameplay"
         case .serverLocation: return "Server Location"
         case .resolutionUpscaling: return "Resolution Upscaling"
@@ -165,6 +167,8 @@ final class CatalogViewModel: ObservableObject {
     @Published var isStorePickerVisible = false
     @Published var ownershipFlowStage = CatalogOwnershipFlowStage.hidden
     @Published var ownershipFlowMessage = ""
+    @Published var twitchPreferences = TwitchPreferencesStore.load()
+    @Published var twitchAccountStatus = TwitchAccountStatus()
 
     let account: LoginAccount
     let session: LoginSession
@@ -194,6 +198,10 @@ final class CatalogViewModel: ObservableObject {
             .removeDuplicates()
             .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.browseCatalog() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .openNOWTwitchOAuthCallback)
+            .compactMap { $0.object as? URL }
+            .sink { [weak self] url in self?.handleTwitchOAuthCallback(url) }
             .store(in: &cancellables)
     }
 
@@ -606,6 +614,97 @@ final class CatalogViewModel: ObservableObject {
         errorMessage = ""
     }
 
+    func setTwitchClientID(_ clientID: String) {
+        twitchPreferences.clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        saveTwitchPreferences()
+    }
+
+    func setTwitchIngestRegion(_ index: Int) {
+        let values = TwitchBroadcastPreferences.IngestRegion.allCases
+        guard values.indices.contains(index) else { return }
+        twitchPreferences.ingestRegion = values[index]
+        saveTwitchPreferences()
+    }
+
+    func setTwitchCustomRTMPURL(_ url: String) {
+        twitchPreferences.customRTMPURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        saveTwitchPreferences()
+    }
+
+    func setTwitchResolution(_ index: Int) {
+        let values = TwitchBroadcastPreferences.Resolution.allCases
+        guard values.indices.contains(index) else { return }
+        twitchPreferences.resolution = values[index]
+        saveTwitchPreferences()
+    }
+
+    func setTwitchFPS(_ index: Int) {
+        let values = [60, 30]
+        guard values.indices.contains(index) else { return }
+        twitchPreferences.fps = values[index]
+        saveTwitchPreferences()
+    }
+
+    func setTwitchVideoBitrateKbps(_ value: Double) {
+        twitchPreferences.videoBitrateKbps = max(500, Int(value.rounded()))
+        saveTwitchPreferences()
+    }
+
+    func setTwitchAudioBitrateKbps(_ value: Double) {
+        twitchPreferences.audioBitrateKbps = min(max(64, Int(value.rounded())), 320)
+        saveTwitchPreferences()
+    }
+
+    func setTwitchUseEnhancedVideo(_ enabled: Bool) {
+        twitchPreferences.useEnhancedVideo = enabled
+        saveTwitchPreferences()
+    }
+
+    func setTwitchAutoTitleFromGame(_ enabled: Bool) {
+        twitchPreferences.autoTitleFromGame = enabled
+        saveTwitchPreferences()
+    }
+
+    func setTwitchChatOverlayEnabled(_ enabled: Bool) {
+        twitchPreferences.chatOverlayEnabled = enabled
+        saveTwitchPreferences()
+    }
+
+    func setTwitchEventAlertsEnabled(_ enabled: Bool) {
+        twitchPreferences.eventAlertsEnabled = enabled
+        saveTwitchPreferences()
+    }
+
+    func beginTwitchConnection() {
+        do {
+            try TwitchOAuthService.start(clientID: twitchPreferences.clientID)
+            actionMessage = "Opening Twitch authorization in your browser."
+            errorMessage = ""
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    func disconnectTwitch() {
+        TwitchTokenStore.delete()
+        TwitchStreamKeyStore.delete()
+        twitchAccountStatus = TwitchAccountStatus()
+        actionMessage = "Twitch disconnected."
+    }
+
+    func handleTwitchOAuthCallback(_ url: URL) {
+        let clientID = twitchPreferences.clientID
+        Task { @MainActor in
+            do {
+                twitchAccountStatus = try await TwitchOAuthService.complete(callbackURL: url, clientID: clientID)
+                actionMessage = "Twitch connected."
+                errorMessage = ""
+            } catch {
+                errorMessage = Self.message(for: error)
+            }
+        }
+    }
+
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
         activeStreamConfiguration = nil
@@ -659,6 +758,15 @@ final class CatalogViewModel: ObservableObject {
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         activeStreamConfiguration = configuration
         clearLaunchFlow()
+    }
+
+    private func saveTwitchPreferences() {
+        TwitchPreferencesStore.save(twitchPreferences)
+    }
+
+    private static func message(for error: Error) -> String {
+        if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
+        return error.localizedDescription
     }
 
     private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration) -> StreamLaunchConfiguration {

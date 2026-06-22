@@ -4,12 +4,14 @@ import SwiftUI
 
 public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ progress: StreamProgress) -> Void
 public typealias WebRTCMediaStreamEndCallback = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: StreamReport?) -> Void
+public typealias WebRTCMediaBroadcastConfigurationProvider = @MainActor @Sendable (_ title: String, _ applicationID: String, _ width: Int, _ height: Int, _ fps: Int) -> WebRTCLiveBroadcastConfiguration?
 
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
     private let configuration: StreamLaunchConfiguration
     private let sessionProvider: any StreamSessionProvider
     private let signaling: (any StreamSignalingChannel)?
+    private let broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider?
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
 
@@ -21,6 +23,10 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var videoEnhancementSettingsVisible = false
+    @State private var twitchPanelVisible = false
+    @State private var twitchChatOverlayVisible = false
+    @State private var twitchEventAlertsVisible = false
+    @State private var twitchMarkerMessage = ""
     @State private var sidebarVisible = true
     @State private var quitMenuVisible = false
     @State private var isEndingStream = false
@@ -33,17 +39,21 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var runtimeSettings = StreamRuntimeSettings()
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
+    @State private var broadcastStatus = WebRTCLiveBroadcastStatus.idle
     @State private var recordingNotificationTask: Task<Void, Never>?
+    @State private var broadcastNotificationTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
                 signaling: (any StreamSignalingChannel)? = nil,
+                broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider? = nil,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
         self.signaling = signaling
+        self.broadcastConfigurationProvider = broadcastConfigurationProvider
         self.onProgress = onProgress
         self.onEnd = onEnd
     }
@@ -63,9 +73,12 @@ public struct WebRTCMediaStreamSurface: View {
             if !isStreamReady { launchOverlay }
             if statsVisible { statsHUD }
             if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
+            if twitchPanelVisible { twitchPanel }
+            if twitchChatOverlayVisible { twitchChatOverlay }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
             recordingIndicator
+            broadcastIndicator
             micStatusIndicator
         }
         .background(Color.black)
@@ -142,6 +155,10 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "sparkles", title: "Video") {
                 toggleVideoEnhancementSettings()
             }
+            sidebarButton(systemName: "dot.radiowaves.left.and.right", title: broadcastButtonTitle, isActive: broadcastStatus.isLive) {
+                toggleTwitchPanel()
+            }
+            .disabled(!isStreamReady)
         }
         .padding(10)
         .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -262,6 +279,81 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private var twitchPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("TWITCH LIVE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.purple.opacity(0.95))
+                Spacer()
+                Button(action: { twitchPanelVisible = false }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .frame(width: 24, height: 24)
+                        .background(.white.opacity(0.09), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            twitchPanelRow("Status", twitchStatusText)
+            twitchPanelRow("Hotkey", "Command-B toggles broadcast")
+            if !twitchMarkerMessage.isEmpty { twitchPanelRow("Marker", twitchMarkerMessage) }
+            HStack(spacing: 8) {
+                Button(action: toggleBroadcast) {
+                    Text(broadcastStatus.isLive ? "STOP BROADCAST" : "START BROADCAST")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(broadcastStatus.isLive ? .white : .black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                        .background(broadcastStatus.isLive ? Color.red.opacity(0.75) : Color.purple.opacity(0.95))
+                }
+                .buttonStyle(.plain)
+                Button(action: createTwitchMarker) {
+                    Text("MARK")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 62, height: 34)
+                        .background(.white.opacity(0.09))
+                        .overlay { Rectangle().stroke(.white.opacity(0.13), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+            }
+            Toggle("Chat overlay", isOn: Binding(get: { twitchChatOverlayVisible }, set: { twitchChatOverlayVisible = $0 }))
+                .toggleStyle(.switch)
+            Toggle("Event alerts", isOn: Binding(get: { twitchEventAlertsVisible }, set: { twitchEventAlertsVisible = $0 }))
+                .toggleStyle(.switch)
+        }
+        .font(.system(size: 11, weight: .medium, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.86))
+        .padding(14)
+        .frame(width: 286, alignment: .leading)
+        .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.purple.opacity(0.34), lineWidth: 1))
+        .shadow(color: .black.opacity(0.48), radius: 24, x: 0, y: 12)
+        .padding(.top, 22)
+        .padding(.leading, 96)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var twitchChatOverlay: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TWITCH CHAT")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.purple.opacity(0.95))
+            Text("Chat overlay is enabled. Chat messages appear here after Twitch chat service connects.")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.64))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(width: 320, alignment: .leading)
+        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.purple.opacity(0.28), lineWidth: 1))
+        .padding(.trailing, 18)
+        .padding(.bottom, 62)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+
     private var micStatusIndicator: some View {
         let isAvailable = runtimeSettings.microphoneMode != "disabled"
         return Image(systemName: microphoneEnabled && isAvailable ? "mic.fill" : "mic.slash.fill")
@@ -331,6 +423,51 @@ public struct WebRTCMediaStreamSurface: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
+    private var broadcastIndicator: some View {
+        Group {
+            switch broadcastStatus {
+            case .connecting:
+                Text("Connecting Twitch...")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(.black.opacity(0.62), in: Capsule())
+            case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+                HStack(spacing: 8) {
+                    Circle().fill(Color.purple).frame(width: 8, height: 8)
+                    Text("TWITCH \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · Drops \(droppedFrames)")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.94))
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(.black.opacity(0.62), in: Capsule())
+                .overlay(Capsule().stroke(Color.purple.opacity(0.46), lineWidth: 1))
+            case .stopping:
+                Text("Stopping Twitch...")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(.black.opacity(0.62), in: Capsule())
+            case .failed(let message):
+                Text(message)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(Color.purple.opacity(0.72), in: Capsule())
+            case .idle:
+                EmptyView()
+            }
+        }
+        .padding(.top, 62)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
     private func sidebarButton(systemName: String, title: String, isActive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
@@ -358,6 +495,57 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var recordingButtonTitle: String {
         recordingCanStop ? "Stop" : "Record"
+    }
+
+    private var broadcastButtonTitle: String {
+        broadcastStatus.isLive ? "Stop" : "Twitch"
+    }
+
+    private var twitchStatusText: String {
+        switch broadcastStatus {
+        case .idle: return "Ready"
+        case .connecting: return "Connecting"
+        case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps): return "Live \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops"
+        case .stopping: return "Stopping"
+        case .failed(let message): return message
+        }
+    }
+
+    private func twitchPanelRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 12) {
+            Text(label).foregroundStyle(.white.opacity(0.54))
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func toggleTwitchPanel() {
+        twitchPanelVisible.toggle()
+        if twitchPanelVisible { nativeView?.setPointerLocked(false) }
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.panel", level: .info, message: twitchPanelVisible ? "Twitch panel shown." : "Twitch panel hidden.", attributes: ["visible": String(twitchPanelVisible)])
+    }
+
+    private func toggleBroadcast() {
+        if broadcastStatus.isLive {
+            transport?.stopBroadcast()
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.stop", level: .info, message: "Twitch broadcast stop requested.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        guard let broadcastConfigurationProvider,
+              let broadcastConfiguration = broadcastConfigurationProvider(configuration.title, configuration.applicationID, runtimeSettings.resolutionWidth, runtimeSettings.resolutionHeight, runtimeSettings.fps) else {
+            broadcastStatus = .failed("Twitch is not ready. Connect Twitch in Settings.")
+            return
+        }
+        transport?.startBroadcast(configuration: broadcastConfiguration)
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast start requested.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func createTwitchMarker() {
+        twitchMarkerMessage = broadcastStatus.isLive ? "Marker requested at \(Date().formatted(date: .omitted, time: .standard))" : "Go live before creating a marker."
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
     }
 
     private func toggleRecording() {
@@ -466,6 +654,9 @@ public struct WebRTCMediaStreamSurface: View {
         transport.onRecordingStatusChanged = { status in
             handleRecordingStatusChanged(status)
         }
+        transport.onBroadcastStatusChanged = { status in
+            handleBroadcastStatusChanged(status)
+        }
         nativeView.onInputEvent = { event in
             switch inputAction(for: event) {
             case .send:
@@ -530,8 +721,21 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func handleBroadcastStatusChanged(_ status: WebRTCLiveBroadcastStatus) {
+        broadcastNotificationTask?.cancel()
+        broadcastStatus = status
+        guard status.isTerminal else { return }
+        broadcastNotificationTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard broadcastStatus == status else { return }
+            broadcastStatus = .idle
+            broadcastNotificationTask = nil
+        }
+    }
+
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
+        if twitchPanelVisible { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
@@ -593,6 +797,20 @@ public struct WebRTCMediaStreamSurface: View {
             toggleRecording()
         case .toggleVideoEnhancement:
             toggleVideoEnhancementSettings()
+        case .toggleTwitchBroadcast:
+            guard isStreamReady else { return }
+            toggleBroadcast()
+        case .toggleTwitchPanel:
+            guard isStreamReady else { return }
+            toggleTwitchPanel()
+        case .toggleTwitchChatOverlay:
+            twitchChatOverlayVisible.toggle()
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.chat_overlay", level: .info, message: twitchChatOverlayVisible ? "Twitch chat overlay shown." : "Twitch chat overlay hidden.", attributes: ["visible": String(twitchChatOverlayVisible)])
+        case .createTwitchMarker:
+            createTwitchMarker()
+        case .toggleTwitchEventAlerts:
+            twitchEventAlertsVisible.toggle()
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.event_alerts", level: .info, message: twitchEventAlertsVisible ? "Twitch event alerts enabled." : "Twitch event alerts disabled.", attributes: ["visible": String(twitchEventAlertsVisible)])
         case .showQuitMenu:
             showQuitMenu()
         }
@@ -723,10 +941,13 @@ public struct WebRTCMediaStreamSurface: View {
         statsTask = nil
         recordingNotificationTask?.cancel()
         recordingNotificationTask = nil
+        broadcastNotificationTask?.cancel()
+        broadcastNotificationTask = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         transport?.stopRecording()
+        transport?.stopBroadcast()
         guard !didEndStream else { return }
         didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }

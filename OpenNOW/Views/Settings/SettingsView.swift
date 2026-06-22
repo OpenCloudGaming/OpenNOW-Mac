@@ -137,6 +137,7 @@ private struct SettingsSidebar: View {
         switch page {
         case .account: return "person.crop.circle.fill"
         case .connections: return "link"
+        case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"
@@ -176,6 +177,8 @@ private struct SettingsContent: View {
             AccountSettingsPage(viewModel: viewModel)
         case .connections:
             ConnectionsSettingsPage(viewModel: viewModel)
+        case .twitch:
+            TwitchSettingsPage(viewModel: viewModel)
         case .gameplay:
             GameplaySettingsPage(viewModel: viewModel)
         case .serverLocation:
@@ -193,6 +196,7 @@ private struct SettingsContent: View {
         switch viewModel.selectedSettingsPage {
         case .account: return "Membership, profile, and current NVIDIA session details."
         case .connections: return "Manage store accounts used for library sync and ownership detection."
+        case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
         case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
         case .resolutionUpscaling: return "Control image enhancement, sharpening, denoise, and target quality."
@@ -643,6 +647,92 @@ private struct ConnectionsSettingsPage: View {
         "stove",
         "unknown"
     ]
+}
+
+private struct TwitchSettingsPage: View {
+    @ObservedObject var viewModel: CatalogViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Twitch Account") {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(viewModel.twitchAccountStatus.summary)
+                            .font(.settingsNvidia(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text(accountSubtitle)
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    Spacer(minLength: 12)
+                    SettingsStatusPill(title: viewModel.twitchAccountStatus.isConnected ? "CONNECTED" : "OFFLINE", value: viewModel.twitchAccountStatus.streamKeyAvailable ? "READY" : "SETUP", positive: viewModel.twitchAccountStatus.isConnected)
+                }
+                SettingsDivider()
+                SettingsTextFieldRow(title: "Client ID", subtitle: "Create a Twitch Developer application and paste its public client ID here.", text: viewModel.twitchPreferences.clientID, placeholder: "Twitch Client ID", action: viewModel.setTwitchClientID)
+                SettingsDivider()
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: "CONNECT TWITCH", minimumWidth: 150) { viewModel.beginTwitchConnection() }
+                        .disabled(viewModel.twitchPreferences.clientID.isEmpty)
+                    SettingsActionButton(title: "DISCONNECT", tone: .secondary, minimumWidth: 120) { viewModel.disconnectTwitch() }
+                        .disabled(!viewModel.twitchAccountStatus.isConnected)
+                    Spacer(minLength: 0)
+                }
+            }
+
+            SettingsCard(title: "Broadcast") {
+                SettingsOptionRow(title: "Ingest", subtitle: "Choose the Twitch ingest endpoint used by the native RTMP publisher.", options: TwitchBroadcastPreferences.IngestRegion.allCases.map(\.label), selectedIndex: selectedIngestIndex, action: viewModel.setTwitchIngestRegion)
+                if viewModel.twitchPreferences.ingestRegion == .custom {
+                    SettingsDivider()
+                    SettingsTextFieldRow(title: "Custom RTMP URL", subtitle: "Use a full RTMP endpoint without the stream key.", text: viewModel.twitchPreferences.customRTMPURL, placeholder: "rtmp://host/app", action: viewModel.setTwitchCustomRTMPURL)
+                }
+                SettingsDivider()
+                SettingsOptionRow(title: "Resolution", subtitle: "Downscale the broadcast independently from the gameplay stream.", options: TwitchBroadcastPreferences.Resolution.allCases.map(\.label), selectedIndex: selectedResolutionIndex, action: viewModel.setTwitchResolution)
+                SettingsDivider()
+                SettingsOptionRow(title: "Frame Rate", subtitle: "Twitch recommends 60 FPS for high-motion gameplay when bandwidth allows.", options: ["60 FPS", "30 FPS"], selectedIndex: viewModel.twitchPreferences.fps == 30 ? 1 : 0, action: viewModel.setTwitchFPS)
+                SettingsDivider()
+                SettingsSliderRow(title: "Video Bitrate", valueText: "\(viewModel.twitchPreferences.videoBitrateKbps) Kbps", value: Double(viewModel.twitchPreferences.videoBitrateKbps), range: 500...8_000, step: 100, action: viewModel.setTwitchVideoBitrateKbps)
+                SettingsDivider()
+                SettingsSliderRow(title: "Audio Bitrate", valueText: "\(viewModel.twitchPreferences.audioBitrateKbps) Kbps", value: Double(viewModel.twitchPreferences.audioBitrateKbps), range: 64...320, step: 16, action: viewModel.setTwitchAudioBitrateKbps)
+                SettingsDivider()
+                SettingsToggleRow(title: "Use Enhanced Video", subtitle: "Broadcast the upscaled/enhanced frame when available, with decoded stream frames as fallback.", isOn: viewModel.twitchPreferences.useEnhancedVideo, action: viewModel.setTwitchUseEnhancedVideo)
+            }
+
+            SettingsCard(title: "Automation & Overlay") {
+                SettingsToggleRow(title: "Auto Title From Game", subtitle: "Use the active game title when preparing Twitch broadcast metadata.", isOn: viewModel.twitchPreferences.autoTitleFromGame, action: viewModel.setTwitchAutoTitleFromGame)
+                SettingsDivider()
+                SettingsToggleRow(title: "Chat Overlay", subtitle: "Show Twitch chat controls inside the stream overlay.", isOn: viewModel.twitchPreferences.chatOverlayEnabled, action: viewModel.setTwitchChatOverlayEnabled)
+                SettingsDivider()
+                SettingsToggleRow(title: "Event Alerts", subtitle: "Show follows, subscriptions, raids, and channel events over the stream.", isOn: viewModel.twitchPreferences.eventAlertsEnabled, action: viewModel.setTwitchEventAlertsEnabled)
+            }
+
+            SettingsCard(title: "In-Stream Hotkeys") {
+                SettingsInfoRow(label: "Command-B", value: "Start or stop Twitch broadcast")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-T", value: "Show or hide Twitch controls")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-Shift-C", value: "Show or hide Twitch chat overlay")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-Shift-M", value: "Create a Twitch stream marker")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-Shift-A", value: "Toggle Twitch event alerts")
+            }
+        }
+    }
+
+    private var accountSubtitle: String {
+        if viewModel.twitchAccountStatus.isConnected {
+            return viewModel.twitchAccountStatus.streamKeyAvailable ? "Stream key is available for RTMP publishing." : "Connected, but stream key has not been fetched yet."
+        }
+        return "Connect Twitch to fetch your stream key, manage channel metadata, chat, and broadcast state."
+    }
+
+    private var selectedIngestIndex: Int {
+        TwitchBroadcastPreferences.IngestRegion.allCases.firstIndex(of: viewModel.twitchPreferences.ingestRegion) ?? 0
+    }
+
+    private var selectedResolutionIndex: Int {
+        TwitchBroadcastPreferences.Resolution.allCases.firstIndex(of: viewModel.twitchPreferences.resolution) ?? 0
+    }
 }
 
 private struct StoreConnectionsOverview: View {
@@ -1869,6 +1959,48 @@ private struct SettingsToggleRow: View {
                 .toggleStyle(.switch)
                 .labelsHidden()
         }
+    }
+}
+
+private struct SettingsTextFieldRow: View {
+    let title: String
+    let subtitle: String
+    let text: String
+    let placeholder: String
+    let action: (String) -> Void
+    @State private var draft = ""
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 250, alignment: .leading)
+            TextField(placeholder, text: Binding(get: { draft }, set: updateDraft))
+                .textFieldStyle(.plain)
+                .font(.settingsNvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(Color.white.opacity(0.07))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                .onAppear { draft = text }
+                .onChange(of: text) { _, value in
+                    guard value != draft else { return }
+                    draft = value
+                }
+        }
+    }
+
+    private func updateDraft(_ value: String) {
+        draft = value
+        action(value)
     }
 }
 

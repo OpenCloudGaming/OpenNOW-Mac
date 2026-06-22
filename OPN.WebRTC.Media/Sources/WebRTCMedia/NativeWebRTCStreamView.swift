@@ -24,6 +24,11 @@ public enum WebRTCMediaStreamCommand: Sendable {
     case toggleMicrophone
     case toggleRecording
     case toggleVideoEnhancement
+    case toggleTwitchBroadcast
+    case toggleTwitchPanel
+    case toggleTwitchChatOverlay
+    case createTwitchMarker
+    case toggleTwitchEventAlerts
     case showQuitMenu
 }
 
@@ -319,12 +324,23 @@ public final class NativeWebRTCStreamView: NSView {
 
     private func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
         guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) else { return nil }
+        let shifted = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift)
+        if shifted {
+            switch event.keyCode {
+            case 8: return .toggleTwitchChatOverlay
+            case 46: return .createTwitchMarker
+            case 0: return .toggleTwitchEventAlerts
+            default: break
+            }
+        }
         switch event.keyCode {
         case 46: return .toggleMicrophone
         case 45: return .toggleStatsHUD
         case 5: return .toggleSidebar
         case 15: return .toggleRecording
         case 9: return .toggleVideoEnhancement
+        case 11: return .toggleTwitchBroadcast
+        case 17: return .toggleTwitchPanel
         case 12: return .showQuitMenu
         default: return nil
         }
