@@ -346,7 +346,8 @@ private struct AccountSettingsPage: View {
     }
 
     private var providerName: String {
-        viewModel.account.providerName.isEmpty ? "NVIDIA" : viewModel.account.providerName
+        if viewModel.account.providerName.isEmpty || viewModel.account.providerName == "OPN" { return "Nvidia" }
+        return viewModel.account.providerName
     }
 
     private var userId: String {
