@@ -49,7 +49,7 @@ enum TwitchServiceError: LocalizedError, Sendable {
 }
 
 enum TwitchOAuthService {
-    private static let authorizationEndpoint = URL(string: "https://id.twitch.tv/oauth2/authorize")!
+    private static let deviceEndpoint = URL(string: "https://id.twitch.tv/oauth2/device")!
     private static let tokenEndpoint = URL(string: "https://id.twitch.tv/oauth2/token")!
     private static let redirectURI = "opennow://twitch/oauth"
     private static let stateKey = "OpenNOW.Twitch.OAuth.State"
@@ -66,26 +66,14 @@ enum TwitchOAuthService {
         url.scheme == "opennow" && url.host == "twitch" && url.path == "/oauth"
     }
 
-    static func start(clientID: String) throws {
+    static func start(clientID: String) async throws -> TwitchAccountStatus {
         let clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty else { throw TwitchServiceError.missingClientID }
-        let verifier = randomURLSafeString(byteCount: 48)
-        let state = randomURLSafeString(byteCount: 32)
-        UserDefaults.standard.set(state, forKey: stateKey)
-        UserDefaults.standard.set(verifier, forKey: verifierKey)
-
-        var components = URLComponents(url: authorizationEndpoint, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "redirect_uri", value: redirectURI),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: scopes.joined(separator: " ")),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "code_challenge", value: codeChallenge(for: verifier)),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-        ]
-        guard let url = components.url else { throw TwitchServiceError.invalidResponse("Unable to create Twitch authorization URL.") }
+        let device = try await createDeviceCode(clientID: clientID)
+        guard let url = URL(string: device.verificationURI) else { throw TwitchServiceError.invalidResponse("Twitch returned an invalid activation URL.") }
         NSWorkspace.shared.open(url)
+        let token = try await pollDeviceToken(clientID: clientID, device: device)
+        return try await finishConnection(clientID: clientID, token: token)
     }
 
     static func complete(callbackURL: URL, clientID: String) async throws -> TwitchAccountStatus {
@@ -95,6 +83,10 @@ enum TwitchOAuthService {
         guard let code = items["code"], !code.isEmpty else { throw TwitchServiceError.missingAuthorizationCode }
         guard let verifier = UserDefaults.standard.string(forKey: verifierKey), !verifier.isEmpty else { throw TwitchServiceError.invalidCallback }
         let token = try await exchangeCode(code, verifier: verifier, clientID: clientID)
+        return try await finishConnection(clientID: clientID, token: token)
+    }
+
+    private static func finishConnection(clientID: String, token: TwitchOAuthToken) async throws -> TwitchAccountStatus {
         try TwitchTokenStore.save(token)
         UserDefaults.standard.removeObject(forKey: stateKey)
         UserDefaults.standard.removeObject(forKey: verifierKey)
@@ -104,6 +96,47 @@ enum TwitchOAuthService {
         let streamKey = try await client.streamKey(broadcasterID: user.id)
         try TwitchStreamKeyStore.save(streamKey)
         return TwitchAccountStatus(isConnected: true, displayName: user.displayName, login: user.login, channelID: user.id, streamKeyAvailable: !streamKey.isEmpty)
+    }
+
+    private static func createDeviceCode(clientID: String) async throws -> DeviceCodeResponse {
+        var request = URLRequest(url: deviceEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = formBody(["client_id": clientID, "scopes": scopes.joined(separator: " ")])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw TwitchServiceError.invalidResponse(Self.twitchErrorMessage(data: data, fallback: "Twitch device authorization failed."))
+        }
+        return try JSONDecoder().decode(DeviceCodeResponse.self, from: data)
+    }
+
+    private static func pollDeviceToken(clientID: String, device: DeviceCodeResponse) async throws -> TwitchOAuthToken {
+        let deadline = Date().addingTimeInterval(TimeInterval(max(1, device.expiresIn)))
+        var interval = max(1, device.interval)
+        while Date() < deadline {
+            try await Task.sleep(for: .seconds(interval))
+            var request = URLRequest(url: tokenEndpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = formBody([
+                "client_id": clientID,
+                "scopes": scopes.joined(separator: " "),
+                "device_code": device.deviceCode,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            ])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                return try decodeToken(data)
+            }
+            let message = twitchErrorMessage(data: data, fallback: "Twitch authorization is pending.")
+            if message == "authorization_pending" { continue }
+            if message == "slow_down" {
+                interval += 1
+                continue
+            }
+            throw TwitchServiceError.invalidResponse(Self.readableTwitchError(message))
+        }
+        throw TwitchServiceError.invalidResponse("Twitch authorization expired before it was approved.")
     }
 
     private static func exchangeCode(_ code: String, verifier: String, clientID: String) async throws -> TwitchOAuthToken {
@@ -122,19 +155,10 @@ enum TwitchOAuthService {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw TwitchServiceError.invalidResponse(String(data: data, encoding: .utf8) ?? "Twitch token exchange failed.")
         }
-        struct TokenResponse: Decodable {
-            let accessToken: String
-            let refreshToken: String
-            let expiresIn: Double
-            let scope: [String]
+        return try decodeToken(data)
+    }
 
-            private enum CodingKeys: String, CodingKey {
-                case accessToken = "access_token"
-                case refreshToken = "refresh_token"
-                case expiresIn = "expires_in"
-                case scope
-            }
-        }
+    private static func decodeToken(_ data: Data) throws -> TwitchOAuthToken {
         let decoded = try JSONDecoder().decode(TokenResponse.self, from: data)
         return TwitchOAuthToken(accessToken: decoded.accessToken, refreshToken: decoded.refreshToken, expiresAt: Date().addingTimeInterval(decoded.expiresIn), scopes: decoded.scope)
     }
@@ -156,6 +180,51 @@ enum TwitchOAuthService {
     private static func formEncode(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+&="))) ?? value
     }
+
+    private static func twitchErrorMessage(data: Data, fallback: String) -> String {
+        struct ErrorResponse: Decodable { let message: String }
+        if let decoded = try? JSONDecoder().decode(ErrorResponse.self, from: data), !decoded.message.isEmpty { return decoded.message }
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? fallback
+    }
+
+    private static func readableTwitchError(_ message: String) -> String {
+        if message == "invalid client" { return "Twitch rejected this Client ID. Paste the public Client ID from your Twitch Developer app, not the Client Secret, and make sure the app is enabled." }
+        return message
+    }
+
+    private struct DeviceCodeResponse: Decodable {
+        let deviceCode: String
+        let expiresIn: Int
+        let interval: Int
+        let userCode: String
+        let verificationURI: String
+
+        private enum CodingKeys: String, CodingKey {
+            case deviceCode = "device_code"
+            case expiresIn = "expires_in"
+            case interval
+            case userCode = "user_code"
+            case verificationURI = "verification_uri"
+        }
+    }
+
+    private struct TokenResponse: Decodable {
+        let accessToken: String
+        let refreshToken: String
+        let expiresIn: Double
+        let scope: [String]
+
+        private enum CodingKeys: String, CodingKey {
+            case accessToken = "access_token"
+            case refreshToken = "refresh_token"
+            case expiresIn = "expires_in"
+            case scope
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 enum TwitchTokenStore {

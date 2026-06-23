@@ -169,6 +169,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var ownershipFlowMessage = ""
     @Published var twitchPreferences = TwitchPreferencesStore.load()
     @Published var twitchAccountStatus = TwitchAccountStatus()
+    @Published var isConnectingTwitch = false
 
     let account: LoginAccount
     let session: LoginSession
@@ -676,12 +677,19 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func beginTwitchConnection() {
-        do {
-            try TwitchOAuthService.start(clientID: twitchPreferences.clientID)
-            actionMessage = "Opening Twitch authorization in your browser."
+        guard !isConnectingTwitch else { return }
+        let clientID = twitchPreferences.clientID
+        Task { @MainActor in
+            isConnectingTwitch = true
+            actionMessage = "Opening Twitch activation in your browser. Approve OpenNOW to finish connecting."
             errorMessage = ""
-        } catch {
-            errorMessage = Self.message(for: error)
+            do {
+                twitchAccountStatus = try await TwitchOAuthService.start(clientID: clientID)
+                actionMessage = "Twitch connected."
+            } catch {
+                errorMessage = Self.message(for: error)
+            }
+            isConnectingTwitch = false
         }
     }
 

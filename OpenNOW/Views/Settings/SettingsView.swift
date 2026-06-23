@@ -669,11 +669,11 @@ private struct TwitchSettingsPage: View {
                     SettingsStatusPill(title: viewModel.twitchAccountStatus.isConnected ? "CONNECTED" : "OFFLINE", value: viewModel.twitchAccountStatus.streamKeyAvailable ? "READY" : "SETUP", positive: viewModel.twitchAccountStatus.isConnected)
                 }
                 SettingsDivider()
-                SettingsTextFieldRow(title: "Client ID", subtitle: "Create a Twitch Developer application and paste its public client ID here.", text: viewModel.twitchPreferences.clientID, placeholder: "Twitch Client ID", action: viewModel.setTwitchClientID)
+                SettingsTextFieldRow(title: "Client ID", subtitle: "Paste the public Client ID from your Twitch Developer app. Do not paste the Client Secret.", text: viewModel.twitchPreferences.clientID, placeholder: "Twitch Client ID", action: viewModel.setTwitchClientID)
                 SettingsDivider()
                 HStack(spacing: 10) {
-                    SettingsActionButton(title: "CONNECT TWITCH", minimumWidth: 150) { viewModel.beginTwitchConnection() }
-                        .disabled(viewModel.twitchPreferences.clientID.isEmpty)
+                    SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
+                        .disabled(viewModel.twitchPreferences.clientID.isEmpty || viewModel.isConnectingTwitch)
                     SettingsActionButton(title: "DISCONNECT", tone: .secondary, minimumWidth: 120) { viewModel.disconnectTwitch() }
                         .disabled(!viewModel.twitchAccountStatus.isConnected)
                     Spacer(minLength: 0)
