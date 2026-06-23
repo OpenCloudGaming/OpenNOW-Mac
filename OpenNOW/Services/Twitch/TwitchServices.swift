@@ -299,6 +299,10 @@ enum TwitchStreamKeyStore {
         return value
     }
 
+    static func exists() -> Bool {
+        (try? load().isEmpty == false) ?? false
+    }
+
     static func delete() {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
         SecItemDelete(query as CFDictionary)

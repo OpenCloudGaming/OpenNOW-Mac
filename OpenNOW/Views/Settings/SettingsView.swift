@@ -652,6 +652,7 @@ private struct ConnectionsSettingsPage: View {
 
 private struct TwitchSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
+    @State private var primaryStreamKeyDraft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -669,7 +670,17 @@ private struct TwitchSettingsPage: View {
                     SettingsStatusPill(title: viewModel.twitchAccountStatus.isConnected ? "CONNECTED" : "OFFLINE", value: viewModel.twitchAccountStatus.streamKeyAvailable ? "READY" : "SETUP", positive: viewModel.twitchAccountStatus.isConnected)
                 }
                 SettingsDivider()
-                SettingsTextFieldRow(title: "Client ID", subtitle: "Paste the public Client ID from your Twitch Developer app. Do not paste the Client Secret.", text: viewModel.twitchPreferences.clientID, placeholder: "Twitch Client ID", action: viewModel.setTwitchClientID)
+                SettingsSecureTextFieldRow(title: "Primary Stream Key", subtitle: "Paste the Primary Stream Key from Twitch Creator Dashboard. It is stored in Keychain and is enough to broadcast.", text: $primaryStreamKeyDraft, placeholder: streamKeyPlaceholder)
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: "SAVE STREAM KEY", minimumWidth: 140) { viewModel.saveTwitchPrimaryStreamKey(primaryStreamKeyDraft); primaryStreamKeyDraft = "" }
+                        .disabled(primaryStreamKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    SettingsActionButton(title: "CLEAR STREAM KEY", tone: .secondary, minimumWidth: 140) { viewModel.clearTwitchPrimaryStreamKey() }
+                        .disabled(!viewModel.twitchPrimaryStreamKeySaved)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 10)
+                SettingsDivider()
+                SettingsTextFieldRow(title: "Client ID", subtitle: "Optional: paste a public Twitch Developer Client ID only if you want OAuth channel metadata features.", text: viewModel.twitchPreferences.clientID, placeholder: "Optional Twitch Client ID", action: viewModel.setTwitchClientID)
                 SettingsDivider()
                 HStack(spacing: 10) {
                     SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
@@ -721,10 +732,17 @@ private struct TwitchSettingsPage: View {
     }
 
     private var accountSubtitle: String {
+        if viewModel.twitchPrimaryStreamKeySaved, !viewModel.twitchAccountStatus.isConnected {
+            return "Primary Stream Key is saved. OAuth is optional for channel metadata and chat features."
+        }
         if viewModel.twitchAccountStatus.isConnected {
             return viewModel.twitchAccountStatus.streamKeyAvailable ? "Stream key is available for RTMP publishing." : "Connected, but stream key has not been fetched yet."
         }
-        return "Connect Twitch to fetch your stream key, manage channel metadata, chat, and broadcast state."
+        return "Paste your Primary Stream Key to broadcast immediately, or connect Twitch for metadata and chat features."
+    }
+
+    private var streamKeyPlaceholder: String {
+        viewModel.twitchPrimaryStreamKeySaved ? "Saved in Keychain" : "live_..."
     }
 
     private var selectedIngestIndex: Int {
@@ -2002,6 +2020,36 @@ private struct SettingsTextFieldRow: View {
     private func updateDraft(_ value: String) {
         draft = value
         action(value)
+    }
+}
+
+private struct SettingsSecureTextFieldRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var text: String
+    let placeholder: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 250, alignment: .leading)
+            SecureField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .font(.settingsNvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(Color.white.opacity(0.07))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+        }
     }
 }
 

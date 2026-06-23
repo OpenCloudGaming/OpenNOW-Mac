@@ -169,6 +169,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var ownershipFlowMessage = ""
     @Published var twitchPreferences = TwitchPreferencesStore.load()
     @Published var twitchAccountStatus = TwitchAccountStatus()
+    @Published var twitchPrimaryStreamKeySaved = TwitchStreamKeyStore.exists()
     @Published var isConnectingTwitch = false
 
     let account: LoginAccount
@@ -620,6 +621,35 @@ final class CatalogViewModel: ObservableObject {
         saveTwitchPreferences()
     }
 
+    func saveTwitchPrimaryStreamKey(_ streamKey: String) {
+        let value = streamKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            errorMessage = "Paste your Twitch Primary Stream Key before saving."
+            return
+        }
+        do {
+            try TwitchStreamKeyStore.save(value)
+            twitchPrimaryStreamKeySaved = true
+            if !twitchAccountStatus.isConnected {
+                twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
+            } else {
+                twitchAccountStatus.streamKeyAvailable = true
+            }
+            actionMessage = "Twitch Primary Stream Key saved. You can start broadcasting from the in-stream Twitch panel."
+            errorMessage = ""
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    func clearTwitchPrimaryStreamKey() {
+        TwitchStreamKeyStore.delete()
+        twitchPrimaryStreamKeySaved = false
+        twitchAccountStatus.streamKeyAvailable = false
+        if twitchAccountStatus.displayName == "Manual stream key" { twitchAccountStatus = TwitchAccountStatus() }
+        actionMessage = "Twitch Primary Stream Key cleared."
+    }
+
     func setTwitchIngestRegion(_ index: Int) {
         let values = TwitchBroadcastPreferences.IngestRegion.allCases
         guard values.indices.contains(index) else { return }
@@ -685,6 +715,7 @@ final class CatalogViewModel: ObservableObject {
             errorMessage = ""
             do {
                 twitchAccountStatus = try await TwitchOAuthService.start(clientID: clientID)
+                twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
                 actionMessage = "Twitch connected."
             } catch {
                 errorMessage = Self.message(for: error)
@@ -696,6 +727,7 @@ final class CatalogViewModel: ObservableObject {
     func disconnectTwitch() {
         TwitchTokenStore.delete()
         TwitchStreamKeyStore.delete()
+        twitchPrimaryStreamKeySaved = false
         twitchAccountStatus = TwitchAccountStatus()
         actionMessage = "Twitch disconnected."
     }
@@ -705,6 +737,7 @@ final class CatalogViewModel: ObservableObject {
         Task { @MainActor in
             do {
                 twitchAccountStatus = try await TwitchOAuthService.complete(callbackURL: url, clientID: clientID)
+                twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
                 actionMessage = "Twitch connected."
                 errorMessage = ""
             } catch {
