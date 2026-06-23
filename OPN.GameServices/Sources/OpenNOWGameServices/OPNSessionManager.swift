@@ -368,13 +368,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         URLSession.shared.dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
             OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
-            var preClaimStatus = 0
             if let error {
                 OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
             } else if let data {
                 let json = self.jsonDictionary(data)
                 let session = json?["session"] as? [String: Any]
-                preClaimStatus = int(session?["status"])
+                let preClaimStatus = int(session?["status"])
                 let requestStatus = json?["requestStatus"] as? [String: Any]
                 let statusCode = int(requestStatus?["statusCode"])
                 let http = response as? HTTPURLResponse
@@ -386,6 +385,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                         return
                     }
                     completion(false, [:], "STALE_ACTIVE_SESSION: validation HTTP \(http?.statusCode ?? 0): \(body)")
+                    return
+                }
+                if let session, self.isReadyActiveSessionStatus(preClaimStatus) {
+                    var info = self.sessionInfo(from: session, requestedSessionId: sessionId, baseUrl: base, clientId: clientId, deviceId: deviceId, initialProfile: self.negotiatedStreamProfile(from: session))
+                    self.mergeAndStoreAdState(&info)
+                    completion(true, info, "")
                     return
                 }
             } else {
@@ -479,7 +484,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
                 if self.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
-                    completion(false, [:], "Session is not paused and cannot be resumed.")
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
                     return
                 }
                 if let staleMessage = self.staleActiveSessionClaimMessage(data) {
@@ -495,7 +500,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let statusCode = int(requestStatus?["statusCode"])
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
-                    completion(false, [:], "Session is not paused and cannot be resumed.")
+                    self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
                     return
                 }
                 if let staleMessage = self.staleActiveSessionClaimMessage(data) {
