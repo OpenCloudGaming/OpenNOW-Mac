@@ -422,11 +422,18 @@ private actor RTMPPublisher {
     }
 
     private func waitUntilReady(_ connection: NWConnection) async throws {
+        let resumeGate = ContinuationResumeGate()
         try await withCheckedThrowingContinuation { continuation in
             connection.stateUpdateHandler = { state in
                 switch state {
-                case .ready: continuation.resume()
-                case .failed(let error): continuation.resume(throwing: error)
+                case .ready:
+                    guard resumeGate.claim() else { return }
+                    connection.stateUpdateHandler = nil
+                    continuation.resume()
+                case .failed(let error):
+                    guard resumeGate.claim() else { return }
+                    connection.stateUpdateHandler = nil
+                    continuation.resume(throwing: error)
                 default: break
                 }
             }
@@ -491,6 +498,19 @@ private actor RTMPPublisher {
                 continuation.resume(returning: data ?? Data())
             }
         }
+    }
+}
+
+private final class ContinuationResumeGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return false }
+        didResume = true
+        return true
     }
 }
 
