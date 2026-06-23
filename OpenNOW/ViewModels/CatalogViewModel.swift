@@ -489,7 +489,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     var canResumeActiveLaunchSession: Bool {
-        (activeLaunchSession?.appId ?? 0) > 0 && activeSessionResumeConfiguration != nil
+        activeSessionResumeConfiguration?.resumesExistingSession == true
     }
 
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
@@ -562,7 +562,7 @@ final class CatalogViewModel: ObservableObject {
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume)
                 self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
                 self.launchFlowState = .activeSessionPrompt
-                self.launchFlowMessage = active.appId > 0
+                self.launchFlowMessage = !resume.resumeSessionId.isEmpty && !resume.resumeServer.isEmpty
                     ? "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
                     : "GeForce NOW reports a stale active session that cannot be resumed. End it before launching \(self.launchFlowTitle)."
             }
