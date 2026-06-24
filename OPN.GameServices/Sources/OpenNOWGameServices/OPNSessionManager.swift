@@ -584,9 +584,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             info["remainingPlaytimeHours"] = progress.remainingPlaytimeHours
             info["remainingPlaytimeAvailable"] = true
         }
+        let controlServer = (session["sessionControlInfo"] as? [String: Any]).map { usableEndpointHost(string($0["ip"])) } ?? ""
         applyConnectionInfo(session, to: &info)
-        if string(info["serverIp"]).isEmpty, let controlInfo = session["sessionControlInfo"] as? [String: Any] {
-            info["serverIp"] = usableEndpointHost(string(controlInfo["ip"]))
+        if !controlServer.isEmpty {
+            info["serverIp"] = controlServer
         }
         return info
     }

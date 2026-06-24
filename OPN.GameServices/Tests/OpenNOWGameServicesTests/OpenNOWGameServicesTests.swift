@@ -100,15 +100,16 @@ import WebRTCMedia
 
     let result = await withCheckedContinuation { continuation in
         OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
-            continuation.resume(returning: (success, info["sessionId"] as? String ?? "", info["serverIp"] as? String ?? "", error))
+            continuation.resume(returning: (success, info["sessionId"] as? String ?? "", info["serverIp"] as? String ?? "", info["signalingUrl"] as? String ?? "", error))
         }
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
     #expect(result.0 == true)
     #expect(result.1 == "resume-session")
-    #expect(result.2 == "signaling.example.test")
-    #expect(result.3.isEmpty)
+    #expect(result.2 == host)
+    #expect(result.3 == "wss://signaling.example.test:443/nvst/")
+    #expect(result.4.isEmpty)
     #expect(requests.map(\.httpMethod) == ["GET"])
 }
 
