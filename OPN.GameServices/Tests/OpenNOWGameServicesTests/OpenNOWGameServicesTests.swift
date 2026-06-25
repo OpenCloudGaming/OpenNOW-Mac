@@ -221,6 +221,28 @@ import WebRTCMedia
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 }
 
+@Test(.serialized) func sessionManagerStaleInternalCreateErrorReturnsActionableMessage() async {
+    let host = "create-stale-internal.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+}
+
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
     let selected = OPNSessionManager.shared.selectSessionLimitReuseEntry([[
         "sessionId": "stale-session",

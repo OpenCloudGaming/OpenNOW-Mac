@@ -128,6 +128,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             OPNProtocolDebug.logJSONData(label: "session create response", data: data)
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
+                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                    createCompletion(false, [:], staleMessage)
+                    return
+                }
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
                 if let json = self.jsonDictionary(data), self.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
