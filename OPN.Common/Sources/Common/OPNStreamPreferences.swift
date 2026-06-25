@@ -626,12 +626,10 @@ public enum OPNStreamPreferences {
             DispatchQueue.main.async { completion(cached) }
             return
         }
-        guard let url = URL(string: "https://api.gdn.nvidia.com/cloudvariables/v3") else {
+        guard var request = cloudVariablesRequest(token: token, locale: currentCloudVariablesLocale()) else {
             DispatchQueue.main.async { completion(cached) }
             return
         }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
-        applyCloudmatchHeaders(to: &request, token: token)
         let networkStart = OPNNetworkLog.start(&request, operation: "stream.cloudVariables")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
@@ -648,6 +646,25 @@ public enum OPNStreamPreferences {
             }
             DispatchQueue.main.async { completion(result) }
         }.resume()
+    }
+
+    static func cloudVariablesRequest(token: String, locale: String) -> URLRequest? {
+        var components = URLComponents(string: "https://api.gdn.nvidia.com/cloudvariables/v3")
+        components?.queryItems = [
+            URLQueryItem(name: "product", value: "NVIDIAGDN"),
+            URLQueryItem(name: "locale", value: locale),
+        ]
+        guard let url = components?.url else { return nil }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
+        request.httpMethod = "GET"
+        applyCloudmatchHeaders(to: &request, token: token)
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        return request
+    }
+
+    private static func currentCloudVariablesLocale() -> String {
+        let identifier = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
+        return identifier.isEmpty ? "en_US" : identifier
     }
 
     public static func fetchRegions(token: String, providerStreamingBaseUrl: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {
