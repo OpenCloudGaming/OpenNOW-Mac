@@ -68,6 +68,9 @@ import WebRTCMedia
     manager.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings["networkTestSessionId"] = "stale-session-id"
+    settings["enablePersistingInGameSettings"] = true
+    settings["partnerCustomData"] = "partner-data"
+    settings["userAge"] = 21
 
     let result = await withCheckedContinuation { continuation in
         manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
@@ -94,9 +97,10 @@ import WebRTCMedia
     #expect(requestData["clientPlatformName"] as? String == "browser")
     #expect(requestData["clientDisplayHdrCapabilities"] is NSNull)
     #expect(requestData["networkTestSessionId"] is NSNull)
-    #expect(requestData["accountLinked"] as? Bool == false)
-    #expect(requestData["enablePersistingInGameSettings"] as? Bool == false)
-    #expect(requestData["userAge"] as? Int == 36)
+    #expect(requestData["accountLinked"] as? Bool == true)
+    #expect(requestData["enablePersistingInGameSettings"] as? Bool == true)
+    #expect(requestData["partnerCustomData"] as? String == "partner-data")
+    #expect(requestData["userAge"] as? Int == 21)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
     let monitor = try #require(monitorSettings.first)
     let displayData = try #require(monitor["displayData"] as? [String: Int])
@@ -203,12 +207,16 @@ import WebRTCMedia
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
+    let claimMetadata = claimRequestData?["metaData"] as? [[String: String]]
+    let claimMetadataKeys = Set(claimMetadata?.compactMap { $0["key"] } ?? [])
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimPayload?["action"] as? Int == 2)
     #expect(claimPayload?["data"] as? String == "RESUME")
     #expect(claimRequestData?["appId"] as? Int == 123)
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
+    #expect(claimRequestData?["accountLinked"] as? Bool == true)
+    #expect(claimMetadataKeys.contains("clientPhysicalResolution"))
 }
 
 @Test func sessionManagerSessionNotPausedFallsBackToPolling() async {
