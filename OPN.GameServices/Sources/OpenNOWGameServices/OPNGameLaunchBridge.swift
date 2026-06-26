@@ -102,7 +102,7 @@ public final class OPNGameLaunchBridge {
         )
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
         let gameBox = OPNGameLaunchBridgeSendableValue(game)
-        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl) { [weak self] ok, sessions, error in
+        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl) { [weak self] ok, sessions, _ in
             let sessionsBox = OPNGameLaunchBridgeSendableValue(sessions)
             Task { @MainActor in
                 guard let self else { return }
@@ -140,11 +140,6 @@ public final class OPNGameLaunchBridge {
                     }
                 }
 
-                if !ok, self.isAuthenticationFailure(error) {
-                    completion(false, error.isEmpty ? "HTTP 401" : error, nil)
-                    return
-                }
-
                 completion(true, "Launching \(title)...", .ready(replacement))
             }
         }
@@ -180,10 +175,6 @@ public final class OPNGameLaunchBridge {
         guard session.appId > 0 else { return false }
         let activeAppId = String(session.appId)
         return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
-    }
-
-    private func isAuthenticationFailure(_ message: String) -> Bool {
-        message.contains("401") || message.contains("403") || message.localizedCaseInsensitiveContains("unauthorized") || message.localizedCaseInsensitiveContains("forbidden")
     }
 
     private static func launchMetadata(for game: OPNCatalogGameObject) -> [String: String] {

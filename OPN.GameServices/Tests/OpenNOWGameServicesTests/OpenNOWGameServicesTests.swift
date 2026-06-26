@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-import Common
 import WebRTCMedia
 @testable import OpenNOWGameServices
 
@@ -104,10 +103,10 @@ import WebRTCMedia
     let host = "active-session-filter.example.test"
     let sessionId = "filtered-session"
     OPNActiveSessionService.clearUnresumableSessions()
+    OPNActiveSessionService.markSessionUnresumable(sessionId)
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "GET")
         #expect(request.url?.path == "/v2/session")
-        OPNActiveSessionService.markSessionUnresumable(sessionId)
         return SessionManagerURLProtocol.response(json: activeSessionsResponse(sessionId: sessionId, sessionStatus: 2, controlHost: host))
     }
     defer {
@@ -124,35 +123,6 @@ import WebRTCMedia
     #expect(result.0 == true)
     #expect(result.1 == 0)
     #expect(result.2.isEmpty)
-}
-
-@MainActor @Test(.serialized) func launchPlanStopsOnActiveSessionUnauthorized() async {
-    let host = "active-session-unauthorized.example.test"
-    OPNStreamPreferences.saveSelectedRegionUrl("https://\(host)")
-    SessionManagerURLProtocol.install(host: host) { request in
-        #expect(request.httpMethod == "GET")
-        #expect(request.url?.path == "/v2/session")
-        return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 0, "statusDescription": "UNAUTHORIZED"]], status: 401)
-    }
-    defer {
-        OPNStreamPreferences.saveSelectedRegionUrl("")
-        SessionManagerURLProtocol.uninstall(host: host)
-    }
-
-    let game = OPNCatalogGameObject()
-    game.id = "game-1"
-    game.launchAppId = "123"
-    game.title = "Auth Game"
-
-    let result = await withCheckedContinuation { continuation in
-        OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "expired-token", idToken: "", userId: "user", variantIndex: -1) { success, message, plan in
-            continuation.resume(returning: (success, message, plan == nil))
-        }
-    }
-
-    #expect(result.0 == false)
-    #expect(result.1.contains("401"))
-    #expect(result.2 == true)
 }
 
 @Test func sessionManagerReadyResumeAttachesFromValidation() async {
