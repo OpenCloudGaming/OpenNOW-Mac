@@ -196,7 +196,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.microphoneStereoSamples.removeAll(keepingCapacity: true)
             self.audioEncoder.reset(bitrateKbps: configuration.audioBitrateKbps)
             self.emit(.connecting)
-            Task { await self.openPublisher(configuration: configuration) }
+            Task { [weak self] in await self?.openPublisher(configuration: configuration) }
         }
     }
 
@@ -296,7 +296,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                 self.emit(.publishing(startedAt: self.startedAt ?? Date(), elapsedSeconds: 0, droppedFrames: 0, videoBitrateKbps: configuration.videoBitrateKbps))
             }
         } catch {
-            queue.async { self.fail(error) }
+            queue.async { [weak self] in self?.fail(error) }
         }
     }
 
@@ -314,12 +314,14 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             }
             let frameIndex = self.frameIndex
             self.frameIndex += 1
+            let callbackQueue = queue
             try encoder.encode(pixelBuffer: pixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0 || dimensionsChanged) { packet in
                 Task {
                     do {
                         try await publisher.publishVideo(packet)
                     } catch {
-                        self.queue.async {
+                        callbackQueue.async { [weak self] in
+                            guard let self else { return }
                             guard self.publisher === publisher else { return }
                             self.fail(error)
                         }
@@ -415,11 +417,13 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             for packet in packets {
                 let timestamp = UInt32(audioSampleIndex * 1_000 / 48_000)
                 audioSampleIndex += UInt64(packet.inputFrameCount)
+                let callbackQueue = queue
                 Task {
                     do {
                         try await publisher.publishAudio(packet, timestampMilliseconds: timestamp)
                     } catch {
-                        self.queue.async {
+                        callbackQueue.async { [weak self] in
+                            guard let self else { return }
                             guard self.publisher === publisher else { return }
                             self.fail(error)
                         }
@@ -669,7 +673,7 @@ private final class WebRTCAACLiveEncoder: @unchecked Sendable {
 
     func encode(stereoSamples: [Int16]) throws -> [WebRTCAACPacket] {
         guard !stereoSamples.isEmpty else { return [] }
-        var samples = stereoSamples
+        let samples = stereoSamples
         samples.withUnsafeBufferPointer { pcmBuffer.append(Data(buffer: $0)) }
         try configureIfNeeded()
         var packets: [WebRTCAACPacket] = []

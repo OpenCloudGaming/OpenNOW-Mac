@@ -172,8 +172,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         }
         OpenNOWLog.warning(.app, "Application termination requested while a stream is active")
-        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, weak sender] shouldTerminateApplication in
-            guard let sender else { return }
+        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, sender] shouldTerminateApplication in
             if shouldTerminateApplication {
                 self?.isCompletingUserApprovedTermination = true
                 OpenNOWLog.info(.app, "User approved application termination with active stream")

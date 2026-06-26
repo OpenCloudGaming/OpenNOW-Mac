@@ -205,13 +205,13 @@ struct CatalogView: View {
         }
         .background(Color.gfnBackgroundGreen)
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
-        .task {
+        .task { @MainActor in
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
         }
-        .onChange(of: pendingGameShortcut) { _, _ in consumePendingGameShortcut() }
-        .onChange(of: viewModel.activeStreamConfiguration?.id) { _, _ in updateWindowTitleForActiveStream() }
-        .onDisappear { onWindowTitleChange(nil) }
+        .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
+        .onChange(of: viewModel.activeStreamConfiguration?.id) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }
 

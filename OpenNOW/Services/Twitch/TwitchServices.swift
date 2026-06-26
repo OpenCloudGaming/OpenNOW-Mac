@@ -418,7 +418,11 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            queue.async {
+            queue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: TwitchServiceError.callbackServer("Twitch OAuth callback server is unavailable."))
+                    return
+                }
                 do {
                     let listener = try NWListener(using: .tcp, on: 80)
                     let callbackQueue = self.queue
