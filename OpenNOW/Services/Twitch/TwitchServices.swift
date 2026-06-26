@@ -59,6 +59,11 @@ struct TwitchStreamStatus: Decodable, Equatable, Sendable {
     }
 }
 
+struct TwitchGame: Decodable, Equatable, Sendable {
+    let id: String
+    let name: String
+}
+
 struct TwitchIngestServer: Decodable, Equatable, Sendable {
     let id: Int
     let name: String
@@ -223,12 +228,18 @@ enum TwitchOAuthService {
     static func prepareBroadcast(clientID: String, title: String, applicationID: String) async throws -> String {
         await TwitchIngestService.refreshDefaultServer()
         let preferences = TwitchPreferencesStore.load()
-        guard preferences.autoTitleFromGame else { return "Twitch broadcast ready." }
         let client = try await authorizedClient(clientID: clientID)
         let user = try await client.currentUser()
-        let broadcastTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "OpenNOW Live"
-        try await client.updateChannel(broadcasterID: user.id, title: broadcastTitle)
-        return "Twitch title set to \"\(broadcastTitle)\"."
+        let gameTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "OpenNOW Live"
+        let broadcastTitle = preferences.autoTitleFromGame ? gameTitle : nil
+        let category = try? await client.game(named: gameTitle)
+        try await client.updateChannel(broadcasterID: user.id, title: broadcastTitle, gameID: category?.id)
+        switch (broadcastTitle, category?.name) {
+        case (let broadcastTitle?, let categoryName?): return "Twitch title set to \"\(broadcastTitle)\" and category set to \"\(categoryName)\"."
+        case (let broadcastTitle?, nil): return "Twitch title set to \"\(broadcastTitle)\". Category not found for \"\(gameTitle)\"."
+        case (nil, let categoryName?): return "Twitch category set to \"\(categoryName)\"."
+        case (nil, nil): return "Twitch broadcast ready. Category not found for \"\(gameTitle)\"."
+        }
     }
 
     static func createStreamMarker(clientID: String, description: String) async throws -> String {
@@ -606,8 +617,19 @@ struct TwitchHelixClient: Sendable {
         return response.data.first
     }
 
-    func updateChannel(broadcasterID: String, title: String) async throws {
-        let body = ["title": String(title.prefix(140))]
+    func game(named name: String) async throws -> TwitchGame? {
+        struct Response: Decodable { let data: [TwitchGame] }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+        let response: Response = try await request(path: "/helix/games", queryItems: [URLQueryItem(name: "name", value: trimmedName)])
+        return response.data.first { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame } ?? response.data.first
+    }
+
+    func updateChannel(broadcasterID: String, title: String?, gameID: String?) async throws {
+        var body: [String: String] = [:]
+        if let title, !title.isEmpty { body["title"] = String(title.prefix(140)) }
+        if let gameID, !gameID.isEmpty { body["game_id"] = gameID }
+        guard !body.isEmpty else { return }
         try await requestWithoutResponse(path: "/helix/channels", method: "PATCH", queryItems: [URLQueryItem(name: "broadcaster_id", value: broadcasterID)], body: body)
     }
 
