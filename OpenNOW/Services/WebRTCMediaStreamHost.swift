@@ -73,20 +73,18 @@ struct WebRTCMediaStreamView: View {
     }
 
     private static func prepareTwitchBroadcast(title: String, applicationID: String) async -> String? {
-        let clientID = TwitchPreferencesStore.load().clientID
-        guard !clientID.isEmpty, (try? TwitchTokenStore.load()) != nil else { return nil }
+        guard (try? TwitchTokenStore.load()) != nil else { return nil }
         do {
-            return try await TwitchOAuthService.prepareBroadcast(clientID: clientID, title: title, applicationID: applicationID)
+            return try await TwitchOAuthService.prepareBroadcast(clientID: TwitchOAuthService.clientID, title: title, applicationID: applicationID)
         } catch {
             return message(for: error)
         }
     }
 
     private static func verifyTwitchBroadcast(title: String, applicationID: String) async -> WebRTCMediaBroadcastLiveVerificationResult {
-        let clientID = TwitchPreferencesStore.load().clientID
-        guard !clientID.isEmpty, (try? TwitchTokenStore.load()) != nil else { return .unavailable("Connect Twitch OAuth to verify live status with Twitch API.") }
+        guard (try? TwitchTokenStore.load()) != nil else { return .unavailable("Connect Twitch OAuth to verify live status with Twitch API.") }
         do {
-            return .verified(try await TwitchOAuthService.verifyLiveBroadcast(clientID: clientID))
+            return .verified(try await TwitchOAuthService.verifyLiveBroadcast(clientID: TwitchOAuthService.clientID))
         } catch TwitchServiceError.streamNotLive(let message) {
             return .notLive(message)
         } catch {
@@ -95,11 +93,10 @@ struct WebRTCMediaStreamView: View {
     }
 
     private static func createTwitchMarker(title: String, applicationID: String) async -> String {
-        let clientID = TwitchPreferencesStore.load().clientID
-        guard !clientID.isEmpty, (try? TwitchTokenStore.load()) != nil else { return "Connect Twitch OAuth to create markers." }
+        guard (try? TwitchTokenStore.load()) != nil else { return "Connect Twitch OAuth to create markers." }
         let description = title.isEmpty ? "OpenNOW stream marker" : title
         do {
-            return try await TwitchOAuthService.createStreamMarker(clientID: clientID, description: description)
+            return try await TwitchOAuthService.createStreamMarker(clientID: TwitchOAuthService.clientID, description: description)
         } catch {
             return message(for: error)
         }

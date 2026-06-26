@@ -142,6 +142,7 @@ enum TwitchServiceError: LocalizedError, Sendable {
 }
 
 enum TwitchOAuthService {
+    static let clientID = "alymw1mbm3hayczv6a7mbqna6a9344"
     static let redirectURI = "http://localhost/"
 
     private static let authorizeEndpoint = URL(string: "https://id.twitch.tv/oauth2/authorize")!
@@ -377,7 +378,7 @@ enum TwitchOAuthService {
     }
 
     private static func readableTwitchError(_ message: String) -> String {
-        if message == "invalid client" { return "Twitch rejected this Client ID. Paste the public Client ID from your Twitch Developer app, not the Client Secret, and make sure the app is enabled." }
+        if message == "invalid client" { return "Twitch rejected OpenNOW's built-in Client ID. Make sure the Twitch Developer app is enabled." }
         return message
     }
 

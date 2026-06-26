@@ -621,11 +621,6 @@ final class CatalogViewModel: ObservableObject {
         errorMessage = ""
     }
 
-    func setTwitchClientID(_ clientID: String) {
-        twitchPreferences.clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        saveTwitchPreferences()
-    }
-
     func saveTwitchPrimaryStreamKey(_ streamKey: String) {
         let value = streamKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
@@ -713,13 +708,12 @@ final class CatalogViewModel: ObservableObject {
 
     func beginTwitchConnection() {
         guard !isConnectingTwitch else { return }
-        let clientID = twitchPreferences.clientID
         Task { @MainActor in
             isConnectingTwitch = true
             actionMessage = "Opening Twitch activation in your browser. Approve OpenNOW to finish connecting."
             errorMessage = ""
             do {
-                _ = try await TwitchOAuthService.start(clientID: clientID)
+                _ = try await TwitchOAuthService.start(clientID: TwitchOAuthService.clientID)
                 actionMessage = "Twitch authorization opened. Finish approval in your browser."
             } catch {
                 errorMessage = Self.message(for: error)
@@ -729,9 +723,8 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func disconnectTwitch() {
-        let clientID = twitchPreferences.clientID
         Task { @MainActor in
-            await TwitchOAuthService.disconnect(clientID: clientID)
+            await TwitchOAuthService.disconnect(clientID: TwitchOAuthService.clientID)
             twitchPrimaryStreamKeySaved = false
             twitchAccountStatus = TwitchAccountStatus()
             actionMessage = "Twitch disconnected."
@@ -739,10 +732,9 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func handleTwitchOAuthCallback(_ url: URL) {
-        let clientID = twitchPreferences.clientID
         Task { @MainActor in
             do {
-                twitchAccountStatus = try await TwitchOAuthService.complete(callbackURL: url, clientID: clientID)
+                twitchAccountStatus = try await TwitchOAuthService.complete(callbackURL: url, clientID: TwitchOAuthService.clientID)
                 twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
                 actionMessage = "Twitch connected."
                 errorMessage = ""
@@ -753,11 +745,10 @@ final class CatalogViewModel: ObservableObject {
     }
 
     private func refreshTwitchAccountStatus() {
-        let clientID = twitchPreferences.clientID
-        guard !clientID.isEmpty, (try? TwitchTokenStore.load()) != nil else { return }
+        guard (try? TwitchTokenStore.load()) != nil else { return }
         Task { @MainActor in
             do {
-                twitchAccountStatus = try await TwitchOAuthService.refreshStatus(clientID: clientID)
+                twitchAccountStatus = try await TwitchOAuthService.refreshStatus(clientID: TwitchOAuthService.clientID)
                 twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
             } catch {
                 if !twitchPrimaryStreamKeySaved { twitchAccountStatus = TwitchAccountStatus() }
