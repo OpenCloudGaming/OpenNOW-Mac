@@ -10,8 +10,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
 
     private let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
-    private let broadcaster = WebRTCLiveBroadcastSession()
+    private let broadcaster = WebRTCLiveBroadcastController.shared
     private weak var nativeView: NativeWebRTCStreamView?
+    private var broadcastStatusObserverID: UUID?
     private let localIceLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
     private var continuation: CheckedContinuation<StreamAnswer, Error>?
@@ -28,11 +29,17 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             }
             self?.onRecordingStatusChanged?(status)
         }
-        broadcaster.onStatusChanged = { [weak self] status in
+        broadcastStatusObserverID = broadcaster.addStatusObserver { [weak self] status in
             if status.isTerminal {
                 self?.session.setEnhancedVideoFrameCaptureEnabled(self?.recorder.wantsEnhancedVideo == true)
             }
             self?.onBroadcastStatusChanged?(status)
+        }
+    }
+
+    deinit {
+        if let broadcastStatusObserverID {
+            broadcaster.removeStatusObserver(broadcastStatusObserverID)
         }
     }
 
@@ -155,7 +162,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         let pendingContinuation = continuation
         continuation = nil
         recorder.stop()
-        broadcaster.stop()
+        broadcaster.resumeUICapture()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         localIceLock.withLock {
             localIceContinuation?.finish()

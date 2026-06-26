@@ -171,6 +171,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var twitchAccountStatus = TwitchAccountStatus()
     @Published var twitchPrimaryStreamKeySaved = TwitchStreamKeyStore.exists()
     @Published var isConnectingTwitch = false
+    @Published var catalogBroadcastStatus = WebRTCLiveBroadcastStatus.idle
 
     let account: LoginAccount
     let session: LoginSession
@@ -188,6 +189,8 @@ final class CatalogViewModel: ObservableObject {
     private var settingsPreferencesGeneration = 0
     private var selectedGameRevealSequence = 0
     private var settingsPreferencesTask: Task<Void, Never>?
+    private let catalogBroadcastController = WebRTCLiveBroadcastController.shared
+    private var catalogBroadcastObserverID: UUID?
 
     init(account: LoginAccount, session: LoginSession, onRefreshAuth: @escaping () -> Void) {
         self.account = account
@@ -195,6 +198,9 @@ final class CatalogViewModel: ObservableObject {
         self.onRefreshAuth = onRefreshAuth
         if twitchPrimaryStreamKeySaved {
             twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
+        }
+        catalogBroadcastObserverID = catalogBroadcastController.addStatusObserver { [weak self] status in
+            self?.handleCatalogBroadcastStatus(status)
         }
         Task { await TwitchIngestService.refreshDefaultServer() }
         refreshTwitchAccountStatus()
@@ -210,6 +216,12 @@ final class CatalogViewModel: ObservableObject {
             .compactMap { $0.object as? URL }
             .sink { [weak self] url in self?.handleTwitchOAuthCallback(url) }
             .store(in: &cancellables)
+    }
+
+    deinit {
+        if let catalogBroadcastObserverID {
+            catalogBroadcastController.removeStatusObserver(catalogBroadcastObserverID)
+        }
     }
 
     var marqueeGames: [OPNCatalogGameObject] {
@@ -720,6 +732,74 @@ final class CatalogViewModel: ObservableObject {
             }
             isConnectingTwitch = false
         }
+    }
+
+    func toggleCatalogTwitchBroadcast() {
+        if catalogBroadcastStatus.isBroadcasting {
+            stopCatalogTwitchBroadcast()
+        } else {
+            startCatalogTwitchBroadcast()
+        }
+    }
+
+    private func startCatalogTwitchBroadcast() {
+        guard !catalogBroadcastStatus.isBroadcasting else { return }
+        let selectedTitle = selectedGame?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = selectedTitle.isEmpty ? "OpenNOW Live" : selectedTitle
+        let applicationID = selectedGame.map(Self.favoriteAppId(for:)).filter { $0 > 0 }.map(String.init) ?? "catalog"
+        guard let configuration = catalogBroadcastConfiguration(title: title, applicationID: applicationID) else {
+            errorMessage = "Twitch is not ready. Save your Primary Stream Key in Settings > Twitch."
+            return
+        }
+        catalogBroadcastController.start(configuration: configuration)
+        actionMessage = "Starting Twitch broadcast from the catalog."
+        errorMessage = ""
+        Task { @MainActor in
+            guard (try? TwitchTokenStore.load()) != nil else { return }
+            do {
+                actionMessage = try await TwitchOAuthService.prepareBroadcast(clientID: TwitchOAuthService.clientID, title: title, applicationID: applicationID)
+            } catch {
+                actionMessage = Self.message(for: error)
+            }
+        }
+    }
+
+    private func stopCatalogTwitchBroadcast() {
+        catalogBroadcastController.stop()
+        actionMessage = "Stopping Twitch broadcast."
+    }
+
+    private func handleCatalogBroadcastStatus(_ status: WebRTCLiveBroadcastStatus) {
+        catalogBroadcastStatus = status
+        switch status {
+        case .publishing:
+            actionMessage = "Twitch broadcast is publishing the OpenNOW catalog."
+        case .idle:
+            if actionMessage == "Stopping Twitch broadcast." { actionMessage = "Twitch broadcast stopped." }
+        case .failed(let message):
+            errorMessage = message
+        default:
+            break
+        }
+    }
+
+    private func catalogBroadcastConfiguration(title: String, applicationID: String) -> WebRTCLiveBroadcastConfiguration? {
+        let preferences = TwitchPreferencesStore.load()
+        guard !preferences.ingestURL.isEmpty,
+              let streamKey = try? TwitchStreamKeyStore.load(),
+              !streamKey.isEmpty else { return nil }
+        return WebRTCLiveBroadcastConfiguration(
+            title: title,
+            applicationID: applicationID,
+            rtmpURL: preferences.ingestURL,
+            streamKey: streamKey,
+            width: preferences.resolution.targetHeight == 0 ? 1920 : max(2, preferences.resolution.targetHeight * 16 / 9),
+            height: preferences.resolution.targetHeight == 0 ? 1080 : preferences.resolution.targetHeight,
+            fps: preferences.fps,
+            videoBitrateKbps: preferences.videoBitrateKbps,
+            audioBitrateKbps: preferences.audioBitrateKbps,
+            enhancedVideoEnabled: false
+        )
     }
 
     func disconnectTwitch() {

@@ -71,6 +71,84 @@ public enum WebRTCLiveBroadcastStatus: Equatable, Sendable {
     }
 }
 
+public final class WebRTCLiveBroadcastController: @unchecked Sendable {
+    public static let shared = WebRTCLiveBroadcastController()
+
+    public var onStatusChanged: (@MainActor @Sendable (WebRTCLiveBroadcastStatus) -> Void)?
+    public private(set) var status = WebRTCLiveBroadcastStatus.idle
+
+    private let session = WebRTCLiveBroadcastSession()
+    private let statusObserverLock = NSLock()
+    private var statusObservers: [UUID: @MainActor @Sendable (WebRTCLiveBroadcastStatus) -> Void] = [:]
+
+    public init() {
+        session.onStatusChanged = { [weak self] status in
+            self?.handleStatusChanged(status)
+        }
+    }
+
+    @discardableResult
+    public func addStatusObserver(_ observer: @escaping @MainActor @Sendable (WebRTCLiveBroadcastStatus) -> Void) -> UUID {
+        let id = UUID()
+        statusObserverLock.lock()
+        statusObservers[id] = observer
+        let status = status
+        statusObserverLock.unlock()
+        Task { @MainActor in observer(status) }
+        return id
+    }
+
+    public func removeStatusObserver(_ id: UUID) {
+        statusObserverLock.lock()
+        statusObservers[id] = nil
+        statusObserverLock.unlock()
+    }
+
+    public func start(configuration: WebRTCLiveBroadcastConfiguration) {
+        session.start(configuration: configuration)
+    }
+
+    public func stop() {
+        session.stop()
+    }
+
+    public var wantsEnhancedVideo: Bool {
+        session.wantsEnhancedVideo
+    }
+
+    public func resumeUICapture() {
+        session.resumeUICapture()
+    }
+
+    func appendVideoFrame(_ frame: RTCVideoFrame) {
+        session.appendVideoFrame(frame)
+    }
+
+    func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+        session.appendEnhancedPixelBuffer(pixelBuffer)
+    }
+
+    func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
+        session.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+    }
+
+    func appendMicrophoneAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
+        session.appendMicrophoneAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+    }
+
+    @MainActor
+    private func handleStatusChanged(_ status: WebRTCLiveBroadcastStatus) {
+        statusObserverLock.lock()
+        self.status = status
+        let observers = Array(statusObservers.values)
+        statusObserverLock.unlock()
+        onStatusChanged?(status)
+        for observer in observers {
+            observer(status)
+        }
+    }
+}
+
 final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     var onStatusChanged: (@MainActor @Sendable (WebRTCLiveBroadcastStatus) -> Void)?
 
@@ -302,6 +380,14 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         let capture = uiCapture
         uiCapture = nil
         Task { await capture?.stop() }
+    }
+
+    func resumeUICapture() {
+        queue.async {
+            guard self.configuration != nil, self.publisher != nil, !self.isStopping else { return }
+            self.receivedGameVideoFrame = false
+            self.startUICaptureIfNeeded()
+        }
     }
 
     private func mixWithMicrophone(gameStereoSamples: [Int16]) -> [Int16] {

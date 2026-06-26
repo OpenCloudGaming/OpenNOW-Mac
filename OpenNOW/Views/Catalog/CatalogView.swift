@@ -803,6 +803,23 @@ private struct CatalogTopBar: View {
 
                 HStack(spacing: 24) {
                     Spacer()
+                    Button { viewModel.toggleCatalogTwitchBroadcast() } label: {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(catalogBroadcastIndicatorColor)
+                                .frame(width: 8, height: 8)
+                            Text(catalogBroadcastButtonTitle)
+                                .font(.nvidia(size: 13, weight: .bold))
+                                .tracking(0.7)
+                        }
+                        .foregroundStyle(.white.opacity(0.92))
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .background(catalogBroadcastButtonBackground, in: Capsule())
+                        .overlay { Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(catalogBroadcastAccessibilityLabel)
                     Menu {
                         ForEach(accounts) { account in
                             Button(account.displayName) { onSwitch(account) }
@@ -845,6 +862,34 @@ private struct CatalogTopBar: View {
         case .recordings: return "Recordings"
         case .settings: return "Settings"
         }
+    }
+
+    private var catalogBroadcastButtonTitle: String {
+        switch viewModel.catalogBroadcastStatus {
+        case .idle: return "TWITCH"
+        case .connecting: return "CONNECTING"
+        case .publishing, .live: return "STOP LIVE"
+        case .stopping: return "STOPPING"
+        case .failed: return "RETRY"
+        }
+    }
+
+    private var catalogBroadcastAccessibilityLabel: String {
+        viewModel.catalogBroadcastStatus.isBroadcasting ? "Stop Twitch broadcast" : "Start Twitch broadcast"
+    }
+
+    private var catalogBroadcastIndicatorColor: Color {
+        switch viewModel.catalogBroadcastStatus {
+        case .live: return .red
+        case .publishing: return .orange
+        case .connecting, .stopping: return .yellow
+        case .failed: return .pink
+        case .idle: return Color.openNowGreen
+        }
+    }
+
+    private var catalogBroadcastButtonBackground: Color {
+        viewModel.catalogBroadcastStatus.isBroadcasting ? Color.red.opacity(0.34) : Color.white.opacity(0.055)
     }
 
     private var catalogSearchField: some View {
