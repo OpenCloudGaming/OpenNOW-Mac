@@ -286,7 +286,7 @@ public enum OPNStreamPreferences {
     ]
 
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
-    private static let nvClientVersion = "2.0.80.173"
+    private static let nvClientVersion = "2.0.85.135"
     private static let defaultUpscalingTargetIndex = 1
     private static let maxConcurrentRegionMeasurements = 4
     private static let k = Keys.self
@@ -649,17 +649,54 @@ public enum OPNStreamPreferences {
     }
 
     static func cloudVariablesRequest(token: String, locale: String) -> URLRequest? {
-        var components = URLComponents(string: "https://api.gdn.nvidia.com/cloudvariables/v3")
-        components?.queryItems = [
-            URLQueryItem(name: "product", value: "NVIDIAGDN"),
-            URLQueryItem(name: "locale", value: locale),
-        ]
+        _ = token
+        var components = URLComponents(string: "https://gx-target-experiments-frontend-api.gx.nvidia.com/cloudvariables/v3")
+        components?.queryItems = cloudVariablesQueryItems(locale: locale)
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         request.httpMethod = "GET"
-        applyCloudmatchHeaders(to: &request, token: token)
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue(browserUserAgent(), forHTTPHeaderField: "User-Agent")
         return request
+    }
+
+    private static func cloudVariablesQueryItems(locale: String) -> [URLQueryItem] {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let language = locale.split(separator: "_").first.map(String.init) ?? "en"
+        let clientParams = "{\"osName\":\"MACOS\",\"variant\":\"release\",\"userDefaultUILanguage\":\"\(language)\"}"
+        return [
+            URLQueryItem(name: "cvName", value: [
+                "clientIMESupportedKBLayouts",
+                "enableGpuNameMappingV2",
+                "isBroadcastEnabled",
+                "punctualUIConfig",
+                "cvConfigOverrides",
+                "enableBrowserPushNotification",
+                "deeplinkSupportV2",
+                "linuxNativeDownload",
+                "clipboardPasteFeatureConfig",
+                "steamosNativeDownload",
+                "defaultKeyboardLayout",
+                "enableBrowserIGSS",
+                "isBrowserClientIMESupported",
+                "OscConfig",
+                "webRtcNetworkTestV2",
+            ].joined(separator: ",")),
+            URLQueryItem(name: "deviceId", value: OPNDeviceIdentity.stableCloudmatchDeviceId()),
+            URLQueryItem(name: "userId", value: "undefined"),
+            URLQueryItem(name: "idpId", value: "undefined"),
+            URLQueryItem(name: "clientId", value: "78589530426925203"),
+            URLQueryItem(name: "clientVer", value: nvClientVersion),
+            URLQueryItem(name: "clientVariant", value: "Release"),
+            URLQueryItem(name: "deviceOS", value: "MacOS"),
+            URLQueryItem(name: "deviceType", value: "Desktop"),
+            URLQueryItem(name: "deviceMake", value: "APPLE"),
+            URLQueryItem(name: "deviceModel", value: "undefined"),
+            URLQueryItem(name: "deviceOSVersion", value: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"),
+            URLQueryItem(name: "clientType", value: "Browser"),
+            URLQueryItem(name: "browserType", value: "Chrome"),
+            URLQueryItem(name: "clientParams", value: clientParams),
+        ]
     }
 
     private static func currentCloudVariablesLocale() -> String {
@@ -709,7 +746,7 @@ public enum OPNStreamPreferences {
             cached.latencyMs = cachedChoice.latencyMs
             cached.usedAutomaticRegion = selectedRegionUrl.isEmpty
             cached.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: cached.latencyMs, measuredBandwidthMbps: cached.measuredBandwidthMbps, packetLossPercent: cached.packetLossPercent, jitterMs: cached.jitterMs)
-            createNetworkTestSession(preflight: cached, token: token, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
+            DispatchQueue.main.async { completion(cached) }
             fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { _ in }
             return
         }
@@ -721,7 +758,7 @@ public enum OPNStreamPreferences {
                 result.usedAutomaticRegion = selectedRegionUrl.isEmpty
             }
             result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
-            createNetworkTestSession(preflight: result, token: token, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
+            completion(result)
         }
     }
 
@@ -939,6 +976,10 @@ public enum OPNStreamPreferences {
         if !token.isEmpty { request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization") }
     }
 
+    private static func browserUserAgent() -> String {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+    }
+
     private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
         let base = normalizedBaseUrl(baseUrl)
         var request = URLRequest(url: URL(string: base + "v2/serverInfo")!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
@@ -1046,47 +1087,6 @@ public enum OPNStreamPreferences {
         if hasWired { return "Ethernet" }
         if hasWifi { return "WiFi" }
         return "Unknown"
-    }
-
-    private static func createNetworkTestSession(preflight: OPNStreamNetworkPreflightResult, token: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
-        guard let url = URL(string: normalizedBaseUrl(preflight.streamingBaseUrl) + "v2/nettestsession") else {
-            DispatchQueue.main.async { completion(preflight) }
-            return
-        }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
-        request.httpMethod = "POST"
-        applyCloudmatchHeaders(to: &request, token: token)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = networkTestRequestBody(preflight: preflight, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
-        OPNProtocolDebug.logJSONObject(label: "nettestsession request", object: body)
-        request.httpBody = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
-        let networkStart = OPNNetworkLog.start(&request, operation: "stream.networkTestSession")
-        let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "stream.networkTestSession", startedAt: networkStart, data: data, response: response, error: error)
-            var result = preflight
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if error == nil, let data, (200..<300).contains(status), let json = String(data: data, encoding: .utf8) {
-                OPNProtocolDebug.logJSONData(label: "nettestsession response", data: data)
-                result = networkPreflightResult(from: json, seed: result, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
-            }
-            DispatchQueue.main.async { completion(result) }
-        }.resume()
-    }
-
-    private static func networkTestRequestBody(preflight: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> [String: Any] {
-        var requestData: [String: Any] = [
-            "clientIdentification": "GFN-PC",
-            "clientVersion": "30.0",
-            "deviceHashId": OPNDeviceIdentity.stableCloudmatchDeviceId(),
-            "sdkVersion": "1.0",
-            "streamerVersion": 1,
-            "clientPlatformName": "windows",
-            "networkType": preflight.networkType,
-            "requestedMaxBitrateKbps": max(1, requestedMaxBitrateMbps) * 1000
-        ]
-        if preflight.latencyMs >= 0 { requestData["clientMeasuredLatencyMs"] = preflight.latencyMs }
-        return ["networkTestRequestData": requestData]
     }
 
     private static func cachedRegionChoice(regions: [OPNStreamRegionOption], selectedRegionUrl: String) -> OPNStreamRegionOption? {

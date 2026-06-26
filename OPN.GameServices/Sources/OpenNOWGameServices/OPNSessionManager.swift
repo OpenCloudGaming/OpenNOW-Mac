@@ -13,8 +13,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private var adStatesBySessionId: [String: [String: Any]] = [:]
 
     private static let defaultBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net"
-    private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
-    private static let nvClientVersion = "2.0.80.173"
+    fileprivate static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
+    fileprivate static let nvClientVersion = "2.0.85.135"
     private static let persistedActiveSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
 
     func setAccessToken(_ token: String) {
@@ -45,13 +45,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let effectiveSettings = settingsByApplyingCloudVariables(settings, capabilities: capabilities)
         let hdrEnabled = bool(effectiveSettings["enableHdr"]) && capabilities.hdrDisplaySupported
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
-        let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
-
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
 
         let sessionRequestData: [String: Any] = [
             "appId": launchAppId.stringValue,
-            "internalTitle": internalTitle,
+            "internalTitle": NSNull(),
             "availableSupportedControllers": stringArray(effectiveSettings["availableSupportedControllers"]),
             "networkTestSessionId": networkTestSessionIdValue(effectiveSettings),
             "parentSessionId": NSNull(),
@@ -60,7 +58,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "clientVersion": "30.0",
             "sdkVersion": "1.0",
             "streamerVersion": 1,
-            "clientPlatformName": "windows",
+            "clientPlatformName": "browser",
             "clientRequestMonitorSettings": [monitorSettings(effectiveSettings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
             "useOps": true,
             "audioMode": 2,
@@ -69,14 +67,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 ["key": "wssignaling", "value": "1"],
                 ["key": "GSStreamerType", "value": "WebRTC"],
                 ["key": "networkType", "value": networkTypeValue(effectiveSettings)],
-                ["key": "networkLatencyMs", "value": networkLatencyValue(effectiveSettings)],
                 ["key": "ClientImeSupport", "value": "0"],
                 ["key": "clientPhysicalResolution", "value": "{\"horizontalPixels\":\(max(0, capabilities.maxDisplayWidth)),\"verticalPixels\":\(max(0, capabilities.maxDisplayHeight))}"],
                 ["key": "surroundAudioInfo", "value": "2"],
-                ["key": "store", "value": selectedStore],
             ],
             "sdrHdrMode": hdrEnabled ? 1 : 0,
-            "clientDisplayHdrCapabilities": clientDisplayHdrCapabilities(capabilities),
+            "clientDisplayHdrCapabilities": NSNull(),
             "surroundAudioInfo": 0,
             "remoteControllersBitmap": int(effectiveSettings["remoteControllersBitmap"]),
             "clientTimezoneOffset": timezoneOffset,
@@ -85,12 +81,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "secureRTSPSupported": false,
             "partnerCustomData": "",
             "accountLinked": bool(effectiveSettings["accountLinked"], fallback: true),
-            "enablePersistingInGameSettings": true,
+            "enablePersistingInGameSettings": false,
             "userAge": 26,
             "requestedStreamingFeatures": requestedStreamingFeatures(effectiveSettings, hdrEnabled: hdrEnabled),
         ]
 
-        let layout = string(effectiveSettings["keyboardLayout"]).isEmpty ? "us" : string(effectiveSettings["keyboardLayout"])
+        let layout = keyboardLayoutValue(effectiveSettings)
         let language = string(effectiveSettings["gameLanguage"]).isEmpty ? OPNLocale.currentGFNLocale() : string(effectiveSettings["gameLanguage"])
         guard let url = URL(string: "\(baseUrl)/v2/session?keyboardLayout=\(layout)&languageCode=\(language)") else {
             completion(false, [:], "Invalid session create URL")
@@ -100,7 +96,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: deviceId, includeOrigin: false)
-        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
         let body: [String: Any] = ["sessionRequestData": sessionRequestData]
         OPNProtocolDebug.logJSONObject(label: "session create request", object: body)
         do {
@@ -406,7 +401,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func sendClaimSession(sessionId: String, serverIp: String, appId: OPNResolvedLaunchAppId, settings: [String: Any], token: String, deviceId: String, clientId: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
-        let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
         let payload: [String: Any] = [
             "action": 2,
             "data": "RESUME",
@@ -419,17 +413,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "clientVersion": "30.0",
                 "deviceHashId": deviceId,
                 "internalTitle": NSNull(),
-                "clientPlatformName": "windows",
+                "clientPlatformName": "browser",
                 "clientRequestMonitorSettings": [monitorSettings(settings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
                 "metaData": [
                     ["key": "SubSessionId", "value": UUID().uuidString.lowercased()],
                     ["key": "wssignaling", "value": "1"],
                     ["key": "GSStreamerType", "value": "WebRTC"],
                     ["key": "networkType", "value": networkTypeValue(settings)],
-                    ["key": "networkLatencyMs", "value": networkLatencyValue(settings)],
                     ["key": "ClientImeSupport", "value": "0"],
                     ["key": "surroundAudioInfo", "value": "2"],
-                    ["key": "store", "value": selectedStore],
                 ],
                 "surroundAudioInfo": 0,
                 "clientTimezoneOffset": -TimeZone.current.secondsFromGMT() * 1000,
@@ -441,17 +433,17 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "sdkVersion": "1.0",
                 "enhancedStreamMode": 1,
                 "useOps": true,
-                "clientDisplayHdrCapabilities": clientDisplayHdrCapabilities(capabilities),
+                "clientDisplayHdrCapabilities": NSNull(),
                 "accountLinked": bool(settings["accountLinked"], fallback: true),
                 "partnerCustomData": "",
-                "enablePersistingInGameSettings": true,
+                "enablePersistingInGameSettings": false,
                 "secureRTSPSupported": false,
                 "userAge": 26,
                 "requestedStreamingFeatures": requestedStreamingFeatures(settings, hdrEnabled: hdrEnabled),
             ],
             "metaData": [],
         ]
-        let layout = string(settings["keyboardLayout"]).isEmpty ? "us" : string(settings["keyboardLayout"])
+        let layout = keyboardLayoutValue(settings)
         let language = string(settings["gameLanguage"]).isEmpty ? OPNLocale.currentGFNLocale() : string(settings["gameLanguage"])
         let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
         guard let url = URL(string: "\(base)/v2/session/\(sessionId)?keyboardLayout=\(layout)&languageCode=\(language)") else {
@@ -882,23 +874,19 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
 }
 
 private func applyCommonCloudMatchHeaders(to request: inout URLRequest, token: String, deviceId: String, includeOrigin: Bool) {
+    _ = includeOrigin
     request.setValue(userAgent(), forHTTPHeaderField: "User-Agent")
     request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("ec7e38d4-03af-4b58-b131-cfb0495903ab", forHTTPHeaderField: "nv-client-id")
-    request.setValue("NATIVE", forHTTPHeaderField: "nv-client-type")
-    request.setValue("2.0.80.173", forHTTPHeaderField: "nv-client-version")
-    request.setValue("NVIDIA-CLASSIC", forHTTPHeaderField: "nv-client-streamer")
+    request.setValue(OPNSessionManager.nvClientId, forHTTPHeaderField: "nv-client-id")
+    request.setValue(OPNSessionManager.nvClientVersion, forHTTPHeaderField: "nv-client-version")
+    request.setValue("WEBRTC", forHTTPHeaderField: "nv-client-streamer")
     request.setValue("MACOS", forHTTPHeaderField: "nv-device-os")
     request.setValue("DESKTOP", forHTTPHeaderField: "nv-device-type")
-    request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-make")
+    request.setValue("APPLE", forHTTPHeaderField: "nv-device-make")
     request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-model")
     request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
     request.setValue(deviceId, forHTTPHeaderField: "x-device-id")
-    if includeOrigin {
-        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
-    }
 }
 
 private func resolveSessionBaseUrl(streamingBaseUrl: String, serverIp: String) -> String {
@@ -919,7 +907,14 @@ private func resolveSessionBaseUrl(streamingBaseUrl: String, serverIp: String) -
 }
 
 private func userAgent() -> String {
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+}
+
+private func keyboardLayoutValue(_ settings: [String: Any]) -> String {
+    let value = string(settings["keyboardLayout"])
+    if value.isEmpty { return "m-us" }
+    if value == "us" { return "m-us" }
+    return value
 }
 
 private func settingsByApplyingCloudVariables(_ settings: [String: Any], capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
@@ -978,30 +973,14 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
     ]
 }
 
-private func clientDisplayHdrCapabilities(_ capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
-    [
-        "hdrSupported": capabilities.hdrDisplaySupported,
-        "bitDepth": capabilities.hdrDisplaySupported ? 10 : 8,
-        "maxDisplayWidth": max(0, capabilities.maxDisplayWidth),
-        "maxDisplayHeight": max(0, capabilities.maxDisplayHeight),
-        "maxDisplayRefreshRate": max(0, capabilities.maxDisplayRefreshRate),
-        "supportedHdrModes": capabilities.hdrDisplaySupported ? ["HDR"] : [],
-    ]
-}
-
 private func networkTestSessionIdValue(_ settings: [String: Any]) -> Any {
     let value = string(settings["networkTestSessionId"])
-    return value.isEmpty ? NSNull() : value
+    return value.isEmpty || value == "00000000-0000-0000-0000-000000000000" ? NSNull() : value
 }
 
 private func networkTypeValue(_ settings: [String: Any]) -> String {
     let value = string(settings["networkType"])
     return value.isEmpty ? "Unknown" : value
-}
-
-private func networkLatencyValue(_ settings: [String: Any]) -> String {
-    let latency = int(settings["networkLatencyMs"], fallback: -1)
-    return latency >= 0 ? String(latency) : "Unknown"
 }
 
 private func adActionCode(_ action: String) -> Int {

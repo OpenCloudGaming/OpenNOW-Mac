@@ -54,6 +54,49 @@ import WebRTCMedia
     #expect(result.1 == "This game does not include a launchable GeForce NOW app id.")
 }
 
+@Test(.serialized) func sessionManagerCreateUsesBrowserWebRTCCloudMatchShape() async throws {
+    let host = "create-browser-shape.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
+    let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
+    let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
+    let metadata = try #require(requestData["metaData"] as? [[String: String]])
+    let metadataKeys = Set(metadata.compactMap { $0["key"] })
+
+    #expect(result.0 == true)
+    #expect(result.1.isEmpty)
+    #expect(request.url?.query?.contains("keyboardLayout=m-us") == true)
+    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.85.135")
+    #expect(request.value(forHTTPHeaderField: "nv-client-type") == nil)
+    #expect(request.value(forHTTPHeaderField: "Origin") == nil)
+    #expect(request.value(forHTTPHeaderField: "Referer") == nil)
+    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "APPLE")
+    #expect(requestData["internalTitle"] is NSNull)
+    #expect(requestData["clientPlatformName"] as? String == "browser")
+    #expect(requestData["clientDisplayHdrCapabilities"] is NSNull)
+    #expect(requestData["networkTestSessionId"] is NSNull)
+    #expect(requestData["enablePersistingInGameSettings"] as? Bool == false)
+    #expect(metadataKeys.contains("store") == false)
+    #expect(metadataKeys.contains("networkLatencyMs") == false)
+}
+
 @Test func activeSessionParserPreservesControlAndSignalingHosts() {
     let descriptor = OPNActiveSessionParser.descriptor(from: [
         "sessionId": "session-1",
