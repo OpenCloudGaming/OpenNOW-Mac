@@ -277,15 +277,54 @@ import WebRTCMedia
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["cloudMatchCreateRetryBaseUrls"] = [String]()
 
     let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }
 
     #expect(result.0 == false)
-    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+    #expect(result.1.contains("CloudMatch internal session error"))
+    #expect(result.1.contains("Try Automatic server location or a different region"))
+}
+
+@Test(.serialized) func sessionManagerCreateRetriesAlternateRegionOnInternalError() async throws {
+    let failedHost = "create-internal-failure.example.test"
+    let retryHost = "create-internal-retry.example.test"
+
+    SessionManagerURLProtocol.install(host: failedHost) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
+    }
+    SessionManagerURLProtocol.install(host: retryHost) { request in
+        #expect(request.httpMethod == "POST")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: retryHost))
+    }
+    defer {
+        SessionManagerURLProtocol.uninstall(host: failedHost)
+        SessionManagerURLProtocol.uninstall(host: retryHost)
+    }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(failedHost)")
+    var settings = minimalSettings()
+    settings["cloudMatchCreateRetryBaseUrls"] = ["https://\(failedHost)/", "https://\(retryHost)/"]
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, info, error in
+            continuation.resume(returning: (success, info["streamingBaseUrl"] as? String ?? "", error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.1 == "https://\(retryHost)")
+    #expect(result.2.isEmpty)
+    #expect(SessionManagerURLProtocol.recordedRequests(host: failedHost).count == 1)
+    #expect(SessionManagerURLProtocol.recordedRequests(host: retryHost).count == 1)
 }
 
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {

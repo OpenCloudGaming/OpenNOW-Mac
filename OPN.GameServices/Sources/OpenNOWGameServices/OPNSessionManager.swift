@@ -26,6 +26,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+        createSession(appId: appId, internalTitle: internalTitle, settings: settings, streamingBaseUrl: nil, excludedCreateBaseUrls: [], completion: completion)
+    }
+
+    private func createSession(appId: String, internalTitle: String, settings: [String: Any], streamingBaseUrl: String?, excludedCreateBaseUrls: Set<String>, completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
@@ -38,7 +42,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
 
         clearPersistedActiveSessionId("")
-        let baseUrl = currentStreamingBaseUrl()
+        let baseUrl = resolveSessionBaseUrl(streamingBaseUrl: streamingBaseUrl ?? currentStreamingBaseUrl(), serverIp: "")
         let clientId = UUID().uuidString.lowercased()
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
@@ -107,7 +111,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
 
         nonisolated(unsafe) let createCompletion = completion
+        nonisolated(unsafe) let createSettings = settings
         nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
+        let createExcludedBaseUrls = excludedCreateBaseUrls.union([createRetryBaseKey(baseUrl)])
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.createSession")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
@@ -124,8 +130,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             OPNProtocolDebug.logJSONData(label: "session create response", data: data)
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
-                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
-                    createCompletion(false, [:], staleMessage)
+                if self.isInternalSessionFailureResponse(data), let retryBaseUrl = self.createSessionRetryBaseUrl(settings: createSettings, excluding: createExcludedBaseUrls) {
+                    OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "SessionManager", message: "Retrying cloud session after internal create failure failedBase=\(baseUrl) retryBase=\(retryBaseUrl)"))
+                    self.createSession(appId: launchAppId.stringValue, internalTitle: internalTitle, settings: createSettings, streamingBaseUrl: retryBaseUrl, excludedCreateBaseUrls: createExcludedBaseUrls, completion: createCompletion)
+                    return
+                }
+                if let createMessage = self.internalSessionCreateErrorMessage(data: data, baseUrl: baseUrl) {
+                    createCompletion(false, [:], createMessage)
                     return
                 }
                 let body = String(data: data, encoding: .utf8) ?? ""
@@ -782,6 +793,37 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         return int(requestStatus["statusCode"]) == 34 || string(requestStatus["statusDescription"]).contains("SESSION_NOT_PAUSED")
     }
 
+    private func isInternalSessionFailureResponse(_ data: Data?) -> Bool {
+        guard let data, let requestStatus = jsonDictionary(data)?["requestStatus"] as? [String: Any] else { return false }
+        let statusCode = int(requestStatus["statusCode"])
+        let description = string(requestStatus["statusDescription"])
+        return statusCode == 4 || description.contains("INTERNAL_ERROR_STATUS") || description.contains("8A8C0000")
+    }
+
+    private func internalSessionCreateErrorMessage(data: Data?, baseUrl: String) -> String? {
+        guard isInternalSessionFailureResponse(data), let data, let requestStatus = jsonDictionary(data)?["requestStatus"] as? [String: Any] else { return nil }
+        let description = string(requestStatus["statusDescription"]).isEmpty ? "unknown" : string(requestStatus["statusDescription"])
+        let serverId = string(requestStatus["serverId"])
+        let server = serverId.isEmpty ? "" : " server=\(serverId)"
+        return "CloudMatch internal session error at \(baseUrl)\(server): \(description). Try Automatic server location or a different region."
+    }
+
+    private func createSessionRetryBaseUrl(settings: [String: Any], excluding excludedBaseUrls: Set<String>) -> String? {
+        if let retryBaseUrls = settings["cloudMatchCreateRetryBaseUrls"] as? [String] {
+            return retryBaseUrls
+                .map { resolveSessionBaseUrl(streamingBaseUrl: $0, serverIp: "") }
+                .first { !excludedBaseUrls.contains(createRetryBaseKey($0)) }
+        }
+        return OPNStreamPreferences.loadCachedRegions()
+            .filter { !$0.url.isEmpty && $0.latencyMs >= 0 }
+            .sorted {
+                if $0.latencyMs != $1.latencyMs { return $0.latencyMs < $1.latencyMs }
+                return $0.name < $1.name
+            }
+            .map { resolveSessionBaseUrl(streamingBaseUrl: $0.url, serverIp: "") }
+            .first { !excludedBaseUrls.contains(createRetryBaseKey($0)) }
+    }
+
     private func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
         guard let data, let json = jsonDictionary(data) else { return nil }
         let requestStatus = json["requestStatus"] as? [String: Any]
@@ -906,6 +948,11 @@ private func resolveSessionBaseUrl(streamingBaseUrl: String, serverIp: String) -
     }
     let host = usableEndpointHost(serverIp)
     return host.isEmpty ? (fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase) : "https://\(host)"
+}
+
+private func createRetryBaseKey(_ url: String) -> String {
+    guard let components = URLComponents(string: resolveSessionBaseUrl(streamingBaseUrl: url, serverIp: "")), let host = components.host?.lowercased(), !host.isEmpty else { return url.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
+    return "https://\(host)"
 }
 
 private func userAgent() -> String {
