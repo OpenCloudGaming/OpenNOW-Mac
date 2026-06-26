@@ -92,11 +92,11 @@ struct PrimaryLoginButtonStyle: ButtonStyle {
 struct VendorGetInButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.nvidiaSans(size: 13, weight: .bold))
+            .font(.nvidiaSans(size: 14, weight: .bold))
             .foregroundStyle(.black)
-            .tracking(0.6)
-            .padding(.horizontal, 22)
-            .frame(height: 40)
+            .tracking(0.3)
+            .padding(.horizontal, 16)
+            .frame(height: 36)
             .background(configuration.isPressed ? Color.openNowGreen.opacity(0.78) : Color.openNowGreen)
             .opacity(configuration.isPressed ? 0.92 : 1)
     }

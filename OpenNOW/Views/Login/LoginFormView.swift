@@ -30,14 +30,14 @@ struct LoginFormView: View {
                 .scaledToFill()
                 .frame(width: metrics.panelWidth, height: metrics.height)
                 .clipped()
-                .opacity(0.22)
+                .opacity(0.30)
 
             LinearGradient(
                 stops: [
                     .init(color: .black, location: 0),
-                    .init(color: .black.opacity(0.98), location: 0.34),
-                    .init(color: .black.opacity(0.90), location: 0.68),
-                    .init(color: .black.opacity(0.56), location: 1),
+                    .init(color: .black.opacity(0.95), location: 0.28),
+                    .init(color: .black.opacity(0.85), location: 0.60),
+                    .init(color: .black.opacity(0.60), location: 1),
                 ],
                 startPoint: .leading,
                 endPoint: .trailing
@@ -45,21 +45,22 @@ struct LoginFormView: View {
 
             VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
                 .scaledToFit()
-                .frame(width: 174, height: 52)
-                .position(x: metrics.contentLeft + 87, y: 52)
+                .frame(width: 186, height: 56)
+                .position(x: metrics.contentLeft + 93, y: 52)
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer()
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text("GeForce NOW")
-                        .font(.nvidiaSans(size: 36, weight: .bold))
+                        .font(.nvidiaSans(size: 34, weight: .bold))
                         .foregroundStyle(.white)
-                        .tracking(-0.2)
+                        .tracking(0)
                         .lineLimit(1)
-                        .padding(.bottom, 22)
+                        .frame(height: 48, alignment: .leading)
+                        .padding(.bottom, 24)
 
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
                         VendorContentString(text: "Instantly play the most demanding PC games and seamlessly play across your devices.")
                         VendorContentString(text: "Your GeForce NOW library, memberships, and cloud saves stay connected through NVIDIA sign-in.")
                         VendorContentString(text: "No downloads. No updates. Jump straight into RTX-powered cloud gaming.")
@@ -95,20 +96,18 @@ struct LoginFormView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("OpenNOW Mac")
-                    .font(.nvidiaSans(size: 12, weight: .regular))
+                    .font(.nvidiaSans(size: 14, weight: .regular))
                     .foregroundStyle(Color.gfnTextSecondary)
                     .lineLimit(1)
             }
-            .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 34)
+            .frame(width: max(metrics.panelWidth - metrics.contentLeft - metrics.contentRight, 0), alignment: .leading)
+            .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 36)
 
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.78)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: 24)
-            .frame(maxHeight: .infinity)
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            Rectangle()
+                .fill(Color.openNowGreen)
+                .frame(width: 8)
+                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .background(.black)
     }
@@ -155,9 +154,9 @@ private struct VendorLoginWallMetrics {
         let columnSize = (size.width - (2 * sideSpacing) - (gutter * (columnCount - 1))) / columnCount
         let panelColumnCount: CGFloat = size.width >= 1200 ? 4 : 5
         let rawPanelWidth = (panelColumnCount * columnSize) + ((panelColumnCount - 1) * gutter) + sideSpacing
-        panelWidth = min(min(max(rawPanelWidth, 410), max(size.width * 0.58, 410)), max(size.width, 320))
-        contentLeft = min(24 + sideSpacing, max(panelWidth * 0.10, 18))
-        contentRight = min(44, max(panelWidth * 0.10, 24))
+        panelWidth = min(rawPanelWidth, max(size.width, 320))
+        contentLeft = 24 + sideSpacing
+        contentRight = 40
         contentBottom = 48
     }
 }
@@ -169,12 +168,12 @@ private struct VendorContentString: View {
         HStack(alignment: .top, spacing: 16) {
             Circle()
                 .fill(Color.openNowGreen)
-                .frame(width: 7, height: 7)
-                .padding(.top, 6)
+                .frame(width: 8, height: 8)
+                .padding(.top, 4)
             Text(text)
-                .font(.nvidiaSans(size: 15, weight: .regular))
-                .foregroundStyle(.white.opacity(0.78))
-                .lineSpacing(3)
+                .font(.nvidiaSans(size: 14, weight: .regular))
+                .foregroundStyle(Color.gfnTextSecondary)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

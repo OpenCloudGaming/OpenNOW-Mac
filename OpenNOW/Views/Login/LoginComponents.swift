@@ -143,8 +143,8 @@ struct GFNHeroArtwork: View {
 
             ZStack {
                 RadialGradient(
-                    colors: [Color(red: 0.22, green: 0.22, blue: 0.22), .black],
-                    center: UnitPoint(x: 0.68, y: 0.20),
+                    colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],
+                    center: UnitPoint(x: 0.65, y: 0.25),
                     startRadius: 0,
                     endRadius: max(proxy.size.width, proxy.size.height) * 0.75
                 )
@@ -156,7 +156,7 @@ struct GFNHeroArtwork: View {
                                 VendorResourceImage(name: "LoginWallFallbackTile", fileExtension: "png")
                                     .scaledToFit()
                                     .frame(height: imageHeight)
-                                    .opacity(0.44)
+                                    .opacity(0.5)
 
                                 if column < 5 {
                                     Spacer(minLength: 0)
@@ -174,28 +174,6 @@ struct GFNHeroArtwork: View {
                 .frame(width: gridWidth, height: gridHeight)
                 .rotationEffect(.degrees(-15))
                 .position(x: proxy.size.width - (gridWidth / 2) + (0.12 * backgroundBaseHeight), y: proxy.size.height / 2)
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.92), location: 0.00),
-                        .init(color: .black.opacity(0.48), location: 0.34),
-                        .init(color: .black.opacity(0.16), location: 0.70),
-                        .init(color: .black.opacity(0.42), location: 1.00)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.64), location: 0.00),
-                        .init(color: .clear, location: 0.28),
-                        .init(color: .clear, location: 0.72),
-                        .init(color: .black.opacity(0.74), location: 1.00)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
