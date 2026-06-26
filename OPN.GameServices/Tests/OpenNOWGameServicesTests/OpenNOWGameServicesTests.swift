@@ -66,9 +66,11 @@ import WebRTCMedia
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["networkTestSessionId"] = "stale-session-id"
 
     let result = await withCheckedContinuation { continuation in
-        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, _, error in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }

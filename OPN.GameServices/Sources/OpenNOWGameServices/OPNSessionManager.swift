@@ -45,13 +45,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let effectiveSettings = settingsByApplyingCloudVariables(settings, capabilities: capabilities)
         let hdrEnabled = bool(effectiveSettings["enableHdr"]) && capabilities.hdrDisplaySupported
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
+        let networkTestSessionId = networkTestSessionIdValue()
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSession=\(logNetworkTestSessionId(networkTestSessionId))"))
 
         let sessionRequestData: [String: Any] = [
             "appId": launchAppId.stringValue,
             "internalTitle": NSNull(),
             "availableSupportedControllers": stringArray(effectiveSettings["availableSupportedControllers"]),
-            "networkTestSessionId": networkTestSessionIdValue(effectiveSettings),
+            "networkTestSessionId": networkTestSessionId,
             "parentSessionId": NSNull(),
             "clientIdentification": "GFN-PC",
             "deviceHashId": deviceId,
@@ -401,6 +402,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func sendClaimSession(sessionId: String, serverIp: String, appId: OPNResolvedLaunchAppId, settings: [String: Any], token: String, deviceId: String, clientId: String, completion: @escaping (Bool, [String: Any], String) -> Void) {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
+        let networkTestSessionId = networkTestSessionIdValue()
         let payload: [String: Any] = [
             "action": 2,
             "data": "RESUME",
@@ -408,7 +410,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "audioMode": 2,
                 "remoteControllersBitmap": int(settings["remoteControllersBitmap"]),
                 "sdrHdrMode": hdrEnabled ? 1 : 0,
-                "networkTestSessionId": networkTestSessionIdValue(settings),
+                "networkTestSessionId": networkTestSessionId,
                 "availableSupportedControllers": stringArray(settings["availableSupportedControllers"]),
                 "clientVersion": "30.0",
                 "deviceHashId": deviceId,
@@ -973,9 +975,12 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
     ]
 }
 
-private func networkTestSessionIdValue(_ settings: [String: Any]) -> Any {
-    let value = string(settings["networkTestSessionId"])
-    return value.isEmpty || value == "00000000-0000-0000-0000-000000000000" ? NSNull() : value
+private func networkTestSessionIdValue() -> Any {
+    NSNull()
+}
+
+private func logNetworkTestSessionId(_ value: Any) -> String {
+    value is NSNull ? "null" : escapedLogString(string(value))
 }
 
 private func networkTypeValue(_ settings: [String: Any]) -> String {
