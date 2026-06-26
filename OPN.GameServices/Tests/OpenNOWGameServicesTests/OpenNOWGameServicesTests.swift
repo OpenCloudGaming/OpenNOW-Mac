@@ -54,6 +54,46 @@ import WebRTCMedia
     #expect(result.1 == "This game does not include a launchable GeForce NOW app id.")
 }
 
+@Test(.serialized) @MainActor func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
+    let host = "*"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT id-token")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 1,
+                "statusDescription": "SUCCESS",
+            ],
+            "sessions": [],
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let game = OPNCatalogGameObject()
+    game.launchAppId = "123"
+    game.title = "Regression Game"
+    game.isInLibrary = true
+
+    let result: (Bool, String, OPNGameLaunchPlan?) = await withCheckedContinuation { continuation in
+        OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", variantIndex: -1) { success, message, plan in
+            continuation.resume(returning: (success, message, plan))
+        }
+    }
+
+    let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
+    let plan = try #require(result.2)
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT id-token")
+    #expect(result.0 == true)
+    #expect(result.1 == "Launching Regression Game...")
+    if case let .ready(configuration) = plan {
+        #expect(configuration.apiToken == "id-token")
+        #expect(configuration.appId == "123")
+    } else {
+        Issue.record("Expected a ready launch plan")
+    }
+}
+
 @Test(.serialized) func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
     let host = "create-release-shape.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
@@ -390,7 +430,7 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
 
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
-        return lock.withLock { handlers[host] != nil }
+        return lock.withLock { handlers[host] != nil || handlers["*"] != nil }
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -404,9 +444,10 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
         }
         let body = Self.bodyData(from: request)
         let handler = Self.lock.withLock { () -> Handler? in
-            Self.requestsByHost[host, default: []].append(request)
-            if let body { Self.bodiesByHost[host, default: []].append(body) }
-            return Self.handlers[host]
+            let key = Self.handlers[host] == nil && Self.handlers["*"] != nil ? "*" : host
+            Self.requestsByHost[key, default: []].append(request)
+            if let body { Self.bodiesByHost[key, default: []].append(body) }
+            return Self.handlers[key]
         }
         guard let handler else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
