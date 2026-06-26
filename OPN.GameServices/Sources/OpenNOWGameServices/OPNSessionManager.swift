@@ -25,7 +25,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         lock.withLock { streamingBaseUrl = resolveSessionBaseUrl(streamingBaseUrl: url, serverIp: "") }
     }
 
-    func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+    func createSession(appId: String, internalTitle: String, settings: [String: Any], recoveringFromStaleCreate: Bool = false, completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
@@ -129,6 +129,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
                 if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                    if !recoveringFromStaleCreate, let staleSessionId = self.staleActiveSessionId(data) {
+                        OPNActiveSessionService.markSessionUnresumable(staleSessionId)
+                        self.clearPersistedActiveSessionId(staleSessionId)
+                        self.stopSession(sessionId: staleSessionId, serverIp: "") { _, _ in
+                            self.createSession(appId: appId, internalTitle: internalTitle, settings: settings, recoveringFromStaleCreate: true, completion: createCompletion)
+                        }
+                        return
+                    }
                     createCompletion(false, [:], staleMessage)
                     return
                 }
@@ -801,6 +809,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         guard let responseAppId = sessionRequestData?["appId"], int(responseAppId) <= 0 else { return nil }
         let isInternalSessionFailure = statusCode == 4 || description.contains("INTERNAL_ERROR_STATUS") || description.contains("8A8C0000")
         return isInternalSessionFailure ? "This GeForce NOW session is no longer resumable. End it and launch again." : nil
+    }
+
+    private func staleActiveSessionId(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data), let session = json["session"] as? [String: Any] else { return nil }
+        let sessionId = string(session["sessionId"])
+        return sessionId.isEmpty ? nil : sessionId
     }
 
     private func unresumableActiveSessionClaimMessage(data: Data?, body: String = "") -> String? {

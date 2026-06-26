@@ -1498,7 +1498,7 @@ private struct AboutSettingsPage: View {
                             showingDiagnosticsUploadConfirmation = true
                         }
                         .disabled(diagnosticsState.isWorking)
-                        Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
+                        Text("Uploads the recent sanitized rolling log, then copies diagnostics with the link.")
                             .font(.settingsNvidia(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.54))
                     }
@@ -1591,6 +1591,7 @@ private struct AboutSettingsPage: View {
             "User ID: \(maskedIdentifier(userId))",
             "Streaming: WebRTC",
             "Cloudmatch: \(cloudmatchCopyValue)",
+            "Log Window: Recent rolling log; upload capped to latest 384 KiB",
             "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ].joined(separator: "\n")
     }
@@ -1679,7 +1680,7 @@ private struct DiagnosticsUploadConfirmationDialog: View {
                         Text("Upload diagnostics logs?")
                             .font(.settingsNvidia(size: 19, weight: .bold))
                             .foregroundStyle(.white)
-                        Text("OpenNOW will upload the recent sanitized current-run log to paste.rs and copy a diagnostics summary with the public link.")
+                        Text("OpenNOW will upload the recent sanitized rolling log to paste.rs and copy a diagnostics summary with the public link.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)

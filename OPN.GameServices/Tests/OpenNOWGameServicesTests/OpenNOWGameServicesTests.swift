@@ -99,7 +99,7 @@ import WebRTCMedia
     #expect(descriptor == nil)
 }
 
-@Test func activeSessionServiceFiltersMarkedUnresumableSession() async {
+@Test(.serialized) func activeSessionServiceFiltersMarkedUnresumableSession() async {
     let host = "active-session-filter.example.test"
     let sessionId = "filtered-session"
     OPNActiveSessionService.clearUnresumableSessions()
@@ -227,7 +227,7 @@ import WebRTCMedia
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
 }
 
-@Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
+@Test(.serialized) func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
     let host = "resume-stale-internal.example.test"
     UserDefaults.standard.set("resume-session", forKey: "OpenNOW.Stream.ActiveSessionId")
     SessionManagerURLProtocol.install(host: host) { request in
@@ -260,7 +260,7 @@ import WebRTCMedia
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 }
 
-@Test func sessionManagerSessionNotActiveClaimErrorMarksUnresumable() async {
+@Test(.serialized) func sessionManagerSessionNotActiveClaimErrorMarksUnresumable() async {
     let host = "resume-not-active.example.test"
     let sessionId = "not-active-session"
     OPNActiveSessionService.clearUnresumableSessions()
@@ -301,7 +301,7 @@ import WebRTCMedia
     let host = "create-stale-internal.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")
-        return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
+        return SessionManagerURLProtocol.response(json: staleSessionResponse(includeSessionId: false), status: 400)
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
@@ -317,6 +317,48 @@ import WebRTCMedia
 
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+}
+
+@Test(.serialized) func sessionManagerStaleInternalCreateErrorStopsAndRetriesOnce() async {
+    let host = "create-stale-retry.example.test"
+    let lock = NSLock()
+    nonisolated(unsafe) var postCount = 0
+    SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "DELETE" {
+            #expect(request.url?.path == "/v2/session/resume-session")
+            return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])
+        }
+        #expect(request.httpMethod == "POST")
+        lock.lock()
+        postCount += 1
+        let count = postCount
+        lock.unlock()
+        if count == 1 {
+            return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
+        }
+        return SessionManagerURLProtocol.response(json: sessionResponse(sessionId: "new-session", statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer {
+        OPNActiveSessionService.clearUnresumableSessions()
+        SessionManagerURLProtocol.uninstall(host: host)
+    }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings()) { success, info, error in
+            continuation.resume(returning: (success, info["sessionId"] as? String ?? "", error))
+        }
+    }
+
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    #expect(result.0 == true)
+    #expect(result.1 == "new-session")
+    #expect(result.2.isEmpty)
+    #expect(OPNActiveSessionService.isSessionUnresumable("resume-session"))
+    #expect(requests.map(\.httpMethod) == ["POST", "DELETE", "POST"])
 }
 
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
@@ -372,17 +414,20 @@ private func sessionResponse(sessionId: String = "resume-session", statusCode: I
     ]
 }
 
-private func staleSessionResponse() -> [String: Any] {
-    [
+private func staleSessionResponse(includeSessionId: Bool = true) -> [String: Any] {
+    var session: [String: Any] = [
+        "status": 4,
+        "sessionRequestData": ["appId": 0],
+    ]
+    if includeSessionId {
+        session["sessionId"] = "resume-session"
+    }
+    return [
         "requestStatus": [
             "statusCode": 4,
             "statusDescription": "INTERNAL_ERROR_STATUS 8A8C0000",
         ],
-        "session": [
-            "sessionId": "resume-session",
-            "status": 4,
-            "sessionRequestData": ["appId": 0],
-        ],
+        "session": session,
     ]
 }
 
