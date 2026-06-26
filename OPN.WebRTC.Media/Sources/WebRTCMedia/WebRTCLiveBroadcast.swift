@@ -219,7 +219,8 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     func appendVideoFrame(_ frame: RTCVideoFrame) {
         guard isActive else { return }
         if let buffer = frame.buffer as? RTCCVPixelBuffer {
-            appendGamePixelBuffer(buffer.pixelBuffer)
+            let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(buffer.pixelBuffer).toOpaque())
+            appendGamePixelBuffer(retainedPixelBuffer)
             return
         }
         let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
@@ -228,16 +229,19 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             let i420Frame = frame.newI420()
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
                   let pixelBuffer = self.newBGRAFramebuffer(from: i420) else { return }
-            self.appendGamePixelBuffer(pixelBuffer)
+            let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
+            self.appendGamePixelBuffer(retainedPixelBuffer)
         }
     }
 
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        appendGamePixelBuffer(pixelBuffer)
+        let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
+        appendGamePixelBuffer(retainedPixelBuffer)
     }
 
-    private func appendGamePixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+    private func appendGamePixelBuffer(_ retainedPixelBuffer: UInt) {
         queue.async {
+            let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
             if !self.receivedGameVideoFrame {
                 self.receivedGameVideoFrame = true
                 self.stopUICapture()
@@ -247,7 +251,9 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     }
 
     private func appendUICapturePixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+        let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
         queue.async {
+            let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
             guard !self.receivedGameVideoFrame else { return }
             self.appendPixelBufferOnQueue(pixelBuffer)
         }

@@ -169,7 +169,7 @@ enum TwitchOAuthService {
         "bits:read",
     ]
 
-    static func isCallbackURL(_ url: URL) -> Bool {
+    nonisolated static func isCallbackURL(_ url: URL) -> Bool {
         url.scheme == "http" && url.host == "localhost" && (url.path.isEmpty || url.path == "/")
     }
 
@@ -421,6 +421,7 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
             queue.async {
                 do {
                     let listener = try NWListener(using: .tcp, on: 80)
+                    let callbackQueue = self.queue
                     self.listener = listener
                     let resumeGate = TwitchContinuationResumeGate()
                     listener.stateUpdateHandler = { state in
@@ -441,7 +442,7 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
                     listener.newConnectionHandler = { [weak self] connection in
                         self?.handle(connection)
                     }
-                    listener.start(queue: self.queue)
+                    listener.start(queue: callbackQueue)
                 } catch {
                     continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://localhost/. Close anything using port 80 or run OpenNOW with permission to bind that port. \(error.localizedDescription)"))
                 }

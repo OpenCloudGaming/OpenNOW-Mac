@@ -744,9 +744,10 @@ final class CatalogViewModel: ObservableObject {
 
     private func startCatalogTwitchBroadcast() {
         guard !catalogBroadcastStatus.isBroadcasting else { return }
-        let selectedTitle = selectedGame?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let selectedTitle = (selectedGame?.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let title = selectedTitle.isEmpty ? "OpenNOW Live" : selectedTitle
-        let applicationID = selectedGame.map(Self.favoriteAppId(for:)).filter { $0 > 0 }.map(String.init) ?? "catalog"
+        let selectedApplicationID = selectedGame.map(Self.favoriteAppId(for:)) ?? ""
+        let applicationID = selectedApplicationID.isEmpty ? "catalog" : selectedApplicationID
         guard let configuration = catalogBroadcastConfiguration(title: title, applicationID: applicationID) else {
             errorMessage = "Twitch is not ready. Save your Primary Stream Key in Settings > Twitch."
             return
