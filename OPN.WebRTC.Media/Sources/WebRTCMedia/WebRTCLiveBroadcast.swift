@@ -1,9 +1,11 @@
 @preconcurrency import Accelerate
 import AudioToolbox
+import AppKit
 import CoreMedia
 import CoreVideo
 import Foundation
 import Network
+import ScreenCaptureKit
 import Security
 import VideoToolbox
 @preconcurrency import WebRTC
@@ -85,6 +87,8 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     private var droppedFrames = 0
     private var lastStatusHostTime: CFTimeInterval = 0
     private var isStopping = false
+    private var receivedGameVideoFrame = false
+    private var uiCapture: WebRTCWindowBroadcastCapture?
     private var microphoneStereoSamples: [Int16] = []
     private var i420PixelBufferPool: CVPixelBufferPool?
     private var i420PixelBufferPoolWidth = 0
@@ -109,6 +113,8 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.droppedFrames = 0
             self.lastStatusHostTime = 0
             self.isStopping = false
+            self.receivedGameVideoFrame = false
+            self.uiCapture = nil
             self.microphoneStereoSamples.removeAll(keepingCapacity: true)
             self.audioEncoder.reset(bitrateKbps: configuration.audioBitrateKbps)
             self.emit(.connecting)
@@ -125,6 +131,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.publisher = nil
             self.encoder.invalidate()
             self.audioEncoder.reset(bitrateKbps: 160)
+            self.stopUICapture()
             self.reset()
             self.emit(.idle)
             Task { await publisher?.close() }
@@ -134,7 +141,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     func appendVideoFrame(_ frame: RTCVideoFrame) {
         guard isActive else { return }
         if let buffer = frame.buffer as? RTCCVPixelBuffer {
-            appendPixelBuffer(buffer.pixelBuffer)
+            appendGamePixelBuffer(buffer.pixelBuffer)
             return
         }
         let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
@@ -143,12 +150,29 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             let i420Frame = frame.newI420()
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
                   let pixelBuffer = self.newBGRAFramebuffer(from: i420) else { return }
-            self.appendPixelBuffer(pixelBuffer)
+            self.appendGamePixelBuffer(pixelBuffer)
         }
     }
 
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        appendPixelBuffer(pixelBuffer)
+        appendGamePixelBuffer(pixelBuffer)
+    }
+
+    private func appendGamePixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+        queue.async {
+            if !self.receivedGameVideoFrame {
+                self.receivedGameVideoFrame = true
+                self.stopUICapture()
+            }
+            self.appendPixelBufferOnQueue(pixelBuffer)
+        }
+    }
+
+    private func appendUICapturePixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+        queue.async {
+            guard !self.receivedGameVideoFrame else { return }
+            self.appendPixelBufferOnQueue(pixelBuffer)
+        }
     }
 
     func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate _: Double, channels: UInt32) {
@@ -184,6 +208,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                     return
                 }
                 self.publisher = publisher
+                self.startUICaptureIfNeeded()
                 self.emit(.publishing(startedAt: self.startedAt ?? Date(), elapsedSeconds: 0, droppedFrames: 0, videoBitrateKbps: configuration.videoBitrateKbps))
             }
         } catch {
@@ -191,37 +216,36 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         }
     }
 
-    private func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        let pixelBufferBox = BroadcastPixelBuffer(pixelBuffer)
-        queue.async {
-            let pixelBuffer = pixelBufferBox.value
-            guard let configuration = self.configuration, let publisher = self.publisher, !self.isStopping else { return }
-            if self.firstFrameHostTime == nil { self.firstFrameHostTime = CACurrentMediaTime() }
-            guard let firstFrameHostTime = self.firstFrameHostTime else { return }
-            let timestamp = CMTime(seconds: max(0, CACurrentMediaTime() - firstFrameHostTime), preferredTimescale: 1_000)
-            do {
-                if !self.encoder.isConfigured {
-                    try self.encoder.configure(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer), fps: configuration.fps, bitrateKbps: configuration.videoBitrateKbps)
-                }
-                let frameIndex = self.frameIndex
-                self.frameIndex += 1
-                try self.encoder.encode(pixelBuffer: pixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0) { packet in
-                    Task {
-                        do {
-                            try await publisher.publishVideo(packet)
-                        } catch {
-                            self.queue.async {
-                                guard self.publisher === publisher else { return }
-                                self.fail(error)
-                            }
+    private func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer) {
+        guard let configuration, let publisher, !isStopping else { return }
+        if firstFrameHostTime == nil { firstFrameHostTime = CACurrentMediaTime() }
+        guard let firstFrameHostTime else { return }
+        let timestamp = CMTime(seconds: max(0, CACurrentMediaTime() - firstFrameHostTime), preferredTimescale: 1_000)
+        do {
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            let dimensionsChanged = encoder.isConfigured && (encoder.configuredWidth != width || encoder.configuredHeight != height)
+            if !encoder.isConfigured || dimensionsChanged {
+                try encoder.configure(width: width, height: height, fps: configuration.fps, bitrateKbps: configuration.videoBitrateKbps)
+            }
+            let frameIndex = self.frameIndex
+            self.frameIndex += 1
+            try encoder.encode(pixelBuffer: pixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0 || dimensionsChanged) { packet in
+                Task {
+                    do {
+                        try await publisher.publishVideo(packet)
+                    } catch {
+                        self.queue.async {
+                            guard self.publisher === publisher else { return }
+                            self.fail(error)
                         }
                     }
                 }
-                self.emitElapsedIfNeeded(configuration: configuration)
-            } catch {
-                self.droppedFrames += 1
-                self.fail(error)
             }
+            emitElapsedIfNeeded(configuration: configuration)
+        } catch {
+            droppedFrames += 1
+            fail(error)
         }
     }
 
@@ -237,6 +261,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         self.publisher = nil
         encoder.invalidate()
         audioEncoder.reset(bitrateKbps: 160)
+        stopUICapture()
         reset()
         Task { await publisher?.close() }
         emit(.failed(Self.message(for: error)))
@@ -249,8 +274,34 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         frameIndex = 0
         audioSampleIndex = 0
         isStopping = false
+        receivedGameVideoFrame = false
         droppedFrames = 0
+        uiCapture = nil
         microphoneStereoSamples.removeAll(keepingCapacity: true)
+    }
+
+    private func startUICaptureIfNeeded() {
+        guard uiCapture == nil, !receivedGameVideoFrame else { return }
+        let capture = WebRTCWindowBroadcastCapture { [weak self] pixelBuffer in
+            self?.appendUICapturePixelBuffer(pixelBuffer)
+        }
+        uiCapture = capture
+        Task { [weak self, capture] in
+            do {
+                try await capture.start()
+            } catch {
+                self?.queue.async {
+                    WebRTCMediaTelemetry.capture("webrtc.broadcast.ui_capture.unavailable", level: .warning, message: Self.message(for: error))
+                    if self?.uiCapture === capture { self?.uiCapture = nil }
+                }
+            }
+        }
+    }
+
+    private func stopUICapture() {
+        let capture = uiCapture
+        uiCapture = nil
+        Task { await capture?.stop() }
     }
 
     private func mixWithMicrophone(gameStereoSamples: [Int16]) -> [Int16] {
@@ -398,17 +449,67 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         return vImagePermuteChannels_ARGB8888(&destination, &destination, &bgraMap, vImage_Flags(kvImageNoFlags)) == kvImageNoError
     }
 
-    private static func message(for error: Error) -> String {
+    fileprivate static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription.isEmpty ? "Twitch broadcast failed." : error.localizedDescription
     }
 }
 
-private final class BroadcastPixelBuffer: @unchecked Sendable {
-    let value: CVPixelBuffer
+private final class WebRTCWindowBroadcastCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "io.opencg.opennow.twitch.broadcast.ui-capture", qos: .userInitiated)
+    private let onFrame: @Sendable (CVPixelBuffer) -> Void
+    private var stream: SCStream?
 
-    init(_ value: CVPixelBuffer) {
-        self.value = value
+    init(onFrame: @escaping @Sendable (CVPixelBuffer) -> Void) {
+        self.onFrame = onFrame
+        super.init()
+    }
+
+    func start() async throws {
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let processID = pid_t(ProcessInfo.processInfo.processIdentifier)
+        let candidateWindows = content.windows.filter { window in
+            window.owningApplication?.processID == processID && window.frame.width >= 64 && window.frame.height >= 64
+        }
+        guard let window = candidateWindows.max(by: { lhs, rhs in lhs.frame.width * lhs.frame.height < rhs.frame.width * rhs.frame.height }) else {
+            throw BroadcastError.capture("OpenNOW window is not available for broadcast capture.")
+        }
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let configuration = SCStreamConfiguration()
+        configuration.width = Self.evenDimension(window.frame.width)
+        configuration.height = Self.evenDimension(window.frame.height)
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        configuration.showsCursor = true
+        configuration.capturesAudio = false
+        configuration.queueDepth = 3
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+        self.stream = stream
+        try await stream.startCapture()
+    }
+
+    func stop() async {
+        guard let stream else { return }
+        self.stream = nil
+        try? await stream.stopCapture()
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        WebRTCMediaTelemetry.capture("webrtc.broadcast.ui_capture.stop", level: .warning, message: WebRTCLiveBroadcastSession.message(for: error))
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
+        guard outputType == .screen,
+              CMSampleBufferIsValid(sampleBuffer),
+              CMSampleBufferDataIsReady(sampleBuffer),
+              let pixelBuffer = sampleBuffer.imageBuffer else { return }
+        onFrame(pixelBuffer)
+    }
+
+    private static func evenDimension(_ value: CGFloat) -> Int {
+        let rounded = max(64, Int(value.rounded()))
+        return rounded - rounded % 2
     }
 }
 
@@ -526,6 +627,8 @@ private final class WebRTCAACLiveEncoder: @unchecked Sendable {
 private final class WebRTCH264LiveEncoder: @unchecked Sendable {
     private var session: VTCompressionSession?
     private(set) var isConfigured = false
+    private(set) var configuredWidth = 0
+    private(set) var configuredHeight = 0
 
     func configure(width: Int, height: Int, fps: Int, bitrateKbps: Int) throws {
         invalidate()
@@ -540,6 +643,8 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
         VTSessionSetProperty(newSession, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: max(1, fps * 2)))
         VTCompressionSessionPrepareToEncodeFrames(newSession)
         isConfigured = true
+        configuredWidth = width
+        configuredHeight = height
     }
 
     func encode(pixelBuffer: CVPixelBuffer, presentationTime: CMTime, forceKeyframe: Bool, callback: @escaping @Sendable (WebRTCH264Packet) -> Void) throws {
@@ -557,6 +662,8 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
         }
         session = nil
         isConfigured = false
+        configuredWidth = 0
+        configuredHeight = 0
     }
 
     private var currentCallback: (@Sendable (WebRTCH264Packet) -> Void)?
@@ -828,12 +935,13 @@ private enum AMF0 {
 
 private enum BroadcastError: LocalizedError {
     case audio(String)
+    case capture(String)
     case encoder(String)
     case rtmp(String)
 
     var errorDescription: String? {
         switch self {
-        case .audio(let message), .encoder(let message), .rtmp(let message): return message
+        case .audio(let message), .capture(let message), .encoder(let message), .rtmp(let message): return message
         }
     }
 }
