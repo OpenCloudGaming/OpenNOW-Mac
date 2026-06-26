@@ -62,7 +62,7 @@ public final class OPNGameLaunchBridge {
     private init() {}
 
     public func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, variantIndex: Int, completion: @escaping OPNGameLaunchPlanCompletion) {
-        let token = idToken.isEmpty ? accessToken : idToken
+        let token = accessToken.isEmpty ? idToken : accessToken
         guard !token.isEmpty else {
             completion(false, "Sign in again before launching a game.", nil)
             return

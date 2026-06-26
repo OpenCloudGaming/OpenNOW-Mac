@@ -787,7 +787,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     private var launchToken: String {
-        session.idToken.isEmpty ? session.accessToken : session.idToken
+        session.accessToken.isEmpty ? session.idToken : session.accessToken
     }
 
     private func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String) {
