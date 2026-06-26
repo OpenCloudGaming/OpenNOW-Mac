@@ -553,6 +553,7 @@ final class CatalogViewModel: ObservableObject {
             self.launchMessage = ""
             guard success, let plan else {
                 OpenNOWLog.error(.launch, "Launch plan failed: \(message)")
+                if self.refreshAuthIfNeeded(error: message) { return }
                 self.clearLaunchFlow()
                 self.errorMessage = message.isEmpty ? "Unable to prepare GeForce NOW launch." : message
                 return
@@ -1603,7 +1604,9 @@ final class CatalogViewModel: ObservableObject {
     }
 
     private func refreshAuthIfNeeded(error: String) -> Bool {
-        guard error.contains("401"), !authRefreshInFlight else { return false }
+        let lowercasedError = error.lowercased()
+        let isAuthFailure = lowercasedError.contains("401") || lowercasedError.contains("403") || lowercasedError.contains("unauthorized") || lowercasedError.contains("forbidden")
+        guard isAuthFailure, !authRefreshInFlight else { return false }
         authRefreshInFlight = true
         isLoading = false
         isLoadingPanels = false
