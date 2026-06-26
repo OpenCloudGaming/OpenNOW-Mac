@@ -30,7 +30,7 @@ struct LoginView: View {
                     onRefreshAuth: viewModel.refreshActiveSession,
                     onWindowTitleChange: onWindowTitleChange
                 )
-                .id(activeSession.id)
+                .id(catalogSessionIdentity(activeSession))
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 loginWindow
@@ -47,6 +47,10 @@ struct LoginView: View {
         .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }
         .onChange(of: viewModel.activeSession?.id) { _, _ in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
+    }
+
+    private func catalogSessionIdentity(_ session: LoginSession) -> String {
+        "\(session.id):\(Int(session.expiresAt.timeIntervalSince1970)):\(Int(session.clientTokenExpiresAt.timeIntervalSince1970))"
     }
 
     private var loginWindow: some View {
