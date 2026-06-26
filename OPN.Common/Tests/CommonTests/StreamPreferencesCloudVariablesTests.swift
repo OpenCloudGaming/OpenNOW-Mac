@@ -2,6 +2,38 @@ import Foundation
 import Testing
 @testable import Common
 
+@Test func automaticServerLocationKeepsProviderCloudMatchBase() {
+    let previousRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
+    let previousCachedRegions = OPNStreamPreferences.loadCachedRegions()
+    defer {
+        OPNStreamPreferences.saveSelectedRegionUrl(previousRegionUrl)
+        OPNStreamPreferences.saveCachedRegions(previousCachedRegions)
+    }
+
+    OPNStreamPreferences.saveSelectedRegionUrl("")
+    OPNStreamPreferences.saveCachedRegions([
+        OPNStreamRegionOption(name: "Texas (USA)", url: "https://us-texas.cloudmatchbeta.nvidiagrid.net/", latencyMs: 12),
+    ])
+
+    #expect(OPNStreamPreferences.loadSelectedStreamingBaseUrl() == OPNStreamPreferences.defaultStreamingBaseUrl)
+}
+
+@Test func manualServerLocationUsesSelectedRegionalCloudMatchBase() {
+    let previousRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
+    let previousCachedRegions = OPNStreamPreferences.loadCachedRegions()
+    defer {
+        OPNStreamPreferences.saveSelectedRegionUrl(previousRegionUrl)
+        OPNStreamPreferences.saveCachedRegions(previousCachedRegions)
+    }
+
+    OPNStreamPreferences.saveSelectedRegionUrl("https://us-texas.cloudmatchbeta.nvidiagrid.net")
+    OPNStreamPreferences.saveCachedRegions([
+        OPNStreamRegionOption(name: "Georgia (USA)", url: "https://us-georgia.cloudmatchbeta.nvidiagrid.net/", latencyMs: 10),
+    ])
+
+    #expect(OPNStreamPreferences.loadSelectedStreamingBaseUrl() == "https://us-texas.cloudmatchbeta.nvidiagrid.net/")
+}
+
 @Test func cloudVariablesRequestIncludesRequiredGXTQueryItems() throws {
     let request = try #require(OPNStreamPreferences.cloudVariablesRequest(token: "token", locale: "en_US"))
     let url = try #require(request.url)

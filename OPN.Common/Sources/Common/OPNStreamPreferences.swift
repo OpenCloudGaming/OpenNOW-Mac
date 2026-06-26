@@ -516,8 +516,7 @@ public enum OPNStreamPreferences {
     public static func loadSelectedStreamingBaseUrl() -> String {
         let selected = loadSelectedRegionUrl()
         if !selected.isEmpty { return normalizedBaseUrl(selected) }
-        let best = loadCachedRegions().first { !$0.url.isEmpty && $0.latencyMs >= 0 }
-        return best.map { normalizedBaseUrl($0.url) } ?? defaultStreamingBaseUrl
+        return defaultStreamingBaseUrl
     }
 
     public static func loadSelectedRegionUrl(forGame appId: String) -> String {
@@ -739,10 +738,10 @@ public enum OPNStreamPreferences {
 
         let selectedRegionUrl = loadSelectedRegionUrl()
         let cachedRegions = loadCachedRegions()
-        let cachedChoice = cachedRegionChoice(regions: cachedRegions, selectedRegionUrl: selectedRegionUrl)
+        let cachedChoice = selectedRegionUrl.isEmpty ? cachedRegions.first { !$0.url.isEmpty && $0.latencyMs >= 0 } : cachedRegionChoice(regions: cachedRegions, selectedRegionUrl: selectedRegionUrl)
         if let cachedChoice, !cachedChoice.url.isEmpty {
             var cached = initial
-            cached.streamingBaseUrl = normalizedBaseUrl(cachedChoice.url)
+            if !selectedRegionUrl.isEmpty { cached.streamingBaseUrl = normalizedBaseUrl(cachedChoice.url) }
             cached.latencyMs = cachedChoice.latencyMs
             cached.usedAutomaticRegion = selectedRegionUrl.isEmpty
             cached.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: cached.latencyMs, measuredBandwidthMbps: cached.measuredBandwidthMbps, packetLossPercent: cached.packetLossPercent, jitterMs: cached.jitterMs)
@@ -753,7 +752,7 @@ public enum OPNStreamPreferences {
         fetchRegions(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { regions in
             var result = initialResult
             if let chosen = cachedRegionChoice(regions: regions, selectedRegionUrl: selectedRegionUrl), !chosen.url.isEmpty {
-                result.streamingBaseUrl = normalizedBaseUrl(chosen.url)
+                if !selectedRegionUrl.isEmpty { result.streamingBaseUrl = normalizedBaseUrl(chosen.url) }
                 result.latencyMs = chosen.latencyMs
                 result.usedAutomaticRegion = selectedRegionUrl.isEmpty
             }
