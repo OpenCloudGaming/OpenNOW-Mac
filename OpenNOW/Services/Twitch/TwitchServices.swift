@@ -42,6 +42,62 @@ struct TwitchStreamMarker: Decodable, Equatable, Sendable {
     }
 }
 
+struct TwitchIngestServer: Decodable, Equatable, Sendable {
+    let id: Int
+    let name: String
+    let urlTemplate: String
+    let priority: Int
+    let isDefault: Bool
+
+    var rtmpURL: String? {
+        let url = urlTemplate.replacingOccurrences(of: "/{stream_key}", with: "")
+        return URL(string: url) == nil ? nil : url
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case name
+        case urlTemplate = "url_template"
+        case priority
+        case isDefault = "default"
+    }
+}
+
+enum TwitchIngestService {
+    private static let endpoint = URL(string: "https://ingest.twitch.tv/ingests")!
+
+    static func refreshDefaultServer() async {
+        guard let servers = try? await ingestServers(), let server = preferredServer(from: servers), let rtmpURL = server.rtmpURL else { return }
+        TwitchIngestServerStore.save(defaultRTMPURL: rtmpURL)
+    }
+
+    private static func ingestServers() async throws -> [TwitchIngestServer] {
+        struct Response: Decodable { let ingests: [TwitchIngestServer] }
+        let (data, response) = try await URLSession.shared.data(from: endpoint)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return [] }
+        return try JSONDecoder().decode(Response.self, from: data).ingests
+    }
+
+    private static func preferredServer(from servers: [TwitchIngestServer]) -> TwitchIngestServer? {
+        servers.sorted { lhs, rhs in
+            if lhs.isDefault != rhs.isDefault { return lhs.isDefault }
+            return lhs.priority < rhs.priority
+        }.first
+    }
+}
+
+enum TwitchIngestServerStore {
+    private static let key = "OpenNOW.Twitch.DefaultIngestRTMPURL"
+
+    static func defaultRTMPURL() -> String? {
+        UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    static func save(defaultRTMPURL: String) {
+        UserDefaults.standard.set(defaultRTMPURL, forKey: key)
+    }
+}
+
 enum TwitchServiceError: LocalizedError, Sendable {
     case missingClientID
     case invalidCallback
@@ -123,6 +179,7 @@ enum TwitchOAuthService {
     }
 
     static func refreshStatus(clientID: String) async throws -> TwitchAccountStatus {
+        await TwitchIngestService.refreshDefaultServer()
         let client = try await authorizedClient(clientID: clientID)
         let user = try await client.currentUser()
         let streamKey = try await client.streamKey(broadcasterID: user.id)
@@ -133,6 +190,7 @@ enum TwitchOAuthService {
     }
 
     static func prepareBroadcast(clientID: String, title: String, applicationID: String) async throws -> String {
+        await TwitchIngestService.refreshDefaultServer()
         let preferences = TwitchPreferencesStore.load()
         guard preferences.autoTitleFromGame else { return "Twitch broadcast ready." }
         let client = try await authorizedClient(clientID: clientID)

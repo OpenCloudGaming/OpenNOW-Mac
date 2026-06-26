@@ -196,6 +196,7 @@ final class CatalogViewModel: ObservableObject {
         if twitchPrimaryStreamKeySaved {
             twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
         }
+        Task { await TwitchIngestService.refreshDefaultServer() }
         refreshTwitchAccountStatus()
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)

@@ -71,7 +71,9 @@ struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
     var eventAlertsEnabled = true
 
     var ingestURL: String {
-        ingestRegion == .custom ? customRTMPURL.trimmingCharacters(in: .whitespacesAndNewlines) : ingestRegion.rtmpURL
+        if ingestRegion == .custom { return customRTMPURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if ingestRegion == .automatic, let cached = TwitchIngestServerStore.defaultRTMPURL() { return cached }
+        return ingestRegion.rtmpURL
     }
 
     static let defaultValue = TwitchBroadcastPreferences()
