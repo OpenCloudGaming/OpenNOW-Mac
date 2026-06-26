@@ -680,7 +680,13 @@ private struct TwitchSettingsPage: View {
                 }
                 .padding(.top, 10)
                 SettingsDivider()
-                SettingsTextFieldRow(title: "Client ID", subtitle: "Optional: paste a public Twitch Developer Client ID only if you want OAuth channel metadata features.", text: viewModel.twitchPreferences.clientID, placeholder: "Optional Twitch Client ID", action: viewModel.setTwitchClientID)
+                SettingsInfoRow(label: "OAuth Redirect URL", value: TwitchOAuthService.redirectURI)
+                Text("Register an application at dev.twitch.tv/console/apps and enter this exact redirect URL before copying the app's public Client ID into OpenNOW.")
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+                SettingsDivider()
+                SettingsTextFieldRow(title: "Client ID", subtitle: "Paste the public Twitch Developer Client ID after registering the redirect URL above. Do not paste a Client Secret.", text: viewModel.twitchPreferences.clientID, placeholder: "Twitch Client ID", action: viewModel.setTwitchClientID)
                 SettingsDivider()
                 HStack(spacing: 10) {
                     SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
@@ -733,7 +739,7 @@ private struct TwitchSettingsPage: View {
 
     private var accountSubtitle: String {
         if viewModel.twitchPrimaryStreamKeySaved, !viewModel.twitchAccountStatus.isConnected {
-            return "Primary Stream Key is saved. OAuth is optional for channel metadata and chat features."
+            return "Primary Stream Key is saved. Connect OAuth for channel metadata, markers, chat, and event features."
         }
         if viewModel.twitchAccountStatus.isConnected {
             return viewModel.twitchAccountStatus.streamKeyAvailable ? "Stream key is available for RTMP publishing." : "Connected, but stream key has not been fetched yet."

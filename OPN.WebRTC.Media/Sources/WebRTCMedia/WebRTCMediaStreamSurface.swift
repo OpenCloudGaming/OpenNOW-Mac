@@ -5,6 +5,8 @@ import SwiftUI
 public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ progress: StreamProgress) -> Void
 public typealias WebRTCMediaStreamEndCallback = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: StreamReport?) -> Void
 public typealias WebRTCMediaBroadcastConfigurationProvider = @MainActor @Sendable (_ title: String, _ applicationID: String, _ width: Int, _ height: Int, _ fps: Int) -> WebRTCLiveBroadcastConfiguration?
+public typealias WebRTCMediaBroadcastStartCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> String?
+public typealias WebRTCMediaStreamMarkerCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> String
 
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
@@ -12,6 +14,8 @@ public struct WebRTCMediaStreamSurface: View {
     private let sessionProvider: any StreamSessionProvider
     private let signaling: (any StreamSignalingChannel)?
     private let broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider?
+    private let onBroadcastStart: WebRTCMediaBroadcastStartCallback?
+    private let onStreamMarker: WebRTCMediaStreamMarkerCallback?
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
 
@@ -48,12 +52,16 @@ public struct WebRTCMediaStreamSurface: View {
                 sessionProvider: any StreamSessionProvider,
                 signaling: (any StreamSignalingChannel)? = nil,
                 broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider? = nil,
+                onBroadcastStart: WebRTCMediaBroadcastStartCallback? = nil,
+                onStreamMarker: WebRTCMediaStreamMarkerCallback? = nil,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
         self.signaling = signaling
         self.broadcastConfigurationProvider = broadcastConfigurationProvider
+        self.onBroadcastStart = onBroadcastStart
+        self.onStreamMarker = onStreamMarker
         self.onProgress = onProgress
         self.onEnd = onEnd
     }
@@ -540,11 +548,24 @@ public struct WebRTCMediaStreamSurface: View {
             return
         }
         transport?.startBroadcast(configuration: broadcastConfiguration)
+        Task { @MainActor in
+            if let message = await onBroadcastStart?(configuration.title, configuration.applicationID), !message.isEmpty {
+                twitchMarkerMessage = message
+            }
+        }
         WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast start requested.", attributes: ["applicationID": configuration.applicationID])
     }
 
     private func createTwitchMarker() {
-        twitchMarkerMessage = broadcastStatus.isLive ? "Marker requested at \(Date().formatted(date: .omitted, time: .standard))" : "Go live before creating a marker."
+        guard broadcastStatus.isLive else {
+            twitchMarkerMessage = "Go live before creating a marker."
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        twitchMarkerMessage = "Creating marker..."
+        Task { @MainActor in
+            twitchMarkerMessage = await onStreamMarker?(configuration.title, configuration.applicationID) ?? "Marker requested at \(Date().formatted(date: .omitted, time: .standard))"
+        }
         WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
     }
 

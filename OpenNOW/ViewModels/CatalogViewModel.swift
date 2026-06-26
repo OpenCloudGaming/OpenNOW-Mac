@@ -196,6 +196,7 @@ final class CatalogViewModel: ObservableObject {
         if twitchPrimaryStreamKeySaved {
             twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
         }
+        refreshTwitchAccountStatus()
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
         $searchQuery
@@ -717,9 +718,8 @@ final class CatalogViewModel: ObservableObject {
             actionMessage = "Opening Twitch activation in your browser. Approve OpenNOW to finish connecting."
             errorMessage = ""
             do {
-                twitchAccountStatus = try await TwitchOAuthService.start(clientID: clientID)
-                twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
-                actionMessage = "Twitch connected."
+                _ = try await TwitchOAuthService.start(clientID: clientID)
+                actionMessage = "Twitch authorization opened. Finish approval in your browser."
             } catch {
                 errorMessage = Self.message(for: error)
             }
@@ -728,11 +728,13 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func disconnectTwitch() {
-        TwitchTokenStore.delete()
-        TwitchStreamKeyStore.delete()
-        twitchPrimaryStreamKeySaved = false
-        twitchAccountStatus = TwitchAccountStatus()
-        actionMessage = "Twitch disconnected."
+        let clientID = twitchPreferences.clientID
+        Task { @MainActor in
+            await TwitchOAuthService.disconnect(clientID: clientID)
+            twitchPrimaryStreamKeySaved = false
+            twitchAccountStatus = TwitchAccountStatus()
+            actionMessage = "Twitch disconnected."
+        }
     }
 
     func handleTwitchOAuthCallback(_ url: URL) {
@@ -745,6 +747,19 @@ final class CatalogViewModel: ObservableObject {
                 errorMessage = ""
             } catch {
                 errorMessage = Self.message(for: error)
+            }
+        }
+    }
+
+    private func refreshTwitchAccountStatus() {
+        let clientID = twitchPreferences.clientID
+        guard !clientID.isEmpty, (try? TwitchTokenStore.load()) != nil else { return }
+        Task { @MainActor in
+            do {
+                twitchAccountStatus = try await TwitchOAuthService.refreshStatus(clientID: clientID)
+                twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
+            } catch {
+                if !twitchPrimaryStreamKeySaved { twitchAccountStatus = TwitchAccountStatus() }
             }
         }
     }
