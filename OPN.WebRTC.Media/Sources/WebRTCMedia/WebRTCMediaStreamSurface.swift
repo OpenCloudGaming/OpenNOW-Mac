@@ -456,56 +456,45 @@ public struct WebRTCMediaStreamSurface: View {
         Group {
             switch broadcastStatus {
             case .connecting:
-                Text("Connecting Twitch...")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(.black.opacity(0.62), in: Capsule())
+                broadcastStatusChip(color: .purple, text: "Connecting")
             case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                HStack(spacing: 8) {
-                    Circle().fill(Color.purple.opacity(0.72)).frame(width: 8, height: 8)
-                    Text("TWITCH VERIFYING \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · Drops \(droppedFrames)")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.94))
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(.black.opacity(0.62), in: Capsule())
-                .overlay(Capsule().stroke(Color.purple.opacity(0.36), lineWidth: 1))
+                broadcastStatusChip(color: .purple.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
             case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                HStack(spacing: 8) {
-                    Circle().fill(Color.purple).frame(width: 8, height: 8)
-                    Text("TWITCH \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · Drops \(droppedFrames)")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.94))
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(.black.opacity(0.62), in: Capsule())
-                .overlay(Capsule().stroke(Color.purple.opacity(0.46), lineWidth: 1))
+                broadcastStatusChip(color: .red, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
             case .stopping:
-                Text("Stopping Twitch...")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(.black.opacity(0.62), in: Capsule())
+                broadcastStatusChip(color: .orange, text: "Stopping")
             case .failed(let message):
-                Text(message)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(Color.purple.opacity(0.72), in: Capsule())
+                broadcastStatusChip(color: .purple, text: message)
             case .idle:
                 EmptyView()
             }
         }
-        .padding(.top, 62)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 24)
+        .padding(.trailing, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private func broadcastStatusChip(color: Color, text: String, detail: String? = nil) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(text)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.94))
+                    .lineLimit(1)
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: detail == nil ? 26 : 34)
+        .background(.black.opacity(0.56), in: Capsule())
+        .overlay(Capsule().stroke(color.opacity(0.34), lineWidth: 1))
+        .shadow(color: .black.opacity(0.34), radius: 12, x: 0, y: 5)
     }
 
     private func sidebarButton(systemName: String, title: String, isActive: Bool = false, action: @escaping () -> Void) -> some View {
@@ -546,7 +535,7 @@ public struct WebRTCMediaStreamSurface: View {
         case .idle: return "Ready"
         case .connecting: return "Connecting"
         case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-            let detail = broadcastVerificationMessage.isEmpty ? "verifying Twitch" : broadcastVerificationMessage
+            let detail = broadcastVerificationMessage.isEmpty ? "Twitch API confirmation pending; RTMP is publishing." : broadcastVerificationMessage
             return "Publishing \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops · \(detail)"
         case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps): return "Live \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops"
         case .stopping: return "Stopping"
@@ -851,9 +840,20 @@ public struct WebRTCMediaStreamSurface: View {
             broadcastVerificationUnavailable = true
             return
         }
-        broadcastVerificationMessage = "verifying Twitch live status"
+        broadcastVerificationMessage = "Checking Twitch live status."
         broadcastVerificationTask = Task { @MainActor in
-            let result = await onBroadcastLiveVerification(configuration.title, configuration.applicationID)
+            let title = configuration.title
+            let applicationID = configuration.applicationID
+            let result = await withTaskGroup(of: WebRTCMediaBroadcastLiveVerificationResult.self) { group in
+                group.addTask { await onBroadcastLiveVerification(title, applicationID) }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(8))
+                    return .unavailable("Twitch API verification timed out; RTMP is still publishing.")
+                }
+                let result = await group.next() ?? .unavailable("Twitch API verification is unavailable.")
+                group.cancelAll()
+                return result
+            }
             guard !Task.isCancelled else { return }
             broadcastVerificationTask = nil
             broadcastVerificationMessage = result.message
