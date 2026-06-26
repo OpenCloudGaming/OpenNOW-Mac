@@ -193,6 +193,9 @@ final class CatalogViewModel: ObservableObject {
         self.account = account
         self.session = session
         self.onRefreshAuth = onRefreshAuth
+        if twitchPrimaryStreamKeySaved {
+            twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
+        }
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
         $searchQuery
