@@ -52,7 +52,7 @@ struct LoginFormView: View {
                 Spacer()
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("GeForce NOW")
+                    Text("Get In. Game On.")
                         .font(.nvidiaSans(size: 34, weight: .bold))
                         .foregroundStyle(.white)
                         .tracking(0)
@@ -61,9 +61,10 @@ struct LoginFormView: View {
                         .padding(.bottom, 24)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        VendorContentString(text: "Instantly play the most demanding PC games and seamlessly play across your devices.")
-                        VendorContentString(text: "Your GeForce NOW library, memberships, and cloud saves stay connected through NVIDIA sign-in.")
-                        VendorContentString(text: "No downloads. No updates. Jump straight into RTX-powered cloud gaming.")
+                        VendorContentString(text: "GeForce RTX performance on any device")
+                        VendorContentString(text: "Connect to top PC game stores")
+                        VendorContentString(text: "Stream thousands of supported titles")
+                        VendorContentString(text: "Play hundreds of free-to-play favorites instantly")
                     }
                 }
                 .padding(.bottom, 34)
@@ -95,7 +96,7 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("OpenNOW Mac")
+                Text("2.0.85.135")
                     .font(.nvidiaSans(size: 14, weight: .regular))
                     .foregroundStyle(Color.gfnTextSecondary)
                     .lineLimit(1)
