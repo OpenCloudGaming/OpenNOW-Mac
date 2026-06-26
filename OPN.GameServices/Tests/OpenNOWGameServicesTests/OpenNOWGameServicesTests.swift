@@ -54,8 +54,8 @@ import WebRTCMedia
     #expect(result.1 == "This game does not include a launchable GeForce NOW app id.")
 }
 
-@Test(.serialized) func sessionManagerCreateUsesBrowserWebRTCCloudMatchShape() async throws {
-    let host = "create-browser-shape.example.test"
+@Test(.serialized) func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
+    let host = "create-release-shape.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/v2/session")
@@ -86,34 +86,33 @@ import WebRTCMedia
 
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
-    #expect(request.url?.query?.contains("keyboardLayout=m-us") == true)
-    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
-    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.85.135")
-    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
-    #expect(request.value(forHTTPHeaderField: "Origin") == nil)
+    #expect(request.url?.query?.contains("keyboardLayout=us") == true)
+    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == nil)
-    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "APPLE")
-    #expect(requestData["internalTitle"] is NSNull)
-    #expect(requestData["clientPlatformName"] as? String == "browser")
-    #expect(requestData["clientDisplayHdrCapabilities"] is NSNull)
-    #expect(requestData["networkTestSessionId"] is NSNull)
+    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
+    #expect(requestData["internalTitle"] as? String == "Test Game")
+    #expect(requestData["clientPlatformName"] as? String == "windows")
+    #expect(requestData["clientDisplayHdrCapabilities"] is [String: Any])
+    #expect(requestData["networkTestSessionId"] as? String == "stale-session-id")
     #expect(requestData["accountLinked"] as? Bool == true)
     #expect(requestData["enablePersistingInGameSettings"] as? Bool == true)
-    #expect(requestData["partnerCustomData"] as? String == "partner-data")
-    #expect(requestData["userAge"] as? Int == 21)
+    #expect(requestData["partnerCustomData"] as? String == "")
+    #expect(requestData["userAge"] as? Int == 26)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
     let monitor = try #require(monitorSettings.first)
-    let displayData = try #require(monitor["displayData"] as? [String: Int])
-    #expect(monitor["monitorId"] == nil)
-    #expect(monitor["dpi"] as? Int == 0)
-    #expect(displayData["desiredContentMaxLuminance"] == 0)
+    #expect(monitor["monitorId"] as? Int == 0)
+    #expect(monitor["positionX"] as? Int == 0)
+    #expect(monitor["positionY"] as? Int == 0)
     let streamingFeatures = try #require(requestData["requestedStreamingFeatures"] as? [String: Any])
-    #expect(streamingFeatures["reflex"] as? Bool == false)
-    #expect(streamingFeatures["profile"] as? Int == 1)
-    #expect(streamingFeatures["mouseMovementFlags"] == nil)
-    #expect(streamingFeatures["prefilterSharpness"] == nil)
-    #expect(metadataKeys.contains("store") == false)
-    #expect(metadataKeys.contains("networkLatencyMs") == false)
+    #expect(streamingFeatures["reflex"] as? Bool == true)
+    #expect(streamingFeatures["profile"] as? Int == 0)
+    #expect(streamingFeatures["mouseMovementFlags"] as? Int == 0)
+    #expect(streamingFeatures["prefilterSharpness"] as? Int == 0)
+    #expect(metadataKeys.contains("store") == true)
+    #expect(metadataKeys.contains("networkLatencyMs") == true)
 }
 
 @Test func activeSessionParserPreservesControlAndSignalingHosts() {
@@ -150,31 +149,6 @@ import WebRTCMedia
     #expect(descriptor?.resumeServer == "control.example.test")
 }
 
-@Test func sessionManagerReadyResumeAttachesFromValidation() async {
-    let host = "resume-ready.example.test"
-    SessionManagerURLProtocol.install(host: host) { _ in
-        SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
-    }
-    defer { SessionManagerURLProtocol.uninstall(host: host) }
-
-    OPNSessionManager.shared.setAccessToken("token")
-    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
-
-    let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
-            continuation.resume(returning: (success, info["sessionId"] as? String ?? "", info["serverIp"] as? String ?? "", info["signalingUrl"] as? String ?? "", error))
-        }
-    }
-
-    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
-    #expect(result.0 == true)
-    #expect(result.1 == "resume-session")
-    #expect(result.2 == host)
-    #expect(result.3 == "wss://signaling.example.test:443/nvst/")
-    #expect(result.4.isEmpty)
-    #expect(requests.map(\.httpMethod) == ["GET"])
-}
-
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
     let host = "resume-success.example.test"
     let lock = NSLock()
@@ -207,8 +181,6 @@ import WebRTCMedia
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
-    let claimMetadata = claimRequestData?["metaData"] as? [[String: String]]
-    let claimMetadataKeys = Set(claimMetadata?.compactMap { $0["key"] } ?? [])
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimPayload?["action"] as? Int == 2)
@@ -216,21 +188,14 @@ import WebRTCMedia
     #expect(claimRequestData?["appId"] as? Int == 123)
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
-    #expect(claimMetadataKeys.contains("clientPhysicalResolution"))
 }
 
-@Test func sessionManagerSessionNotPausedFallsBackToPolling() async {
+@Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
     let host = "resume-not-paused.example.test"
-    let lock = NSLock()
-    nonisolated(unsafe) var getCount = 0
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
         if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            lock.lock()
-            getCount += 1
-            let count = getCount
-            lock.unlock()
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 6 : 2, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: [
             "requestStatus": [
@@ -251,9 +216,9 @@ import WebRTCMedia
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
-    #expect(result.0 == true)
-    #expect(result.1.isEmpty)
-    #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
+    #expect(result.0 == false)
+    #expect(result.1 == "Session is not paused and cannot be resumed.")
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 }
 
 @Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
@@ -262,7 +227,7 @@ import WebRTCMedia
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
         if request.httpMethod == "GET", path == "/v2/session/resume-session" {
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
         }
         return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
     }
@@ -287,7 +252,7 @@ import WebRTCMedia
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 }
 
-@Test(.serialized) func sessionManagerStaleInternalCreateErrorReturnsActionableMessage() async {
+@Test(.serialized) func sessionManagerStaleInternalCreateErrorReturnsHTTPMessage() async {
     let host = "create-stale-internal.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")
@@ -305,8 +270,8 @@ import WebRTCMedia
     }
 
     #expect(result.0 == false)
-    #expect(result.1.contains("CloudMatch internal session error"))
-    #expect(result.1.contains("Try Automatic server location or a different region"))
+    #expect(result.1.contains("HTTP 400:"))
+    #expect(result.1.contains("INTERNAL_ERROR_STATUS 8A8C0000"))
 }
 
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
