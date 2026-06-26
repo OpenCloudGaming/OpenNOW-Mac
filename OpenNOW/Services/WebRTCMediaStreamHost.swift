@@ -28,6 +28,9 @@ struct WebRTCMediaStreamView: View {
             onBroadcastStart: { title, applicationID in
                 await Self.prepareTwitchBroadcast(title: title, applicationID: applicationID)
             },
+            onBroadcastLiveVerification: { title, applicationID in
+                await Self.verifyTwitchBroadcast(title: title, applicationID: applicationID)
+            },
             onStreamMarker: { title, applicationID in
                 await Self.createTwitchMarker(title: title, applicationID: applicationID)
             },
@@ -76,6 +79,18 @@ struct WebRTCMediaStreamView: View {
             return try await TwitchOAuthService.prepareBroadcast(clientID: clientID, title: title, applicationID: applicationID)
         } catch {
             return message(for: error)
+        }
+    }
+
+    private static func verifyTwitchBroadcast(title: String, applicationID: String) async -> WebRTCMediaBroadcastLiveVerificationResult {
+        let clientID = TwitchPreferencesStore.load().clientID
+        guard !clientID.isEmpty, (try? TwitchTokenStore.load()) != nil else { return .unavailable("Connect Twitch OAuth to verify live status with Twitch API.") }
+        do {
+            return .verified(try await TwitchOAuthService.verifyLiveBroadcast(clientID: clientID))
+        } catch TwitchServiceError.streamNotLive(let message) {
+            return .notLive(message)
+        } catch {
+            return .unavailable("Twitch API verification failed: \(message(for: error))")
         }
     }
 

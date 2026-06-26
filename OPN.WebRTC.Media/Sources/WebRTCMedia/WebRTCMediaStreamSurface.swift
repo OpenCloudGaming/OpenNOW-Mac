@@ -6,7 +6,20 @@ public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ pro
 public typealias WebRTCMediaStreamEndCallback = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: StreamReport?) -> Void
 public typealias WebRTCMediaBroadcastConfigurationProvider = @MainActor @Sendable (_ title: String, _ applicationID: String, _ width: Int, _ height: Int, _ fps: Int) -> WebRTCLiveBroadcastConfiguration?
 public typealias WebRTCMediaBroadcastStartCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> String?
+public typealias WebRTCMediaBroadcastLiveVerificationCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> WebRTCMediaBroadcastLiveVerificationResult
 public typealias WebRTCMediaStreamMarkerCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> String
+
+public enum WebRTCMediaBroadcastLiveVerificationResult: Equatable, Sendable {
+    case verified(String)
+    case unavailable(String)
+    case notLive(String)
+
+    var message: String {
+        switch self {
+        case .verified(let message), .unavailable(let message), .notLive(let message): return message
+        }
+    }
+}
 
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
@@ -15,6 +28,7 @@ public struct WebRTCMediaStreamSurface: View {
     private let signaling: (any StreamSignalingChannel)?
     private let broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider?
     private let onBroadcastStart: WebRTCMediaBroadcastStartCallback?
+    private let onBroadcastLiveVerification: WebRTCMediaBroadcastLiveVerificationCallback?
     private let onStreamMarker: WebRTCMediaStreamMarkerCallback?
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
@@ -44,8 +58,13 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
     @State private var broadcastStatus = WebRTCLiveBroadcastStatus.idle
+    @State private var broadcastLiveVerified = false
+    @State private var broadcastVerificationMessage = ""
+    @State private var broadcastForcedFailureMessage = ""
+    @State private var broadcastVerificationUnavailable = false
     @State private var recordingNotificationTask: Task<Void, Never>?
     @State private var broadcastNotificationTask: Task<Void, Never>?
+    @State private var broadcastVerificationTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -53,6 +72,7 @@ public struct WebRTCMediaStreamSurface: View {
                 signaling: (any StreamSignalingChannel)? = nil,
                 broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider? = nil,
                 onBroadcastStart: WebRTCMediaBroadcastStartCallback? = nil,
+                onBroadcastLiveVerification: WebRTCMediaBroadcastLiveVerificationCallback? = nil,
                 onStreamMarker: WebRTCMediaStreamMarkerCallback? = nil,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
@@ -61,6 +81,7 @@ public struct WebRTCMediaStreamSurface: View {
         self.signaling = signaling
         self.broadcastConfigurationProvider = broadcastConfigurationProvider
         self.onBroadcastStart = onBroadcastStart
+        self.onBroadcastLiveVerification = onBroadcastLiveVerification
         self.onStreamMarker = onStreamMarker
         self.onProgress = onProgress
         self.onEnd = onEnd
@@ -163,7 +184,7 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "sparkles", title: "Video") {
                 toggleVideoEnhancementSettings()
             }
-            sidebarButton(systemName: "dot.radiowaves.left.and.right", title: broadcastButtonTitle, isActive: broadcastStatus.isLive) {
+            sidebarButton(systemName: "dot.radiowaves.left.and.right", title: broadcastButtonTitle, isActive: broadcastStatus.isBroadcasting) {
                 toggleTwitchPanel()
             }
             .disabled(!isStreamReady)
@@ -308,12 +329,12 @@ public struct WebRTCMediaStreamSurface: View {
             if !twitchMarkerMessage.isEmpty { twitchPanelRow("Marker", twitchMarkerMessage) }
             HStack(spacing: 8) {
                 Button(action: toggleBroadcast) {
-                    Text(broadcastStatus.isLive ? "STOP BROADCAST" : "START BROADCAST")
+                    Text(broadcastStatus.isBroadcasting ? "STOP BROADCAST" : "START BROADCAST")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(broadcastStatus.isLive ? .white : .black)
+                        .foregroundStyle(broadcastStatus.isBroadcasting ? .white : .black)
                         .frame(maxWidth: .infinity)
                         .frame(height: 34)
-                        .background(broadcastStatus.isLive ? Color.red.opacity(0.75) : Color.purple.opacity(0.95))
+                        .background(broadcastStatus.isBroadcasting ? Color.red.opacity(0.75) : Color.purple.opacity(0.95))
                 }
                 .buttonStyle(.plain)
                 Button(action: createTwitchMarker) {
@@ -441,6 +462,17 @@ public struct WebRTCMediaStreamSurface: View {
                     .padding(.horizontal, 12)
                     .frame(height: 32)
                     .background(.black.opacity(0.62), in: Capsule())
+            case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+                HStack(spacing: 8) {
+                    Circle().fill(Color.purple.opacity(0.72)).frame(width: 8, height: 8)
+                    Text("TWITCH VERIFYING \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · Drops \(droppedFrames)")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.94))
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(.black.opacity(0.62), in: Capsule())
+                .overlay(Capsule().stroke(Color.purple.opacity(0.36), lineWidth: 1))
             case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
                 HStack(spacing: 8) {
                     Circle().fill(Color.purple).frame(width: 8, height: 8)
@@ -506,13 +538,16 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var broadcastButtonTitle: String {
-        broadcastStatus.isLive ? "Stop" : "Twitch"
+        broadcastStatus.isBroadcasting ? "Stop" : "Twitch"
     }
 
     private var twitchStatusText: String {
         switch broadcastStatus {
         case .idle: return "Ready"
         case .connecting: return "Connecting"
+        case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+            let detail = broadcastVerificationMessage.isEmpty ? "verifying Twitch" : broadcastVerificationMessage
+            return "Publishing \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops · \(detail)"
         case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps): return "Live \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops"
         case .stopping: return "Stopping"
         case .failed(let message): return message
@@ -537,7 +572,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func toggleBroadcast() {
-        if broadcastStatus.isLive {
+        if broadcastStatus.isBroadcasting {
             transport?.stopBroadcast()
             WebRTCMediaTelemetry.capture("webrtc.ui.twitch.stop", level: .info, message: "Twitch broadcast stop requested.", attributes: ["applicationID": configuration.applicationID])
             return
@@ -547,6 +582,12 @@ public struct WebRTCMediaStreamSurface: View {
             broadcastStatus = .failed("Twitch is not ready. Connect Twitch in Settings.")
             return
         }
+        broadcastLiveVerified = false
+        broadcastVerificationMessage = ""
+        broadcastForcedFailureMessage = ""
+        broadcastVerificationUnavailable = false
+        broadcastVerificationTask?.cancel()
+        broadcastVerificationTask = nil
         transport?.startBroadcast(configuration: broadcastConfiguration)
         Task { @MainActor in
             if let message = await onBroadcastStart?(configuration.title, configuration.applicationID), !message.isEmpty {
@@ -744,13 +785,94 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func handleBroadcastStatusChanged(_ status: WebRTCLiveBroadcastStatus) {
         broadcastNotificationTask?.cancel()
-        broadcastStatus = status
+        switch status {
+        case .connecting:
+            broadcastLiveVerified = false
+            broadcastVerificationMessage = ""
+            broadcastForcedFailureMessage = ""
+            broadcastVerificationUnavailable = false
+            broadcastVerificationTask?.cancel()
+            broadcastVerificationTask = nil
+            broadcastStatus = status
+        case .publishing(let startedAt, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+            if broadcastLiveVerified {
+                broadcastStatus = .live(startedAt: startedAt, elapsedSeconds: elapsedSeconds, droppedFrames: droppedFrames, videoBitrateKbps: videoBitrateKbps)
+            } else {
+                broadcastStatus = status
+                startBroadcastLiveVerification()
+            }
+        case .live:
+            broadcastLiveVerified = true
+            broadcastVerificationUnavailable = false
+            broadcastVerificationMessage = "Twitch confirmed this stream is live."
+            broadcastStatus = status
+        case .stopping:
+            guard broadcastForcedFailureMessage.isEmpty else { return }
+            broadcastStatus = status
+        case .idle:
+            broadcastVerificationTask?.cancel()
+            broadcastVerificationTask = nil
+            broadcastLiveVerified = false
+            broadcastVerificationMessage = ""
+            broadcastVerificationUnavailable = false
+            if !broadcastForcedFailureMessage.isEmpty {
+                let message = broadcastForcedFailureMessage
+                broadcastForcedFailureMessage = ""
+                broadcastStatus = .failed(message)
+                scheduleBroadcastTerminalReset(for: broadcastStatus)
+            } else {
+                broadcastStatus = status
+            }
+        case .failed:
+            broadcastVerificationTask?.cancel()
+            broadcastVerificationTask = nil
+            broadcastLiveVerified = false
+            broadcastVerificationUnavailable = false
+            broadcastStatus = status
+            scheduleBroadcastTerminalReset(for: status)
+        }
+    }
+
+    private func scheduleBroadcastTerminalReset(for status: WebRTCLiveBroadcastStatus) {
         guard status.isTerminal else { return }
         broadcastNotificationTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
             guard broadcastStatus == status else { return }
             broadcastStatus = .idle
             broadcastNotificationTask = nil
+        }
+    }
+
+    private func startBroadcastLiveVerification() {
+        guard !broadcastVerificationUnavailable else { return }
+        guard broadcastVerificationTask == nil else { return }
+        guard let onBroadcastLiveVerification else {
+            broadcastVerificationMessage = "Twitch API verification is unavailable."
+            broadcastVerificationUnavailable = true
+            return
+        }
+        broadcastVerificationMessage = "verifying Twitch live status"
+        broadcastVerificationTask = Task { @MainActor in
+            let result = await onBroadcastLiveVerification(configuration.title, configuration.applicationID)
+            guard !Task.isCancelled else { return }
+            broadcastVerificationTask = nil
+            broadcastVerificationMessage = result.message
+            switch result {
+            case .verified:
+                broadcastLiveVerified = true
+                if case .publishing(let startedAt, let elapsedSeconds, let droppedFrames, let videoBitrateKbps) = broadcastStatus {
+                    broadcastStatus = .live(startedAt: startedAt, elapsedSeconds: elapsedSeconds, droppedFrames: droppedFrames, videoBitrateKbps: videoBitrateKbps)
+                }
+            case .unavailable:
+                broadcastLiveVerified = false
+                broadcastVerificationUnavailable = true
+            case .notLive(let message):
+                broadcastLiveVerified = false
+                broadcastVerificationUnavailable = false
+                broadcastForcedFailureMessage = message
+                transport?.stopBroadcast()
+                handleBroadcastStatusChanged(.failed(message))
+            }
         }
     }
 
@@ -964,6 +1086,8 @@ public struct WebRTCMediaStreamSurface: View {
         recordingNotificationTask = nil
         broadcastNotificationTask?.cancel()
         broadcastNotificationTask = nil
+        broadcastVerificationTask?.cancel()
+        broadcastVerificationTask = nil
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)

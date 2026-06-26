@@ -45,6 +45,7 @@ public struct WebRTCLiveBroadcastConfiguration: Equatable, Sendable {
 public enum WebRTCLiveBroadcastStatus: Equatable, Sendable {
     case idle
     case connecting
+    case publishing(startedAt: Date, elapsedSeconds: Double, droppedFrames: Int, videoBitrateKbps: Int)
     case live(startedAt: Date, elapsedSeconds: Double, droppedFrames: Int, videoBitrateKbps: Int)
     case stopping
     case failed(String)
@@ -52,6 +53,13 @@ public enum WebRTCLiveBroadcastStatus: Equatable, Sendable {
     public var isLive: Bool {
         if case .live = self { return true }
         return false
+    }
+
+    public var isBroadcasting: Bool {
+        switch self {
+        case .connecting, .publishing, .live, .stopping: return true
+        case .idle, .failed: return false
+        }
     }
 
     public var isTerminal: Bool {
@@ -152,7 +160,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                     return
                 }
                 self.publisher = publisher
-                self.emit(.live(startedAt: self.startedAt ?? Date(), elapsedSeconds: 0, droppedFrames: 0, videoBitrateKbps: configuration.videoBitrateKbps))
+                self.emit(.publishing(startedAt: self.startedAt ?? Date(), elapsedSeconds: 0, droppedFrames: 0, videoBitrateKbps: configuration.videoBitrateKbps))
             }
         } catch {
             queue.async { self.fail(error) }
@@ -174,7 +182,16 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                 let frameIndex = self.frameIndex
                 self.frameIndex += 1
                 try self.encoder.encode(pixelBuffer: pixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0) { packet in
-                    Task { try? await publisher.publishVideo(packet) }
+                    Task {
+                        do {
+                            try await publisher.publishVideo(packet)
+                        } catch {
+                            self.queue.async {
+                                guard self.publisher === publisher else { return }
+                                self.fail(error)
+                            }
+                        }
+                    }
                 }
                 self.emitElapsedIfNeeded(configuration: configuration)
             } catch {
@@ -188,7 +205,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         let now = CACurrentMediaTime()
         guard now - lastStatusHostTime >= 1 else { return }
         lastStatusHostTime = now
-        emit(.live(startedAt: startedAt ?? Date(), elapsedSeconds: max(0, now - (firstFrameHostTime ?? now)), droppedFrames: droppedFrames, videoBitrateKbps: configuration.videoBitrateKbps))
+        emit(.publishing(startedAt: startedAt ?? Date(), elapsedSeconds: max(0, now - (firstFrameHostTime ?? now)), droppedFrames: droppedFrames, videoBitrateKbps: configuration.videoBitrateKbps))
     }
 
     private func fail(_ error: Error) {
@@ -387,6 +404,8 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
 }
 
 private actor RTMPPublisher {
+    private static let outboundChunkSize = 128
+
     private let endpoint: RTMPEndpoint
     private var connection: NWConnection?
     private var streamID: UInt32 = 1
@@ -477,7 +496,16 @@ private actor RTMPPublisher {
         message.appendUInt24(UInt32(payload.count))
         message.append(type)
         message.appendUInt32LittleEndian(streamID)
-        message.append(payload)
+        var offset = 0
+        let firstChunkSize = min(Self.outboundChunkSize, payload.count)
+        message.append(payload.prefix(firstChunkSize))
+        offset += firstChunkSize
+        while offset < payload.count {
+            message.append(0xC3)
+            let chunkSize = min(Self.outboundChunkSize, payload.count - offset)
+            message.append(payload[offset..<(offset + chunkSize)])
+            offset += chunkSize
+        }
         try await send(message)
     }
 

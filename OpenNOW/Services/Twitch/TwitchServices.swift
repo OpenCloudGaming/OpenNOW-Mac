@@ -42,6 +42,22 @@ struct TwitchStreamMarker: Decodable, Equatable, Sendable {
     }
 }
 
+struct TwitchStreamStatus: Decodable, Equatable, Sendable {
+    let id: String
+    let userID: String
+    let type: String
+
+    var isLive: Bool {
+        type.lowercased() == "live"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case userID = "user_id"
+        case type
+    }
+}
+
 struct TwitchIngestServer: Decodable, Equatable, Sendable {
     let id: Int
     let name: String
@@ -105,6 +121,7 @@ enum TwitchServiceError: LocalizedError, Sendable {
     case missingAuthorizationCode
     case missingToken
     case invalidResponse(String)
+    case streamNotLive(String)
     case keychain(OSStatus)
 
     var errorDescription: String? {
@@ -115,6 +132,7 @@ enum TwitchServiceError: LocalizedError, Sendable {
         case .missingAuthorizationCode: return "Twitch did not return an authorization code."
         case .missingToken: return "Twitch is not connected."
         case .invalidResponse(let message): return message.isEmpty ? "Twitch returned an invalid response." : message
+        case .streamNotLive(let message): return message.isEmpty ? "Twitch did not report this channel live." : message
         case .keychain(let status): return "Keychain operation failed with status \(status)."
         }
     }
@@ -205,6 +223,20 @@ enum TwitchOAuthService {
         let user = try await client.currentUser()
         let marker = try await client.createStreamMarker(broadcasterID: user.id, description: description)
         return "Marker created at \(marker.createdAt.formatted(date: .omitted, time: .standard))."
+    }
+
+    static func verifyLiveBroadcast(clientID: String) async throws -> String {
+        let client = try await authorizedClient(clientID: clientID)
+        let user = try await client.currentUser()
+        let deadline = Date().addingTimeInterval(75)
+        while Date() < deadline {
+            let stream = try await client.stream(userID: user.id)
+            if stream?.isLive == true {
+                return "Twitch confirmed this stream is live."
+            }
+            try await Task.sleep(for: .seconds(5))
+        }
+        throw TwitchServiceError.streamNotLive("Twitch did not report this channel live after publishing started.")
     }
 
     static func disconnect(clientID: String) async {
@@ -452,6 +484,12 @@ struct TwitchHelixClient: Sendable {
         struct Response: Decodable { let data: [Key] }
         let response: Response = try await request(path: "/helix/streams/key", queryItems: [URLQueryItem(name: "broadcaster_id", value: broadcasterID)])
         return response.data.first?.streamKey ?? ""
+    }
+
+    func stream(userID: String) async throws -> TwitchStreamStatus? {
+        struct Response: Decodable { let data: [TwitchStreamStatus] }
+        let response: Response = try await request(path: "/helix/streams", queryItems: [URLQueryItem(name: "user_id", value: userID)])
+        return response.data.first
     }
 
     func updateChannel(broadcasterID: String, title: String) async throws {
