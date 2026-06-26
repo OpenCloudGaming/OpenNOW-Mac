@@ -1,4 +1,5 @@
 @preconcurrency import Accelerate
+import AudioToolbox
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -74,14 +75,17 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.opencg.opennow.twitch.broadcast")
     private let conversionQueue = DispatchQueue(label: "io.opencg.opennow.twitch.broadcast.conversion", qos: .userInitiated)
     private let encoder = WebRTCH264LiveEncoder()
+    private let audioEncoder = WebRTCAACLiveEncoder()
     private var publisher: RTMPPublisher?
     private var configuration: WebRTCLiveBroadcastConfiguration?
     private var startedAt: Date?
     private var firstFrameHostTime: CFTimeInterval?
     private var frameIndex: Int64 = 0
+    private var audioSampleIndex: UInt64 = 0
     private var droppedFrames = 0
     private var lastStatusHostTime: CFTimeInterval = 0
     private var isStopping = false
+    private var microphoneStereoSamples: [Int16] = []
     private var i420PixelBufferPool: CVPixelBufferPool?
     private var i420PixelBufferPoolWidth = 0
     private var i420PixelBufferPoolHeight = 0
@@ -101,9 +105,12 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.startedAt = Date()
             self.firstFrameHostTime = nil
             self.frameIndex = 0
+            self.audioSampleIndex = 0
             self.droppedFrames = 0
             self.lastStatusHostTime = 0
             self.isStopping = false
+            self.microphoneStereoSamples.removeAll(keepingCapacity: true)
+            self.audioEncoder.reset(bitrateKbps: configuration.audioBitrateKbps)
             self.emit(.connecting)
             Task { await self.openPublisher(configuration: configuration) }
         }
@@ -117,6 +124,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             let publisher = self.publisher
             self.publisher = nil
             self.encoder.invalidate()
+            self.audioEncoder.reset(bitrateKbps: 160)
             self.reset()
             self.emit(.idle)
             Task { await publisher?.close() }
@@ -143,11 +151,27 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         appendPixelBuffer(pixelBuffer)
     }
 
-    func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
-        _ = audioBufferList
-        _ = frameCount
-        _ = sampleRate
-        _ = channels
+    func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate _: Double, channels: UInt32) {
+        guard let audioBufferList,
+              let copied = Self.stereoPCM(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, channels: channels) else { return }
+        queue.async {
+            guard let publisher = self.publisher, !self.isStopping else { return }
+            let mixed = self.mixWithMicrophone(gameStereoSamples: copied)
+            self.publishAudio(stereoSamples: mixed, publisher: publisher)
+        }
+    }
+
+    func appendMicrophoneAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate _: Double, channels: UInt32) {
+        guard let audioBufferList,
+              let copied = Self.stereoPCM(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, channels: channels) else { return }
+        queue.async {
+            guard self.configuration != nil, !self.isStopping else { return }
+            self.microphoneStereoSamples.append(contentsOf: copied)
+            let maximumBufferedSamples = 48_000 * 2
+            if self.microphoneStereoSamples.count > maximumBufferedSamples {
+                self.microphoneStereoSamples.removeFirst(self.microphoneStereoSamples.count - maximumBufferedSamples)
+            }
+        }
     }
 
     private func openPublisher(configuration: WebRTCLiveBroadcastConfiguration) async {
@@ -212,6 +236,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         let publisher = publisher
         self.publisher = nil
         encoder.invalidate()
+        audioEncoder.reset(bitrateKbps: 160)
         reset()
         Task { await publisher?.close() }
         emit(.failed(Self.message(for: error)))
@@ -222,8 +247,80 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         startedAt = nil
         firstFrameHostTime = nil
         frameIndex = 0
+        audioSampleIndex = 0
         isStopping = false
         droppedFrames = 0
+        microphoneStereoSamples.removeAll(keepingCapacity: true)
+    }
+
+    private func mixWithMicrophone(gameStereoSamples: [Int16]) -> [Int16] {
+        guard !microphoneStereoSamples.isEmpty else { return gameStereoSamples }
+        var mixed = gameStereoSamples
+        let count = min(mixed.count, microphoneStereoSamples.count)
+        for index in 0..<count {
+            let sample = Int(mixed[index]) + Int(microphoneStereoSamples[index])
+            mixed[index] = Int16(max(Int(Int16.min), min(Int(Int16.max), sample)))
+        }
+        microphoneStereoSamples.removeFirst(count)
+        return mixed
+    }
+
+    private func publishAudio(stereoSamples: [Int16], publisher: RTMPPublisher) {
+        guard !stereoSamples.isEmpty else { return }
+        do {
+            let packets = try audioEncoder.encode(stereoSamples: stereoSamples)
+            for packet in packets {
+                let timestamp = UInt32(audioSampleIndex * 1_000 / 48_000)
+                audioSampleIndex += UInt64(packet.inputFrameCount)
+                Task {
+                    do {
+                        try await publisher.publishAudio(packet, timestampMilliseconds: timestamp)
+                    } catch {
+                        self.queue.async {
+                            guard self.publisher === publisher else { return }
+                            self.fail(error)
+                        }
+                    }
+                }
+            }
+        } catch {
+            fail(error)
+        }
+    }
+
+    private static func stereoPCM(from audioBufferList: UnsafePointer<AudioBufferList>, frameCount: UInt32, channels: UInt32) -> [Int16]? {
+        let outputFrames = Int(frameCount)
+        guard outputFrames > 0 else { return nil }
+        let sourceChannels = max(1, Int(channels))
+        var samples = [Int16](repeating: 0, count: outputFrames * 2)
+        let bufferCount = Int(audioBufferList.pointee.mNumberBuffers)
+        withUnsafePointer(to: audioBufferList.pointee.mBuffers) { firstBuffer in
+            let buffers = UnsafeBufferPointer(start: firstBuffer, count: bufferCount)
+            if bufferCount == 1, let buffer = buffers.first, let data = buffer.mData {
+                let sourceSampleCount = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+                guard sourceSampleCount >= outputFrames * sourceChannels else { return }
+                let source = data.bindMemory(to: Int16.self, capacity: sourceSampleCount)
+                for frame in 0..<outputFrames {
+                    let sourceIndex = frame * sourceChannels
+                    let left = source[sourceIndex]
+                    let right = sourceChannels > 1 ? source[sourceIndex + 1] : left
+                    samples[frame * 2] = left
+                    samples[frame * 2 + 1] = right
+                }
+            } else {
+                let leftSampleCount = buffers.indices.contains(0) ? Int(buffers[0].mDataByteSize) / MemoryLayout<Int16>.size : 0
+                let rightSampleCount = buffers.indices.contains(1) ? Int(buffers[1].mDataByteSize) / MemoryLayout<Int16>.size : 0
+                for frame in 0..<outputFrames {
+                    let leftBuffer = buffers.indices.contains(0) ? buffers[0].mData : nil
+                    let rightBuffer = buffers.indices.contains(1) ? buffers[1].mData : nil
+                    let left = frame < leftSampleCount ? leftBuffer?.bindMemory(to: Int16.self, capacity: leftSampleCount)[frame] ?? 0 : 0
+                    let right = frame < rightSampleCount ? rightBuffer?.bindMemory(to: Int16.self, capacity: rightSampleCount)[frame] ?? left : left
+                    samples[frame * 2] = left
+                    samples[frame * 2 + 1] = right
+                }
+            }
+        }
+        return samples
     }
 
     private func emit(_ status: WebRTCLiveBroadcastStatus) {
@@ -321,6 +418,109 @@ struct WebRTCH264Packet: Sendable {
     let sps: Data?
     let pps: Data?
     let nalUnits: [Data]
+}
+
+struct WebRTCAACPacket: Sendable {
+    let data: Data
+    let inputFrameCount: Int
+    let includesSequenceHeader: Bool
+}
+
+private final class WebRTCAACInputContext {
+    let pointer: UnsafeMutableRawPointer
+    let count: Int
+    var offset = 0
+
+    init(data: Data) {
+        count = data.count
+        pointer = UnsafeMutableRawPointer.allocate(byteCount: data.count, alignment: MemoryLayout<UInt8>.alignment)
+        data.copyBytes(to: pointer.assumingMemoryBound(to: UInt8.self), count: data.count)
+    }
+
+    deinit {
+        pointer.deallocate()
+    }
+}
+
+private let webRTCAACInputCallback: AudioConverterComplexInputDataProc = { _, ioNumberDataPackets, ioData, _, inUserData in
+    guard let inUserData else { return noErr }
+    let context = Unmanaged<WebRTCAACInputContext>.fromOpaque(inUserData).takeUnretainedValue()
+    let remaining = context.count - context.offset
+    guard remaining > 0 else {
+        ioNumberDataPackets.pointee = 0
+        return noErr
+    }
+    let requestedBytes = Int(ioNumberDataPackets.pointee) * 4
+    let byteCount = min(remaining, requestedBytes)
+    ioData.pointee.mBuffers.mData = context.pointer.advanced(by: context.offset)
+    context.offset += byteCount
+    ioData.pointee.mBuffers.mDataByteSize = UInt32(byteCount)
+    ioData.pointee.mBuffers.mNumberChannels = 2
+    ioNumberDataPackets.pointee = UInt32(byteCount / 4)
+    return noErr
+}
+
+private final class WebRTCAACLiveEncoder: @unchecked Sendable {
+    private var converter: AudioConverterRef?
+    private var pcmBuffer = Data()
+    private var bitrateKbps = 160
+    private var sentSequenceHeader = false
+
+    func reset(bitrateKbps: Int) {
+        if let converter { AudioConverterDispose(converter) }
+        converter = nil
+        pcmBuffer.removeAll(keepingCapacity: true)
+        self.bitrateKbps = min(max(bitrateKbps, 64), 320)
+        sentSequenceHeader = false
+    }
+
+    func encode(stereoSamples: [Int16]) throws -> [WebRTCAACPacket] {
+        guard !stereoSamples.isEmpty else { return [] }
+        var samples = stereoSamples
+        samples.withUnsafeBufferPointer { pcmBuffer.append(Data(buffer: $0)) }
+        try configureIfNeeded()
+        var packets: [WebRTCAACPacket] = []
+        if !sentSequenceHeader {
+            packets.append(WebRTCAACPacket(data: Data([0x11, 0x90]), inputFrameCount: 0, includesSequenceHeader: true))
+            sentSequenceHeader = true
+        }
+        let frameByteCount = 1_024 * 2 * MemoryLayout<Int16>.size
+        while pcmBuffer.count >= frameByteCount {
+            let frameData = pcmBuffer.prefix(frameByteCount)
+            pcmBuffer.removeFirst(frameByteCount)
+            if let packet = try encodeFrame(Data(frameData)) {
+                packets.append(packet)
+            }
+        }
+        return packets
+    }
+
+    private func configureIfNeeded() throws {
+        guard converter == nil else { return }
+        var input = AudioStreamBasicDescription(mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked, mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 2, mBitsPerChannel: 16, mReserved: 0)
+        var output = AudioStreamBasicDescription(mSampleRate: 48_000, mFormatID: kAudioFormatMPEG4AAC, mFormatFlags: 0, mBytesPerPacket: 0, mFramesPerPacket: 1_024, mBytesPerFrame: 0, mChannelsPerFrame: 2, mBitsPerChannel: 0, mReserved: 0)
+        var newConverter: AudioConverterRef?
+        guard AudioConverterNew(&input, &output, &newConverter) == noErr, let newConverter else { throw BroadcastError.audio("Unable to create AAC encoder.") }
+        var bitrate = UInt32(bitrateKbps * 1_000)
+        AudioConverterSetProperty(newConverter, kAudioConverterEncodeBitRate, UInt32(MemoryLayout<UInt32>.size), &bitrate)
+        converter = newConverter
+    }
+
+    private func encodeFrame(_ frameData: Data) throws -> WebRTCAACPacket? {
+        guard let converter else { return nil }
+        let context = WebRTCAACInputContext(data: frameData)
+        let outputBufferSize = 4_096
+        let output = UnsafeMutableRawPointer.allocate(byteCount: outputBufferSize, alignment: MemoryLayout<UInt8>.alignment)
+        defer { output.deallocate() }
+        var outputBuffer = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(outputBufferSize), mData: output))
+        var packetCount: UInt32 = 1
+        let status = withUnsafeMutablePointer(to: &outputBuffer) { outputBufferPointer in
+            AudioConverterFillComplexBuffer(converter, webRTCAACInputCallback, Unmanaged.passUnretained(context).toOpaque(), &packetCount, outputBufferPointer, nil)
+        }
+        guard status == noErr else { throw BroadcastError.audio("AAC encode failed (\(status)).") }
+        guard packetCount > 0, outputBuffer.mBuffers.mDataByteSize > 0 else { return nil }
+        return WebRTCAACPacket(data: Data(bytes: output, count: Int(outputBuffer.mBuffers.mDataByteSize)), inputFrameCount: 1_024, includesSequenceHeader: false)
+    }
 }
 
 private final class WebRTCH264LiveEncoder: @unchecked Sendable {
@@ -433,6 +633,13 @@ private actor RTMPPublisher {
         let payload = FLVMuxer.videoPayload(packet: packet)
         guard !payload.isEmpty else { return }
         try await sendMessage(type: 9, streamID: streamID, timestamp: packet.timestampMilliseconds, payload: payload)
+    }
+
+    func publishAudio(_ packet: WebRTCAACPacket, timestampMilliseconds: UInt32) async throws {
+        guard connection != nil else { return }
+        let payload = packet.includesSequenceHeader ? FLVMuxer.aacSequenceHeader(packet.data) : FLVMuxer.aacPayload(packet.data)
+        guard !payload.isEmpty else { return }
+        try await sendMessage(type: 8, streamID: streamID, timestamp: timestampMilliseconds, payload: payload)
     }
 
     func close() {
@@ -563,6 +770,8 @@ private struct RTMPEndpoint: Sendable {
 }
 
 private enum FLVMuxer {
+    private static let aacSoundHeader = UInt8(10 << 4 | 3 << 2 | 1 << 1 | 1)
+
     static func avcSequenceHeader(sps: Data, pps: Data) -> Data {
         var data = videoHeader(keyframe: true, avcPacketType: 0, compositionTime: 0)
         data.append(1)
@@ -586,6 +795,18 @@ private enum FLVMuxer {
         return data
     }
 
+    static func aacSequenceHeader(_ audioSpecificConfig: Data) -> Data {
+        var data = Data([aacSoundHeader, 0])
+        data.append(audioSpecificConfig)
+        return data
+    }
+
+    static func aacPayload(_ packet: Data) -> Data {
+        var data = Data([aacSoundHeader, 1])
+        data.append(packet)
+        return data
+    }
+
     private static func videoHeader(keyframe: Bool, avcPacketType: UInt8, compositionTime: UInt32) -> Data {
         var data = Data()
         data.append((keyframe ? 1 : 2) << 4 | 7)
@@ -606,12 +827,13 @@ private enum AMF0 {
 }
 
 private enum BroadcastError: LocalizedError {
+    case audio(String)
     case encoder(String)
     case rtmp(String)
 
     var errorDescription: String? {
         switch self {
-        case .encoder(let message), .rtmp(let message): return message
+        case .audio(let message), .encoder(let message), .rtmp(let message): return message
         }
     }
 }

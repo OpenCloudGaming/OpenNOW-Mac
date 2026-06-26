@@ -59,6 +59,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
                 self?.broadcaster.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
+            self.session.onMicrophoneAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
+                self?.broadcaster.appendMicrophoneAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             session.start(
                 sessionInfo: offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata,
