@@ -26,10 +26,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
-        createSession(appId: appId, internalTitle: internalTitle, settings: settings, streamingBaseUrl: nil, excludedCreateBaseUrls: [], completion: completion)
-    }
-
-    private func createSession(appId: String, internalTitle: String, settings: [String: Any], streamingBaseUrl: String?, excludedCreateBaseUrls: Set<String>, completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
@@ -42,7 +38,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
 
         clearPersistedActiveSessionId("")
-        let baseUrl = resolveSessionBaseUrl(streamingBaseUrl: streamingBaseUrl ?? currentStreamingBaseUrl(), serverIp: "")
+        let baseUrl = currentStreamingBaseUrl()
         let clientId = UUID().uuidString.lowercased()
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
@@ -85,9 +81,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "appLaunchMode": 1,
             "secureRTSPSupported": false,
             "partnerCustomData": "",
-            "accountLinked": bool(effectiveSettings["accountLinked"], fallback: true),
+            "accountLinked": false,
             "enablePersistingInGameSettings": false,
-            "userAge": 26,
+            "userAge": 36,
             "requestedStreamingFeatures": requestedStreamingFeatures(effectiveSettings, hdrEnabled: hdrEnabled),
         ]
 
@@ -111,9 +107,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
 
         nonisolated(unsafe) let createCompletion = completion
-        nonisolated(unsafe) let createSettings = settings
         nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
-        let createExcludedBaseUrls = excludedCreateBaseUrls.union([createRetryBaseKey(baseUrl)])
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.createSession")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { [weak self] data, response, error in
@@ -130,11 +124,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             OPNProtocolDebug.logJSONData(label: "session create response", data: data)
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
-                if self.isInternalSessionFailureResponse(data), let retryBaseUrl = self.createSessionRetryBaseUrl(settings: createSettings, excluding: createExcludedBaseUrls) {
-                    OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "SessionManager", message: "Retrying cloud session after internal create failure failedBase=\(baseUrl) retryBase=\(retryBaseUrl)"))
-                    self.createSession(appId: launchAppId.stringValue, internalTitle: internalTitle, settings: createSettings, streamingBaseUrl: retryBaseUrl, excludedCreateBaseUrls: createExcludedBaseUrls, completion: createCompletion)
-                    return
-                }
                 if let createMessage = self.internalSessionCreateErrorMessage(data: data, baseUrl: baseUrl) {
                     createCompletion(false, [:], createMessage)
                     return
@@ -447,11 +436,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "enhancedStreamMode": 1,
                 "useOps": true,
                 "clientDisplayHdrCapabilities": NSNull(),
-                "accountLinked": bool(settings["accountLinked"], fallback: true),
+                "accountLinked": false,
                 "partnerCustomData": "",
                 "enablePersistingInGameSettings": false,
                 "secureRTSPSupported": false,
-                "userAge": 26,
+                "userAge": 36,
                 "requestedStreamingFeatures": requestedStreamingFeatures(settings, hdrEnabled: hdrEnabled),
             ],
             "metaData": [],
@@ -808,22 +797,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         return "CloudMatch internal session error at \(baseUrl)\(server): \(description). Try Automatic server location or a different region."
     }
 
-    private func createSessionRetryBaseUrl(settings: [String: Any], excluding excludedBaseUrls: Set<String>) -> String? {
-        if let retryBaseUrls = settings["cloudMatchCreateRetryBaseUrls"] as? [String] {
-            return retryBaseUrls
-                .map { resolveSessionBaseUrl(streamingBaseUrl: $0, serverIp: "") }
-                .first { !excludedBaseUrls.contains(createRetryBaseKey($0)) }
-        }
-        return OPNStreamPreferences.loadCachedRegions()
-            .filter { !$0.url.isEmpty && $0.latencyMs >= 0 }
-            .sorted {
-                if $0.latencyMs != $1.latencyMs { return $0.latencyMs < $1.latencyMs }
-                return $0.name < $1.name
-            }
-            .map { resolveSessionBaseUrl(streamingBaseUrl: $0.url, serverIp: "") }
-            .first { !excludedBaseUrls.contains(createRetryBaseKey($0)) }
-    }
-
     private func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
         guard let data, let json = jsonDictionary(data) else { return nil }
         let requestStatus = json["requestStatus"] as? [String: Any]
@@ -924,6 +897,7 @@ private func applyCommonCloudMatchHeaders(to request: inout URLRequest, token: S
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(OPNSessionManager.nvClientId, forHTTPHeaderField: "nv-client-id")
     request.setValue(OPNSessionManager.nvClientVersion, forHTTPHeaderField: "nv-client-version")
+    request.setValue("BROWSER", forHTTPHeaderField: "nv-client-type")
     request.setValue("WEBRTC", forHTTPHeaderField: "nv-client-streamer")
     request.setValue("MACOS", forHTTPHeaderField: "nv-device-os")
     request.setValue("DESKTOP", forHTTPHeaderField: "nv-device-type")
@@ -948,11 +922,6 @@ private func resolveSessionBaseUrl(streamingBaseUrl: String, serverIp: String) -
     }
     let host = usableEndpointHost(serverIp)
     return host.isEmpty ? (fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase) : "https://\(host)"
-}
-
-private func createRetryBaseKey(_ url: String) -> String {
-    guard let components = URLComponents(string: resolveSessionBaseUrl(streamingBaseUrl: url, serverIp: "")), let host = components.host?.lowercased(), !host.isEmpty else { return url.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
-    return "https://\(host)"
 }
 
 private func userAgent() -> String {
@@ -983,16 +952,12 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
     let width = max(640, parts.first ?? 1920)
     let height = max(360, parts.count > 1 ? parts[1] : 1080)
     return [
-        "monitorId": 0,
-        "positionX": 0,
-        "positionY": 0,
         "widthInPixels": width,
         "heightInPixels": height,
         "framesPerSecond": int(settings["fps"], fallback: 60),
         "sdrHdrMode": hdrEnabled ? 1 : 0,
-        "displayData": hdrEnabled && capabilities.hdrDisplaySupported ? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 400] : [:],
-        "hdr10PlusGamingData": NSNull(),
-        "dpi": max(0, capabilities.displayDpi),
+        "displayData": hdrEnabled && capabilities.hdrDisplaySupported ? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 400] : ["desiredContentMaxLuminance": 0, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 0],
+        "dpi": 0,
     ]
 }
 
@@ -1001,24 +966,15 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
     let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 1 : 0
     let chromaFormat = colorQuality == "8bit_444" || colorQuality == "10bit_444" ? 2 : 0
     return [
-        "reflex": bool(settings["enableReflex"], fallback: true),
+        "reflex": false,
         "bitDepth": bitDepth,
         "cloudGsync": bool(settings["enableCloudGsync"]),
         "enabledL4S": bool(settings["enableL4S"]),
-        "mouseMovementFlags": 0,
-        "trueHdr": hdrEnabled,
-        "supportedHidDevices": int(settings["supportedHidDevices"]),
-        "profile": 0,
+        "profile": 1,
         "fallbackToLogicalResolution": false,
-        "hidDevices": NSNull(),
         "chromaFormat": chromaFormat,
         "prefilterMode": min(max(int(settings["prefilterMode"]), 0), 2),
-        "prefilterSharpness": min(max(int(settings["prefilterSharpness"]), 0), 10),
-        "prefilterNoiseReduction": min(max(int(settings["prefilterDenoise"]), 0), 10),
-        "prefilterModel": max(int(settings["prefilterModel"]), 0),
         "hudStreamingMode": 0,
-        "sdrColorSpace": 2,
-        "hdrColorSpace": 0,
     ]
 }
 
