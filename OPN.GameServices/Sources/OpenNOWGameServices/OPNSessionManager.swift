@@ -132,8 +132,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     if !recoveringFromStaleCreate, let staleSessionId = self.staleActiveSessionId(data) {
                         OPNActiveSessionService.markSessionUnresumable(staleSessionId)
                         self.clearPersistedActiveSessionId(staleSessionId)
-                        let staleServerIp = self.staleActiveSessionControlHost(data) ?? ""
-                        self.stopSession(sessionId: staleSessionId, serverIp: staleServerIp) { _, _ in
+                        self.stopSession(sessionId: staleSessionId, serverIp: "") { _, _ in
                             self.createSession(appId: appId, internalTitle: internalTitle, settings: settings, recoveringFromStaleCreate: true, completion: createCompletion)
                         }
                         return
@@ -816,13 +815,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         guard let data, let json = jsonDictionary(data), let session = json["session"] as? [String: Any] else { return nil }
         let sessionId = string(session["sessionId"])
         return sessionId.isEmpty ? nil : sessionId
-    }
-
-    private func staleActiveSessionControlHost(_ data: Data?) -> String? {
-        guard let data, let json = jsonDictionary(data), let session = json["session"] as? [String: Any] else { return nil }
-        let controlInfo = session["sessionControlInfo"] as? [String: Any]
-        let controlHost = usableEndpointHost(string(controlInfo?["ip"]))
-        return controlHost.isEmpty ? nil : controlHost
     }
 
     private func unresumableActiveSessionClaimMessage(data: Data?, body: String = "") -> String? {

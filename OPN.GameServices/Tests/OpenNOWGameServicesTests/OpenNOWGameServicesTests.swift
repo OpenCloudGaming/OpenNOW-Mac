@@ -321,29 +321,26 @@ import WebRTCMedia
 
 @Test(.serialized) func sessionManagerStaleInternalCreateErrorStopsAndRetriesOnce() async {
     let host = "create-stale-retry.example.test"
-    let staleHost = "create-stale-control.example.test"
     let lock = NSLock()
     nonisolated(unsafe) var postCount = 0
     SessionManagerURLProtocol.install(host: host) { request in
+        if request.httpMethod == "DELETE" {
+            #expect(request.url?.path == "/v2/session/resume-session")
+            return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])
+        }
         #expect(request.httpMethod == "POST")
         lock.lock()
         postCount += 1
         let count = postCount
         lock.unlock()
         if count == 1 {
-            return SessionManagerURLProtocol.response(json: staleSessionResponse(controlHost: staleHost), status: 400)
+            return SessionManagerURLProtocol.response(json: staleSessionResponse(), status: 400)
         }
         return SessionManagerURLProtocol.response(json: sessionResponse(sessionId: "new-session", statusCode: 1, sessionStatus: 2, controlHost: host))
-    }
-    SessionManagerURLProtocol.install(host: staleHost) { request in
-        #expect(request.httpMethod == "DELETE")
-        #expect(request.url?.path == "/v2/session/resume-session")
-        return SessionManagerURLProtocol.response(json: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])
     }
     defer {
         OPNActiveSessionService.clearUnresumableSessions()
         SessionManagerURLProtocol.uninstall(host: host)
-        SessionManagerURLProtocol.uninstall(host: staleHost)
     }
 
     let manager = OPNSessionManager()
@@ -361,8 +358,7 @@ import WebRTCMedia
     #expect(result.1 == "new-session")
     #expect(result.2.isEmpty)
     #expect(OPNActiveSessionService.isSessionUnresumable("resume-session"))
-    #expect(requests.map(\.httpMethod) == ["POST", "POST"])
-    #expect(SessionManagerURLProtocol.recordedRequests(host: staleHost).map(\.httpMethod) == ["DELETE"])
+    #expect(requests.map(\.httpMethod) == ["POST", "DELETE", "POST"])
 }
 
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {
@@ -418,16 +414,13 @@ private func sessionResponse(sessionId: String = "resume-session", statusCode: I
     ]
 }
 
-private func staleSessionResponse(includeSessionId: Bool = true, controlHost: String = "") -> [String: Any] {
+private func staleSessionResponse(includeSessionId: Bool = true) -> [String: Any] {
     var session: [String: Any] = [
         "status": 4,
         "sessionRequestData": ["appId": 0],
     ]
     if includeSessionId {
         session["sessionId"] = "resume-session"
-    }
-    if !controlHost.isEmpty {
-        session["sessionControlInfo"] = ["ip": controlHost]
     }
     return [
         "requestStatus": [
