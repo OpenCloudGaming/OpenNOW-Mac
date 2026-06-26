@@ -125,6 +125,12 @@ public final class OPNSentry: NSObject {
         initialized = true
     }
 
+    public static func clearDiagnosticsLogForNewRun() {
+        diagnosticsLogQueue.sync {
+            clearDiagnosticsLog(at: diagnosticsLogURL())
+        }
+    }
+
     static func closeSentry() {
         guard initialized else { return }
         SentrySDK.close()
@@ -565,6 +571,12 @@ public final class OPNSentry: NSObject {
         let manager = FileManager.default
         let base = manager.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("OpenNOW-diagnostics-current.log")
+    }
+
+    static func clearDiagnosticsLog(at url: URL, fileManager manager: FileManager = .default) {
+        let directory = url.deletingLastPathComponent()
+        try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? Data().write(to: url, options: .atomic)
     }
 
     private static func trimDiagnosticsLogIfNeeded(url: URL) {

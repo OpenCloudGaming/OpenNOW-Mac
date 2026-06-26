@@ -85,6 +85,7 @@ struct OpenNOWApp: App {
     let sharedModelContainer: ModelContainer
 
     init() {
+        OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
         OpenNOWLog.info(.app, "OpenNOW application initializing")
         let container = Self.makeModelContainer()
