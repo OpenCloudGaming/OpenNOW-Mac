@@ -29,6 +29,8 @@ enum OPNActiveSessionService {
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
     private static let gfnUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    private static let unresumableLock = NSLock()
+    nonisolated(unsafe) private static var unresumableSessionIds = Set<String>()
 
     static func loadPersistedActiveSessionId() -> String {
         UserDefaults.standard.string(forKey: persistedSessionIdKey) ?? ""
@@ -38,6 +40,21 @@ enum OPNActiveSessionService {
         let current = loadPersistedActiveSessionId()
         guard sessionId.isEmpty || current == sessionId else { return }
         UserDefaults.standard.removeObject(forKey: persistedSessionIdKey)
+    }
+
+    static func markSessionUnresumable(_ sessionId: String) {
+        guard !sessionId.isEmpty else { return }
+        unresumableLock.withLock { unresumableSessionIds.insert(sessionId) }
+        clearPersistedActiveSessionId(sessionId)
+    }
+
+    static func isSessionUnresumable(_ sessionId: String) -> Bool {
+        guard !sessionId.isEmpty else { return false }
+        return unresumableLock.withLock { unresumableSessionIds.contains(sessionId) }
+    }
+
+    static func clearUnresumableSessions() {
+        unresumableLock.withLock { unresumableSessionIds.removeAll() }
     }
 
     static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
@@ -88,7 +105,7 @@ enum OPNActiveSessionService {
                 completion(false, [], "API error from sessions endpoint")
                 return
             }
-            let sessions = (json["sessions"] as? [[String: Any]] ?? []).compactMap { activeSession(from: $0, streamingBaseUrl: base) }
+            let sessions = (json["sessions"] as? [[String: Any]] ?? []).compactMap { activeSession(from: $0, streamingBaseUrl: base) }.filter { !isSessionUnresumable($0.sessionId) }
             completion(true, sessions, "")
         }.resume()
     }

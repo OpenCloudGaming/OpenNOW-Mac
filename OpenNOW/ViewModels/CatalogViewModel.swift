@@ -773,6 +773,10 @@ final class CatalogViewModel: ObservableObject {
         streamProgressGeneration += 1
         clearLaunchFlow()
         launchMessage = ""
+        if !success, let finishedConfiguration, finishedConfiguration.resumesExistingSession, Self.isStaleResumeMessage(message) {
+            startPreparedStream(Self.replacementConfiguration(from: finishedConfiguration), message: "Launching \(finishedConfiguration.title.isEmpty ? "GeForce NOW" : finishedConfiguration.title)...")
+            return
+        }
         if let finishedConfiguration {
             let session = CatalogPreviousGameSession(configuration: finishedConfiguration, success: success, message: message, report: report)
             previousGameSession = session
@@ -827,6 +831,21 @@ final class CatalogViewModel: ObservableObject {
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription
+    }
+
+    private static func isStaleResumeMessage(_ message: String) -> Bool {
+        message.contains("no longer resumable") || message.contains("SESSION_NOT_ACTIVE")
+    }
+
+    private static func replacementConfiguration(from configuration: StreamLaunchConfiguration) -> StreamLaunchConfiguration {
+        StreamLaunchConfiguration(
+            title: configuration.title,
+            applicationID: configuration.applicationID,
+            accessToken: configuration.accessToken,
+            accountLinked: configuration.accountLinked,
+            selectedStore: configuration.selectedStore,
+            metadata: configuration.metadata
+        )
     }
 
     private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration) -> StreamLaunchConfiguration {

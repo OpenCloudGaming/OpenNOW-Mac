@@ -8,8 +8,10 @@ enum OPNCloudMatchSessionState: Int, Sendable {
 
     var isVendorResumable: Bool {
         switch self {
-        case .initializing, .readyForConnection, .streaming, .paused:
+        case .readyForConnection, .streaming, .paused:
             true
+        case .initializing:
+            false
         }
     }
 

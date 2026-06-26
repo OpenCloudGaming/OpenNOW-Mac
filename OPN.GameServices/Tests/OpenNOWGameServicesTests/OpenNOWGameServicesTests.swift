@@ -88,6 +88,43 @@ import WebRTCMedia
     #expect(descriptor?.resumeServer == "control.example.test")
 }
 
+@Test func activeSessionParserRejectsInitializingSessionForResume() {
+    let descriptor = OPNActiveSessionParser.descriptor(from: [
+        "sessionId": "session-1",
+        "status": 1,
+        "sessionRequestData": ["appId": 123],
+        "sessionControlInfo": ["ip": "control.example.test"],
+    ], streamingBaseUrl: "https://cloudmatch.example.test/")
+
+    #expect(descriptor == nil)
+}
+
+@Test func activeSessionServiceFiltersMarkedUnresumableSession() async {
+    let host = "active-session-filter.example.test"
+    let sessionId = "filtered-session"
+    OPNActiveSessionService.clearUnresumableSessions()
+    OPNActiveSessionService.markSessionUnresumable(sessionId)
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: activeSessionsResponse(sessionId: sessionId, sessionStatus: 2, controlHost: host))
+    }
+    defer {
+        OPNActiveSessionService.clearUnresumableSessions()
+        SessionManagerURLProtocol.uninstall(host: host)
+    }
+
+    let result = await withCheckedContinuation { continuation in
+        OPNActiveSessionService.fetchActiveSessions(accessToken: "token", streamingBaseUrl: "https://\(host)") { success, sessions, error in
+            continuation.resume(returning: (success, sessions.count, error))
+        }
+    }
+
+    #expect(result.0 == true)
+    #expect(result.1 == 0)
+    #expect(result.2.isEmpty)
+}
+
 @Test func sessionManagerReadyResumeAttachesFromValidation() async {
     let host = "resume-ready.example.test"
     SessionManagerURLProtocol.install(host: host) { _ in
@@ -202,6 +239,7 @@ import WebRTCMedia
     }
     defer {
         UserDefaults.standard.removeObject(forKey: "OpenNOW.Stream.ActiveSessionId")
+        OPNActiveSessionService.clearUnresumableSessions()
         SessionManagerURLProtocol.uninstall(host: host)
     }
 
@@ -218,6 +256,44 @@ import WebRTCMedia
     #expect(result.0 == false)
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
     #expect(UserDefaults.standard.string(forKey: "OpenNOW.Stream.ActiveSessionId") == nil)
+    #expect(OPNActiveSessionService.isSessionUnresumable("resume-session"))
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+}
+
+@Test func sessionManagerSessionNotActiveClaimErrorMarksUnresumable() async {
+    let host = "resume-not-active.example.test"
+    let sessionId = "not-active-session"
+    OPNActiveSessionService.clearUnresumableSessions()
+    SessionManagerURLProtocol.install(host: host) { request in
+        let path = request.url?.path ?? ""
+        if request.httpMethod == "GET", path == "/v2/session/\(sessionId)" {
+            return SessionManagerURLProtocol.response(json: sessionResponse(sessionId: sessionId, statusCode: 1, sessionStatus: 6, controlHost: host))
+        }
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 7,
+                "statusDescription": "SESSION_NOT_ACTIVE",
+            ],
+        ], status: 400)
+    }
+    defer {
+        OPNActiveSessionService.clearUnresumableSessions()
+        SessionManagerURLProtocol.uninstall(host: host)
+    }
+
+    OPNSessionManager.shared.setAccessToken("token")
+    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+
+    let result = await withCheckedContinuation { continuation in
+        OPNSessionManager.shared.claimSession(sessionId: sessionId, serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    #expect(result.0 == false)
+    #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
+    #expect(OPNActiveSessionService.isSessionUnresumable(sessionId))
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
 }
 
@@ -268,14 +344,14 @@ private func minimalSettings() -> [String: Any] {
     ]
 }
 
-private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test") -> [String: Any] {
+private func sessionResponse(sessionId: String = "resume-session", statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test") -> [String: Any] {
     [
         "requestStatus": [
             "statusCode": statusCode,
             "statusDescription": statusCode == 1 ? "SUCCESS" : "ERROR",
         ],
         "session": [
-            "sessionId": "resume-session",
+            "sessionId": sessionId,
             "status": sessionStatus,
             "gpuType": "L40",
             "sessionRequestData": ["appId": 123],
@@ -307,6 +383,28 @@ private func staleSessionResponse() -> [String: Any] {
             "status": 4,
             "sessionRequestData": ["appId": 0],
         ],
+    ]
+}
+
+private func activeSessionsResponse(sessionId: String = "resume-session", sessionStatus: Int, controlHost: String = "control.example.test") -> [String: Any] {
+    [
+        "requestStatus": [
+            "statusCode": 1,
+            "statusDescription": "SUCCESS",
+        ],
+        "sessions": [[
+            "sessionId": sessionId,
+            "status": sessionStatus,
+            "gpuType": "L40",
+            "sessionRequestData": ["appId": 123],
+            "sessionControlInfo": ["ip": controlHost],
+            "connectionInfo": [[
+                "usage": 14,
+                "ip": "signaling.example.test",
+                "port": 443,
+                "resourcePath": "/nvst/",
+            ]],
+        ]],
     ]
 }
 

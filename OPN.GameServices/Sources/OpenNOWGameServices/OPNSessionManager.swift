@@ -383,7 +383,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let http = response as? HTTPURLResponse
                 if (http?.statusCode ?? 0) >= 400 || (statusCode != 0 && statusCode != 1 && preClaimStatus == 0) {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                    if let staleMessage = self.unresumableActiveSessionClaimMessage(data: data, body: body) {
+                        OPNActiveSessionService.markSessionUnresumable(sessionId)
                         self.clearPersistedActiveSessionId(sessionId)
                         completion(false, [:], staleMessage)
                         return
@@ -491,7 +492,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
                     return
                 }
-                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                if let staleMessage = self.unresumableActiveSessionClaimMessage(data: data, body: body) {
+                    OPNActiveSessionService.markSessionUnresumable(sessionId)
                     self.clearPersistedActiveSessionId(sessionId)
                     completion(false, [:], staleMessage)
                     return
@@ -507,7 +509,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: completion)
                     return
                 }
-                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                if let staleMessage = self.unresumableActiveSessionClaimMessage(data: data) {
+                    OPNActiveSessionService.markSessionUnresumable(sessionId)
                     self.clearPersistedActiveSessionId(sessionId)
                     completion(false, [:], staleMessage)
                     return
@@ -798,6 +801,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         guard let responseAppId = sessionRequestData?["appId"], int(responseAppId) <= 0 else { return nil }
         let isInternalSessionFailure = statusCode == 4 || description.contains("INTERNAL_ERROR_STATUS") || description.contains("8A8C0000")
         return isInternalSessionFailure ? "This GeForce NOW session is no longer resumable. End it and launch again." : nil
+    }
+
+    private func unresumableActiveSessionClaimMessage(data: Data?, body: String = "") -> String? {
+        if let staleMessage = staleActiveSessionClaimMessage(data) { return staleMessage }
+        let requestStatus = data.flatMap(jsonDictionary)?["requestStatus"] as? [String: Any]
+        let description = (string(requestStatus?["statusDescription"]) + " " + body).uppercased()
+        let inactive = description.contains("SESSION_NOT_ACTIVE") || description.contains("INVALID_SESSION") || description.contains("SESSION_NOT_FOUND")
+        return inactive ? "This GeForce NOW session is no longer resumable. End it and launch again." : nil
     }
 
     private func pollDelay(_ attempt: Int) -> TimeInterval {
