@@ -166,6 +166,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     private var audioSampleIndex: UInt64 = 0
     private var droppedFrames = 0
     private var lastStatusHostTime: CFTimeInterval = 0
+    private var lastTelemetryStatusName = ""
     private var isStopping = false
     private var receivedGameVideoFrame = false
     private var uiCapture: WebRTCWindowBroadcastCapture?
@@ -183,7 +184,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     }
 
     func start(configuration: WebRTCLiveBroadcastConfiguration) {
-        queue.async {
+        queue.async { [self] in
             guard self.configuration == nil else { return }
             self.configuration = configuration
             self.startedAt = Date()
@@ -192,6 +193,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.audioSampleIndex = 0
             self.droppedFrames = 0
             self.lastStatusHostTime = 0
+            self.lastTelemetryStatusName = ""
             self.isStopping = false
             self.receivedGameVideoFrame = false
             self.uiCapture = nil
@@ -314,6 +316,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                 await publisher.close()
                 return
             }
+            WebRTCMediaTelemetry.capture("webrtc.broadcast.rtmp.connect", level: .info, message: "Connecting Twitch RTMP publisher.", attributes: ["applicationID": configuration.applicationID])
             try await publisher.connect()
             queue.async {
                 guard self.configuration == configuration, !self.isStopping else {
@@ -322,6 +325,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                 }
                 self.connectionTask = nil
                 self.startUICaptureIfNeeded()
+                WebRTCMediaTelemetry.capture("webrtc.broadcast.rtmp.connected", level: .info, message: "Twitch RTMP publisher connected.", attributes: ["applicationID": configuration.applicationID])
                 self.emit(.publishing(startedAt: self.startedAt ?? Date(), elapsedSeconds: 0, droppedFrames: 0, videoBitrateKbps: configuration.videoBitrateKbps))
             }
         } catch {
@@ -350,13 +354,12 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             let frameIndex = self.frameIndex
             self.frameIndex += 1
             let callbackQueue = queue
-            try encoder.encode(pixelBuffer: outputPixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0 || dimensionsChanged) { packet in
-                Task {
+            try encoder.encode(pixelBuffer: outputPixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0 || dimensionsChanged) { [self] packet in
+                Task { [self, publisher, callbackQueue] in
                     do {
                         try await publisher.publishVideo(packet)
                     } catch {
-                        callbackQueue.async { [weak self] in
-                            guard let self else { return }
+                        callbackQueue.async { [self, publisher] in
                             guard self.publisher === publisher else { return }
                             self.fail(error)
                         }
@@ -379,6 +382,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
 
     private func fail(_ error: Error) {
         let publisher = publisher
+        let applicationID = configuration?.applicationID ?? ""
         connectionTask?.cancel()
         connectionTask = nil
         self.publisher = nil
@@ -387,6 +391,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         stopUICapture()
         reset()
         Task { await publisher?.close() }
+        WebRTCMediaTelemetry.capture("webrtc.broadcast.rtmp.failed", level: .error, message: Self.message(for: error), attributes: ["applicationID": applicationID])
         emit(.failed(Self.message(for: error)))
     }
 
@@ -438,9 +443,10 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             do {
                 try await capture.start()
             } catch {
-                self?.queue.async {
+                guard let self else { return }
+                self.queue.async { [self, capture] in
                     WebRTCMediaTelemetry.capture("webrtc.broadcast.ui_capture.unavailable", level: .warning, message: Self.message(for: error))
-                    if self?.uiCapture === capture { self?.uiCapture = nil }
+                    if self.uiCapture === capture { self.uiCapture = nil }
                 }
             }
         }
@@ -480,12 +486,11 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
                 let timestamp = UInt32(audioSampleIndex * 1_000 / 48_000)
                 audioSampleIndex += UInt64(packet.inputFrameCount)
                 let callbackQueue = queue
-                Task {
+                Task { [self, publisher, packet, timestamp, callbackQueue] in
                     do {
                         try await publisher.publishAudio(packet, timestampMilliseconds: timestamp)
                     } catch {
-                        callbackQueue.async { [weak self] in
-                            guard let self else { return }
+                        callbackQueue.async { [self, publisher] in
                             guard self.publisher === publisher else { return }
                             self.fail(error)
                         }
@@ -555,7 +560,43 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     private static let ciContext = CIContext(options: [.cacheIntermediates: false])
 
     private func emit(_ status: WebRTCLiveBroadcastStatus) {
+        emitTelemetryIfNeeded(status)
         Task { @MainActor [onStatusChanged] in onStatusChanged?(status) }
+    }
+
+    private func emitTelemetryIfNeeded(_ status: WebRTCLiveBroadcastStatus) {
+        let name: String
+        let message: String
+        let level: WebRTCMediaTelemetryLevel
+        switch status {
+        case .idle:
+            name = "idle"
+            message = "Twitch broadcast publisher is idle."
+            level = .info
+        case .connecting:
+            name = "connecting"
+            message = "Twitch broadcast publisher is connecting."
+            level = .info
+        case .publishing:
+            name = "publishing"
+            message = "Twitch broadcast publisher is publishing."
+            level = .info
+        case .live:
+            name = "live"
+            message = "Twitch broadcast publisher is live."
+            level = .info
+        case .stopping:
+            name = "stopping"
+            message = "Twitch broadcast publisher is stopping."
+            level = .info
+        case .failed(let error):
+            name = "failed"
+            message = error.isEmpty ? "Twitch broadcast publisher failed." : error
+            level = .error
+        }
+        guard lastTelemetryStatusName != name else { return }
+        lastTelemetryStatusName = name
+        WebRTCMediaTelemetry.capture("webrtc.broadcast.status", level: level, message: message, attributes: ["applicationID": configuration?.applicationID ?? "", "status": name])
     }
 
     private func newBGRAFramebuffer(from i420: RTCI420Buffer) -> CVPixelBuffer? {

@@ -21,6 +21,31 @@ public enum WebRTCMediaBroadcastLiveVerificationResult: Equatable, Sendable {
     }
 }
 
+private enum WebRTCMediaBroadcastPreparationResult: Equatable, Sendable {
+    case completed(String?)
+    case unavailable
+    case timedOut
+}
+
+private actor WebRTCMediaBroadcastPreparationGate {
+    private var result: WebRTCMediaBroadcastPreparationResult?
+    private var continuation: CheckedContinuation<WebRTCMediaBroadcastPreparationResult, Never>?
+
+    func wait() async -> WebRTCMediaBroadcastPreparationResult {
+        if let result { return result }
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func resolve(_ result: WebRTCMediaBroadcastPreparationResult) {
+        guard self.result == nil else { return }
+        self.result = result
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
+}
+
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
     private let configuration: StreamLaunchConfiguration
@@ -569,7 +594,10 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func toggleBroadcast() {
-        guard !isPreparingBroadcast else { return }
+        guard !isPreparingBroadcast else {
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start.ignored", level: .info, message: "Twitch broadcast start ignored while metadata preparation is active.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
         if broadcastStatus.isBroadcasting {
             transport?.stopBroadcast()
             WebRTCMediaTelemetry.capture("webrtc.ui.twitch.stop", level: .info, message: "Twitch broadcast stop requested.", attributes: ["applicationID": configuration.applicationID])
@@ -589,14 +617,34 @@ public struct WebRTCMediaStreamSurface: View {
         isPreparingBroadcast = true
         twitchMarkerMessage = "Updating Twitch channel..."
         Task { @MainActor in
-            if let message = await onBroadcastStart?(configuration.title, configuration.applicationID), !message.isEmpty {
-                twitchMarkerMessage = message
+            switch await prepareBroadcastMetadata(title: configuration.title, applicationID: configuration.applicationID) {
+            case .completed(let message):
+                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.completed", level: .info, message: "Twitch broadcast metadata preparation completed.", attributes: ["applicationID": configuration.applicationID])
+                if let message, !message.isEmpty { twitchMarkerMessage = message }
+            case .unavailable:
+                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.unavailable", level: .info, message: "Twitch broadcast metadata preparation unavailable; publishing with existing Twitch settings.", attributes: ["applicationID": configuration.applicationID])
+            case .timedOut:
+                twitchMarkerMessage = "Twitch metadata update timed out; publishing with existing settings."
+                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.timeout", level: .warning, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
             }
             guard isPreparingBroadcast else { return }
             isPreparingBroadcast = false
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.publish.start", level: .info, message: "Starting Twitch RTMP publisher after metadata preparation.", attributes: ["applicationID": configuration.applicationID])
             transport?.startBroadcast(configuration: broadcastConfiguration)
         }
         WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast metadata preparation started.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func prepareBroadcastMetadata(title: String, applicationID: String) async -> WebRTCMediaBroadcastPreparationResult {
+        guard let onBroadcastStart else { return .unavailable }
+        let gate = WebRTCMediaBroadcastPreparationGate()
+        let metadataTask = Task { await gate.resolve(.completed(onBroadcastStart(title, applicationID))) }
+        Task {
+            try? await Task.sleep(for: .seconds(6))
+            metadataTask.cancel()
+            await gate.resolve(.timedOut)
+        }
+        return await gate.wait()
     }
 
     private func createTwitchMarker() {
