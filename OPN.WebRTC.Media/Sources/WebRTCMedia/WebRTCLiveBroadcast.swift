@@ -264,6 +264,10 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
               let copied = Self.stereoPCM(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, channels: channels) else { return }
         queue.async {
             guard let publisher = self.publisher, !self.isStopping else { return }
+            if self.audioSampleIndex == 0, let firstFrameHostTime = self.firstFrameHostTime {
+                let elapsedSeconds = max(0, CACurrentMediaTime() - firstFrameHostTime)
+                self.audioSampleIndex = UInt64((elapsedSeconds * 48_000).rounded())
+            }
             let mixed = self.mixWithMicrophone(gameStereoSamples: copied)
             self.publishAudio(stereoSamples: mixed, publisher: publisher)
         }
