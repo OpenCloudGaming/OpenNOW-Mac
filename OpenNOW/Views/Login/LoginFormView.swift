@@ -43,10 +43,10 @@ struct LoginFormView: View {
                 endPoint: .trailing
             )
 
-            VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
+            VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
                 .scaledToFit()
-                .frame(width: 186, height: 56)
-                .position(x: metrics.contentLeft + 93, y: 52)
+                .frame(width: 156, height: 88)
+                .position(x: metrics.contentLeft + 78, y: 68)
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer()
