@@ -203,7 +203,7 @@ private struct SettingsSidebar: View {
                     .font(.settingsNvidia(size: 11, weight: .bold))
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.5)
-                Text("GeForce NOW")
+                Text("OpenNOW")
                     .font(.settingsNvidia(size: 22, weight: .bold))
                     .foregroundStyle(.white)
             }
@@ -413,7 +413,7 @@ private struct AccountSettingsPage: View {
 
             SettingsCard(title: "Playtime Statistics") {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
-                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "OpenNOW will track local playtime after your next GeForce NOW session ends.")
+                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "OpenNOW will track local playtime after your next OpenNOW session ends.")
                 } else {
                     SettingsFlowLayout(spacing: 10) {
                         SettingsStatisticTile(label: "Total Playtime", value: durationText(viewModel.playtimeStatistics.totalSeconds), emphasized: true)
@@ -699,7 +699,7 @@ private struct ConnectionsSettingsPage: View {
         let stores = connectionStores
         SettingsCard(title: "Store Connections") {
             if stores.isEmpty {
-                AccountEmptyState(title: "No store providers available.", subtitle: "GeForce NOW did not return any account providers for this session.")
+                AccountEmptyState(title: "No store providers available.", subtitle: "OpenNOW did not return any account providers for this session.")
             } else {
                 StoreConnectionsOverview(connectedCount: connectedStoreCount(in: stores), totalCount: stores.count)
                 SettingsDivider()
@@ -1184,7 +1184,7 @@ private struct GameplayProfileOverview: View {
                     Text("Active streaming profile")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("These values are sent to GeForce NOW when a new stream starts.")
+                    Text("These values are sent to OpenNOW when a new stream starts.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -1242,7 +1242,7 @@ private struct ServerLocationSettingsPage: View {
                     Text("Cloudmatch Region")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Automatic chooses the best measured GeForce NOW route.")
+                    Text("Automatic chooses the best measured OpenNOW route.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -1507,7 +1507,7 @@ private struct AboutSettingsPage: View {
                                 .frame(height: 20)
                                 .background(Color.openNowGreen)
                         }
-                        Text("A macOS runtime for launching and streaming GeForce NOW sessions with local catalog, account, and diagnostics surfaces.")
+                        Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
