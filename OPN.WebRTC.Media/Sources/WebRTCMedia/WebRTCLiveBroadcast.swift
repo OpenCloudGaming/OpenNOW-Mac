@@ -948,6 +948,8 @@ private actor RTMPPublisher {
     private let endpoint: RTMPEndpoint
     private var connection: NWConnection?
     private var streamID: UInt32 = 0
+    private var inboundChunkSize = 128
+    private var inboundHeaders: [UInt32: RTMPChunkHeader] = [:]
 
     init(rtmpURL: String, streamKey: String) throws {
         endpoint = try RTMPEndpoint(urlString: rtmpURL, streamKey: streamKey)
@@ -1115,32 +1117,91 @@ private actor RTMPPublisher {
         while true {
             let message = try await receiveMessage()
             guard message.type == 20 || message.type == 17 else { continue }
+            if let error = AMF0.commandError(message.payload, transactionID: transactionID) {
+                throw BroadcastError.rtmp(error)
+            }
             if let streamID = AMF0.resultStreamID(message.payload, transactionID: transactionID) { return streamID }
         }
     }
 
     private func receiveMessage() async throws -> RTMPMessage {
-        let first = try await receiveExact(length: 1)[0]
-        let format = first >> 6
-        let chunkStreamID = first & 0x3F
-        guard chunkStreamID >= 2 else { throw BroadcastError.rtmp("Unsupported RTMP chunk stream ID.") }
-        guard format == 0 else { throw BroadcastError.rtmp("Unsupported RTMP response chunk format.") }
-        let header = try await receiveExact(length: 11)
-        let length = (Int(header[3]) << 16) | (Int(header[4]) << 8) | Int(header[5])
-        let type = header[6]
+        let parsedHeader = try await receiveChunkHeader()
+        let length = parsedHeader.messageLength
         var payload = Data()
         while payload.count < length {
-            let count = min(Self.outboundChunkSize, length - payload.count)
+            let count = min(inboundChunkSize, length - payload.count)
             payload.append(try await receiveExact(length: count))
-            if payload.count < length { _ = try await receiveExact(length: 1) }
+            if payload.count < length {
+                let continuationHeader = try await receiveChunkHeader()
+                guard continuationHeader.chunkStreamID == parsedHeader.chunkStreamID else { throw BroadcastError.rtmp("RTMP chunk stream changed mid-message.") }
+            }
         }
-        return RTMPMessage(type: type, payload: payload)
+        if parsedHeader.messageTypeID == 1, payload.count >= 4 {
+            inboundChunkSize = max(1, Int(payload.uint32(at: 0)))
+            return try await receiveMessage()
+        }
+        return RTMPMessage(type: parsedHeader.messageTypeID, payload: payload)
+    }
+
+    private func receiveChunkHeader() async throws -> RTMPChunkHeader {
+        let basicHeader = try await receiveExact(length: 1)[0]
+        let format = basicHeader >> 6
+        let chunkStreamID = UInt32(basicHeader & 0x3F)
+        guard chunkStreamID >= 2 else { throw BroadcastError.rtmp("Unsupported RTMP chunk stream ID.") }
+        let previous = inboundHeaders[chunkStreamID]
+        let header: RTMPChunkHeader
+        switch format {
+        case 0:
+            let data = try await receiveExact(length: 11)
+            header = RTMPChunkHeader(
+                chunkStreamID: chunkStreamID,
+                timestamp: data.uint24(at: 0),
+                messageLength: Int(data.uint24(at: 3)),
+                messageTypeID: data[6],
+                messageStreamID: data.uint32LittleEndian(at: 7)
+            )
+        case 1:
+            guard let previous else { throw BroadcastError.rtmp("RTMP chunk format 1 missing previous header.") }
+            let data = try await receiveExact(length: 7)
+            header = RTMPChunkHeader(
+                chunkStreamID: chunkStreamID,
+                timestamp: previous.timestamp + data.uint24(at: 0),
+                messageLength: Int(data.uint24(at: 3)),
+                messageTypeID: data[6],
+                messageStreamID: previous.messageStreamID
+            )
+        case 2:
+            guard let previous else { throw BroadcastError.rtmp("RTMP chunk format 2 missing previous header.") }
+            let data = try await receiveExact(length: 3)
+            header = RTMPChunkHeader(
+                chunkStreamID: chunkStreamID,
+                timestamp: previous.timestamp + data.uint24(at: 0),
+                messageLength: previous.messageLength,
+                messageTypeID: previous.messageTypeID,
+                messageStreamID: previous.messageStreamID
+            )
+        case 3:
+            guard let previous else { throw BroadcastError.rtmp("RTMP chunk format 3 missing previous header.") }
+            header = previous
+        default:
+            throw BroadcastError.rtmp("Unsupported RTMP response chunk format.")
+        }
+        inboundHeaders[chunkStreamID] = header
+        return header
     }
 }
 
 private struct RTMPMessage {
     let type: UInt8
     let payload: Data
+}
+
+private struct RTMPChunkHeader {
+    let chunkStreamID: UInt32
+    let timestamp: UInt32
+    let messageLength: Int
+    let messageTypeID: UInt8
+    let messageStreamID: UInt32
 }
 
 private final class ContinuationResumeGate: @unchecked Sendable {
@@ -1169,10 +1230,22 @@ private struct RTMPEndpoint: Sendable {
         secure = scheme == "rtmps"
         self.host = host
         port = UInt16(url.port ?? (secure ? 443 : 1935))
-        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        app = path.isEmpty ? "app" : path
-        playPath = streamKey
+        let trimmedKey = streamKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pathComponents = url.path.split(separator: "/").map(String.init)
+        if pathComponents.count >= 2 {
+            app = pathComponents.dropLast().joined(separator: "/")
+            let urlPlayPath = pathComponents.last ?? trimmedKey
+            playPath = trimmedKey.isEmpty ? Self.playPath(urlPlayPath, query: url.query) : Self.playPath(trimmedKey, query: url.query)
+        } else {
+            app = pathComponents.first ?? "app"
+            playPath = Self.playPath(trimmedKey, query: url.query)
+        }
         tcURL = "\(scheme)://\(host)/\(app)"
+    }
+
+    private static func playPath(_ streamKey: String, query: String?) -> String {
+        guard let query, !query.isEmpty, !streamKey.contains("?") else { return streamKey }
+        return "\(streamKey)?\(query)"
     }
 }
 
@@ -1241,6 +1314,14 @@ private enum AMF0 {
         return UInt32(streamID.rounded())
     }
 
+    static func commandError(_ payload: Data, transactionID: Double) -> String? {
+        var offset = 0
+        guard readString(payload, offset: &offset) == "_error" else { return nil }
+        guard let responseTransactionID = readNumber(payload, offset: &offset), responseTransactionID == transactionID else { return nil }
+        skipValue(payload, offset: &offset)
+        return readObjectDescription(payload, offset: &offset) ?? "Twitch RTMP server rejected the command."
+    }
+
     private static func readString(_ data: Data, offset: inout Int) -> String? {
         guard offset < data.count, data[offset] == 0x02 else { return nil }
         offset += 1
@@ -1288,6 +1369,35 @@ private enum AMF0 {
             offset = data.count
         }
     }
+
+    private static func readObjectDescription(_ data: Data, offset: inout Int) -> String? {
+        guard offset < data.count, data[offset] == 0x03 else { return nil }
+        offset += 1
+        var values: [String: String] = [:]
+        while offset + 3 <= data.count {
+            if data[offset] == 0, data[offset + 1] == 0, data[offset + 2] == 9 {
+                offset += 3
+                break
+            }
+            let keyLength = (Int(data[offset]) << 8) | Int(data[offset + 1])
+            offset += 2
+            guard offset + keyLength <= data.count else { break }
+            let key = String(data: data[offset..<(offset + keyLength)], encoding: .utf8) ?? ""
+            offset += keyLength
+            if let value = readAnyString(data, offset: &offset), !key.isEmpty {
+                values[key] = value
+            } else {
+                skipValue(data, offset: &offset)
+            }
+        }
+        return values["description"] ?? values["details"] ?? values["code"]
+    }
+
+    private static func readAnyString(_ data: Data, offset: inout Int) -> String? {
+        guard offset < data.count else { return nil }
+        if data[offset] == 0x02 { return readString(data, offset: &offset) }
+        return nil
+    }
 }
 
 private enum BroadcastError: LocalizedError {
@@ -1304,6 +1414,21 @@ private enum BroadcastError: LocalizedError {
 }
 
 private extension Data {
+    func uint24(at offset: Int) -> UInt32 {
+        guard offset + 2 < count else { return 0 }
+        return (UInt32(self[offset]) << 16) | (UInt32(self[offset + 1]) << 8) | UInt32(self[offset + 2])
+    }
+
+    func uint32(at offset: Int) -> UInt32 {
+        guard offset + 3 < count else { return 0 }
+        return (UInt32(self[offset]) << 24) | (UInt32(self[offset + 1]) << 16) | (UInt32(self[offset + 2]) << 8) | UInt32(self[offset + 3])
+    }
+
+    func uint32LittleEndian(at offset: Int) -> UInt32 {
+        guard offset + 3 < count else { return 0 }
+        return UInt32(self[offset]) | (UInt32(self[offset + 1]) << 8) | (UInt32(self[offset + 2]) << 16) | (UInt32(self[offset + 3]) << 24)
+    }
+
     mutating func appendUInt16(_ value: UInt16) {
         append(UInt8((value >> 8) & 0xFF))
         append(UInt8(value & 0xFF))
