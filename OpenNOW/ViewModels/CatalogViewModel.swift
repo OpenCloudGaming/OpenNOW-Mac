@@ -187,6 +187,7 @@ final class CatalogViewModel: ObservableObject {
     private var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     private var streamProgressGeneration = 0
     private var settingsPreferencesGeneration = 0
+    private var isCatalogBroadcastPreparing = false
     private var selectedGameRevealSequence = 0
     private var settingsPreferencesTask: Task<Void, Never>?
     private let catalogBroadcastController = WebRTCLiveBroadcastController.shared
@@ -743,7 +744,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     private func startCatalogTwitchBroadcast() {
-        guard !catalogBroadcastStatus.isBroadcasting else { return }
+        guard !catalogBroadcastStatus.isBroadcasting, !isCatalogBroadcastPreparing else { return }
         let selectedTitle = (selectedGame?.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let title = selectedTitle.isEmpty ? "OpenNOW Live" : selectedTitle
         let selectedApplicationID = selectedGame.map(Self.favoriteAppId(for:)) ?? ""
@@ -752,16 +753,22 @@ final class CatalogViewModel: ObservableObject {
             errorMessage = "Twitch is not ready. Save your Primary Stream Key in Settings > Twitch."
             return
         }
-        catalogBroadcastController.start(configuration: configuration)
-        actionMessage = "Starting Twitch broadcast from the catalog."
+        isCatalogBroadcastPreparing = true
+        actionMessage = "Updating Twitch title and category..."
         errorMessage = ""
         Task { @MainActor in
-            guard (try? TwitchTokenStore.load()) != nil else { return }
-            do {
-                actionMessage = try await TwitchOAuthService.prepareBroadcast(clientID: TwitchOAuthService.clientID, title: title, applicationID: applicationID)
-            } catch {
-                actionMessage = Self.message(for: error)
+            defer { isCatalogBroadcastPreparing = false }
+            if (try? TwitchTokenStore.load()) != nil {
+                do {
+                    actionMessage = try await TwitchOAuthService.prepareBroadcast(clientID: TwitchOAuthService.clientID, title: title, applicationID: applicationID)
+                } catch {
+                    actionMessage = "Twitch metadata update failed: \(Self.message(for: error))"
+                }
+            } else {
+                actionMessage = "Starting Twitch broadcast from the catalog. Connect Twitch OAuth to update title and category."
             }
+            guard !catalogBroadcastStatus.isBroadcasting else { return }
+            catalogBroadcastController.start(configuration: configuration)
         }
     }
 

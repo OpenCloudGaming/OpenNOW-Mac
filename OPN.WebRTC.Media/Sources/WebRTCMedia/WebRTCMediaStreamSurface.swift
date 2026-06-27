@@ -58,6 +58,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
     @State private var broadcastStatus = WebRTCLiveBroadcastStatus.idle
+    @State private var isPreparingBroadcast = false
     @State private var broadcastLiveVerified = false
     @State private var broadcastVerificationMessage = ""
     @State private var broadcastForcedFailureMessage = ""
@@ -329,14 +330,15 @@ public struct WebRTCMediaStreamSurface: View {
             if !twitchMarkerMessage.isEmpty { twitchPanelRow("Marker", twitchMarkerMessage) }
             HStack(spacing: 8) {
                 Button(action: toggleBroadcast) {
-                    Text(broadcastStatus.isBroadcasting ? "STOP BROADCAST" : "START BROADCAST")
+                    Text(isPreparingBroadcast ? "PREPARING" : (broadcastStatus.isBroadcasting ? "STOP BROADCAST" : "START BROADCAST"))
                         .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(broadcastStatus.isBroadcasting ? .white : .black)
+                        .foregroundStyle(broadcastStatus.isBroadcasting || isPreparingBroadcast ? .white : .black)
                         .frame(maxWidth: .infinity)
                         .frame(height: 34)
-                        .background(broadcastStatus.isBroadcasting ? Color.red.opacity(0.75) : Color.purple.opacity(0.95))
+                        .background(broadcastStatus.isBroadcasting ? Color.red.opacity(0.75) : Color.purple.opacity(isPreparingBroadcast ? 0.58 : 0.95))
                 }
                 .buttonStyle(.plain)
+                .disabled(isPreparingBroadcast)
                 Button(action: createTwitchMarker) {
                     Text("MARK")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -454,19 +456,23 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var broadcastIndicator: some View {
         Group {
-            switch broadcastStatus {
-            case .connecting:
-                broadcastStatusChip(color: .purple, text: "Connecting")
-            case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                broadcastStatusChip(color: .purple.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
-            case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                broadcastStatusChip(color: .red, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
-            case .stopping:
-                broadcastStatusChip(color: .orange, text: "Stopping")
-            case .failed(let message):
-                broadcastStatusChip(color: .purple, text: message)
-            case .idle:
-                EmptyView()
+            if isPreparingBroadcast {
+                broadcastStatusChip(color: .purple, text: "Preparing", detail: "Updating Twitch channel")
+            } else {
+                switch broadcastStatus {
+                case .connecting:
+                    broadcastStatusChip(color: .purple, text: "Connecting")
+                case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+                    broadcastStatusChip(color: .purple.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
+                case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+                    broadcastStatusChip(color: .red, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
+                case .stopping:
+                    broadcastStatusChip(color: .orange, text: "Stopping")
+                case .failed(let message):
+                    broadcastStatusChip(color: .purple, text: message)
+                case .idle:
+                    EmptyView()
+                }
             }
         }
         .padding(.top, 24)
@@ -527,10 +533,12 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var broadcastButtonTitle: String {
-        broadcastStatus.isBroadcasting ? "Stop" : "Twitch"
+        if isPreparingBroadcast { return "Wait" }
+        return broadcastStatus.isBroadcasting ? "Stop" : "Twitch"
     }
 
     private var twitchStatusText: String {
+        if isPreparingBroadcast { return "Updating Twitch title and category before publishing." }
         switch broadcastStatus {
         case .idle: return "Ready"
         case .connecting: return "Connecting"
@@ -561,6 +569,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func toggleBroadcast() {
+        guard !isPreparingBroadcast else { return }
         if broadcastStatus.isBroadcasting {
             transport?.stopBroadcast()
             WebRTCMediaTelemetry.capture("webrtc.ui.twitch.stop", level: .info, message: "Twitch broadcast stop requested.", attributes: ["applicationID": configuration.applicationID])
@@ -577,13 +586,17 @@ public struct WebRTCMediaStreamSurface: View {
         broadcastVerificationUnavailable = false
         broadcastVerificationTask?.cancel()
         broadcastVerificationTask = nil
-        transport?.startBroadcast(configuration: broadcastConfiguration)
+        isPreparingBroadcast = true
+        twitchMarkerMessage = "Updating Twitch channel..."
         Task { @MainActor in
             if let message = await onBroadcastStart?(configuration.title, configuration.applicationID), !message.isEmpty {
                 twitchMarkerMessage = message
             }
+            guard isPreparingBroadcast else { return }
+            isPreparingBroadcast = false
+            transport?.startBroadcast(configuration: broadcastConfiguration)
         }
-        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast start requested.", attributes: ["applicationID": configuration.applicationID])
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast metadata preparation started.", attributes: ["applicationID": configuration.applicationID])
     }
 
     private func createTwitchMarker() {
@@ -1088,6 +1101,7 @@ public struct WebRTCMediaStreamSurface: View {
         broadcastNotificationTask = nil
         broadcastVerificationTask?.cancel()
         broadcastVerificationTask = nil
+        isPreparingBroadcast = false
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
