@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
 		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
 		7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758B2FDCA4F900B177D8 /* Jarvis */; };
 		7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758E2FDCA4F900B177D8 /* Starfleet */; };
 		777875922FDCA4F900B177D8 /* NesAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 777875912FDCA4F900B177D8 /* NesAuth */; };
@@ -44,6 +45,7 @@
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 		7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenNOW.entitlements; sourceTree = "<group>"; };
+		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -59,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */,
 				7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */,
 				A00000000000000000000101 /* CloudMatch in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
@@ -86,6 +89,7 @@
 			children = (
 				7729CE782FDEDAB300D5C9D5 /* OpenNOW */,
 				7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */,
+				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
