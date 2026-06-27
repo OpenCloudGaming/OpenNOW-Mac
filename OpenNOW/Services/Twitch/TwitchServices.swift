@@ -445,9 +445,7 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
                     return
                 }
                 do {
-                    let parameters = NWParameters.tcp
-                    parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(self.host), port: NWEndpoint.Port(rawValue: self.port)!)
-                    let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: self.port)!)
+                    let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: self.port)!)
                     let callbackQueue = self.queue
                     self.listener = listener
                     let resumeGate = TwitchContinuationResumeGate()
