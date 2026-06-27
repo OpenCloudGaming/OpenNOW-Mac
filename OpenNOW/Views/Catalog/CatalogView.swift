@@ -803,23 +803,6 @@ private struct CatalogTopBar: View {
 
                 HStack(spacing: 24) {
                     Spacer()
-                    Button { viewModel.toggleCatalogTwitchBroadcast() } label: {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(catalogBroadcastIndicatorColor)
-                                .frame(width: 8, height: 8)
-                            Text(catalogBroadcastButtonTitle)
-                                .font(.nvidia(size: 13, weight: .bold))
-                                .tracking(0.7)
-                        }
-                        .foregroundStyle(.white.opacity(0.92))
-                        .padding(.horizontal, 14)
-                        .frame(height: 34)
-                        .background(catalogBroadcastButtonBackground, in: Capsule())
-                        .overlay { Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(catalogBroadcastAccessibilityLabel)
                     Menu {
                         ForEach(accounts) { account in
                             Button(account.displayName) { onSwitch(account) }
@@ -862,34 +845,6 @@ private struct CatalogTopBar: View {
         case .recordings: return "Recordings"
         case .settings: return "Settings"
         }
-    }
-
-    private var catalogBroadcastButtonTitle: String {
-        switch viewModel.catalogBroadcastStatus {
-        case .idle: return "TWITCH"
-        case .connecting: return "CONNECTING"
-        case .publishing, .live: return "STOP LIVE"
-        case .stopping: return "STOPPING"
-        case .failed: return "RETRY"
-        }
-    }
-
-    private var catalogBroadcastAccessibilityLabel: String {
-        viewModel.catalogBroadcastStatus.isBroadcasting ? "Stop Twitch broadcast" : "Start Twitch broadcast"
-    }
-
-    private var catalogBroadcastIndicatorColor: Color {
-        switch viewModel.catalogBroadcastStatus {
-        case .live: return .red
-        case .publishing: return .orange
-        case .connecting, .stopping: return .yellow
-        case .failed: return .pink
-        case .idle: return Color.openNowGreen
-        }
-    }
-
-    private var catalogBroadcastButtonBackground: Color {
-        viewModel.catalogBroadcastStatus.isBroadcasting ? Color.red.opacity(0.34) : Color.white.opacity(0.055)
     }
 
     private var catalogSearchField: some View {
@@ -1066,6 +1021,10 @@ private struct CatalogMainMenuPanel: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("ACTIONS")
+                        CatalogMainMenuRow(title: catalogBroadcastMenuTitle, subtitle: catalogBroadcastMenuSubtitle, systemImage: "dot.radiowaves.left.and.right", isActive: viewModel.catalogBroadcastStatus.isBroadcasting) {
+                            viewModel.toggleCatalogTwitchBroadcast()
+                            isPresented = false
+                        }
                         CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
                             viewModel.refresh()
                             isPresented = false
@@ -1119,6 +1078,27 @@ private struct CatalogMainMenuPanel: View {
         case .resolutionUpscaling: return "sparkles.tv.fill"
         case .system: return "desktopcomputer"
         case .about: return "info.circle.fill"
+        }
+    }
+
+    private var catalogBroadcastMenuTitle: String {
+        switch viewModel.catalogBroadcastStatus {
+        case .idle: return "Start Twitch Broadcast"
+        case .connecting: return "Connecting Twitch"
+        case .publishing, .live: return "Stop Twitch Broadcast"
+        case .stopping: return "Stopping Twitch"
+        case .failed: return "Retry Twitch Broadcast"
+        }
+    }
+
+    private var catalogBroadcastMenuSubtitle: String {
+        switch viewModel.catalogBroadcastStatus {
+        case .idle: return "Stream this session to Twitch"
+        case .connecting: return "Preparing the live broadcast"
+        case .publishing: return "Publishing stream; Twitch confirmation pending"
+        case .live: return "Channel is live"
+        case .stopping: return "Stopping the broadcast"
+        case .failed(let message): return message.isEmpty ? "Broadcast failed" : message
         }
     }
 

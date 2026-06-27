@@ -6,9 +6,10 @@ import OpenNOWTelemetry
 import SwiftUI
 
 private enum SettingsVendorLayout {
-    static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
-    static let sidebar = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
-    static let card = Color(red: 28 / 255, green: 28 / 255, blue: 28 / 255)
+    static let surface = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+    static let sidebar = Color(red: 31 / 255, green: 32 / 255, blue: 31 / 255)
+    static let card = Color(red: 26 / 255, green: 27 / 255, blue: 26 / 255)
+    static let cardRaised = Color(red: 34 / 255, green: 35 / 255, blue: 34 / 255)
     static let row = Color.white.opacity(0.045)
 }
 
@@ -70,7 +71,17 @@ struct SettingsView: View {
             SettingsContent(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SettingsVendorLayout.surface)
+        .background(SettingsSurfaceBackground())
+    }
+}
+
+private struct SettingsSurfaceBackground: View {
+    var body: some View {
+        ZStack {
+            SettingsVendorLayout.surface
+            LinearGradient(colors: [Color.openNowGreen.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
+            LinearGradient(colors: [.black.opacity(0.22), .clear, .black.opacity(0.18)], startPoint: .leading, endPoint: .trailing)
+        }
     }
 }
 
@@ -126,7 +137,8 @@ private struct SettingsSidebar: View {
                     .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
             }
             .buttonStyle(.plain)
-            .padding(22)
+            .padding(.horizontal, 22)
+            .padding(.bottom, 22)
         }
         .frame(width: 256)
         .background(SettingsVendorLayout.sidebar)
@@ -162,13 +174,13 @@ private struct SettingsContent: View {
                 }
                 page
             }
-            .padding(.horizontal, 42)
-            .padding(.top, 34)
+            .padding(.horizontal, 52)
+            .padding(.top, 38)
             .padding(.bottom, 54)
-            .frame(maxWidth: 1040, alignment: .leading)
+            .frame(maxWidth: 1220, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.gfnBackgroundGreen)
+        .background(SettingsSurfaceBackground())
     }
 
     @ViewBuilder private var page: some View {
@@ -212,16 +224,25 @@ private struct SettingsHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(Color.openNowGreen)
-                .tracking(1.5)
-            Text(title)
-                .font(.settingsNvidia(size: 34, weight: .bold))
-                .foregroundStyle(.white)
-            Text(subtitle)
-                .font(.settingsNvidia(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+            HStack(alignment: .bottom, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title.uppercased())
+                        .font(.settingsNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .tracking(1.5)
+                    Text(title)
+                        .font(.settingsNvidia(size: 34, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.settingsNvidia(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+                Spacer(minLength: 24)
+                Rectangle()
+                    .fill(Color.openNowGreen.opacity(0.42))
+                    .frame(width: 120, height: 2)
+                    .padding(.bottom, 9)
+            }
         }
     }
 }
@@ -236,9 +257,8 @@ private struct AccountSettingsPage: View {
             SettingsCard(title: "Membership") {
                 HStack(alignment: .top, spacing: 20) {
                     ZStack {
-                        Rectangle()
-                            .fill(Color.black.opacity(0.22))
-                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.72), lineWidth: 1) }
+                        SettingsVendorLayout.cardRaised
+                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.42), lineWidth: 1) }
                         SettingsAccountAvatar(email: viewModel.account.email, size: 58)
                     }
                     .frame(width: 92, height: 92)
@@ -272,48 +292,15 @@ private struct AccountSettingsPage: View {
                 }
             }
 
-            SettingsCard(title: "Profile & Privacy") {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Personal account details are masked by default.")
-                            .font(.settingsNvidia(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("Reveal only when validating account state on your own machine.")
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.56))
-                    }
-                    Spacer()
-                    Button { revealSensitive.toggle() } label: {
-                        Text(revealSensitive ? "HIDE DETAILS" : "REVEAL DETAILS")
-                            .font(.settingsNvidia(size: 11, weight: .bold))
-                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
-                            .tracking(0.8)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
-                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    profilePrivacyCard
+                    sessionCard
                 }
-                SettingsDivider()
-                AboutDetailRow(label: "Display Name", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Email", value: displayedEmail, copyValue: viewModel.account.email, copiedKey: $copiedKey, copyDisabled: viewModel.account.email.isEmpty)
-                SettingsDivider()
-                AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
-            }
-
-            SettingsCard(title: "Session") {
-                SettingsFlowLayout(spacing: 10) {
-                    AccountStatusTile(label: "Provider", value: providerName, positive: true)
-                    AccountStatusTile(label: "Authorization", value: normalizedState(viewModel.account.authorizationState), positive: isAuthorized)
-                    AccountStatusTile(label: "Status", value: normalizedState(viewModel.account.authStatus), positive: isLoggedIn)
-                    AccountStatusTile(label: "Remember", value: viewModel.account.rememberSession ? "Enabled" : "Off", positive: viewModel.account.rememberSession)
+                VStack(alignment: .leading, spacing: 16) {
+                    profilePrivacyCard
+                    sessionCard
                 }
-                SettingsDivider()
-                AboutDetailRow(label: "Preferred Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey)
             }
 
             SettingsCard(title: "Playtime Statistics") {
@@ -334,6 +321,44 @@ private struct AccountSettingsPage: View {
                     }
                 }
             }
+        }
+    }
+
+    private var profilePrivacyCard: some View {
+        SettingsCard(title: "Profile & Privacy") {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Personal account details are masked by default.")
+                        .font(.settingsNvidia(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Reveal only when validating account state on your own machine.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+                Spacer()
+                SettingsRevealButton(revealed: revealSensitive) { revealSensitive.toggle() }
+            }
+            SettingsDivider()
+            AboutDetailRow(label: "Display Name", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
+            SettingsDivider()
+            AboutDetailRow(label: "Email", value: displayedEmail, copyValue: viewModel.account.email, copiedKey: $copiedKey, copyDisabled: viewModel.account.email.isEmpty)
+            SettingsDivider()
+            AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
+        }
+    }
+
+    private var sessionCard: some View {
+        SettingsCard(title: "Session") {
+            SettingsFlowLayout(spacing: 10) {
+                AccountStatusTile(label: "Provider", value: providerName, positive: true)
+                AccountStatusTile(label: "Authorization", value: normalizedState(viewModel.account.authorizationState), positive: isAuthorized)
+                AccountStatusTile(label: "Status", value: normalizedState(viewModel.account.authStatus), positive: isLoggedIn)
+                AccountStatusTile(label: "Remember", value: viewModel.account.rememberSession ? "Enabled" : "Off", positive: viewModel.account.rememberSession)
+            }
+            SettingsDivider()
+            AboutDetailRow(label: "Preferred Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
+            SettingsDivider()
+            AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey)
         }
     }
 
@@ -450,19 +475,46 @@ private struct AccountHealthBadge: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(positive ? .black : .white.opacity(0.88))
-                .tracking(1.1)
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(positive ? Color.openNowGreen : Color.orange)
+                    .frame(width: 7, height: 7)
+                Text(title)
+                    .font(.settingsNvidia(size: 12, weight: .bold))
+                    .foregroundStyle(positive ? Color.openNowGreen : .white.opacity(0.88))
+                    .tracking(1.1)
+            }
             Text(subtitle)
                 .font(.settingsNvidia(size: 11, weight: .bold))
-                .foregroundStyle(positive ? .black.opacity(0.74) : .white.opacity(0.54))
+                .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(2)
         }
         .padding(.horizontal, 14)
         .frame(width: 172, height: 64, alignment: .leading)
-        .background(positive ? Color.openNowGreen : Color.white.opacity(0.07))
-        .overlay { Rectangle().stroke(positive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
+        .background(SettingsVendorLayout.cardRaised)
+        .overlay(alignment: .leading) { Rectangle().fill(positive ? Color.openNowGreen : Color.orange).frame(width: 3) }
+        .overlay { Rectangle().stroke(positive ? Color.openNowGreen.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }
+    }
+}
+
+private struct SettingsRevealButton: View {
+    let revealed: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(revealed ? "HIDE DETAILS" : "REVEAL DETAILS")
+                .font(.settingsNvidia(size: 11, weight: .bold))
+                .foregroundStyle(revealed ? .black : .white.opacity(isHovering ? 0.94 : 0.82))
+                .tracking(0.8)
+                .padding(.horizontal, 13)
+                .frame(height: 32)
+                .background(revealed ? Color.openNowGreen.opacity(isHovering ? 0.90 : 1) : Color.white.opacity(isHovering ? 0.10 : 0.065))
+                .overlay { Rectangle().stroke(revealed ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.20 : 0.13), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
 
@@ -1882,13 +1934,21 @@ private struct SettingsCard<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SettingsVendorLayout.card)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
+        .background(
+            ZStack(alignment: .topLeading) {
+                SettingsVendorLayout.card
+                LinearGradient(colors: [Color.white.opacity(0.035), .clear], startPoint: .top, endPoint: .center)
+                Rectangle()
+                    .fill(Color.openNowGreen.opacity(0.10))
+                    .frame(width: 1)
+            }
+        )
+        .overlay { Rectangle().stroke(Color.white.opacity(0.115), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.26), radius: 16, y: 8)
     }
 }
 
