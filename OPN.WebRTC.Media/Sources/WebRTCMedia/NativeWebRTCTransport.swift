@@ -24,23 +24,24 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         self.nativeView = nativeView
         super.init()
         recorder.onStatusChanged = { [weak self] status in
-            if status.isTerminal {
-                self?.session.setEnhancedVideoFrameCaptureEnabled(false)
-            }
+            self?.updateEnhancedVideoFrameCapture()
             self?.onRecordingStatusChanged?(status)
         }
         broadcastStatusObserverID = broadcaster.addStatusObserver { [weak self] status in
-            if status.isTerminal {
-                self?.session.setEnhancedVideoFrameCaptureEnabled(self?.recorder.wantsEnhancedVideo == true)
-            }
+            self?.updateEnhancedVideoFrameCapture()
             self?.onBroadcastStatusChanged?(status)
         }
+        updateEnhancedVideoFrameCapture()
     }
 
     deinit {
         if let broadcastStatusObserverID {
             broadcaster.removeStatusObserver(broadcastStatusObserverID)
         }
+    }
+
+    private func updateEnhancedVideoFrameCapture() {
+        session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo || broadcaster.wantsEnhancedVideo)
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {

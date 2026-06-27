@@ -96,7 +96,7 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("2.0.85.135")
+                Text(appVersionText)
                     .font(.nvidiaSans(size: 14, weight: .regular))
                     .foregroundStyle(Color.gfnTextSecondary)
                     .lineLimit(1)
@@ -118,6 +118,16 @@ struct LoginFormView: View {
         viewModel.rememberSession = true
         viewModel.acceptedTerms = true
         viewModel.launchOAuth()
+    }
+
+    private var appVersionText: String {
+        let dictionary = Bundle.main.infoDictionary ?? [:]
+        let version = (dictionary["CFBundleShortVersionString"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let build = (dictionary["CFBundleVersion"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !version.isEmpty, !build.isEmpty { return "\(version).\(build)" }
+        if !version.isEmpty { return version }
+        if !build.isEmpty { return build }
+        return "Unknown"
     }
 }
 

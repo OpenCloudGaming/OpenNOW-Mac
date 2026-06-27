@@ -3,7 +3,7 @@
   "mcp": {
     "playwright": {
       "type": "local",
-      "command": ["npx", "-y", "@playwright/mcp"],
+      "command": ["npx", "-y", "@playwright/mcp@0.0.76"],
       "enabled": true,
       "environment": {
         "BROWSER": "chromium"
@@ -11,7 +11,7 @@
     },
     "xcodebuild": {
       "type": "local",
-      "command": ["npx", "-y", "xcodebuildmcp@latest", "mcp"],
+      "command": ["npx", "-y", "xcodebuildmcp@2.6.2", "mcp"],
       "enabled": true,
       "timeout": 60000
     },

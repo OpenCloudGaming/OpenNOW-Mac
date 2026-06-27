@@ -878,7 +878,17 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             case .unavailable:
                 broadcastLiveVerified = false
-                broadcastVerificationUnavailable = true
+                broadcastVerificationUnavailable = false
+                if case .publishing = broadcastStatus {
+                    broadcastVerificationTask = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(5))
+                        guard !Task.isCancelled else { return }
+                        broadcastVerificationTask = nil
+                        startBroadcastLiveVerification()
+                    }
+                } else {
+                    broadcastVerificationUnavailable = true
+                }
             case .notLive(let message):
                 broadcastLiveVerified = false
                 broadcastVerificationUnavailable = false

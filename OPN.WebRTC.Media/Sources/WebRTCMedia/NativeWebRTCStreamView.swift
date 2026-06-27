@@ -327,6 +327,7 @@ public final class NativeWebRTCStreamView: NSView {
         guard modifiers.contains(.command) else { return nil }
         let shifted = modifiers.contains(.shift)
         if shifted {
+            guard modifiers.subtracting([.capsLock, .numericPad]) == [.command, .shift] else { return nil }
             switch event.keyCode {
             case 8: return .toggleTwitchChatOverlay
             case 46: return .createTwitchMarker

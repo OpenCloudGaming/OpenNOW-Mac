@@ -198,7 +198,7 @@ final class CatalogViewModel: ObservableObject {
         self.session = session
         self.onRefreshAuth = onRefreshAuth
         if twitchPrimaryStreamKeySaved {
-            twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
+            twitchAccountStatus.streamKeyAvailable = true
         }
         catalogBroadcastObserverID = catalogBroadcastController.addStatusObserver { [weak self] status in
             self?.handleCatalogBroadcastStatus(status)
@@ -644,7 +644,7 @@ final class CatalogViewModel: ObservableObject {
             try TwitchStreamKeyStore.save(value)
             twitchPrimaryStreamKeySaved = true
             if !twitchAccountStatus.isConnected {
-                twitchAccountStatus = TwitchAccountStatus(isConnected: true, displayName: "Manual stream key", login: "", channelID: "", streamKeyAvailable: true)
+                twitchAccountStatus.streamKeyAvailable = true
             } else {
                 twitchAccountStatus.streamKeyAvailable = true
             }
@@ -806,7 +806,7 @@ final class CatalogViewModel: ObservableObject {
             fps: preferences.fps,
             videoBitrateKbps: preferences.videoBitrateKbps,
             audioBitrateKbps: preferences.audioBitrateKbps,
-            enhancedVideoEnabled: false
+            enhancedVideoEnabled: preferences.useEnhancedVideo
         )
     }
 

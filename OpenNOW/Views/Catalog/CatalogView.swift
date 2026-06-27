@@ -2913,33 +2913,39 @@ private struct CatalogGameTile: View {
             .accessibilityValue(isSelected ? "Details open" : "")
 
             if isHovering {
-                Button(action: onPlay) {
-                    HStack(spacing: 7) {
-                        Image(systemName: "play.fill")
-                            .font(.nvidia(size: 10, weight: .bold))
-                        Text("PLAY")
-                            .font(.nvidia(size: 11, weight: .bold))
-                            .tracking(0.9)
-                    }
-                    .foregroundStyle(.black.opacity(0.88))
-                    .padding(.horizontal, 13)
-                    .frame(height: 30)
-                    .background(Color.openNowGreen)
-                    .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
-                    .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
+                ZStack(alignment: .topLeading) {
+                    playButton
                 }
-                .buttonStyle(.plain)
                 .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
                 .padding(.leading, CatalogVendorLayout.tileHorizontalMargin)
                 .padding(.top, CatalogVendorLayout.tileTopMargin)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 .zIndex(2)
-                .accessibilityLabel("Play \(game.title.isEmpty ? "game" : game.title)")
             }
         }
         .onHover { isHovering = $0 }
         .openNowFocusRing(isFocused)
         .animation(.easeOut(duration: 0.16), value: isHovering)
+    }
+
+    private var playButton: some View {
+        Button(action: onPlay) {
+            HStack(spacing: 7) {
+                Image(systemName: "play.fill")
+                    .font(.nvidia(size: 10, weight: .bold))
+                Text("PLAY")
+                    .font(.nvidia(size: 11, weight: .bold))
+                    .tracking(0.9)
+            }
+            .foregroundStyle(.black.opacity(0.88))
+            .padding(.horizontal, 13)
+            .frame(height: 30)
+            .background(Color.openNowGreen)
+            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+            .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Play \(game.title.isEmpty ? "game" : game.title)")
     }
 
     private var tileContent: some View {

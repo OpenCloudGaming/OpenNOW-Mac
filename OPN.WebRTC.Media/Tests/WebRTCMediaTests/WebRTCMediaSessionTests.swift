@@ -249,16 +249,16 @@ struct WebRTCStreamingPathTests {
         #expect(settings.upscalingMode == 0)
     }
 
-    @Test("falls back from H265 for native WebRTC")
-    func fallsBackFromH265ForNativeWebRTC() {
+    @Test("keeps H265 for native WebRTC")
+    func keepsH265ForNativeWebRTC() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
             profile: WebRTCMediaStreamProfile(codec: "H265", colorQuality: "10bit_420"),
             capabilities: WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true),
             libWebRTCAvailable: true
         )
 
-        #expect(settings.codec == "H264")
-        #expect(settings.colorQuality == "8bit_420")
+        #expect(settings.codec == "H265")
+        #expect(settings.colorQuality == "10bit_420")
     }
 
     @Test("keeps AV1 ten bit color when available")

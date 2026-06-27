@@ -1,6 +1,7 @@
 @preconcurrency import Accelerate
 import AudioToolbox
 import AppKit
+import CoreImage
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -157,6 +158,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     private let encoder = WebRTCH264LiveEncoder()
     private let audioEncoder = WebRTCAACLiveEncoder()
     private var publisher: RTMPPublisher?
+    private var connectionTask: Task<Void, Never>?
     private var configuration: WebRTCLiveBroadcastConfiguration?
     private var startedAt: Date?
     private var firstFrameHostTime: CFTimeInterval?
@@ -196,7 +198,11 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.microphoneStereoSamples.removeAll(keepingCapacity: true)
             self.audioEncoder.reset(bitrateKbps: configuration.audioBitrateKbps)
             self.emit(.connecting)
-            Task { [weak self] in await self?.openPublisher(configuration: configuration) }
+            let task = Task { [weak self] in
+                guard let self else { return }
+                await self.openPublisher(configuration: configuration)
+            }
+            self.connectionTask = task
         }
     }
 
@@ -205,6 +211,8 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             guard self.configuration != nil else { return }
             self.isStopping = true
             self.emit(.stopping)
+            self.connectionTask?.cancel()
+            self.connectionTask = nil
             let publisher = self.publisher
             self.publisher = nil
             self.encoder.invalidate()
@@ -259,26 +267,28 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         }
     }
 
-    func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate _: Double, channels: UInt32) {
+    func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
         guard let audioBufferList,
               let copied = Self.stereoPCM(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, channels: channels) else { return }
+        let normalized = Self.resampledStereoPCM(copied, sourceSampleRate: sampleRate, targetSampleRate: 48_000)
         queue.async {
             guard let publisher = self.publisher, !self.isStopping else { return }
             if self.audioSampleIndex == 0, let firstFrameHostTime = self.firstFrameHostTime {
                 let elapsedSeconds = max(0, CACurrentMediaTime() - firstFrameHostTime)
                 self.audioSampleIndex = UInt64((elapsedSeconds * 48_000).rounded())
             }
-            let mixed = self.mixWithMicrophone(gameStereoSamples: copied)
+            let mixed = self.mixWithMicrophone(gameStereoSamples: normalized)
             self.publishAudio(stereoSamples: mixed, publisher: publisher)
         }
     }
 
-    func appendMicrophoneAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate _: Double, channels: UInt32) {
+    func appendMicrophoneAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
         guard let audioBufferList,
               let copied = Self.stereoPCM(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), frameCount: frameCount, channels: channels) else { return }
+        let normalized = Self.resampledStereoPCM(copied, sourceSampleRate: sampleRate, targetSampleRate: 48_000)
         queue.async {
             guard self.configuration != nil, !self.isStopping else { return }
-            self.microphoneStereoSamples.append(contentsOf: copied)
+            self.microphoneStereoSamples.append(contentsOf: normalized)
             let maximumBufferedSamples = 48_000 * 2
             if self.microphoneStereoSamples.count > maximumBufferedSamples {
                 self.microphoneStereoSamples.removeFirst(self.microphoneStereoSamples.count - maximumBufferedSamples)
@@ -288,19 +298,39 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
 
     private func openPublisher(configuration: WebRTCLiveBroadcastConfiguration) async {
         do {
+            try Task.checkCancellation()
             let publisher = try RTMPPublisher(rtmpURL: configuration.rtmpURL, streamKey: configuration.streamKey)
+            let shouldConnect = await withCheckedContinuation { continuation in
+                queue.async {
+                    guard self.configuration == configuration, !self.isStopping, !Task.isCancelled else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+                    self.publisher = publisher
+                    continuation.resume(returning: true)
+                }
+            }
+            guard shouldConnect else {
+                await publisher.close()
+                return
+            }
             try await publisher.connect()
             queue.async {
                 guard self.configuration == configuration, !self.isStopping else {
                     Task { await publisher.close() }
                     return
                 }
-                self.publisher = publisher
+                self.connectionTask = nil
                 self.startUICaptureIfNeeded()
                 self.emit(.publishing(startedAt: self.startedAt ?? Date(), elapsedSeconds: 0, droppedFrames: 0, videoBitrateKbps: configuration.videoBitrateKbps))
             }
         } catch {
-            queue.async { [weak self] in self?.fail(error) }
+            let wasCancelled = error is CancellationError || Task.isCancelled
+            queue.async { [weak self] in
+                guard let self, !wasCancelled else { return }
+                self.connectionTask = nil
+                self.fail(error)
+            }
         }
     }
 
@@ -310,8 +340,9 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         guard let firstFrameHostTime else { return }
         let timestamp = CMTime(seconds: max(0, CACurrentMediaTime() - firstFrameHostTime), preferredTimescale: 1_000)
         do {
-            let width = CVPixelBufferGetWidth(pixelBuffer)
-            let height = CVPixelBufferGetHeight(pixelBuffer)
+            let width = max(2, configuration.width)
+            let height = max(2, configuration.height)
+            let outputPixelBuffer = try targetPixelBuffer(from: pixelBuffer, width: width, height: height)
             let dimensionsChanged = encoder.isConfigured && (encoder.configuredWidth != width || encoder.configuredHeight != height)
             if !encoder.isConfigured || dimensionsChanged {
                 try encoder.configure(width: width, height: height, fps: configuration.fps, bitrateKbps: configuration.videoBitrateKbps)
@@ -319,7 +350,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             let frameIndex = self.frameIndex
             self.frameIndex += 1
             let callbackQueue = queue
-            try encoder.encode(pixelBuffer: pixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0 || dimensionsChanged) { packet in
+            try encoder.encode(pixelBuffer: outputPixelBuffer, presentationTime: timestamp, forceKeyframe: frameIndex == 0 || dimensionsChanged) { packet in
                 Task {
                     do {
                         try await publisher.publishVideo(packet)
@@ -348,6 +379,8 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
 
     private func fail(_ error: Error) {
         let publisher = publisher
+        connectionTask?.cancel()
+        connectionTask = nil
         self.publisher = nil
         encoder.invalidate()
         audioEncoder.reset(bitrateKbps: 160)
@@ -355,6 +388,31 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         reset()
         Task { await publisher?.close() }
         emit(.failed(Self.message(for: error)))
+    }
+
+    private func targetPixelBuffer(from pixelBuffer: CVPixelBuffer, width: Int, height: Int) throws -> CVPixelBuffer {
+        if CVPixelBufferGetWidth(pixelBuffer) == width, CVPixelBufferGetHeight(pixelBuffer) == height { return pixelBuffer }
+        var output: CVPixelBuffer?
+        let attributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &output) == kCVReturnSuccess, let output else {
+            throw BroadcastError.encoder("Unable to allocate broadcast frame buffer.")
+        }
+        let source = CIImage(cvPixelBuffer: pixelBuffer)
+        let sourceExtent = source.extent
+        let scale = max(CGFloat(width) / max(sourceExtent.width, 1), CGFloat(height) / max(sourceExtent.height, 1))
+        let scaledWidth = sourceExtent.width * scale
+        let scaledHeight = sourceExtent.height * scale
+        let transform = CGAffineTransform(translationX: -sourceExtent.minX, y: -sourceExtent.minY)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: ((CGFloat(width) - scaledWidth) / 2) / scale, y: ((CGFloat(height) - scaledHeight) / 2) / scale)
+        let image = source.transformed(by: transform)
+        Self.ciContext.render(image, to: output, bounds: CGRect(x: 0, y: 0, width: width, height: height), colorSpace: CGColorSpaceCreateDeviceRGB())
+        return output
     }
 
     private func reset() {
@@ -473,6 +531,28 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         }
         return samples
     }
+
+    private static func resampledStereoPCM(_ samples: [Int16], sourceSampleRate: Double, targetSampleRate: Double) -> [Int16] {
+        guard sourceSampleRate > 0, abs(sourceSampleRate - targetSampleRate) > 0.5 else { return samples }
+        let sourceFrames = samples.count / 2
+        guard sourceFrames > 1 else { return samples }
+        let targetFrames = max(1, Int((Double(sourceFrames) * targetSampleRate / sourceSampleRate).rounded()))
+        var output = [Int16](repeating: 0, count: targetFrames * 2)
+        for frame in 0..<targetFrames {
+            let sourcePosition = Double(frame) * sourceSampleRate / targetSampleRate
+            let lower = min(sourceFrames - 1, max(0, Int(sourcePosition.rounded(.down))))
+            let upper = min(sourceFrames - 1, lower + 1)
+            let fraction = sourcePosition - Double(lower)
+            for channel in 0..<2 {
+                let a = Double(samples[lower * 2 + channel])
+                let b = Double(samples[upper * 2 + channel])
+                output[frame * 2 + channel] = Int16(max(Double(Int16.min), min(Double(Int16.max), a + ((b - a) * fraction))))
+            }
+        }
+        return output
+    }
+
+    private static let ciContext = CIContext(options: [.cacheIntermediates: false])
 
     private func emit(_ status: WebRTCLiveBroadcastStatus) {
         Task { @MainActor [onStatusChanged] in onStatusChanged?(status) }
@@ -749,9 +829,11 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
 
     func encode(pixelBuffer: CVPixelBuffer, presentationTime: CMTime, forceKeyframe: Bool, callback: @escaping @Sendable (WebRTCH264Packet) -> Void) throws {
         guard let session else { throw BroadcastError.encoder("H.264 encoder is not configured.") }
-        currentCallback = callback
+        let callbackBox = WebRTCH264FrameCallback(callback)
+        let sourceFrameRefcon = Unmanaged.passRetained(callbackBox).toOpaque()
         let properties = forceKeyframe ? [kVTEncodeFrameOptionKey_ForceKeyFrame as String: true] as CFDictionary : nil
-        let status = VTCompressionSessionEncodeFrame(session, imageBuffer: pixelBuffer, presentationTimeStamp: presentationTime, duration: .invalid, frameProperties: properties, sourceFrameRefcon: nil, infoFlagsOut: nil)
+        let status = VTCompressionSessionEncodeFrame(session, imageBuffer: pixelBuffer, presentationTimeStamp: presentationTime, duration: .invalid, frameProperties: properties, sourceFrameRefcon: sourceFrameRefcon, infoFlagsOut: nil)
+        if status != noErr { Unmanaged<WebRTCH264FrameCallback>.fromOpaque(sourceFrameRefcon).release() }
         guard status == noErr else { throw BroadcastError.encoder("H.264 frame encode failed (\(status)).") }
     }
 
@@ -766,13 +848,12 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
         configuredHeight = 0
     }
 
-    private var currentCallback: (@Sendable (WebRTCH264Packet) -> Void)?
-
-    private static let outputCallback: VTCompressionOutputCallback = { refcon, _, status, _, sampleBuffer in
-        guard status == noErr, let refcon, let sampleBuffer, CMSampleBufferDataIsReady(sampleBuffer) else { return }
-        let encoder = Unmanaged<WebRTCH264LiveEncoder>.fromOpaque(refcon).takeUnretainedValue()
+    private static let outputCallback: VTCompressionOutputCallback = { _, sourceFrameRefcon, status, _, sampleBuffer in
+        guard let sourceFrameRefcon else { return }
+        let callbackBox = Unmanaged<WebRTCH264FrameCallback>.fromOpaque(sourceFrameRefcon).takeRetainedValue()
+        guard status == noErr, let sampleBuffer, CMSampleBufferDataIsReady(sampleBuffer) else { return }
         guard let packet = WebRTCH264LiveEncoder.packet(from: sampleBuffer) else { return }
-        encoder.currentCallback?(packet)
+        callbackBox.callback(packet)
     }
 
     private static func packet(from sampleBuffer: CMSampleBuffer) -> WebRTCH264Packet? {
@@ -792,7 +873,8 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
         var offset = 0
         var nalUnits: [Data] = []
         while offset + 4 <= length {
-            let size = Data(bytes: pointer + offset, count: 4).withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+            let bytes = UnsafeRawBufferPointer(start: pointer + offset, count: 4)
+            let size = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) | (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
             offset += 4
             guard size > 0, offset + Int(size) <= length else { break }
             nalUnits.append(Data(bytes: pointer + offset, count: Int(size)))
@@ -810,12 +892,21 @@ private final class WebRTCH264LiveEncoder: @unchecked Sendable {
     }
 }
 
+private final class WebRTCH264FrameCallback: @unchecked Sendable {
+    let callback: @Sendable (WebRTCH264Packet) -> Void
+
+    init(_ callback: @escaping @Sendable (WebRTCH264Packet) -> Void) {
+        self.callback = callback
+    }
+}
+
 private actor RTMPPublisher {
     private static let outboundChunkSize = 128
+    private static let operationTimeoutSeconds: TimeInterval = 12
 
     private let endpoint: RTMPEndpoint
     private var connection: NWConnection?
-    private var streamID: UInt32 = 1
+    private var streamID: UInt32 = 0
 
     init(rtmpURL: String, streamKey: String) throws {
         endpoint = try RTMPEndpoint(urlString: rtmpURL, streamKey: streamKey)
@@ -825,11 +916,22 @@ private actor RTMPPublisher {
         let connection = NWConnection(host: NWEndpoint.Host(endpoint.host), port: NWEndpoint.Port(rawValue: endpoint.port)!, using: endpoint.secure ? .tls : .tcp)
         self.connection = connection
         connection.start(queue: .global(qos: .userInitiated))
-        try await waitUntilReady(connection)
-        try await performHandshake(connection)
-        try await sendConnectCommand()
-        try await sendCreateStreamCommand()
-        try await sendPublishCommand()
+        do {
+            try Task.checkCancellation()
+            try await waitUntilReady(connection)
+            try Task.checkCancellation()
+            try await performHandshake(connection)
+            try Task.checkCancellation()
+            try await sendConnectCommand()
+            try Task.checkCancellation()
+            streamID = try await sendCreateStreamCommand()
+            guard streamID > 0 else { throw BroadcastError.rtmp("RTMP server returned an invalid stream ID.") }
+            try Task.checkCancellation()
+            try await sendPublishCommand()
+        } catch {
+            close()
+            throw error
+        }
     }
 
     func publishVideo(_ packet: WebRTCH264Packet) async throws {
@@ -856,7 +958,14 @@ private actor RTMPPublisher {
 
     private func waitUntilReady(_ connection: NWConnection) async throws {
         let resumeGate = ContinuationResumeGate()
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            Task {
+                try? await Task.sleep(for: .seconds(Self.operationTimeoutSeconds))
+                guard resumeGate.claim() else { return }
+                connection.stateUpdateHandler = nil
+                connection.cancel()
+                continuation.resume(throwing: BroadcastError.rtmp("RTMP connection timed out."))
+            }
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
@@ -882,7 +991,7 @@ private actor RTMPPublisher {
         var c0c1 = Data([3])
         c0c1.append(c1)
         try await send(c0c1)
-        let s0s1s2 = try await receive(length: 3073)
+        let s0s1s2 = try await receiveExact(length: 3073)
         guard s0s1s2.first == 3, s0s1s2.count == 3073 else { throw BroadcastError.rtmp("RTMP handshake failed.") }
         try await send(s0s1s2.subdata(in: 1..<1537))
     }
@@ -890,12 +999,13 @@ private actor RTMPPublisher {
     private func sendConnectCommand() async throws {
         let payload = AMF0.command("connect", transactionID: 1, objects: [["app": endpoint.app, "type": "nonprivate", "tcUrl": endpoint.tcURL, "flashVer": "FMLE/3.0", "fpad": false, "capabilities": 15, "audioCodecs": 0, "videoCodecs": 128, "videoFunction": 1]])
         try await sendMessage(type: 20, streamID: 0, timestamp: 0, payload: payload)
-        _ = try await receive(length: 1)
+        _ = try await receiveCommandResult(transactionID: 1)
     }
 
-    private func sendCreateStreamCommand() async throws {
+    private func sendCreateStreamCommand() async throws -> UInt32 {
         let payload = AMF0.command("createStream", transactionID: 2, objects: [nil])
         try await sendMessage(type: 20, streamID: 0, timestamp: 0, payload: payload)
+        return try await receiveCommandResult(transactionID: 2)
     }
 
     private func sendPublishCommand() async throws {
@@ -932,15 +1042,64 @@ private actor RTMPPublisher {
         }
     }
 
-    private func receive(length: Int) async throws -> Data {
+    private func receiveExact(length: Int) async throws -> Data {
         guard let connection else { throw BroadcastError.rtmp("RTMP connection is closed.") }
-        return try await withCheckedThrowingContinuation { continuation in
-            connection.receive(minimumIncompleteLength: length, maximumLength: length) { data, _, _, error in
+        var output = Data()
+        while output.count < length {
+            let chunk = try await receiveOnce(connection: connection, minimumLength: 1, maximumLength: length - output.count)
+            guard !chunk.isEmpty else { throw BroadcastError.rtmp("RTMP connection closed while receiving data.") }
+            output.append(chunk)
+        }
+        return output
+    }
+
+    private func receiveOnce(connection: NWConnection, minimumLength: Int, maximumLength: Int) async throws -> Data {
+        let resumeGate = ContinuationResumeGate()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+            Task {
+                try? await Task.sleep(for: .seconds(Self.operationTimeoutSeconds))
+                guard resumeGate.claim() else { return }
+                connection.cancel()
+                continuation.resume(throwing: BroadcastError.rtmp("RTMP receive timed out."))
+            }
+            connection.receive(minimumIncompleteLength: minimumLength, maximumLength: maximumLength) { data, _, _, error in
+                guard resumeGate.claim() else { return }
                 if let error { continuation.resume(throwing: error); return }
                 continuation.resume(returning: data ?? Data())
             }
         }
     }
+
+    private func receiveCommandResult(transactionID: Double) async throws -> UInt32 {
+        while true {
+            let message = try await receiveMessage()
+            guard message.type == 20 || message.type == 17 else { continue }
+            if let streamID = AMF0.resultStreamID(message.payload, transactionID: transactionID) { return streamID }
+        }
+    }
+
+    private func receiveMessage() async throws -> RTMPMessage {
+        let first = try await receiveExact(length: 1)[0]
+        let format = first >> 6
+        let chunkStreamID = first & 0x3F
+        guard chunkStreamID >= 2 else { throw BroadcastError.rtmp("Unsupported RTMP chunk stream ID.") }
+        guard format == 0 else { throw BroadcastError.rtmp("Unsupported RTMP response chunk format.") }
+        let header = try await receiveExact(length: 11)
+        let length = (Int(header[3]) << 16) | (Int(header[4]) << 8) | Int(header[5])
+        let type = header[6]
+        var payload = Data()
+        while payload.count < length {
+            let count = min(Self.outboundChunkSize, length - payload.count)
+            payload.append(try await receiveExact(length: count))
+            if payload.count < length { _ = try await receiveExact(length: 1) }
+        }
+        return RTMPMessage(type: type, payload: payload)
+    }
+}
+
+private struct RTMPMessage {
+    let type: UInt8
+    let payload: Data
 }
 
 private final class ContinuationResumeGate: @unchecked Sendable {
@@ -1030,6 +1189,63 @@ private enum AMF0 {
         data.appendNumber(transactionID)
         for object in objects { data.appendAMF0(object) }
         return data
+    }
+
+    static func resultStreamID(_ payload: Data, transactionID: Double) -> UInt32? {
+        var offset = 0
+        guard readString(payload, offset: &offset) == "_result" else { return nil }
+        guard let responseTransactionID = readNumber(payload, offset: &offset), responseTransactionID == transactionID else { return nil }
+        skipValue(payload, offset: &offset)
+        guard let streamID = readNumber(payload, offset: &offset), streamID > 0 else { return transactionID == 1 ? 1 : nil }
+        return UInt32(streamID.rounded())
+    }
+
+    private static func readString(_ data: Data, offset: inout Int) -> String? {
+        guard offset < data.count, data[offset] == 0x02 else { return nil }
+        offset += 1
+        guard offset + 2 <= data.count else { return nil }
+        let length = (Int(data[offset]) << 8) | Int(data[offset + 1])
+        offset += 2
+        guard offset + length <= data.count else { return nil }
+        defer { offset += length }
+        return String(data: data[offset..<(offset + length)], encoding: .utf8)
+    }
+
+    private static func readNumber(_ data: Data, offset: inout Int) -> Double? {
+        guard offset < data.count, data[offset] == 0x00 else { return nil }
+        offset += 1
+        guard offset + 8 <= data.count else { return nil }
+        var bits: UInt64 = 0
+        for byte in data[offset..<(offset + 8)] { bits = (bits << 8) | UInt64(byte) }
+        offset += 8
+        return Double(bitPattern: bits)
+    }
+
+    private static func skipValue(_ data: Data, offset: inout Int) {
+        guard offset < data.count else { return }
+        switch data[offset] {
+        case 0x00:
+            offset = min(data.count, offset + 9)
+        case 0x01:
+            offset = min(data.count, offset + 2)
+        case 0x02:
+            _ = readString(data, offset: &offset)
+        case 0x03:
+            offset += 1
+            while offset + 3 <= data.count {
+                if data[offset] == 0, data[offset + 1] == 0, data[offset + 2] == 9 {
+                    offset += 3
+                    return
+                }
+                let keyLength = (Int(data[offset]) << 8) | Int(data[offset + 1])
+                offset += 2 + keyLength
+                skipValue(data, offset: &offset)
+            }
+        case 0x05, 0x06:
+            offset += 1
+        default:
+            offset = data.count
+        }
     }
 }
 

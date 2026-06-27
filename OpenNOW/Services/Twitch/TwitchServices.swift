@@ -130,6 +130,7 @@ enum TwitchServiceError: LocalizedError, Sendable {
     case streamNotLive(String)
     case callbackServer(String)
     case keychain(OSStatus)
+    case secureRandom(OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -142,13 +143,16 @@ enum TwitchServiceError: LocalizedError, Sendable {
         case .streamNotLive(let message): return message.isEmpty ? "Twitch did not report this channel live." : message
         case .callbackServer(let message): return message.isEmpty ? "Unable to start the Twitch OAuth callback server." : message
         case .keychain(let status): return "Keychain operation failed with status \(status)."
+        case .secureRandom(let status): return "Secure random generation failed with status \(status)."
         }
     }
 }
 
 enum TwitchOAuthService {
     static let clientID = "alymw1mbm3hayczv6a7mbqna6a9344"
-    static let redirectURI = "http://localhost/"
+    private static let callbackHost = "127.0.0.1"
+    private static let callbackPort: UInt16 = 43_897
+    static let redirectURI = "http://\(callbackHost):\(callbackPort)/"
 
     private static let authorizeEndpoint = URL(string: "https://id.twitch.tv/oauth2/authorize")!
     private static let revokeEndpoint = URL(string: "https://id.twitch.tv/oauth2/revoke")!
@@ -170,18 +174,18 @@ enum TwitchOAuthService {
     ]
 
     nonisolated static func isCallbackURL(_ url: URL) -> Bool {
-        url.scheme == "http" && url.host == "localhost" && (url.path.isEmpty || url.path == "/")
+        url.scheme == "http" && url.host == callbackHost && url.port == Int(callbackPort) && (url.path.isEmpty || url.path == "/")
     }
 
     static func start(clientID: String) async throws -> TwitchAccountStatus {
         let clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty else { throw TwitchServiceError.missingClientID }
-        let verifier = randomURLSafeString(byteCount: 48)
-        let state = randomURLSafeString(byteCount: 32)
+        let verifier = try randomURLSafeString(byteCount: 48)
+        let state = try randomURLSafeString(byteCount: 32)
         UserDefaults.standard.set(state, forKey: stateKey)
         UserDefaults.standard.set(verifier, forKey: verifierKey)
         callbackServer?.stop()
-        let server = TwitchOAuthCallbackServer()
+        let server = TwitchOAuthCallbackServer(host: callbackHost, port: callbackPort)
         try await server.start()
         callbackServer = server
         var components = URLComponents(url: authorizeEndpoint, resolvingAgainstBaseURL: false)
@@ -206,7 +210,7 @@ enum TwitchOAuthService {
             callbackServer?.stop()
             callbackServer = nil
         }
-        let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } })
+        let items = safeQueryItems(components.queryItems ?? [])
         guard items["state"] == UserDefaults.standard.string(forKey: stateKey) else { throw TwitchServiceError.stateMismatch }
         guard let code = items["code"], !code.isEmpty else { throw TwitchServiceError.missingAuthorizationCode }
         guard let verifier = UserDefaults.standard.string(forKey: verifierKey), !verifier.isEmpty else { throw TwitchServiceError.invalidCallback }
@@ -364,10 +368,20 @@ enum TwitchOAuthService {
         return TwitchAccountStatus(isConnected: true, displayName: "Twitch", login: "", channelID: "", streamKeyAvailable: TwitchStreamKeyStore.exists())
     }
 
-    private static func randomURLSafeString(byteCount: Int) -> String {
+    private static func randomURLSafeString(byteCount: Int) throws -> String {
         var bytes = [UInt8](repeating: 0, count: byteCount)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else { throw TwitchServiceError.secureRandom(status) }
         return Data(bytes).base64URLEncodedString()
+    }
+
+    private static func safeQueryItems(_ queryItems: [URLQueryItem]) -> [String: String] {
+        var items: [String: String] = [:]
+        for item in queryItems {
+            guard let value = item.value, items[item.name] == nil else { continue }
+            items[item.name] = value
+        }
+        return items
     }
 
     private static func codeChallenge(for verifier: String) -> String {
@@ -414,7 +428,14 @@ private extension String {
 
 private final class TwitchOAuthCallbackServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.opencg.opennow.twitch.oauth.callback")
+    private let host: String
+    private let port: UInt16
     private var listener: NWListener?
+
+    init(host: String, port: UInt16) {
+        self.host = host
+        self.port = port
+    }
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -424,7 +445,9 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
                     return
                 }
                 do {
-                    let listener = try NWListener(using: .tcp, on: 80)
+                    let parameters = NWParameters.tcp
+                    parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(self.host), port: NWEndpoint.Port(rawValue: self.port)!)
+                    let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: self.port)!)
                     let callbackQueue = self.queue
                     self.listener = listener
                     let resumeGate = TwitchContinuationResumeGate()
@@ -435,7 +458,7 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
                             continuation.resume()
                         case .failed(let error):
                             guard resumeGate.claim() else { return }
-                            continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://localhost/. Close anything using port 80 or run OpenNOW with permission to bind that port. \(error.localizedDescription)"))
+                            continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://\(self.host):\(self.port)/. Close anything using that callback port and try again. \(error.localizedDescription)"))
                         case .cancelled:
                             guard resumeGate.claim() else { return }
                             continuation.resume(throwing: TwitchServiceError.callbackServer("Twitch OAuth callback server stopped before it was ready."))
@@ -448,7 +471,7 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
                     }
                     listener.start(queue: callbackQueue)
                 } catch {
-                    continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://localhost/. Close anything using port 80 or run OpenNOW with permission to bind that port. \(error.localizedDescription)"))
+                    continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://\(self.host):\(self.port)/. Close anything using that callback port and try again. \(error.localizedDescription)"))
                 }
             }
         }
@@ -486,7 +509,7 @@ private final class TwitchOAuthCallbackServer: @unchecked Sendable {
         guard let requestLine = request.components(separatedBy: "\r\n").first else { return nil }
         let parts = requestLine.split(separator: " ")
         guard parts.count >= 2 else { return nil }
-        return URL(string: "http://localhost\(parts[1])")
+        return URL(string: "http://\(host):\(port)\(parts[1])")
     }
 
     private func sendResponse(statusLine: String, body: String, connection: NWConnection) {

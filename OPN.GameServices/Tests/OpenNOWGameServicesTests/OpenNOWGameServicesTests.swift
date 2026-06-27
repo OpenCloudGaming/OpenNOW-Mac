@@ -3,6 +3,35 @@ import Foundation
 import WebRTCMedia
 @testable import OpenNOWGameServices
 
+private let sessionManagerTestLock = AsyncTestLock()
+
+private actor AsyncTestLock {
+    private var locked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+        await acquire()
+        defer { release() }
+        return try await operation()
+    }
+
+    private func acquire() async {
+        if !locked {
+            locked = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    private func release() {
+        guard !waiters.isEmpty else {
+            locked = false
+            return
+        }
+        waiters.removeFirst().resume()
+    }
+}
+
 @Test func launchAppIdRejectsZeroAndInvalidValues() {
     #expect(OPNLaunchAppId.resolve("0") == nil)
     #expect(OPNLaunchAppId.resolve(" 0 ") == nil)
@@ -54,7 +83,7 @@ import WebRTCMedia
     #expect(result.1 == "This game does not include a launchable GeForce NOW app id.")
 }
 
-@Test(.serialized) @MainActor func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
+@Test @MainActor func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
     let host = "*"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "GET")
@@ -94,7 +123,8 @@ import WebRTCMedia
     }
 }
 
-@Test(.serialized) func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
+@Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
+    try await sessionManagerTestLock.withLock {
     let host = "create-release-shape.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")
@@ -153,6 +183,7 @@ import WebRTCMedia
     #expect(streamingFeatures["prefilterSharpness"] as? Int == 0)
     #expect(metadataKeys.contains("store") == true)
     #expect(metadataKeys.contains("networkLatencyMs") == true)
+    }
 }
 
 @Test func activeSessionParserPreservesControlAndSignalingHosts() {
@@ -190,6 +221,7 @@ import WebRTCMedia
 }
 
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
+    await sessionManagerTestLock.withLock {
     let host = "resume-success.example.test"
     let lock = NSLock()
     nonisolated(unsafe) var getCount = 0
@@ -228,9 +260,11 @@ import WebRTCMedia
     #expect(claimRequestData?["appId"] as? Int == 123)
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
+    }
 }
 
 @Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
+    await sessionManagerTestLock.withLock {
     let host = "resume-not-paused.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
@@ -259,9 +293,11 @@ import WebRTCMedia
     #expect(result.0 == false)
     #expect(result.1 == "Session is not paused and cannot be resumed.")
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+    }
 }
 
 @Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
+    await sessionManagerTestLock.withLock {
     let host = "resume-stale-internal.example.test"
     UserDefaults.standard.set("resume-session", forKey: "OpenNOW.Stream.ActiveSessionId")
     SessionManagerURLProtocol.install(host: host) { request in
@@ -290,9 +326,11 @@ import WebRTCMedia
     #expect(result.1 == "This GeForce NOW session is no longer resumable. End it and launch again.")
     #expect(UserDefaults.standard.string(forKey: "OpenNOW.Stream.ActiveSessionId") == nil)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
+    }
 }
 
-@Test(.serialized) func sessionManagerStaleInternalCreateErrorReturnsHTTPMessage() async {
+@Test func sessionManagerStaleInternalCreateErrorReturnsHTTPMessage() async {
+    await sessionManagerTestLock.withLock {
     let host = "create-stale-internal.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")
@@ -312,6 +350,7 @@ import WebRTCMedia
     #expect(result.0 == false)
     #expect(result.1.contains("HTTP 400:"))
     #expect(result.1.contains("INTERNAL_ERROR_STATUS 8A8C0000"))
+    }
 }
 
 @Test func sessionManagerDoesNotSelectZeroAppIdSessionLimitEntry() {

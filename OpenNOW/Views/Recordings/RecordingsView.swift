@@ -566,15 +566,10 @@ private enum RecordingThumbnailLoader {
             generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
             let targetSeconds = max(0.2, min(max(durationSeconds * 0.18, 0.2), max(durationSeconds - 0.2, 0.2)))
             let time = CMTime(seconds: targetSeconds, preferredTimescale: 600)
-            let cgImage: CGImage?
-            if #available(macOS 15.0, *) {
-                cgImage = await withCheckedContinuation { continuation in
-                    generator.generateCGImageAsynchronously(for: time) { image, _, error in
-                        continuation.resume(returning: error == nil ? image : nil)
-                    }
+            let cgImage = await withCheckedContinuation { continuation in
+                generator.generateCGImageAsynchronously(for: time) { image, _, error in
+                    continuation.resume(returning: error == nil ? image : nil)
                 }
-            } else {
-                cgImage = try? generator.copyCGImage(at: time, actualTime: nil)
             }
             guard let cgImage else { return nil }
             return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))

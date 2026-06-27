@@ -1637,7 +1637,7 @@ private struct AboutSettingsPage: View {
             "Membership: \(account.membershipTier)",
             "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
             "Streaming: WebRTC",
-            "Cloudmatch: \(route.copyValue)",
+            "Cloudmatch: \(route.summary)",
             "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ].joined(separator: "\n")
     }
