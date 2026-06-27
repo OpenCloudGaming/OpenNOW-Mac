@@ -1232,6 +1232,7 @@ private struct GameplayProfileMetricTile: View {
 
 private struct ServerLocationSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
+    private let regionColumns = [GridItem(.adaptive(minimum: 138, maximum: 220), spacing: 10)]
 
     var body: some View {
         let selectedOption = viewModel.settingsRegionOptions.first { $0.url == viewModel.selectedSettingsRegionUrl }
@@ -1251,7 +1252,7 @@ private struct ServerLocationSettingsPage: View {
                     .disabled(viewModel.isRefreshingSettingsRegions)
             }
             SettingsDivider()
-            VStack(spacing: 10) {
+            LazyVGrid(columns: regionColumns, alignment: .leading, spacing: 10) {
                 ForEach(viewModel.settingsRegionOptions, id: \.url) { option in
                     SettingsRegionRow(option: option, selected: option.url == viewModel.selectedSettingsRegionUrl) {
                         viewModel.selectSettingsRegion(option.url)
@@ -1263,7 +1264,7 @@ private struct ServerLocationSettingsPage: View {
 
     private func selectedRegionTitle(_ option: OPNStreamRegionOption?) -> String {
         guard let option else { return "Automatic" }
-        return option.automatic ? "Automatic" : option.name
+        return SettingsRegionName.shortName(for: option)
     }
 }
 
@@ -2210,28 +2211,42 @@ private struct SettingsRegionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Rectangle()
-                    .fill(selected ? Color.openNowGreen : Color.white.opacity(0.18))
-                    .frame(width: 4, height: 48)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(option.automatic ? "Automatic" : option.name)
-                        .font(.settingsNvidia(size: 14, weight: .bold))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(SettingsRegionName.shortName(for: option))
+                        .font(.settingsNvidia(size: 13, weight: .bold))
                         .foregroundStyle(selected ? .white : .white.opacity(0.90))
-                    Text(option.automatic ? "Best measured route" : "Cloudmatch region")
-                        .font(.settingsNvidia(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(selected ? 0.64 : 0.52))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Spacer(minLength: 6)
+                    Circle()
+                        .fill(selected ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.34 : 0.22))
+                        .frame(width: 8, height: 8)
+                        .padding(.top, 4)
                 }
-                Spacer()
                 RegionLatencyBadge(latencyMs: option.latencyMs, selected: selected)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
             .background(selected ? Color.openNowGreen.opacity(0.13) : Color.white.opacity(isHovering ? 0.065 : 0.045))
             .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.74) : Color.white.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+}
+
+private enum SettingsRegionName {
+    static func shortName(for option: OPNStreamRegionOption) -> String {
+        guard !option.automatic else { return "Auto" }
+        let withoutParenthetical = option.name.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
+        let withoutPrefixes = withoutParenthetical
+            .replacingOccurrences(of: "GeForce NOW", with: "")
+            .replacingOccurrences(of: "NVIDIA", with: "")
+            .replacingOccurrences(of: "Cloudmatch", with: "")
+        let cleaned = withoutPrefixes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? option.name : cleaned
     }
 }
 
@@ -2243,13 +2258,14 @@ private struct RegionLatencyBadge: View {
         HStack(spacing: 7) {
             Circle()
                 .fill(indicatorColor)
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
             Text(latencyText)
-                .font(.settingsNvidia(size: 12, weight: .bold))
+                .font(.settingsNvidia(size: 11, weight: .bold))
                 .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.74))
+                .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 28)
+        .padding(.horizontal, 8)
+        .frame(height: 24)
         .background(selected ? Color.black.opacity(0.20) : Color.white.opacity(0.045))
         .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.30) : Color.white.opacity(0.08), lineWidth: 1) }
     }
