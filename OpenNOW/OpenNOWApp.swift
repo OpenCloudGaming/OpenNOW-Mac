@@ -8,6 +8,7 @@
 import AppKit
 import Darwin
 import OpenNOWTelemetry
+import OpenNOWTwitch
 import SwiftUI
 import SwiftData
 import WebRTCMedia
@@ -81,6 +82,7 @@ enum OpenNOWUpdatePreferences {
 @main
 struct OpenNOWApp: App {
     @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
+    @StateObject private var twitchRealtime = TwitchRealtimeController()
 
     let sharedModelContainer: ModelContainer
 
@@ -116,6 +118,8 @@ struct OpenNOWApp: App {
     var body: some Scene {
         Window("OpenNOW", id: "main") {
             ContentView()
+                .environmentObject(twitchRealtime)
+                .onAppear { twitchRealtime.start() }
         }
         .defaultSize(width: 1100, height: 720)
         .windowStyle(.hiddenTitleBar)

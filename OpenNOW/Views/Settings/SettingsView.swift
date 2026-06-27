@@ -3,6 +3,7 @@ import AppKit
 import CoreText
 import CryptoKit
 import OpenNOWTelemetry
+import OpenNOWTwitch
 import SwiftUI
 
 private enum SettingsVendorLayout {

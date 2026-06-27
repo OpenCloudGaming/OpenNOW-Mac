@@ -5,6 +5,7 @@
 
 import Foundation
 import OpenNOWGameServices
+import OpenNOWTwitch
 import SwiftUI
 import WebRTCMedia
 
@@ -15,6 +16,7 @@ struct WebRTCMediaStreamView: View {
     let configuration: StreamLaunchConfiguration
     let onProgress: WebRTCMediaStreamProgressHandler?
     let onEnd: WebRTCMediaStreamCompletion
+    @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     private let coordinator = OpenNOWStreamSessionCoordinator()
 
     var body: some View {
@@ -31,9 +33,12 @@ struct WebRTCMediaStreamView: View {
             onBroadcastLiveVerification: { title, applicationID in
                 await Self.verifyTwitchBroadcast(title: title, applicationID: applicationID)
             },
-            onStreamMarker: { title, applicationID in
-                await Self.createTwitchMarker(title: title, applicationID: applicationID)
+            onStreamMarker: { title, applicationID, description in
+                await Self.createTwitchMarker(title: title, applicationID: applicationID, description: description)
             },
+            twitchOverlayState: twitchOverlayState,
+            onTwitchChatSend: { message in twitchRealtime.sendChatMessage(message) },
+            onTwitchHealthRefresh: { await twitchRealtime.refreshHealth() },
             onProgress: { progress in
                 onProgress?(progress)
             },
@@ -44,6 +49,22 @@ struct WebRTCMediaStreamView: View {
         .onAppear {
             WebRTCMediaTelemetry.configure(sink: OpenNOWWebRTCMediaTelemetrySink())
         }
+    }
+
+    private var twitchOverlayState: WebRTCMediaTwitchOverlayState {
+        WebRTCMediaTwitchOverlayState(
+            accountSummary: twitchRealtime.health.accountSummary,
+            streamKeyAvailable: twitchRealtime.health.streamKeyAvailable,
+            chatState: twitchRealtime.chatState.label,
+            eventSubState: twitchRealtime.eventSubState.label,
+            supportedAlertTypes: twitchRealtime.supportedAlertTypes,
+            chatMessages: twitchRealtime.chatMessages.map { message in
+                WebRTCMediaTwitchChatMessage(id: message.id, author: message.displayName, text: message.text, timestamp: message.timestamp)
+            },
+            eventAlerts: twitchRealtime.eventAlerts.map { alert in
+                WebRTCMediaTwitchEventAlert(id: alert.id, title: alert.title, message: alert.message, timestamp: alert.timestamp)
+            }
+        )
     }
 
     private static func broadcastConfiguration(title: String, applicationID: String, width: Int, height: Int, fps: Int) -> WebRTCLiveBroadcastConfiguration? {
@@ -92,9 +113,9 @@ struct WebRTCMediaStreamView: View {
         }
     }
 
-    private static func createTwitchMarker(title: String, applicationID: String) async -> String {
+    private static func createTwitchMarker(title: String, applicationID: String, description: String) async -> String {
         guard (try? TwitchTokenStore.load()) != nil else { return "Connect Twitch OAuth to create markers." }
-        let description = title.isEmpty ? "OpenNOW stream marker" : title
+        let description = description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (title.isEmpty ? "OpenNOW stream marker" : title) : description
         do {
             return try await TwitchOAuthService.createStreamMarker(clientID: TwitchOAuthService.clientID, description: description)
         } catch {

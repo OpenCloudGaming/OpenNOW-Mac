@@ -1,22 +1,23 @@
 import AppKit
+import AppKit
 import Foundation
 import Security
 
-struct TwitchOAuthToken: Codable, Equatable, Sendable {
-    let accessToken: String
-    let refreshToken: String
-    let expiresAt: Date
-    let scopes: [String]
+public struct TwitchOAuthToken: Codable, Equatable, Sendable {
+    public let accessToken: String
+    public let refreshToken: String
+    public let expiresAt: Date
+    public let scopes: [String]
 
-    var requiresRefresh: Bool {
+    public var requiresRefresh: Bool {
         expiresAt.timeIntervalSinceNow < 120
     }
 }
 
-struct TwitchUser: Codable, Equatable, Sendable {
-    let id: String
-    let login: String
-    let displayName: String
+public struct TwitchUser: Codable, Equatable, Sendable {
+    public let id: String
+    public let login: String
+    public let displayName: String
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -25,10 +26,10 @@ struct TwitchUser: Codable, Equatable, Sendable {
     }
 }
 
-struct TwitchStreamMarker: Decodable, Equatable, Sendable {
-    let id: String
-    let createdAt: Date
-    let positionSeconds: Int
+public struct TwitchStreamMarker: Decodable, Equatable, Sendable {
+    public let id: String
+    public let createdAt: Date
+    public let positionSeconds: Int
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -37,12 +38,12 @@ struct TwitchStreamMarker: Decodable, Equatable, Sendable {
     }
 }
 
-struct TwitchStreamStatus: Decodable, Equatable, Sendable {
-    let id: String
-    let userID: String
-    let type: String
+public struct TwitchStreamStatus: Decodable, Equatable, Sendable {
+    public let id: String
+    public let userID: String
+    public let type: String
 
-    var isLive: Bool {
+    public var isLive: Bool {
         type.lowercased() == "live"
     }
 
@@ -53,19 +54,19 @@ struct TwitchStreamStatus: Decodable, Equatable, Sendable {
     }
 }
 
-struct TwitchGame: Decodable, Equatable, Sendable {
-    let id: String
-    let name: String
+public struct TwitchGame: Decodable, Equatable, Sendable {
+    public let id: String
+    public let name: String
 }
 
-struct TwitchIngestServer: Decodable, Equatable, Sendable {
-    let id: Int
-    let name: String
-    let urlTemplate: String
-    let priority: Int
-    let isDefault: Bool
+public struct TwitchIngestServer: Decodable, Equatable, Sendable {
+    public let id: Int
+    public let name: String
+    public let urlTemplate: String
+    public let priority: Int
+    public let isDefault: Bool
 
-    var rtmpURL: String? {
+    public var rtmpURL: String? {
         let url = urlTemplate.replacingOccurrences(of: "/{stream_key}", with: "")
         return URL(string: url) == nil ? nil : url
     }
@@ -79,10 +80,10 @@ struct TwitchIngestServer: Decodable, Equatable, Sendable {
     }
 }
 
-enum TwitchIngestService {
+public enum TwitchIngestService {
     private static let endpoint = URL(string: "https://ingest.twitch.tv/ingests")!
 
-    static func refreshDefaultServer() async {
+    public static func refreshDefaultServer() async {
         guard let servers = try? await ingestServers(), let server = preferredServer(from: servers), let rtmpURL = server.rtmpURL else { return }
         TwitchIngestServerStore.save(defaultRTMPURL: rtmpURL)
     }
@@ -102,26 +103,26 @@ enum TwitchIngestService {
     }
 }
 
-enum TwitchIngestServerStore {
+public enum TwitchIngestServerStore {
     private static let key = "OpenNOW.Twitch.DefaultIngestRTMPURL"
 
-    static func defaultRTMPURL() -> String? {
+    public static func defaultRTMPURL() -> String? {
         UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
-    static func save(defaultRTMPURL: String) {
+    public static func save(defaultRTMPURL: String) {
         UserDefaults.standard.set(defaultRTMPURL, forKey: key)
     }
 }
 
-enum TwitchServiceError: LocalizedError, Sendable {
+public enum TwitchServiceError: LocalizedError, Sendable {
     case missingClientID
     case missingToken
     case invalidResponse(String)
     case streamNotLive(String)
     case keychain(OSStatus)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .missingClientID: return "Enter a Twitch Client ID before connecting."
         case .missingToken: return "Twitch is not connected."
@@ -132,8 +133,8 @@ enum TwitchServiceError: LocalizedError, Sendable {
     }
 }
 
-enum TwitchOAuthService {
-    static let clientID = "alymw1mbm3hayczv6a7mbqna6a9344"
+public enum TwitchOAuthService {
+    public static let clientID = "alymw1mbm3hayczv6a7mbqna6a9344"
     private static let deviceEndpoint = URL(string: "https://id.twitch.tv/oauth2/device")!
     private static let revokeEndpoint = URL(string: "https://id.twitch.tv/oauth2/revoke")!
     private static let tokenEndpoint = URL(string: "https://id.twitch.tv/oauth2/token")!
@@ -147,10 +148,12 @@ enum TwitchOAuthService {
         "moderator:read:chat_settings",
         "moderator:manage:chat_settings",
         "channel:read:subscriptions",
+        "channel:read:redemptions",
+        "moderator:read:followers",
         "bits:read",
     ]
 
-    static func start(clientID: String) async throws -> TwitchAccountStatus {
+    public static func start(clientID: String) async throws -> TwitchAccountStatus {
         let clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty else { throw TwitchServiceError.missingClientID }
         let device = try await createDeviceAuthorization(clientID: clientID)
@@ -160,7 +163,7 @@ enum TwitchOAuthService {
         return try await finishConnection(clientID: clientID, token: token)
     }
 
-    static func refreshStatus(clientID: String) async throws -> TwitchAccountStatus {
+    public static func refreshStatus(clientID: String) async throws -> TwitchAccountStatus {
         await TwitchIngestService.refreshDefaultServer()
         let client = try await authorizedClient(clientID: clientID)
         let user = try await client.currentUser()
@@ -171,7 +174,7 @@ enum TwitchOAuthService {
         return TwitchAccountStatus(isConnected: true, displayName: user.displayName, login: user.login, channelID: user.id, streamKeyAvailable: TwitchStreamKeyStore.exists())
     }
 
-    static func prepareBroadcast(clientID: String, title: String, applicationID: String) async throws -> String {
+    public static func prepareBroadcast(clientID: String, title: String, applicationID: String) async throws -> String {
         await TwitchIngestService.refreshDefaultServer()
         let preferences = TwitchPreferencesStore.load()
         let client = try await authorizedClient(clientID: clientID)
@@ -188,14 +191,14 @@ enum TwitchOAuthService {
         }
     }
 
-    static func createStreamMarker(clientID: String, description: String) async throws -> String {
+    public static func createStreamMarker(clientID: String, description: String) async throws -> String {
         let client = try await authorizedClient(clientID: clientID)
         let user = try await client.currentUser()
         let marker = try await client.createStreamMarker(broadcasterID: user.id, description: description)
         return "Marker created at \(marker.createdAt.formatted(date: .omitted, time: .standard))."
     }
 
-    static func verifyLiveBroadcast(clientID: String) async throws -> String {
+    public static func verifyLiveBroadcast(clientID: String) async throws -> String {
         let client = try await authorizedClient(clientID: clientID)
         let user = try await client.currentUser()
         let deadline = Date().addingTimeInterval(75)
@@ -209,7 +212,7 @@ enum TwitchOAuthService {
         throw TwitchServiceError.streamNotLive("Twitch did not report this channel live after publishing started.")
     }
 
-    static func disconnect(clientID: String) async {
+    public static func disconnect(clientID: String) async {
         guard let token = try? TwitchTokenStore.load(), !clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             TwitchTokenStore.delete()
             TwitchStreamKeyStore.delete()
@@ -236,11 +239,15 @@ enum TwitchOAuthService {
         return TwitchAccountStatus(isConnected: true, displayName: user.displayName, login: user.login, channelID: user.id, streamKeyAvailable: TwitchStreamKeyStore.exists())
     }
 
-    private static func authorizedClient(clientID: String) async throws -> TwitchHelixClient {
+    public static func authorizedClient(clientID: String) async throws -> TwitchHelixClient {
         let clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty else { throw TwitchServiceError.missingClientID }
         let token = try await validToken(clientID: clientID)
         return TwitchHelixClient(clientID: clientID, tokenProvider: { token.accessToken })
+    }
+
+    public static func validStoredToken(clientID: String) async throws -> TwitchOAuthToken {
+        try await validToken(clientID: clientID)
     }
 
     private static func validToken(clientID: String) async throws -> TwitchOAuthToken {
@@ -380,15 +387,11 @@ enum TwitchOAuthService {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-enum TwitchTokenStore {
+public enum TwitchTokenStore {
     private static let service = "OpenNOW.Twitch"
     private static let account = "OAuthToken"
 
-    static func save(_ token: TwitchOAuthToken) throws {
+    public static func save(_ token: TwitchOAuthToken) throws {
         let data = try JSONEncoder().encode(token)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
         let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
@@ -403,7 +406,7 @@ enum TwitchTokenStore {
         guard status == errSecSuccess else { throw TwitchServiceError.keychain(status) }
     }
 
-    static func load() throws -> TwitchOAuthToken {
+    public static func load() throws -> TwitchOAuthToken {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -417,17 +420,17 @@ enum TwitchTokenStore {
         return try JSONDecoder().decode(TwitchOAuthToken.self, from: data)
     }
 
-    static func delete() {
+    public static func delete() {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
         SecItemDelete(query as CFDictionary)
     }
 }
 
-enum TwitchStreamKeyStore {
+public enum TwitchStreamKeyStore {
     private static let service = "OpenNOW.Twitch"
     private static let account = "StreamKey"
 
-    static func save(_ streamKey: String) throws {
+    public static func save(_ streamKey: String) throws {
         let data = Data(streamKey.utf8)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
         let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
@@ -442,7 +445,7 @@ enum TwitchStreamKeyStore {
         guard status == errSecSuccess else { throw TwitchServiceError.keychain(status) }
     }
 
-    static func load() throws -> String {
+    public static func load() throws -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -456,41 +459,46 @@ enum TwitchStreamKeyStore {
         return value
     }
 
-    static func exists() -> Bool {
+    public static func exists() -> Bool {
         (try? load().isEmpty == false) ?? false
     }
 
-    static func delete() {
+    public static func delete() {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
         SecItemDelete(query as CFDictionary)
     }
 }
 
-struct TwitchHelixClient: Sendable {
-    let clientID: String
-    let tokenProvider: @Sendable () throws -> String
+public struct TwitchHelixClient: Sendable {
+    public let clientID: String
+    public let tokenProvider: @Sendable () throws -> String
 
-    func currentUser() async throws -> TwitchUser {
+    public init(clientID: String, tokenProvider: @escaping @Sendable () throws -> String) {
+        self.clientID = clientID
+        self.tokenProvider = tokenProvider
+    }
+
+    public func currentUser() async throws -> TwitchUser {
         struct Response: Decodable { let data: [TwitchUser] }
         let response: Response = try await request(path: "/helix/users")
         guard let user = response.data.first else { throw TwitchServiceError.invalidResponse("Twitch did not return a user profile.") }
         return user
     }
 
-    func streamKey(broadcasterID: String) async throws -> String {
+    public func streamKey(broadcasterID: String) async throws -> String {
         struct Key: Decodable { let streamKey: String; private enum CodingKeys: String, CodingKey { case streamKey = "stream_key" } }
         struct Response: Decodable { let data: [Key] }
         let response: Response = try await request(path: "/helix/streams/key", queryItems: [URLQueryItem(name: "broadcaster_id", value: broadcasterID)])
         return response.data.first?.streamKey ?? ""
     }
 
-    func stream(userID: String) async throws -> TwitchStreamStatus? {
+    public func stream(userID: String) async throws -> TwitchStreamStatus? {
         struct Response: Decodable { let data: [TwitchStreamStatus] }
         let response: Response = try await request(path: "/helix/streams", queryItems: [URLQueryItem(name: "user_id", value: userID)])
         return response.data.first
     }
 
-    func game(named name: String) async throws -> TwitchGame? {
+    public func game(named name: String) async throws -> TwitchGame? {
         struct Response: Decodable { let data: [TwitchGame] }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return nil }
@@ -498,7 +506,7 @@ struct TwitchHelixClient: Sendable {
         return response.data.first { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame } ?? response.data.first
     }
 
-    func updateChannel(broadcasterID: String, title: String?, gameID: String?) async throws {
+    public func updateChannel(broadcasterID: String, title: String?, gameID: String?) async throws {
         var body: [String: String] = [:]
         if let title, !title.isEmpty { body["title"] = String(title.prefix(140)) }
         if let gameID, !gameID.isEmpty { body["game_id"] = gameID }
@@ -506,7 +514,7 @@ struct TwitchHelixClient: Sendable {
         try await requestWithoutResponse(path: "/helix/channels", method: "PATCH", queryItems: [URLQueryItem(name: "broadcaster_id", value: broadcasterID)], body: body)
     }
 
-    func createStreamMarker(broadcasterID: String, description: String) async throws -> TwitchStreamMarker {
+    public func createStreamMarker(broadcasterID: String, description: String) async throws -> TwitchStreamMarker {
         struct Response: Decodable { let data: [TwitchStreamMarker] }
         let trimmedDescription = String(description.trimmingCharacters(in: .whitespacesAndNewlines).prefix(140))
         let response: Response = try await request(path: "/helix/streams/markers", method: "POST", body: ["user_id": broadcasterID, "description": trimmedDescription])
@@ -514,21 +522,36 @@ struct TwitchHelixClient: Sendable {
         return marker
     }
 
-    func chatSettings(broadcasterID: String, moderatorID: String) async throws -> TwitchChatSettings {
+    public func chatSettings(broadcasterID: String, moderatorID: String) async throws -> TwitchChatSettings {
         struct Response: Decodable { let data: [TwitchChatSettings] }
         let response: Response = try await request(path: "/helix/chat/settings", queryItems: [URLQueryItem(name: "broadcaster_id", value: broadcasterID), URLQueryItem(name: "moderator_id", value: moderatorID)])
         guard let settings = response.data.first else { throw TwitchServiceError.invalidResponse("Twitch did not return chat settings.") }
         return settings
     }
 
-    func eventSubSubscriptions() async throws -> [TwitchEventSubSubscription] {
+    public func eventSubSubscriptions() async throws -> [TwitchEventSubSubscription] {
         struct Response: Decodable { let data: [TwitchEventSubSubscription] }
         let response: Response = try await request(path: "/helix/eventsub/subscriptions")
         return response.data
     }
 
+    public func createEventSubSubscription(type: String, version: String, condition: [String: String], sessionID: String) async throws -> TwitchEventSubSubscription {
+        struct Response: Decodable { let data: [TwitchEventSubSubscription] }
+        let body = TwitchEventSubSubscriptionRequest(type: type, version: version, condition: condition, transport: TwitchEventSubTransport(method: "websocket", sessionID: sessionID))
+        let response: Response = try await request(path: "/helix/eventsub/subscriptions", method: "POST", encodableBody: body)
+        guard let subscription = response.data.first else { throw TwitchServiceError.invalidResponse("Twitch did not return an EventSub subscription.") }
+        return subscription
+    }
+
     private func request<T: Decodable>(path: String, method: String = "GET", queryItems: [URLQueryItem] = [], body: [String: String]? = nil) async throws -> T {
         let data = try await requestData(path: path, method: method, queryItems: queryItems, body: body)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(T.self, from: data)
+    }
+
+    private func request<T: Decodable, Body: Encodable>(path: String, method: String, queryItems: [URLQueryItem] = [], encodableBody: Body) async throws -> T {
+        let data = try await requestData(path: path, method: method, queryItems: queryItems, bodyData: try JSONEncoder().encode(encodableBody))
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(T.self, from: data)
@@ -539,6 +562,10 @@ struct TwitchHelixClient: Sendable {
     }
 
     private func requestData(path: String, method: String, queryItems: [URLQueryItem], body: [String: String]?) async throws -> Data {
+        try await requestData(path: path, method: method, queryItems: queryItems, bodyData: body.map { try JSONEncoder().encode($0) })
+    }
+
+    private func makeRequest(path: String, method: String, queryItems: [URLQueryItem], bodyData: Data?) throws -> URLRequest {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "api.twitch.tv"
@@ -549,10 +576,15 @@ struct TwitchHelixClient: Sendable {
         request.httpMethod = method
         request.setValue(clientID, forHTTPHeaderField: "Client-Id")
         request.setValue("Bearer \(try tokenProvider())", forHTTPHeaderField: "Authorization")
-        if let body {
+        if let bodyData {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = bodyData
         }
+        return request
+    }
+
+    private func requestData(path: String, method: String, queryItems: [URLQueryItem], bodyData: Data?) async throws -> Data {
+        let request = try makeRequest(path: path, method: method, queryItems: queryItems, bodyData: bodyData)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw TwitchServiceError.invalidResponse(String(data: data, encoding: .utf8) ?? "Twitch request failed.")
@@ -561,12 +593,12 @@ struct TwitchHelixClient: Sendable {
     }
 }
 
-struct TwitchChatSettings: Decodable, Equatable, Sendable {
-    let broadcasterID: String
-    let slowMode: Bool
-    let followerMode: Bool
-    let subscriberMode: Bool
-    let emoteMode: Bool
+public struct TwitchChatSettings: Decodable, Equatable, Sendable {
+    public let broadcasterID: String
+    public let slowMode: Bool
+    public let followerMode: Bool
+    public let subscriberMode: Bool
+    public let emoteMode: Bool
 
     private enum CodingKeys: String, CodingKey {
         case broadcasterID = "broadcaster_id"
@@ -577,11 +609,28 @@ struct TwitchChatSettings: Decodable, Equatable, Sendable {
     }
 }
 
-struct TwitchEventSubSubscription: Decodable, Equatable, Sendable {
-    let id: String
-    let status: String
+public struct TwitchEventSubSubscription: Decodable, Equatable, Sendable {
+    public let id: String
+    public let status: String
+    public let type: String
+    public let version: String
+}
+
+private struct TwitchEventSubSubscriptionRequest: Encodable {
     let type: String
     let version: String
+    let condition: [String: String]
+    let transport: TwitchEventSubTransport
+}
+
+private struct TwitchEventSubTransport: Encodable {
+    let method: String
+    let sessionID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case method
+        case sessionID = "session_id"
+    }
 }
 
 private extension Data {

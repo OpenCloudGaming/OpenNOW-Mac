@@ -1,16 +1,16 @@
 import Foundation
 
-struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
-    enum IngestRegion: String, Codable, CaseIterable, Identifiable, Sendable {
+public struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
+    public enum IngestRegion: String, Codable, CaseIterable, Identifiable, Sendable {
         case automatic
         case usWest
         case usEast
         case europe
         case custom
 
-        var id: String { rawValue }
+        public var id: String { rawValue }
 
-        var label: String {
+        public var label: String {
             switch self {
             case .automatic: return "Auto"
             case .usWest: return "US West"
@@ -20,7 +20,7 @@ struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
             }
         }
 
-        var rtmpURL: String {
+        public var rtmpURL: String {
             switch self {
             case .automatic: return "rtmp://live.twitch.tv/app"
             case .usWest: return "rtmp://sfo.contribute.live-video.net/app"
@@ -31,15 +31,15 @@ struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
         }
     }
 
-    enum Resolution: String, Codable, CaseIterable, Identifiable, Sendable {
+    public enum Resolution: String, Codable, CaseIterable, Identifiable, Sendable {
         case source
         case p1080
         case p936
         case p720
 
-        var id: String { rawValue }
+        public var id: String { rawValue }
 
-        var label: String {
+        public var label: String {
             switch self {
             case .source: return "Source"
             case .p1080: return "1080p"
@@ -48,7 +48,7 @@ struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
             }
         }
 
-        var targetHeight: Int {
+        public var targetHeight: Int {
             switch self {
             case .source: return 0
             case .p1080: return 1080
@@ -58,49 +58,59 @@ struct TwitchBroadcastPreferences: Codable, Equatable, Sendable {
         }
     }
 
-    var clientID = ""
-    var ingestRegion = IngestRegion.automatic
-    var customRTMPURL = ""
-    var resolution = Resolution.p1080
-    var fps = 60
-    var videoBitrateKbps = 6_000
-    var audioBitrateKbps = 160
-    var useEnhancedVideo = true
-    var autoTitleFromGame = true
-    var chatOverlayEnabled = true
-    var eventAlertsEnabled = true
+    public var clientID = ""
+    public var ingestRegion = IngestRegion.automatic
+    public var customRTMPURL = ""
+    public var resolution = Resolution.p1080
+    public var fps = 60
+    public var videoBitrateKbps = 6_000
+    public var audioBitrateKbps = 160
+    public var useEnhancedVideo = true
+    public var autoTitleFromGame = true
+    public var chatOverlayEnabled = true
+    public var eventAlertsEnabled = true
 
-    var ingestURL: String {
+    public var ingestURL: String {
         if ingestRegion == .custom { return customRTMPURL.trimmingCharacters(in: .whitespacesAndNewlines) }
         if ingestRegion == .automatic, let cached = TwitchIngestServerStore.defaultRTMPURL() { return cached }
         return ingestRegion.rtmpURL
     }
 
-    static let defaultValue = TwitchBroadcastPreferences()
+    public static let defaultValue = TwitchBroadcastPreferences()
+
+    public init() {}
 }
 
-enum TwitchPreferencesStore {
+public enum TwitchPreferencesStore {
     private static let key = "OpenNOW.Twitch.BroadcastPreferences"
 
-    static func load() -> TwitchBroadcastPreferences {
+    public static func load() -> TwitchBroadcastPreferences {
         guard let data = UserDefaults.standard.data(forKey: key) else { return .defaultValue }
         return (try? JSONDecoder().decode(TwitchBroadcastPreferences.self, from: data)) ?? .defaultValue
     }
 
-    static func save(_ preferences: TwitchBroadcastPreferences) {
+    public static func save(_ preferences: TwitchBroadcastPreferences) {
         guard let data = try? JSONEncoder().encode(preferences) else { return }
         UserDefaults.standard.set(data, forKey: key)
     }
 }
 
-struct TwitchAccountStatus: Equatable, Sendable {
-    var isConnected = false
-    var displayName = ""
-    var login = ""
-    var channelID = ""
-    var streamKeyAvailable = false
+public struct TwitchAccountStatus: Equatable, Sendable {
+    public var isConnected = false
+    public var displayName = ""
+    public var login = ""
+    public var channelID = ""
+    public var streamKeyAvailable = false
 
-    var summary: String {
+    public init(isConnected: Bool = false, displayName: String = "", login: String = "", channelID: String = "", streamKeyAvailable: Bool = false) {
+        self.isConnected = isConnected
+        self.displayName = displayName
+        self.login = login
+        self.channelID = channelID
+        self.streamKeyAvailable = streamKeyAvailable
+    }
+
+    public var summary: String {
         guard isConnected else { return "Not connected" }
         if !displayName.isEmpty { return "Connected as \(displayName)" }
         if !login.isEmpty { return "Connected as \(login)" }

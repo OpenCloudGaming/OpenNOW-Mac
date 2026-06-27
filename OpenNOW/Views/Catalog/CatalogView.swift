@@ -11,6 +11,7 @@ import CoreText
 import CryptoKit
 import ImageIO
 import OpenNOWGameServices
+import OpenNOWTwitch
 import SwiftUI
 import WebRTCMedia
 
@@ -121,6 +122,7 @@ struct CatalogView: View {
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
+    @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
 
@@ -211,6 +213,9 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration?.id) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: viewModel.twitchAccountStatus.isConnected) { _, isConnected in
+            if isConnected { twitchRealtime.restart() } else { twitchRealtime.stop() }
+        }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }

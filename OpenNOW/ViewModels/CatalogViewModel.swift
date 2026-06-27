@@ -9,6 +9,7 @@ import Combine
 import Common
 import Foundation
 import OpenNOWGameServices
+import OpenNOWTwitch
 import WebRTCMedia
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
