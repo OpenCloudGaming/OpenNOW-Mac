@@ -62,6 +62,113 @@ private extension Font {
     }
 }
 
+private struct SettingsAccountSnapshot {
+    let displayName: String
+    let membershipTier: String
+    let providerName: String
+    let userId: String
+    let authorizationState: String
+    let authStatus: String
+    let rememberSession: Bool
+
+    init(viewModel: CatalogViewModel) {
+        displayName = viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
+        membershipTier = Self.membershipTier(viewModel: viewModel)
+        providerName = Self.providerName(viewModel.account.providerName)
+        userId = viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+        authorizationState = SettingsFormat.normalizedState(viewModel.account.authorizationState)
+        authStatus = SettingsFormat.normalizedState(viewModel.account.authStatus)
+        rememberSession = viewModel.account.rememberSession
+    }
+
+    var isAuthorized: Bool {
+        authorizationState.caseInsensitiveCompare("Authorized") == .orderedSame
+    }
+
+    var isLoggedIn: Bool {
+        authStatus.caseInsensitiveCompare("Logged In") == .orderedSame
+    }
+
+    private static func membershipTier(viewModel: CatalogViewModel) -> String {
+        if viewModel.subscriptionStatus.isAvailable { return viewModel.subscriptionStatus.membershipTier }
+        if !viewModel.account.membershipTier.isEmpty { return viewModel.account.membershipTier }
+        return viewModel.subscriptionStatus.membershipTier
+    }
+
+    private static func providerName(_ value: String) -> String {
+        if value.isEmpty || value == "OPN" { return "Nvidia" }
+        return value
+    }
+}
+
+private struct SettingsRouteSnapshot {
+    let displayValue: String
+    let copyValue: String
+    let summary: String
+
+    init(regionUrl: String, revealSensitive: Bool) {
+        if regionUrl.isEmpty {
+            displayValue = "Automatic"
+            copyValue = "Automatic"
+            summary = "Automatic"
+        } else {
+            let host = SettingsFormat.endpointHost(regionUrl)
+            displayValue = revealSensitive ? regionUrl : host
+            copyValue = regionUrl
+            summary = host
+        }
+    }
+}
+
+private enum SettingsAppMetadata {
+    static var displayName: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        ?? "OpenNOW Mac"
+    }
+
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+
+    static var build: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+    }
+
+    static var versionWithBuild: String {
+        "\(version) (\(build))"
+    }
+}
+
+private enum SettingsFormat {
+    static func normalizedState(_ value: String) -> String {
+        let normalized = value.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "Unknown" : normalized.capitalized
+    }
+
+    static func maskedIdentifier(_ value: String) -> String {
+        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
+        return "\(value.prefix(6))****\(value.suffix(4))"
+    }
+
+    static func maskedEmail(_ value: String) -> String {
+        guard let atIndex = value.firstIndex(of: "@") else { return value.isEmpty ? "Unavailable" : "****" }
+        let name = String(value[..<atIndex])
+        let domain = String(value[value.index(after: atIndex)...])
+        return "\(name.prefix(2))****@\(domain)"
+    }
+
+    static func endpointHost(_ value: String) -> String {
+        URL(string: value)?.host ?? value
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var viewModel: CatalogViewModel
 
@@ -265,11 +372,11 @@ private struct AccountSettingsPage: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text(accountDisplayName)
+                            Text(account.displayName)
                                 .font(.settingsNvidia(size: 25, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
-                            Text(membershipTier.uppercased())
+                            Text(account.membershipTier.uppercased())
                                 .font(.settingsNvidia(size: 10, weight: .bold))
                                 .foregroundStyle(.black)
                                 .tracking(0.8)
@@ -282,9 +389,9 @@ private struct AccountSettingsPage: View {
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8) {
-                            AboutStatusPill(title: "Provider", value: providerName)
-                            AboutStatusPill(title: "Auth", value: normalizedState(viewModel.account.authorizationState))
-                            AboutStatusPill(title: "Region", value: regionSummary)
+                            AboutStatusPill(title: "Provider", value: account.providerName)
+                            AboutStatusPill(title: "Playtime", value: viewModel.subscriptionStatus.remainingPlaytimeText)
+                            AboutStatusPill(title: "Region", value: route.summary)
                         }
                     }
                     Spacer(minLength: 0)
@@ -339,77 +446,49 @@ private struct AccountSettingsPage: View {
                 SettingsRevealButton(revealed: revealSensitive) { revealSensitive.toggle() }
             }
             SettingsDivider()
-            AboutDetailRow(label: "Display Name", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
+            AboutDetailRow(label: "Display Name", value: account.displayName, copyValue: account.displayName, copiedKey: $copiedKey)
             SettingsDivider()
             AboutDetailRow(label: "Email", value: displayedEmail, copyValue: viewModel.account.email, copiedKey: $copiedKey, copyDisabled: viewModel.account.email.isEmpty)
             SettingsDivider()
-            AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
+            AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: account.userId, copiedKey: $copiedKey, copyDisabled: account.userId.isEmpty)
         }
     }
 
     private var sessionCard: some View {
         SettingsCard(title: "Session") {
             SettingsFlowLayout(spacing: 10) {
-                AccountStatusTile(label: "Provider", value: providerName, positive: true)
-                AccountStatusTile(label: "Authorization", value: normalizedState(viewModel.account.authorizationState), positive: isAuthorized)
-                AccountStatusTile(label: "Status", value: normalizedState(viewModel.account.authStatus), positive: isLoggedIn)
-                AccountStatusTile(label: "Remember", value: viewModel.account.rememberSession ? "Enabled" : "Off", positive: viewModel.account.rememberSession)
+                AccountStatusTile(label: "Provider", value: account.providerName, positive: true)
+                AccountStatusTile(label: "Authorization", value: account.authorizationState, positive: account.isAuthorized)
+                AccountStatusTile(label: "Status", value: account.authStatus, positive: account.isLoggedIn)
+                AccountStatusTile(label: "Remember", value: account.rememberSession ? "Enabled" : "Off", positive: account.rememberSession)
             }
             SettingsDivider()
-            AboutDetailRow(label: "Preferred Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
+            AboutDetailRow(label: "Preferred Region", value: route.displayValue, copyValue: route.copyValue, copiedKey: $copiedKey)
+            SettingsDivider()
+            AboutDetailRow(label: "Membership Usage", value: viewModel.subscriptionStatus.usageText, copyValue: viewModel.subscriptionStatus.usageText, copiedKey: $copiedKey)
             SettingsDivider()
             AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey)
         }
     }
 
-    private var accountDisplayName: String {
-        viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
+    private var account: SettingsAccountSnapshot {
+        SettingsAccountSnapshot(viewModel: viewModel)
     }
 
-    private var membershipTier: String {
-        viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier
-    }
-
-    private var providerName: String {
-        if viewModel.account.providerName.isEmpty || viewModel.account.providerName == "OPN" { return "Nvidia" }
-        return viewModel.account.providerName
-    }
-
-    private var userId: String {
-        viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+    private var route: SettingsRouteSnapshot {
+        SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: revealSensitive)
     }
 
     private var displayedUserId: String {
-        revealSensitive ? userId : maskedIdentifier(userId)
+        revealSensitive ? account.userId : SettingsFormat.maskedIdentifier(account.userId)
     }
 
     private var displayedEmail: String {
-        revealSensitive ? viewModel.account.email : maskedEmail(viewModel.account.email)
-    }
-
-    private var displayedRegion: String {
-        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
-        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var regionCopyValue: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
-    }
-
-    private var regionSummary: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var isAuthorized: Bool {
-        viewModel.account.authorizationState.caseInsensitiveCompare("AUTHORIZED") == .orderedSame
-    }
-
-    private var isLoggedIn: Bool {
-        viewModel.account.authStatus.caseInsensitiveCompare("LOGGED_IN") == .orderedSame
+        revealSensitive ? viewModel.account.email : SettingsFormat.maskedEmail(viewModel.account.email)
     }
 
     private var accountHealthPositive: Bool {
-        isAuthorized && isLoggedIn
+        account.isAuthorized && account.isLoggedIn
     }
 
     private var accountHealthTitle: String {
@@ -421,7 +500,8 @@ private struct AccountSettingsPage: View {
     }
 
     private var accountSummaryText: String {
-        "\(providerName) account on \(membershipTier) membership. Authorization is \(normalizedState(viewModel.account.authorizationState).lowercased()) and current session state is \(normalizedState(viewModel.account.authStatus).lowercased())."
+        let availability = viewModel.subscriptionStatus.isAvailable ? viewModel.subscriptionStatus.usageText : "subscription details are still refreshing"
+        return "\(account.providerName) account on \(account.membershipTier) membership. \(availability)."
     }
 
     private var lastPlayedText: String {
@@ -434,28 +514,6 @@ private struct AccountSettingsPage: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
-    }
-
-    private func normalizedState(_ value: String) -> String {
-        let normalized = value.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? "Unknown" : normalized.capitalized
-    }
-
-    private func maskedIdentifier(_ value: String) -> String {
-        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
-        return "\(value.prefix(6))****\(value.suffix(4))"
-    }
-
-    private func maskedEmail(_ value: String) -> String {
-        guard let atIndex = value.firstIndex(of: "@") else { return value.isEmpty ? "Unavailable" : "****" }
-        let name = String(value[..<atIndex])
-        let domain = String(value[value.index(after: atIndex)...])
-        let visibleName = name.prefix(2)
-        return "\(visibleName)****@\(domain)"
-    }
-
-    private func endpointHost(_ value: String) -> String {
-        URL(string: value)?.host ?? value
     }
 
     private func durationText(_ seconds: Double) -> String {
@@ -658,7 +716,7 @@ private struct ConnectionsSettingsPage: View {
         var stores: [String] = []
         for store in viewModel.storeDefinitions.map(\.store) + viewModel.accountStores.map(\.store) where !store.isEmpty {
             let key = store.lowercased()
-            guard !seen.contains(key), !isHiddenConnectionStore(store), storeIconAsset(for: store) != nil else { continue }
+            guard !seen.contains(key), !isHiddenConnectionStore(store) else { continue }
             seen.insert(key)
             stores.append(store)
         }
@@ -678,10 +736,6 @@ private struct ConnectionsSettingsPage: View {
         let rawKey = normalizedStoreKey(store)
         let displayKey = normalizedStoreKey(viewModel.displayName(forStore: store))
         return Self.hiddenConnectionStoreKeys.contains(rawKey) || Self.hiddenConnectionStoreKeys.contains(displayKey)
-    }
-
-    private func storeIconAsset(for store: String) -> StoreIconAsset? {
-        StoreIconAsset.resolve(store: store, displayName: viewModel.displayName(forStore: store))
     }
 
     private func normalizedStoreKey(_ value: String) -> String {
@@ -899,6 +953,10 @@ private struct StoreIcon: View {
                     .padding(asset.padding)
                     .saturation(connected ? 1 : 0.65)
                     .opacity(connected ? 1 : 0.68)
+            } else {
+                Image(systemName: "link")
+                    .font(.settingsNvidia(size: 17, weight: .bold))
+                    .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.56))
             }
         }
         .frame(width: 42, height: 42)
@@ -1232,7 +1290,7 @@ private struct SystemSettingsPage: View {
                         HStack(spacing: 8) {
                             AboutStatusPill(title: "Display", value: displaySummary)
                             AboutStatusPill(title: "Decode", value: preferredDecoder)
-                            AboutStatusPill(title: "Route", value: regionSummary)
+                            AboutStatusPill(title: "Route", value: route.summary)
                         }
                     }
                     Spacer(minLength: 0)
@@ -1268,24 +1326,12 @@ private struct SystemSettingsPage: View {
                             .foregroundStyle(.white.opacity(0.56))
                     }
                     Spacer()
-                    Button { revealSensitive.toggle() } label: {
-                        Text(revealSensitive ? "HIDE DETAILS" : "REVEAL DETAILS")
-                            .font(.settingsNvidia(size: 11, weight: .bold))
-                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
-                            .tracking(0.8)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
-                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
+                    SettingsRevealButton(revealed: revealSensitive) { revealSensitive.toggle() }
                 }
                 SettingsDivider()
                 AboutDetailRow(label: "Device ID", value: displayedDeviceId, copyValue: viewModel.session.deviceId, copiedKey: $copiedKey, copyDisabled: viewModel.session.deviceId.isEmpty)
                 SettingsDivider()
-                AboutDetailRow(label: "Current Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Runtime", value: "WebRTC media path", copyValue: "WebRTC media path", copiedKey: $copiedKey)
+                AboutDetailRow(label: "Current Region", value: route.displayValue, copyValue: route.copyValue, copiedKey: $copiedKey)
             }
         }
     }
@@ -1334,30 +1380,12 @@ private struct SystemSettingsPage: View {
         "Detected \(displaySummary) at \(refreshRateText), \(hardwareDecodeCount) hardware decoder\(hardwareDecodeCount == 1 ? "" : "s"), and \(viewModel.streamCapabilities.hdrDisplaySupported ? "HDR-capable" : "SDR") presentation."
     }
 
-    private var regionSummary: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var displayedRegion: String {
-        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
-        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var regionCopyValue: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
+    private var route: SettingsRouteSnapshot {
+        SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: revealSensitive)
     }
 
     private var displayedDeviceId: String {
-        revealSensitive ? viewModel.session.deviceId : maskedIdentifier(viewModel.session.deviceId)
-    }
-
-    private func maskedIdentifier(_ value: String) -> String {
-        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
-        return "\(value.prefix(6))****\(value.suffix(4))"
-    }
-
-    private func endpointHost(_ value: String) -> String {
-        URL(string: value)?.host ?? value
+        revealSensitive ? viewModel.session.deviceId : SettingsFormat.maskedIdentifier(viewModel.session.deviceId)
     }
 }
 
@@ -1421,7 +1449,6 @@ private struct SystemCapabilityRow: View {
 
 private struct AboutSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
-    @State private var revealSensitive = false
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
@@ -1445,7 +1472,7 @@ private struct AboutSettingsPage: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("OpenNOW Mac")
+                            Text(SettingsAppMetadata.displayName)
                                 .font(.settingsNvidia(size: 25, weight: .bold))
                                 .foregroundStyle(.white)
                             Text("UNOFFICIAL CLIENT SHELL")
@@ -1461,9 +1488,9 @@ private struct AboutSettingsPage: View {
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8) {
-                            AboutStatusPill(title: "Streaming", value: "WebRTC")
-                            AboutStatusPill(title: "Build", value: appVersion)
-                            AboutStatusPill(title: "Region", value: cloudmatchLabel)
+                            AboutStatusPill(title: "Stream", value: "WebRTC")
+                            AboutStatusPill(title: "Route", value: route.summary)
+                            AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On")
                         }
                     }
                     Spacer(minLength: 0)
@@ -1471,7 +1498,9 @@ private struct AboutSettingsPage: View {
             }
 
             SettingsCard(title: "Runtime") {
-                AboutDetailRow(label: "Version", value: appVersion, copyValue: appVersion, copiedKey: $copiedKey)
+                AboutDetailRow(label: "Version", value: SettingsAppMetadata.version, copyValue: SettingsAppMetadata.version, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Build", value: SettingsAppMetadata.build, copyValue: SettingsAppMetadata.build, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey)
                 SettingsDivider()
@@ -1504,44 +1533,11 @@ private struct AboutSettingsPage: View {
                 }
             }
 
-            SettingsCard(title: "Account & Privacy") {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Sensitive identifiers are masked by default.")
-                            .font(.settingsNvidia(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("Reveal only when collecting support diagnostics on your own machine.")
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.56))
-                    }
-                    Spacer()
-                    Button { revealSensitive.toggle() } label: {
-                        Text(revealSensitive ? "HIDE IDS" : "REVEAL IDS")
-                            .font(.settingsNvidia(size: 11, weight: .bold))
-                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
-                            .tracking(0.8)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
-                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
-                }
-                SettingsDivider()
-                AboutDetailRow(label: "Account", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Membership", value: membershipTier, copyValue: membershipTier, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
-                SettingsDivider()
+            SettingsCard(title: "Privacy") {
                 SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, action: setTelemetryDisabled)
             }
 
-            SettingsCard(title: "Services") {
-                AboutDetailRow(label: "Streaming", value: "WebRTC", copyValue: "WebRTC", copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Cloudmatch", value: cloudmatchDisplayValue, copyValue: cloudmatchCopyValue, copiedKey: $copiedKey)
-                SettingsDivider()
+            SettingsCard(title: "Support Diagnostics") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
                         SettingsActionButton(title: diagnosticsButtonTitle) {
@@ -1579,33 +1575,12 @@ private struct AboutSettingsPage: View {
         }
     }
 
-    private var userId: String {
-        viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+    private var account: SettingsAccountSnapshot {
+        SettingsAccountSnapshot(viewModel: viewModel)
     }
 
-    private var displayedUserId: String {
-        revealSensitive ? userId : maskedIdentifier(userId)
-    }
-
-    private var membershipTier: String {
-        viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier
-    }
-
-    private var accountDisplayName: String {
-        viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
-    }
-
-    private var cloudmatchLabel: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var cloudmatchDisplayValue: String {
-        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
-        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var cloudmatchCopyValue: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
+    private var route: SettingsRouteSnapshot {
+        SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: false)
     }
 
     private var bundleIdentifier: String {
@@ -1633,14 +1608,14 @@ private struct AboutSettingsPage: View {
     private func diagnosticsText(logURL: URL?) -> String {
         [
             "OpenNOW Mac Diagnostics",
-            "Version: \(appVersion)",
+            "Version: \(SettingsAppMetadata.versionWithBuild)",
             "Bundle: \(bundleIdentifier)",
             "macOS: \(operatingSystemVersion)",
-            "Account: \(accountDisplayName)",
-            "Membership: \(membershipTier)",
-            "User ID: \(maskedIdentifier(userId))",
+            "Account: \(account.displayName)",
+            "Membership: \(account.membershipTier)",
+            "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
             "Streaming: WebRTC",
-            "Cloudmatch: \(cloudmatchCopyValue)",
+            "Cloudmatch: \(route.copyValue)",
             "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ].joined(separator: "\n")
     }
@@ -1688,20 +1663,6 @@ private struct AboutSettingsPage: View {
         copiedKey = key
     }
 
-    private func maskedIdentifier(_ value: String) -> String {
-        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
-        return "\(value.prefix(6))****\(value.suffix(4))"
-    }
-
-    private func endpointHost(_ value: String) -> String {
-        URL(string: value)?.host ?? value
-    }
-
-    private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        return "\(version) (\(build))"
-    }
 }
 
 private struct DiagnosticsUploadConfirmationDialog: View {
