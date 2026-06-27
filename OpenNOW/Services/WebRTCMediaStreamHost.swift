@@ -88,9 +88,14 @@ struct WebRTCMediaStreamView: View {
     }
 
     private static func broadcastSize(width: Int, height: Int, targetHeight: Int) -> (width: Int, height: Int) {
-        guard targetHeight > 0, width > 0, height > 0, height > targetHeight else { return (max(1, width), max(1, height)) }
-        let scaledWidth = Int((Double(width) * Double(targetHeight) / Double(height)).rounded())
-        return (max(1, scaledWidth - scaledWidth % 2), max(1, targetHeight - targetHeight % 2))
+        if targetHeight > 0 {
+            let outputHeight = max(2, targetHeight - targetHeight % 2)
+            let outputWidth = max(2, (outputHeight * 16 / 9) - (outputHeight * 16 / 9) % 2)
+            return (outputWidth, outputHeight)
+        }
+        let outputWidth = max(2, width - width % 2)
+        let outputHeight = max(2, height - height % 2)
+        return (outputWidth, outputHeight)
     }
 
     private static func prepareTwitchBroadcast(title: String, applicationID: String) async -> String? {
