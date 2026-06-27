@@ -1,12 +1,6 @@
 import AppKit
-import CryptoKit
 import Foundation
-import Network
 import Security
-
-extension Notification.Name {
-    static let openNOWTwitchOAuthCallback = Notification.Name("OpenNOWTwitchOAuthCallback")
-}
 
 struct TwitchOAuthToken: Codable, Equatable, Sendable {
     let accessToken: String
@@ -122,45 +116,28 @@ enum TwitchIngestServerStore {
 
 enum TwitchServiceError: LocalizedError, Sendable {
     case missingClientID
-    case invalidCallback
-    case stateMismatch
-    case missingAuthorizationCode
     case missingToken
     case invalidResponse(String)
     case streamNotLive(String)
-    case callbackServer(String)
     case keychain(OSStatus)
-    case secureRandom(OSStatus)
 
     var errorDescription: String? {
         switch self {
         case .missingClientID: return "Enter a Twitch Client ID before connecting."
-        case .invalidCallback: return "Twitch returned an invalid OAuth callback."
-        case .stateMismatch: return "Twitch OAuth state did not match this login attempt."
-        case .missingAuthorizationCode: return "Twitch did not return an authorization code."
         case .missingToken: return "Twitch is not connected."
         case .invalidResponse(let message): return message.isEmpty ? "Twitch returned an invalid response." : message
         case .streamNotLive(let message): return message.isEmpty ? "Twitch did not report this channel live." : message
-        case .callbackServer(let message): return message.isEmpty ? "Unable to start the Twitch OAuth callback server." : message
         case .keychain(let status): return "Keychain operation failed with status \(status)."
-        case .secureRandom(let status): return "Secure random generation failed with status \(status)."
         }
     }
 }
 
 enum TwitchOAuthService {
     static let clientID = "alymw1mbm3hayczv6a7mbqna6a9344"
-    private static let callbackHost = "localhost"
-    private static let callbackPort: UInt16 = 43_897
-    static let redirectURI = "http://\(callbackHost):\(callbackPort)/"
-
-    private static let authorizeEndpoint = URL(string: "https://id.twitch.tv/oauth2/authorize")!
+    private static let deviceEndpoint = URL(string: "https://id.twitch.tv/oauth2/device")!
     private static let revokeEndpoint = URL(string: "https://id.twitch.tv/oauth2/revoke")!
     private static let tokenEndpoint = URL(string: "https://id.twitch.tv/oauth2/token")!
     private static let validateEndpoint = URL(string: "https://id.twitch.tv/oauth2/validate")!
-    private static let stateKey = "OpenNOW.Twitch.OAuth.State"
-    private static let verifierKey = "OpenNOW.Twitch.OAuth.Verifier"
-    nonisolated(unsafe) private static var callbackServer: TwitchOAuthCallbackServer?
     private static let scopes = [
         "user:read:email",
         "channel:read:stream_key",
@@ -173,48 +150,13 @@ enum TwitchOAuthService {
         "bits:read",
     ]
 
-    nonisolated static func isCallbackURL(_ url: URL) -> Bool {
-        url.scheme == "http" && url.host == callbackHost && url.port == Int(callbackPort) && (url.path.isEmpty || url.path == "/")
-    }
-
     static func start(clientID: String) async throws -> TwitchAccountStatus {
         let clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty else { throw TwitchServiceError.missingClientID }
-        let verifier = try randomURLSafeString(byteCount: 48)
-        let state = try randomURLSafeString(byteCount: 32)
-        UserDefaults.standard.set(state, forKey: stateKey)
-        UserDefaults.standard.set(verifier, forKey: verifierKey)
-        callbackServer?.stop()
-        let server = TwitchOAuthCallbackServer(host: callbackHost, port: callbackPort)
-        try await server.start()
-        callbackServer = server
-        var components = URLComponents(url: authorizeEndpoint, resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "redirect_uri", value: redirectURI),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: scopes.joined(separator: " ")),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "code_challenge", value: codeChallenge(for: verifier)),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "force_verify", value: "true"),
-        ]
-        guard let url = components?.url else { throw TwitchServiceError.invalidResponse("Unable to create Twitch authorization URL.") }
-        NSWorkspace.shared.open(url)
-        return statusFromStoredToken() ?? TwitchAccountStatus()
-    }
-
-    static func complete(callbackURL: URL, clientID: String) async throws -> TwitchAccountStatus {
-        guard isCallbackURL(callbackURL), let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else { throw TwitchServiceError.invalidCallback }
-        defer {
-            callbackServer?.stop()
-            callbackServer = nil
-        }
-        let items = safeQueryItems(components.queryItems ?? [])
-        guard items["state"] == UserDefaults.standard.string(forKey: stateKey) else { throw TwitchServiceError.stateMismatch }
-        guard let code = items["code"], !code.isEmpty else { throw TwitchServiceError.missingAuthorizationCode }
-        guard let verifier = UserDefaults.standard.string(forKey: verifierKey), !verifier.isEmpty else { throw TwitchServiceError.invalidCallback }
-        let token = try await exchangeCode(code, verifier: verifier, clientID: clientID)
+        let device = try await createDeviceAuthorization(clientID: clientID)
+        guard let verificationURL = URL(string: device.verificationURI) else { throw TwitchServiceError.invalidResponse("Twitch returned an invalid activation URL.") }
+        NSWorkspace.shared.open(verificationURL)
+        let token = try await pollDeviceAuthorization(clientID: clientID, device: device)
         return try await finishConnection(clientID: clientID, token: token)
     }
 
@@ -278,16 +220,12 @@ enum TwitchOAuthService {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = formBody(["client_id": clientID, "token": token.accessToken])
         _ = try? await URLSession.shared.data(for: request)
-        callbackServer?.stop()
-        callbackServer = nil
         TwitchTokenStore.delete()
         TwitchStreamKeyStore.delete()
     }
 
     private static func finishConnection(clientID: String, token: TwitchOAuthToken) async throws -> TwitchAccountStatus {
         try TwitchTokenStore.save(token)
-        UserDefaults.standard.removeObject(forKey: stateKey)
-        UserDefaults.standard.removeObject(forKey: verifierKey)
         let accessToken = token.accessToken
         let client = TwitchHelixClient(clientID: clientID, tokenProvider: { accessToken })
         let user = try await client.currentUser()
@@ -339,23 +277,47 @@ enum TwitchOAuthService {
         return token
     }
 
-    private static func exchangeCode(_ code: String, verifier: String, clientID: String) async throws -> TwitchOAuthToken {
-        var request = URLRequest(url: tokenEndpoint)
+    private static func createDeviceAuthorization(clientID: String) async throws -> DeviceAuthorizationResponse {
+        var request = URLRequest(url: deviceEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        let body: [String: String] = [
-            "client_id": clientID,
-            "code": code,
-            "code_verifier": verifier,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirectURI,
-        ]
-        request.httpBody = formBody(body)
+        request.httpBody = formBody(["client_id": clientID, "scopes": scopes.joined(separator: " ")])
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw TwitchServiceError.invalidResponse(String(data: data, encoding: .utf8) ?? "Twitch token exchange failed.")
+            throw TwitchServiceError.invalidResponse(Self.twitchErrorMessage(data: data, fallback: "Twitch device authorization failed."))
         }
-        return try decodeToken(data)
+        return try JSONDecoder().decode(DeviceAuthorizationResponse.self, from: data)
+    }
+
+    private static func pollDeviceAuthorization(clientID: String, device: DeviceAuthorizationResponse) async throws -> TwitchOAuthToken {
+        let deadline = Date().addingTimeInterval(TimeInterval(device.expiresIn))
+        var interval = max(1, device.interval)
+        while Date() < deadline {
+            try await Task.sleep(for: .seconds(interval))
+            var request = URLRequest(url: tokenEndpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = formBody([
+                "client_id": clientID,
+                "device_code": device.deviceCode,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "scopes": scopes.joined(separator: " "),
+            ])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                return try decodeToken(data)
+            }
+            let message = twitchErrorMessage(data: data, fallback: "Twitch device authorization is pending.")
+            switch message {
+            case "authorization_pending":
+                continue
+            case "slow_down":
+                interval += 5
+            default:
+                throw TwitchServiceError.invalidResponse(message)
+            }
+        }
+        throw TwitchServiceError.invalidResponse("Twitch authorization expired before approval was completed.")
     }
 
     private static func decodeToken(_ data: Data) throws -> TwitchOAuthToken {
@@ -366,26 +328,6 @@ enum TwitchOAuthService {
     private static func statusFromStoredToken() -> TwitchAccountStatus? {
         guard (try? TwitchTokenStore.load()) != nil else { return nil }
         return TwitchAccountStatus(isConnected: true, displayName: "Twitch", login: "", channelID: "", streamKeyAvailable: TwitchStreamKeyStore.exists())
-    }
-
-    private static func randomURLSafeString(byteCount: Int) throws -> String {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        guard status == errSecSuccess else { throw TwitchServiceError.secureRandom(status) }
-        return Data(bytes).base64URLEncodedString()
-    }
-
-    private static func safeQueryItems(_ queryItems: [URLQueryItem]) -> [String: String] {
-        var items: [String: String] = [:]
-        for item in queryItems {
-            guard let value = item.value, items[item.name] == nil else { continue }
-            items[item.name] = value
-        }
-        return items
-    }
-
-    private static func codeChallenge(for verifier: String) -> String {
-        Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncodedString()
     }
 
     private static func formBody(_ values: [String: String]) -> Data {
@@ -420,121 +362,26 @@ enum TwitchOAuthService {
             case scope
         }
     }
+
+    private struct DeviceAuthorizationResponse: Decodable {
+        let deviceCode: String
+        let expiresIn: Int
+        let interval: Int
+        let userCode: String
+        let verificationURI: String
+
+        private enum CodingKeys: String, CodingKey {
+            case deviceCode = "device_code"
+            case expiresIn = "expires_in"
+            case interval
+            case userCode = "user_code"
+            case verificationURI = "verification_uri"
+        }
+    }
 }
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-private final class TwitchOAuthCallbackServer: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "io.opencg.opennow.twitch.oauth.callback")
-    private let host: String
-    private let port: UInt16
-    private var listener: NWListener?
-
-    init(host: String, port: UInt16) {
-        self.host = host
-        self.port = port
-    }
-
-    func start() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            queue.async { [weak self] in
-                guard let self else {
-                    continuation.resume(throwing: TwitchServiceError.callbackServer("Twitch OAuth callback server is unavailable."))
-                    return
-                }
-                do {
-                    let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: self.port)!)
-                    let callbackQueue = self.queue
-                    self.listener = listener
-                    let resumeGate = TwitchContinuationResumeGate()
-                    listener.stateUpdateHandler = { state in
-                        switch state {
-                        case .ready:
-                            guard resumeGate.claim() else { return }
-                            continuation.resume()
-                        case .failed(let error):
-                            guard resumeGate.claim() else { return }
-                            continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://\(self.host):\(self.port)/. Close anything using that callback port and try again. \(error.localizedDescription)"))
-                        case .cancelled:
-                            guard resumeGate.claim() else { return }
-                            continuation.resume(throwing: TwitchServiceError.callbackServer("Twitch OAuth callback server stopped before it was ready."))
-                        default:
-                            break
-                        }
-                    }
-                    listener.newConnectionHandler = { [weak self] connection in
-                        self?.handle(connection)
-                    }
-                    listener.start(queue: callbackQueue)
-                } catch {
-                    continuation.resume(throwing: TwitchServiceError.callbackServer("Unable to listen on http://\(self.host):\(self.port)/. Close anything using that callback port and try again. \(error.localizedDescription)"))
-                }
-            }
-        }
-    }
-
-    func stop() {
-        queue.async {
-            self.listener?.cancel()
-            self.listener = nil
-        }
-    }
-
-    private func handle(_ connection: NWConnection) {
-        connection.start(queue: queue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, _ in
-            guard let self else {
-                connection.cancel()
-                return
-            }
-            let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            let url = self.callbackURL(from: request)
-            let accepted = url.map(TwitchOAuthService.isCallbackURL) ?? false
-            let body = accepted ? "Twitch connected. You can close this window and return to OpenNOW." : "OpenNOW did not receive a valid Twitch callback. Return to OpenNOW and try connecting again."
-            let statusLine = accepted ? "HTTP/1.1 200 OK" : "HTTP/1.1 400 Bad Request"
-            self.sendResponse(statusLine: statusLine, body: body, connection: connection)
-            if let url, accepted {
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .openNOWTwitchOAuthCallback, object: url)
-                }
-            }
-        }
-    }
-
-    private func callbackURL(from request: String) -> URL? {
-        guard let requestLine = request.components(separatedBy: "\r\n").first else { return nil }
-        let parts = requestLine.split(separator: " ")
-        guard parts.count >= 2 else { return nil }
-        return URL(string: "http://\(host):\(port)\(parts[1])")
-    }
-
-    private func sendResponse(statusLine: String, body: String, connection: NWConnection) {
-        let html = """
-        <!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Twitch</title></head><body><p>\(body)</p></body></html>
-        """
-        let bodyData = Data(html.utf8)
-        let header = "\(statusLine)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(bodyData.count)\r\nConnection: close\r\n\r\n"
-        var response = Data(header.utf8)
-        response.append(bodyData)
-        connection.send(content: response, completion: .contentProcessed { _ in
-            connection.cancel()
-        })
-    }
-}
-
-private final class TwitchContinuationResumeGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didResume = false
-
-    func claim() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didResume else { return false }
-        didResume = true
-        return true
-    }
 }
 
 enum TwitchTokenStore {

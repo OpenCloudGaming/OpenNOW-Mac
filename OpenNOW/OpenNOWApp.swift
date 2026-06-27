@@ -281,7 +281,8 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     private func presentUpdateAlert(for release: OpenNOWGitHubRelease) {
         updateInstallTask?.cancel()
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let currentVersion = githubUpdater.currentVersion
             var notes = release.releaseNotes.isEmpty ? "No release notes were provided." : release.releaseNotes
             if notes.count > 1400 {

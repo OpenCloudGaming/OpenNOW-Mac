@@ -80,10 +80,6 @@ struct ContentView: View {
     }
 
     private func handleOpenURL(_ url: URL) {
-        if TwitchOAuthService.isCallbackURL(url) {
-            NotificationCenter.default.post(name: .openNOWTwitchOAuthCallback, object: url)
-            return
-        }
         viewModel.handleOAuthCallback(url)
     }
 }

@@ -213,10 +213,6 @@ final class CatalogViewModel: ObservableObject {
             .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.browseCatalog() }
             .store(in: &cancellables)
-        NotificationCenter.default.publisher(for: .openNOWTwitchOAuthCallback)
-            .compactMap { $0.object as? URL }
-            .sink { [weak self] url in self?.handleTwitchOAuthCallback(url) }
-            .store(in: &cancellables)
     }
 
     deinit {
@@ -726,8 +722,9 @@ final class CatalogViewModel: ObservableObject {
             actionMessage = "Opening Twitch activation in your browser. Approve OpenNOW to finish connecting."
             errorMessage = ""
             do {
-                _ = try await TwitchOAuthService.start(clientID: TwitchOAuthService.clientID)
-                actionMessage = "Twitch authorization opened. Finish approval in your browser."
+                twitchAccountStatus = try await TwitchOAuthService.start(clientID: TwitchOAuthService.clientID)
+                twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
+                actionMessage = "Twitch connected."
             } catch {
                 errorMessage = Self.message(for: error)
             }
@@ -816,19 +813,6 @@ final class CatalogViewModel: ObservableObject {
             twitchPrimaryStreamKeySaved = false
             twitchAccountStatus = TwitchAccountStatus()
             actionMessage = "Twitch disconnected."
-        }
-    }
-
-    func handleTwitchOAuthCallback(_ url: URL) {
-        Task { @MainActor in
-            do {
-                twitchAccountStatus = try await TwitchOAuthService.complete(callbackURL: url, clientID: TwitchOAuthService.clientID)
-                twitchPrimaryStreamKeySaved = twitchAccountStatus.streamKeyAvailable
-                actionMessage = "Twitch connected."
-                errorMessage = ""
-            } catch {
-                errorMessage = Self.message(for: error)
-            }
         }
     }
 
