@@ -916,13 +916,14 @@ private struct StoreConnectionRow: View {
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
         let displayName = viewModel.displayName(forStore: store)
         let iconAsset = StoreIconAsset.resolve(store: store, displayName: displayName)
+        let iconURL = definition?.smallImageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         let isConnected = account != nil
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16) {
             Rectangle()
                 .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
                 .frame(width: 4, height: 46)
-            StoreIcon(asset: iconAsset, connected: isConnected)
+            StoreIcon(asset: iconAsset, imageURL: iconURL, connected: isConnected)
             VStack(alignment: .leading, spacing: 5) {
                 Text(displayName)
                     .font(.settingsNvidia(size: 15, weight: .bold))
@@ -964,41 +965,92 @@ private struct StoreConnectionRow: View {
 
 private struct StoreIcon: View {
     let asset: StoreIconAsset?
+    let imageURL: String?
     let connected: Bool
 
     var body: some View {
         ZStack {
             Rectangle()
                 .fill(connected ? Color.openNowGreen.opacity(0.18) : Color.white.opacity(0.075))
-            if let asset {
-                StoreIconImage(assetName: asset.assetName)
-                    .scaledToFit()
-                    .padding(asset.padding)
-                    .saturation(connected ? 1 : 0.65)
-                    .opacity(connected ? 1 : 0.68)
+            if let url = resolvedImageURL {
+                StoreRemoteIconImage(url: url, asset: asset, connected: connected)
             } else {
-                Image(systemName: "link")
-                    .font(.settingsNvidia(size: 17, weight: .bold))
-                    .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.56))
+                StoreLocalIconImage(asset: asset, connected: connected)
             }
         }
         .frame(width: 42, height: 42)
         .overlay { Rectangle().stroke(connected ? Color.openNowGreen.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
         .accessibilityHidden(true)
     }
+
+    private var resolvedImageURL: URL? {
+        guard let imageURL, !imageURL.isEmpty else { return nil }
+        return URL(string: imageURL)
+    }
 }
 
-private struct StoreIconImage: View {
-    let assetName: String
+private struct StoreRemoteIconImage: View {
+    let url: URL
+    let asset: StoreIconAsset?
+    let connected: Bool
+
+    @State private var image: NSImage?
+    @State private var hasFailed = false
 
     var body: some View {
-        if let image = Self.loadImage(named: assetName) {
-            Image(nsImage: image)
-                .resizable()
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(5)
+                    .saturation(connected ? 1 : 0.65)
+                    .opacity(connected ? 1 : 0.68)
+            } else if hasFailed {
+                StoreLocalIconImage(asset: asset, connected: connected)
+            } else {
+                StoreLocalIconImage(asset: asset, connected: connected)
+                    .opacity(0.42)
+            }
         }
+        .task(id: url) { await loadImage() }
     }
 
-    private static func loadImage(named name: String) -> NSImage? {
+    @MainActor
+    private func loadImage() async {
+        image = nil
+        hasFailed = false
+        guard let cached = await CatalogImageCache.shared.image(for: url), !Task.isCancelled else {
+            hasFailed = !Task.isCancelled
+            return
+        }
+        image = cached.image
+        hasFailed = false
+    }
+}
+
+private struct StoreLocalIconImage: View {
+    let asset: StoreIconAsset?
+    let connected: Bool
+
+    var body: some View {
+        if let asset, let image = StoreIconImage.loadImage(named: asset.assetName) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .padding(asset.padding)
+                .saturation(connected ? 1 : 0.65)
+                .opacity(connected ? 1 : 0.68)
+        } else {
+            Image(systemName: "link")
+                .font(.settingsNvidia(size: 17, weight: .bold))
+                .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.56))
+        }
+    }
+}
+
+private enum StoreIconImage {
+    static func loadImage(named name: String) -> NSImage? {
         let cacheKey = name as NSString
         if let cached = cache.object(forKey: cacheKey) { return cached }
         guard let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "StoreIcons") ?? Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Resources/StoreIcons"),
