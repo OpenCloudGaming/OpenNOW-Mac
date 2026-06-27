@@ -790,7 +790,7 @@ private struct TwitchSettingsPage: View {
                 SettingsDivider()
                 HStack(spacing: 10) {
                     SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
-                        .disabled(viewModel.isConnectingTwitch)
+                        .disabled(viewModel.isConnectingTwitch || viewModel.twitchAccountStatus.isConnected)
                     SettingsActionButton(title: "DISCONNECT", tone: .secondary, minimumWidth: 120) { viewModel.disconnectTwitch() }
                         .disabled(!viewModel.twitchAccountStatus.isConnected)
                     Spacer(minLength: 0)

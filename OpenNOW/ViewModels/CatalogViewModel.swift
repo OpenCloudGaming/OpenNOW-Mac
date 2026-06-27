@@ -720,7 +720,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func beginTwitchConnection() {
-        guard !isConnectingTwitch else { return }
+        guard !isConnectingTwitch, !twitchAccountStatus.isConnected else { return }
         Task { @MainActor in
             isConnectingTwitch = true
             actionMessage = "Opening Twitch activation in your browser. Approve OpenNOW to finish connecting."

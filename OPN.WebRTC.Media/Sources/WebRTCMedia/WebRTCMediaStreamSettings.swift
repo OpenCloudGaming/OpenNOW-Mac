@@ -283,7 +283,6 @@ public enum WebRTCMediaStreamSettingsResolver {
 
     private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
         let requested = normalizedCodec(profile.codec)
-        if requested == "H265", libWebRTCAvailable { return "H264" }
         if requested != "AUTO" { return codecSupported(requested, capabilities: capabilities) ? requested : "H264" }
         if !libWebRTCAvailable { return "H264" }
         let pixels = max(1, profile.resolution.width) * max(1, profile.resolution.height)
