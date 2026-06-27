@@ -122,6 +122,13 @@ struct OpenNOWApp: App {
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .windowSize) {
+                Button("Toggle Microphone") {
+                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone)
+                }
+                .keyboardShortcut("m", modifiers: .command)
+                .disabled(!WebRTCMediaStreamLifecycle.hasActiveStream)
+            }
         }
     }
 }

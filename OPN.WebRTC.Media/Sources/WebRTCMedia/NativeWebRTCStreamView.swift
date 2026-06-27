@@ -323,8 +323,9 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     private func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
-        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) else { return nil }
-        let shifted = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.contains(.command) else { return nil }
+        let shifted = modifiers.contains(.shift)
         if shifted {
             switch event.keyCode {
             case 8: return .toggleTwitchChatOverlay
@@ -333,6 +334,7 @@ public final class NativeWebRTCStreamView: NSView {
             default: break
             }
         }
+        guard modifiers.subtracting([.capsLock, .numericPad]) == .command else { return nil }
         switch event.keyCode {
         case 46: return .toggleMicrophone
         case 45: return .toggleStatsHUD

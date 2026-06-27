@@ -909,7 +909,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func microphoneToggleAction(for keyboard: KeyboardEvent) -> StreamInputAction? {
-        guard keyboard.modifiers.contains(.command), Int(keyboard.keyCode) == Self.microphoneToggleKeyCode else { return nil }
+        guard keyboard.modifiers.intersection(Self.hotkeyModifierMask) == .command, Int(keyboard.keyCode) == Self.microphoneToggleKeyCode else { return nil }
         guard keyboard.isPressed else { return .drop }
         toggleMicrophone()
         return .drop
@@ -997,10 +997,14 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func registerStreamLifecycle() {
-        WebRTCMediaStreamLifecycle.activate(configuration.id) { completion in
-            showQuitMenu(completion: completion)
-            return true
-        }
+        WebRTCMediaStreamLifecycle.activate(
+            configuration.id,
+            quitRequestHandler: { completion in
+                showQuitMenu(completion: completion)
+                return true
+            },
+            commandHandler: handle
+        )
     }
 
     private func showQuitMenu(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
@@ -1129,6 +1133,7 @@ public struct WebRTCMediaStreamSurface: View {
         return error.localizedDescription
     }
 
+    private static let hotkeyModifierMask: KeyboardModifiers = [.shift, .control, .option, .command]
     private static let pushToTalkModifierMask = KeyboardModifiers.shift.rawValue | KeyboardModifiers.control.rawValue | KeyboardModifiers.option.rawValue | KeyboardModifiers.command.rawValue | KeyboardModifiers.capsLock.rawValue
     private static let microphoneToggleKeyCode = 46
 }
