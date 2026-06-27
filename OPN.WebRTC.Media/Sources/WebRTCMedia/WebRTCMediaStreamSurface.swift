@@ -1106,7 +1106,6 @@ public struct WebRTCMediaStreamSurface: View {
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         transport?.stopRecording()
-        transport?.stopBroadcast()
         guard !didEndStream else { return }
         didEndStream = true
         if let path { Task { try? await path.stop(reason: .userRequested, message: "Stream view closed.") } }
