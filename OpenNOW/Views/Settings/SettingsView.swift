@@ -786,11 +786,7 @@ private struct TwitchSettingsPage: View {
                 }
                 .padding(.top, 10)
                 SettingsDivider()
-                SettingsInfoRow(label: "OAuth Redirect URL", value: TwitchOAuthService.redirectURI)
-                Text("Twitch OAuth uses OpenNOW's built-in Twitch Developer Client ID. Registering your own Client ID is not required.")
-                    .font(.settingsNvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
+                TwitchAuthorizationInfoRow(isConnected: viewModel.twitchAccountStatus.isConnected)
                 SettingsDivider()
                 HStack(spacing: 10) {
                     SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
@@ -861,6 +857,32 @@ private struct TwitchSettingsPage: View {
 
     private var selectedResolutionIndex: Int {
         TwitchBroadcastPreferences.Resolution.allCases.firstIndex(of: viewModel.twitchPreferences.resolution) ?? 0
+    }
+}
+
+private struct TwitchAuthorizationInfoRow: View {
+    let isConnected: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Rectangle()
+                .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
+                .frame(width: 4, height: 48)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Browser authorization")
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Connect Twitch to enable channel metadata, stream markers, chat, and event features.")
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            SettingsStatusPill(title: "OAUTH", value: isConnected ? "Linked" : "Optional", positive: isConnected)
+        }
+        .padding(12)
+        .background(SettingsVendorLayout.row)
+        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
     }
 }
 
