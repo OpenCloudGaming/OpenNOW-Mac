@@ -150,7 +150,7 @@ enum TwitchServiceError: LocalizedError, Sendable {
 
 enum TwitchOAuthService {
     static let clientID = "alymw1mbm3hayczv6a7mbqna6a9344"
-    private static let callbackHost = "127.0.0.1"
+    private static let callbackHost = "localhost"
     private static let callbackPort: UInt16 = 43_897
     static let redirectURI = "http://\(callbackHost):\(callbackPort)/"
 
