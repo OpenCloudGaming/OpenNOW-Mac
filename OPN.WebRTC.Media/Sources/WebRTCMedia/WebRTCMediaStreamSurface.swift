@@ -29,6 +29,15 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
+private enum WebRTCMediaStreamTheme {
+    static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
+    static let accentSoft = Color(red: 0.67, green: 1.0, blue: 0.36)
+    static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
+    static let surfaceRaised = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
+    static let warning = Color.orange
+    static let danger = Color.red
+}
+
 public struct WebRTCMediaTwitchEventAlert: Identifiable, Equatable, Sendable {
     public let id: String
     public let title: String
@@ -210,7 +219,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var launchOverlay: some View {
         LinearGradient(
-            colors: [Color(red: 0.015, green: 0.02, blue: 0.018), Color(red: 0.05, green: 0.08, blue: 0.055)],
+            colors: [WebRTCMediaStreamTheme.surface.opacity(0.98), WebRTCMediaStreamTheme.surfaceRaised.opacity(0.98)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -221,10 +230,10 @@ public struct WebRTCMediaStreamSurface: View {
                     .foregroundStyle(.white)
                 Text(statusMessage)
                     .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color(red: 0.67, green: 1.0, blue: 0.36).opacity(0.84))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accentSoft.opacity(0.84))
                 ProgressView()
                     .controlSize(.large)
-                    .tint(Color(red: 0.56, green: 1.0, blue: 0.25))
+                    .tint(WebRTCMediaStreamTheme.accent)
             }
             .padding(36)
             .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -236,7 +245,7 @@ public struct WebRTCMediaStreamSurface: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STREAM STATS")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
+                .foregroundStyle(WebRTCMediaStreamTheme.accent)
             statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
             statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
             statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
@@ -253,7 +262,7 @@ public struct WebRTCMediaStreamSurface: View {
         .padding(14)
         .frame(width: 252, alignment: .leading)
         .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.28), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1))
         .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 12)
         .padding(.top, 22)
         .padding(.trailing, 22)
@@ -264,7 +273,7 @@ public struct WebRTCMediaStreamSurface: View {
         VStack(spacing: 10) {
             Text("GFN")
                 .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
+                .foregroundStyle(WebRTCMediaStreamTheme.accent)
                 .padding(.bottom, 6)
             sidebarButton(systemName: "waveform.path.ecg", title: "Stats") {
                 statsVisible.toggle()
@@ -293,7 +302,7 @@ public struct WebRTCMediaStreamSurface: View {
             HStack {
                 Text("VIDEO ENHANCEMENT")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
                 Spacer()
                 Button(action: { videoEnhancementSettingsVisible = false }) {
                     Image(systemName: "xmark")
@@ -310,7 +319,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             .pickerStyle(.menu)
-            .tint(Color(red: 0.61, green: 1.0, blue: 0.22))
+            .tint(WebRTCMediaStreamTheme.accent)
             .disabled(!isStreamReady)
             if runtimeSettings.upscalingMode != 0 {
                 videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...40) { value in
@@ -346,7 +355,7 @@ public struct WebRTCMediaStreamSurface: View {
         .padding(14)
         .frame(width: 272, alignment: .leading)
         .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.25), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.25), lineWidth: 1))
         .shadow(color: .black.opacity(0.48), radius: 24, x: 0, y: 12)
         .padding(.top, 22)
         .padding(.leading, 96)
@@ -362,7 +371,7 @@ public struct WebRTCMediaStreamSurface: View {
                 Text("STREAM PAUSED")
                     .font(.system(size: 12, weight: .black, design: .monospaced))
                     .tracking(2.4)
-                    .foregroundStyle(Color(red: 0.61, green: 1.0, blue: 0.22))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
                 Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
                     .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
@@ -378,7 +387,7 @@ public struct WebRTCMediaStreamSurface: View {
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.black)
                             .frame(width: 150, height: 44)
-                            .background(Color(red: 0.61, green: 1.0, blue: 0.22), in: Capsule())
+                            .background(WebRTCMediaStreamTheme.accent, in: Capsule())
                     }
                     .buttonStyle(.plain)
                     Button(action: quitStreamFromMenu) {
@@ -395,7 +404,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             .padding(32)
             .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.26), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.26), lineWidth: 1))
             .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
         }
     }
@@ -406,7 +415,7 @@ public struct WebRTCMediaStreamSurface: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("TWITCH COMMAND CENTER")
                         .font(.system(size: 12, weight: .black, design: .monospaced))
-                        .foregroundStyle(Color(red: 0.93, green: 0.28, blue: 1.0))
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
                         .tracking(1.2)
                     Text(configuration.title.isEmpty ? "OpenNOW Live" : configuration.title)
                         .font(.system(size: 22, weight: .black, design: .rounded))
@@ -444,7 +453,7 @@ public struct WebRTCMediaStreamSurface: View {
                         .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(3)
                     HStack(spacing: 10) {
-                        twitchPrimaryActionButton(title: isPreparingBroadcast ? "Preparing" : (broadcastStatus.isBroadcasting ? "End Live" : "Go Live"), color: broadcastStatus.isBroadcasting ? .red : Color(red: 0.93, green: 0.28, blue: 1.0), action: toggleBroadcast)
+                        twitchPrimaryActionButton(title: isPreparingBroadcast ? "Preparing" : (broadcastStatus.isBroadcasting ? "End Live" : "Go Live"), color: broadcastStatus.isBroadcasting ? WebRTCMediaStreamTheme.danger : WebRTCMediaStreamTheme.accent, foregroundColor: broadcastStatus.isBroadcasting ? .white : .black, action: toggleBroadcast)
                             .disabled(isPreparingBroadcast)
                         twitchSecondaryActionButton(title: "Refresh", systemName: "arrow.clockwise") {
                             Task { @MainActor in await onTwitchHealthRefresh?() }
@@ -510,21 +519,21 @@ public struct WebRTCMediaStreamSurface: View {
         .padding(18)
         .frame(width: 620, alignment: .leading)
         .background(twitchPanelBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color(red: 0.93, green: 0.28, blue: 1.0).opacity(0.36), lineWidth: 1))
-        .shadow(color: Color(red: 0.5, green: 0.0, blue: 0.8).opacity(0.28), radius: 34, x: 0, y: 16)
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
+        .shadow(color: WebRTCMediaStreamTheme.accent.opacity(0.18), radius: 34, x: 0, y: 16)
         .padding(.top, 22)
         .padding(.leading, 96)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var twitchPanelBackground: some ShapeStyle {
-        LinearGradient(colors: [.black.opacity(0.86), Color(red: 0.13, green: 0.03, blue: 0.18).opacity(0.86)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(colors: [.black.opacity(0.86), WebRTCMediaStreamTheme.surfaceRaised.opacity(0.86)], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private var twitchLiveBadge: some View {
         let live = broadcastStatus.isLive
         return HStack(spacing: 7) {
-            Circle().fill(live ? Color.red : Color(red: 0.93, green: 0.28, blue: 1.0)).frame(width: 8, height: 8)
+            Circle().fill(live ? WebRTCMediaStreamTheme.danger : WebRTCMediaStreamTheme.accent).frame(width: 8, height: 8)
             Text(live ? "LIVE" : (broadcastStatus.isBroadcasting ? "PUBLISHING" : "READY"))
                 .font(.system(size: 11, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
@@ -558,7 +567,7 @@ public struct WebRTCMediaStreamSurface: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(message.author)
                                     .font(.system(size: 10, weight: .black, design: .rounded))
-                                    .foregroundStyle(Color(red: 0.93, green: 0.28, blue: 1.0))
+                                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
                                 Text(message.text)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                     .foregroundStyle(.white.opacity(0.82))
@@ -590,7 +599,7 @@ public struct WebRTCMediaStreamSurface: View {
                 .font(.system(size: 11, weight: .black, design: .rounded))
                 .foregroundStyle(.black)
                 .frame(width: 54, height: 34)
-                .background(Color(red: 0.93, green: 0.28, blue: 1.0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(WebRTCMediaStreamTheme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .buttonStyle(.plain)
             }
         }
@@ -629,7 +638,7 @@ public struct WebRTCMediaStreamSurface: View {
                         }
                         .padding(9)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(red: 0.93, green: 0.28, blue: 1.0).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(WebRTCMediaStreamTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                 }
             }
@@ -643,7 +652,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func twitchMetricCard(title: String, value: String, positive: Bool) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Circle().fill(positive ? Color(red: 0.61, green: 1.0, blue: 0.22) : Color.orange).frame(width: 6, height: 6)
+                Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
                 Text(title.uppercased())
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.48))
@@ -660,11 +669,11 @@ public struct WebRTCMediaStreamSurface: View {
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
     }
 
-    private func twitchPrimaryActionButton(title: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func twitchPrimaryActionButton(title: String, color: Color, foregroundColor: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title.uppercased())
                 .font(.system(size: 12, weight: .black, design: .rounded))
-                .foregroundStyle(color == .red ? .white : .black)
+                .foregroundStyle(foregroundColor)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
                 .background(color.opacity(isPreparingBroadcast ? 0.58 : 0.96), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -696,7 +705,7 @@ public struct WebRTCMediaStreamSurface: View {
                 .foregroundStyle(.black)
                 .padding(.horizontal, 7)
                 .frame(height: 22)
-                .background(Color(red: 0.93, green: 0.28, blue: 1.0), in: Capsule())
+                .background(WebRTCMediaStreamTheme.accent, in: Capsule())
             Text(label)
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.62))
@@ -708,7 +717,7 @@ public struct WebRTCMediaStreamSurface: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("TWITCH CHAT")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(Color.purple.opacity(0.95))
+                .foregroundStyle(WebRTCMediaStreamTheme.accent.opacity(0.95))
             if twitchOverlayState.chatMessages.isEmpty {
                 Text(twitchOverlayState.chatState)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -726,7 +735,7 @@ public struct WebRTCMediaStreamSurface: View {
         .padding(12)
         .frame(width: 320, alignment: .leading)
         .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.purple.opacity(0.28), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1))
         .padding(.trailing, 18)
         .padding(.bottom, 62)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -738,7 +747,7 @@ public struct WebRTCMediaStreamSurface: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 13, weight: .black))
-                        .foregroundStyle(Color(red: 0.93, green: 0.28, blue: 1.0))
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(alert.title)
                             .font(.system(size: 12, weight: .black, design: .rounded))
@@ -752,7 +761,7 @@ public struct WebRTCMediaStreamSurface: View {
                 .padding(12)
                 .frame(width: 320, alignment: .leading)
                 .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color(red: 0.93, green: 0.28, blue: 1.0).opacity(0.32), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.32), lineWidth: 1))
             }
         }
         .padding(.top, 72)
@@ -764,7 +773,7 @@ public struct WebRTCMediaStreamSurface: View {
         let isAvailable = runtimeSettings.microphoneMode != "disabled"
         return Image(systemName: microphoneEnabled && isAvailable ? "mic.fill" : "mic.slash.fill")
             .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(microphoneEnabled && isAvailable ? Color(red: 0.61, green: 1.0, blue: 0.22) : .white.opacity(0.72))
+            .foregroundStyle(microphoneEnabled && isAvailable ? WebRTCMediaStreamTheme.accent : .white.opacity(0.72))
             .frame(width: 30, height: 30)
             .background(.black.opacity(0.58), in: Circle())
             .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
@@ -786,7 +795,7 @@ public struct WebRTCMediaStreamSurface: View {
                     .background(.black.opacity(0.62), in: Capsule())
             case .recording(_, let elapsedSeconds):
                 HStack(spacing: 8) {
-                    Circle().fill(Color.red).frame(width: 8, height: 8)
+                    Circle().fill(WebRTCMediaStreamTheme.danger).frame(width: 8, height: 8)
                     Text(recordingElapsedText(elapsedSeconds))
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.94))
@@ -794,7 +803,7 @@ public struct WebRTCMediaStreamSurface: View {
                 .padding(.horizontal, 12)
                 .frame(height: 32)
                 .background(.black.opacity(0.62), in: Capsule())
-                .overlay(Capsule().stroke(Color.red.opacity(0.36), lineWidth: 1))
+                .overlay(Capsule().stroke(WebRTCMediaStreamTheme.danger.opacity(0.36), lineWidth: 1))
             case .finishing:
                 Text("Saving recording...")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -810,7 +819,7 @@ public struct WebRTCMediaStreamSurface: View {
                     .truncationMode(.tail)
                     .padding(.horizontal, 12)
                     .frame(height: 32)
-                    .background(Color.red.opacity(0.72), in: Capsule())
+                    .background(WebRTCMediaStreamTheme.danger.opacity(0.72), in: Capsule())
             case .finished(let recording):
                 Text("Saved: \(recording.title)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -820,7 +829,7 @@ public struct WebRTCMediaStreamSurface: View {
                     .padding(.horizontal, 12)
                     .frame(height: 32)
                     .background(.black.opacity(0.62), in: Capsule())
-                    .overlay(Capsule().stroke(Color(red: 0.61, green: 1.0, blue: 0.22).opacity(0.32), lineWidth: 1))
+                    .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.32), lineWidth: 1))
             default:
                 EmptyView()
             }
@@ -832,19 +841,19 @@ public struct WebRTCMediaStreamSurface: View {
     private var broadcastIndicator: some View {
         Group {
             if isPreparingBroadcast {
-                broadcastStatusChip(color: .purple, text: "Preparing", detail: "Updating Twitch channel")
+                broadcastStatusChip(color: WebRTCMediaStreamTheme.accent, text: "Preparing", detail: "Updating Twitch channel")
             } else {
                 switch broadcastStatus {
                 case .connecting:
-                    broadcastStatusChip(color: .purple, text: "Connecting")
+                    broadcastStatusChip(color: WebRTCMediaStreamTheme.accent, text: "Connecting")
                 case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                    broadcastStatusChip(color: .purple.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
+                    broadcastStatusChip(color: WebRTCMediaStreamTheme.accent.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
                 case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                    broadcastStatusChip(color: .red, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
+                    broadcastStatusChip(color: WebRTCMediaStreamTheme.danger, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
                 case .stopping:
-                    broadcastStatusChip(color: .orange, text: "Stopping")
+                    broadcastStatusChip(color: WebRTCMediaStreamTheme.warning, text: "Stopping")
                 case .failed(let message):
-                    broadcastStatusChip(color: .purple, text: message)
+                    broadcastStatusChip(color: WebRTCMediaStreamTheme.accent, text: message)
                 case .idle:
                     EmptyView()
                 }
@@ -888,7 +897,7 @@ public struct WebRTCMediaStreamSurface: View {
             }
             .foregroundStyle(isActive ? .white : .white.opacity(0.92))
             .frame(width: 58, height: 54)
-            .background(isActive ? Color.red.opacity(0.72) : .white.opacity(0.075), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(isActive ? WebRTCMediaStreamTheme.danger.opacity(0.72) : .white.opacity(0.075), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
