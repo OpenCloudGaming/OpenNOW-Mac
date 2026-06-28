@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Common
 import OpenNOWGameServices
 import OpenNOWTwitch
 import SwiftUI
@@ -39,6 +40,7 @@ struct WebRTCMediaStreamView: View {
             twitchOverlayState: twitchOverlayState,
             onTwitchChatSend: { message in twitchRealtime.sendChatMessage(message) },
             onTwitchHealthRefresh: { await twitchRealtime.refreshHealth() },
+            onAntiAFKStateChange: { enabled in OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(enabled) },
             onProgress: { progress in
                 onProgress?(progress)
             },

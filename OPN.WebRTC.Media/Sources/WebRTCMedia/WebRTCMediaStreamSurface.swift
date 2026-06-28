@@ -10,6 +10,7 @@ public typealias WebRTCMediaBroadcastLiveVerificationCallback = @MainActor @Send
 public typealias WebRTCMediaStreamMarkerCallback = @MainActor @Sendable (_ title: String, _ applicationID: String, _ description: String) async -> String
 public typealias WebRTCMediaTwitchChatSendCallback = @MainActor @Sendable (_ message: String) -> Void
 public typealias WebRTCMediaTwitchHealthRefreshCallback = @MainActor @Sendable () async -> Void
+public typealias WebRTCMediaAntiAFKStateChangeCallback = @MainActor @Sendable (_ enabled: Bool) -> Void
 
 public struct WebRTCMediaTwitchChatMessage: Identifiable, Equatable, Sendable {
     public let id: String
@@ -121,6 +122,7 @@ public struct WebRTCMediaStreamSurface: View {
     private let twitchOverlayState: WebRTCMediaTwitchOverlayState
     private let onTwitchChatSend: WebRTCMediaTwitchChatSendCallback?
     private let onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback?
+    private let onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback?
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
 
@@ -159,6 +161,9 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var recordingNotificationTask: Task<Void, Never>?
     @State private var broadcastNotificationTask: Task<Void, Never>?
     @State private var broadcastVerificationTask: Task<Void, Never>?
+    @State private var antiAFKMouseMovementTask: Task<Void, Never>?
+    @State private var transientStreamMessage = ""
+    @State private var transientStreamMessageTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -171,6 +176,7 @@ public struct WebRTCMediaStreamSurface: View {
                 twitchOverlayState: WebRTCMediaTwitchOverlayState = WebRTCMediaTwitchOverlayState(),
                 onTwitchChatSend: WebRTCMediaTwitchChatSendCallback? = nil,
                 onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback? = nil,
+                onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback? = nil,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
         self.configuration = configuration
@@ -183,6 +189,7 @@ public struct WebRTCMediaStreamSurface: View {
         self.twitchOverlayState = twitchOverlayState
         self.onTwitchChatSend = onTwitchChatSend
         self.onTwitchHealthRefresh = onTwitchHealthRefresh
+        self.onAntiAFKStateChange = onAntiAFKStateChange
         self.onProgress = onProgress
         self.onEnd = onEnd
     }
@@ -207,6 +214,7 @@ public struct WebRTCMediaStreamSurface: View {
             if twitchEventAlertsVisible { twitchEventAlertOverlay }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
+            if !transientStreamMessage.isEmpty { transientNotification }
             recordingIndicator
             broadcastIndicator
             micStatusIndicator
@@ -267,6 +275,19 @@ public struct WebRTCMediaStreamSurface: View {
         .padding(.top, 22)
         .padding(.trailing, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private var transientNotification: some View {
+        Text(transientStreamMessage)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(.black.opacity(0.72), in: Capsule())
+            .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.42), lineWidth: 1))
+            .shadow(color: .black.opacity(0.38), radius: 18, y: 8)
+            .padding(.top, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var sidebar: some View {
@@ -1163,6 +1184,7 @@ public struct WebRTCMediaStreamSurface: View {
                 transport.setMicrophoneEnabled(microphoneEnabled)
                 nativeView.directMouseInputEnabled = runtimeSettings.directMouseInput
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
+                refreshAntiAFKMouseMovementTask()
             }
         } catch {
             guard !(error is CancellationError), !Task.isCancelled else {
@@ -1371,6 +1393,8 @@ public struct WebRTCMediaStreamSurface: View {
             WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
         case .toggleMicrophone:
             toggleMicrophone()
+        case .toggleAntiAFKMouseMovement:
+            toggleAntiAFKMouseMovement()
         case .toggleRecording:
             guard isStreamReady, !recordingIsBusy else { return }
             toggleRecording()
@@ -1393,6 +1417,63 @@ public struct WebRTCMediaStreamSurface: View {
         case .showQuitMenu:
             showQuitMenu()
         }
+    }
+
+    private func toggleAntiAFKMouseMovement() {
+        runtimeSettings.antiAFKMouseMovementEnabled.toggle()
+        onAntiAFKStateChange?(runtimeSettings.antiAFKMouseMovementEnabled)
+        refreshAntiAFKMouseMovementTask()
+        showTransientStreamMessage(runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK On" : "Anti-AFK Off")
+        WebRTCMediaTelemetry.capture("webrtc.ui.anti_afk.toggle", level: .info, message: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK mouse movement enabled." : "Anti-AFK mouse movement disabled.", attributes: ["enabled": String(runtimeSettings.antiAFKMouseMovementEnabled)])
+    }
+
+    private func refreshAntiAFKMouseMovementTask() {
+        guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled else {
+            antiAFKMouseMovementTask?.cancel()
+            antiAFKMouseMovementTask = nil
+            return
+        }
+        guard antiAFKMouseMovementTask == nil else { return }
+        antiAFKMouseMovementTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                sendAntiAFKMouseMovement()
+            }
+        }
+    }
+
+    private func sendAntiAFKMouseMovement() {
+        guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let activeTransport = transport else { return }
+        let delta = Self.randomAntiAFKMouseDelta()
+        activeTransport.sendNow(Self.mouseMove(deltaX: delta.x, deltaY: delta.y))
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let transport else { return }
+            transport.sendNow(Self.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
+        }
+    }
+
+    private func showTransientStreamMessage(_ message: String) {
+        transientStreamMessageTask?.cancel()
+        transientStreamMessage = message
+        transientStreamMessageTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            transientStreamMessage = ""
+            transientStreamMessageTask = nil
+        }
+    }
+
+    private static func randomAntiAFKMouseDelta() -> (x: Int16, y: Int16) {
+        var x = Int16(Int.random(in: -5...5))
+        let y = Int16(Int.random(in: -5...5))
+        if x == 0 && y == 0 { x = 1 }
+        return (x, y)
+    }
+
+    private static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
+        .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
     }
 
     private func toggleMicrophone() {
@@ -1504,6 +1585,8 @@ public struct WebRTCMediaStreamSurface: View {
             return true
         }
         guard shouldFinish else { return fallbackReport }
+        antiAFKMouseMovementTask?.cancel()
+        antiAFKMouseMovementTask = nil
         guard let path else { return fallbackReport }
         defer { Task { @MainActor in endStreamingPerformanceMode() } }
         do {
@@ -1522,12 +1605,17 @@ public struct WebRTCMediaStreamSurface: View {
         startTask = nil
         statsTask?.cancel()
         statsTask = nil
+        antiAFKMouseMovementTask?.cancel()
+        antiAFKMouseMovementTask = nil
         recordingNotificationTask?.cancel()
         recordingNotificationTask = nil
         broadcastNotificationTask?.cancel()
         broadcastNotificationTask = nil
         broadcastVerificationTask?.cancel()
         broadcastVerificationTask = nil
+        transientStreamMessageTask?.cancel()
+        transientStreamMessageTask = nil
+        transientStreamMessage = ""
         isPreparingBroadcast = false
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
@@ -1588,6 +1676,7 @@ private struct StreamRuntimeSettings: Equatable {
     var microphonePushToTalkModifierMask = 0
     var suppressInputWhenInactive = true
     var directMouseInput = true
+    var antiAFKMouseMovementEnabled = false
     var upscalingMode = 0
     var upscalingSharpness = 4
     var upscalingDenoise = 0
@@ -1635,6 +1724,7 @@ private struct StreamRuntimeSettings: Equatable {
         microphonePushToTalkModifierMask = Self.int(dictionary["microphonePushToTalkModifierMask"])
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
+        antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
         upscalingMode = Self.int(dictionary["upscalingMode"])
         upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 4)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])

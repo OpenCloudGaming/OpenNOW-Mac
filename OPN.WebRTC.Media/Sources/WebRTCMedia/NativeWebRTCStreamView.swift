@@ -29,6 +29,7 @@ public enum WebRTCMediaStreamCommand: Sendable {
     case toggleTwitchChatOverlay
     case createTwitchMarker
     case toggleTwitchEventAlerts
+    case toggleAntiAFKMouseMovement
     case showQuitMenu
 }
 
@@ -338,6 +339,7 @@ public final class NativeWebRTCStreamView: NSView {
         guard modifiers.subtracting([.capsLock, .numericPad]) == .command else { return nil }
         switch event.keyCode {
         case 46: return .toggleMicrophone
+        case 40: return .toggleAntiAFKMouseMovement
         case 45: return .toggleStatsHUD
         case 5: return .toggleSidebar
         case 15: return .toggleRecording

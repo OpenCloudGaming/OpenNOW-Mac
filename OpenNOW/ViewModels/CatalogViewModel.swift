@@ -1325,6 +1325,12 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setAntiAFKMouseMovementEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(enabled)
+        actionMessage = enabled ? "Anti-AFK mouse movement enabled." : "Anti-AFK mouse movement disabled."
+        loadSettingsPreferences()
+    }
+
     func setRecordingVideoBitrateMbps(_ value: Double) {
         OPNStreamPreferences.saveRecordingVideoBitrateMbps(Int(value.rounded()))
         loadSettingsPreferences()

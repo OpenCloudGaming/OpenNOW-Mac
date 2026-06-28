@@ -1,5 +1,6 @@
 import Common
 import AppKit
+import Common
 import CoreText
 import CryptoKit
 import OpenNOWTelemetry
@@ -1148,6 +1149,8 @@ private struct GameplaySettingsPage: View {
                 SettingsToggleRow(title: "Power Saver", subtitle: "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, action: viewModel.setPowerSaverEnabled)
                 SettingsDivider()
                 SettingsToggleRow(title: "Direct Mouse Input", subtitle: "Send mouse input directly to the stream.", isOn: viewModel.streamProfile.directMouseInput, action: viewModel.setDirectMouseInputEnabled)
+                SettingsDivider()
+                SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. Cmd-K toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, action: viewModel.setAntiAFKMouseMovementEnabled)
                 SettingsDivider()
                 SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, action: viewModel.setSuppressInputWhenInactive)
             }

@@ -208,6 +208,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var enablePowerSaver = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
+    public var antiAFKMouseMovementEnabled = false
     public var gameVolume = 1.0
     public var microphoneVolume = 1.0
     public var microphoneMode = "disabled"
@@ -313,6 +314,7 @@ public enum OPNStreamPreferences {
         Keys.powerSaverEnabled,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
+        Keys.antiAFKMouseMovementEnabled,
         Keys.gameVolume,
         Keys.microphoneVolume,
         Keys.microphoneShortcutEnabled,
@@ -790,6 +792,7 @@ public enum OPNStreamPreferences {
     public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
+    public static func saveAntiAFKMouseMovementEnabled(_ value: Bool) { storage.set(value, forKey: k.antiAFKMouseMovementEnabled) }
     public static func saveGameVolume(_ value: Double) { storage.set(min(max(value, 0.0), 1.0), forKey: k.gameVolume) }
     public static func saveMicrophoneVolume(_ value: Double) { storage.set(min(max(value, 0.0), 1.0), forKey: k.microphoneVolume) }
     public static func loadMicrophoneShortcutEnabled() -> Bool { bool(storage.object(forKey: k.microphoneShortcutEnabled), true) }
@@ -859,6 +862,7 @@ public enum OPNStreamPreferences {
         profile.enablePowerSaver = bool(value(dictionary, k.powerSaverEnabled), false)
         profile.suppressInputWhenInactive = bool(value(dictionary, k.suppressInputWhenInactive), true)
         profile.directMouseInput = bool(value(dictionary, k.directMouseInput), true)
+        profile.antiAFKMouseMovementEnabled = bool(value(dictionary, k.antiAFKMouseMovementEnabled), false)
         profile.gameVolume = clampedDouble(dictionary, k.gameVolume, 1, 0, 1)
         profile.microphoneVolume = clampedDouble(dictionary, k.microphoneVolume, 1, 0, 1)
         profile.microphoneMode = string(value(dictionary, k.microphoneMode), "disabled")
@@ -897,6 +901,7 @@ public enum OPNStreamPreferences {
             k.powerSaverEnabled: profile.enablePowerSaver,
             k.suppressInputWhenInactive: profile.suppressInputWhenInactive,
             k.directMouseInput: profile.directMouseInput,
+            k.antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,
             k.gameVolume: profile.gameVolume,
             k.microphoneVolume: profile.microphoneVolume,
             k.microphoneMode: profile.microphoneMode,
@@ -1301,6 +1306,7 @@ public enum OPNStreamPreferences {
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
+        static let antiAFKMouseMovementEnabled = "OpenNOW.Stream.AntiAFKMouseMovementEnabled"
         static let gameVolume = "OpenNOW.Stream.GameVolume"
         static let microphoneVolume = "OpenNOW.Stream.MicrophoneVolume"
         static let microphoneShortcutEnabled = "OpenNOW.Stream.MicrophoneShortcutEnabled"

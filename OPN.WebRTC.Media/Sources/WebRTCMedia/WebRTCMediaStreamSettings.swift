@@ -99,6 +99,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var upscalingTargetHeight: Int
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
+    public var antiAFKMouseMovementEnabled: Bool
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
@@ -128,6 +129,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 upscalingTargetHeight: Int = 2160,
                 suppressInputWhenInactive: Bool = true,
                 directMouseInput: Bool = true,
+                antiAFKMouseMovementEnabled: Bool = false,
                 recordingVideoBitrateMbps: Int = 0,
                 recordingAudioBitrateKbps: Int = 160,
                 recordingEnhancedVideoEnabled: Bool = true) {
@@ -156,6 +158,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.upscalingTargetHeight = upscalingTargetHeight
         self.suppressInputWhenInactive = suppressInputWhenInactive
         self.directMouseInput = directMouseInput
+        self.antiAFKMouseMovementEnabled = antiAFKMouseMovementEnabled
         self.recordingVideoBitrateMbps = max(0, min(recordingVideoBitrateMbps, 200))
         self.recordingAudioBitrateKbps = max(64, min(recordingAudioBitrateKbps, 320))
         self.recordingEnhancedVideoEnabled = recordingEnhancedVideoEnabled
@@ -188,6 +191,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var upscalingTargetHeight: Int
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
+    public var antiAFKMouseMovementEnabled: Bool
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
@@ -222,6 +226,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "upscalingTargetHeight": upscalingTargetHeight,
             "suppressInputWhenInactive": suppressInputWhenInactive,
             "directMouseInput": directMouseInput,
+            "antiAFKMouseMovementEnabled": antiAFKMouseMovementEnabled,
             "recordingVideoBitrateMbps": recordingVideoBitrateMbps,
             "recordingAudioBitrateKbps": recordingAudioBitrateKbps,
             "recordingEnhancedVideoEnabled": recordingEnhancedVideoEnabled,
@@ -272,6 +277,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             upscalingTargetHeight: profile.upscalingTargetHeight,
             suppressInputWhenInactive: profile.suppressInputWhenInactive,
             directMouseInput: profile.directMouseInput,
+            antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,
             recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
