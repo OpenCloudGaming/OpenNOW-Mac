@@ -1,5 +1,4 @@
 import AppKit
-import AppKit
 import Foundation
 import OpenNOWTelemetry
 

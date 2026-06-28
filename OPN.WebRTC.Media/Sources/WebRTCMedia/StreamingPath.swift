@@ -1,7 +1,5 @@
 import Foundation
 
-import Foundation
-
 public protocol StreamSessionProvider: Sendable {
     func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws

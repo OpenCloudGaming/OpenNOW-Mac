@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 410" role="img" aria-labelledby="title desc">
+  <title id="title">OpenNOW isolated cloud logo</title>
+  <desc id="desc">Isolated lime-green motion cloud logo traced from the icon source, without the rounded black icon background.</desc>
+  <defs>
+    <path id="cloud-core-shape" d="M166.8 178.4C190.8 130.6 245.5 116.1 292.4 127.9C321.9 76.6 376.8 44.5 438.9 44.5C515.5 44.5 579.8 103.7 593.6 188.4C637.3 190.1 670 231.3 670 282.4C670 337.3 626 376 572.9 376H222.6C178.6 376 140.7 349.4 128.8 309.7H250.1C260.9 309.7 269.6 300.9 269.6 290.1C269.6 279.3 260.9 270.5 250.1 270.5H175.5C166.7 270.5 159.5 263.3 159.5 254.5C159.5 245.6 166.7 238.5 175.5 238.5H299.6C310.4 238.5 319.2 229.7 319.2 218.9C319.2 208.1 310.4 199.3 299.6 199.3H168.2C159.4 199.3 152.2 192.4 152.2 184.7C152.2 181.3 158.4 178.5 166.8 178.4Z"/>
+    <path id="speed-top-shape" d="M105.5 169.5H241.5C250.1 169.5 257 176.4 257 185C257 193.6 250.1 200.5 241.5 200.5H105.5C96.9 200.5 90 193.6 90 185C90 176.4 96.9 169.5 105.5 169.5Z"/>
+    <path id="speed-middle-shape" d="M36 220.5H296C304.8 220.5 312 227.7 312 236.5C312 245.3 304.8 252.5 296 252.5H36C27.2 252.5 20 245.3 20 236.5C20 227.7 27.2 220.5 36 220.5Z"/>
+    <path id="speed-lower-shape" d="M86.5 281.5H251.5C260.1 281.5 267 288.4 267 297C267 305.6 260.1 312.5 251.5 312.5H86.5C77.9 312.5 71 305.6 71 297C71 288.4 77.9 281.5 86.5 281.5Z"/>
+    <path id="speed-dot-shape" d="M60.5 281.5H79.5C88.1 281.5 95 288.4 95 297C95 305.6 88.1 312.5 79.5 312.5H60.5C51.9 312.5 45 305.6 45 297C45 288.4 51.9 281.5 60.5 281.5Z"/>
+    <clipPath id="mark-clip">
+      <use href="#cloud-core-shape"/>
+      <use href="#speed-top-shape"/>
+      <use href="#speed-middle-shape"/>
+      <use href="#speed-lower-shape"/>
+      <use href="#speed-dot-shape"/>
+    </clipPath>
+    <linearGradient id="cloud-fill" x1="207" y1="80" x2="620" y2="382" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#baff33"/>
+      <stop offset="0.24" stop-color="#9af72e"/>
+      <stop offset="0.5" stop-color="#66ef16"/>
+      <stop offset="0.78" stop-color="#21df00"/>
+      <stop offset="1" stop-color="#08c700"/>
+    </linearGradient>
+    <linearGradient id="bar-fill" x1="20" y1="177" x2="312" y2="306" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b9ff35"/>
+      <stop offset="0.28" stop-color="#81f91f"/>
+      <stop offset="0.63" stop-color="#23df00"/>
+      <stop offset="1" stop-color="#0abf00"/>
+    </linearGradient>
+    <linearGradient id="edge-stroke" x1="311" y1="43" x2="557" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e0ff93"/>
+      <stop offset="0.2" stop-color="#8bff38"/>
+      <stop offset="0.62" stop-color="#0aa700"/>
+      <stop offset="1" stop-color="#035900"/>
+    </linearGradient>
+    <linearGradient id="line-edge-stroke" x1="18" y1="168" x2="305" y2="318" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#cbff6f"/>
+      <stop offset="0.35" stop-color="#64ee13"/>
+      <stop offset="1" stop-color="#027a00"/>
+    </linearGradient>
+    <linearGradient id="rim-highlight" x1="225" y1="56" x2="540" y2="202" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#efffbd" stop-opacity="0.9"/>
+      <stop offset="0.38" stop-color="#bfff59" stop-opacity="0.76"/>
+      <stop offset="0.76" stop-color="#74ff24" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#42ff10" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="cloud-bloom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(490 148) rotate(34) scale(304 180)">
+      <stop offset="0" stop-color="#d8ff58" stop-opacity="0.62"/>
+      <stop offset="0.42" stop-color="#9eff2b" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#51e900" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="right-lobe-bloom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(610 238) rotate(77) scale(151 122)">
+      <stop offset="0" stop-color="#bcff5a" stop-opacity="0.52"/>
+      <stop offset="0.5" stop-color="#7bf21e" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#1edf00" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lower-shadow" x1="360" y1="284" x2="360" y2="383" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#50ef09" stop-opacity="0"/>
+      <stop offset="0.58" stop-color="#0d9600" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#044a00" stop-opacity="0.48"/>
+    </linearGradient>
+    <linearGradient id="specular-band" x1="25" y1="170" x2="641" y2="101" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f3ffd1" stop-opacity="0.85"/>
+      <stop offset="0.28" stop-color="#dcff71" stop-opacity="0.52"/>
+      <stop offset="0.68" stop-color="#b0ff3a" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="ambient-shadow" x="-8%" y="-8%" width="116%" height="124%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="9" result="blur"/>
+      <feOffset in="blur" dx="0" dy="14" result="offset"/>
+      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0 0 0 0 0 0.05 0 0 0 0 0 0 0 0 0.56 0"/>
+    </filter>
+    <filter id="edge-soften" x="-3%" y="-3%" width="106%" height="110%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="soft"/>
+      <feComposite in="SourceGraphic" in2="soft" operator="over"/>
+    </filter>
+    <filter id="inner-sheen" x="-4%" y="-4%" width="108%" height="108%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.55" result="alpha-soft"/>
+      <feSpecularLighting in="alpha-soft" surfaceScale="3" specularConstant="0.55" specularExponent="26" lighting-color="#ffffff" result="light">
+        <fePointLight x="170" y="50" z="210"/>
+      </feSpecularLighting>
+      <feComposite in="light" in2="SourceAlpha" operator="in" result="lit"/>
+      <feBlend in="SourceGraphic" in2="lit" mode="screen"/>
+    </filter>
+  </defs>
+  <g id="isolated-logo">
+    <g id="soft-contact-shadow" filter="url(#ambient-shadow)" opacity="0.94">
+      <use href="#cloud-core-shape" fill="#001900"/>
+      <use href="#speed-top-shape" fill="#001900"/>
+      <use href="#speed-middle-shape" fill="#001900"/>
+      <use href="#speed-lower-shape" fill="#001900"/>
+      <use href="#speed-dot-shape" fill="#001900"/>
+    </g>
+    <g id="rear-green-extrusion" transform="translate(7 9)" opacity="0.92" filter="url(#edge-soften)">
+      <use href="#cloud-core-shape" fill="#057d00" stroke="#013f00" stroke-width="8" stroke-linejoin="round"/>
+      <use href="#speed-top-shape" fill="#069200" stroke="#013f00" stroke-width="7" stroke-linejoin="round"/>
+      <use href="#speed-middle-shape" fill="#049000" stroke="#013f00" stroke-width="7" stroke-linejoin="round"/>
+      <use href="#speed-lower-shape" fill="#078f00" stroke="#013f00" stroke-width="7" stroke-linejoin="round"/>
+      <use href="#speed-dot-shape" fill="#078f00" stroke="#013f00" stroke-width="7" stroke-linejoin="round"/>
+    </g>
+    <g id="primary-surfaces" filter="url(#inner-sheen)">
+      <use href="#cloud-core-shape" fill="url(#cloud-fill)" stroke="url(#edge-stroke)" stroke-width="8.5" stroke-linejoin="round"/>
+      <use href="#speed-top-shape" fill="url(#bar-fill)" stroke="url(#line-edge-stroke)" stroke-width="7" stroke-linejoin="round"/>
+      <use href="#speed-middle-shape" fill="url(#bar-fill)" stroke="url(#line-edge-stroke)" stroke-width="7" stroke-linejoin="round"/>
+      <use href="#speed-lower-shape" fill="url(#bar-fill)" stroke="url(#line-edge-stroke)" stroke-width="7" stroke-linejoin="round"/>
+      <use href="#speed-dot-shape" fill="url(#bar-fill)" stroke="url(#line-edge-stroke)" stroke-width="7" stroke-linejoin="round"/>
+    </g>
+    <g id="surface-color-modeling" clip-path="url(#mark-clip)">
+      <ellipse cx="486" cy="144" rx="304" ry="171" fill="url(#cloud-bloom)"/>
+      <ellipse cx="608" cy="238" rx="142" ry="126" fill="url(#right-lobe-bloom)"/>
+      <rect x="0" y="271" width="680" height="116" fill="url(#lower-shadow)"/>
+      <path d="M35 242C92 230 166 228 305 233" fill="none" stroke="#ccff63" stroke-width="6" stroke-linecap="round" opacity="0.38"/>
+      <path d="M91 190C139 181 190 181 244 185" fill="none" stroke="#e1ff88" stroke-width="5.5" stroke-linecap="round" opacity="0.52"/>
+      <path d="M80 303C120 293 190 293 255 298" fill="none" stroke="#d9ff75" stroke-width="5.5" stroke-linecap="round" opacity="0.48"/>
+      <path d="M57 302C65 297 75 297 83 301" fill="none" stroke="#dcff82" stroke-width="4.5" stroke-linecap="round" opacity="0.54"/>
+    </g>
+    <g id="rim-light-and-bevels" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M175.8 178.6C199.1 136 249.2 126.5 292.7 138.5C323.4 88.4 378.5 58.3 439.2 58.3C508.6 58.3 565.9 110.9 581.6 190.1" stroke="url(#rim-highlight)" stroke-width="10.5" opacity="0.82"/>
+      <path d="M596.8 199.4C631.7 203.8 655.8 238.3 655.8 282.1C655.8 327.2 618.3 360.5 572.6 360.5H225C189.4 360.5 158.8 341.7 143.9 310.1" stroke="#027400" stroke-width="9" opacity="0.45"/>
+      <path d="M226.8 349.6H569C607.4 349.6 638.9 321.6 641.6 284.4" stroke="#7cff24" stroke-width="3.5" opacity="0.36"/>
+      <path d="M167.2 196.3H299.6C308.6 196.3 317.2 204.2 320.1 214" stroke="#012b00" stroke-width="6" opacity="0.34"/>
+      <path d="M174.5 268.2H250.5C262.1 268.2 271.6 277.8 272.6 289.1" stroke="#012b00" stroke-width="5.5" opacity="0.28"/>
+    </g>
+    <g id="specular-edges" fill="none" stroke="url(#specular-band)" stroke-linecap="round" opacity="0.88">
+      <path d="M107 176.6H238" stroke-width="5"/>
+      <path d="M38 227.8H294" stroke-width="5.5"/>
+      <path d="M88 288.7H249" stroke-width="5"/>
+      <path d="M61.5 288.8H78.5" stroke-width="4.5"/>
+      <path d="M185 183.5C211 146.8 254.1 139.4 293 150.1" stroke-width="4.5"/>
+      <path d="M326 95.5C357 72.4 397.2 61.6 439.5 62.1" stroke-width="4"/>
+    </g>
+  </g>
+</svg>

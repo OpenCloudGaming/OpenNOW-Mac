@@ -8,6 +8,7 @@
 import AppKit
 import Darwin
 import OpenNOWTelemetry
+import OpenNOWTwitch
 import SwiftUI
 import SwiftData
 import WebRTCMedia
@@ -81,10 +82,12 @@ enum OpenNOWUpdatePreferences {
 @main
 struct OpenNOWApp: App {
     @NSApplicationDelegateAdaptor(OpenNOWAppDelegate.self) private var appDelegate
+    @StateObject private var twitchRealtime = TwitchRealtimeController()
 
     let sharedModelContainer: ModelContainer
 
     init() {
+        OPNSentry.clearDiagnosticsLogForNewRun()
         OPNSentry.initializeSentry()
         OpenNOWLog.info(.app, "OpenNOW application initializing")
         let container = Self.makeModelContainer()
@@ -115,21 +118,32 @@ struct OpenNOWApp: App {
     var body: some Scene {
         Window("OpenNOW", id: "main") {
             ContentView()
+                .environmentObject(twitchRealtime)
+                .onAppear { twitchRealtime.start() }
         }
         .defaultSize(width: 1100, height: 720)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandMenu("Stream") {
+                Button("Toggle Microphone") {
+                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone)
+                }
+                .keyboardShortcut("m", modifiers: .command)
+            }
         }
     }
 }
 
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
+    private static let microphoneShortcutKeyCode: UInt16 = 46
+
     private let githubUpdater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "OpenNOW-Mac")
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
+    private var microphoneShortcutMonitor: Any?
     private var isCompletingUserApprovedTermination = false
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
@@ -148,11 +162,13 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication did finish launching")
+        installMicrophoneShortcutMonitor()
         startApplicationUpdateChecks()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication will terminate")
+        removeMicrophoneShortcutMonitor()
         stopApplicationUpdateChecks()
     }
 
@@ -171,8 +187,7 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         }
         OpenNOWLog.warning(.app, "Application termination requested while a stream is active")
-        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, weak sender] shouldTerminateApplication in
-            guard let sender else { return }
+        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, sender] shouldTerminateApplication in
             if shouldTerminateApplication {
                 self?.isCompletingUserApprovedTermination = true
                 OpenNOWLog.info(.app, "User approved application termination with active stream")
@@ -191,6 +206,28 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             OpenNOWFileOpenCoordinator.shared.enqueue(url)
         }
+    }
+
+    private func installMicrophoneShortcutMonitor() {
+        guard microphoneShortcutMonitor == nil else { return }
+        microphoneShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard NSApplication.shared.isActive, WebRTCMediaStreamLifecycle.hasActiveStream else { return event }
+            guard Self.isMicrophoneShortcut(event) else { return event }
+            guard WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone) else { return event }
+            return nil
+        }
+    }
+
+    private func removeMicrophoneShortcutMonitor() {
+        guard let microphoneShortcutMonitor else { return }
+        NSEvent.removeMonitor(microphoneShortcutMonitor)
+        self.microphoneShortcutMonitor = nil
+    }
+
+    private static func isMicrophoneShortcut(_ event: NSEvent) -> Bool {
+        guard event.keyCode == microphoneShortcutKeyCode else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
+        return modifiers == .command
     }
 
     static func requestApplicationUpdateCheck() {
@@ -274,7 +311,8 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     private func presentUpdateAlert(for release: OpenNOWGitHubRelease) {
         updateInstallTask?.cancel()
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let currentVersion = githubUpdater.currentVersion
             var notes = release.releaseNotes.isEmpty ? "No release notes were provided." : release.releaseNotes
             if notes.count > 1400 {

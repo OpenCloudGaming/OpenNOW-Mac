@@ -43,62 +43,48 @@ struct LoginFormView: View {
                 endPoint: .trailing
             )
 
-            VendorResourceImage(name: "nv-gfn-logo_v3", fileExtension: "png")
+            VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
                 .scaledToFit()
-                .frame(width: 186, height: 56)
-                .position(x: metrics.contentLeft + 93, y: 52)
+                .frame(width: 156, height: 88)
+                .position(x: metrics.contentLeft + 78, y: 68)
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer()
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("OpenNOW Mac")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.openNowGreen)
-                        .tracking(1.4)
-                        .padding(.bottom, 10)
-
-                    Text("GeForce NOW")
-                        .font(.system(size: 34, weight: .bold))
+                    Text("Get In. Game On.")
+                        .font(.nvidiaSans(size: 34, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineSpacing(0)
-                        .padding(.bottom, 10)
-
-                    Text("Launch your cloud gaming library from a focused macOS client.")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .tracking(0)
+                        .lineLimit(1)
+                        .frame(height: 48, alignment: .leading)
                         .padding(.bottom, 24)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        VendorBullet(text: "Play your games instantly across devices.")
-                        VendorBullet(text: "No downloads. No updates. Just jump in.")
-                        VendorBullet(text: "Stream with RTX performance from the cloud.")
+                        VendorContentString(text: "GeForce RTX performance on any device")
+                        VendorContentString(text: "Connect to top PC game stores")
+                        VendorContentString(text: "Stream thousands of supported titles")
+                        VendorContentString(text: "Play hundreds of free-to-play favorites instantly")
                     }
                 }
-                .padding(.bottom, 32)
+                .padding(.bottom, 34)
 
                 Button(action: startVendorLogin) {
-                    Text(viewModel.hasPendingOAuth ? "REOPEN SIGN-IN" : "SIGN IN WITH NVIDIA")
+                    Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
                 }
                 .buttonStyle(VendorGetInButtonStyle())
                 .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
                 .accessibilityHint("Opens NVIDIA authentication in your browser")
                 .padding(.bottom, 32)
 
-                Text("OpenNOW stores local session metadata on this Mac and uses NVIDIA OAuth for account access.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.gfnTextTertiary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 18)
-
                 if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                     Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.nvidiaSans(size: 13, weight: .regular))
                         .foregroundStyle(viewModel.validationMessage.isEmpty ? Color.openNowGreen : .orange)
-                        .padding(.bottom, 16)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                        .padding(.bottom, 14)
                 }
 
                 Spacer()
@@ -110,12 +96,13 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("OpenNOW Mac")
-                    .font(.system(size: 14, weight: .regular))
+                Text(appVersionText)
+                    .font(.nvidiaSans(size: 14, weight: .regular))
                     .foregroundStyle(Color.gfnTextSecondary)
                     .lineLimit(1)
             }
-            .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 34)
+            .frame(width: max(metrics.panelWidth - metrics.contentLeft - metrics.contentRight, 0), alignment: .leading)
+            .position(x: metrics.contentLeft + ((metrics.panelWidth - metrics.contentLeft - metrics.contentRight) / 2), y: metrics.height - 36)
 
             Rectangle()
                 .fill(Color.openNowGreen)
@@ -131,6 +118,16 @@ struct LoginFormView: View {
         viewModel.rememberSession = true
         viewModel.acceptedTerms = true
         viewModel.launchOAuth()
+    }
+
+    private var appVersionText: String {
+        let dictionary = Bundle.main.infoDictionary ?? [:]
+        let version = (dictionary["CFBundleShortVersionString"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let build = (dictionary["CFBundleVersion"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !version.isEmpty, !build.isEmpty { return "\(version).\(build)" }
+        if !version.isEmpty { return version }
+        if !build.isEmpty { return build }
+        return "Unknown"
     }
 }
 
@@ -168,14 +165,14 @@ private struct VendorLoginWallMetrics {
         let columnSize = (size.width - (2 * sideSpacing) - (gutter * (columnCount - 1))) / columnCount
         let panelColumnCount: CGFloat = size.width >= 1200 ? 4 : 5
         let rawPanelWidth = (panelColumnCount * columnSize) + ((panelColumnCount - 1) * gutter) + sideSpacing
-        panelWidth = min(max(rawPanelWidth, 360), max(size.width * 0.62, 360))
+        panelWidth = min(rawPanelWidth, max(size.width, 320))
         contentLeft = 24 + sideSpacing
         contentRight = 40
         contentBottom = 48
     }
 }
 
-private struct VendorBullet: View {
+private struct VendorContentString: View {
     let text: String
 
     var body: some View {
@@ -185,7 +182,7 @@ private struct VendorBullet: View {
                 .frame(width: 8, height: 8)
                 .padding(.top, 4)
             Text(text)
-                .font(.system(size: 14, weight: .regular))
+                .font(.nvidiaSans(size: 14, weight: .regular))
                 .foregroundStyle(Color.gfnTextSecondary)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)

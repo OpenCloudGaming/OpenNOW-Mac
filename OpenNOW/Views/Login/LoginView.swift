@@ -34,6 +34,7 @@ struct LoginView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 loginWindow
+                    .padding(.top, 10)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 

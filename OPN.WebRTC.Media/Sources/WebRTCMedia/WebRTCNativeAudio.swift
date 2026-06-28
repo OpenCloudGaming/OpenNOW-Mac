@@ -164,6 +164,9 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
                 return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
             }
             reportMicrophoneLevelIfNeeded(inputData: &inputData)
+            withUnsafePointer(to: &inputData) { pointer in
+                owner?.handleMicrophoneAudioFrame(UnsafeRawPointer(pointer), frameCount: frameCount, sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
+            }
             return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
         }
     }

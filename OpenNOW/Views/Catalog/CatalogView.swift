@@ -11,10 +11,12 @@ import CoreText
 import CryptoKit
 import ImageIO
 import OpenNOWGameServices
+import OpenNOWTwitch
 import SwiftUI
 import WebRTCMedia
 
 private enum CatalogVendorLayout {
+    static let windowTopInset: CGFloat = 10
     static let appBarHeight: CGFloat = 56
     static let appBarBackground = OpenNOWDesign.Surface.appBar
     static let mallSurface = OpenNOWDesign.Surface.app
@@ -120,6 +122,7 @@ struct CatalogView: View {
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
+    @EnvironmentObject private var twitchRealtime: TwitchRealtimeController
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
 
@@ -180,6 +183,7 @@ struct CatalogView: View {
                         CatalogContentView(viewModel: viewModel)
                     }
                 }
+                .padding(.top, CatalogVendorLayout.windowTopInset)
                 .transition(.opacity)
 
                 if showsMainMenu {
@@ -203,13 +207,16 @@ struct CatalogView: View {
         }
         .background(Color.gfnBackgroundGreen)
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
-        .task {
+        .task { @MainActor in
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
         }
-        .onChange(of: pendingGameShortcut) { _, _ in consumePendingGameShortcut() }
-        .onChange(of: viewModel.activeStreamConfiguration?.id) { _, _ in updateWindowTitleForActiveStream() }
-        .onDisappear { onWindowTitleChange(nil) }
+        .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
+        .onChange(of: viewModel.activeStreamConfiguration?.id) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: viewModel.twitchAccountStatus.isConnected) { _, isConnected in
+            if isConnected { twitchRealtime.restart() } else { twitchRealtime.stop() }
+        }
+        .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }
 
@@ -288,15 +295,18 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         private var isLocked = false
         private var appliedAspectRatio: Double?
         private var appliedLockState: Bool?
+        private var fullScreenTransitionObserverTokens: [NSObjectProtocol] = []
+        private var isFullScreenTransitioning = false
 
         func attach(_ window: NSWindow?) {
             guard self.window !== window else { return }
-            if appliedLockState == true {
-                self.window?.contentAspectRatio = .zero
-            }
+            clearAppliedAspectRatio()
+            removeFullScreenTransitionObservers()
             self.window = window
             appliedAspectRatio = nil
             appliedLockState = nil
+            isFullScreenTransitioning = false
+            addFullScreenTransitionObservers(for: window)
             apply()
         }
 
@@ -307,22 +317,25 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         }
 
         func detach() {
-            if appliedLockState == true {
-                window?.contentAspectRatio = .zero
-            }
+            clearAppliedAspectRatio()
+            removeFullScreenTransitionObservers()
             window = nil
             appliedAspectRatio = nil
             appliedLockState = nil
+            isFullScreenTransitioning = false
         }
 
         private func apply() {
             guard let window else { return }
             guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
-                if appliedLockState == true {
-                    window.contentAspectRatio = .zero
-                }
+                clearAppliedAspectRatio()
                 appliedAspectRatio = nil
                 appliedLockState = false
+                return
+            }
+
+            guard !isFullScreenTransitioning, !window.styleMask.contains(.fullScreen) else {
+                clearAppliedAspectRatio()
                 return
             }
 
@@ -331,6 +344,57 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             window.contentAspectRatio = NSSize(width: aspectRatio, height: 1)
             appliedAspectRatio = aspectRatio
             appliedLockState = true
+        }
+
+        private func clearAppliedAspectRatio() {
+            if appliedLockState == true {
+                window?.contentAspectRatio = .zero
+            }
+            appliedAspectRatio = nil
+            appliedLockState = false
+        }
+
+        private func addFullScreenTransitionObservers(for window: NSWindow?) {
+            guard let window else { return }
+            let notificationCenter = NotificationCenter.default
+            let willEnterToken = notificationCenter.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.beginFullScreenTransition()
+                }
+            }
+            let willExitToken = notificationCenter.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.beginFullScreenTransition()
+                }
+            }
+            let didExitToken = notificationCenter.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.finishFullScreenTransition()
+                }
+            }
+            fullScreenTransitionObserverTokens = [willEnterToken, willExitToken, didExitToken]
+        }
+
+        private func removeFullScreenTransitionObservers() {
+            let notificationCenter = NotificationCenter.default
+            for token in fullScreenTransitionObserverTokens {
+                notificationCenter.removeObserver(token)
+            }
+            fullScreenTransitionObserverTokens = []
+        }
+
+        private func beginFullScreenTransition() {
+            isFullScreenTransitioning = true
+            clearAppliedAspectRatio()
+        }
+
+        private func finishFullScreenTransition() {
+            DispatchQueue.main.async { [weak self] in
+                Task { @MainActor in
+                    self?.isFullScreenTransitioning = false
+                    self?.apply()
+                }
+            }
         }
     }
 
@@ -891,8 +955,8 @@ private struct CatalogMainMenuOverlay: View {
                     .ignoresSafeArea()
                     .onTapGesture { isPresented = false }
 
-                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight))
-                    .padding(.top, CatalogVendorLayout.appBarHeight)
+                CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight - CatalogVendorLayout.windowTopInset))
+                    .padding(.top, CatalogVendorLayout.appBarHeight + CatalogVendorLayout.windowTopInset)
                     .padding(.leading, 0)
             }
         }
@@ -962,6 +1026,10 @@ private struct CatalogMainMenuPanel: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         CatalogMainMenuSectionLabel("ACTIONS")
+                        CatalogMainMenuRow(title: catalogBroadcastMenuTitle, subtitle: catalogBroadcastMenuSubtitle, systemImage: "dot.radiowaves.left.and.right", isActive: viewModel.catalogBroadcastStatus.isBroadcasting) {
+                            viewModel.toggleCatalogTwitchBroadcast()
+                            isPresented = false
+                        }
                         CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
                             viewModel.refresh()
                             isPresented = false
@@ -1009,11 +1077,33 @@ private struct CatalogMainMenuPanel: View {
         switch page {
         case .account: return "person.crop.circle.fill"
         case .connections: return "link"
+        case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"
         case .system: return "desktopcomputer"
         case .about: return "info.circle.fill"
+        }
+    }
+
+    private var catalogBroadcastMenuTitle: String {
+        switch viewModel.catalogBroadcastStatus {
+        case .idle: return "Start Twitch Broadcast"
+        case .connecting: return "Connecting Twitch"
+        case .publishing, .live: return "Stop Twitch Broadcast"
+        case .stopping: return "Stopping Twitch"
+        case .failed: return "Retry Twitch Broadcast"
+        }
+    }
+
+    private var catalogBroadcastMenuSubtitle: String {
+        switch viewModel.catalogBroadcastStatus {
+        case .idle: return "Stream this session to Twitch"
+        case .connecting: return "Preparing the live broadcast"
+        case .publishing: return "Publishing stream; Twitch confirmation pending"
+        case .live: return "Channel is live"
+        case .stopping: return "Stopping the broadcast"
+        case .failed(let message): return message.isEmpty ? "Broadcast failed" : message
         }
     }
 
@@ -1583,11 +1673,12 @@ private struct CatalogContentView: View {
         let heroes = heroGames
         let hero = heroes.indices.contains(heroIndex) ? heroes[heroIndex] : heroes.first
         let sections = viewModel.catalogSections
+        let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
         ScrollViewReader { proxy in
             ZStack {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 26) {
-                        if hero != nil {
+                        if hero != nil && !isGridDestination {
                             CatalogHeroView(
                                 viewModel: viewModel,
                                 games: heroes,
@@ -1617,21 +1708,34 @@ private struct CatalogContentView: View {
                             CatalogBrowseControlsView(viewModel: viewModel)
                                 .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                         }
-                        ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                            let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
-                            if showsDetail, let railAnchor = selectedRailScrollAnchor {
-                                Color.clear
-                                    .frame(height: 0)
-                                    .id(railAnchor)
-                            }
-                            CatalogRailView(viewModel: viewModel, section: section, onShowAll: { showAllSection = section })
-                            if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
+                        if isGridDestination, let section = sections.first {
+                            CatalogDestinationGridView(viewModel: viewModel, section: section)
+                            if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
                                 GameDetailPanel(viewModel: viewModel)
-                                    .padding(.top, -8)
+                                    .padding(.top, -10)
                                     .padding(.bottom, 22)
+                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
                                     .onHover { isPointerInsideDetailPanel = $0 }
                                     .id(detailAnchor)
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            }
+                        } else {
+                            ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                                let showsDetail = shouldShowDetail(afterSectionAt: index, sections: sections)
+                                if showsDetail, let railAnchor = selectedRailScrollAnchor {
+                                    Color.clear
+                                        .frame(height: 0)
+                                        .id(railAnchor)
+                                }
+                                CatalogRailView(viewModel: viewModel, section: section, onShowAll: { showAllSection = section })
+                                if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
+                                    GameDetailPanel(viewModel: viewModel)
+                                        .padding(.top, -8)
+                                        .padding(.bottom, 22)
+                                        .onHover { isPointerInsideDetailPanel = $0 }
+                                        .id(detailAnchor)
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
                             }
                         }
 
@@ -1711,6 +1815,15 @@ private struct CatalogContentView: View {
     private var selectedDetailScrollAnchor: String? {
         guard let selectedGame = viewModel.selectedGame else { return nil }
         return "detail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
+    }
+
+    private func shouldUseGrid(for destination: CatalogDestination) -> Bool {
+        !viewModel.isBrowseMode && (destination == .library || destination == .favorites)
+    }
+
+    private func selectedGameBelongs(to section: CatalogSectionModel) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        return section.games.contains { CatalogViewModel.looseIdentityMatches($0, selectedGame) }
     }
 
     private func scrollToSelectedRail(_ anchor: String?, proxy: ScrollViewProxy) {
@@ -2099,7 +2212,8 @@ private struct CatalogRailView: View {
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
-                                    onSelect: { viewModel.selectGame(game, inSection: section.id) }
+                                    onSelect: { viewModel.selectGame(game, inSection: section.id) },
+                                    onPlay: { viewModel.launch(game: game) }
                                 )
                                     .id(game.catalogIdentity)
                                     .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
@@ -2219,6 +2333,73 @@ private struct CatalogRailTileFramePreferenceKey: PreferenceKey {
 
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
+    }
+}
+
+private struct CatalogDestinationGridView: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    let section: CatalogSectionModel
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2), spacing: 4, alignment: .top)]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .lastTextBaseline, spacing: 14) {
+                Text(section.title)
+                    .font(.nvidia(size: 24, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.96))
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
+                    .font(.nvidia(size: 12, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen.opacity(0.86))
+                    .tracking(0.8)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
+                    CatalogGameTile(
+                        game: game,
+                        imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
+                        isSelected: isSelected(game),
+                        isSelectionActive: viewModel.selectedGame != nil,
+                        onSelect: { viewModel.selectGame(game, inSection: section.id) },
+                        onPlay: { viewModel.launch(game: game) }
+                    )
+                }
+            }
+            .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin)
+            .padding(.bottom, 12)
+        }
+        .onAppear { prefetchGridImages() }
+        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchGridImages() }
+    }
+
+    private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
+        guard let selectedGame = viewModel.selectedGame else { return false }
+        return CatalogViewModel.looseIdentityMatches(selectedGame, game)
+    }
+
+    private func prefetchGridImages() {
+        var urls: [URL] = []
+        var seen = Set<String>()
+        for game in section.games.prefix(18) {
+            appendPrefetchURL(game.bestTileImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestWideImageURL, width: 620, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestLogoImageURL, width: 300, urls: &urls, seen: &seen)
+        }
+        CatalogImageCache.shared.prefetch(urls)
+    }
+
+    private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
+        guard let url = viewModel.optimizedImageURL(rawValue, width: width) else { return }
+        let key = url.absoluteString
+        guard !seen.contains(key) else { return }
+        seen.insert(key)
+        urls.append(url)
     }
 }
 
@@ -2343,7 +2524,8 @@ private struct CatalogShowAllOverlay: View {
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
-                                    onSelect: { onSelect(game) }
+                                    onSelect: { onSelect(game) },
+                                    onPlay: { viewModel.launch(game: game) }
                                 )
                             }
                         }
@@ -2720,70 +2902,109 @@ private struct CatalogGameTile: View {
     let isSelected: Bool
     let isSelectionActive: Bool
     let onSelect: () -> Void
+    let onPlay: () -> Void
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        Button(action: onSelect) {
-            VStack(spacing: 0) {
+        ZStack(alignment: .topLeading) {
+            Button(action: onSelect) {
+                tileContent
+            }
+            .buttonStyle(.plain)
+            .focused($isFocused)
+            .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(isSelected ? "Details open" : "")
+
+            if isHovering {
                 ZStack(alignment: .topLeading) {
-                    let isActive = isHovering || isSelected || isFocused
-                    CatalogRemoteImage(url: imageURL, contentMode: .fill)
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
-                        .clipped()
-                    if isActive {
-                        Color.black.opacity(0.50)
-                        LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
-                    }
-                    if let badge = game.cardBadgeLabel {
-                        CatalogGameCardBadge(label: badge)
-                    }
-                    if isActive {
-                        VStack {
-                            Spacer(minLength: 0)
-                            HStack(spacing: 8) {
-                                Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                                    .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
-                                    .lineLimit(1)
-                                    .foregroundStyle(.white.opacity(0.90))
-                                Spacer(minLength: 0)
-                                Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                                    .font(.nvidia(size: 10, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.76))
-                            }
-                            .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
-                            .padding(.horizontal, 16)
-                            .background(CatalogVendorLayout.tileTray.opacity(1))
-                            .frame(width: CatalogVendorLayout.wideTileWidth)
-                        }
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
-                    }
+                    playButton
                 }
+                .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                .padding(.leading, CatalogVendorLayout.tileHorizontalMargin)
+                .padding(.top, CatalogVendorLayout.tileTopMargin)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(2)
             }
-            .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
-            .overlay(alignment: .top) {
-                if isSelected {
-                    Rectangle()
-                        .fill(Color.openNowGreen)
-                        .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
-                        .offset(y: CatalogVendorLayout.wideTileHeight - 4)
-                }
-            }
-            .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
-            .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
-            .animation(.easeOut(duration: 0.2), value: isHovering)
-            .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
-            .padding(.top, CatalogVendorLayout.tileTopMargin)
-            .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focused($isFocused)
         .onHover { isHovering = $0 }
         .openNowFocusRing(isFocused)
-        .accessibilityLabel(game.title.isEmpty ? "Game tile" : game.title)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityValue(isSelected ? "Details open" : "")
+        .animation(.easeOut(duration: 0.16), value: isHovering)
+    }
+
+    private var playButton: some View {
+        Button(action: onPlay) {
+            HStack(spacing: 7) {
+                Image(systemName: "play.fill")
+                    .font(.nvidia(size: 10, weight: .bold))
+                Text("PLAY")
+                    .font(.nvidia(size: 11, weight: .bold))
+                    .tracking(0.9)
+            }
+            .foregroundStyle(.black.opacity(0.88))
+            .padding(.horizontal, 13)
+            .frame(height: 30)
+            .background(Color.openNowGreen)
+            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+            .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Play \(game.title.isEmpty ? "game" : game.title)")
+    }
+
+    private var tileContent: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                let isActive = isHovering || isSelected || isFocused
+                CatalogRemoteImage(url: imageURL, contentMode: .fill)
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                    .clipped()
+                if isActive {
+                    Color.black.opacity(0.50)
+                    LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
+                }
+                if let badge = game.cardBadgeLabel {
+                    CatalogGameCardBadge(label: badge)
+                }
+                if isActive {
+                    VStack {
+                        Spacer(minLength: 0)
+                        HStack(spacing: 8) {
+                            Text(game.title.isEmpty ? "GeForce NOW" : game.title)
+                                .font(.nvidia(size: 12, weight: isSelected ? .medium : .regular))
+                                .lineLimit(1)
+                                .foregroundStyle(.white.opacity(0.90))
+                            Spacer(minLength: 0)
+                            Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                                .font(.nvidia(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.76))
+                        }
+                        .frame(width: CatalogVendorLayout.wideTileWidth - 32, height: CatalogVendorLayout.cardTrayHeight)
+                        .padding(.horizontal, 16)
+                        .background(CatalogVendorLayout.tileTray.opacity(1))
+                        .frame(width: CatalogVendorLayout.wideTileWidth)
+                    }
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: CatalogVendorLayout.wideTileHeight)
+                }
+            }
+        }
+        .frame(width: CatalogVendorLayout.wideTileWidth, alignment: .top)
+        .overlay(alignment: .top) {
+            if isSelected {
+                Rectangle()
+                    .fill(Color.openNowGreen)
+                    .frame(width: CatalogVendorLayout.wideTileWidth, height: 4)
+                    .offset(y: CatalogVendorLayout.wideTileHeight - 4)
+            }
+        }
+        .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
+        .scaleEffect(isHovering && !isSelectionActive ? CatalogVendorLayout.tileScaleFactor : 1.0)
+        .animation(.easeOut(duration: 0.2), value: isHovering)
+        .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin)
+        .padding(.top, CatalogVendorLayout.tileTopMargin)
+        .frame(width: CatalogVendorLayout.wideTileWidth + CatalogVendorLayout.tileHorizontalMargin * 2, height: CatalogVendorLayout.wideTileHeight + CatalogVendorLayout.tileTopMargin, alignment: .top)
+        .contentShape(Rectangle())
     }
 }
 

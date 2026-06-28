@@ -4,12 +4,114 @@ import SwiftUI
 
 public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ progress: StreamProgress) -> Void
 public typealias WebRTCMediaStreamEndCallback = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: StreamReport?) -> Void
+public typealias WebRTCMediaBroadcastConfigurationProvider = @MainActor @Sendable (_ title: String, _ applicationID: String, _ width: Int, _ height: Int, _ fps: Int) -> WebRTCLiveBroadcastConfiguration?
+public typealias WebRTCMediaBroadcastStartCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> String?
+public typealias WebRTCMediaBroadcastLiveVerificationCallback = @MainActor @Sendable (_ title: String, _ applicationID: String) async -> WebRTCMediaBroadcastLiveVerificationResult
+public typealias WebRTCMediaStreamMarkerCallback = @MainActor @Sendable (_ title: String, _ applicationID: String, _ description: String) async -> String
+public typealias WebRTCMediaTwitchChatSendCallback = @MainActor @Sendable (_ message: String) -> Void
+public typealias WebRTCMediaTwitchHealthRefreshCallback = @MainActor @Sendable () async -> Void
+
+public struct WebRTCMediaTwitchChatMessage: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let author: String
+    public let text: String
+    public let timestamp: Date
+
+    public init(id: String, author: String, text: String, timestamp: Date) {
+        self.id = id
+        self.author = author
+        self.text = text
+        self.timestamp = timestamp
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+public struct WebRTCMediaTwitchEventAlert: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let message: String
+    public let timestamp: Date
+
+    public init(id: String, title: String, message: String, timestamp: Date) {
+        self.id = id
+        self.title = title
+        self.message = message
+        self.timestamp = timestamp
+    }
+}
+
+public struct WebRTCMediaTwitchOverlayState: Equatable, Sendable {
+    public var accountSummary: String
+    public var streamKeyAvailable: Bool
+    public var chatState: String
+    public var eventSubState: String
+    public var supportedAlertTypes: [String]
+    public var chatMessages: [WebRTCMediaTwitchChatMessage]
+    public var eventAlerts: [WebRTCMediaTwitchEventAlert]
+
+    public init(accountSummary: String = "Not connected", streamKeyAvailable: Bool = false, chatState: String = "Disconnected", eventSubState: String = "Disconnected", supportedAlertTypes: [String] = [], chatMessages: [WebRTCMediaTwitchChatMessage] = [], eventAlerts: [WebRTCMediaTwitchEventAlert] = []) {
+        self.accountSummary = accountSummary
+        self.streamKeyAvailable = streamKeyAvailable
+        self.chatState = chatState
+        self.eventSubState = eventSubState
+        self.supportedAlertTypes = supportedAlertTypes
+        self.chatMessages = chatMessages
+        self.eventAlerts = eventAlerts
+    }
+}
+
+public enum WebRTCMediaBroadcastLiveVerificationResult: Equatable, Sendable {
+    case verified(String)
+    case unavailable(String)
+    case notLive(String)
+
+    var message: String {
+        switch self {
+        case .verified(let message), .unavailable(let message), .notLive(let message): return message
+        }
+    }
+}
+
+private enum WebRTCMediaBroadcastPreparationResult: Equatable, Sendable {
+    case completed(String?)
+    case unavailable
+    case timedOut
+}
+
+private actor WebRTCMediaBroadcastPreparationGate {
+    private var result: WebRTCMediaBroadcastPreparationResult?
+    private var continuation: CheckedContinuation<WebRTCMediaBroadcastPreparationResult, Never>?
+
+    func wait() async -> WebRTCMediaBroadcastPreparationResult {
+        if let result { return result }
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func resolve(_ result: WebRTCMediaBroadcastPreparationResult) {
+        guard self.result == nil else { return }
+        self.result = result
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
+}
 
 @MainActor
 public struct WebRTCMediaStreamSurface: View {
     private let configuration: StreamLaunchConfiguration
     private let sessionProvider: any StreamSessionProvider
     private let signaling: (any StreamSignalingChannel)?
+    private let broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider?
+    private let onBroadcastStart: WebRTCMediaBroadcastStartCallback?
+    private let onBroadcastLiveVerification: WebRTCMediaBroadcastLiveVerificationCallback?
+    private let onStreamMarker: WebRTCMediaStreamMarkerCallback?
+    private let twitchOverlayState: WebRTCMediaTwitchOverlayState
+    private let onTwitchChatSend: WebRTCMediaTwitchChatSendCallback?
+    private let onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback?
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
 
@@ -21,6 +123,12 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var pointerLocked = false
     @State private var statsVisible = false
     @State private var videoEnhancementSettingsVisible = false
+    @State private var twitchPanelVisible = false
+    @State private var twitchChatOverlayVisible = false
+    @State private var twitchEventAlertsVisible = false
+    @State private var twitchMarkerMessage = ""
+    @State private var twitchMarkerDraft = ""
+    @State private var twitchChatDraft = ""
     @State private var sidebarVisible = true
     @State private var quitMenuVisible = false
     @State private var isEndingStream = false
@@ -33,17 +141,39 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var runtimeSettings = StreamRuntimeSettings()
     @State private var microphoneEnabled = false
     @State private var recordingStatus = WebRTCStreamRecordingStatus.idle
+    @State private var broadcastStatus = WebRTCLiveBroadcastStatus.idle
+    @State private var isPreparingBroadcast = false
+    @State private var broadcastLiveVerified = false
+    @State private var broadcastVerificationMessage = ""
+    @State private var broadcastForcedFailureMessage = ""
+    @State private var broadcastVerificationUnavailable = false
     @State private var recordingNotificationTask: Task<Void, Never>?
+    @State private var broadcastNotificationTask: Task<Void, Never>?
+    @State private var broadcastVerificationTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
 
     public init(configuration: StreamLaunchConfiguration,
                 sessionProvider: any StreamSessionProvider,
                 signaling: (any StreamSignalingChannel)? = nil,
+                broadcastConfigurationProvider: WebRTCMediaBroadcastConfigurationProvider? = nil,
+                onBroadcastStart: WebRTCMediaBroadcastStartCallback? = nil,
+                onBroadcastLiveVerification: WebRTCMediaBroadcastLiveVerificationCallback? = nil,
+                onStreamMarker: WebRTCMediaStreamMarkerCallback? = nil,
+                twitchOverlayState: WebRTCMediaTwitchOverlayState = WebRTCMediaTwitchOverlayState(),
+                onTwitchChatSend: WebRTCMediaTwitchChatSendCallback? = nil,
+                onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback? = nil,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
         self.signaling = signaling
+        self.broadcastConfigurationProvider = broadcastConfigurationProvider
+        self.onBroadcastStart = onBroadcastStart
+        self.onBroadcastLiveVerification = onBroadcastLiveVerification
+        self.onStreamMarker = onStreamMarker
+        self.twitchOverlayState = twitchOverlayState
+        self.onTwitchChatSend = onTwitchChatSend
+        self.onTwitchHealthRefresh = onTwitchHealthRefresh
         self.onProgress = onProgress
         self.onEnd = onEnd
     }
@@ -63,9 +193,13 @@ public struct WebRTCMediaStreamSurface: View {
             if !isStreamReady { launchOverlay }
             if statsVisible { statsHUD }
             if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
+            if twitchPanelVisible { twitchPanel }
+            if twitchChatOverlayVisible { twitchChatOverlay }
+            if twitchEventAlertsVisible { twitchEventAlertOverlay }
             if sidebarVisible { sidebar }
             if quitMenuVisible { quitMenu }
             recordingIndicator
+            broadcastIndicator
             micStatusIndicator
         }
         .background(Color.black)
@@ -142,6 +276,10 @@ public struct WebRTCMediaStreamSurface: View {
             sidebarButton(systemName: "sparkles", title: "Video") {
                 toggleVideoEnhancementSettings()
             }
+            sidebarButton(systemName: "dot.radiowaves.left.and.right", title: broadcastButtonTitle, isActive: broadcastStatus.isBroadcasting) {
+                toggleTwitchPanel()
+            }
+            .disabled(!isStreamReady)
         }
         .padding(10)
         .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -262,6 +400,366 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private var twitchPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("TWITCH COMMAND CENTER")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundStyle(Color(red: 0.93, green: 0.28, blue: 1.0))
+                        .tracking(1.2)
+                    Text(configuration.title.isEmpty ? "OpenNOW Live" : configuration.title)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("Cmd-T toggles this deck · Cmd-B goes live · Cmd-Shift-M marks the stream")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.58))
+                }
+                Spacer()
+                twitchLiveBadge
+                Button(action: { twitchPanelVisible = false }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .frame(width: 30, height: 30)
+                        .background(.white.opacity(0.10), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 10) {
+                twitchMetricCard(title: "Account", value: twitchOverlayState.accountSummary, positive: twitchOverlayState.streamKeyAvailable)
+                twitchMetricCard(title: "Chat", value: twitchOverlayState.chatState, positive: twitchOverlayState.chatState.localizedCaseInsensitiveContains("connected"))
+                twitchMetricCard(title: "Events", value: twitchOverlayState.eventSubState, positive: twitchOverlayState.eventSubState.localizedCaseInsensitiveContains("connected"))
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("BROADCAST")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.52))
+                    Text(twitchStatusText)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(3)
+                    HStack(spacing: 10) {
+                        twitchPrimaryActionButton(title: isPreparingBroadcast ? "Preparing" : (broadcastStatus.isBroadcasting ? "End Live" : "Go Live"), color: broadcastStatus.isBroadcasting ? .red : Color(red: 0.93, green: 0.28, blue: 1.0), action: toggleBroadcast)
+                            .disabled(isPreparingBroadcast)
+                        twitchSecondaryActionButton(title: "Refresh", systemName: "arrow.clockwise") {
+                            Task { @MainActor in await onTwitchHealthRefresh?() }
+                        }
+                    }
+                    Toggle("Chat overlay", isOn: Binding(get: { twitchChatOverlayVisible }, set: { twitchChatOverlayVisible = $0 }))
+                        .toggleStyle(.switch)
+                    Toggle("Event alerts", isOn: Binding(get: { twitchEventAlertsVisible }, set: { twitchEventAlertsVisible = $0 }))
+                        .toggleStyle(.switch)
+                }
+                .frame(width: 210, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("MARKERS")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.52))
+                    TextField("Describe this moment", text: $twitchMarkerDraft)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    HStack(spacing: 6) {
+                        ForEach(["Highlight", "Clutch", "Boss", "Bug"], id: \.self) { preset in
+                            Button(preset) { createTwitchMarker(description: preset) }
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.86))
+                                .padding(.horizontal, 8)
+                                .frame(height: 26)
+                                .background(.white.opacity(0.08), in: Capsule())
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        twitchSecondaryActionButton(title: "Create Marker", systemName: "bookmark.fill", action: createTwitchMarker)
+                        if !twitchMarkerMessage.isEmpty {
+                            Text(twitchMarkerMessage)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.62))
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                twitchChatPanel
+                twitchEventsPanel
+            }
+
+            HStack(spacing: 8) {
+                twitchShortcut("Cmd-T", "Panel")
+                twitchShortcut("Cmd-B", "Live")
+                twitchShortcut("Cmd-Shift-M", "Marker")
+                twitchShortcut("Cmd-Shift-C", "Chat")
+                twitchShortcut("Cmd-Shift-A", "Alerts")
+            }
+        }
+        .font(.system(size: 12, weight: .medium, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.88))
+        .padding(18)
+        .frame(width: 620, alignment: .leading)
+        .background(twitchPanelBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color(red: 0.93, green: 0.28, blue: 1.0).opacity(0.36), lineWidth: 1))
+        .shadow(color: Color(red: 0.5, green: 0.0, blue: 0.8).opacity(0.28), radius: 34, x: 0, y: 16)
+        .padding(.top, 22)
+        .padding(.leading, 96)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var twitchPanelBackground: some ShapeStyle {
+        LinearGradient(colors: [.black.opacity(0.86), Color(red: 0.13, green: 0.03, blue: 0.18).opacity(0.86)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    private var twitchLiveBadge: some View {
+        let live = broadcastStatus.isLive
+        return HStack(spacing: 7) {
+            Circle().fill(live ? Color.red : Color(red: 0.93, green: 0.28, blue: 1.0)).frame(width: 8, height: 8)
+            Text(live ? "LIVE" : (broadcastStatus.isBroadcasting ? "PUBLISHING" : "READY"))
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(.white.opacity(0.10), in: Capsule())
+    }
+
+    private var twitchChatPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("CHAT")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.52))
+                Spacer()
+                Text(twitchOverlayState.chatState)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(1)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        if twitchOverlayState.chatMessages.isEmpty {
+                            Text("Waiting for Twitch chat messages.")
+                                .foregroundStyle(.white.opacity(0.48))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        }
+                        ForEach(twitchOverlayState.chatMessages.suffix(18)) { message in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(message.author)
+                                    .font(.system(size: 10, weight: .black, design: .rounded))
+                                    .foregroundStyle(Color(red: 0.93, green: 0.28, blue: 1.0))
+                                Text(message.text)
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.82))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .id(message.id)
+                        }
+                    }
+                }
+                .onChange(of: twitchOverlayState.chatMessages.last?.id) { _, id in
+                    if let id { proxy.scrollTo(id, anchor: .bottom) }
+                }
+            }
+            .frame(height: 168)
+            HStack(spacing: 8) {
+                TextField("Send a message", text: $twitchChatDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Button("Send") {
+                    let message = twitchChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !message.isEmpty else { return }
+                    onTwitchChatSend?(message)
+                    twitchChatDraft = ""
+                }
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(.black)
+                .frame(width: 54, height: 34)
+                .background(Color(red: 0.93, green: 0.28, blue: 1.0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(width: 286, alignment: .leading)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var twitchEventsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("EVENTS")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.52))
+                Spacer()
+                Text("\(twitchOverlayState.supportedAlertTypes.count) active")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    if twitchOverlayState.eventAlerts.isEmpty {
+                        Text(twitchOverlayState.supportedAlertTypes.isEmpty ? "No supported alert subscriptions yet." : "Waiting for Twitch events.")
+                            .foregroundStyle(.white.opacity(0.48))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    ForEach(twitchOverlayState.eventAlerts.suffix(12)) { alert in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(alert.title)
+                                .font(.system(size: 11, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text(alert.message)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.68))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(red: 0.93, green: 0.28, blue: 1.0).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
+            }
+            .frame(height: 214)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func twitchMetricCard(title: String, value: String, positive: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(positive ? Color(red: 0.61, green: 1.0, blue: 0.22) : Color.orange).frame(width: 6, height: 6)
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.48))
+            }
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
+    }
+
+    private func twitchPrimaryActionButton(title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundStyle(color == .red ? .white : .black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(color.opacity(isPreparingBroadcast ? 0.58 : 0.96), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func twitchSecondaryActionButton(title: String, systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemName)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+            }
+            .foregroundStyle(.white.opacity(0.88))
+            .padding(.horizontal, 10)
+            .frame(height: 40)
+            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.white.opacity(0.10), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func twitchShortcut(_ keys: String, _ label: String) -> some View {
+        HStack(spacing: 6) {
+            Text(keys)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 7)
+                .frame(height: 22)
+                .background(Color(red: 0.93, green: 0.28, blue: 1.0), in: Capsule())
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.62))
+        }
+        .padding(.trailing, 2)
+    }
+
+    private var twitchChatOverlay: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TWITCH CHAT")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.purple.opacity(0.95))
+            if twitchOverlayState.chatMessages.isEmpty {
+                Text(twitchOverlayState.chatState)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.64))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(twitchOverlayState.chatMessages.suffix(5)) { message in
+                    Text("\(message.author): \(message.text)")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 320, alignment: .leading)
+        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.purple.opacity(0.28), lineWidth: 1))
+        .padding(.trailing, 18)
+        .padding(.bottom, 62)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+
+    private var twitchEventAlertOverlay: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(twitchOverlayState.eventAlerts.suffix(3)) { alert in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(Color(red: 0.93, green: 0.28, blue: 1.0))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(alert.title)
+                            .font(.system(size: 12, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text(alert.message)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(12)
+                .frame(width: 320, alignment: .leading)
+                .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color(red: 0.93, green: 0.28, blue: 1.0).opacity(0.32), lineWidth: 1))
+            }
+        }
+        .padding(.top, 72)
+        .padding(.trailing, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
     private var micStatusIndicator: some View {
         let isAvailable = runtimeSettings.microphoneMode != "disabled"
         return Image(systemName: microphoneEnabled && isAvailable ? "mic.fill" : "mic.slash.fill")
@@ -331,6 +829,55 @@ public struct WebRTCMediaStreamSurface: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
+    private var broadcastIndicator: some View {
+        Group {
+            if isPreparingBroadcast {
+                broadcastStatusChip(color: .purple, text: "Preparing", detail: "Updating Twitch channel")
+            } else {
+                switch broadcastStatus {
+                case .connecting:
+                    broadcastStatusChip(color: .purple, text: "Connecting")
+                case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+                    broadcastStatusChip(color: .purple.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
+                case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+                    broadcastStatusChip(color: .red, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
+                case .stopping:
+                    broadcastStatusChip(color: .orange, text: "Stopping")
+                case .failed(let message):
+                    broadcastStatusChip(color: .purple, text: message)
+                case .idle:
+                    EmptyView()
+                }
+            }
+        }
+        .padding(.top, 24)
+        .padding(.trailing, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private func broadcastStatusChip(color: Color, text: String, detail: String? = nil) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(text)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.94))
+                    .lineLimit(1)
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: detail == nil ? 26 : 34)
+        .background(.black.opacity(0.56), in: Capsule())
+        .overlay(Capsule().stroke(color.opacity(0.34), lineWidth: 1))
+        .shadow(color: .black.opacity(0.34), radius: 12, x: 0, y: 5)
+    }
+
     private func sidebarButton(systemName: String, title: String, isActive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
@@ -358,6 +905,115 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var recordingButtonTitle: String {
         recordingCanStop ? "Stop" : "Record"
+    }
+
+    private var broadcastButtonTitle: String {
+        if isPreparingBroadcast { return "Wait" }
+        return broadcastStatus.isBroadcasting ? "Stop" : "Twitch"
+    }
+
+    private var twitchStatusText: String {
+        if isPreparingBroadcast { return "Updating Twitch title and category before publishing." }
+        switch broadcastStatus {
+        case .idle: return "Ready"
+        case .connecting: return "Connecting"
+        case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+            let detail = broadcastVerificationMessage.isEmpty ? "Twitch API confirmation pending; RTMP is publishing." : broadcastVerificationMessage
+            return "Publishing \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops · \(detail)"
+        case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps): return "Live \(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops"
+        case .stopping: return "Stopping"
+        case .failed(let message): return message
+        }
+    }
+
+    private func twitchPanelRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 12) {
+            Text(label).foregroundStyle(.white.opacity(0.54))
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func toggleTwitchPanel() {
+        twitchPanelVisible.toggle()
+        if twitchPanelVisible { nativeView?.setPointerLocked(false) }
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.panel", level: .info, message: twitchPanelVisible ? "Twitch panel shown." : "Twitch panel hidden.", attributes: ["visible": String(twitchPanelVisible)])
+    }
+
+    private func toggleBroadcast() {
+        guard !isPreparingBroadcast else {
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start.ignored", level: .info, message: "Twitch broadcast start ignored while metadata preparation is active.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        if broadcastStatus.isBroadcasting {
+            transport?.stopBroadcast()
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.stop", level: .info, message: "Twitch broadcast stop requested.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        guard let broadcastConfigurationProvider,
+              let broadcastConfiguration = broadcastConfigurationProvider(configuration.title, configuration.applicationID, runtimeSettings.resolutionWidth, runtimeSettings.resolutionHeight, runtimeSettings.fps) else {
+            broadcastStatus = .failed("Twitch is not ready. Connect Twitch in Settings.")
+            return
+        }
+        broadcastLiveVerified = false
+        broadcastVerificationMessage = ""
+        broadcastForcedFailureMessage = ""
+        broadcastVerificationUnavailable = false
+        broadcastVerificationTask?.cancel()
+        broadcastVerificationTask = nil
+        isPreparingBroadcast = true
+        twitchMarkerMessage = "Updating Twitch channel..."
+        Task { @MainActor in
+            switch await prepareBroadcastMetadata(title: configuration.title, applicationID: configuration.applicationID) {
+            case .completed(let message):
+                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.completed", level: .info, message: "Twitch broadcast metadata preparation completed.", attributes: ["applicationID": configuration.applicationID])
+                if let message, !message.isEmpty { twitchMarkerMessage = message }
+            case .unavailable:
+                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.unavailable", level: .info, message: "Twitch broadcast metadata preparation unavailable; publishing with existing Twitch settings.", attributes: ["applicationID": configuration.applicationID])
+            case .timedOut:
+                twitchMarkerMessage = "Twitch metadata update timed out; publishing with existing settings."
+                WebRTCMediaTelemetry.capture("webrtc.ui.twitch.metadata.timeout", level: .warning, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
+            }
+            guard isPreparingBroadcast else { return }
+            isPreparingBroadcast = false
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.publish.start", level: .info, message: "Starting Twitch RTMP publisher after metadata preparation.", attributes: ["applicationID": configuration.applicationID])
+            transport?.startBroadcast(configuration: broadcastConfiguration)
+        }
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.start", level: .info, message: "Twitch broadcast metadata preparation started.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func prepareBroadcastMetadata(title: String, applicationID: String) async -> WebRTCMediaBroadcastPreparationResult {
+        guard let onBroadcastStart else { return .unavailable }
+        let gate = WebRTCMediaBroadcastPreparationGate()
+        let metadataTask = Task { await gate.resolve(.completed(onBroadcastStart(title, applicationID))) }
+        Task {
+            try? await Task.sleep(for: .seconds(6))
+            metadataTask.cancel()
+            await gate.resolve(.timedOut)
+        }
+        return await gate.wait()
+    }
+
+    private func createTwitchMarker() {
+        createTwitchMarker(description: twitchMarkerDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func createTwitchMarker(description: String) {
+        guard broadcastStatus.isLive else {
+            twitchMarkerMessage = "Go live before creating a marker."
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        twitchMarkerMessage = "Creating marker..."
+        let markerDescription = description.nilIfEmpty ?? configuration.title.nilIfEmpty ?? "OpenNOW stream marker"
+        Task { @MainActor in
+            twitchMarkerMessage = await onStreamMarker?(configuration.title, configuration.applicationID, markerDescription) ?? "Marker requested at \(Date().formatted(date: .omitted, time: .standard))"
+            twitchMarkerDraft = ""
+        }
+        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.marker", level: .info, message: twitchMarkerMessage, attributes: ["applicationID": configuration.applicationID])
     }
 
     private func toggleRecording() {
@@ -466,6 +1122,9 @@ public struct WebRTCMediaStreamSurface: View {
         transport.onRecordingStatusChanged = { status in
             handleRecordingStatusChanged(status)
         }
+        transport.onBroadcastStatusChanged = { status in
+            handleBroadcastStatusChanged(status)
+        }
         nativeView.onInputEvent = { event in
             switch inputAction(for: event) {
             case .send:
@@ -530,9 +1189,124 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
+    private func handleBroadcastStatusChanged(_ status: WebRTCLiveBroadcastStatus) {
+        broadcastNotificationTask?.cancel()
+        switch status {
+        case .connecting:
+            broadcastLiveVerified = false
+            broadcastVerificationMessage = ""
+            broadcastForcedFailureMessage = ""
+            broadcastVerificationUnavailable = false
+            broadcastVerificationTask?.cancel()
+            broadcastVerificationTask = nil
+            broadcastStatus = status
+        case .publishing(let startedAt, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
+            if broadcastLiveVerified {
+                broadcastStatus = .live(startedAt: startedAt, elapsedSeconds: elapsedSeconds, droppedFrames: droppedFrames, videoBitrateKbps: videoBitrateKbps)
+            } else {
+                broadcastStatus = status
+                startBroadcastLiveVerification()
+            }
+        case .live:
+            broadcastLiveVerified = true
+            broadcastVerificationUnavailable = false
+            broadcastVerificationMessage = "Twitch confirmed this stream is live."
+            broadcastStatus = status
+        case .stopping:
+            guard broadcastForcedFailureMessage.isEmpty else { return }
+            broadcastStatus = status
+        case .idle:
+            broadcastVerificationTask?.cancel()
+            broadcastVerificationTask = nil
+            broadcastLiveVerified = false
+            broadcastVerificationMessage = ""
+            broadcastVerificationUnavailable = false
+            if !broadcastForcedFailureMessage.isEmpty {
+                let message = broadcastForcedFailureMessage
+                broadcastForcedFailureMessage = ""
+                broadcastStatus = .failed(message)
+                scheduleBroadcastTerminalReset(for: broadcastStatus)
+            } else {
+                broadcastStatus = status
+            }
+        case .failed:
+            broadcastVerificationTask?.cancel()
+            broadcastVerificationTask = nil
+            broadcastLiveVerified = false
+            broadcastVerificationUnavailable = false
+            broadcastStatus = status
+            scheduleBroadcastTerminalReset(for: status)
+        }
+    }
+
+    private func scheduleBroadcastTerminalReset(for status: WebRTCLiveBroadcastStatus) {
+        guard status.isTerminal else { return }
+        broadcastNotificationTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard broadcastStatus == status else { return }
+            broadcastStatus = .idle
+            broadcastNotificationTask = nil
+        }
+    }
+
+    private func startBroadcastLiveVerification() {
+        guard !broadcastVerificationUnavailable else { return }
+        guard broadcastVerificationTask == nil else { return }
+        guard let onBroadcastLiveVerification else {
+            broadcastVerificationMessage = "Twitch API verification is unavailable."
+            broadcastVerificationUnavailable = true
+            return
+        }
+        broadcastVerificationMessage = "Checking Twitch live status."
+        broadcastVerificationTask = Task { @MainActor in
+            let title = configuration.title
+            let applicationID = configuration.applicationID
+            let result = await withTaskGroup(of: WebRTCMediaBroadcastLiveVerificationResult.self) { group in
+                group.addTask { await onBroadcastLiveVerification(title, applicationID) }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(8))
+                    return .unavailable("Twitch API verification timed out; RTMP is still publishing.")
+                }
+                let result = await group.next() ?? .unavailable("Twitch API verification is unavailable.")
+                group.cancelAll()
+                return result
+            }
+            guard !Task.isCancelled else { return }
+            broadcastVerificationTask = nil
+            broadcastVerificationMessage = result.message
+            switch result {
+            case .verified:
+                broadcastLiveVerified = true
+                if case .publishing(let startedAt, let elapsedSeconds, let droppedFrames, let videoBitrateKbps) = broadcastStatus {
+                    broadcastStatus = .live(startedAt: startedAt, elapsedSeconds: elapsedSeconds, droppedFrames: droppedFrames, videoBitrateKbps: videoBitrateKbps)
+                }
+            case .unavailable:
+                broadcastLiveVerified = false
+                broadcastVerificationUnavailable = false
+                if case .publishing = broadcastStatus {
+                    broadcastVerificationTask = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(5))
+                        guard !Task.isCancelled else { return }
+                        broadcastVerificationTask = nil
+                        startBroadcastLiveVerification()
+                    }
+                } else {
+                    broadcastVerificationUnavailable = true
+                }
+            case .notLive(let message):
+                broadcastLiveVerified = false
+                broadcastVerificationUnavailable = false
+                broadcastForcedFailureMessage = message
+                transport?.stopBroadcast()
+                handleBroadcastStatusChanged(.failed(message))
+            }
+        }
+    }
+
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
+        if twitchPanelVisible { return .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
         if let mouse = mouseEvent(from: event) {
@@ -549,7 +1323,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func microphoneToggleAction(for keyboard: KeyboardEvent) -> StreamInputAction? {
-        guard keyboard.modifiers.contains(.command), Int(keyboard.keyCode) == Self.microphoneToggleKeyCode else { return nil }
+        guard keyboard.modifiers.intersection(Self.hotkeyModifierMask) == .command, Int(keyboard.keyCode) == Self.microphoneToggleKeyCode else { return nil }
         guard keyboard.isPressed else { return .drop }
         toggleMicrophone()
         return .drop
@@ -593,6 +1367,20 @@ public struct WebRTCMediaStreamSurface: View {
             toggleRecording()
         case .toggleVideoEnhancement:
             toggleVideoEnhancementSettings()
+        case .toggleTwitchBroadcast:
+            guard isStreamReady else { return }
+            toggleBroadcast()
+        case .toggleTwitchPanel:
+            guard isStreamReady else { return }
+            toggleTwitchPanel()
+        case .toggleTwitchChatOverlay:
+            twitchChatOverlayVisible.toggle()
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.chat_overlay", level: .info, message: twitchChatOverlayVisible ? "Twitch chat overlay shown." : "Twitch chat overlay hidden.", attributes: ["visible": String(twitchChatOverlayVisible)])
+        case .createTwitchMarker:
+            createTwitchMarker()
+        case .toggleTwitchEventAlerts:
+            twitchEventAlertsVisible.toggle()
+            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.event_alerts", level: .info, message: twitchEventAlertsVisible ? "Twitch event alerts enabled." : "Twitch event alerts disabled.", attributes: ["visible": String(twitchEventAlertsVisible)])
         case .showQuitMenu:
             showQuitMenu()
         }
@@ -623,10 +1411,14 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func registerStreamLifecycle() {
-        WebRTCMediaStreamLifecycle.activate(configuration.id) { completion in
-            showQuitMenu(completion: completion)
-            return true
-        }
+        WebRTCMediaStreamLifecycle.activate(
+            configuration.id,
+            quitRequestHandler: { completion in
+                showQuitMenu(completion: completion)
+                return true
+            },
+            commandHandler: handle
+        )
     }
 
     private func showQuitMenu(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
@@ -723,6 +1515,11 @@ public struct WebRTCMediaStreamSurface: View {
         statsTask = nil
         recordingNotificationTask?.cancel()
         recordingNotificationTask = nil
+        broadcastNotificationTask?.cancel()
+        broadcastNotificationTask = nil
+        broadcastVerificationTask?.cancel()
+        broadcastVerificationTask = nil
+        isPreparingBroadcast = false
         nativeView?.setPointerLocked(false)
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
@@ -750,6 +1547,7 @@ public struct WebRTCMediaStreamSurface: View {
         return error.localizedDescription
     }
 
+    private static let hotkeyModifierMask: KeyboardModifiers = [.shift, .control, .option, .command]
     private static let pushToTalkModifierMask = KeyboardModifiers.shift.rawValue | KeyboardModifiers.control.rawValue | KeyboardModifiers.option.rawValue | KeyboardModifiers.command.rawValue | KeyboardModifiers.capsLock.rawValue
     private static let microphoneToggleKeyCode = 46
 }

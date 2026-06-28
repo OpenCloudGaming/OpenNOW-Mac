@@ -1,75 +1,36 @@
-import AppKit
-import Metal
-@preconcurrency import MetalKit
-import QuartzCore
 import SwiftUI
-import simd
+
+enum OpenNOWStartupAnimation {
+    static let duration: TimeInterval = 5.0
+    static let dismissalDelayNanoseconds: UInt64 = 5_300_000_000
+    static let fadeDuration: TimeInterval = 0.56
+}
 
 struct OpenNOWStartupLoadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var startDate = Date()
 
     var body: some View {
         GeometryReader { proxy in
             let compact = min(proxy.size.width, proxy.size.height) < 620
 
-            ZStack {
-                OpenNOWStartupMetalSurface(reduceMotion: reduceMotion)
-                    .ignoresSafeArea()
+            TimelineView(.animation) { timeline in
+                let elapsed = max(timeline.date.timeIntervalSince(startDate), 0)
+                let progress = startupClamp(elapsed / OpenNOWStartupAnimation.duration)
+                let loop = reduceMotion ? 0 : elapsed.truncatingRemainder(dividingBy: 3.2) / 3.2
 
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.92), location: 0.00),
-                        .init(color: .black.opacity(0.14), location: 0.34),
-                        .init(color: .black.opacity(0.10), location: 0.62),
-                        .init(color: .black.opacity(0.86), location: 1.00)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                ZStack {
+                    OpenNOWStartupBackdrop(progress: progress, loop: loop)
 
-                RadialGradient(
-                    stops: [
-                        .init(color: Color.openNowGreen.opacity(0.24), location: 0.00),
-                        .init(color: Color.openNowGreen.opacity(0.08), location: 0.36),
-                        .init(color: .clear, location: 1.00)
-                    ],
-                    center: .center,
-                    startRadius: 20,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.62
-                )
-                .blendMode(.screen)
+                    OpenNOWStartupDepthGrid(progress: progress, loop: loop, compact: compact)
 
-                VStack(spacing: compact ? 14 : 20) {
-                    Spacer(minLength: compact ? 42 : 72)
+                    OpenNOWStartupOrbitalSystem(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
 
-                    VendorResourceImage(name: "splash-gfn-logo-v3", fileExtension: "svg")
-                        .scaledToFit()
-                        .frame(width: compact ? 92 : 136, height: compact ? 70 : 102)
-                        .shadow(color: Color.openNowGreen.opacity(0.52), radius: 24)
+                    OpenNOWStartupDiagnostics(progress: progress, compact: compact)
 
-                    VStack(spacing: compact ? 8 : 10) {
-                        Text("OPENNOW")
-                            .font(.system(size: compact ? 25 : 36, weight: .black, design: .rounded))
-                            .tracking(compact ? 7 : 11)
-                            .foregroundStyle(.white)
-                            .shadow(color: Color.openNowGreen.opacity(0.58), radius: 18)
+                    OpenNOWStartupCoreLogo(progress: progress, loop: loop, compact: compact, reduceMotion: reduceMotion)
 
-                        Text("STARTING GEFORCE NOW CLIENT")
-                            .font(.system(size: compact ? 10 : 12, weight: .bold))
-                            .tracking(compact ? 2.2 : 3.4)
-                            .foregroundStyle(.white.opacity(0.70))
-                    }
-
-                    OpenNOWStartupProgressRail(reduceMotion: reduceMotion)
-                        .frame(width: compact ? 210 : 320, height: 5)
-                        .padding(.top, compact ? 4 : 10)
-
-                    Text("Preparing your cloud gaming session hub")
-                        .font(.system(size: compact ? 12 : 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.56))
-                        .padding(.top, 2)
-
-                    Spacer(minLength: compact ? 52 : 82)
+                    OpenNOWStartupSequenceFooter(progress: progress, loop: loop, compact: compact)
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
@@ -77,392 +38,370 @@ struct OpenNOWStartupLoadingView: View {
             .clipped()
         }
         .background(.black)
+        .onAppear { startDate = Date() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("OpenNOW is starting")
     }
 }
 
-private struct OpenNOWStartupProgressRail: View {
+private struct OpenNOWStartupBackdrop: View {
+    let progress: Double
+    let loop: Double
+
+    var body: some View {
+        let environmentReveal = startupSmoothStep(0.12, 0.42, progress)
+
+        ZStack {
+            Color.black
+
+            RadialGradient(
+                stops: [
+                    .init(color: Color.openNowGreen.opacity(0.28 * environmentReveal), location: 0.00),
+                    .init(color: Color.openNowGreen.opacity(0.10 * environmentReveal), location: 0.34),
+                    .init(color: .clear, location: 1.00)
+                ],
+                center: UnitPoint(x: 0.50 + sin(loop * .pi * 2) * 0.035, y: 0.46),
+                startRadius: 18,
+                endRadius: 720
+            )
+            .blendMode(.screen)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.98), location: 0.00),
+                    .init(color: .black.opacity(0.22), location: 0.34),
+                    .init(color: .black.opacity(0.12), location: 0.58),
+                    .init(color: .black.opacity(0.92), location: 1.00)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.clear, Color.openNowGreen.opacity(0.045 * environmentReveal), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .rotationEffect(.degrees(-18))
+                .scaleEffect(x: 1.5, y: 0.58)
+                .offset(y: -90 + CGFloat(loop) * 48)
+                .blendMode(.screen)
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct OpenNOWStartupDepthGrid: View {
+    let progress: Double
+    let loop: Double
+    let compact: Bool
+
+    var body: some View {
+        let reveal = startupSmoothStep(0.18, 0.48, progress)
+        let size = CGFloat(compact ? 420 : 680)
+
+        ZStack {
+            ForEach(0..<5, id: \.self) { index in
+                let scaleValue = 0.64 + Double(index) * 0.18 + loop * 0.16
+                let opacity = reveal * (0.16 - Double(index) * 0.018)
+
+                RoundedRectangle(cornerRadius: 34, style: .continuous)
+                    .stroke(Color.openNowGreen.opacity(opacity), lineWidth: index == 0 ? 1.4 : 0.9)
+                    .frame(width: size, height: size * 0.54)
+                    .scaleEffect(CGFloat(scaleValue))
+                    .rotation3DEffect(.degrees(64), axis: (x: 1, y: 0, z: 0), perspective: 0.65)
+                    .rotation3DEffect(.degrees(loop * 22 + Double(index * 4)), axis: (x: 0, y: 1, z: 0), perspective: 0.65)
+                    .offset(y: CGFloat(index * 14) + CGFloat(reveal) * 34)
+                    .blendMode(.screen)
+            }
+
+            ForEach(0..<9, id: \.self) { index in
+                Capsule()
+                    .fill(Color.openNowGreen.opacity(reveal * 0.12))
+                    .frame(width: size * 0.70, height: index.isMultiple(of: 3) ? 1.2 : 0.7)
+                    .offset(y: CGFloat(index - 4) * (compact ? 20 : 28))
+                    .rotation3DEffect(.degrees(64), axis: (x: 1, y: 0, z: 0), perspective: 0.65)
+                    .rotationEffect(.degrees(loop * 7))
+                    .blendMode(.screen)
+            }
+        }
+        .opacity(reveal)
+        .offset(y: compact ? 46 : 62)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct OpenNOWStartupCoreLogo: View {
+    let progress: Double
+    let loop: Double
+    let compact: Bool
     let reduceMotion: Bool
 
     var body: some View {
-        GeometryReader { proxy in
-            TimelineView(.animation) { timeline in
-                let width = max(proxy.size.width, 1)
-                let phase = reduceMotion ? 0.62 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.45) / 1.45
-                let sweepWidth = max(width * 0.36, 88)
-                let offset = (-sweepWidth) + ((width + sweepWidth * 2) * phase)
+        let logoReveal = startupSmoothStep(0.00, 0.16, progress)
+        let systemReveal = startupSmoothStep(0.20, 0.54, progress)
+        let completion = startupSmoothStep(0.80, 1.00, progress)
+        let size = CGFloat(compact ? 154 : 224)
+        let rotation = reduceMotion ? 0 : loop * 360
+        let tilt = reduceMotion ? 0 : sin(loop * .pi * 2) * 9
 
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.white.opacity(0.16))
-                    Capsule()
-                        .fill(Color.openNowGreen.opacity(0.26))
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [.clear, Color.openNowGreen.opacity(0.62), Color.openNowGreen, Color.openNowGreen.opacity(0.62), .clear],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: sweepWidth)
-                        .offset(x: offset)
-                        .shadow(color: Color.openNowGreen.opacity(0.72), radius: 8)
-                }
-                .clipShape(Capsule())
+        ZStack {
+            Circle()
+                .fill(Color.openNowGreen.opacity(0.14 + systemReveal * 0.08))
+                .frame(width: size * (1.10 + completion * 0.20), height: size * (1.10 + completion * 0.20))
+                .blur(radius: compact ? 26 : 42)
+                .opacity(logoReveal)
+
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .trim(from: CGFloat(0.06 + Double(index) * 0.04), to: CGFloat(0.84 - Double(index) * 0.06))
+                    .stroke(
+                        Color.openNowGreen.opacity(0.20 + systemReveal * 0.20),
+                        style: StrokeStyle(lineWidth: CGFloat(index == 0 ? 1.8 : 1.0), lineCap: .round, dash: index == 1 ? [10, 15] : [22, 18])
+                    )
+                    .frame(width: size * CGFloat(1.22 + Double(index) * 0.20), height: size * CGFloat(1.22 + Double(index) * 0.20))
+                    .rotationEffect(.degrees((index.isMultiple(of: 2) ? 1 : -1) * (rotation + Double(index * 37))))
+                    .rotation3DEffect(.degrees(tilt + Double(index * 5)), axis: (x: 1, y: 0.18, z: 0), perspective: 0.72)
+                    .opacity(systemReveal)
             }
+
+            VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
+                .scaledToFit()
+                .frame(width: size, height: size * 0.62)
+                .rotation3DEffect(.degrees(rotation), axis: (x: 0.10, y: 1, z: 0.02), perspective: 0.74)
+                .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), perspective: 0.74)
+                .scaleEffect(CGFloat(0.86 + logoReveal * 0.14 + completion * 0.05))
+                .shadow(color: Color.openNowGreen.opacity(0.74), radius: compact ? 24 : 38)
+                .shadow(color: .white.opacity(0.16 + completion * 0.12), radius: compact ? 8 : 12)
+                .opacity(logoReveal)
         }
+        .frame(width: size * 2.0, height: size * 1.55)
+        .offset(y: compact ? -38 : -58)
     }
 }
 
-private struct OpenNOWStartupMetalSurface: NSViewRepresentable {
+private struct OpenNOWStartupOrbitalSystem: View {
+    let progress: Double
+    let loop: Double
+    let compact: Bool
     let reduceMotion: Bool
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
+    private static let modules: [OpenNOWStartupModule] = [
+        .init(title: "AUTH", detail: "session vault", angle: -150, radius: 0.78, stageStart: 0.18),
+        .init(title: "CATALOG", detail: "game index", angle: -92, radius: 0.90, stageStart: 0.28),
+        .init(title: "NETWORK", detail: "edge route", angle: -34, radius: 0.82, stageStart: 0.38),
+        .init(title: "STREAM", detail: "profile sync", angle: 26, radius: 0.94, stageStart: 0.48),
+        .init(title: "MEDIA", detail: "decoder ready", angle: 92, radius: 0.80, stageStart: 0.58),
+        .init(title: "SHORTCUTS", detail: "deep links", angle: 154, radius: 0.88, stageStart: 0.66)
+    ]
 
-    func makeNSView(context: Context) -> MTKView {
-        let view = MTKView(frame: .zero)
-        view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        view.colorPixelFormat = .bgra8Unorm
-        view.framebufferOnly = true
-        view.enableSetNeedsDisplay = false
-        view.isPaused = false
-        view.preferredFramesPerSecond = reduceMotion ? 24 : 60
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.black.cgColor
+    var body: some View {
+        GeometryReader { proxy in
+            let baseRadius = min(proxy.size.width, proxy.size.height) * (compact ? 0.28 : 0.30)
 
-        guard let device = MTLCreateSystemDefaultDevice(), let renderer = OpenNOWStartupMetalRenderer(device: device, pixelFormat: view.colorPixelFormat, reduceMotion: reduceMotion) else {
-            return view
+            ZStack {
+                ForEach(Self.modules) { module in
+                    let reveal = startupSmoothStep(module.stageStart, module.stageStart + 0.16, progress)
+                    let load = startupSmoothStep(module.stageStart, module.stageStart + 0.24, progress)
+                    let spin = reduceMotion ? 0 : loop * 54
+                    let angle = (module.angle + spin) * .pi / 180
+                    let radius = baseRadius * CGFloat(module.radius)
+                    let x = cos(angle) * radius
+                    let y = sin(angle) * radius * 0.58
+
+                    OpenNOWStartupModuleCard(module: module, load: load, compact: compact)
+                        .frame(width: compact ? 138 : 184, height: compact ? 54 : 66)
+                        .scaleEffect(CGFloat(0.74 + reveal * 0.26))
+                        .rotation3DEffect(.degrees(module.angle * 0.14 + spin * 0.16), axis: (x: 0.08, y: x > 0 ? -1 : 1, z: 0), perspective: 0.72)
+                        .offset(x: x, y: y - (compact ? 30 : 52))
+                        .opacity(reveal)
+                        .blur(radius: CGFloat((1 - reveal) * 8))
+                        .blendMode(.screen)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-
-        view.device = device
-        context.coordinator.renderer = renderer
-        view.delegate = renderer
-        return view
-    }
-
-    func updateNSView(_ view: MTKView, context: Context) {
-        context.coordinator.renderer?.setReduceMotion(reduceMotion)
-        view.preferredFramesPerSecond = reduceMotion ? 24 : 60
-    }
-
-    static func dismantleNSView(_ view: MTKView, coordinator: Coordinator) {
-        view.delegate = nil
-        coordinator.renderer = nil
-    }
-
-    final class Coordinator {
-        var renderer: OpenNOWStartupMetalRenderer?
+        .allowsHitTesting(false)
     }
 }
 
-@MainActor
-private final class OpenNOWStartupMetalRenderer: NSObject, MTKViewDelegate {
-    private let commandQueue: any MTLCommandQueue
-    private let backgroundPipeline: any MTLRenderPipelineState
-    private let scenePipeline: any MTLRenderPipelineState
-    private let vertexBuffer: any MTLBuffer
-    private let vertexCount: Int
-    private let startTime = CACurrentMediaTime()
-    private var reduceMotion: Bool
-    private var viewportSize = SIMD2<Float>(1, 1)
+private struct OpenNOWStartupModule: Identifiable {
+    let id = UUID()
+    let title: String
+    let detail: String
+    let angle: Double
+    let radius: Double
+    let stageStart: Double
+}
 
-    init?(device: any MTLDevice, pixelFormat: MTLPixelFormat, reduceMotion: Bool) {
-        guard let commandQueue = device.makeCommandQueue(),
-              let library = try? device.makeLibrary(source: Self.shaderSource, options: nil),
-              let backgroundPipeline = Self.makePipeline(device: device, library: library, pixelFormat: pixelFormat, vertexName: "opn_startup_background_vertex", fragmentName: "opn_startup_background_fragment", blended: false),
-              let scenePipeline = Self.makePipeline(device: device, library: library, pixelFormat: pixelFormat, vertexName: "opn_startup_scene_vertex", fragmentName: "opn_startup_scene_fragment", blended: true) else {
-            return nil
+private struct OpenNOWStartupModuleCard: View {
+    let module: OpenNOWStartupModule
+    let load: Double
+    let compact: Bool
+
+    var body: some View {
+        HStack(spacing: compact ? 8 : 10) {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.openNowGreen.opacity(0.18 + load * 0.18))
+                .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color.openNowGreen.opacity(0.46), lineWidth: 1) }
+                .frame(width: compact ? 22 : 28, height: compact ? 22 : 28)
+                .overlay {
+                    Circle()
+                        .fill(load > 0.96 ? Color.openNowGreen : Color.white.opacity(0.32))
+                        .frame(width: compact ? 7 : 9, height: compact ? 7 : 9)
+                }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(module.title)
+                    .font(.system(size: compact ? 9 : 11, weight: .black, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.90))
+                Text(module.detail)
+                    .font(.system(size: compact ? 8 : 9, weight: .bold))
+                    .foregroundStyle(Color.openNowGreen.opacity(0.72))
+            }
+
+            Spacer(minLength: 0)
         }
-
-        let vertices = Self.makeSceneVertices()
-        guard let vertexBuffer = Self.makeVertexBuffer(device: device, vertices: vertices) else { return nil }
-
-        self.commandQueue = commandQueue
-        self.backgroundPipeline = backgroundPipeline
-        self.scenePipeline = scenePipeline
-        self.vertexBuffer = vertexBuffer
-        self.vertexCount = vertices.count
-        self.reduceMotion = reduceMotion
-        super.init()
-    }
-
-    func setReduceMotion(_ reduceMotion: Bool) {
-        self.reduceMotion = reduceMotion
-    }
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        viewportSize = SIMD2<Float>(Float(max(size.width, 1)), Float(max(size.height, 1)))
-    }
-
-    func draw(in view: MTKView) {
-        guard let descriptor = view.currentRenderPassDescriptor,
-              let drawable = view.currentDrawable,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
-            return
+        .padding(.horizontal, compact ? 9 : 12)
+        .background(.black.opacity(0.40), in: RoundedRectangle(cornerRadius: compact ? 16 : 19, style: .continuous))
+        .overlay(alignment: .bottomLeading) {
+            Capsule()
+                .fill(Color.openNowGreen.opacity(0.82))
+                .frame(width: CGFloat(load) * (compact ? 112 : 154), height: 2)
+                .padding(.horizontal, compact ? 13 : 16)
+                .padding(.bottom, 6)
         }
+        .overlay { RoundedRectangle(cornerRadius: compact ? 16 : 19, style: .continuous).stroke(Color.openNowGreen.opacity(0.26), lineWidth: 1) }
+        .shadow(color: Color.openNowGreen.opacity(0.20), radius: compact ? 10 : 16)
+    }
+}
 
-        let drawableSize = view.drawableSize
-        viewportSize = SIMD2<Float>(Float(max(drawableSize.width, 1)), Float(max(drawableSize.height, 1)))
+private struct OpenNOWStartupDiagnostics: View {
+    let progress: Double
+    let compact: Bool
 
-        var uniforms = OpenNOWStartupMetalUniforms(
-            viewportSize: viewportSize,
-            time: Float(CACurrentMediaTime() - startTime),
-            reduceMotion: reduceMotion ? 1 : 0,
-            opacity: 1
-        )
+    private let diagnostics = [
+        ("bootstrap", 0.10),
+        ("secure session", 0.25),
+        ("catalog cache", 0.42),
+        ("stream profiles", 0.58),
+        ("window state", 0.72)
+    ]
 
-        encoder.setRenderPipelineState(backgroundPipeline)
-        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<OpenNOWStartupMetalUniforms>.stride, index: 0)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            Text("LOAD SEQUENCE")
+                .font(.system(size: compact ? 9 : 10, weight: .black))
+                .tracking(2.2)
+                .foregroundStyle(.white.opacity(0.46))
 
-        encoder.setRenderPipelineState(scenePipeline)
-        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
-        encoder.setVertexBytes(&uniforms, length: MemoryLayout<OpenNOWStartupMetalUniforms>.stride, index: 1)
-        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<OpenNOWStartupMetalUniforms>.stride, index: 1)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vertexCount)
-        encoder.endEncoding()
+            ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, item in
+                let itemProgress = startupSmoothStep(item.1, item.1 + 0.20, progress)
 
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(itemProgress > 0.96 ? Color.openNowGreen : Color.white.opacity(0.18))
+                        .frame(width: 7, height: 7)
+                    Text(item.0.uppercased())
+                        .font(.system(size: compact ? 9 : 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.44 + itemProgress * 0.38))
+                    Spacer(minLength: 0)
+                    Text(itemProgress > 0.96 ? "OK" : "SYNC")
+                        .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
+                        .foregroundStyle(itemProgress > 0.96 ? Color.openNowGreen : .white.opacity(0.38))
+                }
+            }
+        }
+        .padding(compact ? 13 : 16)
+        .frame(width: compact ? 190 : 232)
+        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(.white.opacity(0.08), lineWidth: 1) }
+        .opacity(startupSmoothStep(0.22, 0.48, progress) * (1 - startupSmoothStep(0.90, 1.0, progress) * 0.35))
+        .offset(x: compact ? -136 : -272, y: compact ? 132 : 158)
+        .rotation3DEffect(.degrees(12), axis: (x: 0, y: 1, z: 0), perspective: 0.72)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct OpenNOWStartupSequenceFooter: View {
+    let progress: Double
+    let loop: Double
+    let compact: Bool
+
+    var body: some View {
+        VStack(spacing: compact ? 10 : 13) {
+            Text(statusText)
+                .font(.system(size: compact ? 11 : 13, weight: .black, design: .rounded))
+                .tracking(compact ? 1.8 : 2.8)
+                .foregroundStyle(.white.opacity(0.76))
+
+            OpenNOWStartupProgressRail(loop: loop, progress: progress)
+                .frame(width: compact ? 230 : 360, height: 5)
+
+            Text("Logo core initializes first. Services attach as the cloud client comes online.")
+                .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.42))
+                .multilineTextAlignment(.center)
+                .frame(width: compact ? 280 : 420)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, compact ? 30 : 48)
+        .opacity(1 - startupSmoothStep(0.94, 1.0, progress) * 0.55)
+        .allowsHitTesting(false)
     }
 
-    private static func makePipeline(device: any MTLDevice, library: any MTLLibrary, pixelFormat: MTLPixelFormat, vertexName: String, fragmentName: String, blended: Bool) -> (any MTLRenderPipelineState)? {
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = library.makeFunction(name: vertexName)
-        descriptor.fragmentFunction = library.makeFunction(name: fragmentName)
-        descriptor.colorAttachments[0].pixelFormat = pixelFormat
-        descriptor.colorAttachments[0].isBlendingEnabled = blended
-        descriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
-        descriptor.colorAttachments[0].destinationRGBBlendFactor = blended ? .one : .zero
-        descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
-        descriptor.colorAttachments[0].destinationAlphaBlendFactor = blended ? .oneMinusSourceAlpha : .zero
-        return try? device.makeRenderPipelineState(descriptor: descriptor)
+    private var statusText: String {
+        if progress < 0.22 { return "IGNITING LOGO CORE" }
+        if progress < 0.46 { return "ATTACHING SECURE SERVICES" }
+        if progress < 0.70 { return "INDEXING CLOUD CATALOG" }
+        if progress < 0.90 { return "PREPARING STREAM SURFACE" }
+        return "OPENNOW READY"
     }
+}
 
-    private static func makeVertexBuffer(device: any MTLDevice, vertices: [OpenNOWStartupMetalVertex]) -> (any MTLBuffer)? {
-        vertices.withUnsafeBytes { bytes in
-            guard let baseAddress = bytes.baseAddress else { return nil }
-            return device.makeBuffer(bytes: baseAddress, length: bytes.count, options: .storageModeShared)
+private struct OpenNOWStartupProgressRail: View {
+    let loop: Double
+    let progress: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = max(proxy.size.width, 1)
+            let fillWidth = max(width * CGFloat(progress), 12)
+            let sweepWidth = max(width * 0.34, 72)
+            let offset = -sweepWidth + (width + sweepWidth * 2) * CGFloat(loop)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.white.opacity(0.15))
+                Capsule()
+                    .fill(Color.openNowGreen.opacity(0.24))
+                    .frame(width: fillWidth)
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, Color.openNowGreen.opacity(0.72), Color.openNowGreen, Color.openNowGreen.opacity(0.72), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: sweepWidth)
+                    .offset(x: offset)
+                    .shadow(color: Color.openNowGreen.opacity(0.70), radius: 8)
+            }
+            .clipShape(Capsule())
         }
     }
-
-    private static func makeSceneVertices() -> [OpenNOWStartupMetalVertex] {
-        var vertices: [OpenNOWStartupMetalVertex] = []
-        vertices.reserveCapacity(720)
-
-        appendRing(to: &vertices, radius: 1.08, thickness: 0.045, z: -0.08, segments: 64, phase: 0.0, color: SIMD4<Float>(0.46, 0.90, 0.10, 0.34), intensity: 1.0)
-        appendRing(to: &vertices, radius: 0.77, thickness: 0.028, z: 0.04, segments: 48, phase: 1.4, color: SIMD4<Float>(0.78, 1.00, 0.42, 0.27), intensity: 0.82)
-        appendRing(to: &vertices, radius: 1.38, thickness: 0.020, z: -0.22, segments: 72, phase: 2.2, color: SIMD4<Float>(0.30, 0.82, 0.12, 0.20), intensity: 0.62)
-
-        appendPanel(to: &vertices, center: SIMD3<Float>(-0.38, 0.02, 0.00), width: 0.22, height: 0.96, yaw: -0.18, roll: -0.12, color: SIMD4<Float>(0.46, 0.90, 0.10, 0.58), intensity: 1.20, phase: 0.1)
-        appendPanel(to: &vertices, center: SIMD3<Float>(0.02, 0.12, 0.08), width: 0.20, height: 0.74, yaw: 0.20, roll: 0.10, color: SIMD4<Float>(0.62, 1.00, 0.18, 0.52), intensity: 1.05, phase: 1.2)
-        appendPanel(to: &vertices, center: SIMD3<Float>(0.39, -0.02, -0.02), width: 0.22, height: 0.92, yaw: 0.30, roll: 0.13, color: SIMD4<Float>(0.46, 0.90, 0.10, 0.55), intensity: 1.16, phase: 2.3)
-        appendPanel(to: &vertices, center: SIMD3<Float>(0.03, 0.47, 0.12), width: 0.86, height: 0.13, yaw: 0.12, roll: 0.04, color: SIMD4<Float>(0.82, 1.00, 0.46, 0.46), intensity: 0.95, phase: 3.0)
-        appendPanel(to: &vertices, center: SIMD3<Float>(0.15, -0.40, 0.02), width: 0.72, height: 0.12, yaw: -0.16, roll: -0.03, color: SIMD4<Float>(0.46, 0.90, 0.10, 0.42), intensity: 0.90, phase: 4.2)
-
-        for index in 0..<18 {
-            let progress = Float(index) / 18
-            let angle = progress * .pi * 2
-            let radius: Float = index.isMultiple(of: 2) ? 1.54 : 1.68
-            let center = SIMD3<Float>(cos(angle) * radius, sin(angle) * radius * 0.58, sin(angle * 1.7) * 0.28)
-            let width: Float = index.isMultiple(of: 3) ? 0.22 : 0.15
-            let height: Float = index.isMultiple(of: 4) ? 0.040 : 0.030
-            appendPanel(to: &vertices, center: center, width: width, height: height, yaw: angle * 0.35, roll: angle + .pi / 2, color: SIMD4<Float>(0.54, 0.96, 0.18, 0.22), intensity: 0.76, phase: angle)
-        }
-
-        return vertices
-    }
-
-    private static func appendRing(to vertices: inout [OpenNOWStartupMetalVertex], radius: Float, thickness: Float, z: Float, segments: Int, phase: Float, color: SIMD4<Float>, intensity: Float) {
-        for segment in 0..<segments where segment % 11 != 8 && segment % 13 != 6 {
-            let start = (Float(segment) / Float(segments)) * .pi * 2
-            let end = (Float(segment + 1) / Float(segments)) * .pi * 2
-            let inner = radius - thickness
-            let outer = radius + thickness
-            let localPhase = phase + Float(segment) * 0.17
-
-            let a = ringPoint(angle: start, radius: inner, z: z, phase: phase)
-            let b = ringPoint(angle: end, radius: inner, z: z, phase: phase)
-            let c = ringPoint(angle: end, radius: outer, z: z, phase: phase)
-            let d = ringPoint(angle: start, radius: outer, z: z, phase: phase)
-            appendQuad(to: &vertices, a: a, b: b, c: c, d: d, color: color, intensity: intensity, phase: localPhase)
-        }
-    }
-
-    private static func ringPoint(angle: Float, radius: Float, z: Float, phase: Float) -> SIMD3<Float> {
-        SIMD3<Float>(cos(angle) * radius, sin(angle) * radius, z + sin(angle * 3.0 + phase) * 0.045)
-    }
-
-    private static func appendPanel(to vertices: inout [OpenNOWStartupMetalVertex], center: SIMD3<Float>, width: Float, height: Float, yaw: Float, roll: Float, color: SIMD4<Float>, intensity: Float, phase: Float) {
-        let rollCos = cos(roll)
-        let rollSin = sin(roll)
-        let yawCos = cos(yaw)
-        let yawSin = sin(yaw)
-
-        func yawed(_ vector: SIMD3<Float>) -> SIMD3<Float> {
-            SIMD3<Float>(vector.x * yawCos + vector.z * yawSin, vector.y, -vector.x * yawSin + vector.z * yawCos)
-        }
-
-        let right = yawed(SIMD3<Float>(rollCos, rollSin, 0)) * (width * 0.5)
-        let up = yawed(SIMD3<Float>(-rollSin, rollCos, 0)) * (height * 0.5)
-        appendQuad(to: &vertices, a: center - right - up, b: center + right - up, c: center + right + up, d: center - right + up, color: color, intensity: intensity, phase: phase)
-    }
-
-    private static func appendQuad(to vertices: inout [OpenNOWStartupMetalVertex], a: SIMD3<Float>, b: SIMD3<Float>, c: SIMD3<Float>, d: SIMD3<Float>, color: SIMD4<Float>, intensity: Float, phase: Float) {
-        let material = SIMD2<Float>(intensity, phase)
-        vertices.append(OpenNOWStartupMetalVertex(position: SIMD4<Float>(a.x, a.y, a.z, phase), color: color, uv: SIMD2<Float>(0, 0), material: material))
-        vertices.append(OpenNOWStartupMetalVertex(position: SIMD4<Float>(b.x, b.y, b.z, phase), color: color, uv: SIMD2<Float>(1, 0), material: material))
-        vertices.append(OpenNOWStartupMetalVertex(position: SIMD4<Float>(c.x, c.y, c.z, phase), color: color, uv: SIMD2<Float>(1, 1), material: material))
-        vertices.append(OpenNOWStartupMetalVertex(position: SIMD4<Float>(a.x, a.y, a.z, phase), color: color, uv: SIMD2<Float>(0, 0), material: material))
-        vertices.append(OpenNOWStartupMetalVertex(position: SIMD4<Float>(c.x, c.y, c.z, phase), color: color, uv: SIMD2<Float>(1, 1), material: material))
-        vertices.append(OpenNOWStartupMetalVertex(position: SIMD4<Float>(d.x, d.y, d.z, phase), color: color, uv: SIMD2<Float>(0, 1), material: material))
-    }
-
-    private static let shaderSource = """
-#include <metal_stdlib>
-using namespace metal;
-
-struct StartupUniforms {
-    float2 viewportSize;
-    float time;
-    float reduceMotion;
-    float opacity;
-};
-
-struct StartupVertex {
-    float4 position;
-    float4 color;
-    float2 uv;
-    float2 material;
-};
-
-struct SceneOut {
-    float4 position [[position]];
-    float4 color;
-    float2 uv;
-    float2 material;
-    float3 world;
-};
-
-struct BackgroundOut {
-    float4 position [[position]];
-    float2 uv;
-};
-
-static float opn_line(float value, float thickness) {
-    float cell = abs(fract(value - 0.5) - 0.5);
-    return 1.0 - smoothstep(thickness, thickness + fwidth(value) * 1.65, cell);
 }
 
-vertex BackgroundOut opn_startup_background_vertex(uint vertexID [[vertex_id]]) {
-    const float2 positions[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };
-    const float2 uvs[3] = { float2(0.0, 1.0), float2(2.0, 1.0), float2(0.0, -1.0) };
-    BackgroundOut out;
-    out.position = float4(positions[vertexID], 0.0, 1.0);
-    out.uv = uvs[vertexID];
-    return out;
+private func startupClamp(_ value: Double) -> Double {
+    min(max(value, 0), 1)
 }
 
-fragment float4 opn_startup_background_fragment(BackgroundOut in [[stage_in]], constant StartupUniforms &uniforms [[buffer(0)]]) {
-    float2 uv = in.uv;
-    float aspect = uniforms.viewportSize.x / max(uniforms.viewportSize.y, 1.0);
-    float motion = 1.0 - uniforms.reduceMotion * 0.86;
-    float t = uniforms.time * motion;
-    float2 p = uv * 2.0 - 1.0;
-    p.x *= aspect;
-
-    float horizon = 0.16 + sin(t * 0.18) * 0.025;
-    float depth = 1.0 / max(0.055, horizon - p.y);
-    float floorMask = (1.0 - smoothstep(horizon - 0.02, horizon + 0.16, p.y)) * smoothstep(-1.05, -0.08, p.y);
-    float2 gridCoordinate = float2(p.x * depth * 1.15, depth * 0.82 + t * 0.26);
-    float grid = max(opn_line(gridCoordinate.x, 0.018), opn_line(gridCoordinate.y, 0.014)) * floorMask;
-    float horizonGlow = exp(-abs(p.y - horizon) * 7.5);
-
-    float centerGlow = exp(-dot(p, p) * 1.55);
-    float beamMask = 1.0 - smoothstep(-0.35, 0.7, p.y);
-    float leftBeam = exp(-abs(p.x + 0.72 + sin(t * 0.33) * 0.12) * 4.0) * beamMask;
-    float rightBeam = exp(-abs(p.x - 0.72 + cos(t * 0.29) * 0.10) * 4.0) * beamMask;
-    float scan = 0.5 + 0.5 * sin((uv.y * 68.0) - t * 7.5);
-
-    float3 base = float3(0.002, 0.004, 0.003);
-    float3 green = float3(0.46, 0.90, 0.10);
-    float3 acid = float3(0.78, 1.00, 0.28);
-    float3 color = base;
-    color += green * centerGlow * 0.14;
-    color += green * horizonGlow * 0.18;
-    color += acid * grid * (0.38 + scan * 0.22);
-    color += green * (leftBeam + rightBeam) * 0.028;
-    color *= 1.0 - smoothstep(0.62, 1.42, length(p)) * 0.68;
-    return float4(color, 1.0);
-}
-
-vertex SceneOut opn_startup_scene_vertex(const device StartupVertex *vertices [[buffer(0)]], constant StartupUniforms &uniforms [[buffer(1)]], uint vertexID [[vertex_id]]) {
-    StartupVertex startupVertex = vertices[vertexID];
-    float motion = 1.0 - uniforms.reduceMotion;
-    float aspect = uniforms.viewportSize.x / max(uniforms.viewportSize.y, 1.0);
-    float3 position = startupVertex.position.xyz;
-    float phase = startupVertex.position.w;
-    position.y += sin(uniforms.time * 1.7 + phase * 1.3) * 0.035 * motion;
-    position.z += cos(uniforms.time * 1.25 + phase) * 0.045 * motion;
-
-    float yaw = 0.42 + uniforms.time * 0.34 * motion;
-    float pitch = -0.08 + sin(uniforms.time * 0.38) * 0.035 * motion;
-    float cy = cos(yaw);
-    float sy = sin(yaw);
-    float cp = cos(pitch);
-    float sp = sin(pitch);
-
-    position = float3(position.x * cy + position.z * sy, position.y, -position.x * sy + position.z * cy);
-    position = float3(position.x, position.y * cp - position.z * sp, position.y * sp + position.z * cp);
-
-    float cameraDepth = position.z + 3.75;
-    float perspective = 1.58 / max(cameraDepth, 1.15);
-    float2 clip = position.xy * perspective;
-    clip.x /= aspect;
-
-    SceneOut out;
-    out.position = float4(clip, 0.25 + cameraDepth * 0.02, 1.0);
-    out.color = startupVertex.color;
-    out.uv = startupVertex.uv;
-    out.material = startupVertex.material;
-    out.world = position;
-    return out;
-}
-
-fragment float4 opn_startup_scene_fragment(SceneOut in [[stage_in]], constant StartupUniforms &uniforms [[buffer(1)]]) {
-    float2 centered = abs(in.uv - 0.5) * 2.0;
-    float edge = max(centered.x, centered.y);
-    float rim = smoothstep(0.62, 1.0, edge);
-    float core = 1.0 - smoothstep(0.10, 0.92, edge);
-    float diagonal = 1.0 - smoothstep(0.012, 0.09, abs((in.uv.x - in.uv.y) + sin(in.material.y) * 0.16));
-    float shimmer = 0.70 + 0.30 * sin(uniforms.time * 3.2 + in.material.y * 2.7 + in.world.z * 1.6);
-    float3 green = float3(0.46, 0.90, 0.10);
-    float3 acid = float3(0.82, 1.00, 0.36);
-    float3 color = in.color.rgb * (0.56 + in.material.x * 0.34);
-    color += acid * rim * 0.58;
-    color += green * diagonal * 0.22;
-    color += green * core * 0.12;
-    float alpha = in.color.a * (0.36 + rim * 0.74 + core * 0.26 + diagonal * 0.20) * shimmer * uniforms.opacity;
-    return float4(color, alpha);
-}
-"""
-}
-
-private struct OpenNOWStartupMetalUniforms {
-    var viewportSize: SIMD2<Float>
-    var time: Float
-    var reduceMotion: Float
-    var opacity: Float
-}
-
-private struct OpenNOWStartupMetalVertex {
-    var position: SIMD4<Float>
-    var color: SIMD4<Float>
-    var uv: SIMD2<Float>
-    var material: SIMD2<Float>
+private func startupSmoothStep(_ edge0: Double, _ edge1: Double, _ value: Double) -> Double {
+    let clampedValue = startupClamp((value - edge0) / (edge1 - edge0))
+    return clampedValue * clampedValue * (3 - 2 * clampedValue)
 }

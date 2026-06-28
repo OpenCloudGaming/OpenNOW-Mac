@@ -254,8 +254,10 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
                 self.finishVideoFrameAppend(recordingId: recordingId)
                 return
             }
+            let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
             self.queue.async {
                 defer { self.finishVideoFrameAppend(recordingId: recordingId) }
+                let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
                 guard self.isActiveRecording(recordingId) else { return }
                 self.appendPixelBufferOnQueue(pixelBuffer)
             }

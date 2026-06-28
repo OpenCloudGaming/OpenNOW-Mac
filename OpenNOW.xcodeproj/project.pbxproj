@@ -9,9 +9,11 @@
 /* Begin PBXBuildFile section */
 		7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
 		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
 		7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758B2FDCA4F900B177D8 /* Jarvis */; };
 		7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */ = {isa = PBXBuildFile; productRef = 7778758E2FDCA4F900B177D8 /* Starfleet */; };
 		777875922FDCA4F900B177D8 /* NesAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 777875912FDCA4F900B177D8 /* NesAuth */; };
+		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000101 /* CloudMatch in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000201 /* CloudMatch */; };
 		A00000000000000000000102 /* LCARS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000202 /* LCARS */; };
 		A00000000000000000000103 /* GDN in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000203 /* GDN */; };
@@ -24,6 +26,7 @@
 		A00000000000000000000111 /* OpenNOWAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000211 /* OpenNOWAuth */; };
 		A00000000000000000000112 /* OpenNOWGameServices in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000212 /* OpenNOWGameServices */; };
 		A00000000000000000000113 /* OpenNOWTelemetry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000213 /* OpenNOWTelemetry */; };
+		A00000000000000000000114 /* OpenNOWTwitch in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000214 /* OpenNOWTwitch */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -44,6 +47,8 @@
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 		7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenNOW.entitlements; sourceTree = "<group>"; };
+		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
+		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenNOW/Resources; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -59,6 +64,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */,
 				7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */,
 				A00000000000000000000101 /* CloudMatch in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
@@ -70,6 +76,7 @@
 				A00000000000000000000111 /* OpenNOWAuth in Frameworks */,
 				A00000000000000000000112 /* OpenNOWGameServices in Frameworks */,
 				A00000000000000000000113 /* OpenNOWTelemetry in Frameworks */,
+				A00000000000000000000114 /* OpenNOWTwitch in Frameworks */,
 				A00000000000000000000104 /* Ragnarok in Frameworks */,
 				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
@@ -85,7 +92,9 @@
 			isa = PBXGroup;
 			children = (
 				7729CE782FDEDAB300D5C9D5 /* OpenNOW */,
+				A00000000000000000000002 /* Resources */,
 				7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */,
+				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
@@ -130,6 +139,7 @@
 				A00000000000000000000211 /* OpenNOWAuth */,
 				A00000000000000000000212 /* OpenNOWGameServices */,
 				A00000000000000000000213 /* OpenNOWTelemetry */,
+				A00000000000000000000214 /* OpenNOWTwitch */,
 				A00000000000000000000204 /* Ragnarok */,
 				A00000000000000000000208 /* SignalLinkKit */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
@@ -148,7 +158,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2650;
-				LastUpgradeCheck = 2650;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					7729CE752FDEDAB300D5C9D5 = {
 						CreatedOnToolsVersion = 26.5;
@@ -175,6 +185,7 @@
 				A00000000000000000000311 /* XCLocalSwiftPackageReference "OPN.Auth" */,
 				A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */,
 				A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */,
+				A00000000000000000000314 /* XCLocalSwiftPackageReference "OPN.Twitch" */,
 				A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */,
 				A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */,
@@ -196,6 +207,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000001 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,6 +258,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = MPZW7ERR2D;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -271,6 +284,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -310,6 +324,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = MPZW7ERR2D;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -328,6 +343,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -341,6 +357,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 30;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = MPZW7ERR2D;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -352,11 +369,14 @@
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.28;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -379,6 +399,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 30;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = MPZW7ERR2D;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -390,11 +411,14 @@
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.28;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -492,6 +516,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = OPN.Telemetry;
 		};
+		A00000000000000000000314 /* XCLocalSwiftPackageReference "OPN.Twitch" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OPN.Twitch;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -569,6 +597,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */;
 			productName = OpenNOWTelemetry;
+		};
+		A00000000000000000000214 /* OpenNOWTwitch */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000314 /* XCLocalSwiftPackageReference "OPN.Twitch" */;
+			productName = OpenNOWTwitch;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -3,12 +3,14 @@ import AppKit
 import CoreText
 import CryptoKit
 import OpenNOWTelemetry
+import OpenNOWTwitch
 import SwiftUI
 
 private enum SettingsVendorLayout {
-    static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
-    static let sidebar = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
-    static let card = Color(red: 28 / 255, green: 28 / 255, blue: 28 / 255)
+    static let surface = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+    static let sidebar = Color(red: 31 / 255, green: 32 / 255, blue: 31 / 255)
+    static let card = Color(red: 26 / 255, green: 27 / 255, blue: 26 / 255)
+    static let cardRaised = Color(red: 34 / 255, green: 35 / 255, blue: 34 / 255)
     static let row = Color.white.opacity(0.045)
 }
 
@@ -61,6 +63,113 @@ private extension Font {
     }
 }
 
+private struct SettingsAccountSnapshot {
+    let displayName: String
+    let membershipTier: String
+    let providerName: String
+    let userId: String
+    let authorizationState: String
+    let authStatus: String
+    let rememberSession: Bool
+
+    init(viewModel: CatalogViewModel) {
+        displayName = viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
+        membershipTier = Self.membershipTier(viewModel: viewModel)
+        providerName = Self.providerName(viewModel.account.providerName)
+        userId = viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+        authorizationState = SettingsFormat.normalizedState(viewModel.account.authorizationState)
+        authStatus = SettingsFormat.normalizedState(viewModel.account.authStatus)
+        rememberSession = viewModel.account.rememberSession
+    }
+
+    var isAuthorized: Bool {
+        authorizationState.caseInsensitiveCompare("Authorized") == .orderedSame
+    }
+
+    var isLoggedIn: Bool {
+        authStatus.caseInsensitiveCompare("Logged In") == .orderedSame
+    }
+
+    private static func membershipTier(viewModel: CatalogViewModel) -> String {
+        if viewModel.subscriptionStatus.isAvailable { return viewModel.subscriptionStatus.membershipTier }
+        if !viewModel.account.membershipTier.isEmpty { return viewModel.account.membershipTier }
+        return viewModel.subscriptionStatus.membershipTier
+    }
+
+    private static func providerName(_ value: String) -> String {
+        if value.isEmpty || value == "OPN" { return "Nvidia" }
+        return value
+    }
+}
+
+private struct SettingsRouteSnapshot {
+    let displayValue: String
+    let copyValue: String
+    let summary: String
+
+    init(regionUrl: String, revealSensitive: Bool) {
+        if regionUrl.isEmpty {
+            displayValue = "Automatic"
+            copyValue = "Automatic"
+            summary = "Automatic"
+        } else {
+            let host = SettingsFormat.endpointHost(regionUrl)
+            displayValue = revealSensitive ? regionUrl : host
+            copyValue = regionUrl
+            summary = host
+        }
+    }
+}
+
+private enum SettingsAppMetadata {
+    static var displayName: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        ?? "OpenNOW Mac"
+    }
+
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+
+    static var build: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+    }
+
+    static var versionWithBuild: String {
+        "\(version) (\(build))"
+    }
+}
+
+private enum SettingsFormat {
+    static func normalizedState(_ value: String) -> String {
+        let normalized = value.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "Unknown" : normalized.capitalized
+    }
+
+    static func maskedIdentifier(_ value: String) -> String {
+        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
+        return "\(value.prefix(6))****\(value.suffix(4))"
+    }
+
+    static func maskedEmail(_ value: String) -> String {
+        guard let atIndex = value.firstIndex(of: "@") else { return value.isEmpty ? "Unavailable" : "****" }
+        let name = String(value[..<atIndex])
+        let domain = String(value[value.index(after: atIndex)...])
+        return "\(name.prefix(2))****@\(domain)"
+    }
+
+    static func endpointHost(_ value: String) -> String {
+        URL(string: value)?.host ?? value
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var viewModel: CatalogViewModel
 
@@ -70,7 +179,17 @@ struct SettingsView: View {
             SettingsContent(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SettingsVendorLayout.surface)
+        .background(SettingsSurfaceBackground())
+    }
+}
+
+private struct SettingsSurfaceBackground: View {
+    var body: some View {
+        ZStack {
+            SettingsVendorLayout.surface
+            LinearGradient(colors: [Color.openNowGreen.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
+            LinearGradient(colors: [.black.opacity(0.22), .clear, .black.opacity(0.18)], startPoint: .leading, endPoint: .trailing)
+        }
     }
 }
 
@@ -84,7 +203,7 @@ private struct SettingsSidebar: View {
                     .font(.settingsNvidia(size: 11, weight: .bold))
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.5)
-                Text("GeForce NOW")
+                Text("OpenNOW")
                     .font(.settingsNvidia(size: 22, weight: .bold))
                     .foregroundStyle(.white)
             }
@@ -126,7 +245,8 @@ private struct SettingsSidebar: View {
                     .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
             }
             .buttonStyle(.plain)
-            .padding(22)
+            .padding(.horizontal, 22)
+            .padding(.bottom, 22)
         }
         .frame(width: 256)
         .background(SettingsVendorLayout.sidebar)
@@ -137,6 +257,7 @@ private struct SettingsSidebar: View {
         switch page {
         case .account: return "person.crop.circle.fill"
         case .connections: return "link"
+        case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"
@@ -161,13 +282,13 @@ private struct SettingsContent: View {
                 }
                 page
             }
-            .padding(.horizontal, 42)
-            .padding(.top, 34)
+            .padding(.horizontal, 52)
+            .padding(.top, 38)
             .padding(.bottom, 54)
-            .frame(maxWidth: 1040, alignment: .leading)
+            .frame(maxWidth: 1220, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.gfnBackgroundGreen)
+        .background(SettingsSurfaceBackground())
     }
 
     @ViewBuilder private var page: some View {
@@ -176,6 +297,8 @@ private struct SettingsContent: View {
             AccountSettingsPage(viewModel: viewModel)
         case .connections:
             ConnectionsSettingsPage(viewModel: viewModel)
+        case .twitch:
+            TwitchSettingsPage(viewModel: viewModel)
         case .gameplay:
             GameplaySettingsPage(viewModel: viewModel)
         case .serverLocation:
@@ -193,6 +316,7 @@ private struct SettingsContent: View {
         switch viewModel.selectedSettingsPage {
         case .account: return "Membership, profile, and current NVIDIA session details."
         case .connections: return "Manage store accounts used for library sync and ownership detection."
+        case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
         case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
         case .resolutionUpscaling: return "Control image enhancement, sharpening, denoise, and target quality."
@@ -208,16 +332,25 @@ private struct SettingsHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(Color.openNowGreen)
-                .tracking(1.5)
-            Text(title)
-                .font(.settingsNvidia(size: 34, weight: .bold))
-                .foregroundStyle(.white)
-            Text(subtitle)
-                .font(.settingsNvidia(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+            HStack(alignment: .bottom, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title.uppercased())
+                        .font(.settingsNvidia(size: 12, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .tracking(1.5)
+                    Text(title)
+                        .font(.settingsNvidia(size: 34, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.settingsNvidia(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+                Spacer(minLength: 24)
+                Rectangle()
+                    .fill(Color.openNowGreen.opacity(0.42))
+                    .frame(width: 120, height: 2)
+                    .padding(.bottom, 9)
+            }
         }
     }
 }
@@ -232,20 +365,19 @@ private struct AccountSettingsPage: View {
             SettingsCard(title: "Membership") {
                 HStack(alignment: .top, spacing: 20) {
                     ZStack {
-                        Rectangle()
-                            .fill(Color.black.opacity(0.22))
-                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.72), lineWidth: 1) }
+                        SettingsVendorLayout.cardRaised
+                            .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.42), lineWidth: 1) }
                         SettingsAccountAvatar(email: viewModel.account.email, size: 58)
                     }
                     .frame(width: 92, height: 92)
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text(accountDisplayName)
+                            Text(account.displayName)
                                 .font(.settingsNvidia(size: 25, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
-                            Text(membershipTier.uppercased())
+                            Text(account.membershipTier.uppercased())
                                 .font(.settingsNvidia(size: 10, weight: .bold))
                                 .foregroundStyle(.black)
                                 .tracking(0.8)
@@ -258,9 +390,9 @@ private struct AccountSettingsPage: View {
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8) {
-                            AboutStatusPill(title: "Provider", value: providerName)
-                            AboutStatusPill(title: "Auth", value: normalizedState(viewModel.account.authorizationState))
-                            AboutStatusPill(title: "Region", value: regionSummary)
+                            AboutStatusPill(title: "Provider", value: account.providerName)
+                            AboutStatusPill(title: "Playtime", value: viewModel.subscriptionStatus.remainingPlaytimeText)
+                            AboutStatusPill(title: "Region", value: route.summary)
                         }
                     }
                     Spacer(minLength: 0)
@@ -268,53 +400,20 @@ private struct AccountSettingsPage: View {
                 }
             }
 
-            SettingsCard(title: "Profile & Privacy") {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Personal account details are masked by default.")
-                            .font(.settingsNvidia(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("Reveal only when validating account state on your own machine.")
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.56))
-                    }
-                    Spacer()
-                    Button { revealSensitive.toggle() } label: {
-                        Text(revealSensitive ? "HIDE DETAILS" : "REVEAL DETAILS")
-                            .font(.settingsNvidia(size: 11, weight: .bold))
-                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
-                            .tracking(0.8)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
-                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    profilePrivacyCard
+                    sessionCard
                 }
-                SettingsDivider()
-                AboutDetailRow(label: "Display Name", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Email", value: displayedEmail, copyValue: viewModel.account.email, copiedKey: $copiedKey, copyDisabled: viewModel.account.email.isEmpty)
-                SettingsDivider()
-                AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
-            }
-
-            SettingsCard(title: "Session") {
-                SettingsFlowLayout(spacing: 10) {
-                    AccountStatusTile(label: "Provider", value: providerName, positive: true)
-                    AccountStatusTile(label: "Authorization", value: normalizedState(viewModel.account.authorizationState), positive: isAuthorized)
-                    AccountStatusTile(label: "Status", value: normalizedState(viewModel.account.authStatus), positive: isLoggedIn)
-                    AccountStatusTile(label: "Remember", value: viewModel.account.rememberSession ? "Enabled" : "Off", positive: viewModel.account.rememberSession)
+                VStack(alignment: .leading, spacing: 16) {
+                    profilePrivacyCard
+                    sessionCard
                 }
-                SettingsDivider()
-                AboutDetailRow(label: "Preferred Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey)
             }
 
             SettingsCard(title: "Playtime Statistics") {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
-                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "OpenNOW will track local playtime after your next GeForce NOW session ends.")
+                    AccountEmptyState(title: "No completed streams recorded yet.", subtitle: "OpenNOW will track local playtime after your next OpenNOW session ends.")
                 } else {
                     SettingsFlowLayout(spacing: 10) {
                         SettingsStatisticTile(label: "Total Playtime", value: durationText(viewModel.playtimeStatistics.totalSeconds), emphasized: true)
@@ -333,53 +432,64 @@ private struct AccountSettingsPage: View {
         }
     }
 
-    private var accountDisplayName: String {
-        viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
+    private var profilePrivacyCard: some View {
+        SettingsCard(title: "Profile & Privacy") {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Personal account details are masked by default.")
+                        .font(.settingsNvidia(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Reveal only when validating account state on your own machine.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+                Spacer()
+                SettingsRevealButton(revealed: revealSensitive) { revealSensitive.toggle() }
+            }
+            SettingsDivider()
+            AboutDetailRow(label: "Display Name", value: account.displayName, copyValue: account.displayName, copiedKey: $copiedKey)
+            SettingsDivider()
+            AboutDetailRow(label: "Email", value: displayedEmail, copyValue: viewModel.account.email, copiedKey: $copiedKey, copyDisabled: viewModel.account.email.isEmpty)
+            SettingsDivider()
+            AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: account.userId, copiedKey: $copiedKey, copyDisabled: account.userId.isEmpty)
+        }
     }
 
-    private var membershipTier: String {
-        viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier
+    private var sessionCard: some View {
+        SettingsCard(title: "Session") {
+            SettingsFlowLayout(spacing: 10) {
+                AccountStatusTile(label: "Provider", value: account.providerName, positive: true)
+                AccountStatusTile(label: "Authorization", value: account.authorizationState, positive: account.isAuthorized)
+                AccountStatusTile(label: "Status", value: account.authStatus, positive: account.isLoggedIn)
+                AccountStatusTile(label: "Remember", value: account.rememberSession ? "Enabled" : "Off", positive: account.rememberSession)
+            }
+            SettingsDivider()
+            AboutDetailRow(label: "Preferred Region", value: route.displayValue, copyValue: route.copyValue, copiedKey: $copiedKey)
+            SettingsDivider()
+            AboutDetailRow(label: "Membership Usage", value: viewModel.subscriptionStatus.usageText, copyValue: viewModel.subscriptionStatus.usageText, copiedKey: $copiedKey)
+            SettingsDivider()
+            AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey)
+        }
     }
 
-    private var providerName: String {
-        viewModel.account.providerName.isEmpty ? "NVIDIA" : viewModel.account.providerName
+    private var account: SettingsAccountSnapshot {
+        SettingsAccountSnapshot(viewModel: viewModel)
     }
 
-    private var userId: String {
-        viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+    private var route: SettingsRouteSnapshot {
+        SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: revealSensitive)
     }
 
     private var displayedUserId: String {
-        revealSensitive ? userId : maskedIdentifier(userId)
+        revealSensitive ? account.userId : SettingsFormat.maskedIdentifier(account.userId)
     }
 
     private var displayedEmail: String {
-        revealSensitive ? viewModel.account.email : maskedEmail(viewModel.account.email)
-    }
-
-    private var displayedRegion: String {
-        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
-        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var regionCopyValue: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
-    }
-
-    private var regionSummary: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var isAuthorized: Bool {
-        viewModel.account.authorizationState.caseInsensitiveCompare("AUTHORIZED") == .orderedSame
-    }
-
-    private var isLoggedIn: Bool {
-        viewModel.account.authStatus.caseInsensitiveCompare("LOGGED_IN") == .orderedSame
+        revealSensitive ? viewModel.account.email : SettingsFormat.maskedEmail(viewModel.account.email)
     }
 
     private var accountHealthPositive: Bool {
-        isAuthorized && isLoggedIn
+        account.isAuthorized && account.isLoggedIn
     }
 
     private var accountHealthTitle: String {
@@ -391,7 +501,8 @@ private struct AccountSettingsPage: View {
     }
 
     private var accountSummaryText: String {
-        "\(providerName) account on \(membershipTier) membership. Authorization is \(normalizedState(viewModel.account.authorizationState).lowercased()) and current session state is \(normalizedState(viewModel.account.authStatus).lowercased())."
+        let availability = viewModel.subscriptionStatus.isAvailable ? viewModel.subscriptionStatus.usageText : "subscription details are still refreshing"
+        return "\(account.providerName) account on \(account.membershipTier) membership. \(availability)."
     }
 
     private var lastPlayedText: String {
@@ -404,28 +515,6 @@ private struct AccountSettingsPage: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
-    }
-
-    private func normalizedState(_ value: String) -> String {
-        let normalized = value.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? "Unknown" : normalized.capitalized
-    }
-
-    private func maskedIdentifier(_ value: String) -> String {
-        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
-        return "\(value.prefix(6))****\(value.suffix(4))"
-    }
-
-    private func maskedEmail(_ value: String) -> String {
-        guard let atIndex = value.firstIndex(of: "@") else { return value.isEmpty ? "Unavailable" : "****" }
-        let name = String(value[..<atIndex])
-        let domain = String(value[value.index(after: atIndex)...])
-        let visibleName = name.prefix(2)
-        return "\(visibleName)****@\(domain)"
-    }
-
-    private func endpointHost(_ value: String) -> String {
-        URL(string: value)?.host ?? value
     }
 
     private func durationText(_ seconds: Double) -> String {
@@ -445,19 +534,46 @@ private struct AccountHealthBadge: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.settingsNvidia(size: 12, weight: .bold))
-                .foregroundStyle(positive ? .black : .white.opacity(0.88))
-                .tracking(1.1)
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(positive ? Color.openNowGreen : Color.orange)
+                    .frame(width: 7, height: 7)
+                Text(title)
+                    .font(.settingsNvidia(size: 12, weight: .bold))
+                    .foregroundStyle(positive ? Color.openNowGreen : .white.opacity(0.88))
+                    .tracking(1.1)
+            }
             Text(subtitle)
                 .font(.settingsNvidia(size: 11, weight: .bold))
-                .foregroundStyle(positive ? .black.opacity(0.74) : .white.opacity(0.54))
+                .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(2)
         }
         .padding(.horizontal, 14)
         .frame(width: 172, height: 64, alignment: .leading)
-        .background(positive ? Color.openNowGreen : Color.white.opacity(0.07))
-        .overlay { Rectangle().stroke(positive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
+        .background(SettingsVendorLayout.cardRaised)
+        .overlay(alignment: .leading) { Rectangle().fill(positive ? Color.openNowGreen : Color.orange).frame(width: 3) }
+        .overlay { Rectangle().stroke(positive ? Color.openNowGreen.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }
+    }
+}
+
+private struct SettingsRevealButton: View {
+    let revealed: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(revealed ? "HIDE DETAILS" : "REVEAL DETAILS")
+                .font(.settingsNvidia(size: 11, weight: .bold))
+                .foregroundStyle(revealed ? .black : .white.opacity(isHovering ? 0.94 : 0.82))
+                .tracking(0.8)
+                .padding(.horizontal, 13)
+                .frame(height: 32)
+                .background(revealed ? Color.openNowGreen.opacity(isHovering ? 0.90 : 1) : Color.white.opacity(isHovering ? 0.10 : 0.065))
+                .overlay { Rectangle().stroke(revealed ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.20 : 0.13), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
 
@@ -583,7 +699,7 @@ private struct ConnectionsSettingsPage: View {
         let stores = connectionStores
         SettingsCard(title: "Store Connections") {
             if stores.isEmpty {
-                AccountEmptyState(title: "No store providers available.", subtitle: "GeForce NOW did not return any account providers for this session.")
+                AccountEmptyState(title: "No store providers available.", subtitle: "OpenNOW did not return any account providers for this session.")
             } else {
                 StoreConnectionsOverview(connectedCount: connectedStoreCount(in: stores), totalCount: stores.count)
                 SettingsDivider()
@@ -641,6 +757,136 @@ private struct ConnectionsSettingsPage: View {
     ]
 }
 
+private struct TwitchSettingsPage: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    @State private var primaryStreamKeyDraft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Twitch Account") {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(viewModel.twitchAccountStatus.summary)
+                            .font(.settingsNvidia(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text(accountSubtitle)
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    Spacer(minLength: 12)
+                    SettingsStatusPill(title: viewModel.twitchAccountStatus.isConnected ? "CONNECTED" : "OFFLINE", value: viewModel.twitchAccountStatus.streamKeyAvailable ? "READY" : "SETUP", positive: viewModel.twitchAccountStatus.isConnected)
+                }
+                SettingsDivider()
+                SettingsSecureTextFieldRow(title: "Primary Stream Key", subtitle: "Paste the Primary Stream Key from Twitch Creator Dashboard. It is stored in Keychain and is enough to broadcast.", text: $primaryStreamKeyDraft, placeholder: streamKeyPlaceholder)
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: "SAVE STREAM KEY", minimumWidth: 140) { viewModel.saveTwitchPrimaryStreamKey(primaryStreamKeyDraft); primaryStreamKeyDraft = "" }
+                        .disabled(primaryStreamKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    SettingsActionButton(title: "CLEAR STREAM KEY", tone: .secondary, minimumWidth: 140) { viewModel.clearTwitchPrimaryStreamKey() }
+                        .disabled(!viewModel.twitchPrimaryStreamKeySaved)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 10)
+                SettingsDivider()
+                TwitchAuthorizationInfoRow(isConnected: viewModel.twitchAccountStatus.isConnected)
+                SettingsDivider()
+                HStack(spacing: 10) {
+                    SettingsActionButton(title: viewModel.isConnectingTwitch ? "WAITING FOR TWITCH" : "CONNECT TWITCH", minimumWidth: 170) { viewModel.beginTwitchConnection() }
+                        .disabled(viewModel.isConnectingTwitch || viewModel.twitchAccountStatus.isConnected)
+                    SettingsActionButton(title: "DISCONNECT", tone: .secondary, minimumWidth: 120) { viewModel.disconnectTwitch() }
+                        .disabled(!viewModel.twitchAccountStatus.isConnected)
+                    Spacer(minLength: 0)
+                }
+            }
+
+            SettingsCard(title: "Broadcast") {
+                SettingsOptionRow(title: "Ingest", subtitle: "Choose the Twitch ingest endpoint used by the native RTMP publisher.", options: TwitchBroadcastPreferences.IngestRegion.allCases.map(\.label), selectedIndex: selectedIngestIndex, action: viewModel.setTwitchIngestRegion)
+                if viewModel.twitchPreferences.ingestRegion == .custom {
+                    SettingsDivider()
+                    SettingsTextFieldRow(title: "Custom RTMP URL", subtitle: "Use a full RTMP endpoint without the stream key.", text: viewModel.twitchPreferences.customRTMPURL, placeholder: "rtmp://host/app", action: viewModel.setTwitchCustomRTMPURL)
+                }
+                SettingsDivider()
+                SettingsOptionRow(title: "Resolution", subtitle: "Downscale the broadcast independently from the gameplay stream.", options: TwitchBroadcastPreferences.Resolution.allCases.map(\.label), selectedIndex: selectedResolutionIndex, action: viewModel.setTwitchResolution)
+                SettingsDivider()
+                SettingsOptionRow(title: "Frame Rate", subtitle: "Twitch recommends 60 FPS for high-motion gameplay when bandwidth allows.", options: ["60 FPS", "30 FPS"], selectedIndex: viewModel.twitchPreferences.fps == 30 ? 1 : 0, action: viewModel.setTwitchFPS)
+                SettingsDivider()
+                SettingsSliderRow(title: "Video Bitrate", valueText: "\(viewModel.twitchPreferences.videoBitrateKbps) Kbps", value: Double(viewModel.twitchPreferences.videoBitrateKbps), range: 500...8_000, step: 100, action: viewModel.setTwitchVideoBitrateKbps)
+                SettingsDivider()
+                SettingsSliderRow(title: "Audio Bitrate", valueText: "\(viewModel.twitchPreferences.audioBitrateKbps) Kbps", value: Double(viewModel.twitchPreferences.audioBitrateKbps), range: 64...320, step: 16, action: viewModel.setTwitchAudioBitrateKbps)
+                SettingsDivider()
+                SettingsToggleRow(title: "Use Enhanced Video", subtitle: "Broadcast the upscaled/enhanced frame when available, with decoded stream frames as fallback.", isOn: viewModel.twitchPreferences.useEnhancedVideo, action: viewModel.setTwitchUseEnhancedVideo)
+            }
+
+            SettingsCard(title: "Automation & Overlay") {
+                SettingsToggleRow(title: "Auto Title From Game", subtitle: "Use the active game title when preparing Twitch broadcast metadata.", isOn: viewModel.twitchPreferences.autoTitleFromGame, action: viewModel.setTwitchAutoTitleFromGame)
+                SettingsDivider()
+                SettingsToggleRow(title: "Chat Overlay", subtitle: "Show Twitch chat controls inside the stream overlay.", isOn: viewModel.twitchPreferences.chatOverlayEnabled, action: viewModel.setTwitchChatOverlayEnabled)
+                SettingsDivider()
+                SettingsToggleRow(title: "Event Alerts", subtitle: "Show follows, subscriptions, raids, and channel events over the stream.", isOn: viewModel.twitchPreferences.eventAlertsEnabled, action: viewModel.setTwitchEventAlertsEnabled)
+            }
+
+            SettingsCard(title: "In-Stream Hotkeys") {
+                SettingsInfoRow(label: "Command-B", value: "Start or stop Twitch broadcast")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-T", value: "Show or hide Twitch controls")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-Shift-C", value: "Show or hide Twitch chat overlay")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-Shift-M", value: "Create a Twitch stream marker")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-Shift-A", value: "Toggle Twitch event alerts")
+            }
+        }
+    }
+
+    private var accountSubtitle: String {
+        if viewModel.twitchPrimaryStreamKeySaved, !viewModel.twitchAccountStatus.isConnected {
+            return "Primary Stream Key is saved. Connect OAuth for channel metadata, markers, chat, and event features."
+        }
+        if viewModel.twitchAccountStatus.isConnected {
+            return viewModel.twitchAccountStatus.streamKeyAvailable ? "Stream key is available for RTMP publishing." : "Connected, but stream key has not been fetched yet."
+        }
+        return "Paste your Primary Stream Key to broadcast immediately, or connect Twitch for metadata and chat features."
+    }
+
+    private var streamKeyPlaceholder: String {
+        viewModel.twitchPrimaryStreamKeySaved ? "Saved in Keychain" : "live_..."
+    }
+
+    private var selectedIngestIndex: Int {
+        TwitchBroadcastPreferences.IngestRegion.allCases.firstIndex(of: viewModel.twitchPreferences.ingestRegion) ?? 0
+    }
+
+    private var selectedResolutionIndex: Int {
+        TwitchBroadcastPreferences.Resolution.allCases.firstIndex(of: viewModel.twitchPreferences.resolution) ?? 0
+    }
+}
+
+private struct TwitchAuthorizationInfoRow: View {
+    let isConnected: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Rectangle()
+                .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
+                .frame(width: 4, height: 48)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Browser authorization")
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Connect Twitch to enable channel metadata, stream markers, chat, and event features.")
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            SettingsStatusPill(title: "OAUTH", value: isConnected ? "Linked" : "Optional", positive: isConnected)
+        }
+        .padding(12)
+        .background(SettingsVendorLayout.row)
+        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+    }
+}
+
 private struct StoreConnectionsOverview: View {
     let connectedCount: Int
     let totalCount: Int
@@ -669,13 +915,15 @@ private struct StoreConnectionRow: View {
         let account = viewModel.accountStatus(forStore: store)
         let definition = viewModel.storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
         let displayName = viewModel.displayName(forStore: store)
+        let iconAsset = StoreIconAsset.resolve(store: store, displayName: displayName)
+        let iconURL = definition?.smallImageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         let isConnected = account != nil
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16) {
             Rectangle()
                 .fill(isConnected ? Color.openNowGreen : Color.white.opacity(0.18))
                 .frame(width: 4, height: 46)
-            StoreIcon(title: displayName, imageURL: definition?.smallImageUrl ?? "", connected: isConnected)
+            StoreIcon(asset: iconAsset, imageURL: iconURL, connected: isConnected)
             VStack(alignment: .leading, spacing: 5) {
                 Text(displayName)
                     .font(.settingsNvidia(size: 15, weight: .bold))
@@ -716,49 +964,146 @@ private struct StoreConnectionRow: View {
 }
 
 private struct StoreIcon: View {
-    let title: String
-    let imageURL: String
+    let asset: StoreIconAsset?
+    let imageURL: String?
     let connected: Bool
 
     var body: some View {
         ZStack {
             Rectangle()
                 .fill(connected ? Color.openNowGreen.opacity(0.18) : Color.white.opacity(0.075))
-            if let iconURL {
-                AsyncImage(url: iconURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .padding(7)
-                    default:
-                        fallback
-                    }
-                }
+            if let url = resolvedImageURL {
+                StoreRemoteIconImage(url: url, asset: asset, connected: connected)
             } else {
-                fallback
+                StoreLocalIconImage(asset: asset, connected: connected)
             }
         }
-        .frame(width: 34, height: 34)
+        .frame(width: 42, height: 42)
         .overlay { Rectangle().stroke(connected ? Color.openNowGreen.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
         .accessibilityHidden(true)
     }
 
-    @ViewBuilder private var fallback: some View {
-        Text(initials)
-            .font(.settingsNvidia(size: 11, weight: .bold))
-            .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.64))
+    private var resolvedImageURL: URL? {
+        guard let imageURL, !imageURL.isEmpty else { return nil }
+        return URL(string: imageURL)
+    }
+}
+
+private struct StoreRemoteIconImage: View {
+    let url: URL
+    let asset: StoreIconAsset?
+    let connected: Bool
+
+    @State private var image: NSImage?
+    @State private var hasFailed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(5)
+                    .saturation(connected ? 1 : 0.65)
+                    .opacity(connected ? 1 : 0.68)
+            } else if hasFailed {
+                StoreLocalIconImage(asset: asset, connected: connected)
+            } else {
+                StoreLocalIconImage(asset: asset, connected: connected)
+                    .opacity(0.42)
+            }
+        }
+        .task(id: url) { await loadImage() }
     }
 
-    private var iconURL: URL? {
-        URL(string: imageURL)
+    @MainActor
+    private func loadImage() async {
+        image = nil
+        hasFailed = false
+        guard let cached = await CatalogImageCache.shared.image(for: url), !Task.isCancelled else {
+            hasFailed = !Task.isCancelled
+            return
+        }
+        image = cached.image
+        hasFailed = false
+    }
+}
+
+private struct StoreLocalIconImage: View {
+    let asset: StoreIconAsset?
+    let connected: Bool
+
+    var body: some View {
+        if let asset, let image = StoreIconImage.loadImage(named: asset.assetName) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .padding(asset.padding)
+                .saturation(connected ? 1 : 0.65)
+                .opacity(connected ? 1 : 0.68)
+        } else {
+            Image(systemName: "link")
+                .font(.settingsNvidia(size: 17, weight: .bold))
+                .foregroundStyle(connected ? Color.openNowGreen : .white.opacity(0.56))
+        }
+    }
+}
+
+private enum StoreIconImage {
+    static func loadImage(named name: String) -> NSImage? {
+        let cacheKey = name as NSString
+        if let cached = cache.object(forKey: cacheKey) { return cached }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "StoreIcons") ?? Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Resources/StoreIcons"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        cache.setObject(image, forKey: cacheKey)
+        return image
     }
 
-    private var initials: String {
-        let parts = title.split(separator: " ")
-        if parts.count >= 2 { return String(parts.prefix(2).compactMap(\.first)).uppercased() }
-        return String(title.prefix(2)).uppercased()
+    private static let cache = NSCache<NSString, NSImage>()
+}
+
+private enum StoreIconAsset: CaseIterable {
+    case battlenet
+    case epicGames
+    case steam
+    case ubisoftConnect
+    case xbox
+    case gaijin
+
+    var assetName: String {
+        switch self {
+        case .battlenet: return "store-battlenet"
+        case .epicGames: return "store-epic-games"
+        case .steam: return "store-steam"
+        case .ubisoftConnect: return "store-ubisoft-connect"
+        case .xbox: return "store-xbox"
+        case .gaijin: return "store-gaijin"
+        }
+    }
+
+    var padding: CGFloat {
+        switch self {
+        case .epicGames: return 5
+        case .steam, .xbox: return 4
+        default: return 6
+        }
+    }
+
+    static func resolve(store: String, displayName: String) -> StoreIconAsset? {
+        let key = normalized(store)
+        let displayKey = normalized(displayName)
+        let combined = key + displayKey
+        if combined.contains("battlenet") || combined.contains("battle") || combined.contains("blizzard") { return .battlenet }
+        if combined.contains("epic") { return .epicGames }
+        if combined.contains("steam") { return .steam }
+        if combined.contains("ubisoft") || combined.contains("uplay") { return .ubisoftConnect }
+        if combined.contains("xbox") || combined.contains("microsoft") { return .xbox }
+        if combined.contains("gaijin") { return .gaijin }
+        return nil
+    }
+
+    private static func normalized(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 }
 
@@ -891,7 +1236,7 @@ private struct GameplayProfileOverview: View {
                     Text("Active streaming profile")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("These values are sent to GeForce NOW when a new stream starts.")
+                    Text("These values are sent to OpenNOW when a new stream starts.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -939,6 +1284,7 @@ private struct GameplayProfileMetricTile: View {
 
 private struct ServerLocationSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
+    private let regionColumns = [GridItem(.adaptive(minimum: 138, maximum: 220), spacing: 10)]
 
     var body: some View {
         let selectedOption = viewModel.settingsRegionOptions.first { $0.url == viewModel.selectedSettingsRegionUrl }
@@ -948,7 +1294,7 @@ private struct ServerLocationSettingsPage: View {
                     Text("Cloudmatch Region")
                         .font(.settingsNvidia(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Automatic chooses the best measured GeForce NOW route.")
+                    Text("Automatic chooses the best measured OpenNOW route.")
                         .font(.settingsNvidia(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                 }
@@ -958,7 +1304,7 @@ private struct ServerLocationSettingsPage: View {
                     .disabled(viewModel.isRefreshingSettingsRegions)
             }
             SettingsDivider()
-            VStack(spacing: 10) {
+            LazyVGrid(columns: regionColumns, alignment: .leading, spacing: 10) {
                 ForEach(viewModel.settingsRegionOptions, id: \.url) { option in
                     SettingsRegionRow(option: option, selected: option.url == viewModel.selectedSettingsRegionUrl) {
                         viewModel.selectSettingsRegion(option.url)
@@ -970,7 +1316,7 @@ private struct ServerLocationSettingsPage: View {
 
     private func selectedRegionTitle(_ option: OPNStreamRegionOption?) -> String {
         guard let option else { return "Automatic" }
-        return option.automatic ? "Automatic" : option.name
+        return SettingsRegionName.shortName(for: option)
     }
 }
 
@@ -1020,7 +1366,7 @@ private struct SystemSettingsPage: View {
                         HStack(spacing: 8) {
                             AboutStatusPill(title: "Display", value: displaySummary)
                             AboutStatusPill(title: "Decode", value: preferredDecoder)
-                            AboutStatusPill(title: "Route", value: regionSummary)
+                            AboutStatusPill(title: "Route", value: route.summary)
                         }
                     }
                     Spacer(minLength: 0)
@@ -1056,24 +1402,12 @@ private struct SystemSettingsPage: View {
                             .foregroundStyle(.white.opacity(0.56))
                     }
                     Spacer()
-                    Button { revealSensitive.toggle() } label: {
-                        Text(revealSensitive ? "HIDE DETAILS" : "REVEAL DETAILS")
-                            .font(.settingsNvidia(size: 11, weight: .bold))
-                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
-                            .tracking(0.8)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
-                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
+                    SettingsRevealButton(revealed: revealSensitive) { revealSensitive.toggle() }
                 }
                 SettingsDivider()
                 AboutDetailRow(label: "Device ID", value: displayedDeviceId, copyValue: viewModel.session.deviceId, copiedKey: $copiedKey, copyDisabled: viewModel.session.deviceId.isEmpty)
                 SettingsDivider()
-                AboutDetailRow(label: "Current Region", value: displayedRegion, copyValue: regionCopyValue, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Runtime", value: "WebRTC media path", copyValue: "WebRTC media path", copiedKey: $copiedKey)
+                AboutDetailRow(label: "Current Region", value: route.displayValue, copyValue: route.copyValue, copiedKey: $copiedKey)
             }
         }
     }
@@ -1122,30 +1456,12 @@ private struct SystemSettingsPage: View {
         "Detected \(displaySummary) at \(refreshRateText), \(hardwareDecodeCount) hardware decoder\(hardwareDecodeCount == 1 ? "" : "s"), and \(viewModel.streamCapabilities.hdrDisplaySupported ? "HDR-capable" : "SDR") presentation."
     }
 
-    private var regionSummary: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var displayedRegion: String {
-        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
-        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var regionCopyValue: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
+    private var route: SettingsRouteSnapshot {
+        SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: revealSensitive)
     }
 
     private var displayedDeviceId: String {
-        revealSensitive ? viewModel.session.deviceId : maskedIdentifier(viewModel.session.deviceId)
-    }
-
-    private func maskedIdentifier(_ value: String) -> String {
-        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
-        return "\(value.prefix(6))****\(value.suffix(4))"
-    }
-
-    private func endpointHost(_ value: String) -> String {
-        URL(string: value)?.host ?? value
+        revealSensitive ? viewModel.session.deviceId : SettingsFormat.maskedIdentifier(viewModel.session.deviceId)
     }
 }
 
@@ -1209,7 +1525,6 @@ private struct SystemCapabilityRow: View {
 
 private struct AboutSettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
-    @State private var revealSensitive = false
     @State private var copiedKey = ""
     @State private var diagnosticsState = AboutDiagnosticsState.ready
     @State private var showingDiagnosticsUploadConfirmation = false
@@ -1233,7 +1548,7 @@ private struct AboutSettingsPage: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("OpenNOW Mac")
+                            Text(SettingsAppMetadata.displayName)
                                 .font(.settingsNvidia(size: 25, weight: .bold))
                                 .foregroundStyle(.white)
                             Text("UNOFFICIAL CLIENT SHELL")
@@ -1244,14 +1559,14 @@ private struct AboutSettingsPage: View {
                                 .frame(height: 20)
                                 .background(Color.openNowGreen)
                         }
-                        Text("A macOS runtime for launching and streaming GeForce NOW sessions with local catalog, account, and diagnostics surfaces.")
+                        Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsNvidia(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.66))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8) {
-                            AboutStatusPill(title: "Streaming", value: "WebRTC")
-                            AboutStatusPill(title: "Build", value: appVersion)
-                            AboutStatusPill(title: "Region", value: cloudmatchLabel)
+                            AboutStatusPill(title: "Stream", value: "WebRTC")
+                            AboutStatusPill(title: "Route", value: route.summary)
+                            AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On")
                         }
                     }
                     Spacer(minLength: 0)
@@ -1259,7 +1574,9 @@ private struct AboutSettingsPage: View {
             }
 
             SettingsCard(title: "Runtime") {
-                AboutDetailRow(label: "Version", value: appVersion, copyValue: appVersion, copiedKey: $copiedKey)
+                AboutDetailRow(label: "Version", value: SettingsAppMetadata.version, copyValue: SettingsAppMetadata.version, copiedKey: $copiedKey)
+                SettingsDivider()
+                AboutDetailRow(label: "Build", value: SettingsAppMetadata.build, copyValue: SettingsAppMetadata.build, copiedKey: $copiedKey)
                 SettingsDivider()
                 AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey)
                 SettingsDivider()
@@ -1292,44 +1609,11 @@ private struct AboutSettingsPage: View {
                 }
             }
 
-            SettingsCard(title: "Account & Privacy") {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Sensitive identifiers are masked by default.")
-                            .font(.settingsNvidia(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("Reveal only when collecting support diagnostics on your own machine.")
-                            .font(.settingsNvidia(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.56))
-                    }
-                    Spacer()
-                    Button { revealSensitive.toggle() } label: {
-                        Text(revealSensitive ? "HIDE IDS" : "REVEAL IDS")
-                            .font(.settingsNvidia(size: 11, weight: .bold))
-                            .foregroundStyle(revealSensitive ? .black : .white.opacity(0.84))
-                            .tracking(0.8)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.07))
-                            .overlay { Rectangle().stroke(revealSensitive ? Color.openNowGreen : Color.white.opacity(0.13), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
-                }
-                SettingsDivider()
-                AboutDetailRow(label: "Account", value: accountDisplayName, copyValue: accountDisplayName, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Membership", value: membershipTier, copyValue: membershipTier, copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "User ID", value: displayedUserId, copyValue: userId, copiedKey: $copiedKey, copyDisabled: userId.isEmpty)
-                SettingsDivider()
+            SettingsCard(title: "Privacy") {
                 SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, action: setTelemetryDisabled)
             }
 
-            SettingsCard(title: "Services") {
-                AboutDetailRow(label: "Streaming", value: "WebRTC", copyValue: "WebRTC", copiedKey: $copiedKey)
-                SettingsDivider()
-                AboutDetailRow(label: "Cloudmatch", value: cloudmatchDisplayValue, copyValue: cloudmatchCopyValue, copiedKey: $copiedKey)
-                SettingsDivider()
+            SettingsCard(title: "Support Diagnostics") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
                         SettingsActionButton(title: diagnosticsButtonTitle) {
@@ -1367,33 +1651,12 @@ private struct AboutSettingsPage: View {
         }
     }
 
-    private var userId: String {
-        viewModel.session.userId.isEmpty ? viewModel.account.userId : viewModel.session.userId
+    private var account: SettingsAccountSnapshot {
+        SettingsAccountSnapshot(viewModel: viewModel)
     }
 
-    private var displayedUserId: String {
-        revealSensitive ? userId : maskedIdentifier(userId)
-    }
-
-    private var membershipTier: String {
-        viewModel.account.membershipTier.isEmpty ? "Performance" : viewModel.account.membershipTier
-    }
-
-    private var accountDisplayName: String {
-        viewModel.account.displayName.isEmpty ? "Signed in" : viewModel.account.displayName
-    }
-
-    private var cloudmatchLabel: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var cloudmatchDisplayValue: String {
-        guard !viewModel.selectedSettingsRegionUrl.isEmpty else { return "Automatic" }
-        return revealSensitive ? viewModel.selectedSettingsRegionUrl : endpointHost(viewModel.selectedSettingsRegionUrl)
-    }
-
-    private var cloudmatchCopyValue: String {
-        viewModel.selectedSettingsRegionUrl.isEmpty ? "Automatic" : viewModel.selectedSettingsRegionUrl
+    private var route: SettingsRouteSnapshot {
+        SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: false)
     }
 
     private var bundleIdentifier: String {
@@ -1421,14 +1684,14 @@ private struct AboutSettingsPage: View {
     private func diagnosticsText(logURL: URL?) -> String {
         [
             "OpenNOW Mac Diagnostics",
-            "Version: \(appVersion)",
+            "Version: \(SettingsAppMetadata.versionWithBuild)",
             "Bundle: \(bundleIdentifier)",
             "macOS: \(operatingSystemVersion)",
-            "Account: \(accountDisplayName)",
-            "Membership: \(membershipTier)",
-            "User ID: \(maskedIdentifier(userId))",
+            "Account: \(account.displayName)",
+            "Membership: \(account.membershipTier)",
+            "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
             "Streaming: WebRTC",
-            "Cloudmatch: \(cloudmatchCopyValue)",
+            "Cloudmatch: \(route.summary)",
             "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ].joined(separator: "\n")
     }
@@ -1476,20 +1739,6 @@ private struct AboutSettingsPage: View {
         copiedKey = key
     }
 
-    private func maskedIdentifier(_ value: String) -> String {
-        guard value.count > 10 else { return value.isEmpty ? "Unavailable" : "****" }
-        return "\(value.prefix(6))****\(value.suffix(4))"
-    }
-
-    private func endpointHost(_ value: String) -> String {
-        URL(string: value)?.host ?? value
-    }
-
-    private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        return "\(version) (\(build))"
-    }
 }
 
 private struct DiagnosticsUploadConfirmationDialog: View {
@@ -1722,13 +1971,21 @@ private struct SettingsCard<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SettingsVendorLayout.card)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
+        .background(
+            ZStack(alignment: .topLeading) {
+                SettingsVendorLayout.card
+                LinearGradient(colors: [Color.white.opacity(0.035), .clear], startPoint: .top, endPoint: .center)
+                Rectangle()
+                    .fill(Color.openNowGreen.opacity(0.10))
+                    .frame(width: 1)
+            }
+        )
+        .overlay { Rectangle().stroke(Color.white.opacity(0.115), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.26), radius: 16, y: 8)
     }
 }
 
@@ -1821,6 +2078,78 @@ private struct SettingsToggleRow: View {
             Toggle("", isOn: Binding(get: { isOn }, set: action))
                 .toggleStyle(.switch)
                 .labelsHidden()
+        }
+    }
+}
+
+private struct SettingsTextFieldRow: View {
+    let title: String
+    let subtitle: String
+    let text: String
+    let placeholder: String
+    let action: (String) -> Void
+    @State private var draft = ""
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 250, alignment: .leading)
+            TextField(placeholder, text: Binding(get: { draft }, set: updateDraft))
+                .textFieldStyle(.plain)
+                .font(.settingsNvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(Color.white.opacity(0.07))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                .onAppear { draft = text }
+                .onChange(of: text) { _, value in
+                    guard value != draft else { return }
+                    draft = value
+                }
+        }
+    }
+
+    private func updateDraft(_ value: String) {
+        draft = value
+        action(value)
+    }
+}
+
+private struct SettingsSecureTextFieldRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var text: String
+    let placeholder: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.settingsNvidia(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.settingsNvidia(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 250, alignment: .leading)
+            SecureField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .font(.settingsNvidia(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(Color.white.opacity(0.07))
+                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
         }
     }
 }
@@ -1934,28 +2263,42 @@ private struct SettingsRegionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Rectangle()
-                    .fill(selected ? Color.openNowGreen : Color.white.opacity(0.18))
-                    .frame(width: 4, height: 48)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(option.automatic ? "Automatic" : option.name)
-                        .font(.settingsNvidia(size: 14, weight: .bold))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(SettingsRegionName.shortName(for: option))
+                        .font(.settingsNvidia(size: 13, weight: .bold))
                         .foregroundStyle(selected ? .white : .white.opacity(0.90))
-                    Text(option.automatic ? "Best measured route" : "Cloudmatch region")
-                        .font(.settingsNvidia(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(selected ? 0.64 : 0.52))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Spacer(minLength: 6)
+                    Circle()
+                        .fill(selected ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.34 : 0.22))
+                        .frame(width: 8, height: 8)
+                        .padding(.top, 4)
                 }
-                Spacer()
                 RegionLatencyBadge(latencyMs: option.latencyMs, selected: selected)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
             .background(selected ? Color.openNowGreen.opacity(0.13) : Color.white.opacity(isHovering ? 0.065 : 0.045))
             .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.74) : Color.white.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+}
+
+private enum SettingsRegionName {
+    static func shortName(for option: OPNStreamRegionOption) -> String {
+        guard !option.automatic else { return "Auto" }
+        let withoutParenthetical = option.name.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
+        let withoutPrefixes = withoutParenthetical
+            .replacingOccurrences(of: "GeForce NOW", with: "")
+            .replacingOccurrences(of: "NVIDIA", with: "")
+            .replacingOccurrences(of: "Cloudmatch", with: "")
+        let cleaned = withoutPrefixes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? option.name : cleaned
     }
 }
 
@@ -1967,13 +2310,14 @@ private struct RegionLatencyBadge: View {
         HStack(spacing: 7) {
             Circle()
                 .fill(indicatorColor)
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
             Text(latencyText)
-                .font(.settingsNvidia(size: 12, weight: .bold))
+                .font(.settingsNvidia(size: 11, weight: .bold))
                 .foregroundStyle(selected ? Color.openNowGreen : .white.opacity(0.74))
+                .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 28)
+        .padding(.horizontal, 8)
+        .frame(height: 24)
         .background(selected ? Color.black.opacity(0.20) : Color.white.opacity(0.045))
         .overlay { Rectangle().stroke(selected ? Color.openNowGreen.opacity(0.30) : Color.white.opacity(0.08), lineWidth: 1) }
     }

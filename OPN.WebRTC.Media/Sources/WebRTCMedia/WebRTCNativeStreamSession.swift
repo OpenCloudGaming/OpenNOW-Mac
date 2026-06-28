@@ -48,6 +48,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     var onVideoFrame: ((UnsafeMutableRawPointer?) -> Void)?
     var onEnhancedVideoFrame: ((UnsafeMutableRawPointer?) -> Void)?
     var onGameAudioFrame: ((UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
+    var onMicrophoneAudioFrame: ((UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
     var onClipboardText: ((String) -> Void)?
     var onMicrophoneLevel: ((Double) -> Void)?
 
@@ -87,7 +88,6 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         stop()
         callbackGeneration &+= 1
         let generation = callbackGeneration
-        let settings = nativeWebRTCCompatibleSettings(settings)
         self.settings = settings
         configuredMaxBitrateMbps = max(1, int(settings["maxBitrateMbps"], fallback: 50))
         adaptiveBitrateMbps = configuredMaxBitrateMbps
@@ -372,6 +372,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func handleCapturedMicrophoneLevel(_ level: Double) { handleMicrophoneLevel(level * microphoneVolume) }
     func handleMicrophoneLevel(_ level: Double) { onMicrophoneLevel?(level) }
     func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) { onGameAudioFrame?(audioBufferList, frameCount, sampleRate, channels) }
+    func handleMicrophoneAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) { onMicrophoneAudioFrame?(audioBufferList, frameCount, sampleRate, channels) }
     func refreshAudioDevices() { audioController.refreshAudioDevices(sessionImpl: impl) }
 
     func handleLocalIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int32) {
@@ -790,17 +791,6 @@ private func buildNvstSdp(settings: [String: Any], credentials: OPNIceCredential
 }
 
 private struct OPNIceCredentials { var ufrag = ""; var pwd = ""; var fingerprint = "" }
-
-private func nativeWebRTCCompatibleSettings(_ settings: [String: Any]) -> [String: Any] {
-    guard normalizedCodec(string(settings["codec"])) == "H265" else { return settings }
-    var result = settings
-    result["codec"] = "H264"
-    if string(result["colorQuality"]).lowercased().hasPrefix("10bit") {
-        result["colorQuality"] = "8bit_420"
-    }
-    WebRTCMediaTelemetry.capture("webrtc.native.codec.fallback", level: .warning, message: "Falling back from H265 to H264 for native WebRTC.", attributes: ["requested": "H265", "codec": "H264", "colorQuality": string(result["colorQuality"])])
-    return result
-}
 
 private func extractIceCredentials(from sdp: String) -> OPNIceCredentials {
     var credentials = OPNIceCredentials()

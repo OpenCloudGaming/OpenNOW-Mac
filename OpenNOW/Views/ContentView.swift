@@ -45,7 +45,7 @@ struct ContentView: View {
             .onChange(of: accounts.count) { _, _ in syncViewModel() }
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
             .onChange(of: devices.count) { _, _ in syncViewModel() }
-            .onOpenURL { url in viewModel.handleOAuthCallback(url) }
+            .onOpenURL { url in handleOpenURL(url) }
             .onReceive(NotificationCenter.default.publisher(for: .openNOWDidOpenFile)) { notification in
                 guard let url = notification.object as? URL else { return }
                 viewModel.handleOpenedFile(url)
@@ -62,9 +62,9 @@ struct ContentView: View {
     }
 
     private func dismissStartupLoading() async {
-        try? await Task.sleep(nanoseconds: 2_200_000_000)
+        try? await Task.sleep(nanoseconds: OpenNOWStartupAnimation.dismissalDelayNanoseconds)
         guard !Task.isCancelled else { return }
-        withAnimation(.easeInOut(duration: 0.52)) {
+        withAnimation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration)) {
             isShowingStartupLoading = false
         }
     }
@@ -77,6 +77,10 @@ struct ContentView: View {
 
     private func syncViewModel() {
         viewModel.update(modelContext: modelContext, accounts: accounts, sessions: sessions, devices: devices)
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        viewModel.handleOAuthCallback(url)
     }
 }
 
