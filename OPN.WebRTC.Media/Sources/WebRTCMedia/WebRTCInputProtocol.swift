@@ -1,7 +1,5 @@
 import Foundation
 
-import Foundation
-
 @objcMembers
 @objc(OPNInputProtocolEncoder)
 public final class OPNInputProtocolEncoder: NSObject {

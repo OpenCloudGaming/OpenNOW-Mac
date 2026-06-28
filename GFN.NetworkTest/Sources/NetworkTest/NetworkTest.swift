@@ -1,6 +1,4 @@
 import Foundation
-
-import Foundation
 import OpenNOWTelemetry
 
 public enum NetworkTest: Sendable {

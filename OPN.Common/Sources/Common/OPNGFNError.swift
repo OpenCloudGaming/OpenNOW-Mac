@@ -1,7 +1,5 @@
 import Foundation
 
-import Foundation
-
 enum OPNGFNErrorMapper {
     private static let noGFNErrorCode = Int64.min
 
