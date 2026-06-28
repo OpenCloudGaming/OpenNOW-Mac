@@ -15,29 +15,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Run Package Unit Tests
+  packages:
+    name: Build and Test Packages
     runs-on: macos-26
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - GFN.CloudMatch
-          - GFN.GDN
-          - GFN.Jarvis
-          - GFN.LCARS
-          - GFN.NesAuth
-          - GFN.NetworkTest
-          - GFN.Ragnarok
-          - GFN.Starfleet
-          - GFN.UDS
-          - OPN.Auth
-          - OPN.Common
-          - OPN.GameServices
-          - OPN.SignalLinkKit
-          - OPN.Telemetry
-          - OPN.WebRTC.Media
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -51,14 +32,48 @@ jobs:
           xcodebuild -version
         shell: bash
 
-      - name: Run unit tests
+      - name: Cache SwiftPM build graph
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
+
+      - name: Build package workspace
         run: |
           set -euo pipefail
-          if [[ -d "${{ matrix.package }}/Tests" ]]; then
-            swift test --package-path "${{ matrix.package }}"
-          else
-            swift build --package-path "${{ matrix.package }}"
-          fi
+          swift build
+        shell: bash
+
+      - name: Run package unit tests
+        run: |
+          set -euo pipefail
+          packages=(
+            GFN.CloudMatch
+            GFN.GDN
+            GFN.Jarvis
+            GFN.LCARS
+            GFN.NesAuth
+            GFN.NetworkTest
+            GFN.Ragnarok
+            GFN.Starfleet
+            GFN.UDS
+            OPN.Common
+            OPN.GameServices
+            OPN.Telemetry
+            OPN.Twitch
+            OPN.WebRTC.Media
+          )
+
+          for package in "${packages[@]}"; do
+            echo "::group::swift test --package-path ${package}"
+            swift test --package-path "${package}" --scratch-path .build/package-tests
+            echo "::endgroup::"
+          done
         shell: bash
 
   app-build:
