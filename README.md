@@ -53,23 +53,28 @@ xcodebuild build -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug
 
 ## Testing
 
-Run package tests from an individual package directory. For example:
+Build packages from the repository root so SwiftPM uses one shared `.build` graph for all local packages:
 
 ```sh
-cd OPN.WebRTC.Media
-swift test
+swift build
 ```
 
 Useful focused checks:
 
 ```sh
-cd OPN.GameServices
-swift test
+swift test --package-path OPN.GameServices
 ```
 
 ```sh
-cd OPN.WebRTC.Media
-swift test --filter WebRTCStreamRecording
+swift test --package-path OPN.WebRTC.Media --filter WebRTCStreamRecording
+```
+
+Avoid running `swift build` from each package directory during normal development. Each package-local build creates a separate `.build` tree and can duplicate large binary artifacts such as `sentry-cocoa`. Focused `swift test --package-path ...` commands are still useful when validating one package; run the cleanup script afterward if disk usage grows.
+
+To remove generated SwiftPM build caches and reclaim disk space:
+
+```sh
+scripts/clean-spm-builds.sh
 ```
 
 Performance audit entry points are documented under `scripts/perf-audit/PERFORMANCE_AUDIT.md`.
