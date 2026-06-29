@@ -440,6 +440,13 @@ public final class OPNSentry: NSObject {
     }
 
     private static func sanitize(event: Event) -> Event? {
+        if shouldDropAutoCapturedHTTPClientError(
+            exceptionTypes: event.exceptions?.compactMap(\.type) ?? [],
+            exceptionValues: event.exceptions?.compactMap(\.value) ?? [],
+            requestURL: event.request?.url
+        ) {
+            return nil
+        }
         if let message = event.message?.formatted, !message.isEmpty {
             event.message = SentryMessage(formatted: sanitizedMessage(message))
         }
@@ -460,6 +467,15 @@ public final class OPNSentry: NSObject {
             user.data = nil
         }
         return event
+    }
+
+    static func shouldDropAutoCapturedHTTPClientError(exceptionTypes: [String], exceptionValues: [String], requestURL: String?) -> Bool {
+        guard exceptionTypes.contains("HTTPClientError") else { return false }
+        guard exceptionValues.contains(where: { value in
+            value.range(of: #"\b5\d\d\b"#, options: .regularExpression) != nil
+        }) else { return false }
+        guard let requestURL, let url = URL(string: requestURL), let host = url.host?.lowercased() else { return false }
+        return host.contains("cloudmatchbeta.nvidiagrid.net") && url.path == "/v2/session"
     }
 
     private static func sanitize(breadcrumb: Breadcrumb) -> Breadcrumb? {
