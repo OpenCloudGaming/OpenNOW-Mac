@@ -496,6 +496,8 @@ final class OPNMetalFXUpscaler: NSObject {
 @objc(OPNVideoEnhancementRenderer)
 @MainActor
 final class OPNVideoEnhancementRenderer: NSObject {
+    private static let renderTargetPixelFormat: MTLPixelFormat = .bgra8Unorm
+
     private let device: (any MTLDevice)?
     private let commandQueue: (any MTLCommandQueue)?
     private let ciContext: CIContext?
@@ -659,8 +661,8 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
         guard sourceWidth > 0, sourceHeight > 0, outputWidth >= sourceWidth, outputHeight >= sourceHeight else { return false }
-        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: sourceWidth, height: sourceHeight, pixelFormat: .bgra8Unorm, usage: [.shaderRead, .renderTarget], label: "OpenNOW MetalFX source"),
-              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: drawable.texture.pixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
+        guard let sourceTexture = reusableTexture(&metalFXIntermediateTexture, width: sourceWidth, height: sourceHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .renderTarget], label: "OpenNOW MetalFX source"),
+              let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
             result.fallbackReason = "MetalFX texture allocation failed"
             recordDrop(in: result)
             return false
@@ -702,7 +704,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         guard isMetalFXAvailable, temporalPresentPipeline != nil else { return false }
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
-        guard let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: drawable.texture.pixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
+        guard let outputTexture = reusableTexture(&metalFXOutputTexture, width: outputWidth, height: outputHeight, pixelFormat: Self.renderTargetPixelFormat, usage: [.shaderRead, .shaderWrite, .renderTarget], label: "OpenNOW MetalFX output") else {
             result.fallbackReason = "MetalFX output texture allocation failed"
             return false
         }
@@ -714,7 +716,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
             guard let primaryTexture else { return false }
             let width = Int(textureFrame.contentWidth) > 0 ? Int(textureFrame.contentWidth) : primaryTexture.width
             let height = Int(textureFrame.contentHeight) > 0 ? Int(textureFrame.contentHeight) : primaryTexture.height
-            guard let intermediateTexture = reusableTexture(&metalFXIntermediateTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW MetalFX conversion intermediate") else {
+            guard let intermediateTexture = reusableTexture(&metalFXIntermediateTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW MetalFX conversion intermediate") else {
                 result.fallbackReason = "MetalFX intermediate texture allocation failed"
                 return false
             }
@@ -781,9 +783,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
         let height = drawable.texture.height
         let motionWidth = max(1, (width + 1) / 2)
         let motionHeight = max(1, (height + 1) / 2)
-        guard let currentTexture = reusableTexture(&temporalCurrentTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal current"),
-              let outputTexture = reusableTexture(&temporalOutputTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal output"),
-              let historyTexture = reusableTexture(&temporalHistoryTexture, width: width, height: height, pixelFormat: .bgra8Unorm, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal history"),
+        guard let currentTexture = reusableTexture(&temporalCurrentTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal current"),
+              let outputTexture = reusableTexture(&temporalOutputTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal output"),
+              let historyTexture = reusableTexture(&temporalHistoryTexture, width: width, height: height, pixelFormat: Self.renderTargetPixelFormat, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal history"),
               let motionTexture = reusableTexture(&temporalMotionTexture, width: motionWidth, height: motionHeight, pixelFormat: .rgba16Float, usage: [.renderTarget, .shaderRead], label: "OpenNOW temporal half-res motion") else {
             result.fallbackReason = "temporal upscaler could not allocate history textures"
             temporalHistoryValid = false
@@ -844,6 +846,10 @@ final class OPNVideoEnhancementRenderer: NSObject {
         result: OPNVideoEnhancementResult,
         jitter suppliedJitter: SIMD2<Float> = SIMD2<Float>(0, 0)
     ) -> Bool {
+        guard destinationTexture.pixelFormat == Self.renderTargetPixelFormat else {
+            result.fallbackReason = "spatial scaler drawable format unsupported"
+            return false
+        }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = destinationTexture
         pass.colorAttachments[0].loadAction = .clear
@@ -983,6 +989,10 @@ final class OPNVideoEnhancementRenderer: NSObject {
         commandBuffer: any MTLCommandBuffer,
         result: OPNVideoEnhancementResult
     ) -> Bool {
+        guard destinationTexture.pixelFormat == Self.renderTargetPixelFormat else {
+            result.fallbackReason = "present drawable format unsupported"
+            return false
+        }
         guard let temporalPresentPipeline else {
             result.fallbackReason = "temporal upscaler missing present target"
             return false
@@ -1003,7 +1013,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         return true
     }
 
-    private func newSpatialPipeline(fragmentFunctionName: String, pixelFormat: MTLPixelFormat = .bgra8Unorm) -> (any MTLRenderPipelineState)? {
+    private func newSpatialPipeline(fragmentFunctionName: String, pixelFormat: MTLPixelFormat = renderTargetPixelFormat) -> (any MTLRenderPipelineState)? {
         guard let device, let shaderLibrary else { return nil }
         do {
             let descriptor = MTLRenderPipelineDescriptor()

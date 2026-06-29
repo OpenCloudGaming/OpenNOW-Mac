@@ -81,6 +81,9 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         metalView.frame = bounds
         metalView.autoresizingMask = [.width, .height]
         metalView.framebufferOnly = true
+        metalView.colorPixelFormat = .bgra8Unorm
+        metalView.depthStencilPixelFormat = .invalid
+        metalView.sampleCount = 1
         metalView.autoResizeDrawable = false
         metalView.preferredFramesPerSecond = self.targetFps
         metalView.isPaused = false
