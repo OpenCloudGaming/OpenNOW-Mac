@@ -31,6 +31,13 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             self?.updateEnhancedVideoFrameCapture()
             self?.onBroadcastStatusChanged?(status)
         }
+        session.onClipboardText = { text in
+            Task { @MainActor in
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(text, forType: .string)
+            }
+        }
         updateEnhancedVideoFrameCapture()
     }
 

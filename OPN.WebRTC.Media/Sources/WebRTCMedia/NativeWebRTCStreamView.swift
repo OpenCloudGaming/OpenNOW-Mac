@@ -171,16 +171,18 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
     public override func keyDown(with event: NSEvent) {
+        if handlePasteShortcut(event) { return }
         if handleCommand(event) { return }
         emitKey(event, isPressed: true)
     }
 
     public override func keyUp(with event: NSEvent) {
+        if handlePasteShortcut(event) { return }
         emitKey(event, isPressed: false)
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        handleCommand(event) || super.performKeyEquivalent(with: event)
+        handlePasteShortcut(event) || handleCommand(event) || super.performKeyEquivalent(with: event)
     }
 
     private func emitMouseMove(_ event: NSEvent) {
@@ -323,6 +325,20 @@ public final class NativeWebRTCStreamView: NSView {
         return true
     }
 
+    private func handlePasteShortcut(_ event: NSEvent) -> Bool {
+        guard Self.isPasteShortcut(event), NSPasteboard.general.string(forType: .string) != nil else { return false }
+        if event.type == .keyDown, let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
+            onInputEvent?(.text(deviceID: "keyboard", value: text, timestamp: Self.timestamp()))
+        }
+        return true
+    }
+
+    private static func isPasteShortcut(_ event: NSEvent) -> Bool {
+        guard event.keyCode == 9 else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
+        return modifiers == .command
+    }
+
     private func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard modifiers.contains(.command) else { return nil }
@@ -356,6 +372,7 @@ public final class NativeWebRTCStreamView: NSView {
         keyEquivalentMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, self.window?.isKeyWindow == true else { return event }
             guard NSApplication.shared.isActive else { return event }
+            if self.handlePasteShortcut(event) { return nil }
             if self.handleCommand(event) { return nil }
             self.emitKey(event, isPressed: event.type == .keyDown)
             return nil
