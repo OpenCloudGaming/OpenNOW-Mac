@@ -343,7 +343,7 @@ public final class NativeWebRTCStreamView: NSView {
         case 45: return .toggleStatsHUD
         case 5: return .toggleSidebar
         case 15: return .toggleRecording
-        case 9: return .toggleVideoEnhancement
+        case 4: return .toggleVideoEnhancement
         case 11: return .toggleTwitchBroadcast
         case 17: return .toggleTwitchPanel
         case 12: return .showQuitMenu
