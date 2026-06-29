@@ -358,12 +358,12 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             guard let window else { return }
             let notificationCenter = NotificationCenter.default
             let willEnterToken = notificationCenter.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated { [weak self] in
                     self?.beginFullScreenTransition()
                 }
             }
             let willExitToken = notificationCenter.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated { [weak self] in
                     self?.beginFullScreenTransition()
                 }
             }
