@@ -297,6 +297,7 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
         private var appliedLockState: Bool?
         private var fullScreenTransitionObserverTokens: [NSObjectProtocol] = []
         private var isFullScreenTransitioning = false
+        private var needsDeferredAspectRatioClear = false
 
         func attach(_ window: NSWindow?) {
             guard self.window !== window else { return }
@@ -306,6 +307,7 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             appliedAspectRatio = nil
             appliedLockState = nil
             isFullScreenTransitioning = false
+            needsDeferredAspectRatioClear = false
             addFullScreenTransitionObservers(for: window)
             apply()
         }
@@ -323,20 +325,23 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             appliedAspectRatio = nil
             appliedLockState = nil
             isFullScreenTransitioning = false
+            needsDeferredAspectRatioClear = false
         }
 
         private func apply() {
             guard let window else { return }
             guard isLocked, aspectRatio.isFinite, aspectRatio > 0 else {
                 clearAppliedAspectRatio()
-                appliedAspectRatio = nil
-                appliedLockState = false
                 return
             }
 
             guard !isFullScreenTransitioning, !window.styleMask.contains(.fullScreen) else {
-                clearAppliedAspectRatio()
+                needsDeferredAspectRatioClear = true
                 return
+            }
+
+            if needsDeferredAspectRatioClear {
+                clearAppliedAspectRatio()
             }
 
             let alreadyApplied = appliedLockState == true && appliedAspectRatio.map { abs($0 - aspectRatio) <= 0.001 } == true
@@ -344,14 +349,26 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             window.contentAspectRatio = NSSize(width: aspectRatio, height: 1)
             appliedAspectRatio = aspectRatio
             appliedLockState = true
+            needsDeferredAspectRatioClear = false
         }
 
         private func clearAppliedAspectRatio() {
+            guard let window else {
+                appliedAspectRatio = nil
+                appliedLockState = false
+                needsDeferredAspectRatioClear = false
+                return
+            }
+            guard !isFullScreenTransitioning, !window.styleMask.contains(.fullScreen) else {
+                needsDeferredAspectRatioClear = true
+                return
+            }
             if appliedLockState == true {
-                window?.contentAspectRatio = .zero
+                window.contentAspectRatio = .zero
             }
             appliedAspectRatio = nil
             appliedLockState = false
+            needsDeferredAspectRatioClear = false
         }
 
         private func addFullScreenTransitionObservers(for window: NSWindow?) {
@@ -385,7 +402,6 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
 
         private func beginFullScreenTransition() {
             isFullScreenTransitioning = true
-            clearAppliedAspectRatio()
         }
 
         private func finishFullScreenTransition() {
