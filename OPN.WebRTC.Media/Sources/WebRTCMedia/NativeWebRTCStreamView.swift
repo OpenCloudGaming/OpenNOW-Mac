@@ -20,16 +20,8 @@ private final class NativeWebRTCVideoSurfaceView: NSView {
 @MainActor
 public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
-    case toggleSidebar
+    case toggleUnifiedHUD
     case toggleMicrophone
-    case toggleRecording
-    case toggleVideoEnhancement
-    case toggleTwitchBroadcast
-    case toggleTwitchPanel
-    case toggleTwitchChatOverlay
-    case createTwitchMarker
-    case toggleTwitchEventAlerts
-    case toggleAntiAFKMouseMovement
     case showQuitMenu
 }
 
@@ -342,26 +334,11 @@ public final class NativeWebRTCStreamView: NSView {
     private func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard modifiers.contains(.command) else { return nil }
-        let shifted = modifiers.contains(.shift)
-        if shifted {
-            guard modifiers.subtracting([.capsLock, .numericPad]) == [.command, .shift] else { return nil }
-            switch event.keyCode {
-            case 8: return .toggleTwitchChatOverlay
-            case 46: return .createTwitchMarker
-            case 0: return .toggleTwitchEventAlerts
-            default: break
-            }
-        }
         guard modifiers.subtracting([.capsLock, .numericPad]) == .command else { return nil }
         switch event.keyCode {
         case 46: return .toggleMicrophone
-        case 40: return .toggleAntiAFKMouseMovement
         case 45: return .toggleStatsHUD
-        case 5: return .toggleSidebar
-        case 15: return .toggleRecording
-        case 4: return .toggleVideoEnhancement
-        case 11: return .toggleTwitchBroadcast
-        case 17: return .toggleTwitchPanel
+        case 5: return .toggleUnifiedHUD
         case 12: return .showQuitMenu
         default: return nil
         }

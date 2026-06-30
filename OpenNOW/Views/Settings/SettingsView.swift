@@ -826,15 +826,13 @@ private struct TwitchSettingsPage: View {
             }
 
             SettingsCard(title: "In-Stream Hotkeys") {
-                SettingsInfoRow(label: "Command-B", value: "Start or stop Twitch broadcast")
+                SettingsInfoRow(label: "Command-G", value: "Show or hide the unified stream HUD")
                 SettingsDivider()
-                SettingsInfoRow(label: "Command-T", value: "Show or hide Twitch controls")
+                SettingsInfoRow(label: "Command-N", value: "Show or hide stream stats")
                 SettingsDivider()
-                SettingsInfoRow(label: "Command-Shift-C", value: "Show or hide Twitch chat overlay")
+                SettingsInfoRow(label: "Command-M", value: "Toggle microphone")
                 SettingsDivider()
-                SettingsInfoRow(label: "Command-Shift-M", value: "Create a Twitch stream marker")
-                SettingsDivider()
-                SettingsInfoRow(label: "Command-Shift-A", value: "Toggle Twitch event alerts")
+                SettingsInfoRow(label: "Command-Q", value: "Open stream quit controls")
             }
         }
     }

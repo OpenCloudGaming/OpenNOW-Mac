@@ -133,14 +133,10 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var statusMessage = "Starting WebRTC media path..."
     @State private var pointerLocked = false
     @State private var statsVisible = false
-    @State private var videoEnhancementSettingsVisible = false
-    @State private var twitchPanelVisible = false
-    @State private var twitchChatOverlayVisible = false
-    @State private var twitchEventAlertsVisible = false
+    @State private var unifiedHUDVisible = false
     @State private var twitchMarkerMessage = ""
     @State private var twitchMarkerDraft = ""
     @State private var twitchChatDraft = ""
-    @State private var sidebarVisible = true
     @State private var quitMenuVisible = false
     @State private var isEndingStream = false
     @State private var didEndStream = false
@@ -208,45 +204,13 @@ public struct WebRTCMediaStreamSurface: View {
             }
             if !isStreamReady { launchOverlay }
             if statsVisible { statsHUD }
-            if videoEnhancementSettingsVisible { videoEnhancementSettingsPanel }
-            if twitchPanelVisible { twitchPanel }
-            if twitchChatOverlayVisible { twitchChatOverlay }
-            if twitchEventAlertsVisible { twitchEventAlertOverlay }
-            if sidebarVisible { sidebar }
+            if unifiedHUDVisible { unifiedHUD }
             if quitMenuVisible { quitMenu }
-            if !transientStreamMessage.isEmpty { transientNotification }
-            recordingIndicator
-            broadcastIndicator
-            micStatusIndicator
         }
         .background(Color.black)
         .ignoresSafeArea()
         .onAppear { registerStreamLifecycle() }
         .onDisappear { stopStream() }
-    }
-
-    private var launchOverlay: some View {
-        LinearGradient(
-            colors: [WebRTCMediaStreamTheme.surface.opacity(0.98), WebRTCMediaStreamTheme.surfaceRaised.opacity(0.98)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            VStack(spacing: 18) {
-                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(statusMessage)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(WebRTCMediaStreamTheme.accentSoft.opacity(0.84))
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(WebRTCMediaStreamTheme.accent)
-            }
-            .padding(36)
-            .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
-        }
     }
 
     private var statsHUD: some View {
@@ -277,63 +241,123 @@ public struct WebRTCMediaStreamSurface: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
-    private var transientNotification: some View {
-        Text(transientStreamMessage)
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .frame(height: 38)
-            .background(.black.opacity(0.72), in: Capsule())
-            .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.42), lineWidth: 1))
-            .shadow(color: .black.opacity(0.38), radius: 18, y: 8)
-            .padding(.top, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var sidebar: some View {
-        VStack(spacing: 10) {
-            Text("GFN")
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                .padding(.bottom, 6)
-            sidebarButton(systemName: "waveform.path.ecg", title: "Stats") {
-                statsVisible.toggle()
-            }
-            sidebarButton(systemName: "record.circle", title: recordingButtonTitle, isActive: recordingCanStop) {
-                toggleRecording()
-            }
-            .disabled(!isStreamReady || recordingIsBusy)
-            sidebarButton(systemName: "sparkles", title: "Video") {
-                toggleVideoEnhancementSettings()
-            }
-            sidebarButton(systemName: "dot.radiowaves.left.and.right", title: broadcastButtonTitle, isActive: broadcastStatus.isBroadcasting) {
-                toggleTwitchPanel()
-            }
-            .disabled(!isStreamReady)
-        }
-        .padding(10)
-        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
-        .padding(.top, 22)
-        .padding(.leading, 18)
-    }
-
-    private var videoEnhancementSettingsPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("VIDEO ENHANCEMENT")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
+    private var unifiedHUD: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("OPENNOW STREAM HUD")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                        .tracking(1.2)
+                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("Cmd-G toggles this HUD · Cmd-M toggles microphone · Cmd-Q opens quit controls")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.58))
+                }
                 Spacer()
-                Button(action: { videoEnhancementSettingsVisible = false }) {
+                twitchLiveBadge
+                Button(action: { setUnifiedHUDVisible(false) }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .frame(width: 24, height: 24)
-                        .background(.white.opacity(0.09), in: Circle())
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .frame(width: 30, height: 30)
+                        .background(.white.opacity(0.10), in: Circle())
                 }
                 .buttonStyle(.plain)
             }
+
+            if !transientStreamMessage.isEmpty {
+                Text(transientStreamMessage)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1))
+            }
+
+            HStack(spacing: 10) {
+                hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
+                hudMetricCard(title: "Recording", value: recordingStatusText, positive: recordingStatus.isRecording)
+                hudMetricCard(title: "Broadcast", value: broadcastSummaryText, positive: broadcastStatus.isBroadcasting)
+                hudMetricCard(title: "Anti-AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .top, spacing: 14) {
+                        hudControlsPanel
+                        hudStatsPanel
+                    }
+                    hudVideoPanel
+                    hudTwitchPanel
+                }
+            }
+            .frame(maxHeight: 560)
+        }
+        .font(.system(size: 12, weight: .medium, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.88))
+        .padding(18)
+        .frame(width: 760, alignment: .leading)
+        .background(twitchPanelBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
+        .shadow(color: WebRTCMediaStreamTheme.accent.opacity(0.18), radius: 34, x: 0, y: 16)
+        .padding(.top, 22)
+        .padding(.leading, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var hudControlsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CONTROLS")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.52))
+            HStack(spacing: 10) {
+                twitchSecondaryActionButton(title: microphoneEnabled ? "Mute Mic" : "Unmute Mic", systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill", action: toggleMicrophone)
+                twitchSecondaryActionButton(title: recordingCanStop ? "Stop Recording" : "Record", systemName: "record.circle", action: toggleRecording)
+                    .disabled(!isStreamReady || recordingIsBusy)
+                twitchSecondaryActionButton(title: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK Off" : "Anti-AFK On", systemName: "cursorarrow.motionlines", action: toggleAntiAFKMouseMovement)
+                    .disabled(!isStreamReady)
+            }
+            HStack(spacing: 10) {
+                twitchPrimaryActionButton(title: isPreparingBroadcast ? "Preparing" : (broadcastStatus.isBroadcasting ? "End Live" : "Go Live"), color: broadcastStatus.isBroadcasting ? WebRTCMediaStreamTheme.danger : WebRTCMediaStreamTheme.accent, foregroundColor: broadcastStatus.isBroadcasting ? .white : .black, action: toggleBroadcast)
+                    .disabled(!isStreamReady || isPreparingBroadcast)
+                twitchSecondaryActionButton(title: "Quit Menu", systemName: "power") { showQuitMenu() }
+            }
+        }
+        .padding(12)
+        .frame(width: 354, alignment: .leading)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var hudStatsPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("STREAM STATS")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.52))
+            statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
+            statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
+            statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
+            statsRow("Loss", formatted(latestStats?.packetLossPercent, suffix: "%"))
+            statsRow("FPS", formatted(latestStats?.renderFps, suffix: ""))
+            statsRow("Decode", formatted(latestStats?.decodeTimeMs, suffix: " ms"))
+            statsRow("Drops", String(latestStats?.framesDropped ?? 0))
+            statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
+            statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var hudVideoPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("VIDEO ENHANCEMENT")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.52))
             Picker("Mode", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
                 ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
                     Text(option.label).tag(option.value)
@@ -343,12 +367,8 @@ public struct WebRTCMediaStreamSurface: View {
             .tint(WebRTCMediaStreamTheme.accent)
             .disabled(!isStreamReady)
             if runtimeSettings.upscalingMode != 0 {
-                videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in
-                    updateVideoEnhancement(sharpness: value)
-                }
-                videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in
-                    updateVideoEnhancement(denoise: value)
-                }
+                videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
+                videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
                 Picker("Target", selection: Binding(get: { runtimeSettings.upscalingTargetHeight }, set: { updateVideoEnhancement(targetHeight: $0) })) {
                     ForEach(StreamRuntimeSettings.upscalingTargets, id: \.height) { option in
                         Text(option.label).tag(option.height)
@@ -357,30 +377,113 @@ public struct WebRTCMediaStreamSurface: View {
                 .pickerStyle(.segmented)
                 .disabled(!isStreamReady)
             }
-            Divider().overlay(.white.opacity(0.12))
             settingsRow("Configured", liveEnhancementValue(latestStats?.videoEnhancementConfiguredTier, fallback: runtimeSettings.upscalingModeLabel))
             settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
             settingsRow("Source", liveEnhancementValue(latestStats?.videoEnhancementSourceResolution, fallback: "Pending"))
             settingsRow("Drawable", liveEnhancementValue(latestStats?.videoEnhancementDrawableResolution, fallback: "Pending"))
             settingsRow("Frame", frameTimeValue(latestStats?.videoEnhancementFrameTimeMs))
             settingsRow("Dropped", String(latestStats?.videoEnhancementDroppedFrames ?? 0))
-            if let fallback = latestStats?.videoEnhancementFallbackReason, !fallback.isEmpty {
-                Text(fallback)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
+        }
+        .padding(12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var hudTwitchPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                twitchMetricCard(title: "Account", value: twitchOverlayState.accountSummary, positive: twitchOverlayState.streamKeyAvailable)
+                twitchMetricCard(title: "Chat", value: twitchOverlayState.chatState, positive: twitchOverlayState.chatState.localizedCaseInsensitiveContains("connected"))
+                twitchMetricCard(title: "Events", value: twitchOverlayState.eventSubState, positive: twitchOverlayState.eventSubState.localizedCaseInsensitiveContains("connected"))
+            }
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("BROADCAST")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.52))
+                    Text(twitchStatusText)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(4)
+                    HStack(spacing: 10) {
+                        twitchSecondaryActionButton(title: "Refresh", systemName: "arrow.clockwise") {
+                            Task { @MainActor in await onTwitchHealthRefresh?() }
+                        }
+                    }
+                    Text("Chat and event alerts are shown here inside the unified HUD.")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.54))
+                }
+                .frame(width: 210, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("MARKERS")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.52))
+                    TextField("Describe this moment", text: $twitchMarkerDraft)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    HStack(spacing: 6) {
+                        ForEach(["Highlight", "Clutch", "Boss", "Bug"], id: \.self) { preset in
+                            Button(preset) { createTwitchMarker(description: preset) }
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.86))
+                                .padding(.horizontal, 8)
+                                .frame(height: 26)
+                                .background(.white.opacity(0.08), in: Capsule())
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        twitchSecondaryActionButton(title: "Create Marker", systemName: "bookmark.fill", action: createTwitchMarker)
+                        if !twitchMarkerMessage.isEmpty {
+                            Text(twitchMarkerMessage)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.62))
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(alignment: .top, spacing: 14) {
+                twitchChatPanel
+                twitchEventsPanel
             }
         }
-        .font(.system(size: 11, weight: .medium, design: .monospaced))
-        .padding(14)
-        .frame(width: 272, alignment: .leading)
-        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.25), lineWidth: 1))
-        .shadow(color: .black.opacity(0.48), radius: 24, x: 0, y: 12)
-        .padding(.top, 22)
-        .padding(.leading, 96)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func hudMetricCard(title: String, value: String, positive: Bool) -> some View {
+        twitchMetricCard(title: title, value: value, positive: positive)
+    }
+
+    private var launchOverlay: some View {
+        LinearGradient(
+            colors: [WebRTCMediaStreamTheme.surface.opacity(0.98), WebRTCMediaStreamTheme.surfaceRaised.opacity(0.98)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay {
+            VStack(spacing: 18) {
+                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text(statusMessage)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundStyle(WebRTCMediaStreamTheme.accentSoft.opacity(0.84))
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(WebRTCMediaStreamTheme.accent)
+            }
+            .padding(36)
+            .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+        }
     }
 
     private var quitMenu: some View {
@@ -428,123 +531,6 @@ public struct WebRTCMediaStreamSurface: View {
             .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.26), lineWidth: 1))
             .shadow(color: .black.opacity(0.62), radius: 42, x: 0, y: 20)
         }
-    }
-
-    private var twitchPanel: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("TWITCH COMMAND CENTER")
-                        .font(.system(size: 12, weight: .black, design: .monospaced))
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                        .tracking(1.2)
-                    Text(configuration.title.isEmpty ? "OpenNOW Live" : configuration.title)
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text("Cmd-T toggles this deck · Cmd-B goes live · Cmd-Shift-M marks the stream")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.58))
-                }
-                Spacer()
-                twitchLiveBadge
-                Button(action: { twitchPanelVisible = false }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 30, height: 30)
-                        .background(.white.opacity(0.10), in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(spacing: 10) {
-                twitchMetricCard(title: "Account", value: twitchOverlayState.accountSummary, positive: twitchOverlayState.streamKeyAvailable)
-                twitchMetricCard(title: "Chat", value: twitchOverlayState.chatState, positive: twitchOverlayState.chatState.localizedCaseInsensitiveContains("connected"))
-                twitchMetricCard(title: "Events", value: twitchOverlayState.eventSubState, positive: twitchOverlayState.eventSubState.localizedCaseInsensitiveContains("connected"))
-            }
-
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("BROADCAST")
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.52))
-                    Text(twitchStatusText)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(3)
-                    HStack(spacing: 10) {
-                        twitchPrimaryActionButton(title: isPreparingBroadcast ? "Preparing" : (broadcastStatus.isBroadcasting ? "End Live" : "Go Live"), color: broadcastStatus.isBroadcasting ? WebRTCMediaStreamTheme.danger : WebRTCMediaStreamTheme.accent, foregroundColor: broadcastStatus.isBroadcasting ? .white : .black, action: toggleBroadcast)
-                            .disabled(isPreparingBroadcast)
-                        twitchSecondaryActionButton(title: "Refresh", systemName: "arrow.clockwise") {
-                            Task { @MainActor in await onTwitchHealthRefresh?() }
-                        }
-                    }
-                    Toggle("Chat overlay", isOn: Binding(get: { twitchChatOverlayVisible }, set: { twitchChatOverlayVisible = $0 }))
-                        .toggleStyle(.switch)
-                    Toggle("Event alerts", isOn: Binding(get: { twitchEventAlertsVisible }, set: { twitchEventAlertsVisible = $0 }))
-                        .toggleStyle(.switch)
-                }
-                .frame(width: 210, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("MARKERS")
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.52))
-                    TextField("Describe this moment", text: $twitchMarkerDraft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .frame(height: 34)
-                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    HStack(spacing: 6) {
-                        ForEach(["Highlight", "Clutch", "Boss", "Bug"], id: \.self) { preset in
-                            Button(preset) { createTwitchMarker(description: preset) }
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.86))
-                                .padding(.horizontal, 8)
-                                .frame(height: 26)
-                                .background(.white.opacity(0.08), in: Capsule())
-                                .buttonStyle(.plain)
-                        }
-                    }
-                    HStack(spacing: 10) {
-                        twitchSecondaryActionButton(title: "Create Marker", systemName: "bookmark.fill", action: createTwitchMarker)
-                        if !twitchMarkerMessage.isEmpty {
-                            Text(twitchMarkerMessage)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.62))
-                                .lineLimit(2)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            HStack(alignment: .top, spacing: 14) {
-                twitchChatPanel
-                twitchEventsPanel
-            }
-
-            HStack(spacing: 8) {
-                twitchShortcut("Cmd-T", "Panel")
-                twitchShortcut("Cmd-B", "Live")
-                twitchShortcut("Cmd-Shift-M", "Marker")
-                twitchShortcut("Cmd-Shift-C", "Chat")
-                twitchShortcut("Cmd-Shift-A", "Alerts")
-            }
-        }
-        .font(.system(size: 12, weight: .medium, design: .monospaced))
-        .foregroundStyle(.white.opacity(0.88))
-        .padding(18)
-        .frame(width: 620, alignment: .leading)
-        .background(twitchPanelBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
-        .shadow(color: WebRTCMediaStreamTheme.accent.opacity(0.18), radius: 34, x: 0, y: 16)
-        .padding(.top, 22)
-        .padding(.leading, 96)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var twitchPanelBackground: some ShapeStyle {
@@ -719,210 +705,6 @@ public struct WebRTCMediaStreamSurface: View {
         .buttonStyle(.plain)
     }
 
-    private func twitchShortcut(_ keys: String, _ label: String) -> some View {
-        HStack(spacing: 6) {
-            Text(keys)
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 7)
-                .frame(height: 22)
-                .background(WebRTCMediaStreamTheme.accent, in: Capsule())
-            Text(label)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.62))
-        }
-        .padding(.trailing, 2)
-    }
-
-    private var twitchChatOverlay: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TWITCH CHAT")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(WebRTCMediaStreamTheme.accent.opacity(0.95))
-            if twitchOverlayState.chatMessages.isEmpty {
-                Text(twitchOverlayState.chatState)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.64))
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(twitchOverlayState.chatMessages.suffix(5)) { message in
-                    Text("\(message.author): \(message.text)")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(2)
-                }
-            }
-        }
-        .padding(12)
-        .frame(width: 320, alignment: .leading)
-        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1))
-        .padding(.trailing, 18)
-        .padding(.bottom, 62)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-    }
-
-    private var twitchEventAlertOverlay: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(twitchOverlayState.eventAlerts.suffix(3)) { alert in
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .black))
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(alert.title)
-                            .font(.system(size: 12, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text(alert.message)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
-                    }
-                }
-                .padding(12)
-                .frame(width: 320, alignment: .leading)
-                .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.32), lineWidth: 1))
-            }
-        }
-        .padding(.top, 72)
-        .padding(.trailing, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-    }
-
-    private var micStatusIndicator: some View {
-        let isAvailable = runtimeSettings.microphoneMode != "disabled"
-        return Image(systemName: microphoneEnabled && isAvailable ? "mic.fill" : "mic.slash.fill")
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(microphoneEnabled && isAvailable ? WebRTCMediaStreamTheme.accent : .white.opacity(0.72))
-            .frame(width: 30, height: 30)
-            .background(.black.opacity(0.58), in: Circle())
-            .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
-            .opacity(isAvailable ? 1 : 0.55)
-            .padding(.trailing, 18)
-            .padding(.bottom, 18)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-    }
-
-    private var recordingIndicator: some View {
-        Group {
-            switch recordingStatus {
-            case .starting:
-                Text("Starting recording...")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(.black.opacity(0.62), in: Capsule())
-            case .recording(_, let elapsedSeconds):
-                HStack(spacing: 8) {
-                    Circle().fill(WebRTCMediaStreamTheme.danger).frame(width: 8, height: 8)
-                    Text(recordingElapsedText(elapsedSeconds))
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.94))
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(.black.opacity(0.62), in: Capsule())
-                .overlay(Capsule().stroke(WebRTCMediaStreamTheme.danger.opacity(0.36), lineWidth: 1))
-            case .finishing:
-                Text("Saving recording...")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(.black.opacity(0.62), in: Capsule())
-            case .failed(let message):
-                Text(message)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(WebRTCMediaStreamTheme.danger.opacity(0.72), in: Capsule())
-            case .finished(let recording):
-                Text("Saved: \(recording.title)")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(.black.opacity(0.62), in: Capsule())
-                    .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.32), lineWidth: 1))
-            default:
-                EmptyView()
-            }
-        }
-        .padding(.top, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var broadcastIndicator: some View {
-        Group {
-            if isPreparingBroadcast {
-                broadcastStatusChip(color: WebRTCMediaStreamTheme.accent, text: "Preparing", detail: "Updating Twitch channel")
-            } else {
-                switch broadcastStatus {
-                case .connecting:
-                    broadcastStatusChip(color: WebRTCMediaStreamTheme.accent, text: "Connecting")
-                case .publishing(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                    broadcastStatusChip(color: WebRTCMediaStreamTheme.accent.opacity(0.78), text: "Twitch", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
-                case .live(_, let elapsedSeconds, let droppedFrames, let videoBitrateKbps):
-                    broadcastStatusChip(color: WebRTCMediaStreamTheme.danger, text: "Live", detail: "\(recordingElapsedText(elapsedSeconds)) · \(videoBitrateKbps) Kbps · \(droppedFrames) drops")
-                case .stopping:
-                    broadcastStatusChip(color: WebRTCMediaStreamTheme.warning, text: "Stopping")
-                case .failed(let message):
-                    broadcastStatusChip(color: WebRTCMediaStreamTheme.accent, text: message)
-                case .idle:
-                    EmptyView()
-                }
-            }
-        }
-        .padding(.top, 24)
-        .padding(.trailing, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-    }
-
-    private func broadcastStatusChip(color: Color, text: String, detail: String? = nil) -> some View {
-        HStack(spacing: 7) {
-            Circle().fill(color).frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(text)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.94))
-                    .lineLimit(1)
-                if let detail, !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(height: detail == nil ? 26 : 34)
-        .background(.black.opacity(0.56), in: Capsule())
-        .overlay(Capsule().stroke(color.opacity(0.34), lineWidth: 1))
-        .shadow(color: .black.opacity(0.34), radius: 12, x: 0, y: 5)
-    }
-
-    private func sidebarButton(systemName: String, title: String, isActive: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: systemName)
-                    .font(.system(size: 17, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-            }
-            .foregroundStyle(isActive ? .white : .white.opacity(0.92))
-            .frame(width: 58, height: 54)
-            .background(isActive ? WebRTCMediaStreamTheme.danger.opacity(0.72) : .white.opacity(0.075), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
     private var recordingIsBusy: Bool {
         if case .finishing = recordingStatus { return true }
         return false
@@ -933,13 +715,32 @@ public struct WebRTCMediaStreamSurface: View {
         return recordingStatus.isRecording
     }
 
-    private var recordingButtonTitle: String {
-        recordingCanStop ? "Stop" : "Record"
+    private var microphoneStatusText: String {
+        guard runtimeSettings.microphoneMode != "disabled" else { return "Disabled" }
+        return microphoneEnabled ? "On" : "Muted"
     }
 
-    private var broadcastButtonTitle: String {
-        if isPreparingBroadcast { return "Wait" }
-        return broadcastStatus.isBroadcasting ? "Stop" : "Twitch"
+    private var recordingStatusText: String {
+        switch recordingStatus {
+        case .idle: return "Idle"
+        case .starting: return "Starting"
+        case .recording(_, let elapsedSeconds): return recordingElapsedText(elapsedSeconds)
+        case .finishing: return "Saving"
+        case .finished: return "Saved"
+        case .failed: return "Failed"
+        }
+    }
+
+    private var broadcastSummaryText: String {
+        if isPreparingBroadcast { return "Preparing" }
+        switch broadcastStatus {
+        case .idle: return "Idle"
+        case .connecting: return "Connecting"
+        case .publishing: return "Publishing"
+        case .live: return "Live"
+        case .stopping: return "Stopping"
+        case .failed: return "Failed"
+        }
     }
 
     private var twitchStatusText: String {
@@ -967,10 +768,15 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func toggleTwitchPanel() {
-        twitchPanelVisible.toggle()
-        if twitchPanelVisible { nativeView?.setPointerLocked(false) }
-        WebRTCMediaTelemetry.capture("webrtc.ui.twitch.panel", level: .info, message: twitchPanelVisible ? "Twitch panel shown." : "Twitch panel hidden.", attributes: ["visible": String(twitchPanelVisible)])
+    private func toggleUnifiedHUD() {
+        setUnifiedHUDVisible(!unifiedHUDVisible)
+        WebRTCMediaTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
+    }
+
+    private func setUnifiedHUDVisible(_ visible: Bool) {
+        unifiedHUDVisible = visible
+        guard visible else { return }
+        nativeView?.setPointerLocked(false)
     }
 
     private func toggleBroadcast() {
@@ -1064,11 +870,6 @@ public struct WebRTCMediaStreamSurface: View {
         )
         transport?.startRecording(configuration: recordingConfiguration)
         WebRTCMediaTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording started.", attributes: ["applicationID": configuration.applicationID])
-    }
-
-    private func toggleVideoEnhancementSettings() {
-        videoEnhancementSettingsVisible.toggle()
-        WebRTCMediaTelemetry.capture("webrtc.ui.video_enhancement.toggle", level: .info, message: videoEnhancementSettingsVisible ? "Video enhancement settings shown." : "Video enhancement settings hidden.", attributes: ["visible": String(videoEnhancementSettingsVisible)])
     }
 
     private func recordingElapsedText(_ elapsedSeconds: Double) -> String {
@@ -1337,7 +1138,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func inputAction(for event: UserInputEvent) -> StreamInputAction {
         guard !quitMenuVisible, !isEndingStream else { return .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneToggleAction(for: keyboard) { return microphoneAction }
-        if twitchPanelVisible { return .drop }
+        if unifiedHUDVisible { return .drop }
         guard shouldAcceptInputWhenInactive() else { return runtimeSettings.microphoneMode == "push-to-talk" ? .setMicrophone(false) : .drop }
         if let keyboard = keyboardEvent(from: event), let microphoneAction = microphoneAction(for: keyboard) { return microphoneAction }
         if let mouse = mouseEvent(from: event) {
@@ -1388,32 +1189,10 @@ public struct WebRTCMediaStreamSurface: View {
         case .toggleStatsHUD:
             statsVisible.toggle()
             WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
-        case .toggleSidebar:
-            setSidebarVisible(!sidebarVisible)
-            WebRTCMediaTelemetry.capture("webrtc.ui.sidebar.toggle", level: .info, message: sidebarVisible ? "Sidebar shown." : "Sidebar hidden.", attributes: ["visible": String(sidebarVisible)])
+        case .toggleUnifiedHUD:
+            toggleUnifiedHUD()
         case .toggleMicrophone:
             toggleMicrophone()
-        case .toggleAntiAFKMouseMovement:
-            toggleAntiAFKMouseMovement()
-        case .toggleRecording:
-            guard isStreamReady, !recordingIsBusy else { return }
-            toggleRecording()
-        case .toggleVideoEnhancement:
-            toggleVideoEnhancementSettings()
-        case .toggleTwitchBroadcast:
-            guard isStreamReady else { return }
-            toggleBroadcast()
-        case .toggleTwitchPanel:
-            guard isStreamReady else { return }
-            toggleTwitchPanel()
-        case .toggleTwitchChatOverlay:
-            twitchChatOverlayVisible.toggle()
-            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.chat_overlay", level: .info, message: twitchChatOverlayVisible ? "Twitch chat overlay shown." : "Twitch chat overlay hidden.", attributes: ["visible": String(twitchChatOverlayVisible)])
-        case .createTwitchMarker:
-            createTwitchMarker()
-        case .toggleTwitchEventAlerts:
-            twitchEventAlertsVisible.toggle()
-            WebRTCMediaTelemetry.capture("webrtc.ui.twitch.event_alerts", level: .info, message: twitchEventAlertsVisible ? "Twitch event alerts enabled." : "Twitch event alerts disabled.", attributes: ["visible": String(twitchEventAlertsVisible)])
         case .showQuitMenu:
             showQuitMenu()
         }
@@ -1490,14 +1269,8 @@ public struct WebRTCMediaStreamSurface: View {
     private func handlePointerLockChanged(_ locked: Bool) {
         pointerLocked = locked
         if locked {
-            setSidebarVisible(false)
+            setUnifiedHUDVisible(false)
         }
-    }
-
-    private func setSidebarVisible(_ visible: Bool) {
-        sidebarVisible = visible
-        guard visible else { return }
-        nativeView?.setPointerLocked(false)
     }
 
     private func registerStreamLifecycle() {
