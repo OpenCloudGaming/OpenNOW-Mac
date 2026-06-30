@@ -307,6 +307,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         putArray(game.campaignIds, key: "ci", into: &dictionary)
         putArray(game.skuTags, key: "sk", into: &dictionary)
         if game.isInLibrary { dictionary["il"] = true }
+        if game.isPatching { dictionary["ip"] = true }
         if !game.variants.isEmpty { dictionary["z"] = game.variants.map(variantDictionary) }
         return dictionary
     }
@@ -350,6 +351,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         game.campaignIds = dictionary["ci"] as? [String] ?? []
         game.skuTags = dictionary["sk"] as? [String] ?? []
         game.isInLibrary = (dictionary["il"] as? NSNumber)?.boolValue ?? false
+        game.isPatching = (dictionary["ip"] as? NSNumber)?.boolValue ?? false
         game.variants = (dictionary["z"] as? [Any] ?? []).map(gameVariant)
         return game
     }
@@ -362,6 +364,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         putString(variant.appStoreSmallImageUrl, key: "m", into: &dictionary)
         putString(variant.storeUrl, key: "u", into: &dictionary)
         putString(variant.serviceStatus, key: "t", into: &dictionary)
+        if variant.isPatching { dictionary["p"] = true }
         if variant.librarySelected { dictionary["l"] = true }
         if variant.inLibrary { dictionary["b"] = true }
         return dictionary
@@ -376,6 +379,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
             appStoreSmallImageUrl: dictionary["m"] as? String ?? "",
             storeUrl: dictionary["u"] as? String ?? "",
             serviceStatus: dictionary["t"] as? String ?? "",
+            isPatching: (dictionary["p"] as? NSNumber)?.boolValue ?? false,
             librarySelected: (dictionary["l"] as? NSNumber)?.boolValue ?? false,
             inLibrary: (dictionary["b"] as? NSNumber)?.boolValue ?? false
         )

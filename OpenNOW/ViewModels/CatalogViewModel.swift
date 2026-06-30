@@ -173,6 +173,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var twitchPrimaryStreamKeySaved = TwitchStreamKeyStore.exists()
     @Published var isConnectingTwitch = false
     @Published var catalogBroadcastStatus = WebRTCLiveBroadcastStatus.idle
+    @Published var queuedPatchingLaunchGameTitle = ""
 
     let account: LoginAccount
     let session: LoginSession
@@ -191,6 +192,10 @@ final class CatalogViewModel: ObservableObject {
     private var isCatalogBroadcastPreparing = false
     private var selectedGameRevealSequence = 0
     private var settingsPreferencesTask: Task<Void, Never>?
+    private var patchingPollTask: Task<Void, Never>?
+    private var patchingPollInFlight = false
+    private var queuedPatchingLaunchIdentity = ""
+    private var queuedPatchingLaunchVariantIndex = -1
     private let catalogBroadcastController = WebRTCLiveBroadcastController.shared
     private var catalogBroadcastObserverID: UUID?
 
@@ -217,6 +222,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     deinit {
+        patchingPollTask?.cancel()
         if let catalogBroadcastObserverID {
             catalogBroadcastController.removeStatusObserver(catalogBroadcastObserverID)
         }
@@ -381,6 +387,7 @@ final class CatalogViewModel: ObservableObject {
                 self.sortOptions = browseResult.sortOptions
                 if !browseResult.selectedSortId.isEmpty { self.selectedSortId = browseResult.selectedSortId }
                 self.selectedFilterIds = browseResult.selectedFilterIds
+                self.schedulePatchingPollIfNeeded()
             }
         }
     }
@@ -455,6 +462,20 @@ final class CatalogViewModel: ObservableObject {
 
     func launch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
         beginVendorLaunch(game: game, variantIndex: variantIndex)
+    }
+
+    func queuePatchingLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
+        guard Self.isPatching(game) else { return }
+        queuedPatchingLaunchIdentity = Self.identity(for: game)
+        queuedPatchingLaunchVariantIndex = variantIndex ?? selectedVariantIndexIfMatching(game) ?? Self.preferredVariantIndex(for: game)
+        queuedPatchingLaunchGameTitle = game.title.isEmpty ? "GeForce NOW" : game.title
+        actionMessage = "Queued \(queuedPatchingLaunchGameTitle) to launch when patching finishes."
+        errorMessage = ""
+        schedulePatchingPollIfNeeded(immediate: true)
+    }
+
+    func isQueuedForPatching(_ game: OPNCatalogGameObject) -> Bool {
+        !queuedPatchingLaunchIdentity.isEmpty && Self.identity(for: game) == queuedPatchingLaunchIdentity
     }
 
     func openGameShortcut(_ shortcut: GFNGameShortcut) {
@@ -1413,6 +1434,7 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.marqueePanels = panelBox.value
+                    self.schedulePatchingPollIfNeeded()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
@@ -1427,6 +1449,7 @@ final class CatalogViewModel: ObservableObject {
                 self.isLoadingPanels = false
                 if success {
                     self.mainPanels = panelBox.value
+                    self.schedulePatchingPollIfNeeded()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.isLoadingPanels = false
                 } else if self.errorMessage.isEmpty {
@@ -1445,6 +1468,7 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.libraryGames = gamesBox.value
+                    self.schedulePatchingPollIfNeeded()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.libraryGames = []
                 }
@@ -1461,6 +1485,7 @@ final class CatalogViewModel: ObservableObject {
                 guard let self = selfBox.value else { return }
                 if success {
                     self.updateFavoriteGames(gamesBox.value)
+                    self.schedulePatchingPollIfNeeded()
                 } else if self.refreshAuthIfNeeded(error: error) {
                     self.updateFavoriteGames([])
                 } else if self.selectedCatalogDestination == .favorites, self.errorMessage.isEmpty {
@@ -1557,6 +1582,123 @@ final class CatalogViewModel: ObservableObject {
         }
     }
 
+    private func schedulePatchingPollIfNeeded(immediate: Bool = false) {
+        let patchingAppIds = patchingPollAppIds()
+        guard !patchingAppIds.isEmpty else {
+            patchingPollTask?.cancel()
+            patchingPollTask = nil
+            return
+        }
+        guard patchingPollTask == nil else {
+            if immediate {
+                Task { @MainActor [weak self] in await self?.refreshPatchingStatuses() }
+            }
+            return
+        }
+        patchingPollTask = Task { @MainActor [weak self] in
+            if immediate { await self?.refreshPatchingStatuses() }
+            while let self, !Task.isCancelled {
+                let delaySeconds = UInt64(Int.random(in: 30...60))
+                try? await Task.sleep(for: .seconds(delaySeconds))
+                guard !Task.isCancelled else { return }
+                await self.refreshPatchingStatuses()
+                if self.patchingPollAppIds().isEmpty {
+                    self.patchingPollTask = nil
+                    return
+                }
+            }
+        }
+    }
+
+    private func refreshPatchingStatuses() async {
+        guard !patchingPollInFlight else { return }
+        let appIds = patchingPollAppIds()
+        guard !appIds.isEmpty else { return }
+        patchingPollInFlight = true
+        let selfBox = CatalogWeakObject(self)
+        await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchAppPatchStatuses(appIds: appIds) { success, statuses, error in
+                Task { @MainActor in
+                    guard let self = selfBox.value else {
+                        continuation.resume()
+                        return
+                    }
+                    self.patchingPollInFlight = false
+                    if success {
+                        self.applyPatchingStatuses(statuses)
+                    } else if !error.isEmpty {
+                        OpenNOWLog.warning(.catalog, "App patch status poll failed: \(error)")
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func patchingPollAppIds() -> [String] {
+        let ids = allKnownGames.filter(Self.isPatching).compactMap(Self.patchStatusAppId)
+        return Array(Set(ids)).sorted()
+    }
+
+    private func applyPatchingStatuses(_ statuses: [String: OPNAppPatchStatus]) {
+        guard !statuses.isEmpty else { return }
+        updatePatchingStatuses(in: &catalogGames, statuses: statuses)
+        updatePatchingStatuses(in: &libraryGames, statuses: statuses)
+        updatePatchingStatuses(in: &favoriteGames, statuses: statuses)
+        updatePatchingStatuses(in: &marqueePanels, statuses: statuses)
+        updatePatchingStatuses(in: &mainPanels, statuses: statuses)
+        if let selectedGame, let status = Self.patchStatus(for: selectedGame, statuses: statuses) {
+            applyPatchingStatus(status, to: selectedGame)
+        }
+        launchQueuedPatchingGameIfReady()
+    }
+
+    private func updatePatchingStatuses(in games: inout [OPNCatalogGameObject], statuses: [String: OPNAppPatchStatus]) {
+        for game in games {
+            guard let status = Self.patchStatus(for: game, statuses: statuses) else { continue }
+            applyPatchingStatus(status, to: game)
+        }
+    }
+
+    private func updatePatchingStatuses(in panels: inout [OPNCatalogPanelObject], statuses: [String: OPNAppPatchStatus]) {
+        for panel in panels {
+            for section in panel.sections {
+                for game in section.games {
+                    guard let status = Self.patchStatus(for: game, statuses: statuses) else { continue }
+                    applyPatchingStatus(status, to: game)
+                }
+            }
+        }
+    }
+
+    private func applyPatchingStatus(_ status: OPNAppPatchStatus, to game: OPNCatalogGameObject) {
+        for variant in game.variants {
+            if let isPatching = status.variantPatchingById[variant.id] {
+                variant.isPatching = isPatching
+            }
+        }
+        game.isPatching = status.isPatching || game.variants.contains { $0.isPatching }
+    }
+
+    private func launchQueuedPatchingGameIfReady() {
+        guard !queuedPatchingLaunchIdentity.isEmpty else { return }
+        guard let game = allKnownGames.first(where: { Self.identity(for: $0) == queuedPatchingLaunchIdentity }) else { return }
+        guard !Self.isPatching(game) else { return }
+        let variantIndex = queuedPatchingLaunchVariantIndex
+        let title = queuedPatchingLaunchGameTitle.isEmpty ? (game.title.isEmpty ? "GeForce NOW" : game.title) : queuedPatchingLaunchGameTitle
+        queuedPatchingLaunchIdentity = ""
+        queuedPatchingLaunchVariantIndex = -1
+        queuedPatchingLaunchGameTitle = ""
+        actionMessage = "Patching finished. Launching \(title)..."
+        selectGame(game)
+        launch(game: game, variantIndex: variantIndex)
+    }
+
+    private func selectedVariantIndexIfMatching(_ game: OPNCatalogGameObject) -> Int? {
+        guard let selectedGame, Self.identity(for: selectedGame) == Self.identity(for: game) else { return nil }
+        return selectedVariantIndex
+    }
+
     private func updateSelectedGameOwnership(gameIdentity: String, variantId: String, inLibrary: Bool) {
         guard let selectedGame, Self.identity(for: selectedGame) == gameIdentity else { return }
         selectedGame.isInLibrary = inLibrary
@@ -1579,6 +1721,22 @@ final class CatalogViewModel: ObservableObject {
             seen.insert(identity)
             games.append(game)
         }
+    }
+
+    private static func isPatching(_ game: OPNCatalogGameObject) -> Bool {
+        game.isPatching || game.variants.contains { $0.isPatching }
+    }
+
+    private static func patchStatusAppId(_ game: OPNCatalogGameObject) -> String? {
+        for value in [game.uuid, game.id, game.launchAppId] where !value.isEmpty { return value }
+        return nil
+    }
+
+    private static func patchStatus(for game: OPNCatalogGameObject, statuses: [String: OPNAppPatchStatus]) -> OPNAppPatchStatus? {
+        for key in [game.uuid, game.id, game.launchAppId] where !key.isEmpty {
+            if let status = statuses[key] { return status }
+        }
+        return nil
     }
 
     private static func hasMarqueeHeroArtwork(_ game: OPNCatalogGameObject) -> Bool {

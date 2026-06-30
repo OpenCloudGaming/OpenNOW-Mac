@@ -36,6 +36,7 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var appStoreSmallImageUrl = ""
     public var storeUrl = ""
     public var serviceStatus = ""
+    public var isPatching = false
     public var librarySelected = false
     public var inLibrary = false
 }
@@ -120,6 +121,7 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var campaignIds: [String] = []
     public var skuTags: [String] = []
     public var isInLibrary = false
+    public var isPatching = false
     public var variants: [OPNGameVariant] = []
 }
 
@@ -300,6 +302,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var appStoreSmallImageUrl: String
     public var storeUrl: String
     public var serviceStatus: String
+    public var isPatching: Bool
     public var librarySelected: Bool
     public var inLibrary: Bool
 
@@ -314,6 +317,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
         appStoreSmallImageUrl = variant.appStoreSmallImageUrl
         storeUrl = variant.storeUrl
         serviceStatus = variant.serviceStatus
+        isPatching = variant.isPatching
         librarySelected = variant.librarySelected
         inLibrary = variant.inLibrary
         super.init()
@@ -327,6 +331,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
             appStoreSmallImageUrl: appStoreSmallImageUrl,
             storeUrl: storeUrl,
             serviceStatus: serviceStatus,
+            isPatching: isPatching,
             librarySelected: librarySelected,
             inLibrary: inLibrary
         )
@@ -372,6 +377,7 @@ public final class OPNCatalogGameObject: NSObject {
     public var campaignIds: [String]
     public var skuTags: [String]
     public var isInLibrary: Bool
+    public var isPatching: Bool
     public var variants: [OPNCatalogGameVariantObject]
 
     public override convenience init() {
@@ -415,6 +421,7 @@ public final class OPNCatalogGameObject: NSObject {
         campaignIds = game.campaignIds
         skuTags = game.skuTags
         isInLibrary = game.isInLibrary
+        isPatching = game.isPatching
         variants = game.variants.map(OPNCatalogGameVariantObject.init)
         super.init()
     }
@@ -457,6 +464,7 @@ public final class OPNCatalogGameObject: NSObject {
         game.campaignIds = campaignIds
         game.skuTags = skuTags
         game.isInLibrary = isInLibrary
+        game.isPatching = isPatching
         game.variants = variants.map(\.swiftValue)
         return game
     }

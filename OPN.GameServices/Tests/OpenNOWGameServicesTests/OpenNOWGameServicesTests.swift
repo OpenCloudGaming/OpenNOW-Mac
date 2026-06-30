@@ -123,6 +123,39 @@ private actor AsyncTestLock {
     }
 }
 
+@Test @MainActor func gameLaunchBridgeBlocksPatchingGamesBeforeNetworkWork() async throws {
+    let game = OPNCatalogGameObject()
+    game.launchAppId = "123"
+    game.title = "Patching Game"
+    game.isPatching = true
+
+    let result: (Bool, String, OPNGameLaunchPlan?) = await withCheckedContinuation { continuation in
+        OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", variantIndex: -1) { success, message, plan in
+            continuation.resume(returning: (success, message, plan))
+        }
+    }
+
+    #expect(result.0 == false)
+    #expect(result.1 == "GeForce NOW is patching this game. Try again after patching finishes.")
+    #expect(result.2 == nil)
+}
+
+@Test func catalogGameObjectPreservesPatchingStateRoundTrip() {
+    var game = OPNGameInfo()
+    game.id = "game-id"
+    game.launchAppId = "123"
+    game.isPatching = true
+    game.variants = [OPNGameVariant(id: "123", appStore: "STEAM", serviceStatus: "APP_PATCHING_STATUS", isPatching: true)]
+
+    let object = OPNCatalogGameObject(game: game)
+    let roundTrip = object.swiftValue
+
+    #expect(object.isPatching == true)
+    #expect(object.variants.first?.isPatching == true)
+    #expect(roundTrip.isPatching == true)
+    #expect(roundTrip.variants.first?.isPatching == true)
+}
+
 @Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
     try await sessionManagerTestLock.withLock {
     let host = "create-release-shape.example.test"

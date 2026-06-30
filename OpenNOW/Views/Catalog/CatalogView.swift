@@ -2228,8 +2228,10 @@ private struct CatalogRailView: View {
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
+                                    isQueuedForPatching: viewModel.isQueuedForPatching(game),
                                     onSelect: { viewModel.selectGame(game, inSection: section.id) },
-                                    onPlay: { viewModel.launch(game: game) }
+                                    onPlay: { viewModel.launch(game: game) },
+                                    onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
                                     .id(game.catalogIdentity)
                                     .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
@@ -2382,8 +2384,10 @@ private struct CatalogDestinationGridView: View {
                         imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                         isSelected: isSelected(game),
                         isSelectionActive: viewModel.selectedGame != nil,
+                        isQueuedForPatching: viewModel.isQueuedForPatching(game),
                         onSelect: { viewModel.selectGame(game, inSection: section.id) },
-                        onPlay: { viewModel.launch(game: game) }
+                        onPlay: { viewModel.launch(game: game) },
+                        onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                     )
                 }
             }
@@ -2540,8 +2544,10 @@ private struct CatalogShowAllOverlay: View {
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 620),
                                     isSelected: isSelected(game),
                                     isSelectionActive: viewModel.selectedGame != nil,
+                                    isQueuedForPatching: viewModel.isQueuedForPatching(game),
                                     onSelect: { onSelect(game) },
-                                    onPlay: { viewModel.launch(game: game) }
+                                    onPlay: { viewModel.launch(game: game) },
+                                    onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) }
                                 )
                             }
                         }
@@ -2917,8 +2923,10 @@ private struct CatalogGameTile: View {
     let imageURL: URL?
     let isSelected: Bool
     let isSelectionActive: Bool
+    let isQueuedForPatching: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
+    let onQueueForPatching: () -> Void
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
@@ -2950,23 +2958,24 @@ private struct CatalogGameTile: View {
     }
 
     private var playButton: some View {
-        Button(action: onPlay) {
+        Button(action: game.isLaunchPatching ? onQueueForPatching : onPlay) {
             HStack(spacing: 7) {
-                Image(systemName: "play.fill")
+                Image(systemName: game.isLaunchPatching ? (isQueuedForPatching ? "clock.fill" : "plus.circle.fill") : "play.fill")
                     .font(.nvidia(size: 10, weight: .bold))
-                Text("PLAY")
+                Text(game.isLaunchPatching ? (isQueuedForPatching ? "QUEUED" : "QUEUE") : "PLAY")
                     .font(.nvidia(size: 11, weight: .bold))
                     .tracking(0.9)
             }
-            .foregroundStyle(.black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? Color.openNowGreen.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
             .padding(.horizontal, 13)
             .frame(height: 30)
-            .background(Color.openNowGreen)
-            .overlay { Rectangle().stroke(Color.openNowGreen, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : Color.openNowGreen)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? Color.openNowGreen.opacity(0.55) : Color.white.opacity(0.30)) : Color.openNowGreen, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Play \(game.title.isEmpty ? "game" : game.title)")
+        .disabled(game.isLaunchPatching && isQueuedForPatching)
+        .accessibilityLabel(game.isLaunchPatching ? (isQueuedForPatching ? "Queued \(game.title.isEmpty ? "game" : game.title)" : "Queue \(game.title.isEmpty ? "game" : game.title) after patching") : "Play \(game.title.isEmpty ? "game" : game.title)")
     }
 
     private var tileContent: some View {
@@ -3362,6 +3371,7 @@ private struct GameDetailPanel: View {
                     .frame(width: primaryActionTitle(game: game) == "PLAY" ? 72 : 132, height: 40)
             }
             .buttonStyle(VendorGetInButtonStyle())
+            .disabled((game.isLaunchPatching || selectedVariant?.isPatching == true) && viewModel.isQueuedForPatching(game))
             .fixedSize()
 
             Menu {
@@ -3429,6 +3439,12 @@ private struct GameDetailPanel: View {
     }
 
     private func accessBody(game: OPNCatalogGameObject) -> String {
+        if game.isLaunchPatching || selectedVariant?.isPatching == true {
+            if viewModel.isQueuedForPatching(game) {
+                return "Queued to launch automatically after GeForce NOW finishes patching this game."
+            }
+            return "GeForce NOW is patching this game. Launch will be available after patching finishes."
+        }
         if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true {
             return "Access unlocked with your membership. Game ownership required to play."
         }
@@ -3597,12 +3613,17 @@ private struct GameDetailPanel: View {
     }
 
     private func primaryActionTitle(game: OPNCatalogGameObject) -> String {
+        if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "QUEUED" : "QUEUE" }
         if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true { return "PLAY" }
         if selectedVariant != nil { return "MARK OWNED" }
         return "PLAY"
     }
 
     private func primaryAction(game: OPNCatalogGameObject) {
+        if game.isLaunchPatching || selectedVariant?.isPatching == true {
+            viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
+            return
+        }
         if game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || selectedVariant == nil {
             viewModel.launchSelectedGame()
         } else {
@@ -4160,6 +4181,12 @@ private struct CatalogErrorPresentation {
 
     init(rawMessage: String) {
         let message = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.looksLikeAppPatching(message) {
+            title = "GeForce NOW is preparing this game."
+            hint = "The vendor is patching the app before launch. Try again after patching finishes."
+            technicalDetails = message
+            return
+        }
         if Self.looksLikeClaimFailure(message) {
             title = "GeForce NOW could not start this session."
             hint = Self.claimFailureHint(from: message)
@@ -4181,6 +4208,10 @@ private struct CatalogErrorPresentation {
         message.localizedCaseInsensitiveContains("Claim HTTP") || message.localizedCaseInsensitiveContains("Claim API error")
     }
 
+    private static func looksLikeAppPatching(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("APP_PATCHING_STATUS") || message.localizedCaseInsensitiveContains("app patching")
+    }
+
     private static func looksTechnical(_ message: String) -> Bool {
         message.count > 220 || message.contains("{\"") || message.contains("requestStatus") || message.contains("HTTP 400")
     }
@@ -4191,6 +4222,9 @@ private struct CatalogErrorPresentation {
         }
         if message.localizedCaseInsensitiveContains("SESSION_LIMIT") {
             return "Your account appears to have reached the active session limit. End another session, then try again."
+        }
+        if message.localizedCaseInsensitiveContains("APP_PATCHING_STATUS") {
+            return "GeForce NOW is patching this game before launch. Wait for setup to finish, or try again in a few minutes."
         }
         if let statusDescription = requestStatusDescription(from: message), !statusDescription.isEmpty {
             if statusDescription.localizedCaseInsensitiveContains("INTERNAL_ERROR_STATUS") {
@@ -4319,7 +4353,12 @@ private extension OPNCatalogGameObject {
     var catalogIdentity: String { CatalogViewModel.identity(for: self) }
 
     var cardBadgeLabel: String? {
-        CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
+        if isLaunchPatching { return "Patching" }
+        return CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)
+    }
+
+    var isLaunchPatching: Bool {
+        isPatching || variants.contains { $0.isPatching }
     }
 
     var bestHeroImageURL: String {

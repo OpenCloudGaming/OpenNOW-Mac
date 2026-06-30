@@ -60,6 +60,9 @@ enum OPNGFNErrorMapper {
         if lower.contains("install_to_play") || lower.contains("install to play") || lower.contains("install required") || lower.contains("game installation required") {
             return messageWithDetails("This game must be installed or prepared through its store before GeForce NOW can launch it. Open the Store, finish setup, then try again.", code: code, description: description)
         }
+        if matches(code: code, lowerError: lower, expectedCode: 41, name: "app_patching_status") || lower.contains("app patching") || lower.contains("app_patching_status") {
+            return messageWithDetails("GeForce NOW is patching this game before launch. Try again after patching finishes.", code: code, description: description)
+        }
         if matches(code: code, lowerError: lower, expectedCode: 86, name: "insufficient_playability_level") || matches(code: code, lowerError: lower, expectedCode: 3_237_290_326, name: "insufficient_playability_level") {
             return messageWithDetails("This stream quality is not available for your current GeForce NOW membership. Lower the streaming quality or upgrade your membership, then try again.", code: code, description: description)
         }

@@ -13,6 +13,13 @@ typealias OPNOwnershipActionCallback = @Sendable (_ success: Bool, _ error: Stri
 typealias OPNFavoriteActionCallback = @Sendable (_ success: Bool, _ error: String) -> Void
 typealias OPNUserAccountCallback = @Sendable (_ success: Bool, _ accountInfo: OPNUserAccountInfo, _ error: String) -> Void
 typealias OPNStoreDefinitionsCallback = @Sendable (_ success: Bool, _ definitions: [OPNStoreDefinition], _ error: String) -> Void
+typealias OPNAppPatchStatusesCallback = @Sendable (_ success: Bool, _ statuses: [String: OPNAppPatchStatus], _ error: String) -> Void
+
+public struct OPNAppPatchStatus: Equatable, Sendable {
+    public var appId = ""
+    public var isPatching = false
+    public var variantPatchingById: [String: Bool] = [:]
+}
 
 final class OPNGameService: @unchecked Sendable {
     static let shared = OPNGameService()
@@ -477,6 +484,48 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
+    func fetchAppPatchStatuses(appIds: [String], completion: @escaping OPNAppPatchStatusesCallback) {
+        let uniqueAppIds = Array(Set(appIds.filter { !$0.isEmpty })).sorted()
+        guard !uniqueAppIds.isEmpty else {
+            dispatchAppPatchStatuses(completion, true, [:], "")
+            return
+        }
+        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+            guard let self else { return }
+            let query = """
+            query GetAppsPatchInfoForAppIds($vpcId: String!, $locale: String!, $appIds: [String]!) {
+              apps(vpcId: $vpcId, language: $locale, appIds: $appIds) {
+                items {
+                  id
+                  variants {
+                    id
+                    gfn {
+                      status
+                      library { status }
+                      stateDetails {
+                        ... on VariantGfnAutoPatchingMetadata { subType startTime endTime historicalEtaMins etaPredictionType }
+                        ... on VariantGfnManualPatchingMetadata { subType startTime endTime }
+                        ... on VariantGfnMaintenanceMetadata { subType }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+            let variables: NSDictionary = ["vpcId": resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId, "locale": Self.currentGFNLocale(), "appIds": uniqueAppIds]
+            self.postGraphQlJson(query: query, variables: variables) { [weak self] data, error in
+                guard let self else { return }
+                guard error.isEmpty else {
+                    self.dispatchAppPatchStatuses(completion, false, [:], error)
+                    return
+                }
+                let items = (data?["apps"] as? NSDictionary)?["items"] as? [NSDictionary] ?? []
+                self.dispatchAppPatchStatuses(completion, true, self.parseAppPatchStatuses(items), "")
+            }
+        }
+    }
+
     func addOwnedVariant(_ variantId: String, completion: @escaping OPNOwnershipActionCallback) {
         ownedVariantMutation(mutationName: "AddOwnedVariant", fieldName: "addOwnedVariant", variantId: variantId, completion: completion)
     }
@@ -936,6 +985,7 @@ final class OPNGameService: @unchecked Sendable {
             game.playabilityState = safeString(gfn["playabilityState"]) ?? ""
             game.membershipTierLabel = safeString(gfn["minimumMembershipTierLabel"]) ?? ""
             game.playType = safeString(gfn["playType"]) ?? ""
+            game.isPatching = isAppPatchingStatus(gfn["playabilityState"])
             if game.promoTag.isEmpty { game.promoTag = safeString(gfn["promoTag"]) ?? "" }
             if let catalogSkuStrings = gfn["catalogSkuStrings"] as? NSDictionary {
                 appendStringValues(&game.skuTags, catalogSkuStrings["SKU_BASED_TAG"])
@@ -977,8 +1027,10 @@ final class OPNGameService: @unchecked Sendable {
                 }
                 if let gfn = item["gfn"] as? NSDictionary {
                     variant.serviceStatus = safeString(gfn["status"]) ?? ""
+                    variant.isPatching = isAppPatchingStatus(gfn["status"]) || isAppPatchingStatus(gfn["playabilityState"]) || isAppPatchingStatus(gfn["stateDetails"])
                     if let library = gfn["library"] as? NSDictionary {
                         variant.serviceStatus = firstSafeString(library, keys: ["status"]) ?? variant.serviceStatus
+                        variant.isPatching = variant.isPatching || isAppPatchingStatus(library["status"])
                         variant.librarySelected = safeBool(library["selected"])
                         if variant.librarySelected { variant.inLibrary = true }
                     }
@@ -997,6 +1049,7 @@ final class OPNGameService: @unchecked Sendable {
         var firstNumericVariant = ""
         for variant in game.variants {
             if variant.inLibrary, !variant.serviceStatus.isEmpty { game.isInLibrary = true }
+            if variant.isPatching { game.isPatching = true }
             let numeric = !variant.id.isEmpty && variant.id.allSatisfy(\.isNumber)
             if numeric, variant.librarySelected { game.launchAppId = variant.id }
             if numeric, firstNumericVariant.isEmpty { firstNumericVariant = variant.id }
@@ -1117,6 +1170,26 @@ final class OPNGameService: @unchecked Sendable {
             if !definition.store.isEmpty { definitions.append(definition) }
         }
         return definitions.sorted { $0.sortOrder == $1.sortOrder ? $0.store < $1.store : $0.sortOrder < $1.sortOrder }
+    }
+
+    private func parseAppPatchStatuses(_ apps: [NSDictionary]) -> [String: OPNAppPatchStatus] {
+        var statuses: [String: OPNAppPatchStatus] = [:]
+        for app in apps {
+            let appId = safeString(app["id"]) ?? ""
+            guard !appId.isEmpty else { continue }
+            var status = OPNAppPatchStatus(appId: appId)
+            for variantData in app["variants"] as? [NSDictionary] ?? [] {
+                let variantId = safeString(variantData["id"]) ?? ""
+                guard !variantId.isEmpty else { continue }
+                let gfn = variantData["gfn"] as? NSDictionary
+                let library = gfn?["library"] as? NSDictionary
+                let variantIsPatching = isAppPatchingStatus(gfn?["status"]) || isAppPatchingStatus(gfn?["stateDetails"]) || isAppPatchingStatus(library?["status"])
+                status.variantPatchingById[variantId] = variantIsPatching
+                status.isPatching = status.isPatching || variantIsPatching
+            }
+            statuses[appId] = status
+        }
+        return statuses
     }
 
     private func parseSubscriptionInfo(_ json: NSDictionary) -> OPNSubscriptionInfo {
@@ -1337,6 +1410,16 @@ final class OPNGameService: @unchecked Sendable {
     private func safeBool(_ value: Any?) -> Bool {
         if let number = value as? NSNumber { return number.boolValue }
         if let string = value as? String { return ["true", "1", "yes"].contains(string.lowercased()) }
+        return false
+    }
+
+    private func isAppPatchingStatus(_ value: Any?) -> Bool {
+        if let text = safeString(value)?.lowercased(), !text.isEmpty {
+            return text.contains("patch") || text.contains("application_patching") || text.contains("app_patching") || text.contains("autopatching") || text.contains("manualpatching")
+        }
+        if let dictionary = value as? NSDictionary {
+            return dictionary.allValues.contains { isAppPatchingStatus($0) }
+        }
         return false
     }
 
@@ -1732,6 +1815,10 @@ final class OPNGameService: @unchecked Sendable {
     private func dispatchStoreDefinitions(_ completion: @escaping OPNStoreDefinitionsCallback, _ success: Bool, _ definitions: [OPNStoreDefinition], _ error: String) {
         DispatchQueue.main.async { completion(success, definitions, error) }
     }
+
+    private func dispatchAppPatchStatuses(_ completion: @escaping OPNAppPatchStatusesCallback, _ success: Bool, _ statuses: [String: OPNAppPatchStatus], _ error: String) {
+        DispatchQueue.main.async { completion(success, statuses, error) }
+    }
 }
 
 @objc(OPNGameServiceSwiftAdapter)
@@ -1842,6 +1929,10 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
         OPNGameService.shared.fetchStoreDefinitions { success, definitions, error in
             completion(success, definitions.map(storeDefinitionDictionary), error)
         }
+    }
+
+    public static func fetchAppPatchStatuses(appIds: [String], completion: @escaping @Sendable (Bool, [String: OPNAppPatchStatus], String) -> Void) {
+        OPNGameService.shared.fetchAppPatchStatuses(appIds: appIds, completion: completion)
     }
 
     @objc(addOwnedVariant:completion:)
@@ -2258,7 +2349,7 @@ private extension OPNGameService {
         query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
-                items { id title shortDescription longDescription images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
+                items { id title shortDescription longDescription images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status stateDetails { ... on VariantGfnAutoPatchingMetadata { subType startTime endTime historicalEtaMins etaPredictionType } ... on VariantGfnManualPatchingMetadata { subType startTime endTime } ... on VariantGfnMaintenanceMetadata { subType } } library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
             }
         }
         """
@@ -2269,7 +2360,7 @@ private extension OPNGameService {
         query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String, $searchString: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, searchQuery: $searchString, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
-                items { id title shortDescription longDescription images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
+                items { id title shortDescription longDescription images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status stateDetails { ... on VariantGfnAutoPatchingMetadata { subType startTime endTime historicalEtaMins etaPredictionType } ... on VariantGfnManualPatchingMetadata { subType startTime endTime } ... on VariantGfnMaintenanceMetadata { subType } } library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
             }
         }
         """

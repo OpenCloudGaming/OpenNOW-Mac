@@ -69,6 +69,12 @@ public final class OPNGameLaunchBridge {
         }
 
         let selectedVariantIndex = resolvedVariantIndex(for: game, requestedIndex: variantIndex)
+        let selectedVariant = selectedVariantIndex >= 0 && selectedVariantIndex < game.variants.count ? game.variants[selectedVariantIndex] : nil
+        let isPatching = game.isPatching || selectedVariant?.isPatching == true
+        guard !isPatching else {
+            completion(false, "GeForce NOW is patching this game. Try again after patching finishes.", nil)
+            return
+        }
         configureServices(token: token, userId: userId)
         let gameValue = game.swiftValue
         let gameBox = OPNGameLaunchBridgeSendableValue(game)
