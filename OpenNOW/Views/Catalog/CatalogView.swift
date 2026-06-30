@@ -856,7 +856,10 @@ private struct CatalogTopBar: View {
             }
         }
         .frame(height: CatalogVendorLayout.appBarHeight)
-        .background(CatalogVendorLayout.appBarBackground)
+        .background {
+            CatalogVendorLayout.appBarBackground
+            WindowDragArea()
+        }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.42)).frame(height: 1) }
     }
 

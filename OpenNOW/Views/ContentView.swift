@@ -145,7 +145,7 @@ private struct HiddenTitlebarConfigurator: NSViewRepresentable {
             }
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = true
+            window.isMovableByWindowBackground = false
             window.isOpaque = false
             window.backgroundColor = .clear
             if window.toolbar != nil {
@@ -164,6 +164,18 @@ private struct HiddenTitlebarConfigurator: NSViewRepresentable {
             super.viewDidMoveToWindow()
             onWindowChanged?(window)
         }
+    }
+}
+
+struct WindowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> DragAreaView {
+        DragAreaView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: DragAreaView, context: Context) {}
+
+    final class DragAreaView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
     }
 }
 
