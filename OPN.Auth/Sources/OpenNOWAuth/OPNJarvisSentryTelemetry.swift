@@ -28,7 +28,19 @@ final class OPNJarvisSentryTelemetry: JarvisTelemetry, @unchecked Sendable {
         var parts = attributes
         if let operation { parts["jarvis.operation"] = operation.rawValue }
         let suffix = parts.isEmpty ? "" : " " + parts.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
-        OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Jarvis", message: "\(error.localizedDescription)\(suffix)"))
+        let level = Self.logLevel(error: error, attributes: parts)
+        let message = OPNSentry.formattedLogMessage(level: level, area: "Jarvis", message: "\(error.localizedDescription)\(suffix)")
+        if level == "error" {
+            OPNSentry.logErrorMessage(message)
+        } else {
+            OPNSentry.logWarningMessage(message)
+        }
+    }
+
+    private static func logLevel(error: Error, attributes: [String: String]) -> String {
+        let description = error.localizedDescription.lowercased()
+        if attributes["phase"] == "callback" || description.contains("idp callback") { return "warning" }
+        return "error"
     }
 }
 

@@ -37,7 +37,13 @@ public enum OPNNetworkLog {
         finishTrace(context.trace, operation: operation, statusCode: statusCode, durationMilliseconds: durationMilliseconds, byteCount: byteCount, outcome: outcome)
 
         if let error {
-            OPNSentry.logErrorMessage(logMessage(level: "error", area: "Network", message: "HTTP request failed operation=\(operation) request=\(context.requestSummary) status=\(statusText(statusCode)) duration=\(durationMilliseconds)ms bytes=\(byteCount) error=\(error.localizedDescription)"))
+            let level = failureLogLevel(operation: operation, error: error)
+            let message = logMessage(level: level, area: "Network", message: "HTTP request failed operation=\(operation) request=\(context.requestSummary) status=\(statusText(statusCode)) duration=\(durationMilliseconds)ms bytes=\(byteCount) error=\(error.localizedDescription)")
+            if level == "error" {
+                OPNSentry.logErrorMessage(message)
+            } else {
+                OPNSentry.logWarningMessage(message)
+            }
             return
         }
 
@@ -186,6 +192,13 @@ public enum OPNNetworkLog {
         if operation == "stream.measureRegion" { return durationMilliseconds >= 1_000 }
         if operation == "catalog.image" { return false }
         return true
+    }
+
+    private static func failureLogLevel(operation: String, error: Error) -> String {
+        if operation == "stream.measureRegion" { return "warning" }
+        let urlErrorCode = (error as? URLError)?.code
+        if urlErrorCode == .cancelled { return "warning" }
+        return "error"
     }
 
     private static func shouldLogGraphQLStart(operationName: String) -> Bool {

@@ -296,7 +296,7 @@ final class LoginViewModel: ObservableObject {
                 OpenNOWLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
             } else {
                 validationMessage = "Saved session expired. Sign in with NVIDIA again."
-                OpenNOWLog.error(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
+                OpenNOWLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
             }
         }
     }

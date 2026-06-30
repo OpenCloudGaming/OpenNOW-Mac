@@ -5,8 +5,9 @@ import WebRTCMedia
 struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
-        let message = OPNSentry.formattedLogMessage(level: event.level.rawValue, area: "WebRTC", message: "\(event.name): \(event.message)\(suffix)")
-        switch event.level {
+        let level = Self.sentryLevel(for: event)
+        let message = OPNSentry.formattedLogMessage(level: level.rawValue, area: "WebRTC", message: "\(event.name): \(event.message)\(suffix)")
+        switch level {
         case .debug:
             OPNSentry.logDebugMessage(message)
         case .info:
@@ -16,6 +17,29 @@ struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
         case .error:
             OPNSentry.logErrorMessage(message)
         }
+    }
+
+    private static func sentryLevel(for event: WebRTCMediaTelemetryEvent) -> WebRTCMediaTelemetryLevel {
+        guard event.level == .error else { return event.level }
+        let message = event.message.lowercased()
+        if event.name == "webrtc.path.session_provider.error", isExpectedSessionProviderFailure(message) { return .warning }
+        if event.name == "webrtc.broadcast.rtmp.failed", isExpectedNetworkFailure(message) { return .warning }
+        if event.name == "webrtc.broadcast.status", isExpectedNetworkFailure(message) { return .warning }
+        return event.level
+    }
+
+    private static func isExpectedSessionProviderFailure(_ message: String) -> Bool {
+        message.contains("no longer resumable")
+            || message.contains("cloudmatch internal session error")
+            || message.contains("claim http 400")
+            || message.contains("http 400")
+    }
+
+    private static func isExpectedNetworkFailure(_ message: String) -> Bool {
+        message.contains("socket is not connected")
+            || message.contains("connection reset by peer")
+            || message.contains("nwerror error 57")
+            || message.contains("nwerror error 54")
     }
 
     func record(_ metric: WebRTCMediaTelemetryMetric) {
