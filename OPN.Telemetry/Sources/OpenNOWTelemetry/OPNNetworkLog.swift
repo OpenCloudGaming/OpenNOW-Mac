@@ -165,23 +165,10 @@ public enum OPNNetworkLog {
         return "\(method) \(sanitizedURL(request.url))"
     }
 
-    private static func sanitizedURL(_ url: URL?) -> String {
+    static func sanitizedURL(_ url: URL?) -> String {
         guard let url else { return "unknown-url" }
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.host ?? "unknown-url" }
-        components.user = nil
-        components.password = nil
-        components.query = nil
-        components.fragment = nil
-        components.path = sanitizedURLPath(components.path)
-        return components.string ?? url.host ?? "unknown-url"
-    }
-
-    private static func sanitizedURLPath(_ path: String) -> String {
-        path.replacingOccurrences(
-            of: #"(?i)((?:/v\d+)?/session/)[^/]+"#,
-            with: "$1redacted-id",
-            options: [.regularExpression]
-        )
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.host ?? "unknown-url" }
+        return OPNSentry.sanitizedLogMessage(components.string ?? url.host ?? "unknown-url")
     }
 
     private static func sortedKeys(in dictionary: NSDictionary?) -> String {
@@ -209,6 +196,7 @@ public enum OPNNetworkLog {
         if urlErrorCode == .cannotConnectToHost { return "warning" }
         if urlErrorCode == .networkConnectionLost { return "warning" }
         if urlErrorCode == .notConnectedToInternet { return "warning" }
+        if urlErrorCode == .badURL { return "warning" }
         return "error"
     }
 

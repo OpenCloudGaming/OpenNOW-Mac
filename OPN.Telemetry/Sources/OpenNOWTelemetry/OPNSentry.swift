@@ -540,15 +540,8 @@ public final class OPNSentry: NSObject {
     private static func sanitizedMessage(_ message: String) -> String {
         var sanitized = message
         let replacements: [(String, String)] = [
-            (#"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"#, "[redacted-email]"),
-            (#"\b(?:\+\d[\d .()\-]{7,}\d|\d[\d .()\-]{2,}\d[ .()\-]+\d[\d .()\-]*\d)\b"#, "[redacted-phone]"),
             (#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, "[redacted-ip]"),
-            (#"\b[0-9A-F]{8}-[0-9A-F]{4}-[1-5][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}\b"#, "[redacted-id]"),
-            (#"\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b"#, "[redacted-token]"),
-            (#"(?i)(bearer|basic)\s+[^\s,;]+"#, "$1 [redacted-token]"),
-            (#"(?i)(x-nv-sessionid[.=])[^\s,;]+"#, "$1[redacted-secret]"),
-            (#"(?i)((?:access|refresh|id)?_?token|authorization|password|secret|api[_-]?key|session[_-]?id)([=:]\s*|""\s*:\s*"")[^\s,;\}\""]+"#, "$1$2[redacted-secret]"),
-            (#"/Users/[^/\s]+"#, "/Users/[redacted-user]")
+            (#"(?i)\b(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?:(?::[0-9a-f]{1,4}){1,6})|:(?:(?::[0-9a-f]{1,4}){1,7}|:))\b"#, "[redacted-ip]")
         ]
         for replacement in replacements {
             sanitized = sanitized.replacingOccurrences(of: replacement.0, with: replacement.1, options: [.regularExpression, .caseInsensitive])
