@@ -25,6 +25,7 @@ func webRTCMediaCloudVariables(from variables: OPNStreamCloudVariables) -> WebRT
         allowL4S: variables.allowL4S,
         allowReflex: variables.allowReflex,
         allowPrefilter: variables.allowPrefilter,
+        supportedPrefilterModes: variables.supportedPrefilterModes,
         maxBitrateMbps: variables.maxBitrateMbps
     )
 }

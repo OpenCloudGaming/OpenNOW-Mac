@@ -374,6 +374,20 @@ struct WebRTCStreamingPathTests {
         #expect(started.metadata["settings"] == settings)
     }
 
+    @Test("disables unsupported vendor prefilter modes")
+    func disablesUnsupportedVendorPrefilterModes() {
+        let resolved = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(prefilterMode: 2, prefilterSharpness: 7, prefilterDenoise: 4, prefilterModel: 3),
+            capabilities: WebRTCMediaDeviceCapabilities(),
+            cloudVariables: WebRTCMediaCloudVariables(fetched: true, supportedPrefilterModes: [0, 1])
+        )
+
+        #expect(resolved.prefilterMode == 0)
+        #expect(resolved.prefilterSharpness == 0)
+        #expect(resolved.prefilterDenoise == 0)
+        #expect(resolved.prefilterModel == 0)
+    }
+
     @Test("forwards input events and stops active session")
     func forwardsInputAndStops() async throws {
         let session = StreamSessionDescriptor(id: "session-2", applicationID: "200", serverAddress: "server", title: "Game")

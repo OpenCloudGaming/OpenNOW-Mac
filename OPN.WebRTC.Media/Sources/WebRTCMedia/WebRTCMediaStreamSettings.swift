@@ -52,6 +52,7 @@ public struct WebRTCMediaCloudVariables: Equatable, Sendable {
     public var allowL4S: Bool
     public var allowReflex: Bool
     public var allowPrefilter: Bool
+    public var supportedPrefilterModes: [Int]
     public var maxBitrateMbps: Int
 
     public init(fetched: Bool = false,
@@ -61,6 +62,7 @@ public struct WebRTCMediaCloudVariables: Equatable, Sendable {
                 allowL4S: Bool = true,
                 allowReflex: Bool = true,
                 allowPrefilter: Bool = true,
+                supportedPrefilterModes: [Int] = [],
                 maxBitrateMbps: Int = 0) {
         self.fetched = fetched
         self.allowH265 = allowH265
@@ -69,6 +71,7 @@ public struct WebRTCMediaCloudVariables: Equatable, Sendable {
         self.allowL4S = allowL4S
         self.allowReflex = allowReflex
         self.allowPrefilter = allowPrefilter
+        self.supportedPrefilterModes = supportedPrefilterModes.filter { $0 >= 0 && $0 <= 2 }.sorted()
         self.maxBitrateMbps = max(0, maxBitrateMbps)
     }
 }
@@ -251,16 +254,17 @@ public enum WebRTCMediaStreamSettingsResolver {
         let colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
         let lowLatency = profile.lowLatencyMode
         let controllerCount = capabilities.connectedGamepadCount
+        let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables, lowLatency: lowLatency)
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
             codec: codec,
             colorQuality: colorQuality,
             maxBitrateMbps: max(1, min(profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
-            prefilterMode: lowLatency || (cloudVariables.fetched && !cloudVariables.allowPrefilter) ? 0 : profile.prefilterMode,
-            prefilterSharpness: lowLatency || profile.prefilterMode == 0 ? 0 : profile.prefilterSharpness,
-            prefilterDenoise: lowLatency || profile.prefilterMode == 0 ? 0 : profile.prefilterDenoise,
-            prefilterModel: lowLatency || profile.prefilterMode == 0 ? 0 : profile.prefilterModel,
+            prefilterMode: prefilterMode,
+            prefilterSharpness: prefilterMode == 0 ? 0 : profile.prefilterSharpness,
+            prefilterDenoise: prefilterMode == 0 ? 0 : profile.prefilterDenoise,
+            prefilterModel: prefilterMode == 0 ? 0 : profile.prefilterModel,
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
             enableHdr: cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr,
             enableReflex: cloudVariables.allowReflex,
@@ -285,6 +289,13 @@ public enum WebRTCMediaStreamSettingsResolver {
             supportedHidDevices: 0,
             availableSupportedControllers: []
         )
+    }
+
+    private static func resolvedPrefilterMode(profile: WebRTCMediaStreamProfile, cloudVariables: WebRTCMediaCloudVariables, lowLatency: Bool) -> Int {
+        guard !lowLatency, !(cloudVariables.fetched && !cloudVariables.allowPrefilter) else { return 0 }
+        let mode = max(0, min(profile.prefilterMode, 2))
+        guard cloudVariables.supportedPrefilterModes.isEmpty || cloudVariables.supportedPrefilterModes.contains(mode) else { return 0 }
+        return mode
     }
 
     private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities, libWebRTCAvailable: Bool) -> String {
