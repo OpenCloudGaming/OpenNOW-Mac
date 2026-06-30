@@ -4,7 +4,7 @@ import CoreText
 import SwiftUI
 import WebRTCMedia
 
-private enum RecordingsLayout {
+enum RecordingsLayout {
     static let sidebar = Color(red: 18 / 255, green: 20 / 255, blue: 19 / 255)
     static let surface = Color(red: 12 / 255, green: 13 / 255, blue: 13 / 255)
     static let card = Color.white.opacity(0.055)
@@ -14,7 +14,7 @@ private enum RecordingsLayout {
     static let danger = Color(red: 1, green: 78 / 255, blue: 78 / 255)
 }
 
-private enum RecordingsFont {
+enum RecordingsFont {
     enum Weight: Hashable {
         case regular
         case medium
@@ -57,7 +57,7 @@ private enum RecordingsFont {
     }
 }
 
-private extension Font {
+extension Font {
     static func recordingsNvidia(size: CGFloat, weight: RecordingsFont.Weight = .regular) -> Font {
         RecordingsFont.font(size: size, weight: weight)
     }
@@ -73,6 +73,9 @@ struct RecordingsView: View {
     @State private var sortOrder: RecordingSortOrder = .newest
     @State private var activeFilters = Set<RecordingFilter>()
     @State private var copiedPathRecordingID: UUID?
+    @State private var editorViewModel: RecordingEditorViewModel?
+    @State private var playerTimeSeconds = 0.0
+    @State private var playerTimeObserver: Any?
 
     private var visibleRecordings: [WebRTCStreamRecording] {
         let normalizedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -114,6 +117,7 @@ struct RecordingsView: View {
         } message: {
             Text("This permanently removes the video file and metadata from OpenNOW recordings.")
         }
+        .onDisappear { removePlayerTimeObserver() }
     }
 
     private var recordingsList: some View {
@@ -141,6 +145,7 @@ struct RecordingsView: View {
                             }
                             .contextMenu {
                                 Button("Open Recording") { open(recording) }
+                                Button("Edit Recording") { startEditing(recording) }
                                 Button("Reveal in Finder") { reveal(recording) }
                                 Button("Copy File Path") { copyPath(recording) }
                                 Divider()
@@ -276,11 +281,22 @@ struct RecordingsView: View {
                 copiedPath: copiedPathRecordingID == recording.id,
                 message: message,
                 onRestart: { restart(recording) },
+                onEdit: { startEditing(recording) },
                 onOpen: { open(recording) },
                 onReveal: { reveal(recording) },
                 onCopyPath: { copyPath(recording) },
                 onDelete: { pendingDelete = recording }
             )
+            if let editorViewModel, editorViewModel.primaryRecording.id == recording.id {
+                RecordingEditorView(
+                    viewModel: editorViewModel,
+                    playheadSeconds: playerTimeSeconds,
+                    onSeek: { seek(recording, seconds: $0) },
+                    onCancel: closeEditor,
+                    onSaved: editedRecordingSaved
+                )
+                .frame(maxHeight: 390)
+            }
         }
     }
 
@@ -307,15 +323,24 @@ struct RecordingsView: View {
     }
 
     private func select(_ recording: WebRTCStreamRecording?, autoplay: Bool) {
+        removePlayerTimeObserver()
+        if let recording, editorViewModel?.primaryRecording.id != recording.id {
+            editorViewModel = nil
+        }
         selectedRecording = recording
         guard let recording else {
             player?.pause()
             player = nil
+            playerTimeSeconds = 0
             return
         }
         player?.pause()
         let nextPlayer = AVPlayer(url: recording.videoURL)
         player = nextPlayer
+        playerTimeSeconds = 0
+        playerTimeObserver = nextPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { time in
+            playerTimeSeconds = max(0, time.seconds.isFinite ? time.seconds : 0)
+        }
         if autoplay { nextPlayer.play() }
     }
 
@@ -326,6 +351,40 @@ struct RecordingsView: View {
         }
         player?.seek(to: .zero)
         player?.play()
+    }
+
+    private func seek(_ recording: WebRTCStreamRecording, seconds: Double) {
+        guard selectedRecording?.id == recording.id else { return }
+        let time = CMTime(seconds: min(max(0, seconds), max(0, recording.durationSeconds)), preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        playerTimeSeconds = max(0, time.seconds)
+    }
+
+    private func startEditing(_ recording: WebRTCStreamRecording) {
+        if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
+        player?.pause()
+        editorViewModel = RecordingEditorViewModel(recording: recording, library: recordings)
+        message = "Editing \(recording.title). Export saves a new video."
+    }
+
+    private func closeEditor() {
+        editorViewModel = nil
+        message = "Editor closed."
+    }
+
+    private func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
+        editorViewModel = nil
+        reload(showMessage: false)
+        if let refreshed = recordings.first(where: { $0.id == recording.id }) {
+            select(refreshed, autoplay: true)
+        }
+        message = "Saved \(recording.title) as a new video."
+    }
+
+    private func removePlayerTimeObserver() {
+        guard let playerTimeObserver else { return }
+        player?.removeTimeObserver(playerTimeObserver)
+        self.playerTimeObserver = nil
     }
 
     private func reveal(_ recording: WebRTCStreamRecording) {
@@ -626,6 +685,7 @@ private struct RecordingInspector: View {
     let copiedPath: Bool
     let message: String
     let onRestart: () -> Void
+    let onEdit: () -> Void
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onCopyPath: () -> Void
@@ -647,6 +707,8 @@ private struct RecordingInspector: View {
                 Spacer(minLength: 12)
                 Button("Restart", action: onRestart)
                     .buttonStyle(RecordingActionButtonStyle(tone: .primary))
+                Button("Edit", action: onEdit)
+                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
                 Button("Open", action: onOpen)
                     .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
                 Button("Reveal", action: onReveal)
@@ -811,7 +873,7 @@ private struct DiagonalGrid: Shape {
     }
 }
 
-private struct RecordingActionButtonStyle: ButtonStyle {
+struct RecordingActionButtonStyle: ButtonStyle {
     enum Tone {
         case primary
         case secondary
