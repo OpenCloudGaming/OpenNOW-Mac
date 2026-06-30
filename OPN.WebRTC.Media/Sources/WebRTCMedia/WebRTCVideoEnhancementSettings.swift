@@ -966,7 +966,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         }
         var texel = SIMD2<Float>(currentTexture.width > 0 ? 1.0 / Float(currentTexture.width) : 0, currentTexture.height > 0 ? 1.0 / Float(currentTexture.height) : 0)
         let denoiseScale = min(max(Float(settings.denoise) / 20.0, 0), 1)
-        let sharpnessScale = min(max(Float(settings.sharpness) / 40.0, 0), 1)
+        let sharpnessScale = min(max(Float(settings.sharpness) / 15.0, 0), 1)
         var historyWeight = min(max(0.52 + denoiseScale * 0.24 - sharpnessScale * 0.08, 0.35), 0.76)
         var temporalSharpness = min(max(0.08 + sharpnessScale * 0.34, 0), 0.42)
         var hasHistory: Int32 = temporalHistoryValid ? 1 : 0

@@ -781,7 +781,7 @@ public enum OPNStreamPreferences {
     public static func savePrefilterDenoise(_ value: Int) { saveCanonicalInt(k.prefilterDenoise, clamp(value, 0, 10)) }
     public static func saveUpscalingModeIndex(_ value: Int) { storage.set(clamp(value, 0, upscalingModeOptions.count - 1), forKey: k.upscalingModeIndex) }
     public static func saveUpscalingTargetIndex(_: Int) { storage.set(defaultUpscalingTargetIndex, forKey: k.upscalingTargetIndex) }
-    public static func saveUpscalingSharpness(_ value: Int) { storage.set(clamp(value, 0, 40), forKey: k.upscalingSharpness) }
+    public static func saveUpscalingSharpness(_ value: Int) { storage.set(clamp(value, 0, 15), forKey: k.upscalingSharpness) }
     public static func saveUpscalingDenoise(_ value: Int) { storage.set(clamp(value, 0, 20), forKey: k.upscalingDenoise) }
     public static func saveRecordingVideoBitrateMbps(_ value: Int) { storage.set(clamp(value, 0, 200), forKey: k.recordingVideoBitrateMbps) }
     public static func saveRecordingAudioBitrateKbps(_ value: Int) { storage.set(clamp(value, 64, 320), forKey: k.recordingAudioBitrateKbps) }
@@ -851,7 +851,7 @@ public enum OPNStreamPreferences {
         profile.upscalingModeOption = upscalingModeOptions[profile.upscalingModeIndex]
         profile.upscalingMode = profile.upscalingModeOption.value
         applyDefaultUpscalingTarget(&profile)
-        profile.upscalingSharpness = clampedInt(dictionary, k.upscalingSharpness, 4, 41)
+        profile.upscalingSharpness = clampedInt(dictionary, k.upscalingSharpness, 4, 16)
         profile.upscalingDenoise = clampedInt(dictionary, k.upscalingDenoise, 0, 21)
         profile.recordingVideoBitrateMbps = clampedInt(dictionary, k.recordingVideoBitrateMbps, 0, 201)
         profile.recordingAudioBitrateKbps = Int(clampedDouble(dictionary, k.recordingAudioBitrateKbps, 160, 64, 320).rounded())

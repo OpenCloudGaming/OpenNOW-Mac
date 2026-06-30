@@ -1333,7 +1333,7 @@ private struct ResolutionUpscalingSettingsPage: View {
                 SettingsDivider()
                 SettingsInfoRow(label: "Target", value: viewModel.streamProfile.upscalingTargetOption.label)
                 SettingsDivider()
-                SettingsSliderRow(title: "Sharpness", valueText: "\(viewModel.streamProfile.upscalingSharpness)", value: Double(viewModel.streamProfile.upscalingSharpness), range: 0...40, action: viewModel.setUpscalingSharpness)
+                SettingsSliderRow(title: "Sharpness", valueText: "\(viewModel.streamProfile.upscalingSharpness)", value: Double(viewModel.streamProfile.upscalingSharpness), range: 0...15, action: viewModel.setUpscalingSharpness)
                 SettingsDivider()
                 SettingsSliderRow(title: "Denoise", valueText: "\(viewModel.streamProfile.upscalingDenoise)", value: Double(viewModel.streamProfile.upscalingDenoise), range: 0...20, action: viewModel.setUpscalingDenoise)
             }

@@ -343,7 +343,7 @@ public struct WebRTCMediaStreamSurface: View {
             .tint(WebRTCMediaStreamTheme.accent)
             .disabled(!isStreamReady)
             if runtimeSettings.upscalingMode != 0 {
-                videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...40) { value in
+                videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in
                     updateVideoEnhancement(sharpness: value)
                 }
                 videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in
@@ -1703,7 +1703,7 @@ private struct StreamRuntimeSettings: Equatable {
             let allowed = Self.upscalingModes.map(\.value)
             upscalingMode = allowed.contains(mode) ? mode : 0
         }
-        if let sharpness { upscalingSharpness = min(max(sharpness, 0), 40) }
+        if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
         if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
         if let targetHeight {
             let allowed = Self.upscalingTargets.map(\.height)
