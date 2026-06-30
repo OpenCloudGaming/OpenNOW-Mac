@@ -9,7 +9,7 @@ let package = Package(
         .library(name: "OpenNOWTelemetry", targets: ["OpenNOWTelemetry"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.18.0"),
+        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.19.0"),
     ],
     targets: [
         .target(

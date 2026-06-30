@@ -108,6 +108,10 @@ public final class OPNSentry: NSObject {
             options.dist = resolvedDist()
             options.sampleRate = NSNumber(value: clampedSampleRate(environmentDouble("OPN_SENTRY_EVENT_SAMPLE_RATE") ?? 1.0))
             options.tracesSampleRate = NSNumber(value: clampedSampleRate(environmentDouble("OPN_SENTRY_TRACES_SAMPLE_RATE") ?? 0.25))
+            options.configureProfiling = {
+                $0.lifecycle = .trace
+                $0.sessionSampleRate = Float(clampedSampleRate(environmentDouble("OPN_SENTRY_PROFILES_SAMPLE_RATE") ?? 1.0))
+            }
             options.enableAutoSessionTracking = true
             options.enableLogs = true
             options.enableMetrics = true
