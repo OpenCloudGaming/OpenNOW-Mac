@@ -78,7 +78,13 @@ public enum OPNNetworkLog {
         finishTrace(context.trace, operation: "graphql.\(operationName)", statusCode: statusCode, durationMilliseconds: durationMilliseconds, byteCount: byteCount, outcome: outcome)
 
         if let error {
-            OPNSentry.logErrorMessage(logMessage(level: "error", area: "GraphQL", message: "Request failed operation=\(operationName) hash=\(queryHash) request=\(context.requestSummary) status=\(statusText(statusCode)) duration=\(durationMilliseconds)ms bytes=\(byteCount) error=\(error.localizedDescription)"))
+            let level = failureLogLevel(operation: "graphql.\(operationName)", error: error)
+            let message = logMessage(level: level, area: "GraphQL", message: "Request failed operation=\(operationName) hash=\(queryHash) request=\(context.requestSummary) status=\(statusText(statusCode)) duration=\(durationMilliseconds)ms bytes=\(byteCount) error=\(error.localizedDescription)")
+            if level == "error" {
+                OPNSentry.logErrorMessage(message)
+            } else {
+                OPNSentry.logWarningMessage(message)
+            }
             return
         }
 
@@ -198,6 +204,11 @@ public enum OPNNetworkLog {
         if operation == "stream.measureRegion" { return "warning" }
         let urlErrorCode = (error as? URLError)?.code
         if urlErrorCode == .cancelled { return "warning" }
+        if urlErrorCode == .timedOut { return "warning" }
+        if urlErrorCode == .cannotFindHost { return "warning" }
+        if urlErrorCode == .cannotConnectToHost { return "warning" }
+        if urlErrorCode == .networkConnectionLost { return "warning" }
+        if urlErrorCode == .notConnectedToInternet { return "warning" }
         return "error"
     }
 
