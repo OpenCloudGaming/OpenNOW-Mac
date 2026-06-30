@@ -32,6 +32,7 @@ struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
         message.contains("socket is not connected")
             || message.contains("connection reset by peer")
             || message.contains("rtmp connection closed")
+            || message.contains("rtmp receive timed out")
             || message.contains("nwerror error 57")
             || message.contains("nwerror error 54")
     }
