@@ -76,6 +76,8 @@ struct RecordingsView: View {
     @State private var editorViewModel: RecordingEditorViewModel?
     @State private var playerTimeSeconds = 0.0
     @State private var playerTimeObserver: Any?
+    @State private var editorPreviewTask: Task<Void, Never>?
+    @State private var editorPreviewDurationSeconds = 0.0
 
     private var visibleRecordings: [WebRTCStreamRecording] {
         let normalizedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -117,7 +119,10 @@ struct RecordingsView: View {
         } message: {
             Text("This permanently removes the video file and metadata from OpenNOW recordings.")
         }
-        .onDisappear { removePlayerTimeObserver() }
+        .onDisappear {
+            cancelEditorPreview()
+            removePlayerTimeObserver()
+        }
     }
 
     private var recordingsList: some View {
@@ -291,9 +296,10 @@ struct RecordingsView: View {
                 RecordingEditorView(
                     viewModel: editorViewModel,
                     playheadSeconds: playerTimeSeconds,
-                    onSeek: { seek(recording, seconds: $0) },
+                    onSeek: seekEditorPreview,
                     onCancel: closeEditor,
-                    onSaved: editedRecordingSaved
+                    onSaved: editedRecordingSaved,
+                    onPreviewChanged: { refreshEditedPreview(debounce: true) }
                 )
                 .frame(maxHeight: 390)
             }
@@ -325,10 +331,12 @@ struct RecordingsView: View {
     private func select(_ recording: WebRTCStreamRecording?, autoplay: Bool) {
         removePlayerTimeObserver()
         if let recording, editorViewModel?.primaryRecording.id != recording.id {
+            cancelEditorPreview()
             editorViewModel = nil
         }
         selectedRecording = recording
         guard let recording else {
+            cancelEditorPreview()
             player?.pause()
             player = nil
             playerTimeSeconds = 0
@@ -339,12 +347,19 @@ struct RecordingsView: View {
         player = nextPlayer
         playerTimeSeconds = 0
         playerTimeObserver = nextPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { time in
-            playerTimeSeconds = max(0, time.seconds.isFinite ? time.seconds : 0)
+            let seconds = max(0, time.seconds.isFinite ? time.seconds : 0)
+            playerTimeSeconds = seconds
+            syncEditorSelectionForPreviewTime(seconds)
         }
         if autoplay { nextPlayer.play() }
     }
 
     private func restart(_ recording: WebRTCStreamRecording) {
+        if editorViewModel?.primaryRecording.id == recording.id {
+            seekEditorPreview(seconds: 0)
+            player?.play()
+            return
+        }
         guard selectedRecording?.id == recording.id else {
             select(recording, autoplay: true)
             return
@@ -360,25 +375,102 @@ struct RecordingsView: View {
         playerTimeSeconds = max(0, time.seconds)
     }
 
+    private func seekEditorPreview(seconds: Double) {
+        guard editorViewModel != nil else {
+            if let selectedRecording { seek(selectedRecording, seconds: seconds) }
+            return
+        }
+        let duration = editorPreviewDurationSeconds > 0 ? editorPreviewDurationSeconds : max(0, editorViewModel?.outputDurationSeconds ?? seconds)
+        let boundedSeconds = min(max(0, seconds), duration)
+        let time = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        playerTimeSeconds = boundedSeconds
+        syncEditorSelectionForPreviewTime(boundedSeconds)
+    }
+
     private func startEditing(_ recording: WebRTCStreamRecording) {
         if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
         player?.pause()
         editorViewModel = RecordingEditorViewModel(recording: recording, library: recordings)
+        refreshEditedPreview(debounce: false, preservePlaybackTime: false)
         message = "Editing \(recording.title). Export saves a new video."
     }
 
     private func closeEditor() {
+        cancelEditorPreview()
         editorViewModel = nil
+        if let selectedRecording { select(selectedRecording, autoplay: false) }
         message = "Editor closed."
     }
 
     private func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
+        cancelEditorPreview()
         editorViewModel = nil
         reload(showMessage: false)
         if let refreshed = recordings.first(where: { $0.id == recording.id }) {
             select(refreshed, autoplay: true)
         }
         message = "Saved \(recording.title) as a new video."
+    }
+
+    private func refreshEditedPreview(debounce: Bool, preservePlaybackTime: Bool = true) {
+        guard let editorViewModel else { return }
+        let request = editorViewModel.request()
+        let signature = editorViewModel.previewSignature
+        let targetSeconds = preservePlaybackTime ? playerTimeSeconds : 0
+        let shouldResumePlayback = player?.timeControlStatus == .playing
+        editorPreviewTask?.cancel()
+        editorPreviewTask = Task {
+            if debounce {
+                try? await Task.sleep(for: .milliseconds(150))
+                if Task.isCancelled { return }
+            }
+            do {
+                let preview = try await WebRTCStreamRecordingLibrary.previewEditedRecording(request)
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    guard self.editorViewModel?.previewSignature == signature else { return }
+                    self.applyEditedPreview(preview, targetSeconds: targetSeconds, shouldResumePlayback: shouldResumePlayback)
+                }
+            } catch {
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self.message = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func applyEditedPreview(_ preview: WebRTCStreamRecordingPreview, targetSeconds: Double, shouldResumePlayback: Bool) {
+        guard let player else { return }
+        let item = AVPlayerItem(asset: preview.asset)
+        item.audioMix = preview.audioMix
+        item.videoComposition = preview.videoComposition
+        editorPreviewDurationSeconds = preview.durationSeconds
+        player.replaceCurrentItem(with: item)
+        let boundedSeconds = min(max(0, targetSeconds), max(0, preview.durationSeconds))
+        let time = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        playerTimeSeconds = boundedSeconds
+        syncEditorSelectionForPreviewTime(boundedSeconds)
+        if shouldResumePlayback {
+            player.play()
+        } else {
+            player.pause()
+        }
+    }
+
+    private func syncEditorSelectionForPreviewTime(_ outputSeconds: Double) {
+        guard let editorViewModel else { return }
+        let sourceTimelineSeconds = outputSeconds * max(0.25, editorViewModel.playbackRate)
+        guard let target = editorViewModel.sourceTime(forTimelineSeconds: sourceTimelineSeconds) else { return }
+        editorViewModel.selectPreviewSegment(target.segment)
+    }
+
+    private func cancelEditorPreview() {
+        editorPreviewTask?.cancel()
+        editorPreviewTask = nil
+        editorPreviewDurationSeconds = 0
     }
 
     private func removePlayerTimeObserver() {

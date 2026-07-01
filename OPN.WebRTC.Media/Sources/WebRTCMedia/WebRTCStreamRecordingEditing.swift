@@ -70,6 +70,20 @@ public struct WebRTCStreamRecordingAudioEdit: Equatable, Sendable {
     public static let original = WebRTCStreamRecordingAudioEdit()
 }
 
+public struct WebRTCStreamRecordingPreview: @unchecked Sendable {
+    public let asset: AVAsset
+    public let audioMix: AVAudioMix?
+    public let videoComposition: AVVideoComposition?
+    public let durationSeconds: Double
+
+    public init(asset: AVAsset, audioMix: AVAudioMix?, videoComposition: AVVideoComposition?, durationSeconds: Double) {
+        self.asset = asset
+        self.audioMix = audioMix
+        self.videoComposition = videoComposition
+        self.durationSeconds = durationSeconds
+    }
+}
+
 public struct WebRTCStreamRecordingEditRequest: Sendable {
     public var title: String
     public var segments: [WebRTCStreamRecordingEditSegment]
@@ -164,6 +178,22 @@ private final class WebRTCStreamRecordingExportSessionBox: @unchecked Sendable {
 }
 
 public extension WebRTCStreamRecordingLibrary {
+    static func previewEditedRecording(_ request: WebRTCStreamRecordingEditRequest) async throws -> WebRTCStreamRecordingPreview {
+        let normalizedRequest = try validate(request)
+        let loadedSegments = try await loadSegments(normalizedRequest.segments)
+        let build = try buildTimeline(from: loadedSegments, request: normalizedRequest)
+        let previewAudioMix = audioMix(for: build.composition, request: normalizedRequest, duration: build.duration)
+        let previewVideoComposition = needsVideoComposition(normalizedRequest, loadedSegments: loadedSegments)
+            ? videoComposition(for: build.composition, request: normalizedRequest, renderSize: build.renderSize)
+            : nil
+        return WebRTCStreamRecordingPreview(
+            asset: build.composition,
+            audioMix: previewAudioMix,
+            videoComposition: previewVideoComposition,
+            durationSeconds: max(0, build.duration.seconds)
+        )
+    }
+
     static func exportEditedRecording(_ request: WebRTCStreamRecordingEditRequest, progressHandler: (@MainActor @Sendable (Double) -> Void)? = nil) async throws -> WebRTCStreamRecording {
         let normalizedRequest = try validate(request)
         let outputID = UUID()

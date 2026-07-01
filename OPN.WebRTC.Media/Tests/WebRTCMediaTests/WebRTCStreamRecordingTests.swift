@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreVideo
 import Foundation
 import Testing
@@ -168,6 +169,28 @@ struct WebRTCStreamRecordingTests {
         #expect(edited.durationSeconds > first.durationSeconds)
         #expect(edited.durationSeconds > second.durationSeconds)
         #expect(edited.applicationID == first.applicationID)
+    }
+
+    @Test("builds an edited preview composition")
+    func buildsEditedPreviewComposition() async throws {
+        let recording = try await Self.makeRecording(title: "Preview Source Regression", width: 80, height: 64, frames: 18)
+        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        let split = max(0.08, recording.durationSeconds * 0.45)
+        let request = WebRTCStreamRecordingEditRequest(
+            title: "Preview Regression",
+            segments: [
+                WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: split, endSeconds: recording.durationSeconds),
+                WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: split),
+            ],
+            playbackRate: 2,
+            exportPreset: .balanced
+        )
+
+        let preview = try await WebRTCStreamRecordingLibrary.previewEditedRecording(request)
+        let assetDuration = try await preview.asset.load(.duration).seconds
+
+        #expect(abs(preview.durationSeconds - recording.durationSeconds / 2) < 0.12)
+        #expect(abs(assetDuration - preview.durationSeconds) < 0.05)
     }
 
     @Test("exports crop rotate flip speed and audio edits")

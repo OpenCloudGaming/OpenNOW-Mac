@@ -192,6 +192,34 @@ final class RecordingEditorViewModel: ObservableObject {
     var canRedo: Bool { !redoStack.isEmpty }
     var canExport: Bool { !isExporting && !segments.isEmpty && outputDurationSeconds > 0.05 }
     var canJoinSelectedSection: Bool { joinablePairContainingSelectedSegment() != nil }
+    var previewSignature: String {
+        let segmentSignature = segments
+            .map { segment in
+                [
+                    segment.id.uuidString,
+                    segment.recording.id.uuidString,
+                    String(format: "%.4f", segment.startSeconds),
+                    String(format: "%.4f", segment.endSeconds),
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+        let cropSignature = [
+            cropEnabled ? "1" : "0",
+            String(format: "%.4f", cropX),
+            String(format: "%.4f", cropY),
+            String(format: "%.4f", cropWidth),
+            String(format: "%.4f", cropHeight),
+        ].joined(separator: ":")
+        let transformSignature = [String(rotation.rawValue), isFlippedHorizontally ? "1" : "0", isFlippedVertically ? "1" : "0"].joined(separator: ":")
+        let audioSignature = [
+            String(format: "%.4f", playbackRate),
+            isMuted ? "1" : "0",
+            String(format: "%.4f", volume),
+            String(format: "%.4f", fadeInSeconds),
+            String(format: "%.4f", fadeOutSeconds),
+        ].joined(separator: ":")
+        return [segmentSignature, cropSignature, transformSignature, audioSignature].joined(separator: "#")
+    }
 
     func sourceTime(forTimelineSeconds timelineSeconds: Double) -> (segment: RecordingEditorSegment, seconds: Double)? {
         var cursor = 0.0
@@ -210,6 +238,10 @@ final class RecordingEditorViewModel: ObservableObject {
         selectedSegmentID = segment.id
         markInSeconds = nil
         markOutSeconds = nil
+    }
+
+    func selectPreviewSegment(_ segment: RecordingEditorSegment) {
+        if selectedSegmentID != segment.id { selectedSegmentID = segment.id }
     }
 
     func updateSelectedStart(_ value: Double) {

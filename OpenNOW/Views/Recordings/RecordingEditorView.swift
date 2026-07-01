@@ -25,6 +25,7 @@ struct RecordingEditorView: View {
     let onSeek: (Double) -> Void
     let onCancel: () -> Void
     let onSaved: (WebRTCStreamRecording) -> Void
+    let onPreviewChanged: () -> Void
 
     @State private var exportTask: Task<Void, Never>?
     @State private var showsAdvanced = false
@@ -41,6 +42,7 @@ struct RecordingEditorView: View {
         .padding(14)
         .background(Color(red: 14 / 255, green: 15 / 255, blue: 15 / 255))
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1) }
+        .onChange(of: viewModel.previewSignature) { _, _ in onPreviewChanged() }
     }
 
     private var header: some View {
@@ -96,7 +98,7 @@ struct RecordingEditorView: View {
             RecordingTimelineView(
                 segments: viewModel.segments,
                 selectedSegmentID: viewModel.selectedSegmentID,
-                playheadSeconds: playheadSeconds,
+                playheadSeconds: sourceTimelinePlayheadSeconds,
                 markInSeconds: viewModel.markInSeconds,
                 markOutSeconds: viewModel.markOutSeconds,
                 onSelect: viewModel.selectSegment,
@@ -115,12 +117,12 @@ struct RecordingEditorView: View {
 
     private var quickActions: some View {
         HStack(spacing: 8) {
-            quickButton("Trim Start", systemImage: "arrow.left.to.line") { viewModel.trimStartToPlayhead(playheadSeconds) }
-            quickButton("Trim End", systemImage: "arrow.right.to.line") { viewModel.trimEndToPlayhead(playheadSeconds) }
-            quickButton("Split", systemImage: "scissors") { viewModel.splitAtPlayhead(playheadSeconds) }
+            quickButton("Trim Start", systemImage: "arrow.left.to.line") { applyAtSourcePlayhead(viewModel.trimStartToPlayhead) }
+            quickButton("Trim End", systemImage: "arrow.right.to.line") { applyAtSourcePlayhead(viewModel.trimEndToPlayhead) }
+            quickButton("Split", systemImage: "scissors") { applyAtSourcePlayhead(viewModel.splitAtPlayhead) }
             quickButton("Join", systemImage: "link", isDisabled: !viewModel.canJoinSelectedSection) { viewModel.joinSelectedSection() }
-            quickButton("Set In", systemImage: "bracket.left") { viewModel.markIn(playheadSeconds) }
-            quickButton("Set Out", systemImage: "bracket.right") { viewModel.markOut(playheadSeconds) }
+            quickButton("Set In", systemImage: "bracket.left") { applyAtSourcePlayhead(viewModel.markIn) }
+            quickButton("Set Out", systemImage: "bracket.right") { applyAtSourcePlayhead(viewModel.markOut) }
             quickButton("Remove Selection", systemImage: "trash") { viewModel.cutMarkedRange() }
             Spacer(minLength: 0)
             Button("Reset") { viewModel.resetEdits() }
@@ -277,10 +279,22 @@ struct RecordingEditorView: View {
         }
     }
 
+    private var sourceTimelinePlayheadSeconds: Double {
+        playheadSeconds * max(0.25, viewModel.playbackRate)
+    }
+
     private func seekTimeline(_ timelineSeconds: Double) {
         guard let target = viewModel.sourceTime(forTimelineSeconds: timelineSeconds) else { return }
         viewModel.selectSegment(target.segment)
-        onSeek(target.seconds)
+        onSeek(timelineSeconds / max(0.25, viewModel.playbackRate))
+    }
+
+    private func applyAtSourcePlayhead(_ action: (Double) -> Void) {
+        guard let target = viewModel.sourceTime(forTimelineSeconds: sourceTimelinePlayheadSeconds) else { return }
+        if viewModel.selectedSegmentID != target.segment.id {
+            viewModel.selectSegment(target.segment)
+        }
+        action(target.seconds)
     }
 
     private func selectTimelineRange(startSeconds: Double, endSeconds: Double) {
