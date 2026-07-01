@@ -192,6 +192,20 @@ final class RecordingEditorViewModel: ObservableObject {
         segments[index].endSeconds = next
     }
 
+    func updateSegmentStart(_ segment: RecordingEditorSegment, seconds: Double) {
+        selectedSegmentID = segment.id
+        updateSelectedStart(seconds)
+    }
+
+    func updateSegmentEnd(_ segment: RecordingEditorSegment, seconds: Double) {
+        selectedSegmentID = segment.id
+        updateSelectedEnd(seconds)
+    }
+
+    func beginInteractiveEdit() {
+        recordUndo()
+    }
+
     func trimStartToPlayhead(_ playheadSeconds: Double) {
         guard let index = selectedSegmentIndex else { return }
         recordUndo()
