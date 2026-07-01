@@ -131,6 +131,8 @@ private struct RecordingEditorSnapshot {
 
 @MainActor
 final class RecordingEditorViewModel: ObservableObject {
+    private static let sectionJoinTolerance = 0.05
+
     let primaryRecording: WebRTCStreamRecording
     @Published var library: [WebRTCStreamRecording]
     @Published var outputTitle: String
@@ -189,6 +191,7 @@ final class RecordingEditorViewModel: ObservableObject {
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     var canExport: Bool { !isExporting && !segments.isEmpty && outputDurationSeconds > 0.05 }
+    var canJoinSelectedSection: Bool { joinablePairContainingSelectedSegment() != nil }
 
     func sourceTime(forTimelineSeconds timelineSeconds: Double) -> (segment: RecordingEditorSegment, seconds: Double)? {
         var cursor = 0.0
@@ -350,6 +353,18 @@ final class RecordingEditorViewModel: ObservableObject {
         return true
     }
 
+    func joinSelectedSection() {
+        guard let pair = joinablePairContainingSelectedSegment() else { return }
+        let left = segments[pair.leftIndex]
+        let right = segments[pair.rightIndex]
+        recordUndo()
+        let joined = RecordingEditorSegment(id: left.id, recording: left.recording, startSeconds: left.startSeconds, endSeconds: right.endSeconds)
+        segments.replaceSubrange(pair.leftIndex...pair.rightIndex, with: [joined])
+        selectedSegmentID = joined.id
+        markInSeconds = nil
+        markOutSeconds = nil
+    }
+
     func duplicateSelectedSegment() {
         guard let index = selectedSegmentIndex else { return }
         recordUndo()
@@ -484,6 +499,23 @@ final class RecordingEditorViewModel: ObservableObject {
     private func clampedPlayhead(_ playheadSeconds: Double) -> Double {
         guard let segment = selectedSegment else { return 0 }
         return min(max(segment.startSeconds, playheadSeconds), segment.endSeconds)
+    }
+
+    private func joinablePairContainingSelectedSegment() -> (leftIndex: Int, rightIndex: Int)? {
+        guard let index = selectedSegmentIndex else { return nil }
+        let previousIndex = index - 1
+        if segments.indices.contains(previousIndex), canJoin(left: segments[previousIndex], right: segments[index]) {
+            return (previousIndex, index)
+        }
+        let nextIndex = index + 1
+        if segments.indices.contains(nextIndex), canJoin(left: segments[index], right: segments[nextIndex]) {
+            return (index, nextIndex)
+        }
+        return nil
+    }
+
+    private func canJoin(left: RecordingEditorSegment, right: RecordingEditorSegment) -> Bool {
+        left.recording.id == right.recording.id && abs(left.endSeconds - right.startSeconds) <= Self.sectionJoinTolerance
     }
 
     private func recordUndo() {

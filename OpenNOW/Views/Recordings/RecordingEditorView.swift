@@ -118,6 +118,7 @@ struct RecordingEditorView: View {
             quickButton("Trim Start", systemImage: "arrow.left.to.line") { viewModel.trimStartToPlayhead(playheadSeconds) }
             quickButton("Trim End", systemImage: "arrow.right.to.line") { viewModel.trimEndToPlayhead(playheadSeconds) }
             quickButton("Split", systemImage: "scissors") { viewModel.splitAtPlayhead(playheadSeconds) }
+            quickButton("Join", systemImage: "link", isDisabled: !viewModel.canJoinSelectedSection) { viewModel.joinSelectedSection() }
             quickButton("Set In", systemImage: "bracket.left") { viewModel.markIn(playheadSeconds) }
             quickButton("Set Out", systemImage: "bracket.right") { viewModel.markOut(playheadSeconds) }
             quickButton("Remove Selection", systemImage: "trash") { viewModel.cutMarkedRange() }
@@ -160,6 +161,7 @@ struct RecordingEditorView: View {
                 HStack(spacing: 7) {
                     smallButton("Duplicate") { viewModel.duplicateSelectedSegment() }
                     smallButton("Remove") { viewModel.removeSelectedSegment() }
+                    smallButton("Join", isDisabled: !viewModel.canJoinSelectedSection) { viewModel.joinSelectedSection() }
                     smallButton("Move Left") { viewModel.moveSelectedSegment(offset: -1) }
                     smallButton("Move Right") { viewModel.moveSelectedSegment(offset: 1) }
                 }
@@ -332,7 +334,7 @@ struct RecordingEditorView: View {
         }
     }
 
-    private func quickButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    private func quickButton(_ title: String, systemImage: String, isDisabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
@@ -346,10 +348,10 @@ struct RecordingEditorView: View {
             .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.isExporting)
+        .disabled(viewModel.isExporting || isDisabled)
     }
 
-    private func smallButton(_ title: String, action: @escaping () -> Void) -> some View {
+    private func smallButton(_ title: String, isDisabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
             .font(.recordingsNvidia(size: 10, weight: .bold))
             .foregroundStyle(.white.opacity(0.86))
@@ -358,7 +360,7 @@ struct RecordingEditorView: View {
             .background(Color.white.opacity(0.07))
             .overlay { Rectangle().stroke(Color.white.opacity(0.11), lineWidth: 1) }
             .buttonStyle(.plain)
-            .disabled(viewModel.isExporting)
+            .disabled(viewModel.isExporting || isDisabled)
     }
 
     private func menuLabel(_ title: String, systemImage: String) -> some View {
