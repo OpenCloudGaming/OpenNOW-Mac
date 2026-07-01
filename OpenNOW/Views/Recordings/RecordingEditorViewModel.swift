@@ -3,6 +3,37 @@ import Combine
 import Foundation
 import WebRTCMedia
 
+enum RecordingEditorDragPayload: Equatable {
+    case recording(UUID)
+    case segment(UUID)
+
+    private static let recordingPrefix = "opennow-recording:"
+    private static let segmentPrefix = "opennow-segment:"
+
+    var stringValue: String {
+        switch self {
+        case .recording(let id): return Self.recordingPrefix + id.uuidString
+        case .segment(let id): return Self.segmentPrefix + id.uuidString
+        }
+    }
+
+    init?(stringValue: String) {
+        if stringValue.hasPrefix(Self.recordingPrefix) {
+            let value = String(stringValue.dropFirst(Self.recordingPrefix.count))
+            guard let id = UUID(uuidString: value) else { return nil }
+            self = .recording(id)
+            return
+        }
+        if stringValue.hasPrefix(Self.segmentPrefix) {
+            let value = String(stringValue.dropFirst(Self.segmentPrefix.count))
+            guard let id = UUID(uuidString: value) else { return nil }
+            self = .segment(id)
+            return
+        }
+        return nil
+    }
+}
+
 struct RecordingEditorSegment: Equatable, Identifiable {
     let id: UUID
     var recording: WebRTCStreamRecording
@@ -283,6 +314,40 @@ final class RecordingEditorViewModel: ObservableObject {
         let segment = RecordingEditorSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds)
         segments.append(segment)
         selectedSegmentID = segment.id
+    }
+
+    func appendRecording(_ recording: WebRTCStreamRecording, at insertionIndex: Int) {
+        guard recording.durationSeconds > 0 else { return }
+        recordUndo()
+        let segment = RecordingEditorSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds)
+        segments.insert(segment, at: min(max(0, insertionIndex), segments.count))
+        selectedSegmentID = segment.id
+    }
+
+    func handleDropPayload(_ payload: String, at insertionIndex: Int) -> Bool {
+        guard let payload = RecordingEditorDragPayload(stringValue: payload) else { return false }
+        switch payload {
+        case .recording(let id):
+            guard let recording = library.first(where: { $0.id == id }) else { return false }
+            appendRecording(recording, at: insertionIndex)
+            return true
+        case .segment(let id):
+            return moveSegment(id: id, to: insertionIndex)
+        }
+    }
+
+    @discardableResult
+    func moveSegment(id: UUID, to insertionIndex: Int) -> Bool {
+        guard let currentIndex = segments.firstIndex(where: { $0.id == id }) else { return false }
+        let boundedIndex = min(max(0, insertionIndex), segments.count)
+        var adjustedIndex = boundedIndex
+        if currentIndex < boundedIndex { adjustedIndex -= 1 }
+        guard currentIndex != adjustedIndex, currentIndex + 1 != boundedIndex else { return false }
+        recordUndo()
+        let segment = segments.remove(at: currentIndex)
+        segments.insert(segment, at: min(max(0, adjustedIndex), segments.count))
+        selectedSegmentID = segment.id
+        return true
     }
 
     func duplicateSelectedSegment() {

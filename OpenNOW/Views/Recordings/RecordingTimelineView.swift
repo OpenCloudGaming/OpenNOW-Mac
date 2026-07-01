@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import WebRTCMedia
 
 struct RecordingTimelineView: View {
@@ -10,6 +11,7 @@ struct RecordingTimelineView: View {
     let onSelect: (RecordingEditorSegment) -> Void
     let onSeek: (Double) -> Void
     let onRangeSelected: (Double, Double) -> Void
+    let onPayloadDropped: (String, Int) -> Bool
     let onTrimBegin: (RecordingEditorSegment) -> Void
     let onSegmentTrimStart: (RecordingEditorSegment, Double) -> Void
     let onSegmentTrimEnd: (RecordingEditorSegment, Double) -> Void
@@ -17,6 +19,7 @@ struct RecordingTimelineView: View {
     @State private var dragStartSeconds: Double?
     @State private var dragEndSeconds: Double?
     @State private var activeTrimHandleID: String?
+    @State private var proposedInsertionIndex: Int?
 
     private var totalDuration: Double {
         max(segments.reduce(0) { $0 + $1.durationSeconds }, 0.01)
@@ -42,10 +45,19 @@ struct RecordingTimelineView: View {
                 if let frame = markedSelectionFrame(in: proxy.size.width) {
                     selectionOverlay(frame: frame, opacity: 0.36)
                 }
+                if let insertionX = insertionX(index: proposedInsertionIndex, width: proxy.size.width) {
+                    insertionIndicator(x: insertionX)
+                }
                 playhead(width: proxy.size.width)
             }
             .contentShape(Rectangle())
             .gesture(timelineGesture(width: proxy.size.width))
+            .onDrop(of: [.text], delegate: RecordingTimelineDropDelegate(
+                width: proxy.size.width,
+                segments: segments,
+                proposedInsertionIndex: $proposedInsertionIndex,
+                onPayloadDropped: onPayloadDropped
+            ))
         }
         .frame(height: 86)
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
@@ -84,6 +96,9 @@ struct RecordingTimelineView: View {
         .frame(width: max(2, item.width), height: 58)
         .offset(x: item.x, y: 14)
         .onTapGesture { onSelect(item.segment) }
+        .onDrag {
+            NSItemProvider(object: RecordingEditorDragPayload.segment(item.segment.id).stringValue as NSString)
+        }
     }
 
     private func trimHandle(item: (segment: RecordingEditorSegment, x: CGFloat, width: CGFloat), isLeading: Bool) -> some View {
@@ -129,6 +144,14 @@ struct RecordingTimelineView: View {
             .offset(x: frame.x, y: 14)
     }
 
+    private func insertionIndicator(x: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.openNowGreen)
+            .frame(width: 3, height: 78)
+            .shadow(color: Color.openNowGreen.opacity(0.80), radius: 8)
+            .offset(x: x - 1.5, y: 8)
+    }
+
     private func timelineTicks(width: CGFloat) -> some View {
         Path { path in
             let tickCount = 12
@@ -172,6 +195,14 @@ struct RecordingTimelineView: View {
             cursor += segment.durationSeconds
             return (segment, x, segmentWidth)
         }
+    }
+
+    private func insertionX(index: Int?, width: CGFloat) -> CGFloat? {
+        guard let index else { return nil }
+        let frames = segmentFrames(in: width)
+        if index <= 0 { return 0 }
+        if index >= frames.count { return width }
+        return frames[index].x
     }
 
     private func segment(at timelineSeconds: Double) -> RecordingEditorSegment? {
@@ -232,4 +263,53 @@ func recordingEditorDurationText(_ seconds: Double) -> String {
     let value = max(0, Int(seconds.rounded()))
     if value >= 3600 { return String(format: "%d:%02d:%02d", value / 3600, (value / 60) % 60, value % 60) }
     return String(format: "%d:%02d", value / 60, value % 60)
+}
+
+private struct RecordingTimelineDropDelegate: DropDelegate {
+    let width: CGFloat
+    let segments: [RecordingEditorSegment]
+    @Binding var proposedInsertionIndex: Int?
+    let onPayloadDropped: (String, Int) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.text])
+    }
+
+    func dropEntered(info: DropInfo) {
+        proposedInsertionIndex = insertionIndex(for: info.location.x)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        proposedInsertionIndex = insertionIndex(for: info.location.x)
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        proposedInsertionIndex = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let insertionIndex = proposedInsertionIndex ?? insertionIndex(for: info.location.x)
+        proposedInsertionIndex = nil
+        guard let provider = info.itemProviders(for: [.text]).first else { return false }
+        provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let payload = object as? String else { return }
+            DispatchQueue.main.async {
+                _ = onPayloadDropped(payload, insertionIndex)
+            }
+        }
+        return true
+    }
+
+    private func insertionIndex(for x: CGFloat) -> Int {
+        guard !segments.isEmpty else { return 0 }
+        var cursor = CGFloat.zero
+        let totalDuration = max(segments.reduce(0) { $0 + $1.durationSeconds }, 0.01)
+        for (index, segment) in segments.enumerated() {
+            let segmentWidth = CGFloat(segment.durationSeconds / totalDuration) * width
+            if x < cursor + segmentWidth / 2 { return index }
+            cursor += segmentWidth
+        }
+        return segments.count
+    }
 }

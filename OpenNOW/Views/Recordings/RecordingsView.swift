@@ -547,6 +547,9 @@ private struct RecordingRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .onDrag {
+            NSItemProvider(object: RecordingEditorDragPayload.recording(recording.id).stringValue as NSString)
+        }
     }
 
     private var background: some ShapeStyle {

@@ -102,6 +102,7 @@ struct RecordingEditorView: View {
                 onSelect: viewModel.selectSegment,
                 onSeek: seekTimeline,
                 onRangeSelected: selectTimelineRange,
+                onPayloadDropped: { payload, insertionIndex in viewModel.handleDropPayload(payload, at: insertionIndex) },
                 onTrimBegin: { _ in viewModel.beginInteractiveEdit() },
                 onSegmentTrimStart: viewModel.updateSegmentStart,
                 onSegmentTrimEnd: viewModel.updateSegmentEnd
