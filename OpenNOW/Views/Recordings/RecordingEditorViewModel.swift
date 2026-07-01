@@ -357,9 +357,14 @@ final class RecordingEditorViewModel: ObservableObject {
         guard let pair = joinablePairContainingSelectedSegment() else { return }
         let left = segments[pair.leftIndex]
         let right = segments[pair.rightIndex]
+        let selectedID = segments[pair.selectedIndex].id
+        let insertionIndex = pair.selectedIndex - [pair.leftIndex, pair.rightIndex].filter { $0 < pair.selectedIndex }.count
         recordUndo()
-        let joined = RecordingEditorSegment(id: left.id, recording: left.recording, startSeconds: left.startSeconds, endSeconds: right.endSeconds)
-        segments.replaceSubrange(pair.leftIndex...pair.rightIndex, with: [joined])
+        let joined = RecordingEditorSegment(id: selectedID, recording: left.recording, startSeconds: left.startSeconds, endSeconds: right.endSeconds)
+        for index in [pair.leftIndex, pair.rightIndex].sorted(by: >) {
+            segments.remove(at: index)
+        }
+        segments.insert(joined, at: min(max(0, insertionIndex), segments.count))
         selectedSegmentID = joined.id
         markInSeconds = nil
         markOutSeconds = nil
@@ -501,17 +506,22 @@ final class RecordingEditorViewModel: ObservableObject {
         return min(max(segment.startSeconds, playheadSeconds), segment.endSeconds)
     }
 
-    private func joinablePairContainingSelectedSegment() -> (leftIndex: Int, rightIndex: Int)? {
+    private func joinablePairContainingSelectedSegment() -> (leftIndex: Int, rightIndex: Int, selectedIndex: Int)? {
         guard let index = selectedSegmentIndex else { return nil }
-        let previousIndex = index - 1
-        if segments.indices.contains(previousIndex), canJoin(left: segments[previousIndex], right: segments[index]) {
-            return (previousIndex, index)
+        let selected = segments[index]
+        if let previousSourceIndex = nearestJoinableIndex(to: index, matching: { canJoin(left: segments[$0], right: selected) }) {
+            return (previousSourceIndex, index, index)
         }
-        let nextIndex = index + 1
-        if segments.indices.contains(nextIndex), canJoin(left: segments[index], right: segments[nextIndex]) {
-            return (index, nextIndex)
+        if let nextSourceIndex = nearestJoinableIndex(to: index, matching: { canJoin(left: selected, right: segments[$0]) }) {
+            return (index, nextSourceIndex, index)
         }
         return nil
+    }
+
+    private func nearestJoinableIndex(to selectedIndex: Int, matching isJoinable: (Int) -> Bool) -> Int? {
+        segments.indices
+            .filter { $0 != selectedIndex && isJoinable($0) }
+            .min { abs($0 - selectedIndex) < abs($1 - selectedIndex) }
     }
 
     private func canJoin(left: RecordingEditorSegment, right: RecordingEditorSegment) -> Bool {
