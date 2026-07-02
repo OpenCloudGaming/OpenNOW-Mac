@@ -131,6 +131,14 @@ struct OpenNOWApp: App {
                     _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone)
                 }
                 .keyboardShortcut("m", modifiers: .command)
+                Button("Toggle Recording") {
+                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleRecording)
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                Button("Toggle Anti-AFK") {
+                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleAntiAFK)
+                }
+                .keyboardShortcut("k", modifiers: .command)
             }
         }
     }
@@ -138,12 +146,14 @@ struct OpenNOWApp: App {
 
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private static let microphoneShortcutKeyCode: UInt16 = 46
+    private static let recordingShortcutKeyCode: UInt16 = 15
+    private static let antiAFKShortcutKeyCode: UInt16 = 40
 
     private let githubUpdater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "OpenNOW-Mac")
     private var applicationUpdateCheckTimer: Timer?
     private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
-    private var microphoneShortcutMonitor: Any?
+    private var streamShortcutMonitor: Any?
     private var isCompletingUserApprovedTermination = false
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
@@ -162,13 +172,13 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication did finish launching")
-        installMicrophoneShortcutMonitor()
+        installStreamShortcutMonitor()
         startApplicationUpdateChecks()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         OpenNOWLog.info(.app, "NSApplication will terminate")
-        removeMicrophoneShortcutMonitor()
+        removeStreamShortcutMonitor()
         stopApplicationUpdateChecks()
     }
 
@@ -208,26 +218,31 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func installMicrophoneShortcutMonitor() {
-        guard microphoneShortcutMonitor == nil else { return }
-        microphoneShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+    private func installStreamShortcutMonitor() {
+        guard streamShortcutMonitor == nil else { return }
+        streamShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard NSApplication.shared.isActive, WebRTCMediaStreamLifecycle.hasActiveStream else { return event }
-            guard Self.isMicrophoneShortcut(event) else { return event }
-            guard WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone) else { return event }
+            guard let command = Self.streamCommand(for: event) else { return event }
+            guard WebRTCMediaStreamLifecycle.sendCommand(command) else { return event }
             return nil
         }
     }
 
-    private func removeMicrophoneShortcutMonitor() {
-        guard let microphoneShortcutMonitor else { return }
-        NSEvent.removeMonitor(microphoneShortcutMonitor)
-        self.microphoneShortcutMonitor = nil
+    private func removeStreamShortcutMonitor() {
+        guard let streamShortcutMonitor else { return }
+        NSEvent.removeMonitor(streamShortcutMonitor)
+        self.streamShortcutMonitor = nil
     }
 
-    private static func isMicrophoneShortcut(_ event: NSEvent) -> Bool {
-        guard event.keyCode == microphoneShortcutKeyCode else { return false }
+    private static func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
-        return modifiers == .command
+        guard modifiers == .command else { return nil }
+        switch event.keyCode {
+        case microphoneShortcutKeyCode: return .toggleMicrophone
+        case recordingShortcutKeyCode: return .toggleRecording
+        case antiAFKShortcutKeyCode: return .toggleAntiAFK
+        default: return nil
+        }
     }
 
     static func requestApplicationUpdateCheck() {

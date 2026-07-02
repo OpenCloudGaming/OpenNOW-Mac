@@ -22,6 +22,8 @@ public enum WebRTCMediaStreamCommand: Sendable {
     case toggleStatsHUD
     case toggleUnifiedHUD
     case toggleMicrophone
+    case toggleRecording
+    case toggleAntiAFK
     case showQuitMenu
 }
 
@@ -337,6 +339,8 @@ public final class NativeWebRTCStreamView: NSView {
         guard modifiers.subtracting([.capsLock, .numericPad]) == .command else { return nil }
         switch event.keyCode {
         case 46: return .toggleMicrophone
+        case 15: return .toggleRecording
+        case 40: return .toggleAntiAFK
         case 45: return .toggleStatsHUD
         case 5: return .toggleUnifiedHUD
         case 12: return .showQuitMenu

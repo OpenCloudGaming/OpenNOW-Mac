@@ -832,6 +832,10 @@ private struct TwitchSettingsPage: View {
                 SettingsDivider()
                 SettingsInfoRow(label: "Command-M", value: "Toggle microphone")
                 SettingsDivider()
+                SettingsInfoRow(label: "Command-R", value: "Toggle recording")
+                SettingsDivider()
+                SettingsInfoRow(label: "Command-K", value: "Toggle Anti-AFK")
+                SettingsDivider()
                 SettingsInfoRow(label: "Command-Q", value: "Open stream quit controls")
             }
         }

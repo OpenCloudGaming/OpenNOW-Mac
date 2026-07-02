@@ -203,8 +203,10 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             if !isStreamReady { launchOverlay }
+            if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
             if statsVisible { statsHUD }
             if unifiedHUDVisible { unifiedHUD }
+            if !transientStreamMessage.isEmpty { transientStreamMessageOverlay }
             if quitMenuVisible { quitMenu }
         }
         .background(Color.black)
@@ -253,12 +255,11 @@ public struct WebRTCMediaStreamSurface: View {
                         .font(.system(size: 22, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text("Cmd-G toggles this HUD · Cmd-M toggles microphone · Cmd-Q opens quit controls")
+                    Text("Cmd-G toggles this HUD · Cmd-M mic · Cmd-R recording · Cmd-K Anti-AFK · Cmd-Q quit")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.58))
                 }
                 Spacer()
-                twitchLiveBadge
                 Button(action: { setUnifiedHUDVisible(false) }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .bold))
@@ -269,39 +270,24 @@ public struct WebRTCMediaStreamSurface: View {
                 .buttonStyle(.plain)
             }
 
-            if !transientStreamMessage.isEmpty {
-                Text(transientStreamMessage)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(.white.opacity(0.08), in: Capsule())
-                    .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1))
-            }
-
             HStack(spacing: 10) {
                 hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
                 hudMetricCard(title: "Recording", value: recordingStatusText, positive: recordingStatus.isRecording)
-                hudMetricCard(title: "Broadcast", value: broadcastSummaryText, positive: broadcastStatus.isBroadcasting)
                 hudMetricCard(title: "Anti-AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
             }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top, spacing: 14) {
-                        hudControlsPanel
-                        hudStatsPanel
-                    }
+                    hudControlsPanel
                     hudVideoPanel
-                    hudTwitchPanel
                 }
             }
-            .frame(maxHeight: 560)
+            .frame(maxHeight: 460)
         }
         .font(.system(size: 12, weight: .medium, design: .monospaced))
         .foregroundStyle(.white.opacity(0.88))
         .padding(18)
-        .frame(width: 760, alignment: .leading)
+        .frame(width: 560, alignment: .leading)
         .background(twitchPanelBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
         .shadow(color: WebRTCMediaStreamTheme.accent.opacity(0.18), radius: 34, x: 0, y: 16)
@@ -321,16 +307,53 @@ public struct WebRTCMediaStreamSurface: View {
                     .disabled(!isStreamReady || recordingIsBusy)
                 twitchSecondaryActionButton(title: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK Off" : "Anti-AFK On", systemName: "cursorarrow.motionlines", action: toggleAntiAFKMouseMovement)
                     .disabled(!isStreamReady)
-            }
-            HStack(spacing: 10) {
-                twitchPrimaryActionButton(title: isPreparingBroadcast ? "Preparing" : (broadcastStatus.isBroadcasting ? "End Live" : "Go Live"), color: broadcastStatus.isBroadcasting ? WebRTCMediaStreamTheme.danger : WebRTCMediaStreamTheme.accent, foregroundColor: broadcastStatus.isBroadcasting ? .white : .black, action: toggleBroadcast)
-                    .disabled(!isStreamReady || isPreparingBroadcast)
                 twitchSecondaryActionButton(title: "Quit Menu", systemName: "power") { showQuitMenu() }
             }
         }
         .padding(12)
-        .frame(width: 354, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var microphoneToggleOverlay: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                microphoneToggleButton
+            }
+        }
+        .padding(.trailing, 24)
+        .padding(.bottom, 24)
+    }
+
+    private var microphoneToggleButton: some View {
+        Button(action: toggleMicrophone) {
+            Image(systemName: microphoneEnabled ? "mic.fill" : "mic.slash.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(microphoneEnabled ? .black : .white.opacity(0.9))
+                .frame(width: 54, height: 54)
+                .background(microphoneEnabled ? WebRTCMediaStreamTheme.accent : .black.opacity(0.62), in: Circle())
+                .overlay(Circle().stroke(.white.opacity(runtimeSettings.microphoneMode == "disabled" ? 0.12 : 0.22), lineWidth: 1))
+                .shadow(color: .black.opacity(0.38), radius: 18, x: 0, y: 8)
+        }
+        .buttonStyle(.plain)
+        .disabled(runtimeSettings.microphoneMode == "disabled")
+        .opacity(runtimeSettings.microphoneMode == "disabled" ? 0.48 : 1)
+        .accessibilityLabel(microphoneEnabled ? "Mute microphone" : "Unmute microphone")
+    }
+
+    private var transientStreamMessageOverlay: some View {
+        Text(transientStreamMessage)
+            .font(.system(size: 12, weight: .black, design: .rounded))
+            .foregroundStyle(.white.opacity(0.94))
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .background(.black.opacity(0.68), in: Capsule())
+            .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
+            .shadow(color: .black.opacity(0.36), radius: 18, x: 0, y: 8)
+            .padding(.bottom, 34)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 
     private var hudStatsPanel: some View {
@@ -1193,6 +1216,10 @@ public struct WebRTCMediaStreamSurface: View {
             toggleUnifiedHUD()
         case .toggleMicrophone:
             toggleMicrophone()
+        case .toggleRecording:
+            toggleRecording()
+        case .toggleAntiAFK:
+            toggleAntiAFKMouseMovement()
         case .showQuitMenu:
             showQuitMenu()
         }
