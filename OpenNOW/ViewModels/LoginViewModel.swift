@@ -284,7 +284,7 @@ final class LoginViewModel: ObservableObject {
         do {
             OpenNOWLog.info(.auth, "Refreshing saved session account=\(account.email)")
             await jarvisAuthService.setSession(jarvisSession)
-            let refreshed = try await jarvisAuthService.refreshSession(force: false)
+            let refreshed = try await jarvisAuthService.refreshSession(force: !jarvisSession.isIdTokenValid)
             persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
             successMessage = "Session refreshed for \(account.displayName)."
             OpenNOWLog.info(.auth, "Session refreshed account=\(account.email)")

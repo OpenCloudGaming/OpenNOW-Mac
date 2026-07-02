@@ -81,6 +81,20 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     #expect(session.accessTokenExpiry > JarvisSession.currentEpochMs())
 }
 
+@Test func jarvisSessionValidatesVendorIdTokenExpiry() {
+    var session = JarvisSession(idToken: "id", idTokenExpiry: JarvisSession.currentEpochMs() + 60_000)
+    #expect(session.isIdTokenValid)
+
+    session.idTokenExpiry = JarvisSession.currentEpochMs() - 1_000
+    #expect(!session.isIdTokenValid)
+
+    session.idTokenExpiry = 0
+    #expect(session.isIdTokenValid)
+
+    session.idToken = ""
+    #expect(!session.isIdTokenValid)
+}
+
 @Test func jarvisClientTokenRefreshPolicyIsSelfContained() {
     let policy = JarvisClientTokenRefreshPolicy(fixedWindowMs: 300_000, percentageWindow: 20)
     #expect(policy.shouldRefresh(clientToken: "", clientTokenExpiry: 0, clientTokenExpiryLength: 0, currentEpochMs: 1_000))

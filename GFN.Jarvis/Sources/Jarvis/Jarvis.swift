@@ -129,6 +129,10 @@ public struct JarvisSession: Equatable, Sendable {
         !accessToken.isEmpty && accessTokenExpiry > Self.currentEpochMs()
     }
 
+    public var isIdTokenValid: Bool {
+        !idToken.isEmpty && (idTokenExpiry == 0 || idTokenExpiry > Self.currentEpochMs())
+    }
+
     public var hasAccessToken: Bool {
         !accessToken.isEmpty
     }

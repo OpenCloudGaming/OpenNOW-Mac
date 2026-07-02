@@ -74,6 +74,20 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(response.clientTokenExpiryLengthMs == 240_000)
 }
 
+@Test func starfleetSessionValidatesVendorIdTokenExpiry() {
+    var session = StarfleetSession(idToken: "id", idTokenExpiry: StarfleetSession.currentEpochMs() + 60_000)
+    #expect(session.isIdTokenValid)
+
+    session.idTokenExpiry = StarfleetSession.currentEpochMs() - 1_000
+    #expect(!session.isIdTokenValid)
+
+    session.idTokenExpiry = 0
+    #expect(session.isIdTokenValid)
+
+    session.idToken = ""
+    #expect(!session.isIdTokenValid)
+}
+
 @Test func starfleetClientTokenRefreshPolicyMatchesGFNWindow() {
     let policy = StarfleetClientTokenRefreshPolicy(fixedWindowMs: 300_000, percentageWindow: 20)
     #expect(policy.shouldRefresh(clientToken: "", clientTokenExpiry: 0, clientTokenExpiryLength: 0, currentEpochMs: 1_000))

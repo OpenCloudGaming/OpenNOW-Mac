@@ -1623,13 +1623,14 @@ final class CatalogViewModel: ObservableObject {
                         continuation.resume()
                         return
                     }
+                    defer { continuation.resume() }
                     self.patchingPollInFlight = false
                     if success {
                         self.applyPatchingStatuses(statuses)
                     } else if !error.isEmpty {
+                        if self.refreshAuthIfNeeded(error: error) { return }
                         OpenNOWLog.warning(.catalog, "App patch status poll failed: \(error)")
                     }
-                    continuation.resume()
                 }
             }
         }

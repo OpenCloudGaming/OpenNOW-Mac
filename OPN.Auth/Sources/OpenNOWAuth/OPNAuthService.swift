@@ -144,7 +144,7 @@ public final class OPNAuthService: @unchecked Sendable {
             guard let self else { return }
             await self.syncBackendSessions(session)
             do {
-                let refreshed = Self.opnSession(from: try await self.starfleetService.refreshSession(force: forceRefresh))
+                let refreshed = Self.opnSession(from: try await self.starfleetService.refreshSession(force: forceRefresh || !session.isIdTokenValid))
                 await self.jarvisAuthService.setSession(refreshed)
                 self.saveSession(refreshed)
                 DispatchQueue.main.async { completion(true, refreshed, "") }

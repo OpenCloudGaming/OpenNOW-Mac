@@ -536,8 +536,9 @@ public struct StarfleetSession: Equatable, Sendable {
         self.accessTokenExpiry = accessTokenExpiry
     }
 
-    public var isAccessTokenValid: Bool { !accessToken.isEmpty && accessTokenExpiry > Self.currentEpochMs() }
     public var isClientTokenValid: Bool { !clientToken.isEmpty && clientTokenExpiry > Self.currentEpochMs() }
+    public var isAccessTokenValid: Bool { !accessToken.isEmpty && accessTokenExpiry > Self.currentEpochMs() }
+    public var isIdTokenValid: Bool { !idToken.isEmpty && (idTokenExpiry == 0 || idTokenExpiry > Self.currentEpochMs()) }
 
     public static func currentEpochMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000.0)
