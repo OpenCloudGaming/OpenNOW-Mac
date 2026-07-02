@@ -63,7 +63,12 @@ extension Font {
     }
 }
 
+private enum RecordingEditorBetaPreference {
+    static let key = "OpenNOW.Recordings.EditorEarlyBetaOptIn"
+}
+
 struct RecordingsView: View {
+    @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
     @State private var recordings: [WebRTCStreamRecording] = []
     @State private var selectedRecording: WebRTCStreamRecording?
     @State private var player: AVPlayer?
@@ -113,6 +118,11 @@ struct RecordingsView: View {
             guard let selectedRecording, !ids.contains(selectedRecording.id) else { return }
             select(visibleRecordings.first, autoplay: false)
         }
+        .onChange(of: recordingEditorEarlyBetaEnabled) { _, enabled in
+            guard !enabled, editorViewModel != nil else { return }
+            closeEditor()
+            message = "Recording editor early beta disabled. Editing tools are locked."
+        }
         .confirmationDialog(deleteDialogTitle, isPresented: deleteDialogPresented) {
             Button("Delete Recording", role: .destructive) { deletePendingRecording() }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
@@ -145,12 +155,16 @@ struct RecordingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 10) {
                         ForEach(visibleRecordings) { recording in
-                            RecordingRow(recording: recording, isSelected: selectedRecording?.id == recording.id) {
+                            RecordingRow(recording: recording, isSelected: selectedRecording?.id == recording.id, editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled) {
                                 select(recording, autoplay: true)
                             }
                             .contextMenu {
                                 Button("Open Recording") { open(recording) }
-                                Button("Edit Recording") { startEditing(recording) }
+                                if recordingEditorEarlyBetaEnabled {
+                                    Button("Edit Recording") { startEditing(recording) }
+                                } else {
+                                    Button("Enable Early Beta Editor") { enableRecordingEditorBeta() }
+                                }
                                 Button("Reveal in Finder") { reveal(recording) }
                                 Button("Copy File Path") { copyPath(recording) }
                                 Divider()
@@ -200,6 +214,10 @@ struct RecordingsView: View {
                 RecordingMetric(title: "VIDEOS", value: "\(recordings.count)")
                 RecordingMetric(title: "RUNTIME", value: durationText(stats.totalDurationSeconds))
                 RecordingMetric(title: "SIZE", value: compactFileSizeText(stats.totalBytes))
+            }
+
+            RecordingEditorBetaCard(enabled: recordingEditorEarlyBetaEnabled) {
+                setRecordingEditorBetaEnabled(!recordingEditorEarlyBetaEnabled)
             }
         }
         .padding(.horizontal, 22)
@@ -285,8 +303,10 @@ struct RecordingsView: View {
                 recording: recording,
                 copiedPath: copiedPathRecordingID == recording.id,
                 message: message,
+                editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled,
                 onRestart: { restart(recording) },
                 onEdit: { startEditing(recording) },
+                onToggleEditorBeta: { setRecordingEditorBetaEnabled(!recordingEditorEarlyBetaEnabled) },
                 onOpen: { open(recording) },
                 onReveal: { reveal(recording) },
                 onCopyPath: { copyPath(recording) },
@@ -389,6 +409,10 @@ struct RecordingsView: View {
     }
 
     private func startEditing(_ recording: WebRTCStreamRecording) {
+        guard recordingEditorEarlyBetaEnabled else {
+            message = "Recording editor is early beta. Opt in to unlock editing tools."
+            return
+        }
         if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
         player?.pause()
         editorViewModel = RecordingEditorViewModel(recording: recording, library: recordings)
@@ -401,6 +425,15 @@ struct RecordingsView: View {
         editorViewModel = nil
         if let selectedRecording { select(selectedRecording, autoplay: false) }
         message = "Editor closed."
+    }
+
+    private func enableRecordingEditorBeta() {
+        setRecordingEditorBetaEnabled(true)
+    }
+
+    private func setRecordingEditorBetaEnabled(_ enabled: Bool) {
+        recordingEditorEarlyBetaEnabled = enabled
+        message = enabled ? "Recording editor early beta enabled. Editing tools unlocked." : "Recording editor early beta disabled. Editing tools locked."
     }
 
     private func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
@@ -546,6 +579,50 @@ private struct RecordingMetric: View {
     }
 }
 
+private struct RecordingEditorBetaCard: View {
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: enabled ? "checkmark.seal.fill" : "lock.fill")
+                .font(.recordingsNvidia(size: 18, weight: .bold))
+                .foregroundStyle(enabled ? Color.openNowGreen : .white.opacity(0.60))
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(enabled ? 0.08 : 0.055))
+                .overlay { Rectangle().stroke(enabled ? Color.openNowGreen.opacity(0.38) : RecordingsLayout.stroke, lineWidth: 1) }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    Text("RECORDING EDITOR")
+                        .font(.recordingsNvidia(size: 10, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundStyle(.white.opacity(0.78))
+                    Text("EARLY BETA")
+                        .font(.recordingsNvidia(size: 9, weight: .bold))
+                        .tracking(0.8)
+                        .foregroundStyle(.black.opacity(0.86))
+                        .padding(.horizontal, 7)
+                        .frame(height: 18)
+                        .background(Color.openNowGreen)
+                }
+                Text(enabled ? "Editing tools are unlocked for this beta feature." : "Opt in to unlock trim, arrange, crop, audio, and export tools.")
+                    .font(.recordingsNvidia(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.56))
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+
+            Button(enabled ? "Disable Beta" : "Opt In", action: action)
+                .buttonStyle(RecordingActionButtonStyle(tone: enabled ? .secondary : .primary))
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.045))
+        .overlay { Rectangle().stroke(enabled ? Color.openNowGreen.opacity(0.34) : RecordingsLayout.stroke, lineWidth: 1) }
+    }
+}
+
 private struct RecordingSearchField: View {
     @Binding var text: String
 
@@ -601,10 +678,22 @@ private struct RecordingFilterChip: View {
 private struct RecordingRow: View {
     let recording: WebRTCStreamRecording
     let isSelected: Bool
+    let editorEarlyBetaEnabled: Bool
     let action: () -> Void
     @State private var isHovering = false
 
     var body: some View {
+        if editorEarlyBetaEnabled {
+            content
+                .onDrag {
+                    NSItemProvider(object: RecordingEditorDragPayload.recording(recording.id).stringValue as NSString)
+                }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
@@ -639,9 +728,6 @@ private struct RecordingRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .onDrag {
-            NSItemProvider(object: RecordingEditorDragPayload.recording(recording.id).stringValue as NSString)
-        }
     }
 
     private var background: some ShapeStyle {
@@ -779,8 +865,10 @@ private struct RecordingInspector: View {
     let recording: WebRTCStreamRecording
     let copiedPath: Bool
     let message: String
+    let editorEarlyBetaEnabled: Bool
     let onRestart: () -> Void
     let onEdit: () -> Void
+    let onToggleEditorBeta: () -> Void
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onCopyPath: () -> Void
@@ -802,8 +890,13 @@ private struct RecordingInspector: View {
                 Spacer(minLength: 12)
                 Button("Restart", action: onRestart)
                     .buttonStyle(RecordingActionButtonStyle(tone: .primary))
-                Button("Edit", action: onEdit)
-                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                if editorEarlyBetaEnabled {
+                    Button("Edit", action: onEdit)
+                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                } else {
+                    Button("Unlock Beta Editor", action: onToggleEditorBeta)
+                        .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
+                }
                 Button("Open", action: onOpen)
                     .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
                 Button("Reveal", action: onReveal)

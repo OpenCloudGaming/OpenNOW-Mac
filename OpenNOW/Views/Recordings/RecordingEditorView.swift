@@ -48,10 +48,19 @@ struct RecordingEditorView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("QUICK EDIT")
-                    .font(.recordingsNvidia(size: 10, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundStyle(Color.openNowGreen)
+                HStack(spacing: 7) {
+                    Text("QUICK EDIT")
+                        .font(.recordingsNvidia(size: 10, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundStyle(Color.openNowGreen)
+                    Text("EARLY BETA")
+                        .font(.recordingsNvidia(size: 8, weight: .bold))
+                        .tracking(0.8)
+                        .foregroundStyle(.black.opacity(0.86))
+                        .padding(.horizontal, 6)
+                        .frame(height: 16)
+                        .background(Color.openNowGreen)
+                }
                 Text("Drag the green handles to trim. Drag across the timeline to select a cut.")
                     .font(.recordingsNvidia(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
