@@ -334,16 +334,16 @@ public struct WebRTCMediaStreamSurface: View {
     private var microphoneToggleButton: some View {
         Button(action: toggleMicrophone) {
             Image(systemName: microphoneEnabled ? "mic.fill" : "mic.slash.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(microphoneEnabled ? .black : .white.opacity(0.9))
-                .frame(width: 54, height: 54)
-                .background(microphoneEnabled ? WebRTCMediaStreamTheme.accent : .black.opacity(0.62), in: Circle())
-                .overlay(Circle().stroke(.white.opacity(runtimeSettings.microphoneMode == "disabled" ? 0.12 : 0.22), lineWidth: 1))
-                .shadow(color: .black.opacity(0.38), radius: 18, x: 0, y: 8)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(microphoneEnabled ? .black.opacity(0.72) : .white.opacity(0.58))
+                .frame(width: 28, height: 28)
+                .background(microphoneEnabled ? WebRTCMediaStreamTheme.accent.opacity(0.42) : .black.opacity(0.26), in: Circle())
+                .overlay(Circle().stroke(.white.opacity(runtimeSettings.microphoneMode == "disabled" ? 0.05 : 0.11), lineWidth: 1))
+                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
         }
         .buttonStyle(.plain)
         .disabled(runtimeSettings.microphoneMode == "disabled")
-        .opacity(runtimeSettings.microphoneMode == "disabled" ? 0.48 : 1)
+        .opacity(runtimeSettings.microphoneMode == "disabled" ? 0.24 : 0.58)
         .accessibilityLabel(microphoneEnabled ? "Mute microphone" : "Unmute microphone")
     }
 
