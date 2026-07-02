@@ -159,6 +159,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var broadcastNotificationTask: Task<Void, Never>?
     @State private var broadcastVerificationTask: Task<Void, Never>?
     @State private var antiAFKMouseMovementTask: Task<Void, Never>?
+    @State private var lastAcceptedStreamInputAt = Date()
     @State private var transientStreamMessage = ""
     @State private var transientStreamMessageTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
@@ -987,10 +988,12 @@ public struct WebRTCMediaStreamSurface: View {
             switch inputAction(for: event) {
             case .send:
                 guard isStreamReady else { return }
+                lastAcceptedStreamInputAt = Date()
                 transport.sendNow(event)
             case .drop:
                 return
             case .setMicrophone(let enabled):
+                lastAcceptedStreamInputAt = Date()
                 microphoneEnabled = enabled
                 transport.setMicrophoneEnabled(enabled)
             }
@@ -1012,6 +1015,7 @@ public struct WebRTCMediaStreamSurface: View {
                 transport.setMicrophoneEnabled(microphoneEnabled)
                 nativeView.directMouseInputEnabled = runtimeSettings.directMouseInput
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
+                lastAcceptedStreamInputAt = Date()
                 refreshAntiAFKMouseMovementTask()
             }
         } catch {
@@ -1255,11 +1259,13 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func sendAntiAFKMouseMovement() {
         guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let activeTransport = transport else { return }
+        guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= Self.antiAFKIdleThresholdSeconds else { return }
         let delta = Self.randomAntiAFKMouseDelta()
         activeTransport.sendNow(Self.mouseMove(deltaX: delta.x, deltaY: delta.y))
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(150))
             guard isStreamReady, runtimeSettings.antiAFKMouseMovementEnabled, !isEndingStream, !didEndStream, !quitMenuVisible, let transport else { return }
+            guard Date().timeIntervalSince(lastAcceptedStreamInputAt) >= Self.antiAFKIdleThresholdSeconds else { return }
             transport.sendNow(Self.mouseMove(deltaX: -delta.x, deltaY: -delta.y))
         }
     }
@@ -1281,6 +1287,8 @@ public struct WebRTCMediaStreamSurface: View {
         if x == 0 && y == 0 { x = 1 }
         return (x, y)
     }
+
+    private static let antiAFKIdleThresholdSeconds: TimeInterval = 210
 
     private static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
         .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
