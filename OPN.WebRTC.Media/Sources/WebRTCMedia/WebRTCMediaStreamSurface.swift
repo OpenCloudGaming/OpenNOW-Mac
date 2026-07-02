@@ -123,6 +123,7 @@ public struct WebRTCMediaStreamSurface: View {
     private let onTwitchChatSend: WebRTCMediaTwitchChatSendCallback?
     private let onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback?
     private let onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback?
+    private let preventDisplaySleep: Bool
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
 
@@ -173,6 +174,7 @@ public struct WebRTCMediaStreamSurface: View {
                 onTwitchChatSend: WebRTCMediaTwitchChatSendCallback? = nil,
                 onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback? = nil,
                 onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback? = nil,
+                preventDisplaySleep: Bool = true,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
         self.configuration = configuration
@@ -186,6 +188,7 @@ public struct WebRTCMediaStreamSurface: View {
         self.onTwitchChatSend = onTwitchChatSend
         self.onTwitchHealthRefresh = onTwitchHealthRefresh
         self.onAntiAFKStateChange = onAntiAFKStateChange
+        self.preventDisplaySleep = preventDisplaySleep
         self.onProgress = onProgress
         self.onEnd = onEnd
     }
@@ -213,6 +216,7 @@ public struct WebRTCMediaStreamSurface: View {
         .ignoresSafeArea()
         .onAppear { registerStreamLifecycle() }
         .onDisappear { stopStream() }
+        .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
     }
 
     private var statsHUD: some View {
@@ -1428,8 +1432,8 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func beginStreamingPerformanceMode() {
         guard streamingPerformanceActivity == nil else { return }
-        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical, .idleSystemSleepDisabled], reason: "OpenNOW active cloud gaming stream")
-        WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID])
+        streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: streamingPerformanceActivityOptions, reason: "OpenNOW active cloud gaming stream")
+        WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
     }
 
     private func endStreamingPerformanceMode() {
@@ -1437,6 +1441,18 @@ public struct WebRTCMediaStreamSurface: View {
         ProcessInfo.processInfo.endActivity(streamingPerformanceActivity)
         self.streamingPerformanceActivity = nil
         WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.end", level: .info, message: "Streaming performance mode disabled.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func refreshStreamingPerformanceMode() {
+        guard streamingPerformanceActivity != nil else { return }
+        endStreamingPerformanceMode()
+        beginStreamingPerformanceMode()
+    }
+
+    private var streamingPerformanceActivityOptions: ProcessInfo.ActivityOptions {
+        var options: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical, .idleSystemSleepDisabled]
+        if preventDisplaySleep { options.insert(.idleDisplaySleepDisabled) }
+        return options
     }
 
     private static func message(for error: Error) -> String {

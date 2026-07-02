@@ -249,6 +249,18 @@ struct WebRTCStreamingPathTests {
         #expect(settings.upscalingMode == 0)
     }
 
+    @Test("carries display sleep prevention setting into resolved metadata")
+    func carriesDisplaySleepPreventionSettingIntoResolvedMetadata() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(preventDisplaySleepWhileStreaming: false),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+        let dictionary = settings.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "steam")
+
+        #expect(!settings.preventDisplaySleepWhileStreaming)
+        #expect(dictionary["preventDisplaySleepWhileStreaming"] as? Bool == false)
+    }
+
     @Test("keeps H265 for native WebRTC")
     func keepsH265ForNativeWebRTC() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(

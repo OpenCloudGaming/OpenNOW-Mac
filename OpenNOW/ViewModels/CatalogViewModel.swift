@@ -1352,6 +1352,12 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setPreventDisplaySleepWhileStreaming(_ enabled: Bool) {
+        OPNStreamPreferences.savePreventDisplaySleepWhileStreaming(enabled)
+        actionMessage = enabled ? "Display sleep prevention enabled for active streams." : "Display sleep prevention disabled for active streams."
+        loadSettingsPreferences()
+    }
+
     func setRecordingVideoBitrateMbps(_ value: Double) {
         OPNStreamPreferences.saveRecordingVideoBitrateMbps(Int(value.rounded()))
         loadSettingsPreferences()

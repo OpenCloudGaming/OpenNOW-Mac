@@ -209,6 +209,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
     public var antiAFKMouseMovementEnabled = false
+    public var preventDisplaySleepWhileStreaming = true
     public var gameVolume = 1.0
     public var microphoneVolume = 1.0
     public var microphoneMode = "disabled"
@@ -315,6 +316,7 @@ public enum OPNStreamPreferences {
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
         Keys.antiAFKMouseMovementEnabled,
+        Keys.preventDisplaySleepWhileStreaming,
         Keys.gameVolume,
         Keys.microphoneVolume,
         Keys.microphoneShortcutEnabled,
@@ -793,6 +795,7 @@ public enum OPNStreamPreferences {
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
     public static func saveAntiAFKMouseMovementEnabled(_ value: Bool) { storage.set(value, forKey: k.antiAFKMouseMovementEnabled) }
+    public static func savePreventDisplaySleepWhileStreaming(_ value: Bool) { storage.set(value, forKey: k.preventDisplaySleepWhileStreaming) }
     public static func saveGameVolume(_ value: Double) { storage.set(min(max(value, 0.0), 1.0), forKey: k.gameVolume) }
     public static func saveMicrophoneVolume(_ value: Double) { storage.set(min(max(value, 0.0), 1.0), forKey: k.microphoneVolume) }
     public static func loadMicrophoneShortcutEnabled() -> Bool { bool(storage.object(forKey: k.microphoneShortcutEnabled), true) }
@@ -863,6 +866,7 @@ public enum OPNStreamPreferences {
         profile.suppressInputWhenInactive = bool(value(dictionary, k.suppressInputWhenInactive), true)
         profile.directMouseInput = bool(value(dictionary, k.directMouseInput), true)
         profile.antiAFKMouseMovementEnabled = bool(value(dictionary, k.antiAFKMouseMovementEnabled), false)
+        profile.preventDisplaySleepWhileStreaming = bool(value(dictionary, k.preventDisplaySleepWhileStreaming), true)
         profile.gameVolume = clampedDouble(dictionary, k.gameVolume, 1, 0, 1)
         profile.microphoneVolume = clampedDouble(dictionary, k.microphoneVolume, 1, 0, 1)
         profile.microphoneMode = string(value(dictionary, k.microphoneMode), "disabled")
@@ -902,6 +906,7 @@ public enum OPNStreamPreferences {
             k.suppressInputWhenInactive: profile.suppressInputWhenInactive,
             k.directMouseInput: profile.directMouseInput,
             k.antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,
+            k.preventDisplaySleepWhileStreaming: profile.preventDisplaySleepWhileStreaming,
             k.gameVolume: profile.gameVolume,
             k.microphoneVolume: profile.microphoneVolume,
             k.microphoneMode: profile.microphoneMode,
@@ -1307,6 +1312,7 @@ public enum OPNStreamPreferences {
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
         static let antiAFKMouseMovementEnabled = "OpenNOW.Stream.AntiAFKMouseMovementEnabled"
+        static let preventDisplaySleepWhileStreaming = "OpenNOW.Stream.PreventDisplaySleepWhileStreaming"
         static let gameVolume = "OpenNOW.Stream.GameVolume"
         static let microphoneVolume = "OpenNOW.Stream.MicrophoneVolume"
         static let microphoneShortcutEnabled = "OpenNOW.Stream.MicrophoneShortcutEnabled"
@@ -1340,6 +1346,7 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
     @objc public let streamWidth: Int
     @objc public let streamHeight: Int
     @objc public let recordingEnhancedVideoEnabled: Bool
+    @objc public let preventDisplaySleepWhileStreaming: Bool
 
     init(profile: OPNStreamPreferenceProfile) {
         directMouseInput = profile.directMouseInput
@@ -1356,6 +1363,7 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
         streamWidth = profile.resolution.width
         streamHeight = profile.resolution.height
         recordingEnhancedVideoEnabled = profile.recordingEnhancedVideoEnabled
+        preventDisplaySleepWhileStreaming = profile.preventDisplaySleepWhileStreaming
         super.init()
     }
 }

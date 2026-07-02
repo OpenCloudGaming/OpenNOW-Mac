@@ -41,6 +41,7 @@ struct WebRTCMediaStreamView: View {
             onTwitchChatSend: { message in twitchRealtime.sendChatMessage(message) },
             onTwitchHealthRefresh: { await twitchRealtime.refreshHealth() },
             onAntiAFKStateChange: { enabled in OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(enabled) },
+            preventDisplaySleep: Self.preventDisplaySleepWhileStreaming(applicationID: configuration.applicationID),
             onProgress: { progress in
                 onProgress?(progress)
             },
@@ -98,6 +99,11 @@ struct WebRTCMediaStreamView: View {
         let outputWidth = max(2, width - width % 2)
         let outputHeight = max(2, height - height % 2)
         return (outputWidth, outputHeight)
+    }
+
+    private static func preventDisplaySleepWhileStreaming(applicationID: String) -> Bool {
+        let profile = OPNStreamPreferences.loadProfile(forGame: applicationID) ?? OPNStreamPreferences.loadProfile()
+        return profile.preventDisplaySleepWhileStreaming
     }
 
     private static func prepareTwitchBroadcast(title: String, applicationID: String) async -> String? {

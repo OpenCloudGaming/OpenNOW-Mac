@@ -103,6 +103,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
     public var antiAFKMouseMovementEnabled: Bool
+    public var preventDisplaySleepWhileStreaming: Bool
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
@@ -133,6 +134,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 suppressInputWhenInactive: Bool = true,
                 directMouseInput: Bool = true,
                 antiAFKMouseMovementEnabled: Bool = false,
+                preventDisplaySleepWhileStreaming: Bool = true,
                 recordingVideoBitrateMbps: Int = 0,
                 recordingAudioBitrateKbps: Int = 160,
                 recordingEnhancedVideoEnabled: Bool = true) {
@@ -162,6 +164,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.suppressInputWhenInactive = suppressInputWhenInactive
         self.directMouseInput = directMouseInput
         self.antiAFKMouseMovementEnabled = antiAFKMouseMovementEnabled
+        self.preventDisplaySleepWhileStreaming = preventDisplaySleepWhileStreaming
         self.recordingVideoBitrateMbps = max(0, min(recordingVideoBitrateMbps, 200))
         self.recordingAudioBitrateKbps = max(64, min(recordingAudioBitrateKbps, 320))
         self.recordingEnhancedVideoEnabled = recordingEnhancedVideoEnabled
@@ -195,6 +198,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
     public var antiAFKMouseMovementEnabled: Bool
+    public var preventDisplaySleepWhileStreaming: Bool
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
@@ -230,6 +234,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "suppressInputWhenInactive": suppressInputWhenInactive,
             "directMouseInput": directMouseInput,
             "antiAFKMouseMovementEnabled": antiAFKMouseMovementEnabled,
+            "preventDisplaySleepWhileStreaming": preventDisplaySleepWhileStreaming,
             "recordingVideoBitrateMbps": recordingVideoBitrateMbps,
             "recordingAudioBitrateKbps": recordingAudioBitrateKbps,
             "recordingEnhancedVideoEnabled": recordingEnhancedVideoEnabled,
@@ -282,6 +287,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             suppressInputWhenInactive: profile.suppressInputWhenInactive,
             directMouseInput: profile.directMouseInput,
             antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,
+            preventDisplaySleepWhileStreaming: profile.preventDisplaySleepWhileStreaming,
             recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
