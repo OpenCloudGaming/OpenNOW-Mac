@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import CoreText
 import Foundation
 import SwiftUI
 
@@ -33,10 +34,142 @@ private extension String {
 private enum WebRTCMediaStreamTheme {
     static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
     static let accentSoft = Color(red: 0.67, green: 1.0, blue: 0.36)
+    static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
     static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
+    static let panel = Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255)
     static let surfaceRaised = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
+    static let divider = Color.white.opacity(0.10)
+    static let textPrimary = Color.white.opacity(0.96)
+    static let textSecondary = Color.white.opacity(0.72)
+    static let textTertiary = Color.white.opacity(0.52)
     static let warning = Color.orange
     static let danger = Color.red
+
+    static func dockWidth(for width: CGFloat) -> CGFloat {
+        min(344, max(220, width * 0.72))
+    }
+}
+
+private enum WebRTCMediaStreamFont {
+    enum Weight: Hashable {
+        case regular
+        case medium
+        case bold
+    }
+
+    static func font(size: CGFloat, weight: Weight = .regular) -> Font {
+        Font(nsFont(size: size, weight: weight))
+    }
+
+    private static func nsFont(size: CGFloat, weight: Weight) -> NSFont {
+        if let descriptor = descriptor(weight: weight) {
+            return CTFontCreateWithFontDescriptor(descriptor, size, nil) as NSFont
+        }
+        return NSFont.systemFont(ofSize: size, weight: fallbackWeight(weight))
+    }
+
+    private static func fallbackWeight(_ weight: Weight) -> NSFont.Weight {
+        switch weight {
+        case .regular: return .regular
+        case .medium: return .medium
+        case .bold: return .bold
+        }
+    }
+
+    private static func descriptor(weight: Weight) -> CTFontDescriptor? {
+        switch weight {
+        case .regular: return loadDescriptor(named: "NVIDIASans_W_Rg")
+        case .medium: return loadDescriptor(named: "NVIDIASans_W_Md")
+        case .bold: return loadDescriptor(named: "NVIDIASans_W_Bd")
+        }
+    }
+
+    private static func loadDescriptor(named name: String) -> CTFontDescriptor? {
+        for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "woff2", subdirectory: subdirectory),
+                  let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
+                  let descriptor = descriptors.first else { continue }
+            return descriptor
+        }
+        return nil
+    }
+}
+
+private extension Font {
+    static func streamNvidia(size: CGFloat, weight: WebRTCMediaStreamFont.Weight = .regular) -> Font {
+        WebRTCMediaStreamFont.font(size: size, weight: weight)
+    }
+}
+
+private struct StreamHUDActionRow: View {
+    let title: String
+    let subtitle: String
+    let systemName: String
+    let isActive: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 13) {
+                ZStack {
+                    Rectangle()
+                        .fill(iconBackground)
+                    Image(systemName: systemName)
+                        .font(.streamNvidia(size: 14, weight: .bold))
+                        .foregroundStyle(iconColor)
+                }
+                .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.streamNvidia(size: 14, weight: .bold))
+                        .foregroundStyle(titleColor)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.streamNvidia(size: 11, weight: .medium))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 50)
+            .background(rowBackground)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(isActive ? WebRTCMediaStreamTheme.accent : Color.clear)
+                    .frame(width: 3)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.46 : 1)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(title)
+    }
+
+    private var rowBackground: Color {
+        if isActive { return WebRTCMediaStreamTheme.accent.opacity(0.095) }
+        return Color.white.opacity(isHovering ? 0.085 : 0)
+    }
+
+    private var iconBackground: Color {
+        if isActive { return WebRTCMediaStreamTheme.accent }
+        return Color.white.opacity(isHovering ? 0.16 : 0.08)
+    }
+
+    private var titleColor: Color {
+        isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+    }
+
+    private var iconColor: Color {
+        isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.94 : 0.72)
+    }
 }
 
 public struct WebRTCMediaTwitchEventAlert: Identifiable, Equatable, Sendable {
@@ -223,7 +356,8 @@ public struct WebRTCMediaStreamSurface: View {
     private var statsHUD: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STREAM STATS")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .tracking(1.1)
                 .foregroundStyle(WebRTCMediaStreamTheme.accent)
             statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
             statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
@@ -237,11 +371,11 @@ public struct WebRTCMediaStreamSurface: View {
             statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
             statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
         }
-        .font(.system(size: 11, weight: .medium, design: .monospaced))
+        .font(.streamNvidia(size: 11, weight: .medium))
         .padding(14)
         .frame(width: 252, alignment: .leading)
-        .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1))
+        .background(WebRTCMediaStreamTheme.panel.opacity(0.92))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1) }
         .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 12)
         .padding(.top, 22)
         .padding(.trailing, 22)
@@ -249,75 +383,153 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var unifiedHUD: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("OPENNOW STREAM HUD")
-                        .font(.system(size: 12, weight: .black, design: .monospaced))
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                        .tracking(1.2)
-                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text("Cmd-G toggles this HUD · Cmd-M mic · Cmd-R recording · Cmd-K Anti-AFK · Cmd-Q quit")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.58))
+        GeometryReader { proxy in
+            let dockWidth = WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width)
+            VStack(alignment: .leading, spacing: 0) {
+                hudDockHeader
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        hudStatusPanel
+                        hudControlsPanel
+                        hudVideoPanel
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
                 }
-                Spacer()
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(height: 1)
+                hudShortcutFooter
+            }
+            .frame(width: dockWidth, height: proxy.size.height, alignment: .topLeading)
+            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.divider)
+                    .frame(width: 1)
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(WebRTCMediaStreamTheme.accent)
+                    .frame(height: 2)
+            }
+            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var hudDockHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("GEFORCE NOW")
+                        .font(.streamNvidia(size: 11, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    Text("Stream HUD")
+                        .font(.streamNvidia(size: 20, weight: .bold))
+                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
                 Button(action: { setUnifiedHUDVisible(false) }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.streamNvidia(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 30, height: 30)
-                        .background(.white.opacity(0.10), in: Circle())
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close stream HUD")
             }
 
-            HStack(spacing: 10) {
-                hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
-                hudMetricCard(title: "Recording", value: recordingStatusText, positive: recordingStatus.isRecording)
-                hudMetricCard(title: "Anti-AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    hudControlsPanel
-                    hudVideoPanel
-                }
-            }
-            .frame(maxHeight: 460)
+            Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                .font(.streamNvidia(size: 13, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .font(.system(size: 12, weight: .medium, design: .monospaced))
-        .foregroundStyle(.white.opacity(0.88))
-        .padding(18)
-        .frame(width: 560, alignment: .leading)
-        .background(twitchPanelBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
-        .shadow(color: WebRTCMediaStreamTheme.accent.opacity(0.18), radius: 34, x: 0, y: 16)
-        .padding(.top, 22)
-        .padding(.leading, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 22)
+        .padding(.top, 20)
+        .padding(.bottom, 18)
+        .background(WebRTCMediaStreamTheme.appBar)
+    }
+
+    private var hudStatusPanel: some View {
+        HStack(spacing: 8) {
+            hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
+            hudMetricCard(title: "Recording", value: recordingStatusText, positive: recordingStatus.isRecording)
+            hudMetricCard(title: "Anti-AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
+        }
+    }
+
+    private var hudShortcutFooter: some View {
+        Text("CMD-G HUD  |  CMD-M MIC  |  CMD-R REC  |  CMD-K ANTI-AFK  |  CMD-Q QUIT")
+            .font(.streamNvidia(size: 10, weight: .bold))
+            .tracking(0.8)
+            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
     }
 
     private var hudControlsPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("CONTROLS")
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.52))
-            HStack(spacing: 10) {
-                twitchSecondaryActionButton(title: microphoneEnabled ? "Mute Mic" : "Unmute Mic", systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill", action: toggleMicrophone)
-                twitchSecondaryActionButton(title: recordingCanStop ? "Stop Recording" : "Record", systemName: "record.circle", action: toggleRecording)
-                    .disabled(!isStreamReady || recordingIsBusy)
-                twitchSecondaryActionButton(title: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK Off" : "Anti-AFK On", systemName: "cursorarrow.motionlines", action: toggleAntiAFKMouseMovement)
-                    .disabled(!isStreamReady)
-                twitchSecondaryActionButton(title: "Quit Menu", systemName: "power") { showQuitMenu() }
+        hudSection(label: "CONTROLS") {
+            VStack(alignment: .leading, spacing: 4) {
+                StreamHUDActionRow(
+                    title: microphoneEnabled ? "Mute Mic" : "Unmute Mic",
+                    subtitle: microphoneStatusText,
+                    systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
+                    isActive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled",
+                    isDisabled: runtimeSettings.microphoneMode == "disabled",
+                    action: toggleMicrophone
+                )
+                StreamHUDActionRow(
+                    title: recordingCanStop ? "Stop Recording" : "Record",
+                    subtitle: recordingStatusText,
+                    systemName: "record.circle",
+                    isActive: recordingStatus.isRecording,
+                    isDisabled: !isStreamReady || recordingIsBusy,
+                    action: toggleRecording
+                )
+                StreamHUDActionRow(
+                    title: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK Off" : "Anti-AFK On",
+                    subtitle: runtimeSettings.antiAFKMouseMovementEnabled ? "Mouse keepalive active" : "Mouse keepalive idle",
+                    systemName: "cursorarrow.motionlines",
+                    isActive: runtimeSettings.antiAFKMouseMovementEnabled,
+                    isDisabled: !isStreamReady,
+                    action: toggleAntiAFKMouseMovement
+                )
+                StreamHUDActionRow(
+                    title: "Quit Menu",
+                    subtitle: "Pause input and end session",
+                    systemName: "power",
+                    isActive: false,
+                    isDisabled: false,
+                    action: { showQuitMenu() }
+                )
             }
+        }
+    }
+
+    private func hudSection<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(label)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            content()
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
     }
 
     private var microphoneToggleOverlay: some View {
@@ -362,58 +574,53 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudStatsPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("STREAM STATS")
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.52))
-            statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
-            statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
-            statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
-            statsRow("Loss", formatted(latestStats?.packetLossPercent, suffix: "%"))
-            statsRow("FPS", formatted(latestStats?.renderFps, suffix: ""))
-            statsRow("Decode", formatted(latestStats?.decodeTimeMs, suffix: " ms"))
-            statsRow("Drops", String(latestStats?.framesDropped ?? 0))
-            statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
-            statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
+        hudSection(label: "STREAM STATS") {
+            VStack(alignment: .leading, spacing: 8) {
+                statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
+                statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
+                statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
+                statsRow("Loss", formatted(latestStats?.packetLossPercent, suffix: "%"))
+                statsRow("FPS", formatted(latestStats?.renderFps, suffix: ""))
+                statsRow("Decode", formatted(latestStats?.decodeTimeMs, suffix: " ms"))
+                statsRow("Drops", String(latestStats?.framesDropped ?? 0))
+                statsRow("Codec", latestStats?.codec.isEmpty == false ? latestStats?.codec ?? "-" : "-")
+                statsRow("Resolution", latestStats?.resolution.isEmpty == false ? latestStats?.resolution ?? "-" : "-")
+            }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var hudVideoPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("VIDEO ENHANCEMENT")
-                .font(.system(size: 10, weight: .black, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.52))
-            Picker("Mode", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
-                ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
-                    Text(option.label).tag(option.value)
-                }
-            }
-            .pickerStyle(.menu)
-            .tint(WebRTCMediaStreamTheme.accent)
-            .disabled(!isStreamReady)
-            if runtimeSettings.upscalingMode != 0 {
-                videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
-                videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
-                Picker("Target", selection: Binding(get: { runtimeSettings.upscalingTargetHeight }, set: { updateVideoEnhancement(targetHeight: $0) })) {
-                    ForEach(StreamRuntimeSettings.upscalingTargets, id: \.height) { option in
-                        Text(option.label).tag(option.height)
+        hudSection(label: "VIDEO ENHANCEMENT") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Mode", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
+                    ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
+                        Text(option.label).tag(option.value)
                     }
                 }
-                .pickerStyle(.segmented)
+                .font(.streamNvidia(size: 12, weight: .medium))
+                .pickerStyle(.menu)
+                .tint(WebRTCMediaStreamTheme.accent)
                 .disabled(!isStreamReady)
+                if runtimeSettings.upscalingMode != 0 {
+                    videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
+                    videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
+                    Picker("Target", selection: Binding(get: { runtimeSettings.upscalingTargetHeight }, set: { updateVideoEnhancement(targetHeight: $0) })) {
+                        ForEach(StreamRuntimeSettings.upscalingTargets, id: \.height) { option in
+                            Text(option.label).tag(option.height)
+                        }
+                    }
+                    .font(.streamNvidia(size: 12, weight: .medium))
+                    .pickerStyle(.segmented)
+                    .disabled(!isStreamReady)
+                }
+                settingsRow("Configured", liveEnhancementValue(latestStats?.videoEnhancementConfiguredTier, fallback: runtimeSettings.upscalingModeLabel))
+                settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
+                settingsRow("Source", liveEnhancementValue(latestStats?.videoEnhancementSourceResolution, fallback: "Pending"))
+                settingsRow("Drawable", liveEnhancementValue(latestStats?.videoEnhancementDrawableResolution, fallback: "Pending"))
+                settingsRow("Frame", frameTimeValue(latestStats?.videoEnhancementFrameTimeMs))
+                settingsRow("Dropped", String(latestStats?.videoEnhancementDroppedFrames ?? 0))
             }
-            settingsRow("Configured", liveEnhancementValue(latestStats?.videoEnhancementConfiguredTier, fallback: runtimeSettings.upscalingModeLabel))
-            settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
-            settingsRow("Source", liveEnhancementValue(latestStats?.videoEnhancementSourceResolution, fallback: "Pending"))
-            settingsRow("Drawable", liveEnhancementValue(latestStats?.videoEnhancementDrawableResolution, fallback: "Pending"))
-            settingsRow("Frame", frameTimeValue(latestStats?.videoEnhancementFrameTimeMs))
-            settingsRow("Dropped", String(latestStats?.videoEnhancementDroppedFrames ?? 0))
         }
-        .padding(12)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var hudTwitchPanel: some View {
@@ -689,29 +896,31 @@ public struct WebRTCMediaStreamSurface: View {
             HStack(spacing: 6) {
                 Circle().fill(positive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
                 Text(title.uppercased())
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.48))
+                    .font(.streamNvidia(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(.white.opacity(0.46))
             }
             Text(value)
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.streamNvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
     }
 
     private func twitchPrimaryActionButton(title: String, color: Color, foregroundColor: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title.uppercased())
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.streamNvidia(size: 12, weight: .bold))
+                .tracking(0.8)
                 .foregroundStyle(foregroundColor)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(color.opacity(isPreparingBroadcast ? 0.58 : 0.96), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(color.opacity(isPreparingBroadcast ? 0.58 : 0.96))
         }
         .buttonStyle(.plain)
     }
@@ -720,15 +929,15 @@ public struct WebRTCMediaStreamSurface: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: systemName)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.streamNvidia(size: 11, weight: .bold))
                 Text(title)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.streamNvidia(size: 11, weight: .bold))
             }
             .foregroundStyle(.white.opacity(0.88))
             .padding(.horizontal, 10)
             .frame(height: 40)
-            .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.white.opacity(0.10), lineWidth: 1))
+            .background(Color.white.opacity(0.09))
+            .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
         }
         .buttonStyle(.plain)
     }
@@ -907,18 +1116,25 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func statsRow(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).foregroundStyle(.white.opacity(0.58))
+            Text(label)
+                .font(.streamNvidia(size: 11, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer()
-            Text(value).foregroundStyle(.white.opacity(0.94))
+            Text(value)
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
         }
     }
 
     private func settingsRow(_ label: String, _ value: String) -> some View {
         HStack(spacing: 12) {
-            Text(label).foregroundStyle(.white.opacity(0.58))
+            Text(label)
+                .font(.streamNvidia(size: 11, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             Text(value)
-                .foregroundStyle(.white.opacity(0.94))
+                .font(.streamNvidia(size: 11, weight: .bold))
+                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -926,11 +1142,14 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func videoStepperRow(_ label: String, value: Int, range: ClosedRange<Int>, action: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 12) {
-            Text(label).foregroundStyle(.white.opacity(0.58))
+            Text(label)
+                .font(.streamNvidia(size: 11, weight: .medium))
+                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             Spacer(minLength: 8)
             Stepper(value: Binding(get: { value }, set: { action($0) }), in: range) {
                 Text(String(value))
-                    .foregroundStyle(.white.opacity(0.94))
+                    .font(.streamNvidia(size: 11, weight: .bold))
+                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                     .frame(minWidth: 28, alignment: .trailing)
             }
             .disabled(!isStreamReady)
