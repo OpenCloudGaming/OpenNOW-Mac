@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deminify": "node ../../scripts/deminify-vendor-js.mjs"
+    "deminify": "node ../../scripts/generate-readable-vendor-source.mjs"
   },
   "devDependencies": {
     "prettier": "3.6.2"
