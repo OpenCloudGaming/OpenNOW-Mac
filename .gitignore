@@ -1,6 +1,11 @@
-vendor/
+vendor/*
+!vendor/gfn-web/
+vendor/gfn-web/*
+!vendor/gfn-web/js-readable/
+!vendor/gfn-web/js-readable/**
 third_party/sentry-native/
 .vscode/settings.json
+tools/vendor-js/node_modules/
 
 # macOS and Xcode artifacts
 .DS_Store

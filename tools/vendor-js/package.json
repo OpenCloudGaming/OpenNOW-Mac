@@ -1,0 +1,11 @@
+{
+  "name": "opennow-vendor-js-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deminify": "node ../../scripts/deminify-vendor-js.mjs"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}
