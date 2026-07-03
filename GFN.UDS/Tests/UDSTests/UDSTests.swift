@@ -46,6 +46,7 @@ private struct MockUDSTransport: UDSHTTPTransport {
 @Test func udsDefaultConfigurationMatchesLiveConfig() {
     let configuration = UDSConfiguration.production
     #expect(configuration.serverURLString == "https://uds.geforcenow.com")
+    #expect(configuration.headers.clientId == "ec7e38d4-03af-4b58-b131-cfb0495903ab")
     #expect(configuration.retryConfiguration.defaultRetries == 2)
     #expect(configuration.retryConfiguration.defaultTimeoutMilliseconds == 5_000)
     #expect(configuration.retryConfiguration.exponentialBackoffMaxDelayMilliseconds == 5_000)

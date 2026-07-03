@@ -172,7 +172,7 @@ public struct UDSClientHeaders: Equatable, Sendable {
     public let browserType: String
     public let userAgent: String
 
-    public init(clientId: String = "78589530426925203",
+    public init(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab",
                 clientType: String = "NATIVE",
                 clientVersion: String = "2.0.80.173",
                 clientStreamer: String = "NVIDIA-CLASSIC",
