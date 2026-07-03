@@ -95,6 +95,13 @@ public struct UDSReportPayload: Equatable, Sendable {
         return payload
     }
 
+    public func eventObject(useCase: UDS.UseCase) -> [String: Any] {
+        var payload = jsonObject
+        payload["useCase"] = useCase.rawValue
+        payload["triggerSource"] = source.rawValue
+        return payload
+    }
+
     public var summonedQueryItems: [URLQueryItem] {
         [
             URLQueryItem(name: "source", value: source.rawValue),
@@ -119,6 +126,16 @@ public struct UDSDiagnosticReport: Equatable, Sendable {
     }
 }
 
+public struct UDSEventReportResult: Equatable, Sendable {
+    public let accepted: Bool
+    public let status: String
+
+    public init(accepted: Bool = false, status: String = "") {
+        self.accepted = accepted
+        self.status = status
+    }
+}
+
 public enum UDSDiagnosticReportParser {
     public static func parse(_ json: [String: Any]) -> UDSDiagnosticReport {
         let report = ((json["reports"] as? [[String: Any]])?.first) ?? json
@@ -128,6 +145,15 @@ public enum UDSDiagnosticReportParser {
             errorCode: stringValue(report["errorCode"]) ?? stringValue(json["errorCode"]) ?? "",
             recommendationCount: (report["recommendationList"] as? [Any])?.count ?? 0,
             areSAScoresGood: boolValue(report["areSAScoresGood"]) ?? false
+        )
+    }
+}
+
+public enum UDSEventReportParser {
+    public static func parse(_ json: [String: Any]) -> UDSEventReportResult {
+        UDSEventReportResult(
+            accepted: boolValue(json["accepted"]) ?? boolValue(json["success"]) ?? false,
+            status: stringValue(json["status"]) ?? stringValue(json["statusDescription"]) ?? ""
         )
     }
 }
@@ -247,7 +273,7 @@ public enum UDSRequestFactory {
         case .endOfSessionReport:
             return request(path: UDS.reportPath, method: "POST", accessToken: accessToken, deviceId: deviceId.isEmpty ? payload.deviceId : deviceId, body: payload.jsonObject, configuration: configuration, timeoutInterval: timeoutInterval ?? configuration.retryConfiguration.timeoutInterval)
         case .uds, .toastShown, .suggestionFeedback, .dialogShown:
-            return nil
+            return request(path: UDS.reportPath, method: "POST", accessToken: accessToken, deviceId: deviceId.isEmpty ? payload.deviceId : deviceId, body: payload.eventObject(useCase: useCase), configuration: configuration, timeoutInterval: timeoutInterval ?? configuration.retryConfiguration.timeoutInterval)
         }
     }
 
@@ -329,6 +355,10 @@ public actor UDSService<Transport: UDSHTTPTransport> {
 
     public func fetchEndOfSessionReport(payload: UDSReportPayload, accessToken: String = "") async throws -> UDSDiagnosticReport {
         UDSDiagnosticReportParser.parse(try await performReportRequest(useCase: .endOfSessionReport, payload: payload, accessToken: accessToken))
+    }
+
+    public func sendEvent(useCase: UDS.UseCase, payload: UDSReportPayload, accessToken: String = "") async throws -> UDSEventReportResult {
+        UDSEventReportParser.parse(try await performReportRequest(useCase: useCase, payload: payload, accessToken: accessToken))
     }
 
     private func performReportRequest(useCase: UDS.UseCase, payload: UDSReportPayload, accessToken: String) async throws -> [String: Any] {

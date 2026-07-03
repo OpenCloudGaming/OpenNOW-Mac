@@ -92,17 +92,104 @@ public struct NetworkTestConfiguration: Equatable, Sendable {
     public static let gfnPC = NetworkTestConfiguration()
 }
 
+public struct NetworkTestVideoProfile: Equatable, Sendable {
+    public let width: Int
+    public let height: Int
+    public let frameRate: Int
+
+    public init(width: Int = 1920, height: Int = 1080, frameRate: Int = 60) {
+        self.width = max(1, width)
+        self.height = max(1, height)
+        self.frameRate = max(1, frameRate)
+    }
+
+    public var jsonObject: [String: Any] {
+        [
+            "width": width,
+            "height": height,
+            "frameRate": frameRate,
+        ]
+    }
+
+    public var monitorSettingsObject: [String: Any] {
+        [
+            "widthInPixels": width,
+            "heightInPixels": height,
+            "framesPerSecond": frameRate,
+        ]
+    }
+}
+
+public struct NetworkTestSessionRequestPayload: Equatable, Sendable {
+    public let appId: Int
+    public let videoProfile: NetworkTestVideoProfile
+
+    public init(appId: Int = 0, videoProfile: NetworkTestVideoProfile = NetworkTestVideoProfile()) {
+        self.appId = max(0, appId)
+        self.videoProfile = videoProfile
+    }
+
+    public static let gfnPC = NetworkTestSessionRequestPayload()
+
+    public var jsonObject: [String: Any] {
+        var requestData: [String: Any] = [
+            "networkTestProfile": [videoProfile.jsonObject],
+            "clientRequestMonitorSettings": [videoProfile.monitorSettingsObject],
+        ]
+        if appId > 0 { requestData["appId"] = appId }
+        return ["sessionRequestData": requestData]
+    }
+}
+
 public enum NetworkTestRequestFactory {
-    public static func sessionRequest(accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: NetworkTestConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+    public static func sessionRequest(accessToken: String = "", queryItems: [URLQueryItem] = [], payload: NetworkTestSessionRequestPayload = .gfnPC, configuration: NetworkTestConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
         var components = URLComponents(string: configuration.baseURLString + NetworkTest.routePath)
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
-        guard let url = components?.url else { return nil }
+        guard let url = components?.url,
+              JSONSerialization.isValidJSONObject(payload.jsonObject),
+              let body = try? JSONSerialization.data(withJSONObject: payload.jsonObject) else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
-        request.httpMethod = "GET"
+        request.httpMethod = "POST"
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
         if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = body
         return request
+    }
+}
+
+public struct NetworkTestThreshold: Equatable, Sendable {
+    public let bandwidthRecommended: Int
+    public let bandwidthLimit: Int
+    public let latencyRecommended: Int
+    public let latencyLimit: Int
+    public let packetLossRecommended: Double
+    public let packetLossLimit: Double
+
+    public init(bandwidthRecommended: Int = 0, bandwidthLimit: Int = 0, latencyRecommended: Int = 0, latencyLimit: Int = 0, packetLossRecommended: Double = 0, packetLossLimit: Double = 0) {
+        self.bandwidthRecommended = bandwidthRecommended
+        self.bandwidthLimit = bandwidthLimit
+        self.latencyRecommended = latencyRecommended
+        self.latencyLimit = latencyLimit
+        self.packetLossRecommended = packetLossRecommended
+        self.packetLossLimit = packetLossLimit
+    }
+}
+
+public struct NetworkTestConnectionEndpoint: Equatable, Sendable {
+    public let address: String
+    public let port: Int
+    public let appLevelProtocol: Int
+
+    public init(address: String = "", port: Int = 0, appLevelProtocol: Int = 0) {
+        self.address = address
+        self.port = max(0, port)
+        self.appLevelProtocol = appLevelProtocol
+    }
+
+    public var scheme: String {
+        appLevelProtocol == 5 ? "https" : "http"
     }
 }
 
@@ -110,6 +197,9 @@ public struct NetworkTestResult: Equatable, Sendable {
     public let sessionId: String
     public let zoneAddress: String
     public let zoneName: String
+    public let serverId: String
+    public let connectionEndpoint: NetworkTestConnectionEndpoint
+    public let threshold: NetworkTestThreshold
     public let downlinkBandwidth: Int
     public let maxPacketSize: Int
     public let rawStatus: String
@@ -118,10 +208,13 @@ public struct NetworkTestResult: Equatable, Sendable {
         rawStatus.caseInsensitiveCompare("COMPLETED") == .orderedSame || rawStatus.caseInsensitiveCompare("SUCCESS") == .orderedSame
     }
 
-    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, rawStatus: String = "") {
+    public init(sessionId: String = "", zoneAddress: String = "", zoneName: String = "", serverId: String = "", connectionEndpoint: NetworkTestConnectionEndpoint = NetworkTestConnectionEndpoint(), threshold: NetworkTestThreshold = NetworkTestThreshold(), downlinkBandwidth: Int = 0, maxPacketSize: Int = 0, rawStatus: String = "") {
         self.sessionId = sessionId
         self.zoneAddress = zoneAddress
         self.zoneName = zoneName
+        self.serverId = serverId
+        self.connectionEndpoint = connectionEndpoint
+        self.threshold = threshold
         self.downlinkBandwidth = downlinkBandwidth
         self.maxPacketSize = maxPacketSize
         self.rawStatus = rawStatus
@@ -130,15 +223,34 @@ public struct NetworkTestResult: Equatable, Sendable {
 
 public enum NetworkTestResultParser {
     public static func parse(_ json: [String: Any]) -> NetworkTestResult {
+        let requestStatus = dictionaryValue(json["requestStatus"]) ?? [:]
+        let netTestSession = dictionaryValue(json["netTestSession"]) ?? dictionaryValue(json["net_test_session"])
         let testResult = dictionaryValue(json["testResult"]) ?? dictionaryValue(json["test_result"]) ?? json
         let zone = dictionaryValue(json["zone"]) ?? dictionaryValue(testResult["zone"]) ?? [:]
+        let connectionInfo = arrayValue(netTestSession?["connectionInfo"]).compactMap { dictionaryValue($0) }.first ?? [:]
+        let endpoint = NetworkTestConnectionEndpoint(
+            address: stringValue(connectionInfo["ip"]) ?? "",
+            port: intValue(connectionInfo["port"]) ?? 0,
+            appLevelProtocol: intValue(connectionInfo["appLevelProtocol"]) ?? 0
+        )
+        let thresholds = dictionaryValue(netTestSession?["netTestThresholds"]) ?? [:]
         return NetworkTestResult(
-            sessionId: stringValue(json["networkSessionId"]) ?? stringValue(json["network_session_id"]) ?? stringValue(json["sessionId"]) ?? "",
-            zoneAddress: stringValue(zone["address"]) ?? stringValue(json["zoneAddress"]) ?? "",
-            zoneName: stringValue(zone["name"]) ?? stringValue(json["zoneName"]) ?? "",
+            sessionId: stringValue(netTestSession?["sessionId"]) ?? stringValue(json["networkSessionId"]) ?? stringValue(json["network_session_id"]) ?? stringValue(json["sessionId"]) ?? "",
+            zoneAddress: endpoint.address.isEmpty ? (stringValue(zone["address"]) ?? stringValue(json["zoneAddress"]) ?? "") : endpoint.address,
+            zoneName: stringValue(zone["name"]) ?? stringValue(json["zoneName"]) ?? stringValue(requestStatus["serverId"]) ?? "",
+            serverId: stringValue(netTestSession?["serverId"]) ?? stringValue(requestStatus["serverId"]) ?? "",
+            connectionEndpoint: endpoint,
+            threshold: NetworkTestThreshold(
+                bandwidthRecommended: intValue(thresholds["recommendedBandwidthMBPS"]) ?? 0,
+                bandwidthLimit: intValue(thresholds["requiredBandwidthMBPS"]) ?? 0,
+                latencyRecommended: intValue(thresholds["recommendedLatencyMS"]) ?? 0,
+                latencyLimit: intValue(thresholds["requiredLatencyMS"]) ?? 0,
+                packetLossRecommended: doubleValue(thresholds["recommendedPacketLossPct"]) ?? 0,
+                packetLossLimit: doubleValue(thresholds["requiredPacketLossPct"]) ?? 0
+            ),
             downlinkBandwidth: intValue(testResult["downlinkBandwidth"]) ?? intValue(testResult["downlink_bandwidth"]) ?? 0,
             maxPacketSize: intValue(testResult["maxPacketSize"]) ?? intValue(testResult["max_packet_size"]) ?? 0,
-            rawStatus: stringValue(json["status"]) ?? stringValue(testResult["status"]) ?? ""
+            rawStatus: stringValue(json["status"]) ?? stringValue(testResult["status"]) ?? stringValue(requestStatus["statusDescription"]) ?? ""
         )
     }
 
@@ -157,6 +269,17 @@ public enum NetworkTestResultParser {
         if let number = value as? NSNumber { return number.intValue }
         if let string = value as? String { return Int(string) }
         return nil
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double? {
+        if let double = value as? Double { return double }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let string = value as? String { return Double(string) }
+        return nil
+    }
+
+    private static func arrayValue(_ value: Any?) -> [Any] {
+        value as? [Any] ?? []
     }
 }
 
@@ -215,9 +338,9 @@ public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
         self.lifecycle = lifecycle
     }
 
-    public func startSession(accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> NetworkTestResult {
+    public func startSession(accessToken: String = "", queryItems: [URLQueryItem] = [], payload: NetworkTestSessionRequestPayload = .gfnPC) async throws -> NetworkTestResult {
         lifecycle = lifecycle.starting()
-        guard let request = NetworkTestRequestFactory.sessionRequest(accessToken: accessToken, queryItems: queryItems, configuration: configuration, timeoutInterval: configuration.timeoutInterval) else {
+        guard let request = NetworkTestRequestFactory.sessionRequest(accessToken: accessToken, queryItems: queryItems, payload: payload, configuration: configuration, timeoutInterval: configuration.timeoutInterval) else {
             lifecycle = lifecycle.failing(errorName: .sdkError)
             throw NetworkTestServiceError.invalidSessionURL
         }

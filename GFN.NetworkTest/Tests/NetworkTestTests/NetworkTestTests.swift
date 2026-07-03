@@ -26,10 +26,19 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
 }
 
 @Test func networkTestBuildsSessionRequest() throws {
-    let request = try #require(NetworkTestRequestFactory.sessionRequest(accessToken: "access"))
+    let request = try #require(NetworkTestRequestFactory.sessionRequest(accessToken: "access", payload: NetworkTestSessionRequestPayload(appId: 123, videoProfile: NetworkTestVideoProfile(width: 1280, height: 720, frameRate: 60))))
     #expect(request.url?.absoluteString == "https://prod.cloudmatchbeta.nvidiagrid.net/v2/nettestsession")
+    #expect(request.httpMethod == "POST")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+    #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
     #expect(request.value(forHTTPHeaderField: "User-Agent") == NetworkTest.defaultUserAgent)
+    let body = try #require(request.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let requestData = try #require(json["sessionRequestData"] as? [String: Any])
+    let profiles = try #require(requestData["networkTestProfile"] as? [[String: Any]])
+    #expect(requestData["appId"] as? Int == 123)
+    #expect(profiles.first?["width"] as? Int == 1280)
+    #expect(profiles.first?["height"] as? Int == 720)
 }
 
 @Test func networkTestParsesVendorResultPayload() {
@@ -44,6 +53,31 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
     #expect(result.maxPacketSize == 1_200)
     #expect(result.rawStatus == "COMPLETED")
     #expect(result.isCompleted)
+}
+
+@Test func networkTestParsesVendorNetTestSessionPayload() {
+    let result = NetworkTestResultParser.parse([
+        "requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS_STATUS", "serverId": "np-sjc-01"],
+        "netTestSession": [
+            "sessionId": "session",
+            "serverId": "np-sjc-01",
+            "connectionInfo": [["ip": "zone.example", "port": 443, "appLevelProtocol": 5]],
+            "netTestThresholds": [
+                "recommendedBandwidthMBPS": 50,
+                "requiredBandwidthMBPS": 25,
+                "recommendedLatencyMS": 40,
+                "requiredLatencyMS": 80,
+                "recommendedPacketLossPct": 1.5,
+                "requiredPacketLossPct": 5,
+            ],
+        ],
+    ])
+    #expect(result.sessionId == "session")
+    #expect(result.zoneAddress == "zone.example")
+    #expect(result.zoneName == "np-sjc-01")
+    #expect(result.connectionEndpoint.scheme == "https")
+    #expect(result.threshold.bandwidthRecommended == 50)
+    #expect(result.threshold.packetLossRecommended == 1.5)
 }
 
 @Test func networkTestModelsVendorLifecycleAndFingerprintKeys() {
@@ -61,10 +95,15 @@ private struct MockNetworkTestTransport: NetworkTestHTTPTransport {
 @Test func networkTestServiceStartsSessionAndUpdatesLifecycle() async throws {
     let service = NetworkTestService(transport: MockNetworkTestTransport { request in
         #expect(request.url?.path == "/v2/nettestsession")
+        #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "User-Agent") == NetworkTest.defaultUserAgent)
         return [
-            "networkSessionId": "session",
-            "zone": ["address": "zone.example", "name": "np-sjc-01"],
+            "requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS_STATUS", "serverId": "np-sjc-01"],
+            "netTestSession": [
+                "sessionId": "session",
+                "connectionInfo": [["ip": "zone.example", "port": 443, "appLevelProtocol": 5]],
+                "netTestThresholds": ["recommendedBandwidthMBPS": 50],
+            ],
             "testResult": ["downlinkBandwidth": 55_000, "maxPacketSize": 1_200, "status": "COMPLETED"],
         ]
     })

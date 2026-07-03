@@ -67,6 +67,9 @@ public struct LCARSCachePolicy: Equatable, Sendable {
 }
 
 public struct LCARSClientHeaders: Equatable, Sendable {
+    public static let swCacheBypassHeader = "x-sw-cachebypass"
+    public static let swNotifyFetchHeader = "sw-notify-fetch"
+
     public let clientId: String
     public let clientType: String
     public let clientVersion: String
@@ -102,12 +105,32 @@ public struct LCARSClientHeaders: Equatable, Sendable {
 
     public static let lcars = LCARSClientHeaders()
 
-    public func apply(to request: inout URLRequest, accessToken: String, contentType: String) {
+    public func apply(
+        to request: inout URLRequest,
+        accessToken: String,
+        contentType: String,
+        cacheBypass: Bool? = nil,
+        notifyFetch: Bool = false,
+        cascadeContent: String = "",
+        stage: String = "",
+        cascadePreviewToken: String = "",
+        previewTime: String = ""
+    ) {
         request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
         request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        if let cacheBypass { request.setValue(cacheBypass ? "true" : "false", forHTTPHeaderField: Self.swCacheBypassHeader) }
+        if notifyFetch { request.setValue("true", forHTTPHeaderField: Self.swNotifyFetchHeader) }
+        if !cascadeContent.isEmpty { request.setValue(cascadeContent, forHTTPHeaderField: "NV-Cascade-Content") }
+        if !stage.isEmpty { request.setValue(stage, forHTTPHeaderField: "NV-Env") }
+        if !cascadePreviewToken.isEmpty {
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            request.setValue("false", forHTTPHeaderField: Self.swCacheBypassHeader)
+            request.setValue(cascadePreviewToken, forHTTPHeaderField: "NV-Additional")
+            if !previewTime.isEmpty { request.setValue(previewTime, forHTTPHeaderField: "NV-Preview-Time") }
+        }
         if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
         if !clientId.isEmpty { request.setValue(clientId, forHTTPHeaderField: "NV-Client-ID") }
         if !clientType.isEmpty { request.setValue(clientType, forHTTPHeaderField: "NV-Client-Type") }
@@ -123,14 +146,32 @@ public struct LCARSClientHeaders: Equatable, Sendable {
 
 public struct LCARSConfiguration: Equatable, Sendable {
     public let graphQLURLString: String
+    public let cdnGraphQLURLString: String
     public let headers: LCARSClientHeaders
+    public let cascadeContent: String
+    public let stage: String
+    public let cascadePreviewToken: String
+    public let previewTime: String
 
     public var baseURLString: String { graphQLURLString }
     public var userAgent: String { headers.userAgent }
 
-    public init(baseURLString: String = LCARS.productionGraphQLURLString, headers: LCARSClientHeaders = .lcars) {
+    public init(
+        baseURLString: String = LCARS.productionGraphQLURLString,
+        cdnBaseURLString: String = "",
+        headers: LCARSClientHeaders = .lcars,
+        cascadeContent: String = "",
+        stage: String = "",
+        cascadePreviewToken: String = "",
+        previewTime: String = ""
+    ) {
         self.graphQLURLString = LCARSConfiguration.graphQLURLString(from: baseURLString)
+        self.cdnGraphQLURLString = LCARSConfiguration.graphQLURLString(from: cdnBaseURLString.isEmpty ? baseURLString : cdnBaseURLString)
         self.headers = headers
+        self.cascadeContent = cascadeContent
+        self.stage = stage
+        self.cascadePreviewToken = cascadePreviewToken
+        self.previewTime = previewTime
     }
 
     public init(baseURLString: String = LCARS.productionGraphQLURLString, userAgent: String) {
@@ -145,8 +186,22 @@ public struct LCARSConfiguration: Equatable, Sendable {
     }
 }
 
+public struct LCARSRequestOptions: Equatable, Sendable {
+    public let forceCacheBypass: Bool
+    public let notifyFetch: Bool
+    public let useCDN: Bool
+
+    public init(forceCacheBypass: Bool = false, notifyFetch: Bool = false, useCDN: Bool = false) {
+        self.forceCacheBypass = forceCacheBypass
+        self.notifyFetch = notifyFetch
+        self.useCDN = useCDN
+    }
+
+    public static let standard = LCARSRequestOptions()
+}
+
 public enum LCARSRequestFactory {
-    public static func persistedQueryRequest(operationName: String, queryHash: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), huId: String = makeHuId(), timeoutInterval: TimeInterval = 20) -> URLRequest? {
+    public static func persistedQueryRequest(operationName: String, queryHash: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), options: LCARSRequestOptions = .standard, huId: String = makeHuId(), timeoutInterval: TimeInterval = 20) -> URLRequest? {
         let extensions: [String: Any] = ["persistedQuery": ["sha256Hash": queryHash]]
         var queryItems = [
             URLQueryItem(name: "requestType", value: operationName),
@@ -154,33 +209,63 @@ public enum LCARSRequestFactory {
         ]
         if !huId.isEmpty { queryItems.append(URLQueryItem(name: "huId", value: huId)) }
         queryItems.append(URLQueryItem(name: "variables", value: jsonString(variables) ?? "{}"))
-        var components = URLComponents(string: configuration.graphQLURLString)
+        var components = URLComponents(string: options.useCDN && accessToken.isEmpty ? configuration.cdnGraphQLURLString : configuration.graphQLURLString)
         components?.queryItems = queryItems
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "GET"
-        configuration.headers.apply(to: &request, accessToken: accessToken, contentType: "application/graphql")
+        configuration.headers.apply(
+            to: &request,
+            accessToken: accessToken,
+            contentType: "application/graphql",
+            cacheBypass: options.forceCacheBypass ? true : nil,
+            notifyFetch: options.notifyFetch,
+            cascadeContent: configuration.cascadeContent,
+            stage: configuration.stage,
+            cascadePreviewToken: configuration.cascadePreviewToken,
+            previewTime: configuration.previewTime
+        )
         return request
     }
 
-    public static func inlineGraphQLRequest(query: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), timeoutInterval: TimeInterval = 20) -> URLRequest? {
+    public static func inlineGraphQLRequest(query: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), options: LCARSRequestOptions = .standard, timeoutInterval: TimeInterval = 20) -> URLRequest? {
         var body: [String: Any] = ["query": query]
         if let variables { body["variables"] = variables }
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: body), let url = URL(string: configuration.graphQLURLString) else { return nil }
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body), let url = URL(string: options.useCDN && accessToken.isEmpty ? configuration.cdnGraphQLURLString : configuration.graphQLURLString) else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "POST"
         request.httpBody = bodyData
-        configuration.headers.apply(to: &request, accessToken: accessToken, contentType: "application/json")
+        configuration.headers.apply(
+            to: &request,
+            accessToken: accessToken,
+            contentType: "application/json",
+            cacheBypass: options.forceCacheBypass ? true : nil,
+            notifyFetch: options.notifyFetch,
+            cascadeContent: configuration.cascadeContent,
+            stage: configuration.stage,
+            cascadePreviewToken: configuration.cascadePreviewToken,
+            previewTime: configuration.previewTime
+        )
         return request
     }
 
-    public static func graphQLRequest(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: LCARSConfiguration, timeoutInterval: TimeInterval = 15) -> URLRequest? {
-        var components = URLComponents(string: configuration.graphQLURLString)
+    public static func graphQLRequest(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: LCARSConfiguration, options: LCARSRequestOptions = .standard, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        var components = URLComponents(string: options.useCDN && accessToken.isEmpty ? configuration.cdnGraphQLURLString : configuration.graphQLURLString)
         components?.queryItems = [URLQueryItem(name: "requestType", value: requestType.rawValue)] + queryItems
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "GET"
-        configuration.headers.apply(to: &request, accessToken: accessToken, contentType: "application/graphql")
+        configuration.headers.apply(
+            to: &request,
+            accessToken: accessToken,
+            contentType: "application/graphql",
+            cacheBypass: options.forceCacheBypass ? true : nil,
+            notifyFetch: options.notifyFetch,
+            cascadeContent: configuration.cascadeContent,
+            stage: configuration.stage,
+            cascadePreviewToken: configuration.cascadePreviewToken,
+            previewTime: configuration.previewTime
+        )
         return request
     }
 
@@ -227,6 +312,7 @@ public enum LCARSServiceError: LocalizedError, Equatable, Sendable {
     case invalidHTTPResponse
     case httpStatus(Int)
     case invalidJSONResponse
+    case missingFallbackQuery
 
     public var errorDescription: String? {
         switch self {
@@ -234,6 +320,7 @@ public enum LCARSServiceError: LocalizedError, Equatable, Sendable {
         case .invalidHTTPResponse: "Invalid LCARS HTTP response"
         case .httpStatus(let status): "LCARS HTTP status \(status)"
         case .invalidJSONResponse: "Invalid LCARS JSON response"
+        case .missingFallbackQuery: "Missing LCARS fallback query"
         }
     }
 }
@@ -247,13 +334,28 @@ public struct LCARSService<Transport: LCARSHTTPTransport>: Sendable {
         self.transport = transport
     }
 
-    public func fetch(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> [String: Any] {
-        guard let request = LCARSRequestFactory.graphQLRequest(requestType: requestType, accessToken: accessToken, queryItems: queryItems, configuration: configuration) else { throw LCARSServiceError.invalidGraphQLURL(requestType) }
+    public func fetch(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = [], options: LCARSRequestOptions = .standard) async throws -> [String: Any] {
+        guard let request = LCARSRequestFactory.graphQLRequest(requestType: requestType, accessToken: accessToken, queryItems: queryItems, configuration: configuration, options: options) else { throw LCARSServiceError.invalidGraphQLURL(requestType) }
         return try await performJSONRequest(request)
+    }
+
+    public func fetchPersistedQuery(operationName: String, queryHash: String, query: String = "", variables: Any? = nil, accessToken: String = "", options: LCARSRequestOptions = .standard) async throws -> [String: Any] {
+        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: configuration, options: options) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
+        let (data, response) = try await transport.send(request)
+        if response.statusCode == 400 {
+            guard !query.isEmpty else { throw LCARSServiceError.missingFallbackQuery }
+            guard let fallback = LCARSRequestFactory.inlineGraphQLRequest(query: query, variables: variables, accessToken: accessToken, configuration: configuration, options: LCARSRequestOptions(forceCacheBypass: true, notifyFetch: options.notifyFetch, useCDN: options.useCDN)) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
+            return try await performJSONRequest(fallback)
+        }
+        return try decodeJSON(data: data, response: response)
     }
 
     private func performJSONRequest(_ request: URLRequest) async throws -> [String: Any] {
         let (data, response) = try await transport.send(request)
+        return try decodeJSON(data: data, response: response)
+    }
+
+    private func decodeJSON(data: Data, response: HTTPURLResponse) throws -> [String: Any] {
         guard response.statusCode == 200 else { throw LCARSServiceError.httpStatus(response.statusCode) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw LCARSServiceError.invalidJSONResponse }
         return json

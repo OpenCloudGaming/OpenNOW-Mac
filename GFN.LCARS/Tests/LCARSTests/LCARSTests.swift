@@ -13,6 +13,23 @@ private struct MockLCARSTransport: LCARSHTTPTransport {
     }
 }
 
+private actor SequencedLCARSTransport: LCARSHTTPTransport {
+    private var responses: [(status: Int, json: [String: Any])] = []
+    private(set) var requests: [URLRequest] = []
+
+    init(_ responses: [(status: Int, json: [String: Any])]) {
+        self.responses = responses
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requests.append(request)
+        let response = responses.isEmpty ? (status: 200, json: [:]) : responses.removeFirst()
+        let data = try JSONSerialization.data(withJSONObject: response.json)
+        let http = HTTPURLResponse(url: request.url ?? URL(string: "https://api.gfn.example/graphql")!, statusCode: response.status, httpVersion: nil, headerFields: nil)!
+        return (data, http)
+    }
+}
+
 @Test func lcarsRequestTypesMatchVendorCacheRoutes() {
     #expect(LCARS.systemName == "LCARS")
     #expect(LCARS.productionGraphQLURLString == "https://games.geforce.com/graphql")
@@ -33,8 +50,8 @@ private struct MockLCARSTransport: LCARSHTTPTransport {
 }
 
 @Test func lcarsBuildsPersistedGraphQLRequest() throws {
-    let configuration = LCARSConfiguration(baseURLString: "https://api.gfn.example", headers: LCARSClientHeaders(clientId: "lcars-client"))
-    let request = try #require(LCARSRequestFactory.persistedQueryRequest(operationName: "panels/MainV2", queryHash: "hash", variables: ["locale": "en_US"], accessToken: "access", configuration: configuration, huId: "hu"))
+    let configuration = LCARSConfiguration(baseURLString: "https://api.gfn.example", headers: LCARSClientHeaders(clientId: "lcars-client"), cascadeContent: "prod", stage: "green")
+    let request = try #require(LCARSRequestFactory.persistedQueryRequest(operationName: "panels/MainV2", queryHash: "hash", variables: ["locale": "en_US"], accessToken: "access", configuration: configuration, options: LCARSRequestOptions(forceCacheBypass: true, notifyFetch: true), huId: "hu"))
     let url = try #require(request.url)
     let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
     let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } })
@@ -51,6 +68,19 @@ private struct MockLCARSTransport: LCARSHTTPTransport {
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/graphql")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
     #expect(request.value(forHTTPHeaderField: "NV-Client-ID") == "lcars-client")
+    #expect(request.value(forHTTPHeaderField: LCARSClientHeaders.swCacheBypassHeader) == "true")
+    #expect(request.value(forHTTPHeaderField: LCARSClientHeaders.swNotifyFetchHeader) == "true")
+    #expect(request.value(forHTTPHeaderField: "NV-Cascade-Content") == "prod")
+    #expect(request.value(forHTTPHeaderField: "NV-Env") == "green")
+}
+
+@Test func lcarsPreviewHeadersForceNoCacheWithoutBypass() throws {
+    let configuration = LCARSConfiguration(baseURLString: "https://api.gfn.example", cascadePreviewToken: "preview-token", previewTime: "123")
+    let request = try #require(LCARSRequestFactory.graphQLRequest(requestType: .panels, configuration: configuration, options: LCARSRequestOptions(forceCacheBypass: true)))
+    #expect(request.value(forHTTPHeaderField: "Cache-Control") == "no-cache")
+    #expect(request.value(forHTTPHeaderField: LCARSClientHeaders.swCacheBypassHeader) == "false")
+    #expect(request.value(forHTTPHeaderField: "NV-Additional") == "preview-token")
+    #expect(request.value(forHTTPHeaderField: "NV-Preview-Time") == "123")
 }
 
 @Test func lcarsBuildsInlineGraphQLRequest() throws {
@@ -90,4 +120,19 @@ private struct MockLCARSTransport: LCARSHTTPTransport {
     let json = try await service.fetch(requestType: .loginWallData, accessToken: "access")
     let data = try #require(json["data"] as? [String: Any])
     #expect(data["loginWallData"] != nil)
+}
+
+@Test func lcarsServiceFallsBackToInlineQueryOnPersistedQueryMiss() async throws {
+    let transport = SequencedLCARSTransport([
+        (status: 400, json: ["errors": []]),
+        (status: 200, json: ["data": ["panels": []]]),
+    ])
+    let service = LCARSService(configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), transport: transport)
+    let json = try await service.fetchPersistedQuery(operationName: "panels/MainV2", queryHash: "hash", query: "query Panels { panels { id } }", variables: ["locale": "en_US"])
+    let requests = await transport.requests
+    #expect((json["data"] as? [String: Any])?["panels"] != nil)
+    #expect(requests.count == 2)
+    #expect(requests.first?.httpMethod == "GET")
+    #expect(requests.last?.httpMethod == "POST")
+    #expect(requests.last?.value(forHTTPHeaderField: "Content-Type") == "application/json")
 }

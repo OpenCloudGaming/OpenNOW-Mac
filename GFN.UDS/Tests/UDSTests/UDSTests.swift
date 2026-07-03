@@ -166,7 +166,31 @@ private struct MockUDSTransport: UDSHTTPTransport {
     #expect(await authState.requests.count == 1)
 }
 
-@Test func udsUnsupportedReportUseCasesDoNotBuildEndpointRequests() {
-    #expect(UDSRequestFactory.reportRequest(useCase: .suggestionFeedback, payload: UDSReportPayload(source: .mall), accessToken: "access") == nil)
-    #expect(UDSRequestFactory.reportRequest(useCase: .dialogShown, payload: UDSReportPayload(source: .mall), accessToken: "access") == nil)
+@Test func udsBuildsVendorEventReportRequests() throws {
+    let configuration = UDSConfiguration(serverURLString: "https://uds.example")
+    let payload = UDSReportPayload(source: .notification, locale: "en_US", deviceId: "device", sessionId: "session")
+    let request = try #require(UDSRequestFactory.reportRequest(useCase: .toastShown, payload: payload, accessToken: "access", configuration: configuration))
+    #expect(request.url?.absoluteString == "https://uds.example/v1/uds/session/reports")
+    #expect(request.httpMethod == "POST")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+    #expect(request.value(forHTTPHeaderField: "NV-Device-ID") == "device")
+    let body = try #require(request.httpBody)
+    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["useCase"] as? String == "UDSToastShown")
+    #expect(json["triggerSource"] as? String == "Notification")
+    #expect(json["source"] as? String == "Notification")
+    #expect(json["sessionId"] as? String == "session")
+}
+
+@Test func udsServiceSendsVendorEventReports() async throws {
+    let state = MockUDSState(responses: [(200, ["accepted": true])])
+    let service = UDSService(configuration: UDSConfiguration(serverURLString: "https://uds.example"), transport: MockUDSTransport(state: state))
+    let result = try await service.sendEvent(useCase: .suggestionFeedback, payload: UDSReportPayload(source: .mall, deviceId: "device"), accessToken: "access")
+    let request = try #require(await state.requests.first)
+    #expect(result.accepted)
+    #expect(request.url?.path == "/v1/uds/session/reports")
+    #expect(request.httpMethod == "POST")
+    let body = try #require(request.httpBody)
+    let payload = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(payload["useCase"] as? String == "UDSSuggestionFeedback")
 }
