@@ -100,3 +100,4 @@ vcpkg_installed/
 Testing/
 .cache/
 .opencode
+.playwright-mcp/
