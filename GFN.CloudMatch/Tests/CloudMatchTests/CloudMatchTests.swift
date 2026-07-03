@@ -16,6 +16,7 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 @Test func cloudMatchVendorEndpointsMatchEvidence() throws {
     #expect(CloudMatch.systemName == "CloudMatch")
     #expect(CloudMatch.productionBaseURLString == "https://prod.cloudmatchbeta.nvidiagrid.net")
+    #expect(CloudMatch.sessionPath == "/v2/session")
     #expect(CloudMatch.Endpoint.serviceUrls.path == "/v1/serviceUrls")
     #expect(CloudMatch.Endpoint.serverInfo.path == "/v2/serverInfo")
     #expect(CloudMatch.Endpoint.networkTestSession.path == "/v2/nettestsession")
@@ -26,11 +27,64 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(CloudMatch.Endpoint.serviceUrls.cachePolicy.isExpired(cachedAt: Date(timeIntervalSince1970: 0), now: Date(timeIntervalSince1970: 1_209_600)))
 }
 
-@Test func cloudMatchBuildsAuthenticatedRequests() throws {
-    let request = try #require(CloudMatchRequestFactory.request(endpoint: .serverInfo, accessToken: "access", queryItems: [.init(name: "locale", value: "en_US")]))
+@Test func cloudMatchBuildsAuthenticatedVendorRequests() throws {
+    let request = try #require(CloudMatchRequestFactory.request(endpoint: .serverInfo, accessToken: "access", queryItems: [.init(name: "locale", value: "en_US")], deviceId: "device"))
     #expect(request.url?.absoluteString == "https://prod.cloudmatchbeta.nvidiagrid.net/v2/serverInfo?locale=en_US")
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
-    #expect(request.value(forHTTPHeaderField: "Accept") == "application/json, text/plain, */*")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
+    #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+    #expect(request.value(forHTTPHeaderField: "x-device-id") == "device")
+    #expect(request.value(forHTTPHeaderField: "nv-client-id") == "ec7e38d4-03af-4b58-b131-cfb0495903ab")
+}
+
+@Test func cloudMatchBuildsBrowserWebRTCServerInfoRequest() throws {
+    let request = try #require(CloudMatchRequestFactory.serverInfoRequest(baseURLString: "region.example.test", accessToken: "access", deviceId: "device", headers: .browserWebRTC(clientVersion: "2.0.85.135"), timeoutInterval: 4))
+    #expect(request.url?.absoluteString == "https://region.example.test/v2/serverInfo")
+    #expect(request.timeoutInterval == 4)
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
+    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
+    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(request.value(forHTTPHeaderField: "nv-device-os") == "WINDOWS")
+}
+
+@Test func cloudMatchBuildsSessionRequests() throws {
+    let create = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://cloudmatch.example.test/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8)))
+    #expect(create.url?.absoluteString == "https://cloudmatch.example.test/v2/session?keyboardLayout=us&languageCode=en_US")
+    #expect(create.httpMethod == "POST")
+    #expect(create.value(forHTTPHeaderField: "Origin") == nil)
+    #expect(create.httpBody == Data("{}".utf8))
+
+    let poll = try #require(CloudMatchRequestFactory.pollSessionRequest(baseURLString: "cloudmatch.example.test", sessionId: "session/with slash", accessToken: "access", deviceId: "device"))
+    #expect(poll.url?.absoluteString == "https://cloudmatch.example.test/v2/session/session%2Fwith%20slash")
+    #expect(poll.httpMethod == "GET")
+
+    let stop = try #require(CloudMatchRequestFactory.stopSessionRequest(baseURLString: "https://cloudmatch.example.test", sessionId: "session", accessToken: "access", deviceId: "device"))
+    #expect(stop.httpMethod == "DELETE")
+    #expect(stop.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
+    #expect(stop.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
+
+    let active = try #require(CloudMatchRequestFactory.activeSessionsRequest(baseURLString: "https://cloudmatch.example.test", accessToken: "access", deviceId: "device"))
+    #expect(active.url?.absoluteString == "https://cloudmatch.example.test/v2/session")
+    #expect(active.httpMethod == "GET")
+}
+
+@Test func cloudMatchBuildsClaimAndAdUpdateRequests() throws {
+    let claim = try #require(CloudMatchRequestFactory.claimSessionRequest(baseURLString: "https://cloudmatch.example.test", sessionId: "session", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8)))
+    #expect(claim.url?.absoluteString == "https://cloudmatch.example.test/v2/session/session?keyboardLayout=us&languageCode=en_US")
+    #expect(claim.httpMethod == "PUT")
+    #expect(claim.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
+
+    let adUpdate = try #require(CloudMatchRequestFactory.adUpdateRequest(baseURLString: "https://cloudmatch.example.test", sessionId: "session", accessToken: "access", deviceId: "device", body: Data("{}".utf8)))
+    #expect(adUpdate.url?.absoluteString == "https://cloudmatch.example.test/v2/session/session")
+    #expect(adUpdate.httpMethod == "PUT")
+    #expect(adUpdate.httpBody == Data("{}".utf8))
+}
+
+@Test func cloudMatchResolvesSessionBaseUrls() {
+    #expect(CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: "", serverIP: "") == CloudMatch.productionBaseURLString)
+    #expect(CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: "https://stream.example.test/", serverIP: "") == "https://stream.example.test")
+    #expect(CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: "https://stream.example.test/", serverIP: "control.example.test") == "https://control.example.test")
+    #expect(CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: "https://stream.example.test/", serverIP: "https://control.example.test/") == "https://control.example.test")
+    #expect(CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: "https://stream.example.test/", serverIP: "http://control.example.test/") == "https://stream.example.test")
 }
 
 @Test func cloudMatchParsesVendorServerInfoMetadata() {
@@ -61,6 +115,80 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(CloudMatchRoutingPolicy.decision(serverInfo: serverInfo, override: internalOverride) == .useOverride(internalOverride))
 }
 
+@Test func cloudMatchParsesRequestStatuses() throws {
+    let success = ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS", "requestId": "request", "serverId": "server"]]
+    #expect(CloudMatchResponseParser.requestSucceeded(success))
+    #expect(CloudMatchResponseParser.requestStatus(from: success).requestId == "request")
+
+    let limit = ["requestStatus": ["statusCode": 11, "statusDescription": "NVB_R_SESSION_LIMIT_REACHED"]]
+    #expect(CloudMatchResponseParser.isSessionLimitExceededResponse(limit))
+
+    let notPausedData = try JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 34, "statusDescription": "SESSION_NOT_PAUSED"]])
+    #expect(CloudMatchResponseParser.isSessionNotPausedResponse(notPausedData))
+
+    let staleData = try JSONSerialization.data(withJSONObject: [
+        "requestStatus": ["statusCode": 4, "statusDescription": "INTERNAL_ERROR_STATUS 8A8C0000"],
+        "session": ["sessionRequestData": ["appId": 0]],
+    ])
+    #expect(CloudMatchResponseParser.staleActiveSessionClaimMessage(staleData) == "This GeForce NOW session is no longer resumable. End it and launch again.")
+}
+
+@Test func cloudMatchActiveSessionParserPreservesControlAndSignalingHosts() {
+    let descriptor = CloudMatchActiveSessionParser.descriptor(from: [
+        "sessionId": "session-1",
+        "status": 2,
+        "gpuType": "L40",
+        "sessionRequestData": ["appId": 123],
+        "sessionControlInfo": ["ip": "control.example.test"],
+        "connectionInfo": [[
+            "usage": 14,
+            "ip": "signaling.example.test",
+            "port": 443,
+            "resourcePath": "/nvst/",
+        ]],
+    ], streamingBaseURL: "https://cloudmatch.example.test/")
+
+    #expect(descriptor?.sessionId == "session-1")
+    #expect(descriptor?.appId == 123)
+    #expect(descriptor?.resumeServer == "control.example.test")
+    #expect(descriptor?.signalingURL == "wss://signaling.example.test:443/nvst/")
+}
+
+@Test func cloudMatchActiveSessionParserKeepsZeroAppIdSessionForTermination() {
+    let descriptor = CloudMatchActiveSessionParser.descriptor(from: [
+        "sessionId": "session-1",
+        "status": 2,
+        "sessionRequestData": ["appId": 0],
+        "sessionControlInfo": ["ip": "control.example.test"],
+    ], streamingBaseURL: "https://cloudmatch.example.test/")
+
+    #expect(descriptor?.sessionId == "session-1")
+    #expect(descriptor?.appId == 0)
+    #expect(descriptor?.resumeServer == "control.example.test")
+}
+
+@Test func cloudMatchActiveSessionParserExtractsSignalingHostFromResourcePath() {
+    let descriptor = CloudMatchActiveSessionParser.descriptor(from: [
+        "sessionId": "session-1",
+        "status": 6,
+        "sessionRequestData": ["appId": 123],
+        "connectionInfo": [[
+            "usage": 14,
+            "ip": "",
+            "resourcePath": "rtsps://resource.example.test:443/nvst/",
+        ]],
+    ], streamingBaseURL: "https://cloudmatch.example.test/")
+
+    #expect(descriptor?.resumeServer == "resource.example.test")
+    #expect(descriptor?.state.canContinuePolling == true)
+}
+
+@Test func cloudMatchActiveSessionParserRejectsTerminalOrUnusableSessions() {
+    #expect(CloudMatchActiveSessionParser.descriptor(from: ["sessionId": "session", "status": 7, "sessionControlInfo": ["ip": "control.example.test"]], streamingBaseURL: "https://cloudmatch.example.test/") == nil)
+    #expect(CloudMatchActiveSessionParser.descriptor(from: ["status": 2, "sessionControlInfo": ["ip": "control.example.test"]], streamingBaseURL: "https://cloudmatch.example.test/") == nil)
+    #expect(CloudMatchActiveSessionParser.descriptor(from: ["sessionId": "session", "status": 2], streamingBaseURL: "https://cloudmatch.example.test/") == nil)
+}
+
 @Test func cloudMatchServiceFetchesServerInfoAndSubscriptions() async throws {
     let service = CloudMatchService(transport: MockCloudMatchTransport { request in
         if request.url?.path == "/v2/serverInfo" {
@@ -74,7 +202,7 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
             ]
         }
         #expect(request.url?.path == "/v4/subscriptions")
-        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT access")
         return ["subscriptions": [["id": "sub"]]]
     })
     let serverInfo = try await service.fetchServerInfo()

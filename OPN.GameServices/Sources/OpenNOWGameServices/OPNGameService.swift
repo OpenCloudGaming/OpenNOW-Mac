@@ -674,36 +674,18 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private func postGraphQL(operationName: String, queryHash: String, variables: NSDictionary?, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
-        let variableData = variables.flatMap { try? JSONSerialization.data(withJSONObject: $0) } ?? Data("{}".utf8)
-        let variableText = String(data: variableData, encoding: .utf8) ?? "{}"
-        let extensions: NSDictionary = ["persistedQuery": ["sha256Hash": queryHash]]
-        let extensionData = (try? JSONSerialization.data(withJSONObject: extensions)) ?? Data("{}".utf8)
-        let extensionText = String(data: extensionData, encoding: .utf8) ?? "{}"
-        let huId = "\(Int(Date().timeIntervalSince1970 * 1000))\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8))"
-        let urlText = "https://games.geforce.com/graphql?requestType=\(percentEncodeQueryValue(operationName))&extensions=\(percentEncodeQueryValue(extensionText))&huId=\(huId)&variables=\(percentEncodeQueryValue(variableText))"
-        guard let url = URL(string: urlText) else {
+        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: LCARSConfiguration(baseURLString: graphqlURL)) else {
             dispatchGraphQL(completion, nil, "Invalid URL")
             return
         }
-        var request = URLRequest(url: url, timeoutInterval: 20)
-        request.httpMethod = "GET"
-        applyBaseHeaders(to: &request)
-        request.setValue("application/graphql", forHTTPHeaderField: "Content-Type")
         runGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variables, completion: completion)
     }
 
     private func postGraphQlJson(query: String, variables: NSDictionary?, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
-        guard let url = URL(string: graphqlURL) else {
+        guard let request = LCARSRequestFactory.inlineGraphQLRequest(query: query, variables: variables, accessToken: accessToken, configuration: LCARSConfiguration(baseURLString: graphqlURL)) else {
             dispatchGraphQL(completion, nil, "Invalid URL")
             return
         }
-        var body: [String: Any] = ["query": query]
-        if let variables { body["variables"] = variables }
-        var request = URLRequest(url: url, timeoutInterval: 20)
-        request.httpMethod = "POST"
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        applyBaseHeaders(to: &request)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         runGraphQLRequest(request, operationName: Self.graphQLOperationName(query), queryHash: "inline", variables: variables, completion: completion)
     }
 
@@ -1352,14 +1334,6 @@ final class OPNGameService: @unchecked Sendable {
             let serverId = requestStatus?["serverId"] as? String
             finish(serverInfo?.vpcId.isEmpty == false ? serverInfo?.vpcId ?? "GFN-PC" : serverId ?? "GFN-PC")
         }.resume()
-    }
-
-    private func applyBaseHeaders(to request: inout URLRequest) {
-        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        Self.applyClientHeaders(to: &request, includeBrowserHeaders: true)
-        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
     }
 
     private static func applyClientHeaders(to request: inout URLRequest, includeBrowserHeaders: Bool) {

@@ -1,7 +1,9 @@
 import Common
+import Common
 import Foundation
 import OpenNOWTelemetry
 import SignalLinkKit
+import UDS
 import WebRTCMedia
 
 public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
@@ -55,16 +57,10 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             offerContinuation = nil
             if activeSession?.id == session.id { activeSession = nil }
         }
-        guard reason == .userRequested || reason == .completed || reason == .remoteEnded else { return }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            OPNActiveSessionService.stopSession(accessToken: session.metadata["accessToken"] ?? "", sessionId: session.id, serverIp: session.serverAddress) { success, error in
-                if success || (session.metadata["accessToken"] ?? "").isEmpty {
-                    continuation.resume()
-                } else {
-                    continuation.resume(throwing: OpenNOWStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
-                }
-            }
-        }
+        guard shouldReportFinishedSession(reason) else { return }
+        let stopError = await stopCloudMatchSession(session)
+        await reportUDSEndOfSession(session, reason: reason)
+        if let stopError { throw stopError }
     }
 
     public func cancelSessionStart() async {
@@ -343,8 +339,51 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 "accessToken": configuration.accessToken,
                 "signalingUrl": sessionInfo.signalingUrl,
                 "streamingBaseUrl": sessionInfo.streamingBaseUrl,
+                "startedAtEpochSeconds": String(Date().timeIntervalSince1970),
             ]
         )
+    }
+
+    private func shouldReportFinishedSession(_ reason: StreamEndReason) -> Bool {
+        reason == .userRequested || reason == .completed || reason == .remoteEnded
+    }
+
+    private func stopCloudMatchSession(_ session: StreamSessionDescriptor) async -> Error? {
+        await withCheckedContinuation { continuation in
+            OPNActiveSessionService.stopSession(accessToken: session.metadata["accessToken"] ?? "", sessionId: session.id, serverIp: session.serverAddress) { success, error in
+                if success || (session.metadata["accessToken"] ?? "").isEmpty {
+                    continuation.resume(returning: nil)
+                } else {
+                    continuation.resume(returning: OpenNOWStreamSessionError.sessionStopFailed(error.isEmpty ? "Unable to stop stream session." : error))
+                }
+            }
+        }
+    }
+
+    private func reportUDSEndOfSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async {
+        let accessToken = session.metadata["accessToken"] ?? ""
+        guard !accessToken.isEmpty, !session.id.isEmpty else { return }
+        let payload = UDSReportPayload(
+            source: .endOfSession,
+            locale: OPNLocale.currentGFNLocale(),
+            deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(),
+            sessionId: session.id,
+            sessionDurationInSeconds: sessionDurationSeconds(session)
+        )
+        let service = UDSService(configuration: .production, transport: UDSURLSessionTransport())
+        do {
+            _ = try await service.fetchEndOfSessionReport(payload: payload, accessToken: accessToken)
+            OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .udsEndOfSessionReport, parameters: ["status": "success", "reason": reason.rawValue]))
+        } catch {
+            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "UDS", message: "End-of-session report failed reason=\(reason.rawValue) error=\(error.localizedDescription)"))
+            OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .udsEndOfSessionReport, parameters: ["status": "failure", "reason": reason.rawValue, "error": error.localizedDescription]))
+        }
+    }
+
+    private func sessionDurationSeconds(_ session: StreamSessionDescriptor) -> Int {
+        let now = Date().timeIntervalSince1970
+        let startedAt = Double(session.metadata["startedAtEpochSeconds"] ?? "") ?? now
+        return max(0, Int(now - startedAt))
     }
 
     private func makeSettings(configuration: StreamLaunchConfiguration) -> [String: Any] {

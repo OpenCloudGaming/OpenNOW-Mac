@@ -40,6 +40,7 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 - `OPN.GameServices`
 - `OPN.SignalLinkKit`
 - `OPN.Telemetry`
+- `OPN.Twitch`
 - `OPN.WebRTC.Media`
 
 ## Building

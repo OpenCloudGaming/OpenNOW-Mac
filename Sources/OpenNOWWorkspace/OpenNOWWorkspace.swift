@@ -1,3 +1,3 @@
 public enum OpenNOWWorkspace {
-    public static let packageCount = 14
+    public static let packageCount = 15
 }

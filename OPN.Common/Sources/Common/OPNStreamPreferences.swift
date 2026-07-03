@@ -972,26 +972,14 @@ public enum OPNStreamPreferences {
         return normalized.isEmpty ? defaultStreamingBaseUrl : normalized
     }
 
-    private static func applyCloudmatchHeaders(to request: inout URLRequest, token: String) {
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(nvClientId, forHTTPHeaderField: "nv-client-id")
-        request.setValue("BROWSER", forHTTPHeaderField: "nv-client-type")
-        request.setValue(nvClientVersion, forHTTPHeaderField: "nv-client-version")
-        request.setValue("WEBRTC", forHTTPHeaderField: "nv-client-streamer")
-        request.setValue("WINDOWS", forHTTPHeaderField: "nv-device-os")
-        request.setValue("DESKTOP", forHTTPHeaderField: "nv-device-type")
-        if !token.isEmpty { request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization") }
-    }
-
     private static func browserUserAgent() -> String {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
     }
 
     private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
-        let base = normalizedBaseUrl(baseUrl)
-        var request = URLRequest(url: URL(string: base + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
-        applyCloudmatchHeaders(to: &request, token: token)
-        request.setValue(OPNDeviceIdentity.stableCloudmatchDeviceId(), forHTTPHeaderField: "x-device-id")
+        let headers = CloudMatchClientHeaders.browserWebRTC(clientId: nvClientId, clientVersion: nvClientVersion, userAgent: browserUserAgent())
+        var request = CloudMatchRequestFactory.serverInfoRequest(baseURLString: normalizedBaseUrl(baseUrl), accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), headers: headers, timeoutInterval: 4) ?? URLRequest(url: URL(string: defaultStreamingBaseUrl + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         return request
     }
 

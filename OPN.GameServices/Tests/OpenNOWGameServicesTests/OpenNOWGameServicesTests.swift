@@ -61,6 +61,79 @@ private actor AsyncTestLock {
     }
 }
 
+@Test func streamCoordinatorFinishSessionReportsUDSEndOfSession() async throws {
+    try await sessionManagerTestLock.withLock {
+        let host = "*"
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "uds.geforcenow.com" {
+                #expect(request.url?.path == "/v1/uds/session/reports")
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer token")
+                #expect(request.value(forHTTPHeaderField: "NV-Device-ID")?.isEmpty == false)
+                return SessionManagerURLProtocol.response(json: ["reports": []])
+            }
+            #expect(request.url?.path == "/v2/session/session-report")
+            #expect(request.httpMethod == "DELETE")
+            return SessionManagerURLProtocol.response(json: [:])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let coordinator = OpenNOWStreamSessionCoordinator()
+        let session = StreamSessionDescriptor(
+            id: "session-report",
+            applicationID: "123",
+            serverAddress: "stop.example.test",
+            title: "Report Game",
+            metadata: ["accessToken": "token", "startedAtEpochSeconds": String(Date().timeIntervalSince1970 - 10)]
+        )
+
+        try await coordinator.finishSession(session, reason: .completed)
+
+        let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+        let udsRequest = try #require(requests.first { $0.url?.host == "uds.geforcenow.com" })
+        let body = try #require(SessionManagerURLProtocol.bodyData(from: udsRequest))
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["source"] as? String == "EndOfSession")
+        #expect(json["sessionId"] as? String == "session-report")
+        #expect((json["sessionDurationInSeconds"] as? Int ?? -1) >= 0)
+    }
+}
+
+@Test func streamCoordinatorFinishSessionIgnoresUDSFailure() async throws {
+    try await sessionManagerTestLock.withLock {
+        let host = "*"
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "uds.geforcenow.com" {
+                return SessionManagerURLProtocol.response(json: ["error": "auth"], status: 401)
+            }
+            return SessionManagerURLProtocol.response(json: [:])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let coordinator = OpenNOWStreamSessionCoordinator()
+        let session = StreamSessionDescriptor(id: "session-report", applicationID: "123", serverAddress: "stop.example.test", title: "Report Game", metadata: ["accessToken": "token"])
+
+        try await coordinator.finishSession(session, reason: .userRequested)
+        #expect(SessionManagerURLProtocol.recordedRequests(host: host).contains { $0.url?.host == "uds.geforcenow.com" })
+    }
+}
+
+@Test func streamCoordinatorFinishSessionSkipsUDSWithoutAccessToken() async throws {
+    try await sessionManagerTestLock.withLock {
+        let host = "*"
+        SessionManagerURLProtocol.install(host: host) { _ in
+            SessionManagerURLProtocol.response(json: [:])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let coordinator = OpenNOWStreamSessionCoordinator()
+        let session = StreamSessionDescriptor(id: "session-report", applicationID: "123", serverAddress: "stop.example.test", title: "Report Game")
+
+        try await coordinator.finishSession(session, reason: .completed)
+        #expect(!SessionManagerURLProtocol.recordedRequests(host: host).contains { $0.url?.host == "uds.geforcenow.com" })
+    }
+}
+
 @Test func sessionManagerRejectsZeroBeforeTokenValidation() async {
     let result = await withCheckedContinuation { continuation in
         OPNSessionManager.shared.createSession(appId: "0", internalTitle: "Invalid Launch", settings: [:]) { success, _, error in
@@ -217,40 +290,6 @@ private actor AsyncTestLock {
     #expect(metadataKeys.contains("store") == true)
     #expect(metadataKeys.contains("networkLatencyMs") == true)
     }
-}
-
-@Test func activeSessionParserPreservesControlAndSignalingHosts() {
-    let descriptor = OPNActiveSessionParser.descriptor(from: [
-        "sessionId": "session-1",
-        "status": 2,
-        "gpuType": "L40",
-        "sessionRequestData": ["appId": 123],
-        "sessionControlInfo": ["ip": "control.example.test"],
-        "connectionInfo": [[
-            "usage": 14,
-            "ip": "signaling.example.test",
-            "port": 443,
-            "resourcePath": "/nvst/",
-        ]],
-    ], streamingBaseUrl: "https://cloudmatch.example.test/")
-
-    #expect(descriptor?.sessionId == "session-1")
-    #expect(descriptor?.appId == 123)
-    #expect(descriptor?.resumeServer == "control.example.test")
-    #expect(descriptor?.signalingUrl == "wss://signaling.example.test:443/nvst/")
-}
-
-@Test func activeSessionParserKeepsZeroAppIdSessionForTermination() {
-    let descriptor = OPNActiveSessionParser.descriptor(from: [
-        "sessionId": "session-1",
-        "status": 2,
-        "sessionRequestData": ["appId": 0],
-        "sessionControlInfo": ["ip": "control.example.test"],
-    ], streamingBaseUrl: "https://cloudmatch.example.test/")
-
-    #expect(descriptor?.sessionId == "session-1")
-    #expect(descriptor?.appId == 0)
-    #expect(descriptor?.resumeServer == "control.example.test")
 }
 
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
@@ -537,7 +576,7 @@ private final class SessionManagerURLProtocol: URLProtocol, @unchecked Sendable 
 
     override func stopLoading() {}
 
-    private static func bodyData(from request: URLRequest) -> Data? {
+    static func bodyData(from request: URLRequest) -> Data? {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return nil }
         stream.open()

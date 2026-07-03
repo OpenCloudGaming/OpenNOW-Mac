@@ -4,6 +4,7 @@ import OpenNOWTelemetry
 public enum LCARS: Sendable {
     public static let systemName = "LCARS"
     public static let graphQLPath = "/graphql"
+    public static let productionGraphQLURLString = "https://games.geforce.com/graphql"
 }
 
 public extension LCARS {
@@ -65,29 +66,132 @@ public struct LCARSCachePolicy: Equatable, Sendable {
     }
 }
 
-public struct LCARSConfiguration: Equatable, Sendable {
-    public let baseURLString: String
+public struct LCARSClientHeaders: Equatable, Sendable {
+    public let clientId: String
+    public let clientType: String
+    public let clientVersion: String
+    public let clientStreamer: String
+    public let deviceOS: String
+    public let deviceType: String
+    public let deviceMake: String
+    public let deviceModel: String
+    public let browserType: String
     public let userAgent: String
 
-    public init(baseURLString: String, userAgent: String = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173") {
-        self.baseURLString = baseURLString
+    public init(clientId: String = "78589530426925203",
+                clientType: String = "NATIVE",
+                clientVersion: String = "2.0.80.173",
+                clientStreamer: String = "NVIDIA-CLASSIC",
+                deviceOS: String = "MACOS",
+                deviceType: String = "DESKTOP",
+                deviceMake: String = "UNKNOWN",
+                deviceModel: String = "UNKNOWN",
+                browserType: String = "CHROME",
+                userAgent: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 GFN-PC/2.0.80.173") {
+        self.clientId = clientId
+        self.clientType = clientType
+        self.clientVersion = clientVersion
+        self.clientStreamer = clientStreamer
+        self.deviceOS = deviceOS
+        self.deviceType = deviceType
+        self.deviceMake = deviceMake
+        self.deviceModel = deviceModel
+        self.browserType = browserType
         self.userAgent = userAgent
+    }
+
+    public static let lcars = LCARSClientHeaders()
+
+    public func apply(to request: inout URLRequest, accessToken: String, contentType: String) {
+        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
+        if !clientId.isEmpty { request.setValue(clientId, forHTTPHeaderField: "NV-Client-ID") }
+        if !clientType.isEmpty { request.setValue(clientType, forHTTPHeaderField: "NV-Client-Type") }
+        if !clientVersion.isEmpty { request.setValue(clientVersion, forHTTPHeaderField: "NV-Client-Version") }
+        if !clientStreamer.isEmpty { request.setValue(clientStreamer, forHTTPHeaderField: "NV-Client-Streamer") }
+        if !deviceOS.isEmpty { request.setValue(deviceOS, forHTTPHeaderField: "NV-Device-OS") }
+        if !deviceType.isEmpty { request.setValue(deviceType, forHTTPHeaderField: "NV-Device-Type") }
+        if !deviceMake.isEmpty { request.setValue(deviceMake, forHTTPHeaderField: "NV-Device-Make") }
+        if !deviceModel.isEmpty { request.setValue(deviceModel, forHTTPHeaderField: "NV-Device-Model") }
+        if !browserType.isEmpty { request.setValue(browserType, forHTTPHeaderField: "NV-Browser-Type") }
+    }
+}
+
+public struct LCARSConfiguration: Equatable, Sendable {
+    public let graphQLURLString: String
+    public let headers: LCARSClientHeaders
+
+    public var baseURLString: String { graphQLURLString }
+    public var userAgent: String { headers.userAgent }
+
+    public init(baseURLString: String = LCARS.productionGraphQLURLString, headers: LCARSClientHeaders = .lcars) {
+        self.graphQLURLString = LCARSConfiguration.graphQLURLString(from: baseURLString)
+        self.headers = headers
+    }
+
+    public init(baseURLString: String = LCARS.productionGraphQLURLString, userAgent: String) {
+        self.init(baseURLString: baseURLString, headers: LCARSClientHeaders(userAgent: userAgent))
+    }
+
+    private static func graphQLURLString(from value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty else { return LCARS.productionGraphQLURLString }
+        if trimmed.hasSuffix(LCARS.graphQLPath) { return trimmed }
+        return trimmed + LCARS.graphQLPath
     }
 }
 
 public enum LCARSRequestFactory {
-    public static func graphQLRequest(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: LCARSConfiguration, timeoutInterval: TimeInterval = 15) -> URLRequest? {
-        var items = [URLQueryItem(name: "requestType", value: requestType.rawValue)]
-        items.append(contentsOf: queryItems)
-        var components = URLComponents(string: configuration.baseURLString + LCARS.graphQLPath)
-        components?.queryItems = items
+    public static func persistedQueryRequest(operationName: String, queryHash: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), huId: String = makeHuId(), timeoutInterval: TimeInterval = 20) -> URLRequest? {
+        let extensions: [String: Any] = ["persistedQuery": ["sha256Hash": queryHash]]
+        var queryItems = [
+            URLQueryItem(name: "requestType", value: operationName),
+            URLQueryItem(name: "extensions", value: jsonString(extensions) ?? "{}"),
+        ]
+        if !huId.isEmpty { queryItems.append(URLQueryItem(name: "huId", value: huId)) }
+        queryItems.append(URLQueryItem(name: "variables", value: jsonString(variables) ?? "{}"))
+        var components = URLComponents(string: configuration.graphQLURLString)
+        components?.queryItems = queryItems
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "GET"
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
-        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        configuration.headers.apply(to: &request, accessToken: accessToken, contentType: "application/graphql")
         return request
+    }
+
+    public static func inlineGraphQLRequest(query: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), timeoutInterval: TimeInterval = 20) -> URLRequest? {
+        var body: [String: Any] = ["query": query]
+        if let variables { body["variables"] = variables }
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body), let url = URL(string: configuration.graphQLURLString) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        request.httpMethod = "POST"
+        request.httpBody = bodyData
+        configuration.headers.apply(to: &request, accessToken: accessToken, contentType: "application/json")
+        return request
+    }
+
+    public static func graphQLRequest(requestType: LCARS.RequestType, accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: LCARSConfiguration, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        var components = URLComponents(string: configuration.graphQLURLString)
+        components?.queryItems = [URLQueryItem(name: "requestType", value: requestType.rawValue)] + queryItems
+        guard let url = components?.url else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        request.httpMethod = "GET"
+        configuration.headers.apply(to: &request, accessToken: accessToken, contentType: "application/graphql")
+        return request
+    }
+
+    public static func makeHuId(date: Date = Date(), uuid: UUID = UUID()) -> String {
+        "\(Int(date.timeIntervalSince1970 * 1000))\(uuid.uuidString.replacingOccurrences(of: "-", with: "").prefix(8))"
+    }
+
+    private static func jsonString(_ value: Any?) -> String? {
+        guard let value else { return nil }
+        guard JSONSerialization.isValidJSONObject(value), let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
     }
 }
 

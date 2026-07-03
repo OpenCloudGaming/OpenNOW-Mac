@@ -4,6 +4,7 @@ import OpenNOWTelemetry
 public enum CloudMatch: Sendable {
     public static let systemName = "CloudMatch"
     public static let productionBaseURLString = "https://prod.cloudmatchbeta.nvidiagrid.net"
+    public static let sessionPath = "/v2/session"
 }
 
 public extension CloudMatch {
@@ -95,29 +96,168 @@ public enum CloudMatchRouteDecision: Equatable, Sendable {
     case clearUnavailableOverride(CloudMatchRouteOverride)
 }
 
-public struct CloudMatchConfiguration: Equatable, Sendable {
-    public let baseURLString: String
+public struct CloudMatchClientHeaders: Equatable, Sendable {
+    public let clientId: String
+    public let clientType: String
+    public let clientVersion: String
+    public let clientStreamer: String
+    public let deviceOS: String
+    public let deviceType: String
+    public let deviceMake: String
+    public let deviceModel: String
+    public let browserType: String
     public let userAgent: String
 
-    public init(baseURLString: String = CloudMatch.productionBaseURLString, userAgent: String = "NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173") {
-        self.baseURLString = baseURLString
+    public init(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab",
+                clientType: String = "NATIVE",
+                clientVersion: String = "2.0.80.173",
+                clientStreamer: String = "NVIDIA-CLASSIC",
+                deviceOS: String = "MACOS",
+                deviceType: String = "DESKTOP",
+                deviceMake: String = "UNKNOWN",
+                deviceModel: String = "UNKNOWN",
+                browserType: String = "CHROME",
+                userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173") {
+        self.clientId = clientId
+        self.clientType = clientType
+        self.clientVersion = clientVersion
+        self.clientStreamer = clientStreamer
+        self.deviceOS = deviceOS
+        self.deviceType = deviceType
+        self.deviceMake = deviceMake
+        self.deviceModel = deviceModel
+        self.browserType = browserType
         self.userAgent = userAgent
+    }
+
+    public static let nativeGFNPC = CloudMatchClientHeaders()
+
+    public static func browserWebRTC(clientId: String = "ec7e38d4-03af-4b58-b131-cfb0495903ab", clientVersion: String = "2.0.85.135", userAgent: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36") -> CloudMatchClientHeaders {
+        CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "WINDOWS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
+    }
+
+    public func apply(to request: inout URLRequest, accessToken: String, deviceId: String = "", includeOrigin: Bool = false, accept: String = "application/json", contentType: String? = "application/json") {
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+        if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
+        if !accessToken.isEmpty { request.setValue("GFNJWT \(accessToken)", forHTTPHeaderField: "Authorization") }
+        if !clientId.isEmpty { request.setValue(clientId, forHTTPHeaderField: "nv-client-id") }
+        if !clientType.isEmpty { request.setValue(clientType, forHTTPHeaderField: "nv-client-type") }
+        if !clientVersion.isEmpty { request.setValue(clientVersion, forHTTPHeaderField: "nv-client-version") }
+        if !clientStreamer.isEmpty { request.setValue(clientStreamer, forHTTPHeaderField: "nv-client-streamer") }
+        if !deviceOS.isEmpty { request.setValue(deviceOS, forHTTPHeaderField: "nv-device-os") }
+        if !deviceType.isEmpty { request.setValue(deviceType, forHTTPHeaderField: "nv-device-type") }
+        if !deviceMake.isEmpty { request.setValue(deviceMake, forHTTPHeaderField: "nv-device-make") }
+        if !deviceModel.isEmpty { request.setValue(deviceModel, forHTTPHeaderField: "nv-device-model") }
+        if !browserType.isEmpty { request.setValue(browserType, forHTTPHeaderField: "nv-browser-type") }
+        if !deviceId.isEmpty { request.setValue(deviceId, forHTTPHeaderField: "x-device-id") }
+        if includeOrigin {
+            request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
+            request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
+        }
+    }
+}
+
+public struct CloudMatchConfiguration: Equatable, Sendable {
+    public let baseURLString: String
+    public let headers: CloudMatchClientHeaders
+
+    public var userAgent: String { headers.userAgent }
+
+    public init(baseURLString: String = CloudMatch.productionBaseURLString, headers: CloudMatchClientHeaders = .nativeGFNPC) {
+        self.baseURLString = baseURLString
+        self.headers = headers
+    }
+
+    public init(baseURLString: String = CloudMatch.productionBaseURLString, userAgent: String) {
+        self.init(baseURLString: baseURLString, headers: CloudMatchClientHeaders(userAgent: userAgent))
     }
 
     public static let gfnPC = CloudMatchConfiguration()
 }
 
 public enum CloudMatchRequestFactory {
-    public static func request(endpoint: CloudMatch.Endpoint, accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: CloudMatchConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
-        var components = URLComponents(string: configuration.baseURLString + endpoint.path)
+    public static func request(endpoint: CloudMatch.Endpoint, accessToken: String = "", queryItems: [URLQueryItem] = [], configuration: CloudMatchConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15, deviceId: String = "") -> URLRequest? {
+        endpointRequest(path: endpoint.path, method: "GET", accessToken: accessToken, queryItems: queryItems, body: nil, configuration: configuration, timeoutInterval: timeoutInterval, deviceId: deviceId, includeOrigin: false)
+    }
+
+    public static func serverInfoRequest(baseURLString: String, accessToken: String = "", deviceId: String = "", headers: CloudMatchClientHeaders = .nativeGFNPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        let configuration = CloudMatchConfiguration(baseURLString: normalizedBaseURL(baseURLString), headers: headers)
+        return request(endpoint: .serverInfo, accessToken: accessToken, configuration: configuration, timeoutInterval: timeoutInterval, deviceId: deviceId)
+    }
+
+    public static func createSessionRequest(baseURLString: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        let queryItems = [URLQueryItem(name: "keyboardLayout", value: keyboardLayout), URLQueryItem(name: "languageCode", value: languageCode)]
+        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: false, timeoutInterval: timeoutInterval)
+    }
+
+    public static func pollSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "GET", accessToken: accessToken, deviceId: deviceId, timeoutInterval: timeoutInterval)
+    }
+
+    public static func stopSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "DELETE", accessToken: accessToken, deviceId: deviceId, includeOrigin: true, timeoutInterval: timeoutInterval)
+    }
+
+    public static func activeSessionsRequest(baseURLString: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        sessionRequest(baseURLString: baseURLString, sessionId: "", method: "GET", accessToken: accessToken, deviceId: deviceId, timeoutInterval: timeoutInterval)
+    }
+
+    public static func claimSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        let queryItems = [URLQueryItem(name: "keyboardLayout", value: keyboardLayout), URLQueryItem(name: "languageCode", value: languageCode)]
+        return sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "PUT", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: true, timeoutInterval: timeoutInterval)
+    }
+
+    public static func adUpdateRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, body: Data?, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+        sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "PUT", accessToken: accessToken, deviceId: deviceId, body: body, includeOrigin: true, timeoutInterval: timeoutInterval)
+    }
+
+    public static func sessionRequest(baseURLString: String, sessionId: String, method: String, accessToken: String, deviceId: String, queryItems: [URLQueryItem] = [], body: Data? = nil, includeOrigin: Bool = false, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
+        let path = sessionId.isEmpty ? CloudMatch.sessionPath : CloudMatch.sessionPath + "/" + encodedPathComponent(sessionId)
+        return endpointRequest(path: path, method: method, accessToken: accessToken, queryItems: queryItems, body: body, configuration: CloudMatchConfiguration(baseURLString: normalizedBaseURL(baseURLString), headers: headers), timeoutInterval: timeoutInterval, deviceId: deviceId, includeOrigin: includeOrigin)
+    }
+
+    public static func normalizedBaseURL(_ value: String) -> String {
+        let raw = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return CloudMatch.productionBaseURLString }
+        let withScheme = raw.hasPrefix("https://") || raw.hasPrefix("http://") ? raw : "https://\(raw)"
+        return withScheme.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    public static func resolvedSessionBaseURL(streamingBaseURL: String, serverIP: String) -> String {
+        let fallbackBase = normalizedHTTPSBaseURL(streamingBaseURL)
+        if serverIP.isEmpty { return fallbackBase.isEmpty ? CloudMatch.productionBaseURLString : fallbackBase }
+        if serverIP.hasPrefix("https://") || serverIP.hasPrefix("http://") {
+            let base = normalizedHTTPSBaseURL(serverIP)
+            return base.isEmpty ? (fallbackBase.isEmpty ? CloudMatch.productionBaseURLString : fallbackBase) : base
+        }
+        let host = usableEndpointHost(serverIP)
+        return host.isEmpty ? (fallbackBase.isEmpty ? CloudMatch.productionBaseURLString : fallbackBase) : "https://\(host)"
+    }
+
+    private static func endpointRequest(path: String, method: String, accessToken: String, queryItems: [URLQueryItem], body: Data?, configuration: CloudMatchConfiguration, timeoutInterval: TimeInterval, deviceId: String, includeOrigin: Bool) -> URLRequest? {
+        var components = URLComponents(string: normalizedBaseURL(configuration.baseURLString) + path)
         if !queryItems.isEmpty { components?.queryItems = queryItems }
         guard let url = components?.url else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
-        request.httpMethod = "GET"
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
-        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        request.httpMethod = method
+        configuration.headers.apply(to: &request, accessToken: accessToken, deviceId: deviceId, includeOrigin: includeOrigin)
+        request.httpBody = body
         return request
+    }
+
+    private static func encodedPathComponent(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+    }
+
+    private static func normalizedHTTPSBaseURL(_ value: String) -> String {
+        let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !raw.isEmpty else { return "" }
+        let withScheme = raw.hasPrefix("https://") || raw.hasPrefix("http://") ? raw : "https://\(raw)"
+        guard let components = URLComponents(string: withScheme), components.scheme?.lowercased() == "https", let host = components.host, !usableEndpointHost(host).isEmpty else { return "" }
+        return withScheme
     }
 }
 
@@ -164,12 +304,6 @@ public enum CloudMatchServerInfoParser {
     private static func normalizedAddress(_ value: String) -> String {
         value.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
-
-    private static func stringValue(_ value: Any?) -> String? {
-        if let string = value as? String { return string }
-        if let number = value as? NSNumber { return number.stringValue }
-        return nil
-    }
 }
 
 public enum CloudMatchRoutingPolicy {
@@ -177,6 +311,159 @@ public enum CloudMatchRoutingPolicy {
         guard let override else { return .useDefault(serverInfo.defaultZone) }
         if override.isInternal || serverInfo.zones.values.contains(override.zone) { return .useOverride(override) }
         return .clearUnavailableOverride(override)
+    }
+}
+
+public enum CloudMatchSessionState: Int, Sendable {
+    case initializing = 1
+    case readyForConnection = 2
+    case streaming = 3
+    case paused = 6
+
+    public var isVendorResumable: Bool { true }
+
+    public var isReadyForConnection: Bool {
+        self == .readyForConnection || self == .streaming
+    }
+
+    public var canContinuePolling: Bool {
+        self == .initializing || self == .paused
+    }
+}
+
+public struct CloudMatchActiveSessionDescriptor: Equatable, Sendable {
+    public let sessionId: String
+    public let appId: Int
+    public let state: CloudMatchSessionState
+    public let controlServer: String
+    public let signalingHost: String
+    public let streamingBaseURL: String
+    public let gpuType: String
+
+    public var status: Int { state.rawValue }
+    public var resumeServer: String { controlServer.isEmpty ? signalingHost : controlServer }
+
+    public var signalingURL: String {
+        let host = signalingHost.isEmpty ? controlServer : signalingHost
+        return host.isEmpty ? "" : "wss://\(host):443/nvst/"
+    }
+
+    public init(sessionId: String, appId: Int, state: CloudMatchSessionState, controlServer: String, signalingHost: String, streamingBaseURL: String, gpuType: String) {
+        self.sessionId = sessionId
+        self.appId = appId
+        self.state = state
+        self.controlServer = controlServer
+        self.signalingHost = signalingHost
+        self.streamingBaseURL = streamingBaseURL
+        self.gpuType = gpuType
+    }
+}
+
+public enum CloudMatchActiveSessionParser {
+    public static func descriptor(from dictionary: [String: Any], streamingBaseURL: String) -> CloudMatchActiveSessionDescriptor? {
+        let sessionId = stringValue(dictionary["sessionId"]) ?? ""
+        guard !sessionId.isEmpty else { return nil }
+        guard let state = CloudMatchSessionState(rawValue: intValue(dictionary["status"])), state.isVendorResumable else { return nil }
+
+        let requestData = dictionary["sessionRequestData"] as? [String: Any]
+        let controlInfo = dictionary["sessionControlInfo"] as? [String: Any]
+        let controlServer = usableEndpointHost(stringValue(controlInfo?["ip"]) ?? "")
+        let signalingHost = firstSignalingHost(from: dictionary)
+        let resumeServer = controlServer.isEmpty ? signalingHost : controlServer
+        guard !resumeServer.isEmpty else { return nil }
+
+        return CloudMatchActiveSessionDescriptor(
+            sessionId: sessionId,
+            appId: intValue(requestData?["appId"]),
+            state: state,
+            controlServer: controlServer,
+            signalingHost: signalingHost,
+            streamingBaseURL: streamingBaseURL,
+            gpuType: stringValue(dictionary["gpuType"]) ?? ""
+        )
+    }
+
+    public static func descriptors(from sessions: [Any], streamingBaseURL: String) -> [CloudMatchActiveSessionDescriptor] {
+        sessions.compactMap { item in
+            guard let session = item as? [String: Any] else { return nil }
+            return descriptor(from: session, streamingBaseURL: streamingBaseURL)
+        }
+    }
+
+    private static func firstSignalingHost(from dictionary: [String: Any]) -> String {
+        for item in arrayValue(dictionary["connectionInfo"]).compactMap({ $0 as? [String: Any] }) where intValue(item["usage"]) == 14 {
+            let ip = usableEndpointHost(stringValue(item["ip"]) ?? "")
+            if !ip.isEmpty { return ip }
+            if let host = extractHost(from: stringValue(item["resourcePath"]) ?? ""), !host.isEmpty { return host }
+        }
+        return ""
+    }
+}
+
+public struct CloudMatchRequestStatus: Equatable, Sendable {
+    public let statusCode: Int
+    public let statusDescription: String
+    public let requestId: String
+    public let serverId: String
+
+    public init(statusCode: Int = 0, statusDescription: String = "", requestId: String = "", serverId: String = "") {
+        self.statusCode = statusCode
+        self.statusDescription = statusDescription
+        self.requestId = requestId
+        self.serverId = serverId
+    }
+
+    public var succeeded: Bool { statusCode == 1 }
+
+    public static func parse(_ value: Any?) -> CloudMatchRequestStatus {
+        let dictionary = value as? [String: Any]
+        return CloudMatchRequestStatus(
+            statusCode: intValue(dictionary?["statusCode"]),
+            statusDescription: stringValue(dictionary?["statusDescription"]) ?? "",
+            requestId: stringValue(dictionary?["requestId"]) ?? "",
+            serverId: stringValue(dictionary?["serverId"]) ?? ""
+        )
+    }
+}
+
+public enum CloudMatchResponseParser {
+    public static func requestStatus(from json: [String: Any]) -> CloudMatchRequestStatus {
+        CloudMatchRequestStatus.parse(json["requestStatus"])
+    }
+
+    public static func requestSucceeded(_ json: [String: Any]) -> Bool {
+        requestStatus(from: json).succeeded
+    }
+
+    public static func requestStatusError(data: Data, fallback: String) -> String {
+        guard let json = jsonDictionary(data) else { return fallback }
+        let status = requestStatus(from: json)
+        return "API error \(status.statusCode): \(status.statusDescription.isEmpty ? "unknown" : status.statusDescription)"
+    }
+
+    public static func isSessionLimitExceededResponse(_ json: [String: Any]) -> Bool {
+        let status = requestStatus(from: json)
+        return status.statusCode == 11 || status.statusDescription.contains("SESSION_LIMIT")
+    }
+
+    public static func isSessionNotPausedResponse(_ data: Data?) -> Bool {
+        guard let data, let json = jsonDictionary(data) else { return false }
+        let status = requestStatus(from: json)
+        return status.statusCode == 34 || status.statusDescription.contains("SESSION_NOT_PAUSED")
+    }
+
+    public static func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data) else { return nil }
+        let status = requestStatus(from: json)
+        let session = json["session"] as? [String: Any]
+        let sessionRequestData = session?["sessionRequestData"] as? [String: Any]
+        guard let responseAppId = sessionRequestData?["appId"], intValue(responseAppId) <= 0 else { return nil }
+        let isInternalSessionFailure = status.statusCode == 4 || status.statusDescription.contains("INTERNAL_ERROR_STATUS") || status.statusDescription.contains("8A8C0000")
+        return isInternalSessionFailure ? "This GeForce NOW session is no longer resumable. End it and launch again." : nil
+    }
+
+    public static func jsonDictionary(_ data: Data) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 }
 
@@ -259,4 +546,34 @@ public struct CloudMatchService<Transport: CloudMatchHTTPTransport>: Sendable {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CloudMatchServiceError.invalidJSONResponse }
         return json
     }
+}
+
+private func usableEndpointHost(_ host: String) -> String {
+    let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix(".") else { return "" }
+    return trimmed
+}
+
+private func extractHost(from value: String) -> String? {
+    if let host = URL(string: value)?.host, !host.isEmpty { return host }
+    let withoutScheme = value.replacingOccurrences(of: "rtsps://", with: "").replacingOccurrences(of: "wss://", with: "")
+    return withoutScheme.split(separator: "/").first?.split(separator: ":").first.map(String.init)
+}
+
+private func arrayValue(_ value: Any?) -> [Any] {
+    value as? [Any] ?? []
+}
+
+private func stringValue(_ value: Any?) -> String? {
+    if let string = value as? String { return string }
+    if let string = value as? NSString { return string as String }
+    if let number = value as? NSNumber { return number.stringValue }
+    return nil
+}
+
+private func intValue(_ value: Any?) -> Int {
+    if let int = value as? Int { return int }
+    if let number = value as? NSNumber { return number.intValue }
+    if let string = value as? String { return Int(string) ?? 0 }
+    return 0
 }

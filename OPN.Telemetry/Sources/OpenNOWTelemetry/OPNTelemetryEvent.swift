@@ -36,6 +36,7 @@ public enum OPNTelemetryEventName: String, CaseIterable, Sendable {
     case uiAction = "UIAction"
     case userSession = "UserSession"
     case udsDialogShown = "UDSDialogShown"
+    case udsEndOfSessionReport = "UdsEndOfSessionReport"
     case udsSuggestionFeedback = "UDSSuggestionFeedback"
     case gameLaunchEvent = "Game_Launch_Event"
     case gameLaunchMetrics = "Game_Launch_Metrics"
@@ -44,7 +45,7 @@ public enum OPNTelemetryEventName: String, CaseIterable, Sendable {
         switch self {
         case .applicationInstall, .networkTest, .userSession:
             .behavioral
-        case .authenticationProvider, .autoUpdate, .checkGFN, .exception, .gameQuitEvent, .gfnSession, .httpFailure, .httpSuccess, .launchProcess, .networkTestHTTP, .pageLoadPerformanceMetrics, .popUpDialogShown, .routingStatus, .streamingQualityChanged, .systemInfo, .uiAction, .udsDialogShown, .udsSuggestionFeedback, .gameLaunchMetrics:
+        case .authenticationProvider, .autoUpdate, .checkGFN, .exception, .gameQuitEvent, .gfnSession, .httpFailure, .httpSuccess, .launchProcess, .networkTestHTTP, .pageLoadPerformanceMetrics, .popUpDialogShown, .routingStatus, .streamingQualityChanged, .systemInfo, .uiAction, .udsDialogShown, .udsEndOfSessionReport, .udsSuggestionFeedback, .gameLaunchMetrics:
             .functional
         case .gameLaunchEvent, .loginStart, .networkTestException, .popUpDialogClosed, .settingSnapshot, .streamingProfile:
             .technical

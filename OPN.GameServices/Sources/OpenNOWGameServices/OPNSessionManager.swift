@@ -1,5 +1,6 @@
 @preconcurrency import Foundation
 
+import CloudMatch
 import Common
 import OpenNOWTelemetry
 import WebRTCMedia
@@ -12,9 +13,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private var streamingBaseUrl = defaultBaseUrl
     private var adStatesBySessionId: [String: [String: Any]] = [:]
 
-    private static let defaultBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net"
-    private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
-    private static let nvClientVersion = "2.0.80.173"
+    private static let defaultBaseUrl = CloudMatch.productionBaseURLString
     private static let persistedActiveSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
 
     func setAccessToken(_ token: String) {
@@ -22,7 +21,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     func setStreamingBaseUrl(_ url: String) {
-        lock.withLock { streamingBaseUrl = resolveSessionBaseUrl(streamingBaseUrl: url, serverIp: "") }
+        lock.withLock { streamingBaseUrl = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: url, serverIP: "") }
     }
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
@@ -92,23 +91,20 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
         let layout = string(effectiveSettings["keyboardLayout"]).isEmpty ? "us" : string(effectiveSettings["keyboardLayout"])
         let language = string(effectiveSettings["gameLanguage"]).isEmpty ? OPNLocale.currentGFNLocale() : string(effectiveSettings["gameLanguage"])
-        guard let url = URL(string: "\(baseUrl)/v2/session?keyboardLayout=\(layout)&languageCode=\(language)") else {
-            completion(false, [:], "Invalid session create URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: deviceId, includeOrigin: false)
-        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
         let body: [String: Any] = ["sessionRequestData": sessionRequestData]
         OPNProtocolDebug.logJSONObject(label: "session create request", object: body)
+        let bodyData: Data
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            bodyData = try JSONSerialization.data(withJSONObject: body)
         } catch {
             completion(false, [:], "Failed to encode session create request")
             return
         }
+        guard var request = CloudMatchRequestFactory.createSessionRequest(baseURLString: baseUrl, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData) else {
+            completion(false, [:], "Invalid session create URL")
+            return
+        }
+        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
 
         nonisolated(unsafe) let createCompletion = completion
         nonisolated(unsafe) let createEffectiveSettings = effectiveSettings
@@ -130,7 +126,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             guard http?.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let errorMessage = "HTTP \(http?.statusCode ?? 0): \(body)"
-                if let json = self.jsonDictionary(data), self.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
+                if let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.isSessionLimitExceededResponse(json), let selected = self.selectSessionLimitReuseEntry(self.activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: launchAppId.intValue) {
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
                         self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
                     } else {
@@ -141,8 +137,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 createCompletion(false, [:], errorMessage)
                 return
             }
-            guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
-                createCompletion(false, [:], self.requestStatusError(data: data, fallback: "Failed to parse session response"))
+            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
+                createCompletion(false, [:], CloudMatchResponseParser.requestStatusError(data: data, fallback: "Failed to parse session response"))
                 return
             }
             guard let session = json["session"] as? [String: Any] else {
@@ -165,13 +161,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "Invalid session id for poll: \(escapedLogString(sessionId))")
             return
         }
-        let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
-        guard let url = URL(string: "\(base)/v2/session/\(sessionId)") else {
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
+        guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             completion(false, [:], "Invalid poll URL")
             return
         }
-        var request = URLRequest(url: url)
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: false)
         nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollSession")
         let tracedRequest = request
@@ -187,7 +181,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 completion(false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
-            guard let json = self.jsonDictionary(data), let session = json["session"] as? [String: Any] else {
+            guard let json = CloudMatchResponseParser.jsonDictionary(data), let session = json["session"] as? [String: Any] else {
                 completion(false, [:], "No session in poll response")
                 return
             }
@@ -209,14 +203,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return
         }
         clearPersistedActiveSessionId(sessionId)
-        let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
-        guard let url = URL(string: "\(base)/v2/session/\(sessionId)") else {
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
+        guard var request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             completion(false, "Invalid stop session URL")
             return
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: true)
         nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.stopSession")
         let tracedRequest = request
@@ -242,12 +233,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return
         }
         let base = currentStreamingBaseUrl()
-        guard let url = URL(string: "\(base)/v2/session") else {
+        guard var request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             completion(false, [], "Invalid sessions URL")
             return
         }
-        var request = URLRequest(url: url)
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(), includeOrigin: false)
         nonisolated(unsafe) let completion = completion
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.activeSessions")
         let tracedRequest = request
@@ -262,7 +251,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 completion(false, [], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
                 return
             }
-            guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
+            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
                 completion(false, [], "API error from sessions endpoint")
                 return
             }
@@ -282,22 +271,20 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "Invalid ad update request")
             return
         }
-        let base = resolveSessionBaseUrl(streamingBaseUrl: string(session["streamingBaseUrl"]).isEmpty ? currentStreamingBaseUrl() : string(session["streamingBaseUrl"]), serverIp: string(session["serverIp"]))
-        guard let url = URL(string: "\(base)/v2/session/\(sessionId)") else {
-            completion(false, [:], "Invalid ad update URL")
-            return
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: string(session["deviceId"]).isEmpty ? OPNDeviceIdentity.stableCloudmatchDeviceId() : string(session["deviceId"]), includeOrigin: true)
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: string(session["streamingBaseUrl"]).isEmpty ? currentStreamingBaseUrl() : string(session["streamingBaseUrl"]), serverIP: string(session["serverIp"]))
         var adUpdate: [String: Any] = ["adId": adId, "adAction": actionCode, "clientTimestamp": Int(Date().timeIntervalSince1970)]
         if watchedTimeInMs >= 0 { adUpdate["watchedTimeInMs"] = watchedTimeInMs }
         if pausedTimeInMs >= 0 { adUpdate["pausedTimeInMs"] = pausedTimeInMs }
         if !cancelReason.isEmpty { adUpdate["cancelReason"] = cancelReason }
+        let bodyData: Data
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: ["action": 6, "adUpdates": [adUpdate]])
+            bodyData = try JSONSerialization.data(withJSONObject: ["action": 6, "adUpdates": [adUpdate]])
         } catch {
             completion(false, [:], "Failed to encode ad update request")
+            return
+        }
+        guard var request = CloudMatchRequestFactory.adUpdateRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: string(session["deviceId"]).isEmpty ? OPNDeviceIdentity.stableCloudmatchDeviceId() : string(session["deviceId"]), body: bodyData) else {
+            completion(false, [:], "Invalid ad update URL")
             return
         }
         nonisolated(unsafe) let completion = completion
@@ -316,7 +303,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 completion(false, [:], "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
                 return
             }
-            guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
+            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 completion(false, [:], "Ad update API error: \(body)")
                 return
@@ -352,15 +339,12 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let clientId = UUID().uuidString.lowercased()
-        let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
-        guard let validationUrl = URL(string: "\(base)/v2/session/\(sessionId)") else {
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
+        guard var validationRequest = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, timeoutInterval: 30) else {
             completion(false, [:], "Invalid validation URL")
             return
         }
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
-        var validationRequest = URLRequest(url: validationUrl)
-        validationRequest.timeoutInterval = 30
-        applyCommonCloudMatchHeaders(to: &validationRequest, token: token, deviceId: deviceId, includeOrigin: false)
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let claimSettings = settings
         let validationNetworkStart = OPNNetworkLog.start(&validationRequest, operation: "cloudmatch.validateSessionClaim")
@@ -372,7 +356,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             if let error {
                 OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
             } else if let data {
-                let json = self.jsonDictionary(data)
+                let json = CloudMatchResponseParser.jsonDictionary(data)
                 let session = json?["session"] as? [String: Any]
                 preClaimStatus = int(session?["status"])
                 let requestStatus = json?["requestStatus"] as? [String: Any]
@@ -380,7 +364,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 let http = response as? HTTPURLResponse
                 if (http?.statusCode ?? 0) >= 400 || (statusCode != 0 && statusCode != 1 && preClaimStatus == 0) {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                    if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
                         self.clearPersistedActiveSessionId(sessionId)
                         completion(false, [:], staleMessage)
                         return
@@ -444,20 +428,17 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         ]
         let layout = string(settings["keyboardLayout"]).isEmpty ? "us" : string(settings["keyboardLayout"])
         let language = string(settings["gameLanguage"]).isEmpty ? OPNLocale.currentGFNLocale() : string(settings["gameLanguage"])
-        let base = resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp)
-        guard let url = URL(string: "\(base)/v2/session/\(sessionId)?keyboardLayout=\(layout)&languageCode=\(language)") else {
-            completion(false, [:], "Invalid claim URL")
-            return
-        }
         OPNProtocolDebug.logJSONObject(label: "session claim request", object: payload)
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.httpMethod = "PUT"
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: deviceId, includeOrigin: true)
+        let bodyData: Data
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            bodyData = try JSONSerialization.data(withJSONObject: payload)
         } catch {
             completion(false, [:], "Failed to encode claim request")
+            return
+        }
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
+        guard var request = CloudMatchRequestFactory.claimSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData) else {
+            completion(false, [:], "Invalid claim URL")
             return
         }
         nonisolated(unsafe) let completion = completion
@@ -478,11 +459,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             let body = String(data: data, encoding: .utf8) ?? ""
             let http = response as? HTTPURLResponse
             guard http?.statusCode == 200 else {
-                if self.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
+                if CloudMatchResponseParser.isSessionNotPausedResponse(data) || body.contains("SESSION_NOT_PAUSED") || body.contains("\"statusCode\":34") {
                     completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
                 }
-                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
                     self.clearPersistedActiveSessionId(sessionId)
                     completion(false, [:], staleMessage)
                     return
@@ -490,15 +471,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 completion(false, [:], "Claim HTTP \(http?.statusCode ?? 0): \(body)")
                 return
             }
-            guard let json = self.jsonDictionary(data), self.requestSucceeded(json) else {
-                let requestStatus = self.jsonDictionary(data)?["requestStatus"] as? [String: Any]
+            guard let json = CloudMatchResponseParser.jsonDictionary(data), CloudMatchResponseParser.requestSucceeded(json) else {
+                let requestStatus = CloudMatchResponseParser.jsonDictionary(data)?["requestStatus"] as? [String: Any]
                 let statusCode = int(requestStatus?["statusCode"])
                 let description = string(requestStatus?["statusDescription"])
                 if description.contains("SESSION_NOT_PAUSED") || statusCode == 34 {
                     completion(false, [:], "Session is not paused and cannot be resumed.")
                     return
                 }
-                if let staleMessage = self.staleActiveSessionClaimMessage(data) {
+                if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
                     self.clearPersistedActiveSessionId(sessionId)
                     completion(false, [:], staleMessage)
                     return
@@ -514,7 +495,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func pollClaimSession(sessionId: String, serverIp: String, deviceId: String, clientId: String, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
         OPNPollClaimSessionContext(manager: self,
                                    sessionId: sessionId,
-                                   base: resolveSessionBaseUrl(streamingBaseUrl: currentStreamingBaseUrl(), serverIp: serverIp),
+                                   base: CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp),
                                    token: currentAccessToken(),
                                    deviceId: deviceId,
                                    clientId: clientId,
@@ -523,7 +504,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     }
 
     fileprivate func pollClaimSessionRequestFinished(context: OPNPollClaimSessionContext, attempt: Int, data: Data?, error: Error?) {
-        guard error == nil, let data, let json = jsonDictionary(data), let session = json["session"] as? [String: Any] else {
+        guard error == nil, let data, let json = CloudMatchResponseParser.jsonDictionary(data), let session = json["session"] as? [String: Any] else {
             context.retry(after: pollDelay(attempt), attempt: attempt + 1)
             return
         }
@@ -724,15 +705,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func activeSessionEntries(from sessions: [Any], streamingBaseUrl: String) -> [[String: Any]] {
         sessions.compactMap { item -> [String: Any]? in
             guard let session = item as? [String: Any] else { return nil }
-            guard let descriptor = OPNActiveSessionParser.descriptor(from: session, streamingBaseUrl: streamingBaseUrl) else { return nil }
+            guard let descriptor = CloudMatchActiveSessionParser.descriptor(from: session, streamingBaseURL: streamingBaseUrl) else { return nil }
             return [
                 "sessionId": descriptor.sessionId,
                 "appId": descriptor.appId,
                 "status": descriptor.status,
                 "serverIp": descriptor.resumeServer,
                 "gpuType": descriptor.gpuType,
-                "streamingBaseUrl": descriptor.streamingBaseUrl,
-                "signalingUrl": descriptor.signalingUrl,
+                "streamingBaseUrl": descriptor.streamingBaseURL,
+                "signalingUrl": descriptor.signalingURL,
             ]
         }
     }
@@ -748,47 +729,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     private func currentAccessToken() -> String { lock.withLock { accessToken } }
     private func currentStreamingBaseUrl() -> String { lock.withLock { streamingBaseUrl.isEmpty ? Self.defaultBaseUrl : streamingBaseUrl } }
 
-    private func requestSucceeded(_ json: [String: Any]) -> Bool {
-        int((json["requestStatus"] as? [String: Any])?["statusCode"]) == 1
-    }
+    private func isReadyActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.isReadyForConnection == true }
 
-    private func requestStatusError(data: Data, fallback: String) -> String {
-        guard let json = jsonDictionary(data), let status = json["requestStatus"] as? [String: Any] else { return fallback }
-        return "API error \(int(status["statusCode"])): \(string(status["statusDescription"]).isEmpty ? "unknown" : string(status["statusDescription"]))"
-    }
-
-    private func jsonDictionary(_ data: Data) -> [String: Any]? {
-        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-    }
-
-    private func isSessionLimitExceededResponse(_ json: [String: Any]) -> Bool {
-        let requestStatus = json["requestStatus"] as? [String: Any]
-        let statusCode = int(requestStatus?["statusCode"])
-        let description = string(requestStatus?["statusDescription"])
-        return statusCode == 11 || description.contains("SESSION_LIMIT")
-    }
-
-    private func isReusableActiveSessionStatus(_ status: Int) -> Bool { OPNCloudMatchSessionState(rawValue: status)?.isVendorResumable == true }
-    private func isReadyActiveSessionStatus(_ status: Int) -> Bool { OPNCloudMatchSessionState(rawValue: status)?.isReadyForConnection == true }
-
-    private func canContinuePollingActiveSessionStatus(_ status: Int) -> Bool { OPNCloudMatchSessionState(rawValue: status)?.canContinuePolling == true }
-
-    private func isSessionNotPausedResponse(_ data: Data?) -> Bool {
-        guard let data, let requestStatus = jsonDictionary(data)?["requestStatus"] as? [String: Any] else { return false }
-        return int(requestStatus["statusCode"]) == 34 || string(requestStatus["statusDescription"]).contains("SESSION_NOT_PAUSED")
-    }
-
-    private func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
-        guard let data, let json = jsonDictionary(data) else { return nil }
-        let requestStatus = json["requestStatus"] as? [String: Any]
-        let statusCode = int(requestStatus?["statusCode"])
-        let description = string(requestStatus?["statusDescription"])
-        let session = json["session"] as? [String: Any]
-        let sessionRequestData = session?["sessionRequestData"] as? [String: Any]
-        guard let responseAppId = sessionRequestData?["appId"], int(responseAppId) <= 0 else { return nil }
-        let isInternalSessionFailure = statusCode == 4 || description.contains("INTERNAL_ERROR_STATUS") || description.contains("8A8C0000")
-        return isInternalSessionFailure ? "This GeForce NOW session is no longer resumable. End it and launch again." : nil
-    }
+    private func canContinuePollingActiveSessionStatus(_ status: Int) -> Bool { CloudMatchSessionState(rawValue: status)?.canContinuePolling == true }
 
     private func pollDelay(_ attempt: Int) -> TimeInterval {
         attempt <= 12 ? 0.3 : (attempt <= 20 ? 0.5 : 1.0)
@@ -848,12 +791,10 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
             complete(false, [:], "Timeout polling for session ready")
             return
         }
-        guard let url = URL(string: "\(base)/v2/session/\(sessionId)") else {
+        guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId) else {
             complete(false, [:], "Invalid poll claim URL")
             return
         }
-        var request = URLRequest(url: url)
-        applyCommonCloudMatchHeaders(to: &request, token: token, deviceId: deviceId, includeOrigin: false)
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollClaimSession")
         let tracedRequest = request
         URLSession.shared.dataTask(with: tracedRequest) { [self] data, response, error in
@@ -869,47 +810,6 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
     func complete(_ success: Bool, _ session: [String: Any], _ error: String) {
         completion(success, session, error)
     }
-}
-
-private func applyCommonCloudMatchHeaders(to request: inout URLRequest, token: String, deviceId: String, includeOrigin: Bool) {
-    request.setValue(userAgent(), forHTTPHeaderField: "User-Agent")
-    request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("ec7e38d4-03af-4b58-b131-cfb0495903ab", forHTTPHeaderField: "nv-client-id")
-    request.setValue("NATIVE", forHTTPHeaderField: "nv-client-type")
-    request.setValue("2.0.80.173", forHTTPHeaderField: "nv-client-version")
-    request.setValue("NVIDIA-CLASSIC", forHTTPHeaderField: "nv-client-streamer")
-    request.setValue("MACOS", forHTTPHeaderField: "nv-device-os")
-    request.setValue("DESKTOP", forHTTPHeaderField: "nv-device-type")
-    request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-make")
-    request.setValue("UNKNOWN", forHTTPHeaderField: "nv-device-model")
-    request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
-    request.setValue(deviceId, forHTTPHeaderField: "x-device-id")
-    if includeOrigin {
-        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://play.geforcenow.com/", forHTTPHeaderField: "Referer")
-    }
-}
-
-private func resolveSessionBaseUrl(streamingBaseUrl: String, serverIp: String) -> String {
-    func normalizedHTTPSBaseUrl(_ url: String) -> String {
-        guard !url.isEmpty, let components = URLComponents(string: url), components.scheme?.lowercased() == "https", let host = components.host, !usableEndpointHost(host).isEmpty else { return "" }
-        return url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    }
-    let fallbackBase = normalizedHTTPSBaseUrl(streamingBaseUrl)
-    if serverIp.isEmpty {
-        return fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase
-    }
-    if serverIp.hasPrefix("https://") || serverIp.hasPrefix("http://") {
-        let base = normalizedHTTPSBaseUrl(serverIp)
-        return base.isEmpty ? (fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase) : base
-    }
-    let host = usableEndpointHost(serverIp)
-    return host.isEmpty ? (fallbackBase.isEmpty ? "https://prod.cloudmatchbeta.nvidiagrid.net" : fallbackBase) : "https://\(host)"
-}
-
-private func userAgent() -> String {
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NVIDIACEFClient/HEAD/debb5919f6 GFN-PC/2.0.80.173"
 }
 
 private func settingsByApplyingCloudVariables(_ settings: [String: Any], capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
