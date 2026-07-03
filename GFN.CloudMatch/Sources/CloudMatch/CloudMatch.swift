@@ -123,7 +123,7 @@ public enum CloudMatchRequestFactory {
 
 public enum CloudMatchServerInfoParser {
     public static func parse(_ json: [String: Any]) -> CloudMatchServerInfo {
-        let metadata = metadataItems(from: json["metadata"])
+        let metadata = metadataItems(from: json["metadata"] ?? json["metaData"])
         let values = Dictionary(uniqueKeysWithValues: metadata.compactMap { item -> (String, String)? in
             guard let key = item["key"], let value = item["value"] else { return nil }
             return (key, value)

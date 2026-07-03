@@ -33,7 +33,6 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 - `GFN.LCARS`
 - `GFN.NesAuth`
 - `GFN.NetworkTest`
-- `GFN.Ragnarok`
 - `GFN.Starfleet`
 - `GFN.UDS`
 - `OPN.Auth`

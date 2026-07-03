@@ -1,5 +1,6 @@
 import Common
 import Foundation
+import OpenNOWTelemetry
 import SignalLinkKit
 import WebRTCMedia
 
@@ -207,6 +208,13 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         var settings = settingsByApplyingCloudVariables(baseSettings, variables: cloudVariables)
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"])
         let preflight = await runNetworkPreflight(token: configuration.accessToken, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
+        if preflight.serverReportedWarning || !preflight.continueRecommended || !preflight.warningMessage.isEmpty {
+            OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .networkTest, parameters: [
+                "status": "warning",
+                "continued": "true",
+                "message": preflight.warningMessage.isEmpty ? "Network preflight reported a warning. Launch will continue." : preflight.warningMessage,
+            ]))
+        }
         settings["networkTestSessionId"] = preflight.networkTestSessionId
         settings["networkType"] = preflight.networkType
         settings["networkLatencyMs"] = preflight.latencyMs >= 0 ? String(preflight.latencyMs) : "Unknown"

@@ -1311,6 +1311,10 @@ private struct ServerLocationSettingsPage: View {
                     .disabled(viewModel.isRefreshingSettingsRegions)
             }
             SettingsDivider()
+            if !viewModel.unavailableSettingsRegionUrl.isEmpty {
+                UnavailableRegionPrompt(regionUrl: viewModel.unavailableSettingsRegionUrl, keepAction: viewModel.keepUnavailableSettingsRegion, automaticAction: viewModel.switchUnavailableSettingsRegionToAutomatic)
+                SettingsDivider()
+            }
             LazyVGrid(columns: regionColumns, alignment: .leading, spacing: 10) {
                 ForEach(viewModel.settingsRegionOptions, id: \.url) { option in
                     SettingsRegionRow(option: option, selected: option.url == viewModel.selectedSettingsRegionUrl) {
@@ -1324,6 +1328,43 @@ private struct ServerLocationSettingsPage: View {
     private func selectedRegionTitle(_ option: OPNStreamRegionOption?) -> String {
         guard let option else { return "Automatic" }
         return SettingsRegionName.shortName(for: option)
+    }
+}
+
+private struct UnavailableRegionPrompt: View {
+    let regionUrl: String
+    let keepAction: () -> Void
+    let automaticAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Selected Region Unavailable")
+                        .font(.settingsNvidia(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("CloudMatch no longer advertises the selected route. Keep it for one more launch attempt, or switch to Automatic.")
+                        .font(.settingsNvidia(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                    Text(regionUrl)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 12)
+            }
+            HStack(spacing: 10) {
+                SettingsActionButton(title: "KEEP", tone: .secondary, minimumWidth: 82, action: keepAction)
+                SettingsActionButton(title: "AUTOMATIC", minimumWidth: 112, action: automaticAction)
+            }
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.08))
+        .overlay { Rectangle().stroke(Color.orange.opacity(0.22), lineWidth: 1) }
     }
 }
 

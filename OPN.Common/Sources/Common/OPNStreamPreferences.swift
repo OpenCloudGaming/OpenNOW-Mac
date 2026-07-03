@@ -1,7 +1,10 @@
 import AppKit
+import CloudMatch
 import CoreAudio
 import CoreMedia
 import Foundation
+import GDN
+import NetworkTest
 import OpenNOWTelemetry
 import VideoToolbox
 
@@ -238,7 +241,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
 public enum OPNStreamPreferences {
     private static let storage = OPNAppPreferenceStorage.standard
 
-    public static let defaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/"
+    public static let defaultStreamingBaseUrl = CloudMatch.productionBaseURLString + "/"
     public static let aspectOptions = [
         OPNStreamAspectOption(label: "16:9", widthRatio: 16, heightRatio: 9),
         OPNStreamAspectOption(label: "16:10", widthRatio: 16, heightRatio: 10),
@@ -653,13 +656,9 @@ public enum OPNStreamPreferences {
 
     static func cloudVariablesRequest(token: String, locale: String) -> URLRequest? {
         _ = token
-        var components = URLComponents(string: "https://gx-target-experiments-frontend-api.gx.nvidia.com/cloudvariables/v3")
-        components?.queryItems = cloudVariablesQueryItems(locale: locale)
-        guard let url = components?.url else { return nil }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
-        request.httpMethod = "GET"
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue(browserUserAgent(), forHTTPHeaderField: "User-Agent")
+        let configuration = GDNConfiguration(cloudVariablesURLString: "https://gx-target-experiments-frontend-api.gx.nvidia.com/cloudvariables/v3", userAgent: browserUserAgent())
+        guard var request = GDNRequestFactory.cloudVariablesRequest(queryItems: cloudVariablesQueryItems(locale: locale), configuration: configuration, timeoutInterval: 4) else { return nil }
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         return request
     }
 
@@ -716,15 +715,14 @@ public enum OPNStreamPreferences {
         URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
             OPNNetworkLog.finish(tracedRequest, operation: "stream.fetchRegions", startedAt: networkStart, data: data, response: response, error: error)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard error == nil, let data, status == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let metadata = json["metaData"] as? [[String: Any]] else {
+            guard error == nil, let data, status == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 DispatchQueue.main.async { completion(loadCachedRegions()) }
                 return
             }
-            let regions = metadata.compactMap { entry -> OPNStreamRegionOption? in
-                guard let key = entry["key"] as? String, let value = entry["value"] as? String, !key.isEmpty, !value.isEmpty else { return nil }
-                if key == "gfn-regions" || key.hasPrefix("gfn-") || !value.hasPrefix("https://") { return nil }
-                return OPNStreamRegionOption(name: key, url: normalizedBaseUrl(value))
-            }
+            let serverInfo = CloudMatchServerInfoParser.parse(json)
+            let regions = serverInfo.zones.values
+                .sorted { $0.name < $1.name }
+                .map { OPNStreamRegionOption(name: $0.name, url: normalizedBaseUrl($0.address)) }
             if regions.isEmpty {
                 DispatchQueue.main.async { completion(loadCachedRegions()) }
                 return
@@ -761,7 +759,7 @@ public enum OPNStreamPreferences {
                 result.usedAutomaticRegion = selectedRegionUrl.isEmpty
             }
             result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
-            completion(result)
+            finishNetworkPreflight(result, token: token, providerStreamingBaseUrl: providerStreamingBaseUrl, requestedMaxBitrateMbps: requestedMaxBitrateMbps, completion: completion)
         }
     }
 
@@ -991,10 +989,44 @@ public enum OPNStreamPreferences {
 
     private static func serverInfoRequest(baseUrl: String, token: String) -> URLRequest {
         let base = normalizedBaseUrl(baseUrl)
-        var request = URLRequest(url: URL(string: base + "v2/serverInfo")!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
+        var request = URLRequest(url: URL(string: base + String(CloudMatch.Endpoint.serverInfo.path.dropFirst()))!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
         applyCloudmatchHeaders(to: &request, token: token)
         request.setValue(OPNDeviceIdentity.stableCloudmatchDeviceId(), forHTTPHeaderField: "x-device-id")
         return request
+    }
+
+    private static func finishNetworkPreflight(_ seed: OPNStreamNetworkPreflightResult, token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
+        Task {
+            var result = seed
+            do {
+                let baseURLString = networkTestBaseURL(seed: seed, providerStreamingBaseUrl: providerStreamingBaseUrl)
+                let service = NetworkTestService(configuration: NetworkTestConfiguration(baseURLString: baseURLString, timeoutInterval: 4), transport: NetworkTestURLSessionTransport())
+                let networkTest = try await service.startSession(accessToken: token)
+                result = mergeNetworkTest(networkTest, into: result, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
+                OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .networkTest, parameters: ["status": networkTest.rawStatus.isEmpty ? "completed" : networkTest.rawStatus, "continued": "true"]))
+            } catch {
+                OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .networkTestException, parameters: ["error": error.localizedDescription, "continued": "true"]))
+            }
+            await MainActor.run { completion(result) }
+        }
+    }
+
+    private static func networkTestBaseURL(seed: OPNStreamNetworkPreflightResult, providerStreamingBaseUrl: String) -> String {
+        let candidate = seed.streamingBaseUrl.isEmpty ? providerStreamingBaseUrl : seed.streamingBaseUrl
+        let normalized = normalizedBaseUrl(candidate.isEmpty ? defaultStreamingBaseUrl : candidate)
+        return normalized.hasSuffix("/") ? String(normalized.dropLast()) : normalized
+    }
+
+    private static func mergeNetworkTest(_ networkTest: NetworkTestResult, into seed: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> OPNStreamNetworkPreflightResult {
+        var result = seed
+        if !networkTest.sessionId.isEmpty { result.networkTestSessionId = networkTest.sessionId }
+        if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = Double(networkTest.downlinkBandwidth) / 1_000.0 }
+        if !networkTest.isCompleted, !networkTest.rawStatus.isEmpty {
+            result.serverReportedWarning = true
+            result.warningMessage = "Network test completed with status \(networkTest.rawStatus). Launch will continue."
+        }
+        result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
+        return result
     }
 
     private static func measureRegions(_ regions: [OPNStreamRegionOption], token: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {

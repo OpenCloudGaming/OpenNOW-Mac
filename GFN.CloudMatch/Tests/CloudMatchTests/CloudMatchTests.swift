@@ -37,7 +37,7 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     let info = CloudMatchServerInfoParser.parse([
         "vpcId": "vpc",
         "serverType": "prod",
-        "metadata": [
+        "metaData": [
             ["key": "gfn-regions", "value": "np-sjc-01, np-lax-01"],
             ["key": "np-sjc-01", "value": "https://sjc.cloudmatch.example/"],
             ["key": "np-lax-01", "value": "lax.cloudmatch.example"],

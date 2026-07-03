@@ -81,10 +81,12 @@ public struct NetworkTestFingerprintRecord: Equatable, Sendable {
 public struct NetworkTestConfiguration: Equatable, Sendable {
     public let baseURLString: String
     public let userAgent: String
+    public let timeoutInterval: TimeInterval
 
-    public init(baseURLString: String = "https://prod.cloudmatchbeta.nvidiagrid.net", userAgent: String = NetworkTest.defaultUserAgent) {
+    public init(baseURLString: String = "https://prod.cloudmatchbeta.nvidiagrid.net", userAgent: String = NetworkTest.defaultUserAgent, timeoutInterval: TimeInterval = 15) {
         self.baseURLString = baseURLString
         self.userAgent = userAgent
+        self.timeoutInterval = timeoutInterval
     }
 
     public static let gfnPC = NetworkTestConfiguration()
@@ -215,7 +217,7 @@ public actor NetworkTestService<Transport: NetworkTestHTTPTransport> {
 
     public func startSession(accessToken: String = "", queryItems: [URLQueryItem] = []) async throws -> NetworkTestResult {
         lifecycle = lifecycle.starting()
-        guard let request = NetworkTestRequestFactory.sessionRequest(accessToken: accessToken, queryItems: queryItems, configuration: configuration) else {
+        guard let request = NetworkTestRequestFactory.sessionRequest(accessToken: accessToken, queryItems: queryItems, configuration: configuration, timeoutInterval: configuration.timeoutInterval) else {
             lifecycle = lifecycle.failing(errorName: .sdkError)
             throw NetworkTestServiceError.invalidSessionURL
         }

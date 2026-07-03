@@ -1,5 +1,7 @@
 import AppKit
+import CloudMatch
 import Foundation
+import LCARS
 import OpenNOWTelemetry
 
 typealias OPNPanelCallback = @Sendable (_ success: Bool, _ panels: [OPNPanelResult], _ error: String) -> Void
@@ -30,7 +32,7 @@ final class OPNGameService: @unchecked Sendable {
     private static let appMetaDataHash = "cf8b620dfd03617017ba7c858cee65197e1ace5180e41be194b39227227ced63"
     private static let nvClientId = "ec7e38d4-03af-4b58-b131-cfb0495903ab"
     private static let nvClientVersion = "2.0.80.173"
-    private static let defaultStreamingBaseUrl = "https://prod.cloudmatchbeta.nvidiagrid.net/"
+    private static let defaultStreamingBaseUrl = CloudMatch.productionBaseURLString + "/"
     private static let providerServiceUrlsEndpoint = "https://pcs.geforcenow.com/v1/serviceUrls"
     private static let accountLinkingServer = "https://als.geforcenow.com"
     private static let accountLinkingClientId = "gfn-pc"
@@ -38,7 +40,7 @@ final class OPNGameService: @unchecked Sendable {
     private static let defaultCatalogFetchCount = 96
     private static let maxCatalogPages = 3
     private static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
-    private static let catalogDefinitionsFreshSeconds: TimeInterval = 24 * 60 * 60
+    private static let catalogDefinitionsFreshSeconds: TimeInterval = TimeInterval(LCARS.RequestType.staticAppData.cachePolicy.maxAgeSeconds)
     private static let accountLinkingRequestTimeoutSeconds: TimeInterval = 15
     private static let accountLinkingCallbackTimeoutSeconds: TimeInterval = 5 * 60
     private static let serverVpcCacheFreshSeconds: TimeInterval = 5 * 60
@@ -1327,7 +1329,7 @@ final class OPNGameService: @unchecked Sendable {
             for callback in callbacks { callback(resolved) }
         }
 
-        guard let url = URL(string: "\(normalized)v2/serverInfo") else {
+        guard let url = URL(string: normalized + String(CloudMatch.Endpoint.serverInfo.path.dropFirst())) else {
             finish("GFN-PC")
             return
         }
@@ -1344,9 +1346,11 @@ final class OPNGameService: @unchecked Sendable {
                 finish("GFN-PC")
                 return
             }
-            let json = (try? JSONSerialization.jsonObject(with: data)) as? NSDictionary
-            let serverId = (json?["requestStatus"] as? NSDictionary)?["serverId"] as? String
-            finish(serverId ?? "GFN-PC")
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let serverInfo = json.map(CloudMatchServerInfoParser.parse)
+            let requestStatus = json?["requestStatus"] as? [String: Any]
+            let serverId = requestStatus?["serverId"] as? String
+            finish(serverInfo?.vpcId.isEmpty == false ? serverInfo?.vpcId ?? "GFN-PC" : serverId ?? "GFN-PC")
         }.resume()
     }
 

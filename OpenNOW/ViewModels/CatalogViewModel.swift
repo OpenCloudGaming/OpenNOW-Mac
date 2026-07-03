@@ -156,6 +156,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var streamCapabilities = OPNStreamDeviceCapabilities()
     @Published var settingsRegionOptions: [OPNStreamRegionOption] = []
     @Published var selectedSettingsRegionUrl = ""
+    @Published var unavailableSettingsRegionUrl = ""
     @Published var isRefreshingSettingsRegions = false
     @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
     @Published var previousGameSession = CatalogPreviousGameSession.load()
@@ -546,8 +547,17 @@ final class CatalogViewModel: ObservableObject {
 
     func selectSettingsRegion(_ regionUrl: String) {
         selectedSettingsRegionUrl = regionUrl
+        unavailableSettingsRegionUrl = ""
         OPNStreamPreferences.saveSelectedRegionUrl(regionUrl)
         loadSettingsPreferences()
+    }
+
+    func keepUnavailableSettingsRegion() {
+        unavailableSettingsRegionUrl = ""
+    }
+
+    func switchUnavailableSettingsRegionToAutomatic() {
+        selectSettingsRegion("")
     }
 
     func refreshSettingsRegions() {
@@ -561,7 +571,9 @@ final class CatalogViewModel: ObservableObject {
                 self.isRefreshingSettingsRegions = false
                 self.settingsRegionOptions = Self.launchRegionOptions(from: regions)
                 if !self.selectedSettingsRegionUrl.isEmpty, !regions.contains(where: { $0.url == self.selectedSettingsRegionUrl }) {
-                    self.selectSettingsRegion("")
+                    self.unavailableSettingsRegionUrl = self.selectedSettingsRegionUrl
+                } else {
+                    self.unavailableSettingsRegionUrl = ""
                 }
             }
         }
@@ -1572,6 +1584,7 @@ final class CatalogViewModel: ObservableObject {
                 self.streamProfile = snapshot.profile
                 self.selectedSettingsRegionUrl = snapshot.selectedRegionUrl
                 self.settingsRegionOptions = snapshot.regionOptions
+                self.unavailableSettingsRegionUrl = snapshot.selectedRegionUrl.isEmpty || snapshot.regionOptions.contains(where: { $0.url == snapshot.selectedRegionUrl }) ? "" : snapshot.selectedRegionUrl
                 self.microphoneDeviceOptions = snapshot.microphoneDeviceOptions
                 self.settingsPreferencesTask = nil
             }

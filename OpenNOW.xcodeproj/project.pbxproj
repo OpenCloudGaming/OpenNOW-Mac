@@ -17,8 +17,6 @@
 		A00000000000000000000101 /* CloudMatch in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000201 /* CloudMatch */; };
 		A00000000000000000000102 /* LCARS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000202 /* LCARS */; };
 		A00000000000000000000103 /* GDN in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000203 /* GDN */; };
-		A00000000000000000000104 /* Ragnarok in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000204 /* Ragnarok */; };
-		A00000000000000000000105 /* UDS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000205 /* UDS */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
 		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
@@ -77,10 +75,8 @@
 				A00000000000000000000112 /* OpenNOWGameServices in Frameworks */,
 				A00000000000000000000113 /* OpenNOWTelemetry in Frameworks */,
 				A00000000000000000000114 /* OpenNOWTwitch in Frameworks */,
-				A00000000000000000000104 /* Ragnarok in Frameworks */,
 				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
-				A00000000000000000000105 /* UDS in Frameworks */,
 				A00000000000000000000110 /* WebRTCMedia in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -140,10 +136,8 @@
 				A00000000000000000000212 /* OpenNOWGameServices */,
 				A00000000000000000000213 /* OpenNOWTelemetry */,
 				A00000000000000000000214 /* OpenNOWTwitch */,
-				A00000000000000000000204 /* Ragnarok */,
 				A00000000000000000000208 /* SignalLinkKit */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
-				A00000000000000000000205 /* UDS */,
 				A00000000000000000000210 /* WebRTCMedia */,
 			);
 			productName = OpenNOW;
@@ -186,10 +180,8 @@
 				A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */,
 				A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */,
 				A00000000000000000000314 /* XCLocalSwiftPackageReference "OPN.Twitch" */,
-				A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */,
 				A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */,
-				A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */,
 				A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -480,14 +472,6 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = GFN.GDN;
 		};
-		A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = GFN.Ragnarok;
-		};
-		A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = GFN.UDS;
-		};
 		A00000000000000000000306 /* XCLocalSwiftPackageReference "GFN.NetworkTest" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = GFN.NetworkTest;
@@ -552,16 +536,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000303 /* XCLocalSwiftPackageReference "GFN.GDN" */;
 			productName = GDN;
-		};
-		A00000000000000000000204 /* Ragnarok */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000304 /* XCLocalSwiftPackageReference "GFN.Ragnarok" */;
-			productName = Ragnarok;
-		};
-		A00000000000000000000205 /* UDS */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000305 /* XCLocalSwiftPackageReference "GFN.UDS" */;
-			productName = UDS;
 		};
 		A00000000000000000000206 /* NetworkTest */ = {
 			isa = XCSwiftPackageProductDependency;
