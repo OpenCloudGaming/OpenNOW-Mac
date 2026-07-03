@@ -133,49 +133,85 @@ struct VendorIndeterminateProgressBar: View {
 }
 
 struct GFNHeroArtwork: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         GeometryReader { proxy in
-            let backgroundBaseHeight = max(proxy.size.height, proxy.size.width * 0.5)
-            let gridHeight = 1.66 * backgroundBaseHeight
-            let gridWidth = 2.5 * backgroundBaseHeight
-            let imageHeight = 0.22 * backgroundBaseHeight
-            let rowOffset = 0.1 * backgroundBaseHeight
+            if reduceMotion {
+                artwork(proxy: proxy, motionTime: 0, isAnimated: false)
+            } else {
+                TimelineView(.animation) { timeline in
+                    artwork(proxy: proxy, motionTime: timeline.date.timeIntervalSinceReferenceDate, isAnimated: true)
+                }
+            }
+        }
+    }
 
-            ZStack {
-                RadialGradient(
-                    colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],
-                    center: UnitPoint(x: 0.65, y: 0.25),
-                    startRadius: 0,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.75
-                )
+    private func artwork(proxy: GeometryProxy, motionTime: TimeInterval, isAnimated: Bool) -> some View {
+        let backgroundBaseHeight = max(proxy.size.height, proxy.size.width * 0.5)
+        let gridHeight = 1.66 * backgroundBaseHeight
+        let gridWidth = 2.5 * backgroundBaseHeight
+        let imageHeight = 0.22 * backgroundBaseHeight
+        let rowOffset = 0.1 * backgroundBaseHeight
 
-                VStack(spacing: 0) {
-                    ForEach(0..<6, id: \.self) { row in
-                        HStack(spacing: 0) {
-                            ForEach(0..<6, id: \.self) { column in
-                                LoginWallGridTile(urlString: Self.orderedTileURLs[row * 6 + column])
-                                    .frame(height: imageHeight)
+        return ZStack {
+            RadialGradient(
+                colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],
+                center: UnitPoint(x: 0.65, y: 0.25),
+                startRadius: 0,
+                endRadius: max(proxy.size.width, proxy.size.height) * 0.75
+            )
 
-                                if column < 5 {
-                                    Spacer(minLength: 0)
-                                }
+            VStack(spacing: 0) {
+                ForEach(0..<6, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(0..<6, id: \.self) { column in
+                            let motion = Self.tileMotion(row: row, column: column, motionTime: motionTime, imageHeight: imageHeight, isAnimated: isAnimated)
+
+                            LoginWallGridTile(urlString: Self.orderedTileURLs[row * 6 + column])
+                                .frame(height: imageHeight)
+                                .scaleEffect(motion.scale)
+                                .rotation3DEffect(.degrees(motion.pitch), axis: (x: 1, y: 0, z: 0), perspective: 0.72)
+                                .rotation3DEffect(.degrees(motion.yaw), axis: (x: 0, y: 1, z: 0), perspective: 0.72)
+                                .offset(x: motion.x, y: motion.y)
+                                .opacity(motion.opacity)
+
+                            if column < 5 {
+                                Spacer(minLength: 0)
                             }
                         }
-                        .frame(width: gridWidth)
-                        .offset(x: row.isMultiple(of: 2) ? rowOffset : -rowOffset)
+                    }
+                    .frame(width: gridWidth)
+                    .offset(x: row.isMultiple(of: 2) ? rowOffset : -rowOffset)
 
-                        if row < 5 {
-                            Spacer(minLength: 0)
-                        }
+                    if row < 5 {
+                        Spacer(minLength: 0)
                     }
                 }
-                .frame(width: gridWidth, height: gridHeight)
-                .rotationEffect(.degrees(-15))
-                .position(x: proxy.size.width - (gridWidth / 2) + (0.12 * backgroundBaseHeight), y: proxy.size.height / 2)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
+            .frame(width: gridWidth, height: gridHeight)
+            .rotationEffect(.degrees(-15))
+            .position(x: proxy.size.width - (gridWidth / 2) + (0.12 * backgroundBaseHeight), y: proxy.size.height / 2)
         }
+        .frame(width: proxy.size.width, height: proxy.size.height)
+        .clipped()
+    }
+
+    private static func tileMotion(row: Int, column: Int, motionTime: TimeInterval, imageHeight: CGFloat, isAnimated: Bool) -> (x: CGFloat, y: CGFloat, scale: CGFloat, opacity: Double, pitch: Double, yaw: Double) {
+        guard isAnimated else { return (0, 0, 1, 1, 0, 0) }
+
+        let primaryPhase = motionTime * 0.42 + Double(row) * 0.73 + Double(column) * 0.41
+        let secondaryPhase = motionTime * 0.31 + Double(column) * 0.67 - Double(row) * 0.28
+        let drift = max(1, imageHeight * 0.026)
+
+        return (
+            x: CGFloat(sin(secondaryPhase)) * drift * 0.28,
+            y: CGFloat(cos(primaryPhase)) * drift,
+            scale: CGFloat(1 + sin(secondaryPhase) * 0.006),
+            opacity: 0.94 + ((sin(primaryPhase * 0.8) + 1) * 0.025),
+            pitch: sin(primaryPhase) * 0.55,
+            yaw: cos(secondaryPhase) * 0.72
+        )
     }
 
     private static let tileURLs = [
