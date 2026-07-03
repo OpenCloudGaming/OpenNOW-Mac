@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import Testing
 @testable import Common
 
@@ -33,6 +34,30 @@ import Testing
         ])
 
         #expect(OPNStreamPreferences.loadSelectedStreamingBaseUrl() == "https://us-texas.cloudmatchbeta.nvidiagrid.net/")
+    }
+
+    @Test func cachedRegionsDeduplicatePersistedNormalizedUrls() {
+        let defaults = UserDefaults.standard
+        let cachedRegionsKey = "OpenNOW.Stream.CachedRegions"
+        let previousCachedRegions = defaults.object(forKey: cachedRegionsKey)
+        defer {
+            if let previousCachedRegions { defaults.set(previousCachedRegions, forKey: cachedRegionsKey) }
+            else { defaults.removeObject(forKey: cachedRegionsKey) }
+            defaults.synchronize()
+        }
+
+        defaults.set([
+            ["name": "Unknown", "url": "https://prod.cloudmatchbeta.nvidiagrid.net", "latencyMs": -1],
+            ["name": "Slow", "url": "https://prod.cloudmatchbeta.nvidiagrid.net/", "latencyMs": 42],
+            ["name": "Fast", "url": "https://prod.cloudmatchbeta.nvidiagrid.net/", "latencyMs": 12],
+            ["name": "Texas (USA)", "url": "https://us-texas.cloudmatchbeta.nvidiagrid.net/", "latencyMs": 20],
+        ], forKey: cachedRegionsKey)
+        defaults.synchronize()
+
+        #expect(OPNStreamPreferences.loadCachedRegions() == [
+            OPNStreamRegionOption(name: "Fast", url: "https://prod.cloudmatchbeta.nvidiagrid.net/", latencyMs: 12),
+            OPNStreamRegionOption(name: "Texas (USA)", url: "https://us-texas.cloudmatchbeta.nvidiagrid.net/", latencyMs: 20),
+        ])
     }
 }
 

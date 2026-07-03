@@ -548,20 +548,18 @@ public enum OPNStreamPreferences {
 
     public static func loadCachedRegions() -> [OPNStreamRegionOption] {
         guard let items = storage.array(forKey: k.cachedRegions) as? [[String: Any]] else { return [] }
-        return items.compactMap { item in
+        let regions: [OPNStreamRegionOption] = items.compactMap { item -> OPNStreamRegionOption? in
             guard let name = item["name"] as? String, let url = item["url"] as? String, !name.isEmpty, !url.isEmpty else { return nil }
             let normalizedURL = normalizedHTTPSBaseUrlOrEmpty(url)
             guard !normalizedURL.isEmpty else { return nil }
             return OPNStreamRegionOption(name: name, url: normalizedURL, latencyMs: int(item["latencyMs"], -1))
         }
+        return normalizedCachedRegions(regions)
     }
 
     public static func saveCachedRegions(_ regions: [OPNStreamRegionOption]) {
-        let items: [[String: Any]] = regions.compactMap { region in
-            guard !region.automatic, !region.name.isEmpty, !region.url.isEmpty else { return nil }
-            let normalizedURL = normalizedHTTPSBaseUrlOrEmpty(region.url)
-            guard !normalizedURL.isEmpty else { return nil }
-            var item: [String: Any] = ["name": region.name, "url": normalizedURL]
+        let items: [[String: Any]] = normalizedCachedRegions(regions).map { region in
+            var item: [String: Any] = ["name": region.name, "url": region.url]
             if region.latencyMs >= 0 { item["latencyMs"] = region.latencyMs }
             return item
         }
@@ -970,6 +968,32 @@ public enum OPNStreamPreferences {
     private static func normalizedBaseUrl(_ url: String) -> String {
         let normalized = normalizedHTTPSBaseUrlOrEmpty(url)
         return normalized.isEmpty ? defaultStreamingBaseUrl : normalized
+    }
+
+    private static func normalizedCachedRegions(_ regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {
+        var regionByUrl: [String: OPNStreamRegionOption] = [:]
+        var urls: [String] = []
+        for region in regions {
+            guard !region.automatic, !region.name.isEmpty else { continue }
+            let normalizedURL = normalizedHTTPSBaseUrlOrEmpty(region.url)
+            guard !normalizedURL.isEmpty else { continue }
+            let normalizedRegion = OPNStreamRegionOption(name: region.name, url: normalizedURL, latencyMs: region.latencyMs)
+            if let existing = regionByUrl[normalizedURL] {
+                if cachedRegion(normalizedRegion, isPreferredTo: existing) { regionByUrl[normalizedURL] = normalizedRegion }
+            } else {
+                regionByUrl[normalizedURL] = normalizedRegion
+                urls.append(normalizedURL)
+            }
+        }
+        return urls.compactMap { regionByUrl[$0] }
+    }
+
+    private static func cachedRegion(_ candidate: OPNStreamRegionOption, isPreferredTo current: OPNStreamRegionOption) -> Bool {
+        let candidateHasLatency = candidate.latencyMs >= 0
+        let currentHasLatency = current.latencyMs >= 0
+        if candidateHasLatency != currentHasLatency { return candidateHasLatency }
+        if candidateHasLatency, currentHasLatency, candidate.latencyMs != current.latencyMs { return candidate.latencyMs < current.latencyMs }
+        return candidate.name < current.name
     }
 
     private static func browserUserAgent() -> String {
