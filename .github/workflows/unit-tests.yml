@@ -46,7 +46,7 @@ jobs:
       - name: Build package workspace
         run: |
           set -euo pipefail
-          swift build
+          swift build --scratch-path .build/shared
         shell: bash
 
       - name: Run package unit tests
@@ -70,7 +70,7 @@ jobs:
 
           for package in "${packages[@]}"; do
             echo "::group::swift test --package-path ${package}"
-            swift test --package-path "${package}" --scratch-path .build/package-tests
+            swift test --package-path "${package}" --scratch-path .build/shared
             echo "::endgroup::"
           done
         shell: bash

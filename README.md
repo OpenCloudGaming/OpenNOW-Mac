@@ -56,20 +56,26 @@ xcodebuild build -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug
 Build packages from the repository root so SwiftPM uses one shared `.build` graph for all local packages:
 
 ```sh
-swift build
+swift build --scratch-path .build/shared
 ```
 
 Useful focused checks:
 
 ```sh
-swift test --package-path OPN.GameServices
+swift test --package-path OPN.GameServices --scratch-path .build/shared
 ```
 
 ```sh
-swift test --package-path OPN.WebRTC.Media --filter WebRTCStreamRecording
+swift test --package-path OPN.WebRTC.Media --scratch-path .build/shared --filter WebRTCStreamRecording
 ```
 
-Avoid running `swift build` from each package directory during normal development. Each package-local build creates a separate `.build` tree and can duplicate large binary artifacts such as `sentry-cocoa`. Focused `swift test --package-path ...` commands are still useful when validating one package; run the cleanup script afterward if disk usage grows.
+Avoid running `swift build` from each package directory during normal development. Each package-local build creates a separate `.build` tree and can duplicate large binary artifacts such as `sentry-cocoa`. Focused `swift test --package-path ... --scratch-path .build/shared` commands are still useful when validating one package because they keep generated SwiftPM state in the shared scratch directory.
+
+To audit generated SwiftPM disk usage:
+
+```sh
+scripts/report-spm-build-size.sh
+```
 
 To remove generated SwiftPM build caches and reclaim disk space:
 
