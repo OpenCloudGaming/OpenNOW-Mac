@@ -11,6 +11,14 @@ Execute every task in this order:
 3. **Execution** — Deliver complete, production-ready code. No snippets, placeholders (`TODO`, `pass`, `...`), or stubs.
 4. **Autonomy** — Resolve missing context or dependencies using the standard library or canonical practices.
 
+# Build Artifact Discipline
+- Run SwiftPM commands from the repository root unless a task explicitly requires otherwise.
+- Use `--scratch-path .build/shared` for SwiftPM commands that generate build state, including `swift build`, `swift test`, `swift run`, and relevant `swift package` commands.
+- Do not run package-local SwiftPM commands that create package-specific `.build` directories, such as `cd OPN.GameServices && swift test` or `swift test --package-path OPN.GameServices` without the shared scratch path.
+- After SwiftPM-heavy tasks, run `scripts/report-spm-build-size.sh` to check generated build size and duplicated binary artifact extractions.
+- If generated SwiftPM files exceed the warning threshold or duplicate `artifacts/sentry-cocoa` directories appear, run `scripts/clean-spm-builds.sh`, then rerun builds/tests with `--scratch-path .build/shared`.
+- Never commit generated build artifacts.
+
 # Coding Standards
 
 ## General
