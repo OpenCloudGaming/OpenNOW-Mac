@@ -1082,9 +1082,14 @@ public struct WebRTCMediaStreamSurface: View {
     private func toggleRecording() {
         if recordingCanStop {
             transport?.stopRecording()
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.stop", level: .info, message: "Stream recording stop requested.", attributes: ["applicationID": configuration.applicationID])
             return
         }
         guard !recordingIsBusy else { return }
+        guard let transport else {
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.start.unavailable", level: .warning, message: "Stream recording start requested before transport was ready.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
         let recordingConfiguration = WebRTCStreamRecordingConfiguration(
             title: configuration.title,
             applicationID: configuration.applicationID,
@@ -1095,8 +1100,9 @@ public struct WebRTCMediaStreamSurface: View {
             audioBitrateKbps: runtimeSettings.recordingAudioBitrateKbps,
             enhancedVideoEnabled: runtimeSettings.recordingEnhancedVideoEnabled
         )
-        transport?.startRecording(configuration: recordingConfiguration)
-        WebRTCMediaTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording started.", attributes: ["applicationID": configuration.applicationID])
+        recordingStatus = .starting
+        transport.startRecording(configuration: recordingConfiguration)
+        WebRTCMediaTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording start requested.", attributes: ["applicationID": configuration.applicationID, "enhancedVideo": String(recordingConfiguration.enhancedVideoEnabled)])
     }
 
     private func recordingElapsedText(_ elapsedSeconds: Double) -> String {
@@ -1252,13 +1258,34 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {
         recordingNotificationTask?.cancel()
+        let previousStatus = recordingStatus
         recordingStatus = status
+        logRecordingStatusChanged(status, previousStatus: previousStatus)
         guard status.isTerminal else { return }
         recordingNotificationTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard recordingStatus == status else { return }
             recordingStatus = .idle
             recordingNotificationTask = nil
+        }
+    }
+
+    private func logRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus, previousStatus: WebRTCStreamRecordingStatus) {
+        switch status {
+        case .idle:
+            return
+        case .starting:
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.starting", level: .info, message: "Stream recording accepted start request.", attributes: ["applicationID": configuration.applicationID])
+        case .recording:
+            guard !previousStatus.isRecording else { return }
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.active", level: .info, message: "Stream recording captured its first video frame.", attributes: ["applicationID": configuration.applicationID])
+        case .finishing:
+            guard previousStatus != .finishing else { return }
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.finishing", level: .info, message: "Stream recording is saving.", attributes: ["applicationID": configuration.applicationID])
+        case .finished(let recording):
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.finished", level: .info, message: "Stream recording saved.", attributes: ["applicationID": configuration.applicationID, "file": recording.videoURL.lastPathComponent, "durationSeconds": String(format: "%.2f", recording.durationSeconds), "fileSizeBytes": String(recording.fileSizeBytes)])
+        case .failed(let message):
+            WebRTCMediaTelemetry.capture("webrtc.ui.recording.failed", level: .warning, message: message, attributes: ["applicationID": configuration.applicationID])
         }
     }
 

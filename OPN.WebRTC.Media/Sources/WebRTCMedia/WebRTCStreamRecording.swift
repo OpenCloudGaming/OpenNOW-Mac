@@ -163,10 +163,16 @@ public enum WebRTCStreamRecordingStatus: Equatable, Sendable {
 final class WebRTCStreamRecorder: @unchecked Sendable {
     var onStatusChanged: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?
 
+    private enum VideoFrameSource {
+        case native
+        case enhanced
+    }
+
     private let queue = DispatchQueue(label: "io.opencg.opennow.recording.writer")
     private let conversionQueue = DispatchQueue(label: "io.opencg.opennow.recording.conversion", qos: .userInitiated)
     private let frameLock = NSLock()
     private let firstFrameTimeout: DispatchTimeInterval
+    private let maxQueuedEnhancedVideoFrames = 4
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -190,7 +196,10 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     private var finishing = false
     private var failed = false
     private var activeRecordingId: UUID?
-    private var pendingVideoRecordingId: UUID?
+    private var enhancedVideoPreferred = false
+    private var selectedVideoFrameSource: VideoFrameSource?
+    private var pendingNativeVideoRecordingId: UUID?
+    private var pendingEnhancedVideoFrameCount = 0
 
     init(firstFrameTimeout: DispatchTimeInterval = .seconds(5)) {
         self.firstFrameTimeout = firstFrameTimeout
@@ -209,7 +218,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             do {
                 let directory = try WebRTCStreamRecordingLibrary.ensureDirectory(forGameTitle: configuration.title)
                 self.id = UUID()
-                self.setActiveRecordingId(self.id)
+                self.setActiveRecordingId(self.id, enhancedVideoPreferred: configuration.enhancedVideoEnabled)
                 self.configuration = configuration
                 self.createdAt = Date()
                 self.startedAt = nil
@@ -240,9 +249,10 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     }
 
     func appendVideoFrame(_ frame: RTCVideoFrame) {
-        guard let recordingId = beginVideoFrameAppend() else { return }
+        guard let recordingId = beginVideoFrameAppend(source: .native) else { return }
+        let captureHostTime = CACurrentMediaTime()
         if let buffer = frame.buffer as? RTCCVPixelBuffer, Self.isWritableBGRA(buffer.pixelBuffer) {
-            appendPixelBuffer(buffer.pixelBuffer, recordingId: recordingId)
+            appendPixelBuffer(buffer.pixelBuffer, recordingId: recordingId, source: .native, captureHostTime: captureHostTime)
             return
         }
         let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
@@ -251,22 +261,22 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
             let i420Frame = frame.newI420()
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
                   let pixelBuffer = self.newBGRAFramebuffer(from: i420) else {
-                self.finishVideoFrameAppend(recordingId: recordingId)
+                self.finishVideoFrameAppend(recordingId: recordingId, source: .native)
                 return
             }
             let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
             self.queue.async {
-                defer { self.finishVideoFrameAppend(recordingId: recordingId) }
+                defer { self.finishVideoFrameAppend(recordingId: recordingId, source: .native) }
                 let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
                 guard self.isActiveRecording(recordingId) else { return }
-                self.appendPixelBufferOnQueue(pixelBuffer)
+                self.appendPixelBufferOnQueue(pixelBuffer, source: .native, captureHostTime: captureHostTime)
             }
         }
     }
 
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        guard let recordingId = beginVideoFrameAppend() else { return }
-        appendPixelBuffer(pixelBuffer, recordingId: recordingId)
+        guard let recordingId = beginVideoFrameAppend(source: .enhanced) else { return }
+        appendPixelBuffer(pixelBuffer, recordingId: recordingId, source: .enhanced, captureHostTime: CACurrentMediaTime())
     }
 
     func appendGameAudio(audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
@@ -285,18 +295,19 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         }
     }
 
-    private func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, recordingId: UUID) {
+    private func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, recordingId: UUID, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
         let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
         queue.async {
-            defer { self.finishVideoFrameAppend(recordingId: recordingId) }
+            defer { self.finishVideoFrameAppend(recordingId: recordingId, source: source) }
             let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
             guard self.isActiveRecording(recordingId) else { return }
-            self.appendPixelBufferOnQueue(pixelBuffer)
+            self.appendPixelBufferOnQueue(pixelBuffer, source: source, captureHostTime: captureHostTime)
         }
     }
 
-    private func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer) {
+    private func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
         guard isRecording,
+              selectVideoFrameSourceIfNeeded(source),
               let configuration,
               let outputURL,
               prepareWriterIfNeeded(pixelBuffer: pixelBuffer, configuration: configuration, outputURL: outputURL),
@@ -314,10 +325,10 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         if !capturedVideoFrame {
             capturedVideoFrame = true
             startedAt = Date()
-            firstHostTime = CACurrentMediaTime()
+            firstHostTime = captureHostTime
             emit(.recording(startedAt: startedAt ?? createdAt, elapsedSeconds: 0))
         }
-        guard let time = presentationTime() else { return }
+        guard let time = presentationTime(hostTime: captureHostTime) else { return }
         let normalizedTime = CMTimeSubtract(time, firstPresentationTime)
         guard adaptor.append(pixelBuffer, withPresentationTime: normalizedTime) else {
             fail(writer.error)
@@ -329,15 +340,14 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
 
     private var firstPresentationTime: CMTime { .zero }
 
-    private func presentationTime() -> CMTime? {
-        let now = CACurrentMediaTime()
+    private func presentationTime(hostTime: CFTimeInterval = CACurrentMediaTime()) -> CMTime? {
         if firstHostTime == nil {
-            firstHostTime = now
+            firstHostTime = hostTime
             startedAt = Date()
             emit(.recording(startedAt: startedAt ?? createdAt, elapsedSeconds: 0))
         }
         guard let firstHostTime else { return nil }
-        return CMTime(seconds: max(0, now - firstHostTime), preferredTimescale: 600)
+        return CMTime(seconds: max(0, hostTime - firstHostTime), preferredTimescale: 600)
     }
 
     private func finish() {
@@ -431,32 +441,58 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         capturedVideoFrame = false
         finishing = false
         failed = false
-        setActiveRecordingId(nil)
+        setActiveRecordingId(nil, enhancedVideoPreferred: false)
     }
 
-    private func setActiveRecordingId(_ recordingId: UUID?) {
+    private func setActiveRecordingId(_ recordingId: UUID?, enhancedVideoPreferred: Bool) {
         frameLock.withLock {
             activeRecordingId = recordingId
-            pendingVideoRecordingId = nil
+            self.enhancedVideoPreferred = enhancedVideoPreferred
+            selectedVideoFrameSource = nil
+            pendingNativeVideoRecordingId = nil
+            pendingEnhancedVideoFrameCount = 0
         }
     }
 
-    private func beginVideoFrameAppend() -> UUID? {
+    private func beginVideoFrameAppend(source: VideoFrameSource) -> UUID? {
         frameLock.withLock {
-            guard let activeRecordingId, pendingVideoRecordingId == nil else { return nil }
-            pendingVideoRecordingId = activeRecordingId
+            guard let activeRecordingId else { return nil }
+            switch source {
+            case .native:
+                guard selectedVideoFrameSource != .enhanced, pendingNativeVideoRecordingId == nil else { return nil }
+                pendingNativeVideoRecordingId = activeRecordingId
+            case .enhanced:
+                guard enhancedVideoPreferred, selectedVideoFrameSource != .native else { return nil }
+                guard pendingEnhancedVideoFrameCount < maxQueuedEnhancedVideoFrames else { return nil }
+                pendingEnhancedVideoFrameCount += 1
+            }
             return activeRecordingId
         }
     }
 
-    private func finishVideoFrameAppend(recordingId: UUID) {
+    private func finishVideoFrameAppend(recordingId: UUID, source: VideoFrameSource) {
         frameLock.withLock {
-            if pendingVideoRecordingId == recordingId { pendingVideoRecordingId = nil }
+            switch source {
+            case .native:
+                if pendingNativeVideoRecordingId == recordingId { pendingNativeVideoRecordingId = nil }
+            case .enhanced:
+                if pendingEnhancedVideoFrameCount > 0 { pendingEnhancedVideoFrameCount -= 1 }
+            }
         }
     }
 
     private func isActiveRecording(_ recordingId: UUID) -> Bool {
         frameLock.withLock { activeRecordingId == recordingId }
+    }
+
+    private func selectVideoFrameSourceIfNeeded(_ source: VideoFrameSource) -> Bool {
+        frameLock.withLock {
+            if let selectedVideoFrameSource {
+                return selectedVideoFrameSource == source
+            }
+            selectedVideoFrameSource = source
+            return true
+        }
     }
 
     private func emitElapsedIfNeeded() {
