@@ -128,7 +128,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 gameVolume: Double = 1,
                 microphoneVolume: Double = 1,
                 upscalingMode: Int = 0,
-                upscalingSharpness: Int = 4,
+                upscalingSharpness: Int = 10,
                 upscalingDenoise: Int = 0,
                 upscalingTargetHeight: Int = 2160,
                 suppressInputWhenInactive: Bool = true,
@@ -260,6 +260,7 @@ public enum WebRTCMediaStreamSettingsResolver {
         let lowLatency = profile.lowLatencyMode
         let controllerCount = capabilities.connectedGamepadCount
         let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables, lowLatency: lowLatency)
+        let upscalingMode = normalizedUpscalingMode(profile.upscalingMode)
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
@@ -280,7 +281,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             microphonePushToTalkModifierMask: profile.microphonePushToTalkModifierMask,
             gameVolume: profile.gameVolume,
             microphoneVolume: profile.microphoneVolume,
-            upscalingMode: lowLatency ? 0 : profile.upscalingMode,
+            upscalingMode: lowLatency ? 0 : upscalingMode,
             upscalingSharpness: lowLatency ? 0 : profile.upscalingSharpness,
             upscalingDenoise: lowLatency ? 0 : profile.upscalingDenoise,
             upscalingTargetHeight: profile.upscalingTargetHeight,
@@ -302,6 +303,14 @@ public enum WebRTCMediaStreamSettingsResolver {
         let mode = max(0, min(profile.prefilterMode, 2))
         guard cloudVariables.supportedPrefilterModes.isEmpty || cloudVariables.supportedPrefilterModes.contains(mode) else { return 0 }
         return mode
+    }
+
+    private static func normalizedUpscalingMode(_ mode: Int) -> Int {
+        switch mode {
+        case 0: return 0
+        case 1...4: return 3
+        default: return 0
+        }
     }
 
     private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities, libWebRTCAvailable: Bool) -> String {

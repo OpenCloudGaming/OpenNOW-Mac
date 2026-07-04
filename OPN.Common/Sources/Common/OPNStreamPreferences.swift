@@ -200,7 +200,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var upscalingMode = 0
     public var upscalingTargetIndex = 1
     public var upscalingTargetHeight = 2160
-    public var upscalingSharpness = 4
+    public var upscalingSharpness = 10
     public var upscalingDenoise = 0
     public var recordingVideoBitrateMbps = 0
     public var recordingAudioBitrateKbps = 160
@@ -275,10 +275,7 @@ public enum OPNStreamPreferences {
     ]
     public static let upscalingModeOptions = [
         OPNStreamUpscalingModeOption(label: "Off", value: 0),
-        OPNStreamUpscalingModeOption(label: "Auto", value: 1),
-        OPNStreamUpscalingModeOption(label: "Spatial", value: 2),
-        OPNStreamUpscalingModeOption(label: "MetalFX", value: 3),
-        OPNStreamUpscalingModeOption(label: "Temporal", value: 4)
+        OPNStreamUpscalingModeOption(label: "MetalFX", value: 3)
     ]
     public static let upscalingTargetOptions = [
         OPNStreamUpscalingTargetOption(label: "2K", height: 1440),
@@ -777,7 +774,7 @@ public enum OPNStreamPreferences {
     public static func savePrefilterModeIndex(_ value: Int) { saveCanonicalInt(k.prefilterModeIndex, clamp(value, 0, prefilterModeOptions.count - 1)) }
     public static func savePrefilterSharpness(_ value: Int) { saveCanonicalInt(k.prefilterSharpness, clamp(value, 0, 10)) }
     public static func savePrefilterDenoise(_ value: Int) { saveCanonicalInt(k.prefilterDenoise, clamp(value, 0, 10)) }
-    public static func saveUpscalingModeIndex(_ value: Int) { storage.set(clamp(value, 0, upscalingModeOptions.count - 1), forKey: k.upscalingModeIndex) }
+    public static func saveUpscalingModeIndex(_ value: Int) { storage.set(normalizedUpscalingModeIndex(value), forKey: k.upscalingModeIndex) }
     public static func saveUpscalingTargetIndex(_: Int) { storage.set(defaultUpscalingTargetIndex, forKey: k.upscalingTargetIndex) }
     public static func saveUpscalingSharpness(_ value: Int) { storage.set(clamp(value, 0, 15), forKey: k.upscalingSharpness) }
     public static func saveUpscalingDenoise(_ value: Int) { storage.set(clamp(value, 0, 20), forKey: k.upscalingDenoise) }
@@ -846,11 +843,11 @@ public enum OPNStreamPreferences {
         profile.prefilterMode = profile.prefilterModeOption.value
         profile.prefilterSharpness = clampedInt(dictionary, k.prefilterSharpness, 0, 11)
         profile.prefilterDenoise = clampedInt(dictionary, k.prefilterDenoise, 0, 11)
-        profile.upscalingModeIndex = clampedInt(dictionary, k.upscalingModeIndex, 0, upscalingModeOptions.count)
+        profile.upscalingModeIndex = storedUpscalingModeIndex(dictionary)
         profile.upscalingModeOption = upscalingModeOptions[profile.upscalingModeIndex]
         profile.upscalingMode = profile.upscalingModeOption.value
         applyDefaultUpscalingTarget(&profile)
-        profile.upscalingSharpness = clampedInt(dictionary, k.upscalingSharpness, 4, 16)
+        profile.upscalingSharpness = clampedInt(dictionary, k.upscalingSharpness, 10, 16)
         profile.upscalingDenoise = clampedInt(dictionary, k.upscalingDenoise, 0, 21)
         profile.recordingVideoBitrateMbps = clampedInt(dictionary, k.recordingVideoBitrateMbps, 0, 201)
         profile.recordingAudioBitrateKbps = Int(clampedDouble(dictionary, k.recordingAudioBitrateKbps, 160, 64, 320).rounded())
@@ -935,6 +932,18 @@ public enum OPNStreamPreferences {
         profile.upscalingTargetIndex = index
         profile.upscalingTargetOption = upscalingTargetOptions[index]
         profile.upscalingTargetHeight = profile.upscalingTargetOption.height
+    }
+
+    private static func storedUpscalingModeIndex(_ dictionary: [String: Any]?) -> Int {
+        normalizedUpscalingModeIndex(int(value(dictionary, k.upscalingModeIndex), 0))
+    }
+
+    private static func normalizedUpscalingModeIndex(_ index: Int) -> Int {
+        switch index {
+        case 0: return 0
+        case 1...4: return 1
+        default: return 0
+        }
     }
 
     private static func storedPreferenceValue(_ key: String) -> Any? {

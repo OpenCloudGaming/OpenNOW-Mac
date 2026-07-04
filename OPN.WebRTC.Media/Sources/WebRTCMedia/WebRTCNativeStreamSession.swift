@@ -37,8 +37,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private var microphoneEnabled = false
     private var gameVolume = 1.0
     private var microphoneVolume = 1.0
-    private var localEnhancementMode = 1
-    private var localEnhancementSharpness = 4
+    private var localEnhancementMode = 0
+    private var localEnhancementSharpness = 10
     private var localEnhancementDenoise = 0
     private var localEnhancementTargetHeight = 2160
     private var enhancedVideoFrameCaptureEnabled = false
@@ -100,7 +100,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         microphoneVolume = clampedDouble(settings["microphoneVolume"], fallback: 1, minimum: 0, maximum: 1)
         setLocalVideoEnhancement(
             mode: int(settings["upscalingMode"]),
-            sharpness: int(settings["upscalingSharpness"], fallback: 4),
+            sharpness: int(settings["upscalingSharpness"], fallback: 10),
             denoise: int(settings["upscalingDenoise"]),
             targetHeight: int(settings["upscalingTargetHeight"], fallback: 2160)
         )

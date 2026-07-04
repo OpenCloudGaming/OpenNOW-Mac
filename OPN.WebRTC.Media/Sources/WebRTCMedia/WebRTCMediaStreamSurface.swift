@@ -592,31 +592,21 @@ public struct WebRTCMediaStreamSurface: View {
     private var hudVideoPanel: some View {
         hudSection(label: "VIDEO ENHANCEMENT") {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("Mode", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
+                Picker("MetalFX Upscaling", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
                     ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
                         Text(option.label).tag(option.value)
                     }
                 }
                 .font(.streamNvidia(size: 12, weight: .medium))
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
                 .tint(WebRTCMediaStreamTheme.accent)
                 .disabled(!isStreamReady)
                 if runtimeSettings.upscalingMode != 0 {
-                    videoStepperRow("Sharpness", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
-                    videoStepperRow("Denoise", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
-                    Picker("Target", selection: Binding(get: { runtimeSettings.upscalingTargetHeight }, set: { updateVideoEnhancement(targetHeight: $0) })) {
-                        ForEach(StreamRuntimeSettings.upscalingTargets, id: \.height) { option in
-                            Text(option.label).tag(option.height)
-                        }
-                    }
-                    .font(.streamNvidia(size: 12, weight: .medium))
-                    .pickerStyle(.segmented)
-                    .disabled(!isStreamReady)
+                    videoStepperRow("Clarity", value: runtimeSettings.upscalingSharpness, range: 0...15) { value in updateVideoEnhancement(sharpness: value) }
+                    videoStepperRow("Noise Reduction", value: runtimeSettings.upscalingDenoise, range: 0...20) { value in updateVideoEnhancement(denoise: value) }
                 }
-                settingsRow("Configured", liveEnhancementValue(latestStats?.videoEnhancementConfiguredTier, fallback: runtimeSettings.upscalingModeLabel))
                 settingsRow("Active", liveEnhancementValue(latestStats?.videoEnhancementActiveTier, fallback: runtimeSettings.upscalingMode == 0 ? "Native" : "Pending"))
-                settingsRow("Source", liveEnhancementValue(latestStats?.videoEnhancementSourceResolution, fallback: "Pending"))
-                settingsRow("Drawable", liveEnhancementValue(latestStats?.videoEnhancementDrawableResolution, fallback: "Pending"))
+                settingsRow("Target", runtimeSettings.upscalingMode == 0 ? "Native" : "Display")
                 settingsRow("Frame", frameTimeValue(latestStats?.videoEnhancementFrameTimeMs))
                 settingsRow("Dropped", String(latestStats?.videoEnhancementDroppedFrames ?? 0))
             }
@@ -1165,6 +1155,7 @@ public struct WebRTCMediaStreamSurface: View {
             message: "Video enhancement settings updated.",
             attributes: [
                 "mode": String(runtimeSettings.upscalingMode),
+                "enhancementPreset": runtimeSettings.upscalingMode == 3 ? "metalfx_m1" : "off",
                 "sharpness": String(runtimeSettings.upscalingSharpness),
                 "denoise": String(runtimeSettings.upscalingDenoise),
                 "targetHeight": String(runtimeSettings.upscalingTargetHeight),
@@ -1701,14 +1692,7 @@ private enum StreamInputAction {
 private struct StreamRuntimeSettings: Equatable {
     static let upscalingModes = [
         VideoEnhancementMode(label: "Off", value: 0),
-        VideoEnhancementMode(label: "Auto", value: 1),
-        VideoEnhancementMode(label: "Spatial", value: 2),
         VideoEnhancementMode(label: "MetalFX", value: 3),
-        VideoEnhancementMode(label: "Temporal", value: 4),
-    ]
-    static let upscalingTargets = [
-        VideoEnhancementTarget(label: "2K", height: 1440),
-        VideoEnhancementTarget(label: "4K", height: 2160),
     ]
 
     var resolutionWidth = 1920
@@ -1721,7 +1705,7 @@ private struct StreamRuntimeSettings: Equatable {
     var directMouseInput = true
     var antiAFKMouseMovementEnabled = false
     var upscalingMode = 0
-    var upscalingSharpness = 4
+    var upscalingSharpness = 10
     var upscalingDenoise = 0
     var upscalingTargetHeight = 2160
     var recordingVideoBitrateMbps = 0
@@ -1731,10 +1715,7 @@ private struct StreamRuntimeSettings: Equatable {
     var upscalingModeLabel: String {
         switch upscalingMode {
         case 0: return "Off"
-        case 1: return "Auto"
-        case 2: return "Spatial"
         case 3: return "MetalFX"
-        case 4: return "Temporal"
         default: return "Mode \(upscalingMode)"
         }
     }
@@ -1743,15 +1724,11 @@ private struct StreamRuntimeSettings: Equatable {
 
     mutating func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
         if let mode {
-            let allowed = Self.upscalingModes.map(\.value)
-            upscalingMode = allowed.contains(mode) ? mode : 0
+            upscalingMode = Self.normalizedUpscalingMode(mode)
         }
         if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
         if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
-        if let targetHeight {
-            let allowed = Self.upscalingTargets.map(\.height)
-            upscalingTargetHeight = allowed.contains(targetHeight) ? targetHeight : 2160
-        }
+        if let targetHeight { upscalingTargetHeight = targetHeight > 0 ? targetHeight : 2160 }
     }
 
     init(json: String?) {
@@ -1768,8 +1745,8 @@ private struct StreamRuntimeSettings: Equatable {
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
         antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
-        upscalingMode = Self.int(dictionary["upscalingMode"])
-        upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 4)
+        upscalingMode = Self.normalizedUpscalingMode(Self.int(dictionary["upscalingMode"]))
+        upscalingSharpness = Self.int(dictionary["upscalingSharpness"], fallback: 10)
         upscalingDenoise = Self.int(dictionary["upscalingDenoise"])
         upscalingTargetHeight = Self.int(dictionary["upscalingTargetHeight"], fallback: 2160)
         recordingVideoBitrateMbps = Self.int(dictionary["recordingVideoBitrateMbps"])
@@ -1802,16 +1779,19 @@ private struct StreamRuntimeSettings: Equatable {
         let parts = value.split(separator: "x").compactMap { Int($0) }
         return (max(1, parts.first ?? 1920), max(1, parts.count > 1 ? parts[1] : 1080))
     }
+
+    private static func normalizedUpscalingMode(_ mode: Int) -> Int {
+        switch mode {
+        case 0: return 0
+        case 1...4: return 3
+        default: return 0
+        }
+    }
 }
 
 private struct VideoEnhancementMode: Equatable {
     let label: String
     let value: Int
-}
-
-private struct VideoEnhancementTarget: Equatable {
-    let label: String
-    let height: Int
 }
 
 private struct NativeWebRTCStreamSurface: NSViewRepresentable {

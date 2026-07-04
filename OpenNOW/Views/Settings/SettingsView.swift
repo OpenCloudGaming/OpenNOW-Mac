@@ -320,7 +320,7 @@ private struct SettingsContent: View {
         case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
         case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
-        case .resolutionUpscaling: return "Control image enhancement, sharpening, denoise, and target quality."
+        case .resolutionUpscaling: return "Control MetalFX presentation, clarity, and noise reduction for Apple Silicon."
         case .system: return "Review decoder, display, network, and device capability state."
         case .about: return "OpenNOW Mac runtime and service identifiers."
         }
@@ -1373,14 +1373,14 @@ private struct ResolutionUpscalingSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SettingsCard(title: "Resolution Upscaling") {
-                SettingsOptionRow(title: "Upscaling Mode", subtitle: "Controls client-side presentation enhancement.", options: OPNStreamPreferences.upscalingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.upscalingModeIndex, action: viewModel.setUpscalingModeIndex)
+            SettingsCard(title: "MetalFX Upscaling") {
+                SettingsToggleRow(title: "MetalFX Upscaling", subtitle: "Optimized for Apple Silicon. Falls back automatically when MetalFX is unavailable.", isOn: viewModel.streamProfile.upscalingMode == 3) { enabled in viewModel.setUpscalingModeIndex(enabled ? 1 : 0) }
                 SettingsDivider()
-                SettingsInfoRow(label: "Target", value: viewModel.streamProfile.upscalingTargetOption.label)
+                SettingsInfoRow(label: "Target", value: "Display")
                 SettingsDivider()
-                SettingsSliderRow(title: "Sharpness", valueText: "\(viewModel.streamProfile.upscalingSharpness)", value: Double(viewModel.streamProfile.upscalingSharpness), range: 0...15, action: viewModel.setUpscalingSharpness)
+                SettingsSliderRow(title: "Clarity", valueText: "\(viewModel.streamProfile.upscalingSharpness)", value: Double(viewModel.streamProfile.upscalingSharpness), range: 0...15, action: viewModel.setUpscalingSharpness)
                 SettingsDivider()
-                SettingsSliderRow(title: "Denoise", valueText: "\(viewModel.streamProfile.upscalingDenoise)", value: Double(viewModel.streamProfile.upscalingDenoise), range: 0...20, action: viewModel.setUpscalingDenoise)
+                SettingsSliderRow(title: "Noise Reduction", valueText: "\(viewModel.streamProfile.upscalingDenoise)", value: Double(viewModel.streamProfile.upscalingDenoise), range: 0...20, action: viewModel.setUpscalingDenoise)
             }
 
             SettingsCard(title: "Image Enhancement") {

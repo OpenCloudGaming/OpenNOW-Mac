@@ -109,7 +109,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
         case .twitch: return "Twitch"
         case .gameplay: return "Gameplay"
         case .serverLocation: return "Server Location"
-        case .resolutionUpscaling: return "Resolution Upscaling"
+        case .resolutionUpscaling: return "MetalFX Upscaling"
         case .system: return "System"
         case .about: return "About"
         }

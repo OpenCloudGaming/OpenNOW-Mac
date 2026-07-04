@@ -427,7 +427,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
     private func localVideoEnhancement() -> VideoEnhancement {
         let values = owner?.localVideoEnhancement() ?? (0, 0, 0, 2160)
-        return VideoEnhancement(mode: values.0, sharpness: values.1, denoise: values.2, targetHeight: values.3)
+        return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3)
     }
 
     private func setCustomDrawableRenderingEnabled(_ enabled: Bool) {
@@ -455,6 +455,14 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         objc_sync_enter(self)
         defer { objc_sync_exit(self) }
         return body()
+    }
+}
+
+private func normalizedEnhancementMode(_ mode: Int32) -> Int32 {
+    switch mode {
+    case 0: return 0
+    case 1...4: return 3
+    default: return 0
     }
 }
 
