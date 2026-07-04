@@ -425,6 +425,7 @@ final class OPNMetalFXUpscaler: NSObject {
     private var inputPixelFormat: MTLPixelFormat = .invalid
     private var outputPixelFormat: MTLPixelFormat = .invalid
     private var neutralMotionTexture: (any MTLTexture)?
+    private var disabledByCaptureScaler = false
     private static let setMotionTextureSelector = NSSelectorFromString("setMotionTexture:")
     private static let motionTextureFormatSelector = NSSelectorFromString("motionTextureFormat")
     private static let motionTextureUsageSelector = NSSelectorFromString("motionTextureUsage")
@@ -436,7 +437,7 @@ final class OPNMetalFXUpscaler: NSObject {
 
     @objc var isAvailable: Bool {
 #if canImport(MetalFX)
-        guard let device, NSClassFromString("MTLFXSpatialScalerDescriptor") != nil else { return false }
+        guard !disabledByCaptureScaler, let device, NSClassFromString("MTLFXSpatialScalerDescriptor") != nil else { return false }
         if #available(macOS 13.0, *) {
             return MTLFXSpatialScalerDescriptor.supportsDevice(device)
         }
@@ -485,6 +486,20 @@ final class OPNMetalFXUpscaler: NSObject {
             }
             guard let scaler = spatialScaler as? MTLFXSpatialScaler else {
                 fallback?.pointee = "MetalFX scaler creation failed"
+                return false
+            }
+            let scalerClassName = String(describing: type(of: scaler as AnyObject))
+            if scalerClassName.contains("CaptureMTLFXSpatialScaler") {
+                disabledByCaptureScaler = true
+                spatialScaler = nil
+                neutralMotionTexture = nil
+                inputWidth = 0
+                inputHeight = 0
+                outputWidth = 0
+                outputHeight = 0
+                inputPixelFormat = .invalid
+                outputPixelFormat = .invalid
+                fallback?.pointee = "MetalFX disabled under Xcode Metal capture"
                 return false
             }
             guard sourceTexture.usage.isSuperset(of: scaler.colorTextureUsage) else {
