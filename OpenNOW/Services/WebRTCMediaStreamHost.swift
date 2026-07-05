@@ -41,6 +41,9 @@ struct WebRTCMediaStreamView: View {
             onTwitchChatSend: { message in twitchRealtime.sendChatMessage(message) },
             onTwitchHealthRefresh: { await twitchRealtime.refreshHealth() },
             onAntiAFKStateChange: { enabled in OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(enabled) },
+            onVideoEnhancementChange: { mode, sharpness, denoise in
+                OPNStreamPreferences.saveUpscalingSettings(mode: mode, sharpness: sharpness, denoise: denoise, forGame: configuration.applicationID)
+            },
             preventDisplaySleep: Self.preventDisplaySleepWhileStreaming(applicationID: configuration.applicationID),
             onProgress: { progress in
                 onProgress?(progress)

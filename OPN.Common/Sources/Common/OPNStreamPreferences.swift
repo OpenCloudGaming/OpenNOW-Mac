@@ -782,6 +782,19 @@ public enum OPNStreamPreferences {
     public static func saveUpscalingTargetIndex(_: Int) { storage.set(defaultUpscalingTargetIndex, forKey: k.upscalingTargetIndex) }
     public static func saveUpscalingSharpness(_ value: Int) { storage.set(clamp(value, 0, 15), forKey: k.upscalingSharpness) }
     public static func saveUpscalingDenoise(_ value: Int) { storage.set(clamp(value, 0, 20), forKey: k.upscalingDenoise) }
+    public static func saveUpscalingSettings(mode: Int, sharpness: Int, denoise: Int, forGame appId: String = "") {
+        let modeIndex = normalizedUpscalingModeIndex(forMode: mode)
+        let sharpness = clamp(sharpness, 0, 15)
+        let denoise = clamp(denoise, 0, 20)
+        if !appId.isEmpty, var profile = loadProfile(forGame: appId) {
+            applyUpscalingSettings(to: &profile, modeIndex: modeIndex, sharpness: sharpness, denoise: denoise)
+            saveProfile(forGame: appId, profile: profile)
+            return
+        }
+        storage.set(modeIndex, forKey: k.upscalingModeIndex)
+        storage.set(sharpness, forKey: k.upscalingSharpness)
+        storage.set(denoise, forKey: k.upscalingDenoise)
+    }
     public static func saveRecordingVideoBitrateMbps(_ value: Int) { storage.set(clamp(value, 0, 200), forKey: k.recordingVideoBitrateMbps) }
     public static func saveRecordingAudioBitrateKbps(_ value: Int) { storage.set(clamp(value, 64, 320), forKey: k.recordingAudioBitrateKbps) }
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
@@ -948,6 +961,24 @@ public enum OPNStreamPreferences {
         case 1...4: return 1
         default: return 0
         }
+    }
+
+    private static func normalizedUpscalingModeIndex(forMode mode: Int) -> Int {
+        switch mode {
+        case 0: return 0
+        case 1...4: return 1
+        default: return 0
+        }
+    }
+
+    private static func applyUpscalingSettings(to profile: inout OPNStreamPreferenceProfile, modeIndex: Int, sharpness: Int, denoise: Int) {
+        let modeIndex = clamp(modeIndex, 0, upscalingModeOptions.count - 1)
+        profile.upscalingModeIndex = modeIndex
+        profile.upscalingModeOption = upscalingModeOptions[modeIndex]
+        profile.upscalingMode = profile.upscalingModeOption.value
+        applyDefaultUpscalingTarget(&profile)
+        profile.upscalingSharpness = clamp(sharpness, 0, 15)
+        profile.upscalingDenoise = clamp(denoise, 0, 20)
     }
 
     private static func storedPreferenceValue(_ key: String) -> Any? {

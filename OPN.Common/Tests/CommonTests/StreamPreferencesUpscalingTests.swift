@@ -6,6 +6,8 @@ import Testing
     private let preferenceDomain = "io.github.opencloudgaming.opennow"
     private let upscalingModeIndexKey = "OpenNOW.Stream.UpscalingModeIndex"
     private let upscalingSharpnessKey = "OpenNOW.Stream.UpscalingSharpness"
+    private let upscalingDenoiseKey = "OpenNOW.Stream.UpscalingDenoise"
+    private let gameProfilesKey = "OpenNOW.Stream.GameProfiles"
 
     @Test func exposesOnlyOffAndMetalFXUpscalingModes() {
         #expect(OPNStreamPreferences.upscalingModeOptions.map(\.label) == ["Off", "MetalFX"])
@@ -51,6 +53,55 @@ import Testing
                 #expect(profile.upscalingMode == 0)
                 #expect(profile.upscalingModeOption.label == "Off")
             }
+        }
+    }
+
+    @Test func persistsRuntimeUpscalingSettingsToGlobalProfile() {
+        withPreservedPreferences([upscalingModeIndexKey, upscalingSharpnessKey, upscalingDenoiseKey]) {
+            removePreferenceValue(upscalingModeIndexKey)
+            removePreferenceValue(upscalingSharpnessKey)
+            removePreferenceValue(upscalingDenoiseKey)
+
+            OPNStreamPreferences.saveUpscalingSettings(mode: 3, sharpness: 18, denoise: -2)
+
+            let profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.upscalingModeIndex == 1)
+            #expect(profile.upscalingMode == 3)
+            #expect(profile.upscalingModeOption.label == "MetalFX")
+            #expect(profile.upscalingSharpness == 15)
+            #expect(profile.upscalingDenoise == 0)
+        }
+    }
+
+    @Test func persistsRuntimeUpscalingSettingsToEnabledGameProfile() {
+        withPreservedPreferences([upscalingModeIndexKey, upscalingSharpnessKey, upscalingDenoiseKey, gameProfilesKey]) {
+            let appId = "12345"
+            removePreferenceValue(upscalingModeIndexKey)
+            removePreferenceValue(upscalingSharpnessKey)
+            removePreferenceValue(upscalingDenoiseKey)
+            removePreferenceValue(gameProfilesKey)
+            var profile = OPNStreamPreferences.loadProfile()
+            profile.upscalingModeIndex = 0
+            profile.upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[0]
+            profile.upscalingMode = 0
+            profile.upscalingSharpness = 4
+            profile.upscalingDenoise = 5
+            OPNStreamPreferences.saveProfile(forGame: appId, profile: profile)
+
+            OPNStreamPreferences.saveUpscalingSettings(mode: 3, sharpness: 12, denoise: 7, forGame: appId)
+
+            guard let gameProfile = OPNStreamPreferences.loadProfile(forGame: appId) else {
+                Issue.record("Expected enabled game profile")
+                return
+            }
+            let globalProfile = OPNStreamPreferences.loadProfile()
+            #expect(gameProfile.upscalingModeIndex == 1)
+            #expect(gameProfile.upscalingMode == 3)
+            #expect(gameProfile.upscalingSharpness == 12)
+            #expect(gameProfile.upscalingDenoise == 7)
+            #expect(globalProfile.upscalingModeIndex == 0)
+            #expect(globalProfile.upscalingSharpness == 10)
+            #expect(globalProfile.upscalingDenoise == 0)
         }
     }
 

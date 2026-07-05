@@ -12,6 +12,7 @@ public typealias WebRTCMediaStreamMarkerCallback = @MainActor @Sendable (_ title
 public typealias WebRTCMediaTwitchChatSendCallback = @MainActor @Sendable (_ message: String) -> Void
 public typealias WebRTCMediaTwitchHealthRefreshCallback = @MainActor @Sendable () async -> Void
 public typealias WebRTCMediaAntiAFKStateChangeCallback = @MainActor @Sendable (_ enabled: Bool) -> Void
+public typealias WebRTCMediaVideoEnhancementChangeCallback = @MainActor @Sendable (_ mode: Int, _ sharpness: Int, _ denoise: Int) -> Void
 
 public struct WebRTCMediaTwitchChatMessage: Identifiable, Equatable, Sendable {
     public let id: String
@@ -256,6 +257,7 @@ public struct WebRTCMediaStreamSurface: View {
     private let onTwitchChatSend: WebRTCMediaTwitchChatSendCallback?
     private let onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback?
     private let onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback?
+    private let onVideoEnhancementChange: WebRTCMediaVideoEnhancementChangeCallback?
     private let preventDisplaySleep: Bool
     private let onProgress: WebRTCMediaStreamProgressCallback?
     private let onEnd: WebRTCMediaStreamEndCallback
@@ -308,6 +310,7 @@ public struct WebRTCMediaStreamSurface: View {
                 onTwitchChatSend: WebRTCMediaTwitchChatSendCallback? = nil,
                 onTwitchHealthRefresh: WebRTCMediaTwitchHealthRefreshCallback? = nil,
                 onAntiAFKStateChange: WebRTCMediaAntiAFKStateChangeCallback? = nil,
+                onVideoEnhancementChange: WebRTCMediaVideoEnhancementChangeCallback? = nil,
                 preventDisplaySleep: Bool = true,
                 onProgress: WebRTCMediaStreamProgressCallback? = nil,
                 onEnd: @escaping WebRTCMediaStreamEndCallback) {
@@ -322,6 +325,7 @@ public struct WebRTCMediaStreamSurface: View {
         self.onTwitchChatSend = onTwitchChatSend
         self.onTwitchHealthRefresh = onTwitchHealthRefresh
         self.onAntiAFKStateChange = onAntiAFKStateChange
+        self.onVideoEnhancementChange = onVideoEnhancementChange
         self.preventDisplaySleep = preventDisplaySleep
         self.onProgress = onProgress
         self.onEnd = onEnd
@@ -1154,6 +1158,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func updateVideoEnhancement(mode: Int? = nil, sharpness: Int? = nil, denoise: Int? = nil, targetHeight: Int? = nil) {
         runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight)
+        onVideoEnhancementChange?(runtimeSettings.upscalingMode, runtimeSettings.upscalingSharpness, runtimeSettings.upscalingDenoise)
         transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight)
         WebRTCMediaTelemetry.capture(
             "webrtc.ui.video_enhancement.update",
