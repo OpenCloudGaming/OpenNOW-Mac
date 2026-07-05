@@ -265,12 +265,13 @@ struct WebRTCStreamingPathTests {
     @Test("disables MetalFX upscaling for low latency mode")
     func disablesMetalFXUpscalingForLowLatencyMode() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
-            profile: WebRTCMediaStreamProfile(lowLatencyMode: true, upscalingMode: 3),
+            profile: WebRTCMediaStreamProfile(lowLatencyMode: true, upscalingMode: 3, upscalingSharpness: 12, upscalingDenoise: 7),
             capabilities: WebRTCMediaDeviceCapabilities()
         )
 
         #expect(settings.upscalingMode == 0)
-        #expect(settings.upscalingSharpness == 0)
+        #expect(settings.upscalingSharpness == 12)
+        #expect(settings.upscalingDenoise == 7)
     }
 
     @Test("carries display sleep prevention setting into resolved metadata")
