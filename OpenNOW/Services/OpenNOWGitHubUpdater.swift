@@ -140,13 +140,15 @@ actor OpenNOWGitHubUpdater {
         clearQuarantine(for: newBundleURL)
         try validateCandidateBundle(newBundleURL, expectedVersion: release.version, currentBundleURL: currentBundleURL)
 
+        let installTargetURL = try writableInstallTarget(for: currentBundleURL)
         let scriptURL = stagingURL.appendingPathComponent("install-opennow-update.sh", isDirectory: false)
-        let backupPath = currentBundleURL.deletingLastPathComponent().appendingPathComponent(".\(currentBundleURL.lastPathComponent).previous").path
+        let backupPath = installTargetURL.deletingLastPathComponent().appendingPathComponent(".\(installTargetURL.lastPathComponent).previous").path
+        logInfo("Resolved update install target currentBundle=\(currentBundleURL.path) installTarget=\(installTargetURL.path)")
         let script = """
         #!/bin/sh
         set -eu
         parent_pid='\(ProcessInfo.processInfo.processIdentifier)'
-        target=\(shellQuoted(currentBundleURL.path))
+        target=\(shellQuoted(installTargetURL.path))
         source=\(shellQuoted(newBundleURL.path))
         backup=\(shellQuoted(backupPath))
         staging=\(shellQuoted(stagingURL.path))
@@ -263,10 +265,32 @@ actor OpenNOWGitHubUpdater {
         guard verifyCodeSignature(for: candidateURL) else {
             throw UpdateError.validationFailed("The downloaded app bundle did not pass macOS code-signature verification.")
         }
-        let currentParentPath = currentBundleURL.deletingLastPathComponent().path
-        guard !currentParentPath.isEmpty, FileManager.default.isWritableFile(atPath: currentParentPath) else {
-            throw UpdateError.validationFailed("OpenNOW does not have permission to replace the current app bundle. Move it to a writable folder and try again.")
+    }
+
+    private func writableInstallTarget(for currentBundleURL: URL) throws -> URL {
+        let fileManager = FileManager.default
+        let currentParentURL = currentBundleURL.deletingLastPathComponent()
+        if isWritableDirectory(currentParentURL) {
+            return currentBundleURL
         }
+
+        let systemApplicationsURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        if isWritableDirectory(systemApplicationsURL) {
+            return systemApplicationsURL.appendingPathComponent(currentBundleURL.lastPathComponent, isDirectory: true)
+        }
+
+        let userApplicationsURL = fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
+        try fileManager.createDirectory(at: userApplicationsURL, withIntermediateDirectories: true)
+        if isWritableDirectory(userApplicationsURL) {
+            return userApplicationsURL.appendingPathComponent(currentBundleURL.lastPathComponent, isDirectory: true)
+        }
+
+        throw UpdateError.validationFailed("OpenNOW could not find a writable Applications folder for installing the update.")
+    }
+
+    private func isWritableDirectory(_ directoryURL: URL) -> Bool {
+        var isDirectory = ObjCBool(false)
+        return FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory) && isDirectory.boolValue && FileManager.default.isWritableFile(atPath: directoryURL.path)
     }
 
     private func verifyCodeSignature(for bundleURL: URL) -> Bool {
