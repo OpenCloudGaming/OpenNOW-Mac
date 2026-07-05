@@ -104,6 +104,28 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(info.detectedLocalZone?.address == "sjc.cloudmatch.example")
 }
 
+@Test func cloudMatchParsesLocalRegionNameAndAdvertisedDefaultOrder() {
+    let localInfo = CloudMatchServerInfoParser.parse([
+        "metaData": [
+            ["key": "local-region", "value": "Texas (USA)"],
+            ["key": "gfn-regions", "value": "Germany,Texas (USA)"],
+            ["key": "Germany", "value": "https://eu-germany.cloudmatchbeta.nvidiagrid.net"],
+            ["key": "Texas (USA)", "value": "https://us-texas.cloudmatchbeta.nvidiagrid.net"],
+        ],
+    ])
+    #expect(localInfo.detectedLocalZone?.name == "Texas (USA)")
+    #expect(localInfo.defaultZone?.name == "Texas (USA)")
+
+    let fallbackInfo = CloudMatchServerInfoParser.parse([
+        "metaData": [
+            ["key": "gfn-regions", "value": "Germany,Texas (USA)"],
+            ["key": "Germany", "value": "https://eu-germany.cloudmatchbeta.nvidiagrid.net"],
+            ["key": "Texas (USA)", "value": "https://us-texas.cloudmatchbeta.nvidiagrid.net"],
+        ],
+    ])
+    #expect(fallbackInfo.defaultZone?.name == "Germany")
+}
+
 @Test func cloudMatchClearsUnavailableRouteOverrides() {
     let available = CloudMatchZone(name: "np-sjc-01", address: "sjc.cloudmatch.example")
     let unavailable = CloudMatchRouteOverride(zone: CloudMatchZone(name: "np-removed", address: "removed.example"))

@@ -59,6 +59,23 @@ import Testing
             OPNStreamRegionOption(name: "Texas (USA)", url: "https://us-texas.cloudmatchbeta.nvidiagrid.net/", latencyMs: 20),
         ])
     }
+
+    @Test func cloudMatchRegionHostAddressesNormalizeToDistinctStreamingUrls() {
+        let previousCachedRegions = OPNStreamPreferences.loadCachedRegions()
+        defer { OPNStreamPreferences.saveCachedRegions(previousCachedRegions) }
+
+        let texasUrl = OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "us-texas.cloudmatchbeta.nvidiagrid.net")
+        let germanyUrl = OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "https://eu-germany.cloudmatchbeta.nvidiagrid.net")
+        #expect(texasUrl == "https://us-texas.cloudmatchbeta.nvidiagrid.net/")
+        #expect(germanyUrl == "https://eu-germany.cloudmatchbeta.nvidiagrid.net/")
+        #expect(OPNStreamPreferences.cloudMatchRegionBaseUrl(address: "http://us-texas.cloudmatchbeta.nvidiagrid.net") == "")
+
+        OPNStreamPreferences.saveCachedRegions([
+            OPNStreamRegionOption(name: "Texas (USA)", url: texasUrl, latencyMs: 12),
+            OPNStreamRegionOption(name: "Germany", url: germanyUrl, latencyMs: 30),
+        ])
+        #expect(OPNStreamPreferences.loadCachedRegions().map(\.url) == [texasUrl, germanyUrl])
+    }
 }
 
 @Test func cloudVariablesRequestIncludesRequiredGXTQueryItems() throws {

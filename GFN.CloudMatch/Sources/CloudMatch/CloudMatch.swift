@@ -268,13 +268,14 @@ public enum CloudMatchServerInfoParser {
             guard let key = item["key"], let value = item["value"] else { return nil }
             return (key, value)
         })
-        let zones = zones(from: values)
-        let localZone = values["local-region"].flatMap { zones[normalizedAddress($0)] }
+        let regionNames = regionNames(from: values)
+        let zones = zones(from: values, regionNames: regionNames)
+        let localZone = values["local-region"].flatMap { zone(matching: $0, zones: zones) }
         return CloudMatchServerInfo(
             vpcId: stringValue(json["vpcId"]) ?? stringValue(json["vpc_id"]) ?? "",
             serverType: stringValue(json["serverType"]) ?? stringValue(json["server_type"]) ?? "",
             zones: zones,
-            defaultZone: localZone ?? zones.values.first,
+            defaultZone: localZone ?? firstZone(regionNames: regionNames, zones: zones),
             detectedLocalZone: localZone
         )
     }
@@ -289,16 +290,34 @@ public enum CloudMatchServerInfoParser {
         }
     }
 
-    private static func zones(from values: [String: String]) -> [String: CloudMatchZone] {
+    private static func regionNames(from values: [String: String]) -> [String] {
         values["gfn-regions"]?
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-            .reduce(into: [String: CloudMatchZone]()) { result, name in
-                guard let rawAddress = values[name] else { return }
-                let address = normalizedAddress(rawAddress)
-                result[address] = CloudMatchZone(name: name, address: address)
-            } ?? [:]
+            ?? []
+    }
+
+    private static func zones(from values: [String: String], regionNames: [String]) -> [String: CloudMatchZone] {
+        regionNames.reduce(into: [String: CloudMatchZone]()) { result, name in
+            guard let rawAddress = values[name] else { return }
+            let address = normalizedAddress(rawAddress)
+            result[address] = CloudMatchZone(name: name, address: address)
+        }
+    }
+
+    private static func zone(matching value: String, zones: [String: CloudMatchZone]) -> CloudMatchZone? {
+        let normalizedValue = normalizedAddress(value)
+        if let zone = zones[normalizedValue] { return zone }
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return zones.values.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    private static func firstZone(regionNames: [String], zones: [String: CloudMatchZone]) -> CloudMatchZone? {
+        for name in regionNames {
+            if let zone = zones.values.first(where: { $0.name == name }) { return zone }
+        }
+        return nil
     }
 
     private static func normalizedAddress(_ value: String) -> String {

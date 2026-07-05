@@ -717,7 +717,11 @@ public enum OPNStreamPreferences {
             let serverInfo = CloudMatchServerInfoParser.parse(json)
             let regions = serverInfo.zones.values
                 .sorted { $0.name < $1.name }
-                .map { OPNStreamRegionOption(name: $0.name, url: normalizedBaseUrl($0.address)) }
+                .compactMap { zone -> OPNStreamRegionOption? in
+                    let url = cloudMatchRegionBaseUrl(address: zone.address)
+                    guard !url.isEmpty else { return nil }
+                    return OPNStreamRegionOption(name: zone.name, url: url)
+                }
             if regions.isEmpty {
                 DispatchQueue.main.async { completion(loadCachedRegions()) }
                 return
@@ -977,6 +981,13 @@ public enum OPNStreamPreferences {
     private static func normalizedBaseUrl(_ url: String) -> String {
         let normalized = normalizedHTTPSBaseUrlOrEmpty(url)
         return normalized.isEmpty ? defaultStreamingBaseUrl : normalized
+    }
+
+    static func cloudMatchRegionBaseUrl(address: String) -> String {
+        let raw = address.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !raw.isEmpty else { return "" }
+        let withScheme = raw.hasPrefix("https://") || raw.hasPrefix("http://") ? raw : "https://\(raw)"
+        return normalizedHTTPSBaseUrlOrEmpty(withScheme)
     }
 
     private static func normalizedCachedRegions(_ regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {
