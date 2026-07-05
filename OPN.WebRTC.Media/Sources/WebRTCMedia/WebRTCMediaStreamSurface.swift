@@ -729,25 +729,37 @@ public struct WebRTCMediaStreamSurface: View {
                     .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
-                Text("Pause the quit request or quit the current session. Remote input is paused while this menu is open.")
+                Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.68))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
                 HStack(spacing: 12) {
-                    Button(action: pauseFromQuitMenu) {
-                        Text("Pause")
+                    Button(action: dismissQuitMenu) {
+                        Text("Resume")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.black)
-                            .frame(width: 150, height: 44)
+                            .frame(width: 112, height: 44)
                             .background(WebRTCMediaStreamTheme.accent, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isEndingStream)
+                    Button(action: pauseFromQuitMenu) {
+                        Text("Pause Stream")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(width: 112, height: 44)
+                            .background(.white.opacity(0.11), in: Capsule())
+                            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isEndingStream)
                     Button(action: quitStreamFromMenu) {
                         Text(isEndingStream ? "Quitting..." : "Quit")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
-                            .frame(width: 150, height: 44)
+                            .frame(width: 112, height: 44)
                             .background(.white.opacity(0.11), in: Capsule())
                             .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
                     }
@@ -1573,6 +1585,15 @@ public struct WebRTCMediaStreamSurface: View {
         transport?.setMicrophoneEnabled(false)
         quitMenuVisible = true
         WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func dismissQuitMenu() {
+        guard !isEndingStream else { return }
+        quitMenuVisible = false
+        let completion = pendingApplicationQuitCompletion
+        pendingApplicationQuitCompletion = nil
+        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.dismiss", level: .info, message: "Stream quit menu dismissed.", attributes: ["applicationID": configuration.applicationID])
+        completion?(false)
     }
 
     private func pauseFromQuitMenu() {
