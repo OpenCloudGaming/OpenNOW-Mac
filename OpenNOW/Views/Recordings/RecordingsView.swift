@@ -281,7 +281,7 @@ struct RecordingsView: View {
     private func selectedPlayer(recording: WebRTCStreamRecording, player: AVPlayer) -> some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                VideoPlayer(player: player)
+                RecordingPlayerView(player: player)
                     .background(Color.black)
                     .overlay(alignment: .top) {
                         LinearGradient(colors: [.black.opacity(0.62), .black.opacity(0.00)], startPoint: .top, endPoint: .bottom)
@@ -780,6 +780,35 @@ private struct RecordingThumbnail: View {
         .task(id: recording.id) {
             thumbnail = await RecordingThumbnailLoader.thumbnail(for: recording)
         }
+    }
+}
+
+private struct RecordingPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView(frame: .zero)
+        configure(view)
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        configure(view)
+        if view.player !== player {
+            view.player = player
+        }
+    }
+
+    static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
+        view.player = nil
+    }
+
+    private func configure(_ view: AVPlayerView) {
+        view.controlsStyle = .floating
+        view.videoGravity = .resizeAspect
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.cgColor
     }
 }
 
