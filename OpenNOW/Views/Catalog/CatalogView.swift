@@ -1536,32 +1536,22 @@ private struct ControllerHeader: View {
     let glyphs: ControllerInputGlyphSet
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("GEFORCE NOW")
                     .font(.nvidia(size: 11, weight: .bold))
                     .foregroundStyle(Color.openNowGreen)
                     .tracking(1.6)
                 Text(headerTitle)
-                    .font(.nvidia(size: 26, weight: .bold))
+                    .font(.nvidia(size: 24, weight: .bold))
                     .foregroundStyle(.white.opacity(0.96))
             }
             Spacer(minLength: 0)
-            HStack(spacing: 10) {
-                ControllerGlyphPill(glyph: glyphs.menu)
-                Text(glyphs.deviceName)
-                    .font(.nvidia(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.70))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 38)
-            .background(Color.white.opacity(0.055))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+            ControllerDeviceBadge(glyphs: glyphs)
             CatalogAccountAvatar(account: viewModel.account, size: 34)
         }
         .padding(.horizontal, 44)
-        .frame(height: 82)
+        .frame(height: 72)
         .background {
             Color.black.opacity(0.24)
             WindowDragArea()
@@ -1574,6 +1564,26 @@ private struct ControllerHeader: View {
         case .recordings: return "Recordings"
         case .settings: return viewModel.selectedSettingsPage.title
         }
+    }
+}
+
+private struct ControllerDeviceBadge: View {
+    let glyphs: ControllerInputGlyphSet
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
+                .font(.nvidia(size: 13, weight: .bold))
+                .foregroundStyle(Color.openNowGreen)
+            Text(glyphs.deviceName)
+                .font(.nvidia(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
     }
 }
 
@@ -1624,47 +1634,52 @@ private struct ControllerGamesPage: View {
 
     var body: some View {
         let sections = viewModel.catalogSections
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 28) {
-                    ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections))
-                        .padding(.horizontal, 44)
-                        .padding(.top, 18)
-
-                    if !viewModel.errorMessage.isEmpty {
-                        CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+        GeometryReader { geometry in
+            let compactHeight = geometry.size.height < 760
+            let heroHeight = compactHeight ? 230.0 : 280.0
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: compactHeight ? 20 : 24) {
+                        ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: heroHeight)
                             .padding(.horizontal, 44)
-                    }
+                            .padding(.top, compactHeight ? 10 : 14)
 
-                    if viewModel.isBrowseMode {
-                        ControllerBrowseSummary(viewModel: viewModel)
-                            .padding(.horizontal, 44)
-                    }
+                        if !viewModel.errorMessage.isEmpty {
+                            CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                .padding(.horizontal, 44)
+                        }
 
-                    ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                        ControllerGameRail(
-                            viewModel: viewModel,
-                            section: section,
-                            selectedIndex: binding(for: section),
-                            isFocused: focusArea == .content && selectedRailIndex == index,
-                            openDetails: { game in openDetails(game, section.id) },
-                            showAll: { showAll(section) }
-                        )
-                        .id(section.id)
-                    }
+                        if viewModel.isBrowseMode {
+                            ControllerBrowseSummary(viewModel: viewModel)
+                                .padding(.horizontal, 44)
+                        }
 
-                    if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
-                        CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
-                            .padding(.horizontal, 44)
-                            .padding(.top, 44)
+                        ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                            ControllerGameRail(
+                                viewModel: viewModel,
+                                section: section,
+                                selectedIndex: binding(for: section),
+                                isFocused: focusArea == .content && selectedRailIndex == index,
+                                compact: compactHeight,
+                                openDetails: { game in openDetails(game, section.id) },
+                                showAll: { showAll(section) }
+                            )
+                            .id(section.id)
+                        }
+
+                        if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
+                            CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
+                                .padding(.horizontal, 44)
+                                .padding(.top, 44)
+                        }
                     }
+                    .padding(.bottom, 46)
                 }
-                .padding(.bottom, 38)
-            }
-            .onChange(of: selectedRailIndex) { _, index in
-                guard sections.indices.contains(index) else { return }
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    proxy.scrollTo(sections[index].id, anchor: .center)
+                .onChange(of: selectedRailIndex) { _, index in
+                    guard sections.indices.contains(index) else { return }
+                    withAnimation(.easeInOut(duration: 0.24)) {
+                        proxy.scrollTo(sections[index].id, anchor: .center)
+                    }
                 }
             }
         }
@@ -1697,6 +1712,7 @@ private struct ControllerGamesPage: View {
 private struct ControllerHeroBillboard: View {
     @ObservedObject var viewModel: CatalogViewModel
     let game: OPNCatalogGameObject?
+    let height: CGFloat
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -1704,18 +1720,18 @@ private struct ControllerHeroBillboard: View {
                 CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
-                LinearGradient(colors: [.black.opacity(0.92), .black.opacity(0.38), .black.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, .black.opacity(0.74)], startPoint: .top, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 13) {
+                LinearGradient(colors: [.black.opacity(0.94), .black.opacity(0.48), .black.opacity(0.10)], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 9) {
                     Text("NOW PLAYING IN THE CLOUD")
                         .font(.nvidia(size: 11, weight: .bold))
                         .tracking(1.6)
                         .foregroundStyle(Color.openNowGreen)
                     Text(game.title.isEmpty ? "GeForce NOW" : game.title)
-                        .font(.nvidia(size: 42, weight: .bold))
+                        .font(.nvidia(size: height < 260 ? 31 : 36, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.72)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
                     HStack(spacing: 10) {
                         if !game.ratingLabel.isEmpty { ControllerMetadataPill(text: game.ratingLabel) }
                         if game.supportsGamepad { ControllerMetadataPill(text: "Gamepad") }
@@ -1723,20 +1739,23 @@ private struct ControllerHeroBillboard: View {
                         if let badge = game.cardBadgeLabel { ControllerMetadataPill(text: badge) }
                     }
                     Text(heroDescription(game))
-                        .font(.nvidia(size: 15, weight: .medium))
+                        .font(.nvidia(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.74))
-                        .lineLimit(2)
+                        .lineLimit(height < 260 ? 1 : 2)
                         .frame(maxWidth: 650, alignment: .leading)
                 }
-                .padding(30)
+                .padding(.horizontal, 28)
+                .padding(.vertical, height < 260 ? 20 : 24)
+                .frame(maxWidth: 720, maxHeight: .infinity, alignment: .bottomLeading)
             } else {
                 CatalogImageFallback()
             }
         }
-        .frame(height: 330)
+        .frame(height: height)
         .background(Color.black.opacity(0.34))
         .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
         .shadow(color: .black.opacity(0.38), radius: 28, y: 18)
+        .clipped()
     }
 
     private func heroDescription(_ game: OPNCatalogGameObject) -> String {
@@ -1777,6 +1796,7 @@ private struct ControllerGameRail: View {
     let section: CatalogSectionModel
     @Binding var selectedIndex: Int
     let isFocused: Bool
+    let compact: Bool
     let openDetails: (OPNCatalogGameObject) -> Void
     let showAll: () -> Void
 
@@ -1784,10 +1804,10 @@ private struct ControllerGameRail: View {
     private var canShowAll: Bool { section.games.count > games.count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(section.title)
-                    .font(.nvidia(size: isFocused ? 26 : 22, weight: .bold))
+                    .font(.nvidia(size: isFocused ? 24 : 21, weight: .bold))
                     .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
                 Text("\(section.games.count) games".uppercased())
                     .font(.nvidia(size: 11, weight: .bold))
@@ -1811,13 +1831,14 @@ private struct ControllerGameRail: View {
                                 imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
                                 isFocused: isFocused && selectedIndex == index,
                                 isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                compact: compact,
                                 action: { openDetails(game) }
                             )
                             .id(game.catalogIdentity)
                         }
                     }
                     .padding(.horizontal, 44)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, compact ? 8 : 10)
                 }
                 .onChange(of: selectedIndex) { _, index in
                     guard games.indices.contains(index) else { return }
@@ -1844,13 +1865,17 @@ private struct ControllerGameTile: View {
     let imageURL: URL?
     let isFocused: Bool
     let isQueuedForPatching: Bool
+    let compact: Bool
     let action: () -> Void
+
+    private var tileWidth: CGFloat { compact ? 286 : 310 }
+    private var tileHeight: CGFloat { compact ? 161 : 174 }
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topLeading) {
                 CatalogRemoteImage(url: imageURL, contentMode: .fill)
-                    .frame(width: 320, height: 180)
+                    .frame(width: tileWidth, height: tileHeight)
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
                 if let badge = game.cardBadgeLabel {
@@ -1877,8 +1902,8 @@ private struct ControllerGameTile: View {
                 }
                 .padding(15)
             }
-            .frame(width: 320, height: 180)
-            .scaleEffect(isFocused ? 1.08 : 1.0)
+            .frame(width: tileWidth, height: tileHeight)
+            .scaleEffect(isFocused ? 1.045 : 1.0)
             .overlay { Rectangle().stroke(isFocused ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
             .shadow(color: isFocused ? Color.openNowGreen.opacity(0.24) : .black.opacity(0.24), radius: isFocused ? 22 : 10, y: 10)
         }
@@ -2400,7 +2425,7 @@ private struct ControllerHintBar: View {
     let glyphs: ControllerInputGlyphSet
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             ForEach(hints, id: \.self) { hint in
                 ControllerHintItem(hint: hint, glyphs: glyphs)
             }
@@ -2411,7 +2436,7 @@ private struct ControllerHintBar: View {
                 .tracking(0.8)
         }
         .padding(.horizontal, 44)
-        .frame(height: 54)
+        .frame(height: 46)
         .background(Color.black.opacity(0.36))
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
     }
@@ -2422,12 +2447,16 @@ private struct ControllerHintItem: View {
     let glyphs: ControllerInputGlyphSet
 
     var body: some View {
-        HStack(spacing: 7) {
-            ForEach(Array(glyphSet.enumerated()), id: \.offset) { _, glyph in
-                ControllerGlyphPill(glyph: glyph)
+        HStack(spacing: 6) {
+            if hint == .move, !glyphs.usesControllerGlyphs {
+                ControllerKeyboardMovePill(glyphs: glyphs)
+            } else {
+                ForEach(Array(glyphSet.enumerated()), id: \.offset) { _, glyph in
+                    ControllerGlyphPill(glyph: glyph, compact: hint == .move)
+                }
             }
             Text(title)
-                .font(.nvidia(size: 11, weight: .bold))
+                .font(.nvidia(size: 10, weight: .bold))
                 .foregroundStyle(.white.opacity(0.64))
                 .tracking(0.5)
         }
@@ -2460,23 +2489,53 @@ private struct ControllerHintItem: View {
 
 private struct ControllerGlyphPill: View {
     let glyph: ControllerInputGlyph
+    var compact = false
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: compact ? 0 : 5) {
             if !glyph.symbolName.isEmpty {
                 Image(systemName: glyph.symbolName)
-                    .font(.nvidia(size: 12, weight: .bold))
+                    .font(.nvidia(size: compact ? 11 : 12, weight: .bold))
             }
-            Text(glyph.fallbackText)
-                .font(.nvidia(size: 9, weight: .bold))
-                .lineLimit(1)
+            if shouldShowText {
+                Text(glyph.fallbackText)
+                    .font(.nvidia(size: compact ? 0 : 9, weight: .bold))
+                    .lineLimit(1)
+            }
         }
         .foregroundStyle(Color.openNowGreen)
-        .padding(.horizontal, 7)
-        .frame(height: 24)
+        .padding(.horizontal, compact ? 6 : 7)
+        .frame(minWidth: compact ? 25 : 0)
+        .frame(height: 22)
         .background(Color.openNowGreen.opacity(0.12))
         .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
+    }
+
+    private var shouldShowText: Bool {
+        guard !compact else { return false }
+        guard !["↑", "↓", "←", "→"].contains(glyph.fallbackText) else { return false }
+        return true
+    }
+}
+
+private struct ControllerKeyboardMovePill: View {
+    let glyphs: ControllerInputGlyphSet
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: glyphs.left.symbolName)
+            Image(systemName: glyphs.up.symbolName)
+            Image(systemName: glyphs.down.symbolName)
+            Image(systemName: glyphs.right.symbolName)
+        }
+        .font(.nvidia(size: 11, weight: .bold))
+        .foregroundStyle(Color.openNowGreen)
+        .padding(.horizontal, 8)
+        .frame(height: 22)
+        .background(Color.openNowGreen.opacity(0.12))
+        .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
+        .accessibilityLabel("Arrow keys")
     }
 }
 
