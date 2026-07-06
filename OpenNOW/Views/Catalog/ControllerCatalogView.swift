@@ -96,22 +96,27 @@ private enum ControllerActionMenuItem {
 
 private struct ControllerLayoutMetrics {
     let size: CGSize
+    let safeAreaInsets: EdgeInsets
 
     var contentWidth: CGFloat {
-        let available = max(size.width - horizontalMargin * 2, minimumContentWidth)
-        return min(available, maximumContentWidth)
+        max(visibleWidth - sideInset * 2, 1)
+    }
+
+    var contentLeading: CGFloat {
+        safeAreaInsets.leading + sideInset
     }
 
     var compactHeight: Bool { size.height < 760 }
     var heroHeight: CGFloat { compactHeight ? 230 : 280 }
     var railPreferredTileWidth: CGFloat { compactHeight ? 278 : 300 }
 
-    private var horizontalMargin: CGFloat {
-        min(max(size.width * 0.045, 48), 96)
+    private var visibleWidth: CGFloat {
+        max(size.width - safeAreaInsets.leading - safeAreaInsets.trailing, 1)
     }
 
-    private var minimumContentWidth: CGFloat { 640 }
-    private var maximumContentWidth: CGFloat { 1680 }
+    private var sideInset: CGFloat {
+        min(max(visibleWidth * 0.025, 24), 56)
+    }
 }
 
 struct ControllerCatalogView: View {
@@ -128,7 +133,7 @@ struct ControllerCatalogView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = ControllerLayoutMetrics(size: proxy.size)
+            let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
             ZStack {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
@@ -145,8 +150,8 @@ struct ControllerCatalogView: View {
                     controllerPage(layout: layout)
                     ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs, layout: layout)
                 }
-                .frame(width: layout.contentWidth, height: proxy.size.height)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                .frame(width: layout.contentWidth, height: proxy.size.height, alignment: .top)
+                .position(x: layout.contentLeading + layout.contentWidth / 2, y: proxy.size.height / 2)
                 .clipped()
 
                 if controllerViewModel.isSearchVisible {
@@ -207,9 +212,10 @@ struct ControllerCatalogView: View {
                     .zIndex(34)
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
         .background(ControllerKeyboardInputBridge { command in inputRouter.sendKeyboardCommand(command) })
-        .ignoresSafeArea(.container, edges: .horizontal)
         .onAppear {
             inputRouter.onCommand = handleInput
             synchronizeNavigationSelection()
