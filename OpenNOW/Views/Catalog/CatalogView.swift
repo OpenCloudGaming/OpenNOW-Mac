@@ -952,7 +952,7 @@ private struct ControllerCatalogShell: View {
     private var navigationItems: [ControllerNavigationItem] { ControllerNavigationItem.allCases }
 
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ZStack {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
@@ -968,7 +968,8 @@ private struct ControllerCatalogShell: View {
                     controllerPage
                     ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
 
                 if isSearchVisible {
                     ControllerSearchOverlay(
@@ -1083,8 +1084,7 @@ private struct ControllerCatalogShell: View {
         if sections.indices.contains(selectedRailIndex) {
             let section = sections[selectedRailIndex]
             let games = section.visibleGames(expanded: false)
-            let index = clampedSelectedGameIndex(for: section, gameCount: games.count)
-            if games.indices.contains(index) { return games[index] }
+            if let firstGame = games.first { return firstGame }
         }
         return viewModel.heroRotationGames.first ?? sections.flatMap(\.games).first
     }
@@ -1579,9 +1579,12 @@ private struct ControllerDeviceBadge: View {
                 .font(.nvidia(size: 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.72))
                 .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 250, alignment: .leading)
         }
         .padding(.horizontal, 12)
         .frame(height: 34)
+        .frame(maxWidth: 304)
         .background(Color.white.opacity(0.055))
         .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
     }
@@ -1675,10 +1678,9 @@ private struct ControllerGamesPage: View {
                     }
                     .padding(.bottom, 46)
                 }
-                .scrollClipDisabled()
                 .onChange(of: selectedRailIndex) { _, index in
                     guard sections.indices.contains(index) else { return }
-                    withAnimation(.easeInOut(duration: 0.24)) {
+                    withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo(sections[index].id, anchor: .center)
                     }
                 }
@@ -1703,8 +1705,7 @@ private struct ControllerGamesPage: View {
         if sections.indices.contains(selectedRailIndex) {
             let section = sections[selectedRailIndex]
             let games = section.visibleGames(expanded: false)
-            let selectedIndex = min(max(selectedGameIndices[section.id] ?? 0, 0), max(games.count - 1, 0))
-            if games.indices.contains(selectedIndex) { return games[selectedIndex] }
+            if let firstGame = games.first { return firstGame }
         }
         return viewModel.heroRotationGames.first ?? sections.flatMap(\.games).first
     }
@@ -1801,13 +1802,18 @@ private struct ControllerGameRail: View {
     let openDetails: (OPNCatalogGameObject) -> Void
     let showAll: () -> Void
 
-    @State private var railWidth: CGFloat = 1440
+    @State private var scrollAnchorIndex = 0
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
     private var canShowAll: Bool { section.games.count > games.count }
-    private var horizontalInset: CGFloat { 60 }
+    private var horizontalInset: CGFloat { 68 }
     private var itemSpacing: CGFloat { 18 }
-    private var verticalInset: CGFloat { compact ? 12 : 14 }
+    private var verticalInset: CGFloat { compact ? 14 : 16 }
+    private var tileSize: CGSize {
+        let width = compact ? 278.0 : 300.0
+        return CGSize(width: width, height: floor(width * 9 / 16))
+    }
+    private var railHeight: CGFloat { tileSize.height + verticalInset * 2 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
@@ -1828,59 +1834,72 @@ private struct ControllerGameRail: View {
             }
             .padding(.horizontal, 44)
 
-            let tileSize = calculatedTileSize(in: railWidth)
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: itemSpacing) {
-                        ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, game in
-                            ControllerGameTile(
-                                game: game,
-                                imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
-                                isFocused: isFocused && selectedIndex == index,
-                                isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                                tileSize: tileSize,
-                                action: { openDetails(game) }
-                            )
-                            .id(game.catalogIdentity)
+            GeometryReader { geometry in
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: itemSpacing) {
+                            ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, game in
+                                ControllerGameTile(
+                                    game: game,
+                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
+                                    isFocused: isFocused && selectedIndex == index,
+                                    isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                    tileSize: tileSize,
+                                    action: { openDetails(game) }
+                                )
+                                .id(game.catalogIdentity)
+                            }
                         }
+                        .padding(.horizontal, horizontalInset)
+                        .padding(.vertical, verticalInset)
                     }
-                    .padding(.horizontal, horizontalInset)
-                    .padding(.vertical, verticalInset)
-                }
-                .background {
-                    GeometryReader { geometry in
-                        Color.clear
-                            .onAppear { railWidth = geometry.size.width }
-                            .onChange(of: geometry.size.width) { _, width in railWidth = width }
+                    .frame(width: geometry.size.width, height: railHeight)
+                    .onAppear { scrollFocusedGameIntoView(proxy: proxy, viewportWidth: geometry.size.width, animated: false) }
+                    .onChange(of: selectedIndex) { _, _ in
+                        scrollFocusedGameIntoView(proxy: proxy, viewportWidth: geometry.size.width, animated: true)
                     }
-                }
-                .scrollClipDisabled()
-                .onChange(of: selectedIndex) { _, index in
-                    guard games.indices.contains(index) else { return }
-                    withAnimation(.easeInOut(duration: 0.20)) {
-                        proxy.scrollTo(games[index].catalogIdentity, anchor: .center)
+                    .onChange(of: isFocused) { _, focused in
+                        guard focused else { return }
+                        scrollFocusedGameIntoView(proxy: proxy, viewportWidth: geometry.size.width, animated: true)
                     }
-                }
-                .onChange(of: isFocused) { _, focused in
-                    guard focused, games.indices.contains(selectedIndex) else { return }
-                    withAnimation(.easeInOut(duration: 0.20)) {
-                        proxy.scrollTo(games[selectedIndex].catalogIdentity, anchor: .center)
+                    .onChange(of: geometry.size.width) { _, width in
+                        scrollFocusedGameIntoView(proxy: proxy, viewportWidth: width, animated: false)
                     }
                 }
             }
+            .frame(height: railHeight)
         }
         .onChange(of: games.count) { _, count in
             selectedIndex = min(selectedIndex, max(count - 1, 0))
+            scrollAnchorIndex = min(scrollAnchorIndex, max(count - 1, 0))
         }
     }
 
-    private func calculatedTileSize(in width: CGFloat) -> CGSize {
-        let availableWidth = max(width - horizontalInset, 1)
-        let preferredWidth = compact ? 286.0 : 310.0
-        let visibleCount = max(2, Int(availableWidth / (preferredWidth + itemSpacing)))
-        let totalSpacing = CGFloat(visibleCount) * itemSpacing
-        let tileWidth = ceil(max((availableWidth - totalSpacing) / CGFloat(visibleCount), 180))
-        return CGSize(width: tileWidth, height: floor(tileWidth * 9 / 16))
+    private func scrollFocusedGameIntoView(proxy: ScrollViewProxy, viewportWidth: CGFloat, animated: Bool) {
+        let targetIndex = targetScrollAnchorIndex(viewportWidth: viewportWidth)
+        guard games.indices.contains(targetIndex) else { return }
+        guard targetIndex != scrollAnchorIndex || !animated else { return }
+        scrollAnchorIndex = targetIndex
+        let scroll = { proxy.scrollTo(games[targetIndex].catalogIdentity, anchor: .leading) }
+        if animated {
+            withAnimation(.easeOut(duration: 0.16), scroll)
+        } else {
+            scroll()
+        }
+    }
+
+    private func targetScrollAnchorIndex(viewportWidth: CGFloat) -> Int {
+        guard !games.isEmpty else { return 0 }
+        let selected = min(max(selectedIndex, 0), games.count - 1)
+        let visibleCount = visibleTileCount(viewportWidth: viewportWidth)
+        let maxAnchorIndex = max(games.count - visibleCount, 0)
+        if selected <= 1 { return 0 }
+        return min(max(selected - visibleCount + 2, 0), maxAnchorIndex)
+    }
+
+    private func visibleTileCount(viewportWidth: CGFloat) -> Int {
+        let contentWidth = max(viewportWidth - horizontalInset * 2, tileSize.width)
+        return max(1, Int((contentWidth + itemSpacing) / (tileSize.width + itemSpacing)))
     }
 }
 
@@ -1924,7 +1943,7 @@ private struct ControllerGameTile: View {
                 .padding(15)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .scaleEffect(isFocused ? 1.045 : 1.0)
+            .scaleEffect(isFocused ? 1.035 : 1.0)
             .overlay { Rectangle().stroke(isFocused ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
             .shadow(color: isFocused ? Color.openNowGreen.opacity(0.24) : .black.opacity(0.24), radius: isFocused ? 22 : 10, y: 10)
         }
@@ -2455,6 +2474,8 @@ private struct ControllerHintBar: View {
                 .font(.nvidia(size: 11, weight: .bold))
                 .foregroundStyle(.white.opacity(0.38))
                 .tracking(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 44)
         .frame(height: 46)
