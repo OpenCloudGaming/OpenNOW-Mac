@@ -94,6 +94,26 @@ private enum ControllerActionMenuItem {
     }
 }
 
+private struct ControllerLayoutMetrics {
+    let size: CGSize
+
+    var contentWidth: CGFloat {
+        let available = max(size.width - horizontalMargin * 2, minimumContentWidth)
+        return min(available, maximumContentWidth)
+    }
+
+    var compactHeight: Bool { size.height < 760 }
+    var heroHeight: CGFloat { compactHeight ? 230 : 280 }
+    var railPreferredTileWidth: CGFloat { compactHeight ? 278 : 300 }
+
+    private var horizontalMargin: CGFloat {
+        min(max(size.width * 0.045, 48), 96)
+    }
+
+    private var minimumContentWidth: CGFloat { 640 }
+    private var maximumContentWidth: CGFloat { 1680 }
+}
+
 struct ControllerCatalogView: View {
     @ObservedObject var viewModel: CatalogViewModel
     let accounts: [LoginAccount]
@@ -108,22 +128,25 @@ struct ControllerCatalogView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let layout = ControllerLayoutMetrics(size: proxy.size)
             ZStack {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
                 VStack(spacing: 0) {
-                    ControllerHeader(viewModel: viewModel, glyphs: inputRouter.glyphs)
+                    ControllerHeader(viewModel: viewModel, glyphs: inputRouter.glyphs, layout: layout)
                     ControllerNavigationBar(
                         items: navigationItems,
                         selectedIndex: controllerViewModel.selectedNavigationIndex,
                         isFocused: controllerViewModel.focusArea == .navigation && !hasModalOverlay,
                         activeItem: activeNavigationItem,
+                        layout: layout,
                         select: selectNavigationItem
                     )
-                    controllerPage
-                    ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs)
+                    controllerPage(layout: layout)
+                    ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs, layout: layout)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                .frame(width: layout.contentWidth, height: proxy.size.height)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                 .clipped()
 
                 if controllerViewModel.isSearchVisible {
@@ -186,6 +209,7 @@ struct ControllerCatalogView: View {
             }
         }
         .background(ControllerKeyboardInputBridge { command in inputRouter.sendKeyboardCommand(command) })
+        .ignoresSafeArea(.container, edges: .horizontal)
         .onAppear {
             inputRouter.onCommand = handleInput
             synchronizeNavigationSelection()
@@ -199,7 +223,7 @@ struct ControllerCatalogView: View {
         }
     }
 
-    @ViewBuilder private var controllerPage: some View {
+    @ViewBuilder private func controllerPage(layout: ControllerLayoutMetrics) -> some View {
         switch viewModel.selectedMainPage {
         case .games:
             ControllerGamesPage(
@@ -207,15 +231,16 @@ struct ControllerCatalogView: View {
                 focusArea: controllerViewModel.focusArea,
                 selectedRailIndex: controllerViewModel.selectedRailIndex,
                 selectedGameIndices: $controllerViewModel.selectedGameIndices,
+                layout: layout,
                 openDetails: openDetails,
                 showAll: openShowAll
             )
         case .recordings:
-            ControllerEmbeddedPage(title: "Recordings", subtitle: "Saved gameplay videos") {
+            ControllerEmbeddedPage(title: "Recordings", subtitle: "Saved gameplay videos", layout: layout) {
                 RecordingsView()
             }
         case .settings:
-            ControllerEmbeddedPage(title: "Settings", subtitle: "Streaming, account, interface, and system options") {
+            ControllerEmbeddedPage(title: "Settings", subtitle: "Streaming, account, interface, and system options", layout: layout) {
                 SettingsView(viewModel: viewModel)
             }
         }
@@ -689,6 +714,7 @@ struct ControllerCatalogView: View {
 private struct ControllerHeader: View {
     @ObservedObject var viewModel: CatalogViewModel
     let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
 
     var body: some View {
         HStack(spacing: 16) {
@@ -705,7 +731,7 @@ private struct ControllerHeader: View {
             ControllerDeviceBadge(glyphs: glyphs)
             CatalogAccountAvatar(account: viewModel.account, size: 34)
         }
-        .padding(.horizontal, 44)
+        .frame(width: layout.contentWidth)
         .frame(height: 72)
         .background {
             Color.black.opacity(0.24)
@@ -750,6 +776,7 @@ private struct ControllerNavigationBar: View {
     let selectedIndex: Int
     let isFocused: Bool
     let activeItem: ControllerNavigationItem
+    let layout: ControllerLayoutMetrics
     let select: (ControllerNavigationItem) -> Void
 
     var body: some View {
@@ -775,9 +802,10 @@ private struct ControllerNavigationBar: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 44)
+            .frame(width: layout.contentWidth, alignment: .leading)
             .padding(.vertical, 10)
         }
+        .frame(width: layout.contentWidth)
         .background(Color.black.opacity(0.18))
     }
 }
@@ -787,29 +815,28 @@ private struct ControllerGamesPage: View {
     let focusArea: ControllerCatalogFocusArea
     let selectedRailIndex: Int
     @Binding var selectedGameIndices: [String: Int]
+    let layout: ControllerLayoutMetrics
     let openDetails: (OPNCatalogGameObject, String) -> Void
     let showAll: (CatalogSectionModel) -> Void
 
     var body: some View {
         let sections = viewModel.catalogSections
-        GeometryReader { geometry in
-            let compactHeight = geometry.size.height < 760
-            let heroHeight = compactHeight ? 230.0 : 280.0
+        GeometryReader { _ in
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: compactHeight ? 20 : 24) {
-                        ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: heroHeight)
-                            .padding(.horizontal, 44)
-                            .padding(.top, compactHeight ? 10 : 14)
+                    LazyVStack(alignment: .leading, spacing: layout.compactHeight ? 20 : 24) {
+                        ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: layout.heroHeight)
+                            .frame(width: layout.contentWidth)
+                            .padding(.top, layout.compactHeight ? 10 : 14)
 
                         if !viewModel.errorMessage.isEmpty {
                             CatalogMessageView(message: viewModel.errorMessage, systemImage: "exclamationmark.triangle.fill")
-                                .padding(.horizontal, 44)
+                                .frame(width: layout.contentWidth)
                         }
 
                         if viewModel.isBrowseMode {
                             ControllerBrowseSummary(viewModel: viewModel)
-                                .padding(.horizontal, 44)
+                                .frame(width: layout.contentWidth)
                         }
 
                         ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
@@ -818,7 +845,7 @@ private struct ControllerGamesPage: View {
                                 section: section,
                                 selectedIndex: binding(for: section),
                                 isFocused: focusArea == .content && selectedRailIndex == index,
-                                compact: compactHeight,
+                                layout: layout,
                                 openDetails: { game in openDetails(game, section.id) },
                                 showAll: { showAll(section) }
                             )
@@ -827,7 +854,7 @@ private struct ControllerGamesPage: View {
 
                         if sections.isEmpty && !viewModel.isLoading && !viewModel.isLoadingPanels {
                             CatalogEmptyDestinationView(viewModel: viewModel, destination: viewModel.selectedCatalogDestination)
-                                .padding(.horizontal, 44)
+                                .frame(width: layout.contentWidth)
                                 .padding(.top, 44)
                         }
                     }
@@ -953,18 +980,16 @@ private struct ControllerGameRail: View {
     let section: CatalogSectionModel
     @Binding var selectedIndex: Int
     let isFocused: Bool
-    let compact: Bool
+    let layout: ControllerLayoutMetrics
     let openDetails: (OPNCatalogGameObject) -> Void
     let showAll: () -> Void
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
     private var canShowAll: Bool { section.games.count > games.count }
-    private var horizontalInset: CGFloat { 44 }
     private var itemSpacing: CGFloat { 18 }
-    private var preferredTileWidth: CGFloat { compact ? 278.0 : 300.0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
+        VStack(alignment: .leading, spacing: layout.compactHeight ? 10 : 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(section.title)
                     .font(.nvidia(size: isFocused ? 24 : 21, weight: .bold))
@@ -980,7 +1005,7 @@ private struct ControllerGameRail: View {
                         .foregroundStyle(.white.opacity(0.82))
                 }
             }
-            .padding(.horizontal, 44)
+            .frame(width: layout.contentWidth, alignment: .leading)
 
             GeometryReader { geometry in
                 let metrics = layoutMetrics(width: geometry.size.width)
@@ -996,7 +1021,6 @@ private struct ControllerGameRail: View {
                         )
                     }
                 }
-                .padding(.horizontal, horizontalInset)
                 .frame(width: geometry.size.width, height: metrics.rowHeight, alignment: .leading)
                 .clipped()
             }
@@ -1008,12 +1032,12 @@ private struct ControllerGameRail: View {
     }
 
     private var estimatedRailHeight: CGFloat {
-        compact ? 204 : 224
+        layout.compactHeight ? 178 : 196
     }
 
     private func layoutMetrics(width: CGFloat) -> ControllerRailLayoutMetrics {
-        let contentWidth = max(width - horizontalInset * 2, 1)
-        let count = min(max(1, Int((contentWidth + itemSpacing) / (preferredTileWidth + itemSpacing))), max(games.count, 1))
+        let contentWidth = max(width, 1)
+        let count = min(max(1, Int((contentWidth + itemSpacing) / (layout.railPreferredTileWidth + itemSpacing))), max(games.count, 1))
         let totalSpacing = CGFloat(max(count - 1, 0)) * itemSpacing
         let tileWidth = floor(max((contentWidth - totalSpacing) / CGFloat(count), 1))
         let tileHeight = floor(tileWidth * 9 / 16)
@@ -1094,11 +1118,13 @@ private struct ControllerGameTile: View {
 private struct ControllerEmbeddedPage<Content: View>: View {
     let title: String
     let subtitle: String
+    let layout: ControllerLayoutMetrics
     private let content: Content
 
-    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+    init(title: String, subtitle: String, layout: ControllerLayoutMetrics, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
+        self.layout = layout
         self.content = content()
     }
 
@@ -1113,7 +1139,7 @@ private struct ControllerEmbeddedPage<Content: View>: View {
                     .font(.nvidia(size: 15, weight: .medium))
                     .foregroundStyle(.white.opacity(0.62))
             }
-            .padding(.horizontal, 44)
+            .frame(width: layout.contentWidth, alignment: .leading)
             .padding(.top, 20)
 
             content
@@ -1594,6 +1620,7 @@ private enum ControllerHint: Equatable {
 private struct ControllerHintBar: View {
     let hints: [ControllerHint]
     let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
 
     var body: some View {
         HStack(spacing: 14) {
@@ -1608,7 +1635,7 @@ private struct ControllerHintBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .padding(.horizontal, 44)
+        .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46)
         .background(Color.black.opacity(0.36))
         .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
@@ -1800,4 +1827,3 @@ private struct ControllerKeyboardInputBridge: NSViewRepresentable {
         }
     }
 }
-
