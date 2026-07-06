@@ -1675,6 +1675,7 @@ private struct ControllerGamesPage: View {
                     }
                     .padding(.bottom, 46)
                 }
+                .scrollClipDisabled()
                 .onChange(of: selectedRailIndex) { _, index in
                     guard sections.indices.contains(index) else { return }
                     withAnimation(.easeInOut(duration: 0.24)) {
@@ -1800,8 +1801,13 @@ private struct ControllerGameRail: View {
     let openDetails: (OPNCatalogGameObject) -> Void
     let showAll: () -> Void
 
+    @State private var railWidth: CGFloat = 1440
+
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
     private var canShowAll: Bool { section.games.count > games.count }
+    private var horizontalInset: CGFloat { 60 }
+    private var itemSpacing: CGFloat { 18 }
+    private var verticalInset: CGFloat { compact ? 12 : 14 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
@@ -1822,24 +1828,33 @@ private struct ControllerGameRail: View {
             }
             .padding(.horizontal, 44)
 
+            let tileSize = calculatedTileSize(in: railWidth)
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 18) {
+                    LazyHStack(spacing: itemSpacing) {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, game in
                             ControllerGameTile(
                                 game: game,
                                 imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
                                 isFocused: isFocused && selectedIndex == index,
                                 isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                                compact: compact,
+                                tileSize: tileSize,
                                 action: { openDetails(game) }
                             )
                             .id(game.catalogIdentity)
                         }
                     }
-                    .padding(.horizontal, 44)
-                    .padding(.vertical, compact ? 8 : 10)
+                    .padding(.horizontal, horizontalInset)
+                    .padding(.vertical, verticalInset)
                 }
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear
+                            .onAppear { railWidth = geometry.size.width }
+                            .onChange(of: geometry.size.width) { _, width in railWidth = width }
+                    }
+                }
+                .scrollClipDisabled()
                 .onChange(of: selectedIndex) { _, index in
                     guard games.indices.contains(index) else { return }
                     withAnimation(.easeInOut(duration: 0.20)) {
@@ -1858,6 +1873,15 @@ private struct ControllerGameRail: View {
             selectedIndex = min(selectedIndex, max(count - 1, 0))
         }
     }
+
+    private func calculatedTileSize(in width: CGFloat) -> CGSize {
+        let availableWidth = max(width - horizontalInset, 1)
+        let preferredWidth = compact ? 286.0 : 310.0
+        let visibleCount = max(2, Int(availableWidth / (preferredWidth + itemSpacing)))
+        let totalSpacing = CGFloat(visibleCount) * itemSpacing
+        let tileWidth = ceil(max((availableWidth - totalSpacing) / CGFloat(visibleCount), 180))
+        return CGSize(width: tileWidth, height: floor(tileWidth * 9 / 16))
+    }
 }
 
 private struct ControllerGameTile: View {
@@ -1865,17 +1889,14 @@ private struct ControllerGameTile: View {
     let imageURL: URL?
     let isFocused: Bool
     let isQueuedForPatching: Bool
-    let compact: Bool
+    let tileSize: CGSize
     let action: () -> Void
-
-    private var tileWidth: CGFloat { compact ? 286 : 310 }
-    private var tileHeight: CGFloat { compact ? 161 : 174 }
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topLeading) {
                 CatalogRemoteImage(url: imageURL, contentMode: .fill)
-                    .frame(width: tileWidth, height: tileHeight)
+                    .frame(width: tileSize.width, height: tileSize.height)
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
                 if let badge = game.cardBadgeLabel {
@@ -1902,7 +1923,7 @@ private struct ControllerGameTile: View {
                 }
                 .padding(15)
             }
-            .frame(width: tileWidth, height: tileHeight)
+            .frame(width: tileSize.width, height: tileSize.height)
             .scaleEffect(isFocused ? 1.045 : 1.0)
             .overlay { Rectangle().stroke(isFocused ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
             .shadow(color: isFocused ? Color.openNowGreen.opacity(0.24) : .black.opacity(0.24), radius: isFocused ? 22 : 10, y: 10)
