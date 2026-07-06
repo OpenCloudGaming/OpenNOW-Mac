@@ -96,26 +96,17 @@ private enum ControllerActionMenuItem {
 
 private struct ControllerLayoutMetrics {
     let size: CGSize
-    let safeAreaInsets: EdgeInsets
 
     var contentWidth: CGFloat {
-        max(visibleWidth - sideInset * 2, 1)
-    }
-
-    var contentLeading: CGFloat {
-        safeAreaInsets.leading + sideInset
+        max(size.width - sideInset * 2, 1)
     }
 
     var compactHeight: Bool { size.height < 760 }
     var heroHeight: CGFloat { compactHeight ? 230 : 280 }
     var railPreferredTileWidth: CGFloat { compactHeight ? 278 : 300 }
 
-    private var visibleWidth: CGFloat {
-        max(size.width - safeAreaInsets.leading - safeAreaInsets.trailing, 1)
-    }
-
-    private var sideInset: CGFloat {
-        min(max(visibleWidth * 0.025, 24), 56)
+    var sideInset: CGFloat {
+        min(max(size.width * 0.035, 56), 84)
     }
 }
 
@@ -133,7 +124,7 @@ struct ControllerCatalogView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
+            let layout = ControllerLayoutMetrics(size: proxy.size)
             ZStack {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
@@ -151,7 +142,8 @@ struct ControllerCatalogView: View {
                     ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs, layout: layout)
                 }
                 .frame(width: layout.contentWidth, height: proxy.size.height, alignment: .top)
-                .position(x: layout.contentLeading + layout.contentWidth / 2, y: proxy.size.height / 2)
+                .padding(.horizontal, layout.sideInset)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
                 if controllerViewModel.isSearchVisible {
