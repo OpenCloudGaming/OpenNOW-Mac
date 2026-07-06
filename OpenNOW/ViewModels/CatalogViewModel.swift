@@ -92,6 +92,7 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
 @MainActor
 enum CatalogSettingsPage: String, CaseIterable, Identifiable {
     case account
+    case interface
     case connections
     case twitch
     case gameplay
@@ -105,6 +106,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .account: return "Account"
+        case .interface: return "Interface"
         case .connections: return "Connections"
         case .twitch: return "Twitch"
         case .gameplay: return "Gameplay"

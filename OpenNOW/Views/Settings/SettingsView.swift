@@ -257,6 +257,7 @@ private struct SettingsSidebar: View {
     private func icon(for page: CatalogSettingsPage) -> String {
         switch page {
         case .account: return "person.crop.circle.fill"
+        case .interface: return "gamecontroller.fill"
         case .connections: return "link"
         case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
@@ -296,6 +297,8 @@ private struct SettingsContent: View {
         switch viewModel.selectedSettingsPage {
         case .account:
             AccountSettingsPage(viewModel: viewModel)
+        case .interface:
+            InterfaceSettingsPage(viewModel: viewModel)
         case .connections:
             ConnectionsSettingsPage(viewModel: viewModel)
         case .twitch:
@@ -316,6 +319,7 @@ private struct SettingsContent: View {
     private var subtitle: String {
         switch viewModel.selectedSettingsPage {
         case .account: return "Membership, profile, and current NVIDIA session details."
+        case .interface: return "Choose the desktop catalog or controller-first TV interface."
         case .connections: return "Manage store accounts used for library sync and ownership detection."
         case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
@@ -690,6 +694,115 @@ private struct SettingsStatisticTile: View {
         .frame(width: emphasized ? 206 : 164, height: 78, alignment: .leading)
         .background(Color.white.opacity(emphasized ? 0.075 : 0.052))
         .overlay { Rectangle().stroke(emphasized ? Color.openNowGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1) }
+    }
+}
+
+private struct InterfaceSettingsPage: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @StateObject private var inputRouter = ControllerInputRouter()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Mode") {
+                HStack(alignment: .center, spacing: 18) {
+                    Rectangle()
+                        .fill(controllerModeEnabled ? Color.openNowGreen : Color.white.opacity(0.18))
+                        .frame(width: 4, height: 58)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(controllerModeEnabled ? "Controller mode is active" : "Desktop catalog mode is active")
+                            .font(.settingsNvidia(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Controller mode replaces the catalog with a TV-style interface built for gamepads, while keeping keyboard and pointer fallback available.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    SettingsStatusPill(title: "INPUT", value: inputRouter.glyphs.deviceName, positive: inputRouter.isControllerConnected)
+                }
+                SettingsDivider()
+                SettingsToggleRow(title: "Controller Mode", subtitle: "Use a clean Netflix-style catalog with large focus targets, controller shortcuts, and dynamic input glyphs.", isOn: controllerModeEnabled) { enabled in
+                    controllerModeEnabled = enabled
+                }
+            }
+
+            SettingsCard(title: "Controls") {
+                SettingsFlowLayout(spacing: 10) {
+                    InterfaceInputLegend(title: "Move", glyphs: [inputRouter.glyphs.left, inputRouter.glyphs.up, inputRouter.glyphs.down, inputRouter.glyphs.right])
+                    InterfaceInputLegend(title: "Select", glyphs: [inputRouter.glyphs.confirm])
+                    InterfaceInputLegend(title: "Back", glyphs: [inputRouter.glyphs.back])
+                    InterfaceInputLegend(title: "Search", glyphs: [inputRouter.glyphs.search])
+                    InterfaceInputLegend(title: "Actions", glyphs: [inputRouter.glyphs.actions])
+                    InterfaceInputLegend(title: "Rail", glyphs: [inputRouter.glyphs.pageLeft, inputRouter.glyphs.pageRight])
+                }
+                SettingsDivider()
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: inputRouter.isControllerConnected ? "gamecontroller.fill" : "keyboard")
+                        .font(.settingsNvidia(size: 18, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                        .frame(width: 34, height: 34)
+                        .background(Color.openNowGreen.opacity(0.12))
+                        .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.30), lineWidth: 1) }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(inputRouter.isControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
+                            .font(.settingsNvidia(size: 14, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.92))
+                        Text(inputRouter.isControllerConnected ? "Hints use symbols exposed by the connected game controller whenever the system provides them." : "Connect a controller to switch hints from keyboard keys to controller button glyphs automatically.")
+                            .font(.settingsNvidia(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+}
+
+private struct InterfaceInputLegend: View {
+    let title: String
+    let glyphs: [ControllerInputGlyph]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title.uppercased())
+                .font(.settingsNvidia(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.44))
+            HStack(spacing: 6) {
+                ForEach(Array(glyphs.enumerated()), id: \.offset) { _, glyph in
+                    InterfaceGlyphPill(glyph: glyph)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .frame(minWidth: 132, minHeight: 70, alignment: .leading)
+        .background(Color.white.opacity(0.045))
+        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+    }
+}
+
+private struct InterfaceGlyphPill: View {
+    let glyph: ControllerInputGlyph
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if !glyph.symbolName.isEmpty {
+                Image(systemName: glyph.symbolName)
+                    .font(.settingsNvidia(size: 13, weight: .bold))
+            }
+            Text(glyph.fallbackText)
+                .font(.settingsNvidia(size: 10, weight: .bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(Color.openNowGreen)
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .background(Color.openNowGreen.opacity(0.12))
+        .overlay { Rectangle().stroke(Color.openNowGreen.opacity(0.28), lineWidth: 1) }
+        .accessibilityLabel(glyph.accessibilityLabel)
     }
 }
 
