@@ -43,7 +43,8 @@ public final class OPNAuthService: @unchecked Sendable {
             configuration: .gfnPC,
             refreshPolicy: .gfnPC,
             retryPolicy: .gfnPC,
-            transport: StarfleetURLSessionTransport()
+            transport: StarfleetURLSessionTransport(),
+            telemetry: OPNStarfleetSentryTelemetry.shared
         )
         self.jarvisAuthService = jarvisService
         self.starfleetService = starfleetService
@@ -436,6 +437,7 @@ public final class OPNAuthService: @unchecked Sendable {
             do {
                 let session = Self.opnSession(from: try await self.starfleetService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId))
                 await self.jarvisAuthService.setSession(session)
+                self.saveSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)
                 DispatchQueue.main.async { completion(true, session, "") }
             } catch {

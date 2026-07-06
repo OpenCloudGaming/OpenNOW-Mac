@@ -620,14 +620,14 @@ public enum OPNStreamPreferences {
         storage.synchronize()
     }
 
-    public static func fetchCloudVariables(token: String, completion: @escaping @Sendable (OPNStreamCloudVariables) -> Void) {
+    public static func fetchCloudVariables(token: String, userId: String = "", idpId: String = "", completion: @escaping @Sendable (OPNStreamCloudVariables) -> Void) {
         let cached = loadCachedCloudVariables()
         let cachedAt = storage.double(forKey: k.cachedCloudVariablesTimestamp)
         if cached.fetched, cachedAt > 0, Date().timeIntervalSince1970 - cachedAt < Double(cached.refreshIntervalSeconds) {
             DispatchQueue.main.async { completion(cached) }
             return
         }
-        guard var request = cloudVariablesRequest(token: token, locale: currentCloudVariablesLocale()) else {
+        guard var request = cloudVariablesRequest(token: token, locale: currentCloudVariablesLocale(), userId: userId, idpId: idpId) else {
             DispatchQueue.main.async { completion(cached) }
             return
         }
@@ -649,15 +649,15 @@ public enum OPNStreamPreferences {
         }.resume()
     }
 
-    static func cloudVariablesRequest(token: String, locale: String) -> URLRequest? {
+    static func cloudVariablesRequest(token: String, locale: String, userId: String = "", idpId: String = "") -> URLRequest? {
         _ = token
         let configuration = GDNConfiguration(cloudVariablesURLString: "https://gx-target-experiments-frontend-api.gx.nvidia.com/cloudvariables/v3", userAgent: browserUserAgent())
-        guard var request = GDNRequestFactory.cloudVariablesRequest(queryItems: cloudVariablesQueryItems(locale: locale), configuration: configuration, timeoutInterval: 4) else { return nil }
+        guard var request = GDNRequestFactory.cloudVariablesRequest(queryItems: cloudVariablesQueryItems(locale: locale, userId: userId, idpId: idpId), configuration: configuration, timeoutInterval: 4) else { return nil }
         request.cachePolicy = .reloadIgnoringLocalCacheData
         return request
     }
 
-    private static func cloudVariablesQueryItems(locale: String) -> [URLQueryItem] {
+    private static func cloudVariablesQueryItems(locale: String, userId: String = "", idpId: String = "") -> [URLQueryItem] {
         let os = ProcessInfo.processInfo.operatingSystemVersion
         let language = locale.split(separator: "_").first.map(String.init) ?? "en"
         let clientParams = "{\"osName\":\"MACOS\",\"variant\":\"release\",\"userDefaultUILanguage\":\"\(language)\"}"
@@ -680,8 +680,8 @@ public enum OPNStreamPreferences {
                 "webRtcNetworkTestV2",
             ].joined(separator: ",")),
             URLQueryItem(name: "deviceId", value: OPNDeviceIdentity.stableCloudmatchDeviceId()),
-            URLQueryItem(name: "userId", value: "undefined"),
-            URLQueryItem(name: "idpId", value: "undefined"),
+            URLQueryItem(name: "userId", value: vendorIdentity(userId)),
+            URLQueryItem(name: "idpId", value: vendorIdentity(idpId)),
             URLQueryItem(name: "clientId", value: "78589530426925203"),
             URLQueryItem(name: "clientVer", value: nvClientVersion),
             URLQueryItem(name: "clientVariant", value: "Release"),
@@ -694,6 +694,11 @@ public enum OPNStreamPreferences {
             URLQueryItem(name: "browserType", value: "Chrome"),
             URLQueryItem(name: "clientParams", value: clientParams),
         ]
+    }
+
+    private static func vendorIdentity(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "undefined" : trimmed
     }
 
     private static func currentCloudVariablesLocale() -> String {
@@ -1083,13 +1088,17 @@ public enum OPNStreamPreferences {
     private static func mergeNetworkTest(_ networkTest: NetworkTestResult, into seed: OPNStreamNetworkPreflightResult, requestedMaxBitrateMbps: Int) -> OPNStreamNetworkPreflightResult {
         var result = seed
         if !networkTest.sessionId.isEmpty { result.networkTestSessionId = networkTest.sessionId }
-        if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = Double(networkTest.downlinkBandwidth) / 1_000.0 }
+        if networkTest.downlinkBandwidth > 0 { result.measuredBandwidthMbps = measuredBandwidthMbps(fromDownlinkBandwidth: networkTest.downlinkBandwidth) }
         if !networkTest.isCompleted, !networkTest.rawStatus.isEmpty {
             result.serverReportedWarning = true
             result.warningMessage = "Network test completed with status \(networkTest.rawStatus). Launch will continue."
         }
         result.recommendedMaxBitrateMbps = recommendedBitrate(requestedMaxBitrateMbps: requestedMaxBitrateMbps, latencyMs: result.latencyMs, measuredBandwidthMbps: result.measuredBandwidthMbps, packetLossPercent: result.packetLossPercent, jitterMs: result.jitterMs)
         return result
+    }
+
+    static func measuredBandwidthMbps(fromDownlinkBandwidth downlinkBandwidth: Int) -> Double {
+        Double(downlinkBandwidth) / 1_000_000.0
     }
 
     private static func measureRegions(_ regions: [OPNStreamRegionOption], token: String, completion: @escaping @Sendable ([OPNStreamRegionOption]) -> Void) {

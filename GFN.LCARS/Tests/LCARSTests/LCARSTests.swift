@@ -111,6 +111,15 @@ private actor SequencedLCARSTransport: LCARSHTTPTransport {
     #expect(LCARSRequestFactory.makeHuId(date: Date(timeIntervalSince1970: 1), uuid: uuid) == "100012345678")
 }
 
+@Test func lcarsMakesVendorAuthenticatedHuIdFromUserId() throws {
+    #expect(LCARSRequestFactory.makeHuId(userId: "user-123") == "d5ecfb11836d0806d18f2fd4c815d970bdc54ddc")
+    let request = try #require(LCARSRequestFactory.persistedQueryRequest(operationName: "panels/Library", queryHash: "hash", variables: ["locale": "en_US"], accessToken: "access", configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), userId: "user-123"))
+    let url = try #require(request.url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in item.value.map { (item.name, $0) } })
+    #expect(items["huId"] == "d5ecfb11836d0806d18f2fd4c815d970bdc54ddc")
+}
+
 @Test func lcarsServiceFetchesGraphQLRequestTypes() async throws {
     let service = LCARSService(configuration: LCARSConfiguration(baseURLString: "https://api.gfn.example"), transport: MockLCARSTransport { request in
         #expect(request.url?.absoluteString == "https://api.gfn.example/graphql?requestType=loginWallData")

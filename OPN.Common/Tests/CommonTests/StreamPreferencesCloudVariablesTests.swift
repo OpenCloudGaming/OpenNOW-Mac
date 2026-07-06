@@ -98,3 +98,19 @@ import Testing
     #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     #expect(request.value(forHTTPHeaderField: "Accept") == "application/json, text/plain, */*")
 }
+
+@Test func cloudVariablesRequestUsesAuthenticatedIdentityWhenAvailable() throws {
+    let request = try #require(OPNStreamPreferences.cloudVariablesRequest(token: "token", locale: "en_US", userId: "user-123", idpId: "idp-456"))
+    let url = try #require(request.url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+        item.value.map { (item.name, $0) }
+    })
+
+    #expect(queryItems["userId"] == "user-123")
+    #expect(queryItems["idpId"] == "idp-456")
+}
+
+@Test func networkTestDownlinkBandwidthUsesVendorBitsPerSecondUnits() {
+    #expect(OPNStreamPreferences.measuredBandwidthMbps(fromDownlinkBandwidth: 75_000_000) == 75.0)
+}

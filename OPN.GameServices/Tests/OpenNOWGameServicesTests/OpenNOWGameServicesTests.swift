@@ -156,7 +156,8 @@ private actor AsyncTestLock {
     #expect(result.1 == "This game does not include a launchable GeForce NOW app id.")
 }
 
-@Test @MainActor func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
+@Test func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
+    try await sessionManagerTestLock.withLock {
     let host = "*"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "GET")
@@ -172,14 +173,15 @@ private actor AsyncTestLock {
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-    let game = OPNCatalogGameObject()
-    game.launchAppId = "123"
-    game.title = "Regression Game"
-    game.isInLibrary = true
-
     let result: (Bool, String, OPNGameLaunchPlan?) = await withCheckedContinuation { continuation in
-        OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", variantIndex: -1) { success, message, plan in
-            continuation.resume(returning: (success, message, plan))
+        Task { @MainActor in
+            let game = OPNCatalogGameObject()
+            game.launchAppId = "123"
+            game.title = "Regression Game"
+            game.isInLibrary = true
+            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1) { success, message, plan in
+                continuation.resume(returning: (success, message, plan))
+            }
         }
     }
 
@@ -191,8 +193,11 @@ private actor AsyncTestLock {
     if case let .ready(configuration) = plan {
         #expect(configuration.apiToken == "id-token")
         #expect(configuration.appId == "123")
+        #expect(configuration.metadata["userId"] == "user")
+        #expect(configuration.metadata["idpId"] == "idp")
     } else {
         Issue.record("Expected a ready launch plan")
+    }
     }
 }
 

@@ -590,6 +590,7 @@ final class CatalogViewModel: ObservableObject {
             accessToken: session.accessToken,
             idToken: session.idToken,
             userId: userId,
+            idpId: session.idpId.isEmpty ? account.providerIdpId : session.idpId,
             variantIndex: pendingLaunchVariantIndex
         ) { [weak self] success, message, plan in
             guard let self else { return }

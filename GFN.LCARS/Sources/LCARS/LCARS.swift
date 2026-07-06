@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import OpenNOWTelemetry
 
 public enum LCARS: Sendable {
@@ -201,13 +202,14 @@ public struct LCARSRequestOptions: Equatable, Sendable {
 }
 
 public enum LCARSRequestFactory {
-    public static func persistedQueryRequest(operationName: String, queryHash: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), options: LCARSRequestOptions = .standard, huId: String = makeHuId(), timeoutInterval: TimeInterval = 20) -> URLRequest? {
+    public static func persistedQueryRequest(operationName: String, queryHash: String, variables: Any? = nil, accessToken: String = "", configuration: LCARSConfiguration = LCARSConfiguration(), options: LCARSRequestOptions = .standard, huId: String = "", userId: String = "", timeoutInterval: TimeInterval = 20) -> URLRequest? {
+        let resolvedHuId = huId.isEmpty ? makeHuId(userId: userId) : huId
         let extensions: [String: Any] = ["persistedQuery": ["sha256Hash": queryHash]]
         var queryItems = [
             URLQueryItem(name: "requestType", value: operationName),
             URLQueryItem(name: "extensions", value: jsonString(extensions) ?? "{}"),
         ]
-        if !huId.isEmpty { queryItems.append(URLQueryItem(name: "huId", value: huId)) }
+        if !resolvedHuId.isEmpty { queryItems.append(URLQueryItem(name: "huId", value: resolvedHuId)) }
         queryItems.append(URLQueryItem(name: "variables", value: jsonString(variables) ?? "{}"))
         var components = URLComponents(string: options.useCDN && accessToken.isEmpty ? configuration.cdnGraphQLURLString : configuration.graphQLURLString)
         components?.queryItems = queryItems
@@ -271,6 +273,12 @@ public enum LCARSRequestFactory {
 
     public static func makeHuId(date: Date = Date(), uuid: UUID = UUID()) -> String {
         "\(Int(date.timeIntervalSince1970 * 1000))\(uuid.uuidString.replacingOccurrences(of: "-", with: "").prefix(8))"
+    }
+
+    public static func makeHuId(userId: String) -> String {
+        let trimmed = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return makeHuId() }
+        return Insecure.SHA1.hash(data: Data(trimmed.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func jsonString(_ value: Any?) -> String? {
@@ -339,8 +347,8 @@ public struct LCARSService<Transport: LCARSHTTPTransport>: Sendable {
         return try await performJSONRequest(request)
     }
 
-    public func fetchPersistedQuery(operationName: String, queryHash: String, query: String = "", variables: Any? = nil, accessToken: String = "", options: LCARSRequestOptions = .standard) async throws -> [String: Any] {
-        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: configuration, options: options) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
+    public func fetchPersistedQuery(operationName: String, queryHash: String, query: String = "", variables: Any? = nil, accessToken: String = "", userId: String = "", options: LCARSRequestOptions = .standard) async throws -> [String: Any] {
+        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: configuration, options: options, userId: userId) else { throw LCARSServiceError.invalidGraphQLURL(.panels) }
         let (data, response) = try await transport.send(request)
         if response.statusCode == 400 {
             guard !query.isEmpty else { throw LCARSServiceError.missingFallbackQuery }

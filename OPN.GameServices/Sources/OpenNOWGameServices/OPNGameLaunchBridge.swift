@@ -61,7 +61,7 @@ public final class OPNGameLaunchBridge {
 
     private init() {}
 
-    public func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, variantIndex: Int, completion: @escaping OPNGameLaunchPlanCompletion) {
+    public func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, idpId: String = "", variantIndex: Int, completion: @escaping OPNGameLaunchPlanCompletion) {
         let token = idToken.isEmpty ? accessToken : idToken
         guard !token.isEmpty else {
             completion(false, "Sign in again before launching a game.", nil)
@@ -83,12 +83,12 @@ public final class OPNGameLaunchBridge {
                 guard let self else { return }
                 let game = gameBox.value
                 let selectedVariant = selectedVariantIndex >= 0 && selectedVariantIndex < game.variants.count ? game.variants[selectedVariantIndex] : nil
-                self.prepareResolvedLaunchPlan(game: game, selectedVariant: selectedVariant, appId: appId, token: token, completion: completion)
+                self.prepareResolvedLaunchPlan(game: game, selectedVariant: selectedVariant, appId: appId, token: token, userId: userId, idpId: idpId, completion: completion)
             }
         }
     }
 
-    private func prepareResolvedLaunchPlan(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, appId: String, token: String, completion: @escaping OPNGameLaunchPlanCompletion) {
+    private func prepareResolvedLaunchPlan(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, appId: String, token: String, userId: String, idpId: String, completion: @escaping OPNGameLaunchPlanCompletion) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             completion(false, "This game does not include a launchable GeForce NOW app id.", nil)
             return
@@ -97,7 +97,7 @@ public final class OPNGameLaunchBridge {
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
         let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
         let selectedStore = selectedVariant?.appStore ?? ""
-        let launchMetadata = Self.launchMetadata(for: game)
+        let launchMetadata = Self.launchMetadata(for: game, userId: userId, idpId: idpId)
         let replacement = OPNStreamLaunchConfiguration(
             title: title,
             appId: appId,
@@ -183,7 +183,7 @@ public final class OPNGameLaunchBridge {
         return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
     }
 
-    private static func launchMetadata(for game: OPNCatalogGameObject) -> [String: String] {
+    private static func launchMetadata(for game: OPNCatalogGameObject, userId: String = "", idpId: String = "") -> [String: String] {
         var imageUrls: [String] = []
         var seen = Set<String>()
 
@@ -207,7 +207,10 @@ public final class OPNGameLaunchBridge {
         append(game.heroImageUrl)
         append(game.imageUrl)
 
-        guard !imageUrls.isEmpty else { return [:] }
-        return ["loadingScreenshotUrls": imageUrls.joined(separator: "\n")]
+        var metadata: [String: String] = [:]
+        if !userId.isEmpty { metadata["userId"] = userId }
+        if !idpId.isEmpty { metadata["idpId"] = idpId }
+        if !imageUrls.isEmpty { metadata["loadingScreenshotUrls"] = imageUrls.joined(separator: "\n") }
+        return metadata
     }
 }

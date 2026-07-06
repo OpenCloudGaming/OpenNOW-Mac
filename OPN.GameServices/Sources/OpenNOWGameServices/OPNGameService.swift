@@ -292,7 +292,7 @@ final class OPNGameService: @unchecked Sendable {
                     self.dispatchCatalog(completion, true, self.deduplicateGames(enriched), "")
                 }
             }
-            self.postGraphQL(operationName: "panels/Library", queryHash: Self.panelsHash, variables: variables, completion: flatten)
+            self.postGraphQL(operationName: "panels/Library", queryHash: Self.panelsHash, variables: variables, authenticatedHuId: true, completion: flatten)
         }
     }
 
@@ -315,7 +315,7 @@ final class OPNGameService: @unchecked Sendable {
                     self.dispatchCatalog(completion, true, self.deduplicateGames(enriched), "")
                 }
             }
-            self.postGraphQL(operationName: "panels/Favorites", queryHash: Self.favoritesPanelHash, variables: variables, completion: flatten)
+            self.postGraphQL(operationName: "panels/Favorites", queryHash: Self.favoritesPanelHash, variables: variables, authenticatedHuId: true, completion: flatten)
         }
     }
 
@@ -673,8 +673,9 @@ final class OPNGameService: @unchecked Sendable {
         }
     }
 
-    private func postGraphQL(operationName: String, queryHash: String, variables: NSDictionary?, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
-        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: LCARSConfiguration(baseURLString: graphqlURL)) else {
+    private func postGraphQL(operationName: String, queryHash: String, variables: NSDictionary?, authenticatedHuId: Bool = false, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
+        let huIdUserId = authenticatedHuId ? userId : ""
+        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: LCARSConfiguration(baseURLString: graphqlURL), userId: huIdUserId) else {
             dispatchGraphQL(completion, nil, "Invalid URL")
             return
         }

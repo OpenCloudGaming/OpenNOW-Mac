@@ -200,7 +200,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
     private func prepareLaunch(configuration: StreamLaunchConfiguration) async -> PreparedStreamLaunch {
         let baseSettings = makeSettings(configuration: configuration)
-        let cloudVariables = await fetchCloudVariables(token: configuration.accessToken)
+        let cloudVariables = await fetchCloudVariables(configuration: configuration)
         var settings = settingsByApplyingCloudVariables(baseSettings, variables: cloudVariables)
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"])
         let preflight = await runNetworkPreflight(token: configuration.accessToken, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
@@ -221,9 +221,9 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         return PreparedStreamLaunch(settings: settings, streamingBaseUrl: streamingBaseUrl)
     }
 
-    private func fetchCloudVariables(token: String) async -> OPNStreamCloudVariables {
+    private func fetchCloudVariables(configuration: StreamLaunchConfiguration) async -> OPNStreamCloudVariables {
         await withCheckedContinuation { continuation in
-            OPNStreamPreferences.fetchCloudVariables(token: token) { variables in
+            OPNStreamPreferences.fetchCloudVariables(token: configuration.accessToken, userId: configuration.metadata["userId"] ?? "", idpId: configuration.metadata["idpId"] ?? "") { variables in
                 continuation.resume(returning: variables)
             }
         }
