@@ -924,6 +924,49 @@ private enum ControllerActionMenuItem {
     }
 }
 
+@MainActor
+private final class ControllerCatalogViewModel: ObservableObject {
+    @Published var focusArea = ControllerCatalogFocusArea.navigation
+    @Published var selectedNavigationIndex = 0
+    @Published var selectedRailIndex = 0
+    @Published var selectedGameIndices: [String: Int] = [:]
+    @Published var isActionMenuVisible = false
+    @Published var actionMenuIndex = 0
+    @Published var isSearchVisible = false
+    @Published var searchRowIndex = 0
+    @Published var searchFilterOptionIndices: [String: Int] = [:]
+    @Published var searchResultIndex = 0
+    @Published var searchResultColumnCount = 4
+    @Published var isDetailVisible = false
+    @Published var detailActionIndex = 0
+    @Published var showAllSection: CatalogSectionModel?
+    @Published var showAllIndex = 0
+    @Published var showAllColumnCount = 4
+
+    let navigationItems = ControllerNavigationItem.allCases
+
+    var hasControllerOverlay: Bool {
+        isActionMenuVisible || isSearchVisible || isDetailVisible || showAllSection != nil
+    }
+
+    func selectedGameIndex(for section: CatalogSectionModel, gameCount: Int) -> Int {
+        guard gameCount > 0 else { return 0 }
+        return min(max(selectedGameIndices[section.id] ?? 0, 0), gameCount - 1)
+    }
+
+    func setSelectedGameIndex(_ index: Int, for section: CatalogSectionModel, gameCount: Int) {
+        guard gameCount > 0 else {
+            selectedGameIndices[section.id] = 0
+            return
+        }
+        selectedGameIndices[section.id] = min(max(index, 0), gameCount - 1)
+    }
+
+    func clampRailSelection(sectionCount: Int) {
+        selectedRailIndex = min(max(selectedRailIndex, 0), max(sectionCount - 1, 0))
+    }
+}
+
 private struct ControllerCatalogShell: View {
     @ObservedObject var viewModel: CatalogViewModel
     let accounts: [LoginAccount]
@@ -932,27 +975,12 @@ private struct ControllerCatalogShell: View {
     let onForget: (LoginAccount) -> Void
 
     @StateObject private var inputRouter = ControllerInputRouter()
-    @State private var focusArea = ControllerCatalogFocusArea.navigation
-    @State private var selectedNavigationIndex = 0
-    @State private var selectedRailIndex = 0
-    @State private var selectedGameIndices: [String: Int] = [:]
-    @State private var isActionMenuVisible = false
-    @State private var actionMenuIndex = 0
-    @State private var isSearchVisible = false
-    @State private var searchRowIndex = 0
-    @State private var searchFilterOptionIndices: [String: Int] = [:]
-    @State private var searchResultIndex = 0
-    @State private var searchResultColumnCount = 4
-    @State private var isDetailVisible = false
-    @State private var detailActionIndex = 0
-    @State private var showAllSection: CatalogSectionModel?
-    @State private var showAllIndex = 0
-    @State private var showAllColumnCount = 4
+    @StateObject private var controllerViewModel = ControllerCatalogViewModel()
 
-    private var navigationItems: [ControllerNavigationItem] { ControllerNavigationItem.allCases }
+    private var navigationItems: [ControllerNavigationItem] { controllerViewModel.navigationItems }
 
     var body: some View {
-        GeometryReader { _ in
+        GeometryReader { proxy in
             ZStack {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
@@ -960,25 +988,25 @@ private struct ControllerCatalogShell: View {
                     ControllerHeader(viewModel: viewModel, glyphs: inputRouter.glyphs)
                     ControllerNavigationBar(
                         items: navigationItems,
-                        selectedIndex: selectedNavigationIndex,
-                        isFocused: focusArea == .navigation && !hasModalOverlay,
+                        selectedIndex: controllerViewModel.selectedNavigationIndex,
+                        isFocused: controllerViewModel.focusArea == .navigation && !hasModalOverlay,
                         activeItem: activeNavigationItem,
                         select: selectNavigationItem
                     )
                     controllerPage
                     ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
 
-                if isSearchVisible {
+                if controllerViewModel.isSearchVisible {
                     ControllerSearchOverlay(
                         viewModel: viewModel,
                         glyphs: inputRouter.glyphs,
-                        rowIndex: searchRowIndex,
-                        filterOptionIndices: searchFilterOptionIndices,
-                        resultIndex: searchResultIndex,
-                        resultColumnCount: $searchResultColumnCount,
+                        rowIndex: controllerViewModel.searchRowIndex,
+                        filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
+                        resultIndex: controllerViewModel.searchResultIndex,
+                        resultColumnCount: $controllerViewModel.searchResultColumnCount,
                         selectSort: { index in setSort(at: index) },
                         selectFilter: { group, index in setFilterOption(group: group, index: index) },
                         selectResult: { game in openDetails(game, sectionId: "catalog-results") },
@@ -989,11 +1017,11 @@ private struct ControllerCatalogShell: View {
                     .zIndex(30)
                 }
 
-                if isDetailVisible, let game = viewModel.selectedGame {
+                if controllerViewModel.isDetailVisible, let game = viewModel.selectedGame {
                     ControllerGameDetailOverlay(
                         viewModel: viewModel,
                         game: game,
-                        selectedActionIndex: detailActionIndex,
+                        selectedActionIndex: controllerViewModel.detailActionIndex,
                         actions: detailActions(for: game),
                         glyphs: inputRouter.glyphs,
                         perform: executeDetailAction,
@@ -1003,12 +1031,12 @@ private struct ControllerCatalogShell: View {
                     .zIndex(28)
                 }
 
-                if let showAllSection {
+                if let showAllSection = controllerViewModel.showAllSection {
                     ControllerShowAllOverlay(
                         viewModel: viewModel,
                         section: showAllSection,
-                        selectedIndex: showAllIndex,
-                        columnCount: $showAllColumnCount,
+                        selectedIndex: controllerViewModel.showAllIndex,
+                        columnCount: $controllerViewModel.showAllColumnCount,
                         glyphs: inputRouter.glyphs,
                         select: { game in openDetails(game, sectionId: showAllSection.id) },
                         close: closeShowAll
@@ -1017,10 +1045,10 @@ private struct ControllerCatalogShell: View {
                     .zIndex(26)
                 }
 
-                if isActionMenuVisible {
+                if controllerViewModel.isActionMenuVisible {
                     ControllerActionMenuOverlay(
                         items: actionMenuItems,
-                        selectedIndex: actionMenuIndex,
+                        selectedIndex: controllerViewModel.actionMenuIndex,
                         glyphs: inputRouter.glyphs,
                         perform: executeActionMenuItem,
                         close: closeActionMenu
@@ -1039,7 +1067,9 @@ private struct ControllerCatalogShell: View {
         .onChange(of: viewModel.selectedMainPage) { _, _ in synchronizeNavigationSelection() }
         .onChange(of: viewModel.selectedCatalogDestination) { _, _ in synchronizeNavigationSelection() }
         .onChange(of: viewModel.catalogSections.map(\.id)) { _, _ in clampRailSelection() }
-        .onChange(of: viewModel.catalogGames.map(\.catalogIdentity)) { _, _ in searchResultIndex = min(searchResultIndex, max(viewModel.catalogGames.count - 1, 0)) }
+        .onChange(of: viewModel.catalogGames.map(\.catalogIdentity)) { _, _ in
+            controllerViewModel.searchResultIndex = min(controllerViewModel.searchResultIndex, max(viewModel.catalogGames.count - 1, 0))
+        }
     }
 
     @ViewBuilder private var controllerPage: some View {
@@ -1047,9 +1077,9 @@ private struct ControllerCatalogShell: View {
         case .games:
             ControllerGamesPage(
                 viewModel: viewModel,
-                focusArea: focusArea,
-                selectedRailIndex: selectedRailIndex,
-                selectedGameIndices: $selectedGameIndices,
+                focusArea: controllerViewModel.focusArea,
+                selectedRailIndex: controllerViewModel.selectedRailIndex,
+                selectedGameIndices: $controllerViewModel.selectedGameIndices,
                 openDetails: openDetails,
                 showAll: openShowAll
             )
@@ -1065,7 +1095,7 @@ private struct ControllerCatalogShell: View {
     }
 
     private var hasModalOverlay: Bool {
-        isActionMenuVisible || isSearchVisible || isDetailVisible || showAllSection != nil || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
+        controllerViewModel.hasControllerOverlay || viewModel.isLaunchFlowVisible || viewModel.isStorePickerVisible
     }
 
     private var activeNavigationItem: ControllerNavigationItem {
@@ -1079,10 +1109,10 @@ private struct ControllerCatalogShell: View {
     }
 
     private var focusedHeroGame: OPNCatalogGameObject? {
-        if isDetailVisible, let selectedGame = viewModel.selectedGame { return selectedGame }
+        if controllerViewModel.isDetailVisible, let selectedGame = viewModel.selectedGame { return selectedGame }
         let sections = viewModel.catalogSections
-        if sections.indices.contains(selectedRailIndex) {
-            let section = sections[selectedRailIndex]
+        if sections.indices.contains(controllerViewModel.selectedRailIndex) {
+            let section = sections[controllerViewModel.selectedRailIndex]
             let games = section.visibleGames(expanded: false)
             if let firstGame = games.first { return firstGame }
         }
@@ -1090,11 +1120,11 @@ private struct ControllerCatalogShell: View {
     }
 
     private var hints: [ControllerHint] {
-        if isActionMenuVisible { return [.move, .select, .back] }
-        if isSearchVisible { return [.move, .select, .back, .clear] }
-        if isDetailVisible { return [.move, .select, .back, .search] }
-        if showAllSection != nil { return [.move, .select, .back] }
-        if focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
+        if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
+        if controllerViewModel.isSearchVisible { return [.move, .select, .back, .clear] }
+        if controllerViewModel.isDetailVisible { return [.move, .select, .back, .search] }
+        if controllerViewModel.showAllSection != nil { return [.move, .select, .back] }
+        if controllerViewModel.focusArea == .content { return [.move, .select, .back, .search, .showAll, .menu] }
         return [.move, .select, .back, .search, .menu]
     }
 
@@ -1112,10 +1142,10 @@ private struct ControllerCatalogShell: View {
 
     private func handleInput(_ command: ControllerInputCommand) {
         if handleSharedOverlayInput(command) { return }
-        if isActionMenuVisible { handleActionMenuInput(command); return }
-        if isSearchVisible { handleSearchInput(command); return }
-        if showAllSection != nil { handleShowAllInput(command); return }
-        if isDetailVisible { handleDetailInput(command); return }
+        if controllerViewModel.isActionMenuVisible { handleActionMenuInput(command); return }
+        if controllerViewModel.isSearchVisible { handleSearchInput(command); return }
+        if controllerViewModel.showAllSection != nil { handleShowAllInput(command); return }
+        if controllerViewModel.isDetailVisible { handleDetailInput(command); return }
         handlePageInput(command)
     }
 
@@ -1164,12 +1194,12 @@ private struct ControllerCatalogShell: View {
         case .back:
             if viewModel.selectedMainPage != .games || viewModel.selectedCatalogDestination != .home {
                 viewModel.showCatalogDestination(.home)
-                focusArea = .content
+                controllerViewModel.focusArea = .content
             }
         case .search:
             openSearchOverlay()
         case .actions:
-            if focusArea == .content, let section = currentSection {
+            if controllerViewModel.focusArea == .content, let section = currentSection {
                 openShowAll(section)
             } else {
                 openActionMenu()
@@ -1186,11 +1216,11 @@ private struct ControllerCatalogShell: View {
     private func handleActionMenuInput(_ command: ControllerInputCommand) {
         let items = actionMenuItems
         switch command {
-        case .move(.up): actionMenuIndex = max(actionMenuIndex - 1, 0)
-        case .move(.down): actionMenuIndex = min(actionMenuIndex + 1, max(items.count - 1, 0))
+        case .move(.up): controllerViewModel.actionMenuIndex = max(controllerViewModel.actionMenuIndex - 1, 0)
+        case .move(.down): controllerViewModel.actionMenuIndex = min(controllerViewModel.actionMenuIndex + 1, max(items.count - 1, 0))
         case .confirm:
-            guard items.indices.contains(actionMenuIndex) else { return }
-            executeActionMenuItem(items[actionMenuIndex])
+            guard items.indices.contains(controllerViewModel.actionMenuIndex) else { return }
+            executeActionMenuItem(items[controllerViewModel.actionMenuIndex])
         case .back, .menu, .actions: closeActionMenu()
         default: break
         }
@@ -1198,8 +1228,8 @@ private struct ControllerCatalogShell: View {
 
     private func handleSearchInput(_ command: ControllerInputCommand) {
         switch command {
-        case .move(.up): searchRowIndex = max(searchRowIndex - 1, 0)
-        case .move(.down): searchRowIndex = min(searchRowIndex + 1, max(searchRowCount - 1, 0))
+        case .move(.up): controllerViewModel.searchRowIndex = max(controllerViewModel.searchRowIndex - 1, 0)
+        case .move(.down): controllerViewModel.searchRowIndex = min(controllerViewModel.searchRowIndex + 1, max(searchRowCount - 1, 0))
         case .move(.left): moveSearchSelection(delta: -1)
         case .move(.right): moveSearchSelection(delta: 1)
         case .confirm: confirmSearchSelection()
@@ -1210,15 +1240,15 @@ private struct ControllerCatalogShell: View {
     }
 
     private func handleShowAllInput(_ command: ControllerInputCommand) {
-        guard let section = showAllSection else { return }
+        guard let section = controllerViewModel.showAllSection else { return }
         switch command {
-        case .move(.left): showAllIndex = max(showAllIndex - 1, 0)
-        case .move(.right): showAllIndex = min(showAllIndex + 1, max(section.games.count - 1, 0))
-        case .move(.up): showAllIndex = max(showAllIndex - showAllColumnCount, 0)
-        case .move(.down): showAllIndex = min(showAllIndex + showAllColumnCount, max(section.games.count - 1, 0))
+        case .move(.left): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - 1, 0)
+        case .move(.right): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + 1, max(section.games.count - 1, 0))
+        case .move(.up): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - controllerViewModel.showAllColumnCount, 0)
+        case .move(.down): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + controllerViewModel.showAllColumnCount, max(section.games.count - 1, 0))
         case .confirm:
-            guard section.games.indices.contains(showAllIndex) else { return }
-            openDetails(section.games[showAllIndex], sectionId: section.id)
+            guard section.games.indices.contains(controllerViewModel.showAllIndex) else { return }
+            openDetails(section.games[controllerViewModel.showAllIndex], sectionId: section.id)
         case .back, .actions, .menu: closeShowAll()
         case .search: openSearchOverlay()
         default: break
@@ -1229,11 +1259,11 @@ private struct ControllerCatalogShell: View {
         guard let game = viewModel.selectedGame else { return }
         let actions = detailActions(for: game)
         switch command {
-        case .move(.left), .move(.up): detailActionIndex = max(detailActionIndex - 1, 0)
-        case .move(.right), .move(.down): detailActionIndex = min(detailActionIndex + 1, max(actions.count - 1, 0))
+        case .move(.left), .move(.up): controllerViewModel.detailActionIndex = max(controllerViewModel.detailActionIndex - 1, 0)
+        case .move(.right), .move(.down): controllerViewModel.detailActionIndex = min(controllerViewModel.detailActionIndex + 1, max(actions.count - 1, 0))
         case .confirm:
-            guard actions.indices.contains(detailActionIndex) else { return }
-            executeDetailAction(actions[detailActionIndex])
+            guard actions.indices.contains(controllerViewModel.detailActionIndex) else { return }
+            executeDetailAction(actions[controllerViewModel.detailActionIndex])
         case .back: closeDetails()
         case .search: openSearchOverlay()
         case .actions, .menu: openActionMenu()
@@ -1242,12 +1272,12 @@ private struct ControllerCatalogShell: View {
     }
 
     private func moveFocus(_ direction: ControllerInputDirection) {
-        switch focusArea {
+        switch controllerViewModel.focusArea {
         case .navigation:
             switch direction {
-            case .left: selectedNavigationIndex = max(selectedNavigationIndex - 1, 0)
-            case .right: selectedNavigationIndex = min(selectedNavigationIndex + 1, max(navigationItems.count - 1, 0))
-            case .down: focusArea = .content
+            case .left: controllerViewModel.selectedNavigationIndex = max(controllerViewModel.selectedNavigationIndex - 1, 0)
+            case .right: controllerViewModel.selectedNavigationIndex = min(controllerViewModel.selectedNavigationIndex + 1, max(navigationItems.count - 1, 0))
+            case .down: controllerViewModel.focusArea = .content
             case .up: break
             }
         case .content:
@@ -1255,16 +1285,16 @@ private struct ControllerCatalogShell: View {
             case .left: moveGame(delta: -1)
             case .right: moveGame(delta: 1)
             case .up:
-                if selectedRailIndex == 0 { focusArea = .navigation } else { moveRail(delta: -1) }
+                if controllerViewModel.selectedRailIndex == 0 { controllerViewModel.focusArea = .navigation } else { moveRail(delta: -1) }
             case .down: moveRail(delta: 1)
             }
         }
     }
 
     private func confirmFocusedItem() {
-        if focusArea == .navigation {
-            guard navigationItems.indices.contains(selectedNavigationIndex) else { return }
-            selectNavigationItem(navigationItems[selectedNavigationIndex])
+        if controllerViewModel.focusArea == .navigation {
+            guard navigationItems.indices.contains(controllerViewModel.selectedNavigationIndex) else { return }
+            selectNavigationItem(navigationItems[controllerViewModel.selectedNavigationIndex])
             return
         }
         guard let section = currentSection else { return }
@@ -1275,25 +1305,25 @@ private struct ControllerCatalogShell: View {
     }
 
     private func selectNavigationItem(_ item: ControllerNavigationItem) {
-        selectedNavigationIndex = navigationItems.firstIndex(of: item) ?? selectedNavigationIndex
+        controllerViewModel.selectedNavigationIndex = navigationItems.firstIndex(of: item) ?? controllerViewModel.selectedNavigationIndex
         switch item {
         case .home:
             viewModel.showCatalogDestination(.home)
-            focusArea = .content
+            controllerViewModel.focusArea = .content
         case .library:
             viewModel.showCatalogDestination(.library)
-            focusArea = .content
+            controllerViewModel.focusArea = .content
         case .favorites:
             viewModel.showCatalogDestination(.favorites)
-            focusArea = .content
+            controllerViewModel.focusArea = .content
         case .search:
             openSearchOverlay()
         case .recordings:
             viewModel.showRecordings()
-            focusArea = .navigation
+            controllerViewModel.focusArea = .navigation
         case .settings:
             viewModel.showSettings(.interface)
-            focusArea = .navigation
+            controllerViewModel.focusArea = .navigation
         case .actions:
             openActionMenu()
         }
@@ -1301,14 +1331,14 @@ private struct ControllerCatalogShell: View {
 
     private var currentSection: CatalogSectionModel? {
         let sections = viewModel.catalogSections
-        guard sections.indices.contains(selectedRailIndex) else { return nil }
-        return sections[selectedRailIndex]
+        guard sections.indices.contains(controllerViewModel.selectedRailIndex) else { return nil }
+        return sections[controllerViewModel.selectedRailIndex]
     }
 
     private func moveRail(delta: Int) {
         let sections = viewModel.catalogSections
         guard !sections.isEmpty else { return }
-        selectedRailIndex = min(max(selectedRailIndex + delta, 0), sections.count - 1)
+        controllerViewModel.selectedRailIndex = min(max(controllerViewModel.selectedRailIndex + delta, 0), sections.count - 1)
     }
 
     private func moveGame(delta: Int) {
@@ -1316,54 +1346,53 @@ private struct ControllerCatalogShell: View {
         let gameCount = section.visibleGames(expanded: false).count
         guard gameCount > 0 else { return }
         let index = clampedSelectedGameIndex(for: section, gameCount: gameCount)
-        selectedGameIndices[section.id] = min(max(index + delta, 0), gameCount - 1)
+        controllerViewModel.setSelectedGameIndex(index + delta, for: section, gameCount: gameCount)
     }
 
     private func clampedSelectedGameIndex(for section: CatalogSectionModel, gameCount: Int) -> Int {
-        guard gameCount > 0 else { return 0 }
-        return min(max(selectedGameIndices[section.id] ?? 0, 0), gameCount - 1)
+        controllerViewModel.selectedGameIndex(for: section, gameCount: gameCount)
     }
 
     private func openDetails(_ game: OPNCatalogGameObject, sectionId: String) {
         viewModel.selectGame(game, inSection: sectionId)
-        detailActionIndex = 0
-        isDetailVisible = true
-        isSearchVisible = false
-        showAllSection = nil
+        controllerViewModel.detailActionIndex = 0
+        controllerViewModel.isDetailVisible = true
+        controllerViewModel.isSearchVisible = false
+        controllerViewModel.showAllSection = nil
     }
 
     private func closeDetails() {
-        isDetailVisible = false
+        controllerViewModel.isDetailVisible = false
         viewModel.selectGame(nil)
     }
 
     private func openSearchOverlay() {
-        isSearchVisible = true
-        isActionMenuVisible = false
-        searchRowIndex = min(searchRowIndex, max(searchRowCount - 1, 0))
+        controllerViewModel.isSearchVisible = true
+        controllerViewModel.isActionMenuVisible = false
+        controllerViewModel.searchRowIndex = min(controllerViewModel.searchRowIndex, max(searchRowCount - 1, 0))
     }
 
     private func closeSearchOverlay() {
-        isSearchVisible = false
+        controllerViewModel.isSearchVisible = false
     }
 
     private func openActionMenu() {
-        actionMenuIndex = min(actionMenuIndex, max(actionMenuItems.count - 1, 0))
-        isActionMenuVisible = true
+        controllerViewModel.actionMenuIndex = min(controllerViewModel.actionMenuIndex, max(actionMenuItems.count - 1, 0))
+        controllerViewModel.isActionMenuVisible = true
     }
 
     private func closeActionMenu() {
-        isActionMenuVisible = false
+        controllerViewModel.isActionMenuVisible = false
     }
 
     private func openShowAll(_ section: CatalogSectionModel) {
-        showAllSection = section
-        showAllIndex = clampedSelectedGameIndex(for: section, gameCount: section.games.count)
+        controllerViewModel.showAllSection = section
+        controllerViewModel.showAllIndex = clampedSelectedGameIndex(for: section, gameCount: section.games.count)
     }
 
     private func closeShowAll() {
-        showAllSection = nil
-        showAllIndex = 0
+        controllerViewModel.showAllSection = nil
+        controllerViewModel.showAllIndex = 0
     }
 
     private func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
@@ -1412,7 +1441,7 @@ private struct ControllerCatalogShell: View {
     }
 
     private func moveSearchSelection(delta: Int) {
-        if searchRowIndex == 1 {
+        if controllerViewModel.searchRowIndex == 1 {
             let count = viewModel.sortOptions.count
             guard count > 0 else { return }
             let index = selectedSortIndex()
@@ -1421,38 +1450,38 @@ private struct ControllerCatalogShell: View {
         }
         let filterStart = 2
         let filterEnd = filterStart + viewModel.visibleFilterGroups.count
-        if searchRowIndex >= filterStart, searchRowIndex < filterEnd {
-            let group = viewModel.visibleFilterGroups[searchRowIndex - filterStart]
+        if controllerViewModel.searchRowIndex >= filterStart, controllerViewModel.searchRowIndex < filterEnd {
+            let group = viewModel.visibleFilterGroups[controllerViewModel.searchRowIndex - filterStart]
             guard !group.options.isEmpty else { return }
-            let index = min(max((searchFilterOptionIndices[group.id] ?? 0) + delta, 0), group.options.count - 1)
-            searchFilterOptionIndices[group.id] = index
+            let index = min(max((controllerViewModel.searchFilterOptionIndices[group.id] ?? 0) + delta, 0), group.options.count - 1)
+            controllerViewModel.searchFilterOptionIndices[group.id] = index
             return
         }
-        if searchRowIndex == filterEnd, !viewModel.catalogGames.isEmpty {
-            searchResultIndex = min(max(searchResultIndex + delta, 0), viewModel.catalogGames.count - 1)
+        if controllerViewModel.searchRowIndex == filterEnd, !viewModel.catalogGames.isEmpty {
+            controllerViewModel.searchResultIndex = min(max(controllerViewModel.searchResultIndex + delta, 0), viewModel.catalogGames.count - 1)
         }
     }
 
     private func confirmSearchSelection() {
-        if searchRowIndex == 0 {
+        if controllerViewModel.searchRowIndex == 0 {
             viewModel.browseCatalog()
             return
         }
-        if searchRowIndex == 1 {
+        if controllerViewModel.searchRowIndex == 1 {
             setSort(at: selectedSortIndex())
             return
         }
         let filterStart = 2
         let filterEnd = filterStart + viewModel.visibleFilterGroups.count
-        if searchRowIndex >= filterStart, searchRowIndex < filterEnd {
-            let group = viewModel.visibleFilterGroups[searchRowIndex - filterStart]
-            let index = searchFilterOptionIndices[group.id] ?? 0
+        if controllerViewModel.searchRowIndex >= filterStart, controllerViewModel.searchRowIndex < filterEnd {
+            let group = viewModel.visibleFilterGroups[controllerViewModel.searchRowIndex - filterStart]
+            let index = controllerViewModel.searchFilterOptionIndices[group.id] ?? 0
             guard group.options.indices.contains(index) else { return }
             viewModel.toggleFilter(group.options[index].id)
             return
         }
-        if searchRowIndex == filterEnd, viewModel.catalogGames.indices.contains(searchResultIndex) {
-            openDetails(viewModel.catalogGames[searchResultIndex], sectionId: "catalog-results")
+        if controllerViewModel.searchRowIndex == filterEnd, viewModel.catalogGames.indices.contains(controllerViewModel.searchResultIndex) {
+            openDetails(viewModel.catalogGames[controllerViewModel.searchResultIndex], sectionId: "catalog-results")
         }
     }
 
@@ -1467,7 +1496,7 @@ private struct ControllerCatalogShell: View {
 
     private func setFilterOption(group: OPNCatalogFilterGroupObject, index: Int) {
         guard group.options.indices.contains(index) else { return }
-        searchFilterOptionIndices[group.id] = index
+        controllerViewModel.searchFilterOptionIndices[group.id] = index
         viewModel.toggleFilter(group.options[index].id)
     }
 
@@ -1521,13 +1550,12 @@ private struct ControllerCatalogShell: View {
 
     private func synchronizeNavigationSelection() {
         let item = activeNavigationItem
-        selectedNavigationIndex = navigationItems.firstIndex(of: item) ?? 0
+        controllerViewModel.selectedNavigationIndex = navigationItems.firstIndex(of: item) ?? 0
         clampRailSelection()
     }
 
     private func clampRailSelection() {
-        let sections = viewModel.catalogSections
-        selectedRailIndex = min(selectedRailIndex, max(sections.count - 1, 0))
+        controllerViewModel.clampRailSelection(sectionCount: viewModel.catalogSections.count)
     }
 }
 
@@ -1802,18 +1830,11 @@ private struct ControllerGameRail: View {
     let openDetails: (OPNCatalogGameObject) -> Void
     let showAll: () -> Void
 
-    @State private var scrollAnchorIndex = 0
-
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
     private var canShowAll: Bool { section.games.count > games.count }
-    private var horizontalInset: CGFloat { 68 }
+    private var horizontalInset: CGFloat { 44 }
     private var itemSpacing: CGFloat { 18 }
-    private var verticalInset: CGFloat { compact ? 14 : 16 }
-    private var tileSize: CGSize {
-        let width = compact ? 278.0 : 300.0
-        return CGSize(width: width, height: floor(width * 9 / 16))
-    }
-    private var railHeight: CGFloat { tileSize.height + verticalInset * 2 }
+    private var preferredTileWidth: CGFloat { compact ? 278.0 : 300.0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
@@ -1835,72 +1856,57 @@ private struct ControllerGameRail: View {
             .padding(.horizontal, 44)
 
             GeometryReader { geometry in
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: itemSpacing) {
-                            ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, game in
-                                ControllerGameTile(
-                                    game: game,
-                                    imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
-                                    isFocused: isFocused && selectedIndex == index,
-                                    isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                                    tileSize: tileSize,
-                                    action: { openDetails(game) }
-                                )
-                                .id(game.catalogIdentity)
-                            }
-                        }
-                        .padding(.horizontal, horizontalInset)
-                        .padding(.vertical, verticalInset)
-                    }
-                    .frame(width: geometry.size.width, height: railHeight)
-                    .onAppear { scrollFocusedGameIntoView(proxy: proxy, viewportWidth: geometry.size.width, animated: false) }
-                    .onChange(of: selectedIndex) { _, _ in
-                        scrollFocusedGameIntoView(proxy: proxy, viewportWidth: geometry.size.width, animated: true)
-                    }
-                    .onChange(of: isFocused) { _, focused in
-                        guard focused else { return }
-                        scrollFocusedGameIntoView(proxy: proxy, viewportWidth: geometry.size.width, animated: true)
-                    }
-                    .onChange(of: geometry.size.width) { _, width in
-                        scrollFocusedGameIntoView(proxy: proxy, viewportWidth: width, animated: false)
+                let metrics = layoutMetrics(width: geometry.size.width)
+                HStack(spacing: itemSpacing) {
+                    ForEach(visibleGames(metrics: metrics), id: \.game.catalogIdentity) { item in
+                        ControllerGameTile(
+                            game: item.game,
+                            imageURL: viewModel.optimizedImageURL(item.game.bestWideImageURL, width: 720),
+                            isFocused: isFocused && selectedIndex == item.index,
+                            isQueuedForPatching: viewModel.isQueuedForPatching(item.game),
+                            tileSize: metrics.tileSize,
+                            action: { openDetails(item.game) }
+                        )
                     }
                 }
+                .padding(.horizontal, horizontalInset)
+                .frame(width: geometry.size.width, height: metrics.rowHeight, alignment: .leading)
+                .clipped()
             }
-            .frame(height: railHeight)
+            .frame(height: estimatedRailHeight)
         }
         .onChange(of: games.count) { _, count in
             selectedIndex = min(selectedIndex, max(count - 1, 0))
-            scrollAnchorIndex = min(scrollAnchorIndex, max(count - 1, 0))
         }
     }
 
-    private func scrollFocusedGameIntoView(proxy: ScrollViewProxy, viewportWidth: CGFloat, animated: Bool) {
-        let targetIndex = targetScrollAnchorIndex(viewportWidth: viewportWidth)
-        guard games.indices.contains(targetIndex) else { return }
-        guard targetIndex != scrollAnchorIndex || !animated else { return }
-        scrollAnchorIndex = targetIndex
-        let scroll = { proxy.scrollTo(games[targetIndex].catalogIdentity, anchor: .leading) }
-        if animated {
-            withAnimation(.easeOut(duration: 0.16), scroll)
-        } else {
-            scroll()
-        }
+    private var estimatedRailHeight: CGFloat {
+        compact ? 204 : 224
     }
 
-    private func targetScrollAnchorIndex(viewportWidth: CGFloat) -> Int {
-        guard !games.isEmpty else { return 0 }
+    private func layoutMetrics(width: CGFloat) -> ControllerRailLayoutMetrics {
+        let contentWidth = max(width - horizontalInset * 2, 1)
+        let count = min(max(1, Int((contentWidth + itemSpacing) / (preferredTileWidth + itemSpacing))), max(games.count, 1))
+        let totalSpacing = CGFloat(max(count - 1, 0)) * itemSpacing
+        let tileWidth = floor(max((contentWidth - totalSpacing) / CGFloat(count), 1))
+        let tileHeight = floor(tileWidth * 9 / 16)
+        return ControllerRailLayoutMetrics(visibleCount: count, tileSize: CGSize(width: tileWidth, height: tileHeight), rowHeight: tileHeight + 4)
+    }
+
+    private func visibleGames(metrics: ControllerRailLayoutMetrics) -> [(index: Int, game: OPNCatalogGameObject)] {
+        guard !games.isEmpty else { return [] }
         let selected = min(max(selectedIndex, 0), games.count - 1)
-        let visibleCount = visibleTileCount(viewportWidth: viewportWidth)
-        let maxAnchorIndex = max(games.count - visibleCount, 0)
-        if selected <= 1 { return 0 }
-        return min(max(selected - visibleCount + 2, 0), maxAnchorIndex)
+        let maxStart = max(games.count - metrics.visibleCount, 0)
+        let start = min(max(selected - metrics.visibleCount + 1, 0), maxStart)
+        let end = min(start + metrics.visibleCount, games.count)
+        return Array(games[start..<end].enumerated()).map { offset, game in (index: start + offset, game: game) }
     }
+}
 
-    private func visibleTileCount(viewportWidth: CGFloat) -> Int {
-        let contentWidth = max(viewportWidth - horizontalInset * 2, tileSize.width)
-        return max(1, Int((contentWidth + itemSpacing) / (tileSize.width + itemSpacing)))
-    }
+private struct ControllerRailLayoutMetrics {
+    let visibleCount: Int
+    let tileSize: CGSize
+    let rowHeight: CGFloat
 }
 
 private struct ControllerGameTile: View {
@@ -1943,12 +1949,10 @@ private struct ControllerGameTile: View {
                 .padding(15)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .scaleEffect(isFocused ? 1.035 : 1.0)
             .overlay { Rectangle().stroke(isFocused ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: isFocused ? 4 : 1) }
-            .shadow(color: isFocused ? Color.openNowGreen.opacity(0.24) : .black.opacity(0.24), radius: isFocused ? 22 : 10, y: 10)
+            .shadow(color: isFocused ? Color.openNowGreen.opacity(0.18) : .black.opacity(0.20), radius: isFocused ? 12 : 8, y: 8)
         }
         .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.16), value: isFocused)
         .accessibilityLabel(game.title.isEmpty ? "Game" : game.title)
     }
 
