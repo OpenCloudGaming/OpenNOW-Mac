@@ -171,6 +171,7 @@ struct ControllerCatalogView: View {
                         selectedActionIndex: controllerViewModel.detailActionIndex,
                         actions: detailActions(for: game),
                         glyphs: inputRouter.glyphs,
+                        layout: layout,
                         perform: executeDetailAction,
                         close: closeDetails
                     )
@@ -1274,6 +1275,7 @@ private struct ControllerGameDetailOverlay: View {
     let selectedActionIndex: Int
     let actions: [ControllerDetailAction]
     let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
     let perform: (ControllerDetailAction) -> Void
     let close: () -> Void
 
@@ -1281,6 +1283,7 @@ private struct ControllerGameDetailOverlay: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let panelWidth = min(layout.contentWidth * 0.62, 900)
             ZStack(alignment: .leading) {
                 CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1920), contentMode: .fill)
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -1322,10 +1325,13 @@ private struct ControllerGameDetailOverlay: View {
                         .padding(.vertical, 8)
                     }
                 }
-                .padding(.leading, 60)
-                .padding(.trailing, 52)
-                .frame(width: min(proxy.size.width * 0.64, 900), alignment: .leading)
+                .frame(width: panelWidth, alignment: .leading)
+                .padding(.leading, layout.sideInset)
+                .padding(.trailing, layout.sideInset)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
     }
 
