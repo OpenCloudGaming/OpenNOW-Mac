@@ -102,6 +102,19 @@ struct VendorGetInButtonStyle: ButtonStyle {
     }
 }
 
+struct VendorProviderPickerButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .overlay {
+                Rectangle()
+                    .stroke(configuration.isPressed ? Color.openNowGreen.opacity(0.75) : Color.gfnStroke, lineWidth: 1)
+            }
+    }
+}
+
 struct SecondaryLoginButtonStyle: ButtonStyle {
     var compact = false
 

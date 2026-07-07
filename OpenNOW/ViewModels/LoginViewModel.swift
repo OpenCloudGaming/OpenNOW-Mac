@@ -11,19 +11,30 @@ import Foundation
 import Jarvis
 import NesAuth
 import OpenNOWAuth
+import OpenNOWGameServices
 import SwiftData
 import SwiftUI
+
+private final class LoginWeakObject<T: AnyObject>: @unchecked Sendable {
+    weak var value: T?
+
+    init(_ value: T) {
+        self.value = value
+    }
+}
 
 @MainActor
 final class LoginViewModel: ObservableObject {
     @Published var email = ""
     @Published var oauthCallbackText = ""
+    @Published var providers = [LoginProvider.nvidia]
     @Published var selectedProvider = LoginProvider.nvidia
     @Published var rememberSession = true
     @Published var acceptedTerms = false
     @Published var isShowingAccountPicker = false
     @Published var validationMessage = ""
     @Published var successMessage = ""
+    @Published var isLoadingProviders = false
     @Published var isLaunchingOAuth = false
     @Published var isAuthenticating = false
     @Published var requestedFocus: LoginField?
@@ -86,6 +97,7 @@ final class LoginViewModel: ObservableObject {
         OpenNOWLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
         ensureDeviceRegistration()
         prefillLastAccount()
+        refreshLoginProviders()
         OpenNOWLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
@@ -97,8 +109,12 @@ final class LoginViewModel: ObservableObject {
 
     func selectRememberedAccount(_ account: LoginAccount) {
         email = account.email
-        selectedProvider = LoginProvider(idpId: account.providerIdpId) ?? .nvidia
+        selectedProvider = providerOption(idpId: account.providerIdpId, fallbackName: account.providerName)
         rememberSession = account.rememberSession
+    }
+
+    func selectProvider(_ provider: LoginProvider) {
+        selectedProvider = provider
     }
 
     func launchOAuth() {
@@ -162,36 +178,38 @@ final class LoginViewModel: ObservableObject {
     private func beginOAuth() async {
         validationMessage = ""
         successMessage = ""
-        OpenNOWLog.info(.auth, "Beginning OAuth launch provider=\(selectedProvider.idpId)")
+        let loginProvider = selectedProvider
+        OpenNOWLog.info(.auth, "Beginning OAuth launch provider=\(loginProvider.idpId)")
 
         guard acceptedTerms else {
             OpenNOWLog.warning(.auth, "OAuth launch blocked because terms were not accepted")
-            validationMessage = "Accept NVIDIA account terms and local session storage before continuing."
+            validationMessage = "Accept account terms and local session storage before continuing."
             return
         }
 
         isLaunchingOAuth = true
-        validationMessage = "Finish NVIDIA sign-in in the browser. OpenNOW will continue automatically."
+        validationMessage = "Finish \(loginProvider.title) sign-in in the browser. OpenNOW will continue automatically."
 
-        authService.startOAuthLogin(providerIdpId: selectedProvider.idpId) { [weak self] success, session, error in
+        authService.startOAuthLogin(providerIdpId: loginProvider.idpId) { [weak self] success, session, error in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.selectedProvider = loginProvider
                 self.isLaunchingOAuth = false
                 self.currentAuthorizationURL = ""
                 self.clearPendingOAuthState()
                 self.oauthCallbackText = ""
 
                 guard success else {
-                    self.validationMessage = error.isEmpty ? "NVIDIA sign-in failed." : error
-                    OpenNOWLog.error(.auth, "OAuth start failed provider=\(self.selectedProvider.idpId) error=\(self.validationMessage)")
+                    self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : error
+                    OpenNOWLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
                     return
                 }
 
                 await self.jarvisAuthService.setSession(session)
                 self.persistSignedInSession(session: session, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
                 self.validationMessage = ""
-                self.successMessage = "NVIDIA account connected. Client token and session metadata are ready."
-                OpenNOWLog.info(.auth, "OAuth start completed provider=\(self.selectedProvider.idpId)")
+                self.successMessage = "\(loginProvider.title) account connected. Client token and session metadata are ready."
+                OpenNOWLog.info(.auth, "OAuth start completed provider=\(loginProvider.idpId)")
             }
         }
     }
@@ -209,7 +227,7 @@ final class LoginViewModel: ObservableObject {
 
         guard let query = Self.callbackQuery(from: callbackText.trimmed) else {
             OpenNOWLog.warning(.auth, "OAuth callback rejected because callback text could not be parsed")
-            validationMessage = "Paste the full callback URL or authorization query from NVIDIA."
+            validationMessage = "Paste the full callback URL or authorization query from the browser."
             requestedFocus = .callback
             return
         }
@@ -235,7 +253,8 @@ final class LoginViewModel: ObservableObject {
             currentAuthorizationURL = ""
             trySave()
             _ = await jarvisAuthService.finishLogin(success: true)
-            successMessage = "NVIDIA account connected. Client token and session metadata are ready."
+            let providerTitle = providerOption(idpId: providerIdpId, fallbackName: selectedProvider.title).title
+            successMessage = "\(providerTitle) account connected. Client token and session metadata are ready."
             OpenNOWLog.info(.auth, "OAuth callback completed userId=\(session.userId) provider=\(providerIdpId)")
         } catch {
             _ = await jarvisAuthService.finishLogin(success: false)
@@ -249,12 +268,12 @@ final class LoginViewModel: ObservableObject {
         validationMessage = ""
         successMessage = ""
         email = account.email
-        selectedProvider = LoginProvider(idpId: account.providerIdpId) ?? .nvidia
+        selectedProvider = providerOption(idpId: account.providerIdpId, fallbackName: account.providerName)
         rememberSession = account.rememberSession
 
         guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
             OpenNOWLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
-            validationMessage = "No saved session exists for this account. Sign in with NVIDIA again."
+            validationMessage = "No saved session exists for this account. Sign in again."
             return
         }
 
@@ -295,7 +314,7 @@ final class LoginViewModel: ObservableObject {
                 successMessage = "Using saved offline session for \(account.displayName)."
                 OpenNOWLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
             } else {
-                validationMessage = "Saved session expired. Sign in with NVIDIA again."
+                validationMessage = "Saved session expired. Sign in again."
                 OpenNOWLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
             }
         }
@@ -330,6 +349,7 @@ final class LoginViewModel: ObservableObject {
         let normalizedEmail = Self.normalizedEmail(session: session, userInfo: userInfo, fallbackEmail: email)
         let displayName = Self.displayName(session: session, userInfo: userInfo, email: normalizedEmail)
         let providerIdpId = session.idpId.isEmpty ? selectedProvider.idpId : session.idpId
+        let resolvedProvider = providerOption(idpId: providerIdpId, fallbackName: selectedProvider.title)
 
         for account in accounts { account.isActive = false }
         for storedSession in sessions { storedSession.isActive = false }
@@ -342,7 +362,7 @@ final class LoginViewModel: ObservableObject {
                 email: normalizedEmail,
                 displayName: displayName,
                 providerIdpId: providerIdpId,
-                providerName: selectedProvider.title
+                providerName: resolvedProvider.title
             )
             modelContext.insert(account)
             accounts.insert(account, at: 0)
@@ -351,7 +371,7 @@ final class LoginViewModel: ObservableObject {
         let authorization = NesAuthorizationPolicy().result(authType: JarvisAuthType.jwtGFN.rawValue)
         account.displayName = displayName
         account.providerIdpId = providerIdpId
-        account.providerName = LoginProvider(idpId: providerIdpId)?.title ?? selectedProvider.title
+        account.providerName = resolvedProvider.title
         account.membershipTier = session.membershipTier.isEmpty ? "Free" : session.membershipTier
         account.authorizationState = authorization.state.rawValue
         account.authStatus = JarvisAuthStatus.loggedIn.rawValue
@@ -415,8 +435,82 @@ final class LoginViewModel: ObservableObject {
     private func prefillLastAccount() {
         guard email.isEmpty, let account = accounts.first else { return }
         email = account.email
-        selectedProvider = LoginProvider(idpId: account.providerIdpId) ?? .nvidia
+        selectedProvider = providerOption(idpId: account.providerIdpId, fallbackName: account.providerName)
         rememberSession = account.rememberSession
+    }
+
+    private func refreshLoginProviders() {
+        guard !isLoadingProviders else { return }
+        isLoadingProviders = true
+        let requestedProviderIdpId = selectedProvider.idpId
+        let selfBox = LoginWeakObject(self)
+        OPNGameServiceSwiftAdapter.fetchGameProviderInfo(idpId: requestedProviderIdpId) { success, info, _, error in
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                self.isLoadingProviders = false
+                guard success else {
+                    OpenNOWLog.warning(.auth, "Provider discovery failed: \(error)")
+                    return
+                }
+                self.applyProviderInfo(info)
+            }
+        }
+    }
+
+    private func applyProviderInfo(_ info: OPNGameProviderInfo) {
+        let discoveredProviders = Self.providerOptions(from: info)
+        guard !discoveredProviders.isEmpty else { return }
+
+        let previousProviderIdpId = selectedProvider.idpId
+        providers = discoveredProviders
+        if let existingProvider = providerOptionIfAvailable(idpId: previousProviderIdpId) {
+            selectedProvider = existingProvider
+        } else if let preferredProvider = Self.preferredProvider(in: discoveredProviders, info: info) {
+            selectedProvider = preferredProvider
+        } else {
+            selectedProvider = discoveredProviders[0]
+        }
+    }
+
+    private func providerOption(idpId: String, fallbackName: String = "") -> LoginProvider {
+        if let provider = providerOptionIfAvailable(idpId: idpId) { return provider }
+        if idpId.isEmpty || idpId == Jarvis.defaultIdpId { return .nvidia }
+        let title = fallbackName.trimmed.isEmpty ? "Provider" : fallbackName.trimmed
+        return LoginProvider(idpId: idpId, title: title, loginProvider: title, loginProviderCode: title, streamingServiceUrl: "")
+    }
+
+    private func providerOptionIfAvailable(idpId: String) -> LoginProvider? {
+        guard !idpId.isEmpty else { return nil }
+        return providers.first { $0.idpId == idpId }
+    }
+
+    private static func providerOptions(from info: OPNGameProviderInfo) -> [LoginProvider] {
+        var seenIdpIds = Set<String>()
+        let options = info.endpoints.compactMap { endpoint -> LoginProvider? in
+            guard !endpoint.idpId.isEmpty, seenIdpIds.insert(endpoint.idpId).inserted else { return nil }
+            return LoginProvider(endpoint: endpoint)
+        }
+        return options.isEmpty ? [.nvidia] : options
+    }
+
+    private static func preferredProvider(in providers: [LoginProvider], info: OPNGameProviderInfo) -> LoginProvider? {
+        if info.loginPreferredProviders.count == 1,
+           let provider = provider(matching: info.loginPreferredProviders[0], in: providers) {
+            return provider
+        }
+        if let provider = provider(matching: info.loggedInProvider, in: providers) { return provider }
+        if let provider = provider(matching: info.defaultProvider, in: providers) { return provider }
+        return nil
+    }
+
+    private static func provider(matching vendorName: String, in providers: [LoginProvider]) -> LoginProvider? {
+        let normalized = vendorName.trimmed.lowercased()
+        guard !normalized.isEmpty else { return nil }
+        return providers.first { provider in
+            provider.loginProvider.lowercased() == normalized ||
+            provider.loginProviderCode.lowercased() == normalized ||
+            provider.title.lowercased() == normalized
+        }
     }
 
     private func trySave() {
@@ -433,8 +527,8 @@ final class LoginViewModel: ObservableObject {
         let fallback = fallbackEmail.trimmed
         let value = candidate.isEmpty ? fallback : candidate
         if !value.isEmpty { return value.lowercased() }
-        if !session.userId.isEmpty { return "\(session.userId.lowercased())@nvidia.local" }
-        return "nvidia-user@opennow.local"
+        if !session.userId.isEmpty { return "\(session.userId.lowercased())@opennow.local" }
+        return "opennow-user@opennow.local"
     }
 
     private static func displayName(session: JarvisSession, userInfo: JarvisUserInfo?, email: String) -> String {
@@ -468,33 +562,40 @@ final class LoginViewModel: ObservableObject {
     }
 }
 
-enum LoginProvider: String, CaseIterable, Identifiable {
-    case nvidia
-    case xbox
-    case ubisoft
+struct LoginProvider: Identifiable, Hashable, Sendable {
+    let idpId: String
+    let title: String
+    let loginProvider: String
+    let loginProviderCode: String
+    let streamingServiceUrl: String
 
-    var id: String { rawValue }
+    var id: String { idpId }
 
-    var title: String {
-        switch self {
-        case .nvidia: "NVIDIA"
-        case .xbox: "Xbox"
-        case .ubisoft: "Ubisoft"
-        }
+    init(idpId: String, title: String, loginProvider: String, loginProviderCode: String, streamingServiceUrl: String) {
+        self.idpId = idpId
+        self.title = title.trimmed.isEmpty ? loginProvider : title.trimmed
+        self.loginProvider = loginProvider.trimmed.isEmpty ? self.title : loginProvider.trimmed
+        self.loginProviderCode = loginProviderCode.trimmed.isEmpty ? self.loginProvider : loginProviderCode.trimmed
+        self.streamingServiceUrl = streamingServiceUrl.trimmed
     }
 
-    var idpId: String {
-        switch self {
-        case .nvidia: Jarvis.defaultIdpId
-        case .xbox: "xbox-live"
-        case .ubisoft: "ubisoft-connect"
-        }
+    init(endpoint: OPNGameProviderEndpoint) {
+        self.init(
+            idpId: endpoint.idpId,
+            title: endpoint.loginProviderDisplayName,
+            loginProvider: endpoint.loginProvider,
+            loginProviderCode: endpoint.loginProviderCode,
+            streamingServiceUrl: endpoint.streamingServiceUrl
+        )
     }
 
-    init?(idpId: String) {
-        guard let provider = Self.allCases.first(where: { $0.idpId == idpId }) else { return nil }
-        self = provider
-    }
+    static let nvidia = LoginProvider(
+        idpId: Jarvis.defaultIdpId,
+        title: "NVIDIA",
+        loginProvider: "NVIDIA",
+        loginProviderCode: "NVIDIA",
+        streamingServiceUrl: "https://prod.cloudmatchbeta.nvidiagrid.net/"
+    )
 }
 
 enum LoginField: Hashable {

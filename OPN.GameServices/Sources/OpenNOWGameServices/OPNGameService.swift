@@ -1854,6 +1854,16 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
         }
     }
 
+    public static func fetchGameProviderInfo(idpId: String, completion: @escaping @Sendable (Bool, OPNGameProviderInfo, OPNGameProviderEndpoint, String) -> Void) {
+        OPNGameService.shared.fetchProviderInfo(idpId: idpId) { success, info, endpoint, error in
+            completion(success, info, endpoint, error)
+        }
+    }
+
+    public static func selectGameProviderEndpoint(from info: OPNGameProviderInfo, idpId: String) -> OPNGameProviderEndpoint {
+        OPNGameService.shared.selectGameProviderEndpoint(info, idpId: idpId)
+    }
+
     @objc(fetchSubscriptionInfoWithUserId:completion:)
     public static func fetchSubscriptionInfo(userId: String, completion: @escaping @Sendable (Bool, OPNParsedSubscriptionInfo, String) -> Void) {
         OPNGameService.shared.fetchSubscriptionInfo(userId: userId) { success, subscription, error in

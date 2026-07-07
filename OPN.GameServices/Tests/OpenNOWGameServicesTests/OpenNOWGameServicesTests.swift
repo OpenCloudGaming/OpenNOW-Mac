@@ -41,6 +41,46 @@ private actor AsyncTestLock {
     #expect(OPNLaunchAppId.resolve("123")?.intValue == 123)
 }
 
+@Test func providerInfoParsesAndSelectsDigevoEndpoint() {
+    let digevoIdpId = "IsvVBA3Aj8KZ7gwwuRUhB6-tOF2o2F1wncD-XjYv100"
+    let providerInfo = OPNGameServiceSwiftAdapter.parseProviderInfo(from: [
+        "gfnServiceInfo": [
+            "defaultProvider": "NVIDIA",
+            "loggedInProvider": "NVIDIA",
+            "loginRequired": false,
+            "loginPreferredProviders": ["NVIDIA"],
+            "gfnServiceEndpoints": [
+                [
+                    "loginProviderDisplayName": "NVIDIA",
+                    "streamingServiceUrl": "https://prod.cloudmatchbeta.nvidiagrid.net/",
+                    "idpId": "PDiAhv2kJTFeQ7WOPqiQ2tRZ7lGhR2X11dXvM4TZSxg",
+                    "redeemRedirectUrl": "https://www.nvidia.com/content/drivers/redirect.asp?page=gfn_pc_redeem_activation_code",
+                    "loginProvider": "NVIDIA",
+                    "loginProviderCode": "NVIDIA",
+                    "loginProviderPriority": 1,
+                ],
+                [
+                    "loginProviderDisplayName": "Digevo",
+                    "streamingServiceUrl": "https://prod.DIG.geforcenow.nvidiagrid.net",
+                    "idpId": digevoIdpId,
+                    "redeemRedirectUrl": "",
+                    "loginProvider": "Digevo",
+                    "loginProviderCode": "DIG",
+                    "loginProviderPriority": 10,
+                ],
+            ],
+        ],
+    ])
+    let selected = OPNGameServiceSwiftAdapter.selectProviderEndpoint(from: providerInfo, idpId: digevoIdpId)
+
+    #expect(providerInfo.endpoints.count == 2)
+    #expect(selected.loginProviderDisplayName == "Digevo")
+    #expect(selected.loginProvider == "Digevo")
+    #expect(selected.loginProviderCode == "DIG")
+    #expect(selected.idpId == digevoIdpId)
+    #expect(selected.streamingServiceUrl == "https://prod.DIG.geforcenow.nvidiagrid.net/")
+}
+
 @Test func streamCoordinatorRejectsZeroApplicationIdBeforeNetworkWork() async {
     let coordinator = OpenNOWStreamSessionCoordinator()
     let configuration = StreamLaunchConfiguration(

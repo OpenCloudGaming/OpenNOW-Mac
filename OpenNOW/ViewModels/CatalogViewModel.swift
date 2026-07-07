@@ -321,7 +321,16 @@ final class CatalogViewModel: ObservableObject {
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
+        Task { await loadCatalogDataAfterProviderConfiguration() }
+    }
+
+    func refresh() {
+        Task { await loadCatalogDataAfterProviderConfiguration() }
+    }
+
+    private func loadCatalogDataAfterProviderConfiguration() async {
         configureCatalogService()
+        await configureCatalogProviderEndpoint()
         loadPanels()
         loadLibrary()
         loadFavorites()
@@ -330,14 +339,19 @@ final class CatalogViewModel: ObservableObject {
         browseCatalog()
     }
 
-    func refresh() {
-        configureCatalogService()
-        loadPanels()
-        loadLibrary()
-        loadFavorites()
-        loadAccountAndStores()
-        loadSettingsPreferences()
-        browseCatalog()
+    private func configureCatalogProviderEndpoint() async {
+        let providerIdpId = session.idpId.isEmpty ? account.providerIdpId : session.idpId
+        guard !providerIdpId.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchGameProviderInfo(idpId: providerIdpId) { success, _, endpoint, error in
+                if success {
+                    OpenNOWLog.info(.auth, "Configured provider endpoint provider=\(endpoint.loginProvider) idpId=\(providerIdpId)")
+                } else {
+                    OpenNOWLog.warning(.auth, "Provider endpoint lookup failed idpId=\(providerIdpId) error=\(error)")
+                }
+                continuation.resume()
+            }
+        }
     }
 
     func showGames() {

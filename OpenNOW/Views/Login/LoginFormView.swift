@@ -69,12 +69,15 @@ struct LoginFormView: View {
                 }
                 .padding(.bottom, 34)
 
+                providerPicker
+                    .padding(.bottom, 18)
+
                 Button(action: startVendorLogin) {
                     Text(viewModel.hasPendingOAuth ? "REOPEN" : "GET IN")
                 }
                 .buttonStyle(VendorGetInButtonStyle())
                 .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
-                .accessibilityHint("Opens NVIDIA authentication in your browser")
+                .accessibilityHint("Opens \(viewModel.selectedProvider.title) authentication in your browser")
                 .padding(.bottom, 32)
 
                 if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
@@ -113,8 +116,54 @@ struct LoginFormView: View {
         .background(.black)
     }
 
+    private var providerPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SERVICE PROVIDER")
+                .font(.nvidiaSans(size: 11, weight: .bold))
+                .foregroundStyle(Color.gfnTextTertiary)
+                .tracking(0.8)
+
+            Menu {
+                ForEach(viewModel.providers) { provider in
+                    Button(provider.title) {
+                        viewModel.selectProvider(provider)
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.selectedProvider.title)
+                            .font(.nvidiaSans(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        if !viewModel.selectedProvider.loginProviderCode.isEmpty {
+                            Text(viewModel.selectedProvider.loginProviderCode)
+                                .font(.nvidiaSans(size: 11, weight: .regular))
+                                .foregroundStyle(Color.gfnTextTertiary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 12)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.openNowGreen)
+                }
+                .frame(maxWidth: 260, alignment: .leading)
+            }
+            .buttonStyle(VendorProviderPickerButtonStyle())
+            .disabled(viewModel.isLoadingProviders || viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+
+            if viewModel.isLoadingProviders {
+                Text("Loading provider list...")
+                    .font(.nvidiaSans(size: 12, weight: .regular))
+                    .foregroundStyle(Color.gfnTextTertiary)
+            }
+        }
+    }
+
     private func startVendorLogin() {
-        viewModel.selectedProvider = .nvidia
         viewModel.rememberSession = true
         viewModel.acceptedTerms = true
         viewModel.launchOAuth()
