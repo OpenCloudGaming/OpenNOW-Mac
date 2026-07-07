@@ -96,17 +96,30 @@ private enum ControllerActionMenuItem {
 
 private struct ControllerLayoutMetrics {
     let size: CGSize
+    let safeAreaInsets: EdgeInsets
 
     var contentWidth: CGFloat {
-        max(size.width - sideInset * 2, 1)
+        max(size.width - leadingInset - trailingInset, 1)
+    }
+
+    var leadingInset: CGFloat {
+        safeAreaInsets.leading + baseInset
+    }
+
+    var trailingInset: CGFloat {
+        safeAreaInsets.trailing + baseInset
     }
 
     var compactHeight: Bool { size.height < 760 }
     var heroHeight: CGFloat { compactHeight ? 230 : 280 }
     var railPreferredTileWidth: CGFloat { compactHeight ? 278 : 300 }
 
-    var sideInset: CGFloat {
-        min(max(size.width * 0.035, 56), 84)
+    private var baseInset: CGFloat {
+        min(max(visibleWidth * 0.035, 56), 84)
+    }
+
+    private var visibleWidth: CGFloat {
+        max(size.width - safeAreaInsets.leading - safeAreaInsets.trailing, 1)
     }
 }
 
@@ -124,7 +137,7 @@ struct ControllerCatalogView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = ControllerLayoutMetrics(size: proxy.size)
+            let layout = ControllerLayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
             ZStack {
                 ControllerCatalogBackground(viewModel: viewModel, game: focusedHeroGame)
 
@@ -142,7 +155,8 @@ struct ControllerCatalogView: View {
                     ControllerHintBar(hints: hints, glyphs: inputRouter.glyphs, layout: layout)
                 }
                 .frame(width: layout.contentWidth, height: proxy.size.height, alignment: .top)
-                .padding(.horizontal, layout.sideInset)
+                .padding(.leading, layout.leadingInset)
+                .padding(.trailing, layout.trailingInset)
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 .clipped()
 
@@ -200,6 +214,7 @@ struct ControllerCatalogView: View {
                         items: actionMenuItems,
                         selectedIndex: controllerViewModel.actionMenuIndex,
                         glyphs: inputRouter.glyphs,
+                        layout: layout,
                         perform: executeActionMenuItem,
                         close: closeActionMenu
                     )
@@ -1177,7 +1192,8 @@ private struct ControllerSearchOverlay: View {
                     resultsGrid(columns: columns)
                 }
                 .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.horizontal, layout.sideInset)
+                .padding(.leading, layout.leadingInset)
+                .padding(.trailing, layout.trailingInset)
                 .padding(.top, 38)
                 .padding(.bottom, 32)
             }
@@ -1332,8 +1348,8 @@ private struct ControllerGameDetailOverlay: View {
                     }
                 }
                 .frame(width: panelWidth, alignment: .leading)
-                .padding(.leading, layout.sideInset)
-                .padding(.trailing, layout.sideInset)
+                .padding(.leading, layout.leadingInset)
+                .padding(.trailing, layout.trailingInset)
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -1421,7 +1437,8 @@ private struct ControllerShowAllOverlay: View {
                     }
                 }
                 .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.horizontal, layout.sideInset)
+                .padding(.leading, layout.leadingInset)
+                .padding(.trailing, layout.trailingInset)
                 .padding(.top, 38)
                 .padding(.bottom, 32)
             }
@@ -1441,48 +1458,54 @@ private struct ControllerActionMenuOverlay: View {
     let items: [ControllerActionMenuItem]
     let selectedIndex: Int
     let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
     let perform: (ControllerActionMenuItem) -> Void
     let close: () -> Void
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            Color.black.opacity(0.58).ignoresSafeArea().onTapGesture(perform: close)
-            VStack(alignment: .leading, spacing: 0) {
-                ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
-                    .padding(.horizontal, 22)
-                    .padding(.top, 22)
-                    .padding(.bottom, 12)
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 8) {
-                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                            Button { perform(item) } label: {
-                                HStack(spacing: 13) {
-                                    Image(systemName: item.icon)
-                                        .font(.nvidia(size: 15, weight: .bold))
-                                        .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
-                                        .frame(width: 28)
-                                    Text(item.title)
-                                        .font(.nvidia(size: 15, weight: .bold))
-                                        .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
-                                        .lineLimit(1)
-                                    Spacer(minLength: 0)
+        GeometryReader { proxy in
+            ZStack(alignment: .trailing) {
+                Color.black.opacity(0.58).onTapGesture(perform: close)
+                VStack(alignment: .leading, spacing: 0) {
+                    ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 22)
+                        .padding(.bottom, 12)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 8) {
+                            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                                Button { perform(item) } label: {
+                                    HStack(spacing: 13) {
+                                        Image(systemName: item.icon)
+                                            .font(.nvidia(size: 15, weight: .bold))
+                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                            .frame(width: 28)
+                                        Text(item.title)
+                                            .font(.nvidia(size: 15, weight: .bold))
+                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
+                                            .lineLimit(1)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .frame(height: 48)
+                                    .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.055))
+                                    .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
                                 }
-                                .padding(.horizontal, 14)
-                                .frame(height: 48)
-                                .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.055))
-                                .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 22)
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 22)
                 }
+                .frame(width: min(420, layout.contentWidth), alignment: .topLeading)
+                .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
+                .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
+                .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
+                .padding(.trailing, layout.trailingInset)
             }
-            .frame(width: 420, alignment: .topLeading)
-            .background(Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255).opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(Color.openNowGreen).frame(width: 3) }
-            .shadow(color: .black.opacity(0.54), radius: 34, x: -14, y: 20)
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
     }
 }
