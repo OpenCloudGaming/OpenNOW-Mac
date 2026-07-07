@@ -154,6 +154,7 @@ struct ControllerCatalogView: View {
                         filterOptionIndices: controllerViewModel.searchFilterOptionIndices,
                         resultIndex: controllerViewModel.searchResultIndex,
                         resultColumnCount: $controllerViewModel.searchResultColumnCount,
+                        layout: layout,
                         selectSort: { index in setSort(at: index) },
                         selectFilter: { group, index in setFilterOption(group: group, index: index) },
                         selectResult: { game in openDetails(game, sectionId: "catalog-results") },
@@ -186,6 +187,7 @@ struct ControllerCatalogView: View {
                         selectedIndex: controllerViewModel.showAllIndex,
                         columnCount: $controllerViewModel.showAllColumnCount,
                         glyphs: inputRouter.glyphs,
+                        layout: layout,
                         select: { game in openDetails(game, sectionId: showAllSection.id) },
                         close: closeShowAll
                     )
@@ -1155,6 +1157,7 @@ private struct ControllerSearchOverlay: View {
     let filterOptionIndices: [String: Int]
     let resultIndex: Int
     @Binding var resultColumnCount: Int
+    let layout: ControllerLayoutMetrics
     let selectSort: (Int) -> Void
     let selectFilter: (OPNCatalogFilterGroupObject, Int) -> Void
     let selectResult: (OPNCatalogGameObject) -> Void
@@ -1163,9 +1166,9 @@ private struct ControllerSearchOverlay: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let columns = max(2, Int((proxy.size.width - 140) / 250))
+            let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250, spacing: 14)
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.90).ignoresSafeArea()
+                Color.black.opacity(0.90)
                 VStack(alignment: .leading, spacing: 18) {
                     ControllerOverlayHeader(title: "Search Catalog", subtitle: "Search, sort, filter, and launch from the full catalog.", glyphs: glyphs, close: close)
                     searchField
@@ -1173,10 +1176,13 @@ private struct ControllerSearchOverlay: View {
                     filterRows
                     resultsGrid(columns: columns)
                 }
-                .padding(.horizontal, 54)
+                .frame(width: layout.contentWidth, alignment: .leading)
+                .padding(.horizontal, layout.sideInset)
                 .padding(.top, 38)
                 .padding(.bottom, 32)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .clipped()
             .onAppear { resultColumnCount = columns }
             .onChange(of: columns) { _, value in resultColumnCount = value }
         }
@@ -1385,14 +1391,15 @@ private struct ControllerShowAllOverlay: View {
     let selectedIndex: Int
     @Binding var columnCount: Int
     let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
     let select: (OPNCatalogGameObject) -> Void
     let close: () -> Void
 
     var body: some View {
         GeometryReader { proxy in
-            let columns = max(2, Int((proxy.size.width - 120) / 290))
+            let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 290, spacing: 16)
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.90).ignoresSafeArea()
+                Color.black.opacity(0.90)
                 VStack(alignment: .leading, spacing: 18) {
                     ControllerOverlayHeader(title: section.title, subtitle: "\(section.games.count) games", glyphs: glyphs, close: close)
                     ScrollViewReader { scrollProxy in
@@ -1413,14 +1420,21 @@ private struct ControllerShowAllOverlay: View {
                         }
                     }
                 }
-                .padding(.horizontal, 54)
+                .frame(width: layout.contentWidth, alignment: .leading)
+                .padding(.horizontal, layout.sideInset)
                 .padding(.top, 38)
                 .padding(.bottom, 32)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .clipped()
             .onAppear { columnCount = columns }
             .onChange(of: columns) { _, value in columnCount = value }
         }
     }
+}
+
+private func overlayColumnCount(width: CGFloat, minimumWidth: CGFloat, spacing: CGFloat) -> Int {
+    max(2, Int((width + spacing) / (minimumWidth + spacing)))
 }
 
 private struct ControllerActionMenuOverlay: View {
