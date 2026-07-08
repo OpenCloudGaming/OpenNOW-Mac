@@ -1,6 +1,6 @@
 import AppKit
 import AVKit
-import Common
+import OpenNOWDesignSystem
 import SwiftUI
 import WebRTCMedia
 
@@ -15,8 +15,8 @@ enum RecordingsLayout {
 }
 
 extension Font {
-    static func recordingsNvidia(size: CGFloat, weight: OPNNVIDIAFont.Weight = .regular) -> Font {
-        OPNNVIDIAFont.font(size: size, weight: weight)
+    static func recordingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

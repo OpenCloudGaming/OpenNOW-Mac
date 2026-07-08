@@ -5,12 +5,12 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import Common
+import OpenNOWDesignSystem
 import SwiftUI
 
 extension Font {
-    static func nvidiaSans(size: CGFloat, weight: OPNNVIDIAFont.Weight = .regular) -> Font {
-        OPNNVIDIAFont.font(size: size, weight: weight)
+    static func nvidiaSans(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

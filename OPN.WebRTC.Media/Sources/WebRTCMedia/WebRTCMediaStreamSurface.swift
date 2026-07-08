@@ -1,6 +1,6 @@
 import AppKit
-import Common
 import Foundation
+import OpenNOWDesignSystem
 import SwiftUI
 
 public typealias WebRTCMediaStreamProgressCallback = @MainActor @Sendable (_ progress: StreamProgress) -> Void
@@ -52,8 +52,8 @@ private enum WebRTCMediaStreamTheme {
 }
 
 private extension Font {
-    static func streamNvidia(size: CGFloat, weight: OPNNVIDIAFont.Weight = .regular) -> Font {
-        OPNNVIDIAFont.font(size: size, weight: weight)
+    static func streamNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

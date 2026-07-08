@@ -296,22 +296,7 @@ public struct LCARSURLSessionTransport: LCARSHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        var tracedRequest = request
-        let networkStart = OPNNetworkLog.start(&tracedRequest, operation: "lcars.transport")
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
-        } catch {
-            OPNNetworkLog.finish(tracedRequest, operation: "lcars.transport", startedAt: networkStart, data: nil, response: nil, error: error)
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-            OPNNetworkLog.finish(tracedRequest, operation: "lcars.transport", startedAt: networkStart, data: data, response: response, error: LCARSServiceError.invalidHTTPResponse)
-            throw LCARSServiceError.invalidHTTPResponse
-        }
-        OPNNetworkLog.finish(tracedRequest, operation: "lcars.transport", startedAt: networkStart, data: data, response: response, error: nil)
-        return (data, httpResponse)
+        try await OPNURLSessionHTTPTransport.send(request, operation: "lcars.transport", invalidHTTPResponseError: LCARSServiceError.invalidHTTPResponse)
     }
 }
 

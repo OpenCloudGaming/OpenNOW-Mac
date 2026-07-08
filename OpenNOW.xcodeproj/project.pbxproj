@@ -20,6 +20,7 @@
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
 		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
+		A00000000000000000000116 /* OpenNOWDesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000216 /* OpenNOWDesignSystem */; };
 		A00000000000000000000110 /* WebRTCMedia in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000210 /* WebRTCMedia */; };
 		A00000000000000000000111 /* OpenNOWAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000211 /* OpenNOWAuth */; };
 		A00000000000000000000112 /* OpenNOWGameServices in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000212 /* OpenNOWGameServices */; };
@@ -67,6 +68,7 @@
 				7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */,
 				A00000000000000000000101 /* CloudMatch in Frameworks */,
 				A00000000000000000000109 /* Common in Frameworks */,
+				A00000000000000000000116 /* OpenNOWDesignSystem in Frameworks */,
 				A00000000000000000000103 /* GDN in Frameworks */,
 				7778758C2FDCA4F900B177D8 /* Jarvis in Frameworks */,
 				A00000000000000000000102 /* LCARS in Frameworks */,
@@ -129,6 +131,7 @@
 			packageProductDependencies = (
 				A00000000000000000000201 /* CloudMatch */,
 				A00000000000000000000209 /* Common */,
+				A00000000000000000000216 /* OpenNOWDesignSystem */,
 				A00000000000000000000203 /* GDN */,
 				7778758B2FDCA4F900B177D8 /* Jarvis */,
 				A00000000000000000000202 /* LCARS */,
@@ -174,6 +177,7 @@
 			packageReferences = (
 				A00000000000000000000301 /* XCLocalSwiftPackageReference "GFN.CloudMatch" */,
 				A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */,
+				A00000000000000000000316 /* XCLocalSwiftPackageReference "OPN.Design" */,
 				A00000000000000000000303 /* XCLocalSwiftPackageReference "GFN.GDN" */,
 				7778758A2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Jarvis" */,
 				A00000000000000000000302 /* XCLocalSwiftPackageReference "GFN.LCARS" */,
@@ -488,6 +492,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = OPN.Common;
 		};
+		A00000000000000000000316 /* XCLocalSwiftPackageReference "OPN.Design" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OPN.Design;
+		};
 		A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = OPN.WebRTC.Media;
@@ -559,6 +567,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */;
 			productName = Common;
+		};
+		A00000000000000000000216 /* OpenNOWDesignSystem */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000316 /* XCLocalSwiftPackageReference "OPN.Design" */;
+			productName = OpenNOWDesignSystem;
 		};
 		A00000000000000000000210 /* WebRTCMedia */ = {
 			isa = XCSwiftPackageProductDependency;

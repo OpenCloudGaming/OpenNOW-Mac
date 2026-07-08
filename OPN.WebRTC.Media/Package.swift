@@ -17,14 +17,12 @@ let package = Package(
         .library(name: "WebRTCMedia", targets: ["WebRTCMedia"]),
     ],
     dependencies: [
-        .package(path: "../OPN.Common"),
+        .package(path: "../OPN.Design"),
     ],
     targets: [
         .target(
             name: "WebRTCMedia",
-            dependencies: [
-                .product(name: "Common", package: "OPN.Common"),
-            ],
+            dependencies: [.product(name: "OpenNOWDesignSystem", package: "OPN.Design")],
             swiftSettings: [
                 .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-Xcc", "-Wno-incomplete-umbrella"]),
             ],

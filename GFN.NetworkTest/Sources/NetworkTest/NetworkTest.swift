@@ -291,22 +291,7 @@ public struct NetworkTestURLSessionTransport: NetworkTestHTTPTransport {
     public init() {}
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        var tracedRequest = request
-        let networkStart = OPNNetworkLog.start(&tracedRequest, operation: "networkTest.transport")
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: tracedRequest)
-        } catch {
-            OPNNetworkLog.finish(tracedRequest, operation: "networkTest.transport", startedAt: networkStart, data: nil, response: nil, error: error)
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-            OPNNetworkLog.finish(tracedRequest, operation: "networkTest.transport", startedAt: networkStart, data: data, response: response, error: NetworkTestServiceError.invalidHTTPResponse)
-            throw NetworkTestServiceError.invalidHTTPResponse
-        }
-        OPNNetworkLog.finish(tracedRequest, operation: "networkTest.transport", startedAt: networkStart, data: data, response: response, error: nil)
-        return (data, httpResponse)
+        try await OPNURLSessionHTTPTransport.send(request, operation: "networkTest.transport", invalidHTTPResponseError: NetworkTestServiceError.invalidHTTPResponse)
     }
 }
 

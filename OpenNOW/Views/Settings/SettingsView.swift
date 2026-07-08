@@ -1,6 +1,7 @@
-import Common
 import AppKit
+import Common
 import CryptoKit
+import OpenNOWDesignSystem
 import OpenNOWTelemetry
 import OpenNOWTwitch
 import SwiftUI
@@ -14,8 +15,8 @@ private enum SettingsVendorLayout {
 }
 
 private extension Font {
-    static func settingsNvidia(size: CGFloat, weight: OPNNVIDIAFont.Weight = .regular) -> Font {
-        OPNNVIDIAFont.font(size: size, weight: weight)
+    static func settingsNvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

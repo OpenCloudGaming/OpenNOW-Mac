@@ -1,8 +1,8 @@
 import AppKit
-import CoreText
+@preconcurrency import CoreText
 import SwiftUI
 
-public enum OPNNVIDIAFont {
+public enum OpenNOWNVIDIAFont {
     public enum Weight: Hashable, Sendable {
         case regular
         case medium
@@ -29,16 +29,12 @@ public enum OPNNVIDIAFont {
     }
 
     private static func descriptor(weight: Weight) -> CTFontDescriptor? {
-        descriptorCache[weight]
+        switch weight {
+        case .regular: return loadDescriptor(named: "NVIDIASans_W_Rg")
+        case .medium: return loadDescriptor(named: "NVIDIASans_W_Md")
+        case .bold: return loadDescriptor(named: "NVIDIASans_W_Bd")
+        }
     }
-
-    nonisolated(unsafe) private static let descriptorCache: [Weight: CTFontDescriptor] = {
-        var cache: [Weight: CTFontDescriptor] = [:]
-        if let descriptor = loadDescriptor(named: "NVIDIASans_W_Rg") { cache[.regular] = descriptor }
-        if let descriptor = loadDescriptor(named: "NVIDIASans_W_Md") { cache[.medium] = descriptor }
-        if let descriptor = loadDescriptor(named: "NVIDIASans_W_Bd") { cache[.bold] = descriptor }
-        return cache
-    }()
 
     private static func loadDescriptor(named name: String) -> CTFontDescriptor? {
         for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
@@ -48,5 +44,11 @@ public enum OPNNVIDIAFont {
             return descriptor
         }
         return nil
+    }
+}
+
+public extension Font {
+    static func openNOWNVIDIA(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }

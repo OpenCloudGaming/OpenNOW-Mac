@@ -9,6 +9,7 @@ import Combine
 import Common
 import CryptoKit
 import ImageIO
+import OpenNOWDesignSystem
 import OpenNOWGameServices
 import OpenNOWTwitch
 import SwiftUI
@@ -59,8 +60,8 @@ private enum CatalogVendorLayout {
 }
 
 extension Font {
-    static func nvidia(size: CGFloat, weight: OPNNVIDIAFont.Weight = .regular) -> Font {
-        OPNNVIDIAFont.font(size: size, weight: weight)
+    static func nvidia(size: CGFloat, weight: OpenNOWNVIDIAFont.Weight = .regular) -> Font {
+        OpenNOWNVIDIAFont.font(size: size, weight: weight)
     }
 }
 
