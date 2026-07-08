@@ -5,56 +5,12 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import AppKit
-import CoreText
+import Common
 import SwiftUI
 
-enum LoginVendorFont {
-    enum Weight: Hashable {
-        case regular
-        case medium
-        case bold
-    }
-
-    static func font(size: CGFloat, weight: Weight = .regular) -> Font {
-        Font(nsFont(size: size, weight: weight))
-    }
-
-    private static func nsFont(size: CGFloat, weight: Weight) -> NSFont {
-        if let descriptor = descriptors[weight] ?? nil {
-            return CTFontCreateWithFontDescriptor(descriptor, size, nil) as NSFont
-        }
-        return NSFont.systemFont(ofSize: size, weight: fallbackWeight(weight))
-    }
-
-    private static func fallbackWeight(_ weight: Weight) -> NSFont.Weight {
-        switch weight {
-        case .regular: return .regular
-        case .medium: return .medium
-        case .bold: return .bold
-        }
-    }
-
-    private static let descriptors: [Weight: CTFontDescriptor?] = [
-        .regular: loadDescriptor(named: "NVIDIASans_W_Rg"),
-        .medium: loadDescriptor(named: "NVIDIASans_W_Md"),
-        .bold: loadDescriptor(named: "NVIDIASans_W_Bd")
-    ]
-
-    private static func loadDescriptor(named name: String) -> CTFontDescriptor? {
-        for subdirectory in ["NVIDIA", "Resources/NVIDIA", nil] as [String?] {
-            guard let url = Bundle.main.url(forResource: name, withExtension: "woff2", subdirectory: subdirectory),
-                  let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
-                  let descriptor = descriptors.first else { continue }
-            return descriptor
-        }
-        return nil
-    }
-}
-
 extension Font {
-    static func nvidiaSans(size: CGFloat, weight: LoginVendorFont.Weight = .regular) -> Font {
-        LoginVendorFont.font(size: size, weight: weight)
+    static func nvidiaSans(size: CGFloat, weight: OPNNVIDIAFont.Weight = .regular) -> Font {
+        OPNNVIDIAFont.font(size: size, weight: weight)
     }
 }
 

@@ -16,9 +16,15 @@ let package = Package(
         .library(name: "WebRTC.Media", targets: ["WebRTCMedia"]),
         .library(name: "WebRTCMedia", targets: ["WebRTCMedia"]),
     ],
+    dependencies: [
+        .package(path: "../OPN.Common"),
+    ],
     targets: [
         .target(
             name: "WebRTCMedia",
+            dependencies: [
+                .product(name: "Common", package: "OPN.Common"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-F", webRTCFrameworkSearchPath, "-Xcc", "-Wno-incomplete-umbrella"]),
             ],
