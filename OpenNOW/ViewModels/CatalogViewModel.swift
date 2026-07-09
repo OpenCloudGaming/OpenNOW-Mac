@@ -344,12 +344,17 @@ final class CatalogViewModel: ObservableObject {
         guard !providerIdpId.isEmpty else { return }
         await withCheckedContinuation { continuation in
             OPNGameServiceSwiftAdapter.fetchGameProviderInfo(idpId: providerIdpId) { success, _, endpoint, error in
-                if success {
-                    OpenNOWLog.info(.auth, "Configured provider endpoint provider=\(endpoint.loginProvider) idpId=\(providerIdpId)")
-                } else {
-                    OpenNOWLog.warning(.auth, "Provider endpoint lookup failed idpId=\(providerIdpId) error=\(error)")
+                let message = success
+                    ? "Configured provider endpoint provider=\(endpoint.loginProvider) idpId=\(providerIdpId)"
+                    : "Provider endpoint lookup failed idpId=\(providerIdpId) error=\(error)"
+                Task { @MainActor in
+                    if success {
+                        OpenNOWLog.info(.auth, message)
+                    } else {
+                        OpenNOWLog.warning(.auth, message)
+                    }
+                    continuation.resume()
                 }
-                continuation.resume()
             }
         }
     }
