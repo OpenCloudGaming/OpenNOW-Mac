@@ -628,8 +628,9 @@ final class CatalogViewModel: ObservableObject {
                 self.startPreparedStream(Self.mediaConfiguration(from: configuration), message: message)
             case .activeSession(let active, let resume, let replacement):
                 OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
-                self.activeLaunchSession = active
-                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume)
+                let activeTitle = self.title(forActiveSession: active)
+                self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, title: activeTitle)
+                self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle)
                 self.activeSessionReplacementConfiguration = Self.mediaConfiguration(from: replacement)
                 self.launchFlowState = .activeSessionPrompt
                 self.launchFlowMessage = !resume.resumeSessionId.isEmpty && !resume.resumeServer.isEmpty
@@ -948,9 +949,10 @@ final class CatalogViewModel: ObservableObject {
         return error.localizedDescription
     }
 
-    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration) -> StreamLaunchConfiguration {
-        StreamLaunchConfiguration(
-            title: configuration.title,
+    private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "") -> StreamLaunchConfiguration {
+        let overrideTitle = titleOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        return StreamLaunchConfiguration(
+            title: overrideTitle.isEmpty ? configuration.title : overrideTitle,
             applicationID: configuration.appId,
             accessToken: configuration.apiToken,
             accountLinked: configuration.accountLinked,
@@ -959,6 +961,17 @@ final class CatalogViewModel: ObservableObject {
             resumeServer: configuration.resumeServer,
             metadata: configuration.metadata
         )
+    }
+
+    private func title(forActiveSession session: OPNActiveStreamSessionDescriptor) -> String {
+        let fallback = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard session.appId > 0 else { return fallback.isEmpty ? "Current Stream" : fallback }
+        let applicationID = String(session.appId)
+        if let game = allKnownGames.first(where: { Self.game($0, matchesApplicationID: applicationID) }) {
+            let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+        }
+        return fallback.isEmpty ? "Current Stream" : fallback
     }
 
     private func clearLaunchFlow() {
@@ -1873,6 +1886,14 @@ final class CatalogViewModel: ObservableObject {
     private static func favoriteAppId(for game: OPNCatalogGameObject) -> String {
         if !game.id.isEmpty { return game.id }
         return game.uuid
+    }
+
+    private static func game(_ game: OPNCatalogGameObject, matchesApplicationID applicationID: String) -> Bool {
+        guard !applicationID.isEmpty else { return false }
+        for value in [game.id, game.uuid, game.launchAppId, game.shortName] where value == applicationID {
+            return true
+        }
+        return game.variants.contains { $0.id == applicationID }
     }
 
     static func looseIdentityMatches(_ lhs: OPNCatalogGameObject, _ rhs: OPNCatalogGameObject) -> Bool {

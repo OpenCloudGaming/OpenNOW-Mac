@@ -173,9 +173,10 @@ struct CatalogView: View {
         .task { @MainActor in
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
+            updateWindowTitleForActiveStream()
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
-        .onChange(of: viewModel.activeStreamConfiguration?.id) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
         .onChange(of: viewModel.twitchAccountStatus.isConnected) { _, isConnected in
             if isConnected { twitchRealtime.restart() } else { twitchRealtime.stop() }
         }
@@ -189,7 +190,7 @@ struct CatalogView: View {
             return
         }
         let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        onWindowTitleChange("\(title.isEmpty ? "GeForce NOW" : title) on GeForce NOW")
+        onWindowTitleChange(title.isEmpty ? "GeForce NOW" : title)
     }
 
     private func consumePendingGameShortcut() {

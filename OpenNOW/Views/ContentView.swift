@@ -38,7 +38,7 @@ struct ContentView: View {
             .frame(minWidth: 980, minHeight: 660)
             .frame(idealWidth: 1200, idealHeight: 760)
             .ignoresSafeArea()
-            .background(HiddenTitlebarConfigurator(title: windowTitle))
+            .background(WindowTitleConfigurator(title: windowTitle))
             .task {
                 await bootstrapAppStartIfNeeded()
             }
@@ -84,7 +84,7 @@ struct ContentView: View {
     }
 }
 
-private struct HiddenTitlebarConfigurator: NSViewRepresentable {
+private struct WindowTitleConfigurator: NSViewRepresentable {
     let title: String
 
     func makeCoordinator() -> Coordinator {
@@ -140,19 +140,16 @@ private struct HiddenTitlebarConfigurator: NSViewRepresentable {
             let windowIdentifier = ObjectIdentifier(window)
             guard configuredWindow != windowIdentifier else { return }
             configuredWindow = windowIdentifier
-            if !window.styleMask.contains(.fullSizeContentView) {
-                window.styleMask.insert(.fullSizeContentView)
+            if window.styleMask.contains(.fullSizeContentView) {
+                window.styleMask.remove(.fullSizeContentView)
             }
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .visible
+            window.titlebarAppearsTransparent = false
             window.isMovableByWindowBackground = false
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            if window.toolbar != nil {
-                window.toolbar = nil
-            }
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
             if #available(macOS 11.0, *) {
-                window.titlebarSeparatorStyle = .none
+                window.titlebarSeparatorStyle = .automatic
             }
         }
     }
