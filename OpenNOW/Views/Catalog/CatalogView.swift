@@ -305,7 +305,9 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
 
             let alreadyApplied = appliedLockState == true && appliedAspectRatio.map { abs($0 - aspectRatio) <= 0.001 } == true
             guard !alreadyApplied else { return }
-            window.contentAspectRatio = NSSize(width: aspectRatio, height: 1)
+            let lockedAspectRatio = NSSize(width: aspectRatio, height: 1)
+            window.contentAspectRatio = lockedAspectRatio
+            window.aspectRatio = lockedAspectRatio
             appliedAspectRatio = aspectRatio
             appliedLockState = true
             needsDeferredAspectRatioClear = false
@@ -324,6 +326,7 @@ private struct StreamWindowAspectConfigurator: NSViewRepresentable {
             }
             if appliedLockState == true {
                 window.contentAspectRatio = .zero
+                window.aspectRatio = .zero
             }
             appliedAspectRatio = nil
             appliedLockState = false
