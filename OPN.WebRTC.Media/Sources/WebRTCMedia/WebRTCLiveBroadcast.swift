@@ -71,6 +71,66 @@ public enum WebRTCLiveBroadcastStatus: Equatable, Sendable {
     }
 }
 
+enum WebRTCBroadcastVideoFrameSource: String, Equatable, Sendable {
+    case native
+    case enhanced
+}
+
+struct WebRTCBroadcastVideoSourceSelection: Equatable, Sendable {
+    let accepted: Bool
+    let selectedSource: WebRTCBroadcastVideoFrameSource?
+    let didChangeSource: Bool
+    let reason: String
+}
+
+struct WebRTCBroadcastVideoSourceSelector: Equatable, Sendable {
+    private(set) var selectedSource: WebRTCBroadcastVideoFrameSource?
+    private(set) var nativeFramesDropped = 0
+    private(set) var enhancedFramesDropped = 0
+    var enhancedFallbackTimeoutSeconds: TimeInterval = 0.75
+
+    private var lastEnhancedFrameHostTime: TimeInterval = 0
+
+    init(enhancedFallbackTimeoutSeconds: TimeInterval = 0.75) {
+        self.enhancedFallbackTimeoutSeconds = max(0.1, enhancedFallbackTimeoutSeconds)
+    }
+
+    mutating func reset() {
+        selectedSource = nil
+        nativeFramesDropped = 0
+        enhancedFramesDropped = 0
+        lastEnhancedFrameHostTime = 0
+    }
+
+    mutating func accept(source: WebRTCBroadcastVideoFrameSource, enhancedVideoEnabled: Bool, hostTime: TimeInterval) -> WebRTCBroadcastVideoSourceSelection {
+        guard enhancedVideoEnabled else {
+            if source == .enhanced {
+                enhancedFramesDropped += 1
+                return WebRTCBroadcastVideoSourceSelection(accepted: false, selectedSource: selectedSource, didChangeSource: false, reason: "enhanced_disabled")
+            }
+            return select(source: .native, reason: selectedSource == nil ? "native_only" : "native_continued")
+        }
+
+        switch source {
+        case .enhanced:
+            lastEnhancedFrameHostTime = hostTime
+            return select(source: .enhanced, reason: selectedSource == .enhanced ? "enhanced_continued" : "enhanced_available")
+        case .native:
+            if selectedSource == .enhanced, hostTime - lastEnhancedFrameHostTime <= enhancedFallbackTimeoutSeconds {
+                nativeFramesDropped += 1
+                return WebRTCBroadcastVideoSourceSelection(accepted: false, selectedSource: selectedSource, didChangeSource: false, reason: "enhanced_preferred")
+            }
+            return select(source: .native, reason: selectedSource == .enhanced ? "enhanced_timeout" : "native_fallback")
+        }
+    }
+
+    private mutating func select(source: WebRTCBroadcastVideoFrameSource, reason: String) -> WebRTCBroadcastVideoSourceSelection {
+        let didChangeSource = selectedSource != source
+        selectedSource = source
+        return WebRTCBroadcastVideoSourceSelection(accepted: true, selectedSource: source, didChangeSource: didChangeSource, reason: reason)
+    }
+}
+
 public final class WebRTCLiveBroadcastController: @unchecked Sendable {
     public static let shared = WebRTCLiveBroadcastController()
 
@@ -169,6 +229,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
     private var isStopping = false
     private var receivedGameVideoFrame = false
     private var uiCapture: WebRTCWindowBroadcastCapture?
+    private var videoSourceSelector = WebRTCBroadcastVideoSourceSelector()
     private var microphoneStereoSamples: [Int16] = []
     private let i420BGRAConverter = WebRTCI420BGRAConverter()
     private var i420PixelBufferPool: CVPixelBufferPool?
@@ -195,6 +256,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             self.isStopping = false
             self.receivedGameVideoFrame = false
             self.uiCapture = nil
+            self.videoSourceSelector.reset()
             self.microphoneStereoSamples.removeAll(keepingCapacity: true)
             self.audioEncoder.reset(bitrateKbps: configuration.audioBitrateKbps)
             self.emit(.connecting)
@@ -228,7 +290,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         guard isActive else { return }
         if let buffer = frame.buffer as? RTCCVPixelBuffer {
             let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(buffer.pixelBuffer).toOpaque())
-            appendGamePixelBuffer(retainedPixelBuffer)
+            appendGamePixelBuffer(retainedPixelBuffer, source: .native)
             return
         }
         let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
@@ -238,18 +300,22 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
             guard let i420 = i420Frame.buffer as? RTCI420Buffer,
                   let pixelBuffer = self.newBGRAFramebuffer(from: i420) else { return }
             let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
-            self.appendGamePixelBuffer(retainedPixelBuffer)
+            self.appendGamePixelBuffer(retainedPixelBuffer, source: .native)
         }
     }
 
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
         let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
-        appendGamePixelBuffer(retainedPixelBuffer)
+        appendGamePixelBuffer(retainedPixelBuffer, source: .enhanced)
     }
 
-    private func appendGamePixelBuffer(_ retainedPixelBuffer: UInt) {
+    private func appendGamePixelBuffer(_ retainedPixelBuffer: UInt, source: WebRTCBroadcastVideoFrameSource) {
         queue.async {
             let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(bitPattern: retainedPixelBuffer)!).takeRetainedValue()
+            guard let configuration = self.configuration else { return }
+            let selection = self.videoSourceSelector.accept(source: source, enhancedVideoEnabled: configuration.enhancedVideoEnabled, hostTime: CACurrentMediaTime())
+            if selection.didChangeSource { self.emitVideoSourceSelection(selection, configuration: configuration) }
+            guard selection.accepted else { return }
             if !self.receivedGameVideoFrame {
                 self.receivedGameVideoFrame = true
                 self.stopUICapture()
@@ -375,7 +441,32 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         let now = CACurrentMediaTime()
         guard now - lastStatusHostTime >= 1 else { return }
         lastStatusHostTime = now
+        recordVideoSourceMetrics(configuration: configuration)
         emit(.publishing(startedAt: startedAt ?? Date(), elapsedSeconds: max(0, now - (firstFrameHostTime ?? now)), droppedFrames: droppedFrames, videoBitrateKbps: configuration.videoBitrateKbps))
+    }
+
+    private func emitVideoSourceSelection(_ selection: WebRTCBroadcastVideoSourceSelection, configuration: WebRTCLiveBroadcastConfiguration) {
+        WebRTCMediaTelemetry.capture(
+            "webrtc.broadcast.video_source",
+            level: .info,
+            message: "Twitch broadcast video source selected.",
+            attributes: [
+                "applicationID": configuration.applicationID,
+                "source": selection.selectedSource?.rawValue ?? "unknown",
+                "reason": selection.reason,
+                "enhancedVideo": String(configuration.enhancedVideoEnabled),
+            ]
+        )
+    }
+
+    private func recordVideoSourceMetrics(configuration: WebRTCLiveBroadcastConfiguration) {
+        let attributes = [
+            "applicationID": configuration.applicationID,
+            "source": videoSourceSelector.selectedSource?.rawValue ?? "pending",
+            "enhancedVideo": String(configuration.enhancedVideoEnabled),
+        ]
+        WebRTCMediaTelemetry.record("webrtc.broadcast.native_source_drops", kind: .gauge, value: Double(videoSourceSelector.nativeFramesDropped), attributes: attributes)
+        WebRTCMediaTelemetry.record("webrtc.broadcast.enhanced_source_drops", kind: .gauge, value: Double(videoSourceSelector.enhancedFramesDropped), attributes: attributes)
     }
 
     private func fail(_ error: Error) {
@@ -428,6 +519,7 @@ final class WebRTCLiveBroadcastSession: @unchecked Sendable {
         receivedGameVideoFrame = false
         droppedFrames = 0
         uiCapture = nil
+        videoSourceSelector.reset()
         microphoneStereoSamples.removeAll(keepingCapacity: true)
     }
 

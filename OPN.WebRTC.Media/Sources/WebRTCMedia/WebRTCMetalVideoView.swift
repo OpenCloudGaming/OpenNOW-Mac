@@ -53,11 +53,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) private var sourceFrameSize = CGSize.zero
     private let targetFps: Int
     nonisolated(unsafe) private var frameSerial: UInt64 = 0
-    nonisolated(unsafe) private var lastFrameArrivalTime: CFTimeInterval = 0
-    nonisolated(unsafe) private var frameArrivalIntervalTotalMs = 0.0
-    nonisolated(unsafe) private var frameArrivalIntervalMaxMs = 0.0
-    nonisolated(unsafe) private var frameArrivalIntervalCount = 0
     private var lastDrawnFrameSerial: UInt64 = 0
+    private var lastDrawCadenceTime: CFTimeInterval = 0
+    private var drawIntervalTotalMs = 0.0
+    private var drawIntervalMaxMs = 0.0
+    private var drawIntervalCount = 0
     private var enhancementDroppedFrameCount: UInt64 = 0
     private var lastEnhancementFrameTimeMs = -1.0
     private var lastDiagnosticsUpdateTime: CFTimeInterval = 0
@@ -138,14 +138,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         guard let frame else { return }
         owner?.handleVideoFrame(Unmanaged.passUnretained(frame).toOpaque())
         objc_sync_enter(self)
-        let now = CACurrentMediaTime()
-        if lastFrameArrivalTime > 0 {
-            let intervalMs = max(0, (now - lastFrameArrivalTime) * 1000)
-            frameArrivalIntervalTotalMs += intervalMs
-            frameArrivalIntervalMaxMs = max(frameArrivalIntervalMaxMs, intervalMs)
-            frameArrivalIntervalCount += 1
-        }
-        lastFrameArrivalTime = now
         videoFrame = frame
         frameSerial += 1
         objc_sync_exit(self)
@@ -166,7 +158,6 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         let sourceSize = snapshot.2.width > 0 && snapshot.2.height > 0 ? snapshot.2 : CGSize(width: Int(frame.width), height: Int(frame.height))
         var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize), drawableResolution: videoResolutionString(metalView.drawableSize))
-        populateFrameCadenceDiagnostics(&diagnostics)
         var enhancement = localVideoEnhancement()
         if adaptiveEnhancementPenalty > 0, let enhancementRenderer {
             if enhancement.mode == 4 {
@@ -201,6 +192,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         if let renderer {
             renderer.drawFrame(frame)
             lastDrawnFrameSerial = snapshot.1
+            recordDrawCadence()
         } else {
             diagnostics.fallback = "renderer unavailable"
         }
@@ -267,6 +259,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             diagnostics.enhancementFrameTimeMs = result.frameTimeMs
             enhancementDroppedFrameCount = result.droppedFrames
             lastDrawnFrameSerial = drawSerial
+            recordDrawCadence()
             adaptEnhancementBudget(frameTimeMs: result.frameTimeMs, targetFrameTimeMs: settings.targetFrameTimeMs)
             if let enhancedPixelBuffer = result.enhancedPixelBuffer {
                 owner?.handleEnhancedVideoFrame(enhancedPixelBuffer)
@@ -316,6 +309,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             diagnostics.enhancementFrameTimeMs = result.frameTimeMs
             enhancementDroppedFrameCount = result.droppedFrames
             lastDrawnFrameSerial = drawSerial
+            recordDrawCadence()
             lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
             return true
         }
@@ -406,6 +400,8 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         let now = CACurrentMediaTime()
         guard force || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
         lastDiagnosticsUpdateTime = now
+        var diagnostics = diagnostics
+        populateDrawCadenceDiagnostics(&diagnostics)
         owner?.setVideoRenderDiagnostics(
             pixelFormat: diagnostics.pixelFormat,
             renderMode: diagnostics.renderMode,
@@ -436,19 +432,24 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         metalView.framebufferOnly = !enabled
     }
 
-    private func populateFrameCadenceDiagnostics(_ diagnostics: inout RenderDiagnostics) {
-        let cadence = synchronized { () -> (Double, Double, Int) in
-            let average = frameArrivalIntervalCount > 0 ? frameArrivalIntervalTotalMs / Double(frameArrivalIntervalCount) : -1
-            let maximum = frameArrivalIntervalCount > 0 ? frameArrivalIntervalMaxMs : -1
-            let count = frameArrivalIntervalCount
-            frameArrivalIntervalTotalMs = 0
-            frameArrivalIntervalMaxMs = 0
-            frameArrivalIntervalCount = 0
-            return (average, maximum, count)
+    private func recordDrawCadence() {
+        let now = CACurrentMediaTime()
+        if lastDrawCadenceTime > 0 {
+            let intervalMs = max(0, (now - lastDrawCadenceTime) * 1000)
+            drawIntervalTotalMs += intervalMs
+            drawIntervalMaxMs = max(drawIntervalMaxMs, intervalMs)
+            drawIntervalCount += 1
         }
-        guard cadence.2 > 0 else { return }
-        diagnostics.frameIntervalMs = cadence.0
-        diagnostics.maxFrameIntervalMs = cadence.1
+        lastDrawCadenceTime = now
+    }
+
+    private func populateDrawCadenceDiagnostics(_ diagnostics: inout RenderDiagnostics) {
+        guard drawIntervalCount > 0 else { return }
+        diagnostics.frameIntervalMs = drawIntervalTotalMs / Double(drawIntervalCount)
+        diagnostics.maxFrameIntervalMs = drawIntervalMaxMs
+        drawIntervalTotalMs = 0
+        drawIntervalMaxMs = 0
+        drawIntervalCount = 0
     }
 
     private func synchronized<T>(_ body: () -> T) -> T {
