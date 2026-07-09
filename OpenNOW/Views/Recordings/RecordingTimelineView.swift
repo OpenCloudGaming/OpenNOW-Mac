@@ -1,7 +1,5 @@
 import SwiftUI
-import OpenNOWDesignSystem
 import UniformTypeIdentifiers
-import WebRTCMedia
 
 struct RecordingTimelineView: View {
     let segments: [RecordingEditorSegment]

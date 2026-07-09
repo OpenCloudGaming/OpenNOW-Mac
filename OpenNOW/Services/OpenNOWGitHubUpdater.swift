@@ -1,5 +1,4 @@
 import Foundation
-import OpenNOWTelemetry
 
 struct OpenNOWGitHubRelease: Sendable {
     let version: String

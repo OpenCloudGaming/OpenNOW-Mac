@@ -6,14 +6,9 @@
 
 import AppKit
 import Combine
-import Common
 import CryptoKit
 import ImageIO
-import OpenNOWDesignSystem
-import OpenNOWGameServices
-import OpenNOWTwitch
 import SwiftUI
-import WebRTCMedia
 
 private enum CatalogVendorLayout {
     static let windowTopInset: CGFloat = 10
@@ -2315,7 +2310,7 @@ private struct CatalogRailTileFrameReader: View {
 }
 
 private struct CatalogRailTileFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
+    static let defaultValue: [String: CGRect] = [:]
 
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
@@ -2719,7 +2714,7 @@ private enum CatalogShowAllResizeEdge {
     case bottomLeft
     case bottomRight
 
-    var cursor: NSCursor {
+    @MainActor var cursor: NSCursor {
         switch self {
         case .top, .bottom: return .resizeUpDown
         case .left, .right: return .resizeLeftRight
@@ -2803,7 +2798,7 @@ private struct CatalogCursorModifier: ViewModifier {
     }
 }
 
-private extension NSCursor {
+@MainActor private extension NSCursor {
     static let catalogDiagonalResizeForward = NSCursor.catalogDiagonalResize(angle: 45)
     static let catalogDiagonalResizeBackward = NSCursor.catalogDiagonalResize(angle: -45)
 

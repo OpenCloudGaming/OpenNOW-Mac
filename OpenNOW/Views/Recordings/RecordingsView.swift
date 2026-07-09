@@ -1,8 +1,6 @@
 import AppKit
 import AVKit
-import OpenNOWDesignSystem
 import SwiftUI
-import WebRTCMedia
 
 enum RecordingsLayout {
     static let sidebar = Color(red: 18 / 255, green: 20 / 255, blue: 19 / 255)
@@ -325,8 +323,10 @@ struct RecordingsView: View {
         playerTimeSeconds = 0
         playerTimeObserver = nextPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { time in
             let seconds = max(0, time.seconds.isFinite ? time.seconds : 0)
-            playerTimeSeconds = seconds
-            syncEditorSelectionForPreviewTime(seconds)
+            MainActor.assumeIsolated {
+                playerTimeSeconds = seconds
+                syncEditorSelectionForPreviewTime(seconds)
+            }
         }
         if autoplay { nextPlayer.play() }
     }

@@ -5,7 +5,6 @@
 //
 
 import Combine
-import OpenNOWDesignSystem
 import SwiftUI
 
 struct LoginFormView: View {

@@ -1,9 +1,5 @@
 import AppKit
-import Common
 import CryptoKit
-import OpenNOWDesignSystem
-import OpenNOWTelemetry
-import OpenNOWTwitch
 import SwiftUI
 
 private enum SettingsVendorLayout {
@@ -20,7 +16,7 @@ private extension Font {
     }
 }
 
-private struct SettingsAccountSnapshot {
+@MainActor private struct SettingsAccountSnapshot {
     let displayName: String
     let membershipTier: String
     let providerName: String
@@ -118,12 +114,6 @@ private enum SettingsFormat {
 
     static func endpointHost(_ value: String) -> String {
         URL(string: value)?.host ?? value
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
     }
 }
 
@@ -1122,7 +1112,7 @@ private struct StoreLocalIconImage: View {
 }
 
 private enum StoreIconImage {
-    static func loadImage(named name: String) -> NSImage? {
+    @MainActor static func loadImage(named name: String) -> NSImage? {
         let cacheKey = name as NSString
         if let cached = cache.object(forKey: cacheKey) { return cached }
         guard let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "StoreIcons") ?? Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Resources/StoreIcons"),
@@ -1131,7 +1121,7 @@ private enum StoreIconImage {
         return image
     }
 
-    private static let cache = NSCache<NSString, NSImage>()
+    @MainActor private static let cache = NSCache<NSString, NSImage>()
 }
 
 private enum StoreIconAsset: CaseIterable {
@@ -2179,7 +2169,7 @@ private struct SettingsToggleRow: View {
     let title: String
     let subtitle: String
     let isOn: Bool
-    let action: (Bool) -> Void
+    let action: @MainActor @Sendable (Bool) -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 18) {
@@ -2277,7 +2267,7 @@ private struct SettingsSliderRow: View {
     let value: Double
     let range: ClosedRange<Double>
     var step = 1.0
-    let action: (Double) -> Void
+    let action: @MainActor @Sendable (Double) -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 18) {

@@ -7,11 +7,8 @@
 
 import AppKit
 import Darwin
-import OpenNOWTelemetry
-import OpenNOWTwitch
 import SwiftUI
 import SwiftData
-import WebRTCMedia
 
 enum OpenNOWUpdatePreferences {
     static let automaticUpdateChecksEnabledKey = "OpenNOWAutomaticUpdateChecksEnabled"
@@ -143,6 +140,7 @@ struct OpenNOWApp: App {
     }
 }
 
+@MainActor
 final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
     private static let microphoneShortcutKeyCode: UInt16 = 46
     private static let recordingShortcutKeyCode: UInt16 = 15

@@ -1,6 +1,4 @@
 import Foundation
-import OpenNOWTelemetry
-import WebRTCMedia
 
 struct OpenNOWWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
     func capture(_ event: WebRTCMediaTelemetryEvent) {

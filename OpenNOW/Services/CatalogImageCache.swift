@@ -5,7 +5,6 @@
 
 import AppKit
 import Foundation
-import OpenNOWTelemetry
 import SwiftData
 
 struct CatalogCachedImageData: @unchecked Sendable {

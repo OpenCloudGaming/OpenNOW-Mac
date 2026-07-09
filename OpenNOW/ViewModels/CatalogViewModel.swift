@@ -6,11 +6,7 @@
 
 import AppKit
 import Combine
-import Common
 import Foundation
-import OpenNOWGameServices
-import OpenNOWTwitch
-import WebRTCMedia
 
 private final class CatalogWeakObject<T: AnyObject>: @unchecked Sendable {
     weak var value: T?
@@ -1835,7 +1831,7 @@ final class CatalogViewModel: ObservableObject {
         return Self.preferredVariantIndex(for: game)
     }
 
-    private func resolveSelectedStoreURL(completion: @escaping (URL?) -> Void) {
+    private func resolveSelectedStoreURL(completion: @escaping @Sendable (URL?) -> Void) {
         guard let selectedGame else {
             completion(nil)
             return
@@ -1876,7 +1872,7 @@ final class CatalogViewModel: ObservableObject {
         return true
     }
 
-    static func identity(for game: OPNCatalogGameObject) -> String {
+    nonisolated static func identity(for game: OPNCatalogGameObject) -> String {
         if !game.id.isEmpty { return game.id }
         if !game.uuid.isEmpty { return game.uuid }
         if !game.launchAppId.isEmpty { return game.launchAppId }

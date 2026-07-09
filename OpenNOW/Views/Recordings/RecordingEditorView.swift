@@ -1,6 +1,4 @@
 import SwiftUI
-import OpenNOWDesignSystem
-import WebRTCMedia
 
 private enum RecordingAdvancedEditorSection: String, CaseIterable, Identifiable {
     case arrange

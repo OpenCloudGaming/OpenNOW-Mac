@@ -5,7 +5,6 @@
 //  Created by Jayian on 6/14/26.
 //
 
-import OpenNOWDesignSystem
 import SwiftUI
 
 extension Font {

@@ -4,9 +4,6 @@
 //
 
 import AppKit
-import Common
-import OpenNOWDesignSystem
-import OpenNOWGameServices
 import SwiftUI
 
 private enum ControllerDetailAction: Equatable {
@@ -1832,7 +1829,7 @@ private struct ControllerKeyboardInputBridge: NSViewRepresentable {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self else { return event }
-                guard !Self.isTextInputActive else { return event }
+                guard !MainActor.assumeIsolated({ Self.isTextInputActive }) else { return event }
                 guard let command = Self.command(for: event) else { return event }
                 self.onCommand(command)
                 return nil
@@ -1845,7 +1842,7 @@ private struct ControllerKeyboardInputBridge: NSViewRepresentable {
             self.monitor = nil
         }
 
-        private static var isTextInputActive: Bool {
+        @MainActor private static var isTextInputActive: Bool {
             guard let responder = NSApp.keyWindow?.firstResponder else { return false }
             return responder is NSTextView || String(describing: type(of: responder)).localizedCaseInsensitiveContains("Text")
         }

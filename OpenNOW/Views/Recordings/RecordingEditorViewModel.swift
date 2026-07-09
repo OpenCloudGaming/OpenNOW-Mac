@@ -1,7 +1,6 @@
 import AVFoundation
 import Combine
 import Foundation
-import WebRTCMedia
 
 enum RecordingEditorDragPayload: Equatable {
     case recording(UUID)
