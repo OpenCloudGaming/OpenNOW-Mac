@@ -318,6 +318,7 @@ public struct WebRTCMediaStreamSurface: View {
                 .font(.streamNvidia(size: 10, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(WebRTCMediaStreamTheme.accent)
+            statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
             statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
             statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
             statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))
@@ -535,6 +536,7 @@ public struct WebRTCMediaStreamSurface: View {
     private var hudStatsPanel: some View {
         hudSection(label: "STREAM STATS") {
             VStack(alignment: .leading, spacing: 8) {
+                statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
                 statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
                 statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))
                 statsRow("Bitrate", formatted(latestStats?.inboundBitrateMbps, suffix: " Mbps"))

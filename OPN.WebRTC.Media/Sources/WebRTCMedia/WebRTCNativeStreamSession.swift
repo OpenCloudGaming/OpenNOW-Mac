@@ -336,6 +336,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func latestStatsSnapshot() -> OPNStreamStatsSnapshot {
         let stats = statsLock.withLock { latestStats }
         return OPNStreamStatsSnapshot(available: stats.available,
+                                      transport: stats.transport,
                                       latencyMs: stats.latencyMs,
                                       jitterMs: stats.jitterMs,
                                       inboundBitrateMbps: stats.inboundBitrateMbps,
@@ -468,6 +469,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private func resetStats(sessionInfo: [String: Any], settings: [String: Any]) {
         statsLock.withLock {
             latestStats = OPNStreamStatsState()
+            latestStats.transport = string(sessionInfo["transport"], fallback: "WebRTC")
             latestStats.gpuType = string(sessionInfo["gpuType"])
             latestStats.zone = string(sessionInfo["zone"])
             latestStats.resolution = string(settings["resolution"])
@@ -603,6 +605,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
 private struct OPNStreamStatsState {
     var available = false
+    var transport = "WebRTC"
     var latencyMs = -1.0
     var jitterMs = -1.0
     var inboundBitrateMbps = -1.0

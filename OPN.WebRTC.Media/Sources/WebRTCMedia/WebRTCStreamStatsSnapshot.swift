@@ -3,6 +3,7 @@ import Foundation
 @objc(OPNStreamStatsSnapshot)
 public final class OPNStreamStatsSnapshot: NSObject {
     @objc public let available: Bool
+    @objc public let transport: String
     @objc public let latencyMs: Double
     @objc public let jitterMs: Double
     @objc public let inboundBitrateMbps: Double
@@ -27,6 +28,7 @@ public final class OPNStreamStatsSnapshot: NSObject {
     @objc public let videoMaxFrameIntervalMs: Double
 
     @objc public init(available: Bool,
+                      transport: String,
                       latencyMs: Double,
                       jitterMs: Double,
                       inboundBitrateMbps: Double,
@@ -50,6 +52,7 @@ public final class OPNStreamStatsSnapshot: NSObject {
                       videoFrameIntervalMs: Double,
                       videoMaxFrameIntervalMs: Double) {
         self.available = available
+        self.transport = transport
         self.latencyMs = latencyMs
         self.jitterMs = jitterMs
         self.inboundBitrateMbps = inboundBitrateMbps
