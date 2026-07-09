@@ -140,8 +140,8 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             let windowIdentifier = ObjectIdentifier(window)
             guard configuredWindow != windowIdentifier else { return }
             configuredWindow = windowIdentifier
-            if window.styleMask.contains(.fullSizeContentView) {
-                window.styleMask.remove(.fullSizeContentView)
+            if !window.styleMask.contains(.fullSizeContentView) {
+                window.styleMask.insert(.fullSizeContentView)
             }
             window.titleVisibility = .visible
             window.titlebarAppearsTransparent = false
