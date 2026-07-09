@@ -18,11 +18,11 @@ let package = Package(
     dependencies: [
         .package(path: "../GFN.CloudMatch"),
         .package(path: "../GFN.LCARS"),
+        .package(path: "../GFN.NVST"),
         .package(path: "../GFN.UDS"),
         .package(path: "../OPN.Common"),
         .package(path: "../GFN.Jarvis"),
         .package(path: "../OPN.Telemetry"),
-        .package(path: "../OPN.SignalLinkKit"),
         .package(path: "../OPN.WebRTC.Media"),
     ],
     targets: [
@@ -31,11 +31,11 @@ let package = Package(
             dependencies: [
                 .product(name: "CloudMatch", package: "GFN.CloudMatch"),
                 .product(name: "LCARS", package: "GFN.LCARS"),
+                .product(name: "NVST", package: "GFN.NVST"),
                 .product(name: "UDS", package: "GFN.UDS"),
                 .product(name: "Common", package: "OPN.Common"),
                 .product(name: "Jarvis", package: "GFN.Jarvis"),
                 .product(name: "OpenNOWTelemetry", package: "OPN.Telemetry"),
-                .product(name: "SignalLinkKit", package: "OPN.SignalLinkKit"),
                 .product(name: "WebRTCMedia", package: "OPN.WebRTC.Media"),
             ],
             swiftSettings: [

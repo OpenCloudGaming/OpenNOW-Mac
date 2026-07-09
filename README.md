@@ -22,7 +22,7 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 - `OPN.Common` - shared stream preferences and common utilities
 - `OPN.Auth` - authentication/session support
 - `OPN.Telemetry` - local logging and Sentry-backed telemetry
-- `OPN.SignalLinkKit` - signaling support
+- `GFN.NVST` - NVST signaling, SDP, and Geronimo protocol types
 - `GFN.*` packages - protocol-specific GeForce NOW service modules
 
 ## Packages
@@ -31,6 +31,7 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 - `GFN.GDN`
 - `GFN.Jarvis`
 - `GFN.LCARS`
+- `GFN.NVST`
 - `GFN.NesAuth`
 - `GFN.NetworkTest`
 - `GFN.Starfleet`
@@ -38,7 +39,6 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 - `OPN.Auth`
 - `OPN.Common`
 - `OPN.GameServices`
-- `OPN.SignalLinkKit`
 - `OPN.Telemetry`
 - `OPN.Twitch`
 - `OPN.WebRTC.Media`

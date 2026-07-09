@@ -18,7 +18,7 @@
 		A00000000000000000000102 /* LCARS in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000202 /* LCARS */; };
 		A00000000000000000000103 /* GDN in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000203 /* GDN */; };
 		A00000000000000000000106 /* NetworkTest in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000206 /* NetworkTest */; };
-		A00000000000000000000108 /* SignalLinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* SignalLinkKit */; };
+		A00000000000000000000108 /* NVST in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000208 /* NVST */; };
 		A00000000000000000000109 /* Common in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000209 /* Common */; };
 		A00000000000000000000116 /* OpenNOWDesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000216 /* OpenNOWDesignSystem */; };
 		A00000000000000000000110 /* WebRTCMedia in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000210 /* WebRTCMedia */; };
@@ -78,7 +78,7 @@
 				A00000000000000000000112 /* OpenNOWGameServices in Frameworks */,
 				A00000000000000000000113 /* OpenNOWTelemetry in Frameworks */,
 				A00000000000000000000114 /* OpenNOWTwitch in Frameworks */,
-				A00000000000000000000108 /* SignalLinkKit in Frameworks */,
+				A00000000000000000000108 /* NVST in Frameworks */,
 				7778758F2FDCA4F900B177D8 /* Starfleet in Frameworks */,
 				A00000000000000000000115 /* UDS in Frameworks */,
 				A00000000000000000000110 /* WebRTCMedia in Frameworks */,
@@ -141,7 +141,7 @@
 				A00000000000000000000212 /* OpenNOWGameServices */,
 				A00000000000000000000213 /* OpenNOWTelemetry */,
 				A00000000000000000000214 /* OpenNOWTwitch */,
-				A00000000000000000000208 /* SignalLinkKit */,
+				A00000000000000000000208 /* NVST */,
 				7778758E2FDCA4F900B177D8 /* Starfleet */,
 				A00000000000000000000215 /* UDS */,
 				A00000000000000000000210 /* WebRTCMedia */,
@@ -187,7 +187,7 @@
 				A00000000000000000000312 /* XCLocalSwiftPackageReference "OPN.GameServices" */,
 				A00000000000000000000313 /* XCLocalSwiftPackageReference "OPN.Telemetry" */,
 				A00000000000000000000314 /* XCLocalSwiftPackageReference "OPN.Twitch" */,
-				A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */,
+				A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.NVST" */,
 				7778758D2FDCA4F900B177D8 /* XCLocalSwiftPackageReference "GFN.Starfleet" */,
 				A00000000000000000000315 /* XCLocalSwiftPackageReference "GFN.UDS" */,
 				A00000000000000000000310 /* XCLocalSwiftPackageReference "OPN.WebRTC.Media" */,
@@ -484,9 +484,9 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = GFN.NetworkTest;
 		};
-		A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */ = {
+		A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.NVST" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = OPN.SignalLinkKit;
+			relativePath = GFN.NVST;
 		};
 		A00000000000000000000309 /* XCLocalSwiftPackageReference "OPN.Common" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -558,10 +558,10 @@
 			package = A00000000000000000000306 /* XCLocalSwiftPackageReference "GFN.NetworkTest" */;
 			productName = NetworkTest;
 		};
-		A00000000000000000000208 /* SignalLinkKit */ = {
+		A00000000000000000000208 /* NVST */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "OPN.SignalLinkKit" */;
-			productName = SignalLinkKit;
+			package = A00000000000000000000308 /* XCLocalSwiftPackageReference "GFN.NVST" */;
+			productName = NVST;
 		};
 		A00000000000000000000209 /* Common */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -1,16 +1,14 @@
+import Darwin
+import Darwin
 import Foundation
 import OpenNOWTelemetry
 
-@objcMembers
-@objc(OPNWebSocketSignalingClient)
-public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
-    public var onOffer: ((String) -> Void)?
-    public var onIceCandidate: ((NSDictionary) -> Void)?
+public final class NVSTWebSocketSignalingClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+    public var onOffer: ((NVSTSessionOffer) -> Void)?
+    public var onIceCandidate: ((NVSTIceCandidate) -> Void)?
     public var onClosed: ((Bool, String) -> Void)?
 
-    private let signalingServer: String
-    private let sessionId: String
-    private let signalingUrl: String
+    private let configuration: NVSTSignalingConfiguration
     private var peerId = 0
     private var remotePeerId = 1
     private var ackCounter = 0
@@ -24,11 +22,13 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
     private var connectCompletion: ((Bool, String) -> Void)?
     private var activeURL: URL?
 
-    public init(signalingServer: String, sessionId: String, signalingUrl: String) {
-        self.signalingServer = signalingServer
-        self.sessionId = sessionId
-        self.signalingUrl = signalingUrl
+    public init(configuration: NVSTSignalingConfiguration) {
+        self.configuration = configuration
         super.init()
+    }
+
+    public convenience init(signalingServer: String, sessionId: String, signalingUrl: String) {
+        self.init(configuration: NVSTSignalingConfiguration(signalingServer: signalingServer, sessionID: sessionId, signalingURL: signalingUrl))
     }
 
     public var isConnected: Bool {
@@ -49,7 +49,7 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
 
         peerName = "peer-\(UInt32.random(in: 0..<1_000_000_000))"
         didOpen = false
-        guard let url = buildSignInURL() else {
+        guard let url = configuration.signInURL(peerName: peerName) else {
             completion(false, "Failed to build signaling URL")
             return
         }
@@ -59,12 +59,12 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         activeURL = url
         connectCompletion = completion
 
-        let configuration = URLSessionConfiguration.default
-        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: singleThreadedDelegateQueue())
+        let urlConfiguration = URLSessionConfiguration.default
+        let session = URLSession(configuration: urlConfiguration, delegate: self, delegateQueue: singleThreadedDelegateQueue())
         var request = URLRequest(url: url)
-        request.setValue("x-nv-sessionid.\(sessionId)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
-        request.setValue("https://play.geforcenow.com", forHTTPHeaderField: "Origin")
-        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue(configuration.webSocketSubprotocol, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        request.setValue(configuration.origin, forHTTPHeaderField: "Origin")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
 
         let task = session.webSocketTask(with: request)
         urlSession = session
@@ -106,20 +106,8 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         sendPeerMessage(answer)
     }
 
-    public func sendIceCandidate(_ candidate: NSDictionary) {
-        var payload: [String: Any] = [
-            "candidate": candidate["candidate"] as? String ?? "",
-            "sdpMLineIndex": candidate["sdpMLineIndex"] as? Int ?? 0,
-        ]
-        if let sdpMid = candidate["sdpMid"] as? String, !sdpMid.isEmpty {
-            payload["sdpMid"] = sdpMid
-        } else {
-            payload["sdpMid"] = NSNull()
-        }
-        if let usernameFragment = candidate["usernameFragment"] as? String, !usernameFragment.isEmpty {
-            payload["usernameFragment"] = usernameFragment
-        }
-        sendPeerMessage(payload)
+    public func sendIceCandidate(_ candidate: NVSTIceCandidate) {
+        sendPeerMessage(candidate.dictionary)
     }
 
     public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
@@ -181,35 +169,6 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
         return queue
     }
 
-    private func buildSignInURL() -> URL? {
-        let baseURLString: String
-        if !signalingUrl.isEmpty {
-            baseURLString = signalingUrl
-        } else if signalingServer.contains(":") {
-            baseURLString = "wss://\(signalingServer)/nvst/"
-        } else {
-            baseURLString = "wss://\(signalingServer):443/nvst/"
-        }
-
-        var components = URLComponents(string: baseURLString) ?? URLComponents()
-        components.scheme = "wss"
-        if components.host == nil {
-            components.host = signalingServer
-        }
-        var path = components.path.isEmpty ? "/nvst/" : components.path
-        if !path.hasSuffix("/") {
-            path += "/"
-        }
-        components.path = path + "sign_in"
-        var items = components.queryItems ?? []
-        items.append(URLQueryItem(name: "peer_id", value: peerName))
-        items.append(URLQueryItem(name: "version", value: "2"))
-        items.append(URLQueryItem(name: "peer_role", value: "1"))
-        items.append(URLQueryItem(name: "pairing_id", value: sessionId))
-        components.queryItems = items
-        return components.url
-    }
-
     private func setupHeartbeat() {
         clearHeartbeat()
         rearmReceiveHandler()
@@ -264,98 +223,52 @@ public final class OPNWebSocketSignalingClient: NSObject, URLSessionWebSocketDel
 
     private func sendPeerInfo() {
         ackCounter += 1
-        let info: [String: Any] = [
-            "ackid": ackCounter,
-            "peer_info": [
-                "browser": "Chrome",
-                "browserVersion": "131",
-                "connected": true,
-                "id": peerId,
-                "name": peerName,
-                "peerRole": 0,
-                "resolution": peerResolution,
-                "version": 2,
-            ],
-        ]
-        sendJSONObject(info)
+        let info = NVSTPeerInfo(id: peerId, name: peerName, resolution: peerResolution)
+        sendJSONObject(NVSTSignalingMessageParser.peerInfoEnvelope(peerInfo: info, ackID: ackCounter))
     }
 
     private func handleMessage(_ text: String) {
-        guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-
-        if let peerInfo = json["peer_info"] as? [String: Any],
-           let pid = peerInfo["id"] as? NSNumber,
-           let name = peerInfo["name"] as? String,
-           name == peerName {
-            peerId = pid.intValue
+        guard let parsed = NVSTSignalingMessageParser.parse(text: text, peerName: peerName, currentPeerID: peerId) else { return }
+        if let assignedPeerID = parsed.assignedPeerID {
+            peerId = assignedPeerID
             OPNNetworkLog.webSocketEvent("peerAssigned", url: activeURL, detail: "peerId=\(peerId)")
         }
-
-        if let ack = json["ackid"] as? NSNumber {
-            let peerInfo = json["peer_info"] as? [String: Any]
-            let ourPid = peerInfo?["id"] as? NSNumber
-            if ourPid == nil || ourPid?.intValue != peerId {
-                sendJson("{\"ack\":\(ack.intValue)}")
-            }
+        if let ackIDToSend = parsed.ackIDToSend {
+            sendJson("{\"ack\":\(ackIDToSend)}")
         }
-
-        if json["ack"] != nil {
+        if parsed.acknowledgedID != nil {
             return
         }
-        if json["hb"] != nil {
+        if parsed.shouldRespondToHeartbeat {
             sendJson("{\"hb\":1}")
             return
         }
-
-        guard let peerMessage = json["peer_msg"] as? [String: Any],
-              let messageText = peerMessage["msg"] as? String else { return }
-
-        if let from = peerMessage["from"] as? NSNumber {
-            remotePeerId = from.intValue
-        }
-
-        guard let messageData = messageText.data(using: .utf8),
-              let payload = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] else { return }
-
-        if payload["type"] as? String == "offer" {
-            guard let sdp = payload["sdp"] as? String else { return }
-            OPNNetworkLog.webSocketEvent("offerReceived", url: activeURL, detail: "sdpLength=\(sdp.count)")
-            onOffer?(sdp)
+        if !parsed.error.isEmpty {
+            onClosed?(false, parsed.error)
             return
         }
-
-        guard let candidate = payload["candidate"] as? String else { return }
-        let sdpMid = payload["sdpMid"] as? String ?? ""
-        let sdpMLineIndex = (payload["sdpMLineIndex"] as? NSNumber)?.intValue ?? 0
-        let usernameFragment = payload["usernameFragment"] as? String ?? payload["ufrag"] as? String ?? ""
-        OPNNetworkLog.webSocketEvent("iceCandidateReceived", url: activeURL, detail: "mid=\(sdpMid.isEmpty ? "none" : sdpMid) mline=\(sdpMLineIndex) candidateLength=\(candidate.count)")
-        onIceCandidate?([
-            "candidate": candidate,
-            "sdpMid": sdpMid,
-            "sdpMLineIndex": sdpMLineIndex,
-            "usernameFragment": usernameFragment,
-        ] as NSDictionary)
+        if let remotePeerID = parsed.remotePeerID {
+            remotePeerId = remotePeerID
+        }
+        if let offer = parsed.offer {
+            OPNNetworkLog.webSocketEvent("offerReceived", url: activeURL, detail: "sdpLength=\(offer.sdp.count) nvstSdpLength=\(offer.nvstSdp.count)")
+            onOffer?(offer)
+            return
+        }
+        if let candidate = parsed.iceCandidate {
+            OPNNetworkLog.webSocketEvent("iceCandidateReceived", url: activeURL, detail: "mid=\(candidate.sdpMid.isEmpty ? "none" : candidate.sdpMid) mline=\(candidate.sdpMLineIndex) candidateLength=\(candidate.candidate.count)")
+            onIceCandidate?(candidate)
+        }
     }
 
     private func sendPeerMessage(_ payload: [String: Any]) {
-        guard let payloadData = try? JSONSerialization.data(withJSONObject: payload),
-              let message = String(data: payloadData, encoding: .utf8) else { return }
         ackCounter += 1
-        let peerMessage: [String: Any] = [
-            "peer_msg": [
-                "from": peerId,
-                "to": remotePeerId,
-                "msg": message,
-            ],
-            "ackid": ackCounter,
-        ]
+        guard let peerMessage = NVSTSignalingMessageParser.peerMessageEnvelope(payload: payload, from: peerId, to: remotePeerId, ackID: ackCounter) else { return }
         sendJSONObject(peerMessage)
     }
 
     private func sendJSONObject(_ object: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: object),
-              let text = String(data: data, encoding: .utf8) else { return }
+        guard let text = NVSTSignalingMessageParser.jsonString(object) else { return }
         sendJson(text)
     }
 

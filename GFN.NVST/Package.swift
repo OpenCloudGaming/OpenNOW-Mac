@@ -3,22 +3,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "OPN.SignalLinkKit",
+    name: "GFN.NVST",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "SignalLinkKit", targets: ["SignalLinkKit"]),
+        .library(name: "NVST", targets: ["NVST"]),
     ],
     dependencies: [
         .package(path: "../OPN.Telemetry"),
     ],
     targets: [
         .target(
-            name: "SignalLinkKit",
+            name: "NVST",
             dependencies: [
                 .product(name: "OpenNOWTelemetry", package: "OPN.Telemetry"),
-            ],
-            path: "Sources/SignalLinkKit"
+            ]
         ),
+        .testTarget(name: "NVSTTests", dependencies: ["NVST"]),
     ],
     swiftLanguageModes: [.v6]
 )

@@ -1,20 +1,9 @@
 import Foundation
+import NVST
 
 @objcMembers
 @objc(OPNInputProtocolEncoder)
 public final class OPNInputProtocolEncoder: NSObject {
-    private enum EventType {
-        static let heartbeat: UInt32 = 2
-        static let keyDown: UInt32 = 3
-        static let keyUp: UInt32 = 4
-        static let mouseRelative: UInt32 = 7
-        static let mouseButtonDown: UInt32 = 8
-        static let mouseButtonUp: UInt32 = 9
-        static let mouseWheel: UInt32 = 10
-        static let gamepad: UInt32 = 12
-        static let utf8Text: UInt32 = 23
-    }
-
     private var protocolVersion: UInt16 = 2
     private var gamepadSequences: [UInt16] = [1, 1, 1, 1]
     private static let timestampLock = NSLock()
@@ -31,13 +20,13 @@ public final class OPNInputProtocolEncoder: NSObject {
 
     public func encodeHeartbeat() -> Data {
         var bytes = Data(count: 4)
-        bytes.writeUInt32LE(EventType.heartbeat, at: 0)
+        bytes.writeUInt32LE(GeronimoInputEventType.heartbeat.rawValue, at: 0)
         return bytes
     }
 
     public func encodeKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, timestampUs: UInt64, down: Bool) -> Data {
         var bytes = Data(count: 18)
-        bytes.writeUInt32LE(down ? EventType.keyDown : EventType.keyUp, at: 0)
+        bytes.writeUInt32LE(down ? GeronimoInputEventType.keyDown.rawValue : GeronimoInputEventType.keyUp.rawValue, at: 0)
         bytes.writeUInt16BE(keycode, at: 4)
         bytes.writeUInt16BE(modifiers, at: 6)
         bytes.writeUInt16BE(scancode, at: 8)
@@ -48,7 +37,7 @@ public final class OPNInputProtocolEncoder: NSObject {
     public func encodeMouseMove(dx: Int16, dy: Int16, timestampUs: UInt64) -> Data {
         if protocolVersion <= 2 {
             var bytes = Data(count: 22)
-            bytes.writeUInt32LE(EventType.mouseRelative, at: 0)
+            bytes.writeUInt32LE(GeronimoInputEventType.mouseRelative.rawValue, at: 0)
             bytes.writeInt16BE(dx, at: 4)
             bytes.writeInt16BE(dy, at: 6)
             bytes.writeUInt64BE(timestampUs, at: 14)
@@ -56,11 +45,11 @@ public final class OPNInputProtocolEncoder: NSObject {
         }
 
         var bytes = Data(count: 34)
-        bytes[0] = 0x23
+        bytes[0] = GeronimoInputEnvelope.headerByte
         bytes.writeUInt64BE(Self.timestampUs(), at: 1)
-        bytes[9] = 0x21
+        bytes[9] = GeronimoInputEnvelope.lengthPrefixedPayloadTag
         bytes.writeUInt16BE(22, at: 10)
-        bytes.writeUInt32LE(EventType.mouseRelative, at: 12)
+        bytes.writeUInt32LE(GeronimoInputEventType.mouseRelative.rawValue, at: 12)
         bytes.writeInt16BE(dx, at: 16)
         bytes.writeInt16BE(dy, at: 18)
         bytes.writeUInt64BE(timestampUs, at: 26)
@@ -69,7 +58,7 @@ public final class OPNInputProtocolEncoder: NSObject {
 
     public func encodeMouseButton(button: UInt8, timestampUs: UInt64, down: Bool) -> Data {
         var bytes = Data(count: 18)
-        bytes.writeUInt32LE(down ? EventType.mouseButtonDown : EventType.mouseButtonUp, at: 0)
+        bytes.writeUInt32LE(down ? GeronimoInputEventType.mouseButtonDown.rawValue : GeronimoInputEventType.mouseButtonUp.rawValue, at: 0)
         bytes[4] = button
         bytes.writeUInt64BE(timestampUs, at: 10)
         return wrapSingleEvent(bytes)
@@ -77,7 +66,7 @@ public final class OPNInputProtocolEncoder: NSObject {
 
     public func encodeMouseWheel(delta: Int16, timestampUs: UInt64) -> Data {
         var bytes = Data(count: 22)
-        bytes.writeUInt32LE(EventType.mouseWheel, at: 0)
+        bytes.writeUInt32LE(GeronimoInputEventType.mouseWheel.rawValue, at: 0)
         bytes.writeInt16BE(delta, at: 6)
         bytes.writeUInt64BE(timestampUs, at: 14)
         return wrapSingleEvent(bytes)
@@ -86,7 +75,7 @@ public final class OPNInputProtocolEncoder: NSObject {
     public func encodeUtf8Text(_ text: String) -> Data {
         guard let textData = text.data(using: .utf8), !textData.isEmpty else { return Data() }
         var bytes = Data(count: 8)
-        bytes.writeUInt32LE(EventType.utf8Text, at: 0)
+        bytes.writeUInt32LE(GeronimoInputEventType.utf8Text.rawValue, at: 0)
         bytes.writeUInt32LE(UInt32(textData.count), at: 4)
         bytes.append(textData)
         return wrapSingleEvent(bytes)
@@ -104,7 +93,7 @@ public final class OPNInputProtocolEncoder: NSObject {
                                    bitmap: UInt16,
                                    partiallyReliable: Bool) -> Data {
         var bytes = Data(count: 38)
-        bytes.writeUInt32LE(EventType.gamepad, at: 0)
+        bytes.writeUInt32LE(GeronimoInputEventType.gamepad.rawValue, at: 0)
         bytes.writeUInt16LE(26, at: 4)
         bytes.writeUInt16LE(controllerId & 0x03, at: 6)
         bytes.writeUInt16LE(bitmap, at: 8)
@@ -142,9 +131,9 @@ public final class OPNInputProtocolEncoder: NSObject {
     private func wrapSingleEvent(_ payload: Data) -> Data {
         guard protocolVersion > 2 else { return payload }
         var wrapped = Data(count: 10)
-        wrapped[0] = 0x23
+        wrapped[0] = GeronimoInputEnvelope.headerByte
         wrapped.writeUInt64BE(Self.timestampUs(), at: 1)
-        wrapped[9] = 0x22
+        wrapped[9] = GeronimoInputEnvelope.singleReliablePayloadTag
         wrapped.append(payload)
         return wrapped
     }
@@ -152,9 +141,9 @@ public final class OPNInputProtocolEncoder: NSObject {
     private func wrapGamepadReliable(_ payload: Data) -> Data {
         guard protocolVersion > 2 else { return payload }
         var wrapped = Data(count: 12)
-        wrapped[0] = 0x23
+        wrapped[0] = GeronimoInputEnvelope.headerByte
         wrapped.writeUInt64BE(Self.timestampUs(), at: 1)
-        wrapped[9] = 0x21
+        wrapped[9] = GeronimoInputEnvelope.lengthPrefixedPayloadTag
         wrapped.writeUInt16BE(UInt16(payload.count), at: 10)
         wrapped.append(payload)
         return wrapped
@@ -163,12 +152,12 @@ public final class OPNInputProtocolEncoder: NSObject {
     private func wrapGamepadPartiallyReliable(_ payload: Data, gamepadIndex: UInt8, sequenceNumber: UInt16) -> Data {
         guard protocolVersion > 2 else { return payload }
         var wrapped = Data(count: 16)
-        wrapped[0] = 0x23
+        wrapped[0] = GeronimoInputEnvelope.headerByte
         wrapped.writeUInt64BE(Self.timestampUs(), at: 1)
-        wrapped[9] = 0x26
+        wrapped[9] = GeronimoInputEnvelope.partiallyReliablePayloadTag
         wrapped[10] = gamepadIndex
         wrapped.writeUInt16BE(sequenceNumber, at: 11)
-        wrapped[13] = 0x21
+        wrapped[13] = GeronimoInputEnvelope.lengthPrefixedPayloadTag
         wrapped.writeUInt16BE(UInt16(payload.count), at: 14)
         wrapped.append(payload)
         return wrapped

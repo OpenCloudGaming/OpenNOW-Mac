@@ -1,17 +1,10 @@
 import Foundation
+import NVST
+
 @preconcurrency import WebRTC
 
 @objc(OPNLibWebRTCInput)
 final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
-    private enum Constants {
-        static let utf8Text: UInt32 = 23
-        static let partialReliableInputLifetimeMs: Int32 = 5
-        static let partialReliableInputBacklogLimitBytes: UInt64 = 16 * 1024
-        static let lowLatencyInputBacklogLimitBytes: UInt64 = 4 * 1024
-        static let mouseInputBacklogLimitBytes: UInt64 = 512
-        static let gamepadInputBacklogLimitBytes: UInt64 = 512
-    }
-
     private weak var owner: OPNLibWebRTCStreamSession?
     private let encoder = OPNInputProtocolEncoder()
     private let encoderLock = NSLock()
@@ -35,7 +28,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         let channel = partiallyReliable ? sessionImpl?.partialInputChannel : sessionImpl?.reliableInputChannel
         guard let channel, channel.readyState == .open else { return }
         if partiallyReliable {
-            let backlogLimit = lowLatencyMode ? Constants.lowLatencyInputBacklogLimitBytes : Constants.partialReliableInputBacklogLimitBytes
+            let backlogLimit = lowLatencyMode ? GeronimoInputChannel.lowLatencyInputBacklogLimitBytes : GeronimoInputChannel.partialReliableInputBacklogLimitBytes
             guard channel.bufferedAmount <= backlogLimit else { return }
         }
         channel.sendData(RTCDataBuffer(data: data, isBinary: true))
@@ -51,14 +44,14 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         reliableConfig.isOrdered = true
         reliableConfig.maxRetransmits = -1
         reliableConfig.maxPacketLifeTime = -1
-        sessionImpl.reliableInputChannel = peerConnection.dataChannel(forLabel: "input_channel_v1", configuration: reliableConfig)
+        sessionImpl.reliableInputChannel = peerConnection.dataChannel(forLabel: GeronimoInputChannel.reliableLabel, configuration: reliableConfig)
         sessionImpl.reliableInputChannel?.delegate = sessionImpl
 
         let partialConfig = RTCDataChannelConfiguration()
         partialConfig.isOrdered = false
         partialConfig.maxRetransmits = -1
-        partialConfig.maxPacketLifeTime = Constants.partialReliableInputLifetimeMs
-        sessionImpl.partialInputChannel = peerConnection.dataChannel(forLabel: "input_channel_partially_reliable", configuration: partialConfig)
+        partialConfig.maxPacketLifeTime = GeronimoInputChannel.partialReliableInputLifetimeMs
+        sessionImpl.partialInputChannel = peerConnection.dataChannel(forLabel: GeronimoInputChannel.partiallyReliableLabel, configuration: partialConfig)
         sessionImpl.partialInputChannel?.delegate = sessionImpl
     }
 
@@ -74,7 +67,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     func sendMouseMove(dx: Int16, dy: Int16, lowLatencyMode: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
         guard let channel = sessionImpl?.partialInputChannel,
               channel.readyState == .open,
-              channel.bufferedAmount <= Constants.mouseInputBacklogLimitBytes else { return }
+              channel.bufferedAmount <= GeronimoInputChannel.mouseInputBacklogLimitBytes else { return }
         let encoded = encoderLock.withLock { encoder.encodeMouseMove(dx: dx, dy: dy, timestampUs: OPNInputProtocolEncoder.timestampUs()) }
         sendInput(data: encoded, partiallyReliable: true, lowLatencyMode: lowLatencyMode, sessionImpl: sessionImpl)
     }
@@ -112,7 +105,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                           sessionImpl: OPNLibWebRTCSessionImpl?) {
         guard let channel = sessionImpl?.partialInputChannel,
               channel.readyState == .open,
-              channel.bufferedAmount <= Constants.gamepadInputBacklogLimitBytes else { return }
+              channel.bufferedAmount <= GeronimoInputChannel.gamepadInputBacklogLimitBytes else { return }
         let encoded = encoderLock.withLock { encoder.encodeGamepadState(controllerId: controllerId,
                                                                         buttons: buttons,
                                                                         leftTrigger: leftTrigger,
@@ -130,9 +123,9 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     @objc(handleDataChannelStateWithLabel:open:)
     func handleDataChannelState(label: String, open: Bool) {
         let shouldStopHeartbeat = stateLock.withLock { () -> Bool in
-            if label == "input_channel_v1" {
+            if label == GeronimoInputChannel.reliableLabel {
                 reliableOpen = open
-            } else if label == "input_channel_partially_reliable" {
+            } else if label == GeronimoInputChannel.partiallyReliableLabel {
                 partialOpen = open
             }
             inputReady = handshakeComplete && reliableOpen && partialOpen
@@ -149,7 +142,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
 
     @objc(handleDataChannelMessageWithLabel:data:sessionImpl:)
     func handleDataChannelMessage(label: String, data: Data, sessionImpl: OPNLibWebRTCSessionImpl?) {
-        guard label == "input_channel_v1", data.count >= 2 else { return }
+        guard label == GeronimoInputChannel.reliableLabel, data.count >= 2 else { return }
 
         if isInputReady {
             handleReadyMessage(data)
@@ -158,10 +151,10 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
 
         let firstWord = UInt16(data[0]) | (UInt16(data[1]) << 8)
         let version: UInt16
-        if firstWord == 526 {
+        if firstWord == GeronimoInputHandshake.littleEndianVersionMarker {
             version = data.count >= 4 ? UInt16(data[2]) | (UInt16(data[3]) << 8) : 2
             WebRTCMediaTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "firstWord526"])
-        } else if data[0] == 0x0e {
+        } else if data[0] == GeronimoInputHandshake.leadingVersionByte {
             version = firstWord
             WebRTCMediaTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "byte0x0e"])
         } else {
@@ -194,7 +187,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     private func handleReadyMessage(_ data: Data) {
         let payload = unwrappedPayload(from: data)
         var clipboardText = ""
-        if payload.count >= 8, payload.readUInt32LE(at: 0) == Constants.utf8Text {
+        if payload.count >= 8, payload.readUInt32LE(at: 0) == GeronimoInputEventType.utf8Text.rawValue {
             let textLength = Int(payload.readUInt32LE(at: 4))
             if textLength > 0, textLength <= payload.count - 8 {
                 clipboardText = String(data: payload.subdata(in: 8..<(8 + textLength)), encoding: .utf8) ?? ""
@@ -210,10 +203,10 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     }
 
     private func unwrappedPayload(from data: Data) -> Data {
-        if data.count > 10, data[0] == 0x23, data[9] == 0x22 {
+        if data.count > 10, data[0] == GeronimoInputEnvelope.headerByte, data[9] == GeronimoInputEnvelope.singleReliablePayloadTag {
             return data.subdata(in: 10..<data.count)
         }
-        if data.count > 12, data[0] == 0x23, data[9] == 0x21 {
+        if data.count > 12, data[0] == GeronimoInputEnvelope.headerByte, data[9] == GeronimoInputEnvelope.lengthPrefixedPayloadTag {
             let wrappedLength = Int(UInt16(data[10]) << 8 | UInt16(data[11]))
             if wrappedLength > 0, wrappedLength <= data.count - 12 {
                 return data.subdata(in: 12..<(12 + wrappedLength))

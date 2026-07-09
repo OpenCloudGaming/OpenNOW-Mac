@@ -1,8 +1,7 @@
 import Common
-import Common
 import Foundation
+import NVST
 import OpenNOWTelemetry
-import SignalLinkKit
 import UDS
 import WebRTCMedia
 
@@ -10,7 +9,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     private static let maxBufferedIceCandidates = 120
 
     private let lock = NSLock()
-    private var signaling: OPNWebSocketSignalingClient?
+    private var signaling: NVSTWebSocketSignalingClient?
     private var activeSession: StreamSessionDescriptor?
     private var iceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
     private var pendingIceCandidates: [StreamIceCandidate] = []
@@ -93,11 +92,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         guard let signaling = lock.withLock({ self.signaling }) else {
             throw OpenNOWStreamSessionError.signalingUnavailable
         }
-        signaling.sendIceCandidate([
-            "candidate": candidate.sdp,
-            "sdpMid": candidate.sdpMid,
-            "sdpMLineIndex": candidate.sdpMLineIndex,
-        ] as NSDictionary)
+        signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex))
     }
 
     public func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate> {
@@ -255,25 +250,25 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
     private func connectSignaling(sessionInfo: AllocatedStreamSession, settings: [String: Any], descriptor: StreamSessionDescriptor) async throws -> StreamOffer {
         try await withCheckedThrowingContinuation { continuation in
-            let client = OPNWebSocketSignalingClient(
+            let client = NVSTWebSocketSignalingClient(
                 signalingServer: sessionInfo.signalingServer,
                 sessionId: descriptor.id,
                 signalingUrl: sessionInfo.signalingUrl
             )
             client.setPeerResolution(string(settings["resolution"], fallback: "1920x1080"))
             let settingsJSON = jsonString(settings)
-            client.onOffer = { [weak self] sdp in
+            client.onOffer = { [weak self] sessionOffer in
                 guard let self else { return }
                 let metadata = self.offerMetadata(sessionInfo: sessionInfo, settingsJSON: settingsJSON, descriptor: descriptor)
-                let offer = StreamOffer(session: descriptor, sdp: sdp, metadata: metadata)
+                let offer = StreamOffer(session: descriptor, sdp: sessionOffer.sdp, metadata: metadata)
                 self.resumeOffer(offer)
             }
-            client.onIceCandidate = { [weak self] payload in
+            client.onIceCandidate = { [weak self] candidate in
                 guard let self else { return }
                 self.handleRemoteIceCandidate(StreamIceCandidate(
-                    sdp: self.string(payload["candidate"]),
-                    sdpMid: self.string(payload["sdpMid"]),
-                    sdpMLineIndex: self.int(payload["sdpMLineIndex"])
+                    sdp: candidate.candidate,
+                    sdpMid: candidate.sdpMid,
+                    sdpMLineIndex: candidate.sdpMLineIndex
                 ))
             }
             client.onClosed = { [weak self] clean, reason in
@@ -298,7 +293,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         }
     }
 
-    private func startOfferTimeout(client: OPNWebSocketSignalingClient, descriptor: StreamSessionDescriptor) {
+    private func startOfferTimeout(client: NVSTWebSocketSignalingClient, descriptor: StreamSessionDescriptor) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 20.0) { [weak self, weak client] in
             guard let self, let client else { return }
             let shouldFail = self.lock.withLock { self.signaling === client && self.offerContinuation != nil }
