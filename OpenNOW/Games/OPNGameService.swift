@@ -35,7 +35,7 @@ final class OPNGameService: @unchecked Sendable {
     private static let accountLinkingClientId = "gfn-pc"
     private static let defaultSubscriptionVpcId = "NP-AMS-08"
     private static let defaultCatalogFetchCount = 96
-    private static let maxCatalogPages = 50
+    private static let maxCatalogPages = 150
     private static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
     private static let catalogDefinitionsFreshSeconds: TimeInterval = TimeInterval(LCARS.RequestType.staticAppData.cachePolicy.maxAgeSeconds)
     private static let accountLinkingRequestTimeoutSeconds: TimeInterval = 15
@@ -115,12 +115,12 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     func fetchCatalogGames(completion: @escaping OPNCatalogCallback) {
-        browseCatalogGames(searchQuery: "", sortId: "relevance", filterIds: [], fetchCount: 200) { success, result, error in
+        browseCatalogGames(searchQuery: "", sortId: "relevance", filterIds: [], fetchCount: 200, forceRefresh: false) { success, result, error in
             completion(success, result.games, error)
         }
     }
 
-    func browseCatalogGames(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, completion: @escaping OPNCatalogBrowseCallback) {
+    func browseCatalogGames(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool = false, completion: @escaping OPNCatalogBrowseCallback) {
         let token = accessToken
         let accountIdentifier = userId
         let providerBaseUrl = providerStreamingBaseURL()
@@ -136,6 +136,7 @@ final class OPNGameService: @unchecked Sendable {
                 sortId: sortId,
                 filterIds: filterIds,
                 fetchCount: fetchCount,
+                forceRefresh: forceRefresh,
                 completion: completion
             )
         }
@@ -150,6 +151,7 @@ final class OPNGameService: @unchecked Sendable {
         sortId: String,
         filterIds: [String],
         fetchCount: Int,
+        forceRefresh: Bool,
         completion: @escaping OPNCatalogBrowseCallback
     ) {
         let requestedSortId = sortId.isEmpty ? "last_played" : sortId
@@ -175,6 +177,11 @@ final class OPNGameService: @unchecked Sendable {
             catalogCacheKey: catalogCacheKey
         )
 
+        if forceRefresh {
+            continueBrowseAfterFreshCacheMiss(parameters: parameters, allowCachedCatalog: false, completion: completion)
+            return
+        }
+
         OPNGameDataCache.shared.loadFreshCatalogAndDefinitions(
             key: catalogCacheKey,
             locale: locale,
@@ -188,19 +195,14 @@ final class OPNGameService: @unchecked Sendable {
                 return
             }
 
-            self.continueBrowseAfterFreshCacheMiss(parameters: parameters, completion: completion)
+            self.continueBrowseAfterFreshCacheMiss(parameters: parameters, allowCachedCatalog: true, completion: completion)
         }
     }
 
-    private func continueBrowseAfterFreshCacheMiss(parameters: CatalogDefinitionParameters, completion: @escaping OPNCatalogBrowseCallback) {
+    private func continueBrowseAfterFreshCacheMiss(parameters: CatalogDefinitionParameters, allowCachedCatalog: Bool, completion: @escaping OPNCatalogBrowseCallback) {
         let deliveredCachedResult = AtomicFlag()
-        OPNGameDataCache.shared.loadCatalogAsync(key: parameters.catalogCacheKey) { [weak self] cached in
+        let loadDefinitions: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
-            if let cached {
-                deliveredCachedResult.setTrue()
-                self.dispatchCatalogBrowse(completion, true, cached, "")
-            }
-
             OPNGameDataCache.shared.loadCatalogDefinitionsAsync(locale: parameters.locale, maxAgeSeconds: Self.catalogDefinitionsFreshSeconds) { [weak self] cachedDefinitions in
                 guard let self else { return }
                 if let cachedDefinitions {
@@ -220,6 +222,18 @@ final class OPNGameService: @unchecked Sendable {
                     self.handleCatalogDefinitions(data, error, parameters: parameters, deliveredCachedResult: deliveredCachedResult, completion: completion)
                 }
             }
+        }
+        guard allowCachedCatalog else {
+            loadDefinitions()
+            return
+        }
+        OPNGameDataCache.shared.loadCatalogAsync(key: parameters.catalogCacheKey) { [weak self] cached in
+            guard let self else { return }
+            if let cached {
+                deliveredCachedResult.setTrue()
+                self.dispatchCatalogBrowse(completion, true, cached, "")
+            }
+            loadDefinitions()
         }
     }
 
@@ -1884,7 +1898,13 @@ public final class OPNGameServiceSwiftAdapter: NSObject {
 
     @objc(browseCatalogObjectWithSearchQuery:sortId:filterIds:fetchCount:completion:)
     public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
-        OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount) { success, result, error in
+        OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: false) { success, result, error in
+            completion(success, OPNCatalogBrowseResultObject(result: result), error)
+        }
+    }
+
+    public static func browseCatalogObject(searchQuery: String, sortId: String, filterIds: [String], fetchCount: Int, forceRefresh: Bool, completion: @escaping @Sendable (Bool, OPNCatalogBrowseResultObject, String) -> Void) {
+        OPNGameService.shared.browseCatalogGames(searchQuery: searchQuery, sortId: sortId, filterIds: filterIds, fetchCount: fetchCount, forceRefresh: forceRefresh) { success, result, error in
             completion(success, OPNCatalogBrowseResultObject(result: result), error)
         }
     }

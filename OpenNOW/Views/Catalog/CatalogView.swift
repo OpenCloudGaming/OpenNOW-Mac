@@ -1011,9 +1011,8 @@ private struct CatalogMainMenuPanel: View {
                             viewModel.toggleCatalogTwitchBroadcast()
                             isPresented = false
                         }
-                        CatalogMainMenuRow(title: "Refresh Catalog", subtitle: "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false) {
+                        CatalogMainMenuRow(title: viewModel.isCatalogRefreshInProgress ? "Refreshing Catalog" : "Refresh Catalog", subtitle: viewModel.isCatalogRefreshInProgress ? "Fetching latest panels and game metadata" : "Fetch latest panels and game metadata", systemImage: "arrow.clockwise", isActive: false, isLoading: viewModel.isCatalogRefreshInProgress) {
                             viewModel.refresh()
-                            isPresented = false
                         }
                         if viewModel.selectedMainPage == .games, viewModel.isBrowseMode {
                             CatalogMainMenuRow(title: "Clear Search and Filters", subtitle: "Return to the default catalog view", systemImage: "line.3.horizontal.decrease.circle", isActive: false) {
@@ -1162,6 +1161,7 @@ private struct CatalogMainMenuRow: View {
     let subtitle: String
     let systemImage: String
     let isActive: Bool
+    var isLoading = false
     var compact = false
     var role: ButtonRole?
     let action: () -> Void
@@ -1173,9 +1173,16 @@ private struct CatalogMainMenuRow: View {
                 ZStack {
                     Rectangle()
                         .fill(isActive ? Color.openNowGreen : Color.white.opacity(isHovering ? 0.16 : 0.08))
-                    Image(systemName: systemImage)
-                        .font(.nvidia(size: compact ? 12 : 14, weight: .bold))
-                        .foregroundStyle(iconColor)
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(iconColor)
+                            .scaleEffect(compact ? 0.72 : 0.82)
+                    } else {
+                        Image(systemName: systemImage)
+                            .font(.nvidia(size: compact ? 12 : 14, weight: .bold))
+                            .foregroundStyle(iconColor)
+                    }
                 }
                 .frame(width: compact ? 28 : 34, height: compact ? 28 : 34)
 
@@ -1206,6 +1213,7 @@ private struct CatalogMainMenuRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isLoading)
         .onHover { isHovering = $0 }
         .accessibilityLabel(title)
     }

@@ -76,6 +76,13 @@ private enum ControllerActionMenuItem {
         }
     }
 
+    var isRefresh: Bool {
+        switch self {
+        case .refresh: return true
+        default: return false
+        }
+    }
+
     var icon: String {
         switch self {
         case .refresh: return "arrow.clockwise"
@@ -213,6 +220,7 @@ struct ControllerCatalogView: View {
                         selectedIndex: controllerViewModel.actionMenuIndex,
                         glyphs: inputRouter.glyphs,
                         layout: layout,
+                        isRefreshingCatalog: viewModel.isCatalogRefreshInProgress,
                         perform: executeActionMenuItem,
                         close: closeActionMenu
                     )
@@ -667,9 +675,10 @@ struct ControllerCatalogView: View {
     }
 
     private func executeActionMenuItem(_ item: ControllerActionMenuItem) {
-        closeActionMenu()
+        if !item.isRefresh { closeActionMenu() }
         switch item {
         case .refresh:
+            guard !viewModel.isCatalogRefreshInProgress else { return }
             viewModel.refresh()
         case .clearSearch:
             viewModel.clearSearchAndFilters()
@@ -1457,6 +1466,7 @@ private struct ControllerActionMenuOverlay: View {
     let selectedIndex: Int
     let glyphs: ControllerInputGlyphSet
     let layout: ControllerLayoutMetrics
+    let isRefreshingCatalog: Bool
     let perform: (ControllerActionMenuItem) -> Void
     let close: () -> Void
 
@@ -1474,11 +1484,19 @@ private struct ControllerActionMenuOverlay: View {
                             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                                 Button { perform(item) } label: {
                                     HStack(spacing: 13) {
-                                        Image(systemName: item.icon)
-                                            .font(.nvidia(size: 15, weight: .bold))
-                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
-                                            .frame(width: 28)
-                                        Text(item.title)
+                                        if item.isRefresh, isRefreshingCatalog {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .tint(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                                .scaleEffect(0.82)
+                                                .frame(width: 28)
+                                        } else {
+                                            Image(systemName: item.icon)
+                                                .font(.nvidia(size: 15, weight: .bold))
+                                                .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : Color.openNowGreen)
+                                                .frame(width: 28)
+                                        }
+                                        Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
                                             .font(.nvidia(size: 15, weight: .bold))
                                             .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
                                             .lineLimit(1)
@@ -1490,6 +1508,7 @@ private struct ControllerActionMenuOverlay: View {
                                     .overlay { Rectangle().stroke(index == selectedIndex ? .white.opacity(0.78) : Color.white.opacity(0.10), lineWidth: index == selectedIndex ? 2 : 1) }
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(item.isRefresh && isRefreshingCatalog)
                             }
                         }
                         .padding(.horizontal, 22)

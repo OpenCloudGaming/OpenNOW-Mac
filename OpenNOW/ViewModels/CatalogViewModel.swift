@@ -289,6 +289,10 @@ final class CatalogViewModel: ObservableObject {
         !searchQuery.trimmed.isEmpty || !selectedFilterIds.isEmpty
     }
 
+    var isCatalogRefreshInProgress: Bool {
+        isLoading || isLoadingPanels
+    }
+
     var selectedSortLabel: String {
         sortOptions.first { $0.id == selectedSortId }?.label ?? "Recently Played"
     }
@@ -321,10 +325,10 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func refresh() {
-        Task { await loadCatalogDataAfterProviderConfiguration() }
+        Task { await loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: true) }
     }
 
-    private func loadCatalogDataAfterProviderConfiguration() async {
+    private func loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: Bool = false) async {
         configureCatalogService()
         await configureCatalogProviderEndpoint()
         loadPanels()
@@ -332,7 +336,7 @@ final class CatalogViewModel: ObservableObject {
         loadFavorites()
         loadAccountAndStores()
         loadSettingsPreferences()
-        browseCatalog()
+        browseCatalog(forceRefresh: forceCatalogRefresh)
     }
 
     private func configureCatalogProviderEndpoint() async {
@@ -374,6 +378,10 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func browseCatalog() {
+        browseCatalog(forceRefresh: false)
+    }
+
+    private func browseCatalog(forceRefresh: Bool) {
         browseGeneration += 1
         let generation = browseGeneration
         isLoading = true
@@ -385,7 +393,8 @@ final class CatalogViewModel: ObservableObject {
             searchQuery: query,
             sortId: selectedSortId.isEmpty ? "last_played" : selectedSortId,
             filterIds: selectedFilterIds,
-            fetchCount: 200
+            fetchCount: 200,
+            forceRefresh: forceRefresh
         ) { success, result, error in
             let resultBox = CatalogSendableValue(result)
             Task { @MainActor in
