@@ -272,7 +272,7 @@ final class CatalogViewModel: ObservableObject {
                 let resolvedTitle = title.isEmpty ? "Featured Games" : title
                 guard !seenTitles.contains(resolvedTitle) else { continue }
                 seenTitles.insert(resolvedTitle)
-                sections.append(CatalogSectionModel(id: section.sectionIdentity(fallbackPanelId: panel.id), title: resolvedTitle, games: section.games, kind: .panel))
+                sections.append(CatalogSectionModel(id: section.sectionIdentity(fallbackPanelId: panel.id), title: resolvedTitle, games: games(for: section, title: resolvedTitle), kind: .panel))
             }
         }
         if isBrowseMode, !catalogGames.isEmpty {
@@ -385,7 +385,7 @@ final class CatalogViewModel: ObservableObject {
             searchQuery: query,
             sortId: selectedSortId.isEmpty ? "last_played" : selectedSortId,
             filterIds: selectedFilterIds,
-            fetchCount: 96
+            fetchCount: 200
         ) { success, result, error in
             let resultBox = CatalogSendableValue(result)
             Task { @MainActor in
@@ -408,6 +408,21 @@ final class CatalogViewModel: ObservableObject {
                 self.schedulePatchingPollIfNeeded()
             }
         }
+    }
+
+    private func games(for section: OPNCatalogPanelSectionObject, title: String) -> [OPNCatalogGameObject] {
+        guard isAllGamesPanelSection(section, title: title), !catalogGames.isEmpty else { return section.games }
+        return catalogGames
+    }
+
+    private func isAllGamesPanelSection(_ section: OPNCatalogPanelSectionObject, title: String) -> Bool {
+        let normalizedTitle = Self.normalizedCatalogSectionIdentifier(title)
+        let normalizedId = Self.normalizedCatalogSectionIdentifier(section.id)
+        return normalizedTitle == "allgames" || normalizedId == "allgames" || normalizedId == "catalog" || normalizedId == "catalogresults"
+    }
+
+    private static func normalizedCatalogSectionIdentifier(_ value: String) -> String {
+        value.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     func setSort(_ sortId: String) {

@@ -35,7 +35,7 @@ final class OPNGameService: @unchecked Sendable {
     private static let accountLinkingClientId = "gfn-pc"
     private static let defaultSubscriptionVpcId = "NP-AMS-08"
     private static let defaultCatalogFetchCount = 96
-    private static let maxCatalogPages = 3
+    private static let maxCatalogPages = 50
     private static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
     private static let catalogDefinitionsFreshSeconds: TimeInterval = TimeInterval(LCARS.RequestType.staticAppData.cachePolicy.maxAgeSeconds)
     private static let accountLinkingRequestTimeoutSeconds: TimeInterval = 15
