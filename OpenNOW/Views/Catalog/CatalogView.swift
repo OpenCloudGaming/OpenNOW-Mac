@@ -11,7 +11,7 @@ import ImageIO
 import SwiftUI
 
 private enum CatalogVendorLayout {
-    static let windowTopInset: CGFloat = 10
+    static let windowTopInset: CGFloat = 42
     static let appBarHeight: CGFloat = 56
     static let appBarBackground = OpenNOWDesign.Surface.appBar
     static let mallSurface = OpenNOWDesign.Surface.app
