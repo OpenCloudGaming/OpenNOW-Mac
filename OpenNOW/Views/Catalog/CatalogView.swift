@@ -164,7 +164,7 @@ struct CatalogView: View {
             }
         }
         .background(Color.gfnBackgroundGreen)
-        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
+        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: true))
         .task { @MainActor in
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
