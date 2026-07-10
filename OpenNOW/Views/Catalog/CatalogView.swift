@@ -1655,7 +1655,7 @@ private struct CatalogContentView: View {
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
-    @State private var showAllSection: CatalogSectionModel?
+    @State private var showAllSectionId: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -1717,7 +1717,7 @@ private struct CatalogContentView: View {
                                         .frame(height: 0)
                                         .id(railAnchor)
                                 }
-                                CatalogRailView(viewModel: viewModel, section: section, onShowAll: { showAllSection = section })
+                                CatalogRailView(viewModel: viewModel, section: section, onShowAll: { openShowAll(section) })
                                 if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                     GameDetailPanel(viewModel: viewModel)
                                         .padding(.top, -8)
@@ -1756,10 +1756,10 @@ private struct CatalogContentView: View {
                     CatalogShowAllOverlay(
                         viewModel: viewModel,
                         section: showAllSection,
-                        onDismiss: { self.showAllSection = nil },
+                        onDismiss: { self.showAllSectionId = nil },
                         onSelect: { game in
                             viewModel.selectGame(game, inSection: showAllSection.id)
-                            self.showAllSection = nil
+                            self.showAllSectionId = nil
                         }
                     )
                     .transition(.opacity)
@@ -1787,6 +1787,16 @@ private struct CatalogContentView: View {
             }
             if heroIndex >= identities.count { heroIndex = 0 }
         }
+    }
+
+    private var showAllSection: CatalogSectionModel? {
+        guard let showAllSectionId else { return nil }
+        return viewModel.catalogSections.first { $0.id == showAllSectionId }
+    }
+
+    private func openShowAll(_ section: CatalogSectionModel) {
+        showAllSectionId = section.id
+        viewModel.loadFullSectionIfNeeded(section)
     }
 
     private var heroGames: [OPNCatalogGameObject] {
@@ -2172,7 +2182,7 @@ private struct CatalogRailView: View {
         visibleGames.append(sectionGame)
         return visibleGames
     }
-    private var canShowAll: Bool { section.games.count > games.count }
+    private var canShowAll: Bool { section.canLoadFullList || section.games.count > games.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2210,7 +2220,7 @@ private struct CatalogRailView: View {
                                     .id(game.catalogIdentity)
                                     .background(CatalogRailTileFrameReader(identity: game.catalogIdentity, coordinateSpaceName: coordinateSpaceName))
                             }
-                            if section.games.count > games.count {
+                            if canShowAll {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
@@ -2556,6 +2566,7 @@ private struct CatalogShowAllOverlay: View {
     private var resultSummary: String {
         let count = filteredGames.count
         let total = section.games.count
+        if section.isLoadingFullList, searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Loading full list... \(total) games loaded" }
         if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "\(total) games" }
         return "\(count) of \(total) games"
     }

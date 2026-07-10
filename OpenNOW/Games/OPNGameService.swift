@@ -765,7 +765,7 @@ final class OPNGameService: @unchecked Sendable {
         let fetchPage = RecursiveCatalogPageFetcher()
         fetchPage.action = { [weak self, state, fetchPage] page, cursor in
             guard let self else { return }
-            var variables: [String: Any] = ["vpcId": vpcId, "locale": locale, "sortString": sortString, "fetchCount": fetchCount, "cursor": cursor.isEmpty ? NSNull() : cursor, "filters": filterBox.value]
+            var variables: [String: Any] = ["vpcId": vpcId, "locale": locale, "sortString": sortString, "fetchCount": fetchCount, "cursor": cursor, "filters": filterBox.value]
             if !searchString.isEmpty { variables["searchString"] = searchString }
             postGraphQlJson(query: query, variables: variables as NSDictionary) { [weak self] data, error in
                 guard let self else { return }
@@ -1076,6 +1076,11 @@ final class OPNGameService: @unchecked Sendable {
                 panelSection.id = safeString(section["id"]) ?? ""
                 panelSection.title = safeString(section["title"]) ?? ""
                 panelSection.typename = safeString(section["__typename"]) ?? ""
+                if let seeMoreInfo = section["seeMoreInfo"] as? NSDictionary {
+                    panelSection.seeMoreFilterIds = safeStringArray(seeMoreInfo["filterIds"])
+                    panelSection.seeMoreSortId = safeString(seeMoreInfo["sortOrderId"]) ?? ""
+                    panelSection.seeMoreTitle = safeString(seeMoreInfo["title"]) ?? ""
+                }
                 let items = section["items"] as? [NSDictionary] ?? []
                 panelSection.games = items.compactMap { item in
                     guard safeString(item["__typename"]) == "GameItem", let app = item["app"] as? NSDictionary else { return nil }
@@ -2352,7 +2357,7 @@ private extension Array where Element: Hashable {
 private extension OPNGameService {
     static var catalogQuery: String {
         """
-        query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String, $filters: AppFilterFields!) {
+        query GetFilterBrowseResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
                 items { id title shortDescription longDescription images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status stateDetails { ... on VariantGfnAutoPatchingMetadata { subType startTime endTime historicalEtaMins etaPredictionType } ... on VariantGfnManualPatchingMetadata { subType startTime endTime } ... on VariantGfnMaintenanceMetadata { subType } } library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }
@@ -2363,7 +2368,7 @@ private extension OPNGameService {
 
     static var catalogSearchQuery: String {
         """
-        query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String, $searchString: String!, $filters: AppFilterFields!) {
+        query GetSearchFilterResults($vpcId: String!, $locale: String!, $sortString: String!, $fetchCount: Int!, $cursor: String!, $searchString: String!, $filters: AppFilterFields!) {
             apps(vpcId: $vpcId, language: $locale, orderBy: $sortString, first: $fetchCount, after: $cursor, searchQuery: $searchString, filters: $filters) {
                 numberReturned numberSupported pageInfo { hasNextPage endCursor totalCount }
                 items { id title shortDescription longDescription images { KEY_ART KEY_IMAGE GAME_BOX_ART TV_BANNER HERO_IMAGE MARQUEE_HERO_IMAGE FEATURE_IMAGE GAME_LOGO SCREENSHOTS } variants { id appStore storeUrl supportedControls gfn { status stateDetails { ... on VariantGfnAutoPatchingMetadata { subType startTime endTime historicalEtaMins etaPredictionType } ... on VariantGfnManualPatchingMetadata { subType startTime endTime } ... on VariantGfnMaintenanceMetadata { subType } } library { status selected } } } gfn { playabilityState minimumMembershipTierLabel catalogSkuStrings { SKU_BASED_TAG } } itemMetadata { campaignIds } }

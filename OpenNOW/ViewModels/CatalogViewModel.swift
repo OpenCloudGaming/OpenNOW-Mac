@@ -131,6 +131,8 @@ final class CatalogViewModel: ObservableObject {
     @Published var mainPanels: [OPNCatalogPanelObject] = []
     @Published var catalogGames: [OPNCatalogGameObject] = []
     @Published var libraryGames: [OPNCatalogGameObject] = []
+    @Published private var fullSectionGames: [String: [OPNCatalogGameObject]] = [:]
+    @Published private var loadingFullSectionIds: Set<String> = []
     @Published var filterGroups: [OPNCatalogFilterGroupObject] = []
     @Published var sortOptions: [OPNCatalogSortOptionObject] = []
     @Published var totalCatalogCount = 0
@@ -272,7 +274,17 @@ final class CatalogViewModel: ObservableObject {
                 let resolvedTitle = title.isEmpty ? "Featured Games" : title
                 guard !seenTitles.contains(resolvedTitle) else { continue }
                 seenTitles.insert(resolvedTitle)
-                sections.append(CatalogSectionModel(id: section.sectionIdentity(fallbackPanelId: panel.id), title: resolvedTitle, games: games(for: section, title: resolvedTitle), kind: .panel))
+                let sectionId = section.sectionIdentity(fallbackPanelId: panel.id)
+                sections.append(CatalogSectionModel(
+                    id: sectionId,
+                    title: resolvedTitle,
+                    games: games(for: section, title: resolvedTitle, sectionId: sectionId),
+                    kind: .panel,
+                    seeMoreFilterIds: section.seeMoreFilterIds,
+                    seeMoreSortId: section.seeMoreSortId,
+                    seeMoreTitle: section.seeMoreTitle,
+                    isLoadingFullList: loadingFullSectionIds.contains(sectionId)
+                ))
             }
         }
         if isBrowseMode, !catalogGames.isEmpty {
@@ -419,9 +431,40 @@ final class CatalogViewModel: ObservableObject {
         }
     }
 
-    private func games(for section: OPNCatalogPanelSectionObject, title: String) -> [OPNCatalogGameObject] {
+    private func games(for section: OPNCatalogPanelSectionObject, title: String, sectionId: String) -> [OPNCatalogGameObject] {
+        if let games = fullSectionGames[sectionId], !games.isEmpty { return games }
         guard isAllGamesPanelSection(section, title: title), !catalogGames.isEmpty else { return section.games }
         return catalogGames
+    }
+
+    func loadFullSectionIfNeeded(_ section: CatalogSectionModel) {
+        guard section.canLoadFullList, fullSectionGames[section.id] == nil, !loadingFullSectionIds.contains(section.id) else { return }
+        let sectionId = section.id
+        let sortId = section.seeMoreSortId.isEmpty ? selectedSortId : section.seeMoreSortId
+        let filterIds = section.seeMoreFilterIds
+        loadingFullSectionIds.insert(section.id)
+        configureCatalogService()
+        let selfBox = CatalogWeakObject(self)
+        OPNGameServiceSwiftAdapter.browseCatalogObject(
+            searchQuery: "",
+            sortId: sortId,
+            filterIds: filterIds,
+            fetchCount: 200,
+            forceRefresh: false
+        ) { success, result, error in
+            let resultBox = CatalogSendableValue(result)
+            Task { @MainActor in
+                guard let self = selfBox.value else { return }
+                self.loadingFullSectionIds.remove(sectionId)
+                guard success else {
+                    if self.refreshAuthIfNeeded(error: error) { return }
+                    if self.errorMessage.isEmpty { self.errorMessage = error.isEmpty ? "Unable to load the full game list." : error }
+                    return
+                }
+                self.fullSectionGames[sectionId] = resultBox.value.games
+                self.schedulePatchingPollIfNeeded()
+            }
+        }
     }
 
     private func isAllGamesPanelSection(_ section: OPNCatalogPanelSectionObject, title: String) -> Bool {
@@ -2030,6 +2073,14 @@ struct CatalogSectionModel: Identifiable, Equatable {
     let title: String
     let games: [OPNCatalogGameObject]
     let kind: Kind
+    var seeMoreFilterIds: [String] = []
+    var seeMoreSortId = ""
+    var seeMoreTitle = ""
+    var isLoadingFullList = false
+
+    var canLoadFullList: Bool {
+        !seeMoreFilterIds.isEmpty || !seeMoreSortId.isEmpty
+    }
 
     func visibleGames(expanded: Bool) -> [OPNCatalogGameObject] {
         expanded ? games : Array(games.prefix(18))

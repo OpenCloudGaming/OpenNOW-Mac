@@ -135,12 +135,18 @@ public struct OPNPanelSection: Equatable, Sendable {
     public var id = ""
     public var title = ""
     public var typename = ""
+    public var seeMoreFilterIds: [String] = []
+    public var seeMoreSortId = ""
+    public var seeMoreTitle = ""
     public var games: [OPNGameInfo] = []
 
-    public init(id: String = "", title: String = "", typename: String = "", games: [OPNGameInfo] = []) {
+    public init(id: String = "", title: String = "", typename: String = "", seeMoreFilterIds: [String] = [], seeMoreSortId: String = "", seeMoreTitle: String = "", games: [OPNGameInfo] = []) {
         self.id = id
         self.title = title
         self.typename = typename
+        self.seeMoreFilterIds = seeMoreFilterIds
+        self.seeMoreSortId = seeMoreSortId
+        self.seeMoreTitle = seeMoreTitle
         self.games = games
     }
 }
@@ -472,6 +478,9 @@ public final class OPNCatalogPanelSectionObject: NSObject {
     public var id: String
     public var title: String
     public var typeName: String
+    public var seeMoreFilterIds: [String]
+    public var seeMoreSortId: String
+    public var seeMoreTitle: String
     public var games: [OPNCatalogGameObject]
 
     public override convenience init() {
@@ -482,12 +491,15 @@ public final class OPNCatalogPanelSectionObject: NSObject {
         id = section.id
         title = section.title
         typeName = section.typename
+        seeMoreFilterIds = section.seeMoreFilterIds
+        seeMoreSortId = section.seeMoreSortId
+        seeMoreTitle = section.seeMoreTitle
         games = section.games.map(OPNCatalogGameObject.init)
         super.init()
     }
 
     public var swiftValue: OPNPanelSection {
-        OPNPanelSection(id: id, title: title, typename: typeName, games: games.map(\.swiftValue))
+        OPNPanelSection(id: id, title: title, typename: typeName, seeMoreFilterIds: seeMoreFilterIds, seeMoreSortId: seeMoreSortId, seeMoreTitle: seeMoreTitle, games: games.map(\.swiftValue))
     }
 }
 

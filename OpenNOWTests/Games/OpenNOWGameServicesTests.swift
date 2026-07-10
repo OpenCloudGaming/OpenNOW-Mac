@@ -273,6 +273,102 @@ private actor AsyncTestLock {
     #expect(roundTrip.variants.first?.isPatching == true)
 }
 
+@Test func panelSectionPreservesSeeMoreCatalogParameters() async {
+    await sessionManagerTestLock.withLock {
+        let host = "*"
+        let token = "panel-see-more-token-\(UUID().uuidString)"
+        _ = OPNGameDataCache.shared.clearAllCaches()
+        OPNGameServiceSwiftAdapter.setAccessToken(token)
+        OPNGameServiceSwiftAdapter.setUserId("panel-see-more-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            if variables["appIds"] != nil {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": []]]])
+            }
+            return SessionManagerURLProtocol.response(json: ["data": ["panels": [[
+                "id": "main-panel",
+                "name": "MAIN",
+                "sections": [[
+                    "id": "featured-section",
+                    "title": "Featured",
+                    "seeMoreInfo": ["filterIds": ["genre-action", "store-steam"], "sortOrderId": "release_date", "title": "Show all featured"],
+                    "items": [["__typename": "GameItem", "app": catalogGraphQLGame(id: "panel-game")]],
+                ]],
+            ]]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchMainPanelObjects { success, panels, error in
+                let section = panels.first?.sections.first
+                continuation.resume(returning: (success, section?.seeMoreFilterIds ?? [], section?.seeMoreSortId ?? "", section?.seeMoreTitle ?? "", error))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.4.isEmpty)
+        #expect(result.1 == ["genre-action", "store-steam"])
+        #expect(result.2 == "release_date")
+        #expect(result.3 == "Show all featured")
+    }
+}
+
+@Test func catalogBrowseContinuesAfterFortyItemFirstPage() async {
+    await sessionManagerTestLock.withLock {
+        let host = "*"
+        let token = "catalog-pagination-token-\(UUID().uuidString)"
+        _ = OPNGameDataCache.shared.clearAllCaches()
+        OPNGameServiceSwiftAdapter.setAccessToken(token)
+        OPNGameServiceSwiftAdapter.setUserId("catalog-pagination-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            if variables["appIds"] != nil {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": []]]])
+            }
+            if query.contains("filterGroupDefinitions") {
+                return SessionManagerURLProtocol.response(json: ["data": ["filterGroupDefinitions": [], "sortOrderDefinitions": [["id": "last_played", "label": "Last Played", "orderBy": "lastPlayedDate:DESC"]]]])
+            }
+            let cursor = variables["cursor"] as? String ?? ""
+            let start = cursor == "cursor-40" ? 40 : 0
+            let count = cursor == "cursor-40" ? 5 : 40
+            let hasNextPage = cursor.isEmpty
+            let endCursor = hasNextPage ? "cursor-40" : "cursor-45"
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": count,
+                "numberSupported": 45,
+                "pageInfo": ["hasNextPage": hasNextPage, "endCursor": endCursor, "totalCount": 45],
+                "items": (start..<(start + count)).map { catalogGraphQLGame(id: "catalog-game-\($0)") },
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "last_played", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
+                continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, error))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.4.isEmpty)
+        #expect(result.1 == 45)
+        #expect(result.2 == 45)
+        #expect(result.3 == 45)
+        let catalogBodies = SessionManagerURLProtocol.recordedJSONBodies(host: host).filter { body in
+            ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
+        }
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == ["", "cursor-40"])
+    }
+}
+
 @Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
     try await sessionManagerTestLock.withLock {
     let host = "create-release-shape.example.test"
@@ -533,6 +629,22 @@ private func staleSessionResponse() -> [String: Any] {
             "status": 4,
             "sessionRequestData": ["appId": 0],
         ],
+    ]
+}
+
+private func catalogGraphQLGame(id: String) -> [String: Any] {
+    [
+        "id": id,
+        "title": "Catalog Game \(id)",
+        "images": ["TV_BANNER": ["https://assets.example.invalid/\(id).jpg"]],
+        "variants": [[
+            "id": "1\(abs(id.hashValue % 1_000_000))",
+            "appStore": "STEAM",
+            "storeUrl": "https://store.example.invalid/\(id)",
+            "gfn": ["status": "AVAILABLE", "library": ["status": "NOT_OWNED", "selected": false]],
+        ]],
+        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free"],
+        "itemMetadata": ["campaignIds": []],
     ]
 }
 

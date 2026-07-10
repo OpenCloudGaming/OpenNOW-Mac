@@ -199,7 +199,7 @@ struct ControllerCatalogView: View {
                     .zIndex(28)
                 }
 
-                if let showAllSection = controllerViewModel.showAllSection {
+                if let showAllSection = currentShowAllSection {
                     ControllerShowAllOverlay(
                         viewModel: viewModel,
                         section: showAllSection,
@@ -414,7 +414,7 @@ struct ControllerCatalogView: View {
     }
 
     private func handleShowAllInput(_ command: ControllerInputCommand) {
-        guard let section = controllerViewModel.showAllSection else { return }
+        guard let section = currentShowAllSection else { return }
         switch command {
         case .move(.left): controllerViewModel.showAllIndex = max(controllerViewModel.showAllIndex - 1, 0)
         case .move(.right): controllerViewModel.showAllIndex = min(controllerViewModel.showAllIndex + 1, max(section.games.count - 1, 0))
@@ -509,6 +509,11 @@ struct ControllerCatalogView: View {
         return sections[controllerViewModel.selectedRailIndex]
     }
 
+    private var currentShowAllSection: CatalogSectionModel? {
+        guard let section = controllerViewModel.showAllSection else { return nil }
+        return viewModel.catalogSections.first { $0.id == section.id } ?? section
+    }
+
     private func moveRail(delta: Int) {
         let sections = viewModel.catalogSections
         guard !sections.isEmpty else { return }
@@ -562,6 +567,7 @@ struct ControllerCatalogView: View {
     private func openShowAll(_ section: CatalogSectionModel) {
         controllerViewModel.showAllSection = section
         controllerViewModel.showAllIndex = clampedSelectedGameIndex(for: section, gameCount: section.games.count)
+        viewModel.loadFullSectionIfNeeded(section)
     }
 
     private func closeShowAll() {
@@ -1008,7 +1014,7 @@ private struct ControllerGameRail: View {
     let showAll: () -> Void
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
-    private var canShowAll: Bool { section.games.count > games.count }
+    private var canShowAll: Bool { section.canLoadFullList || section.games.count > games.count }
     private var itemSpacing: CGFloat { 18 }
 
     var body: some View {
@@ -1424,7 +1430,7 @@ private struct ControllerShowAllOverlay: View {
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.90)
                 VStack(alignment: .leading, spacing: 18) {
-                    ControllerOverlayHeader(title: section.title, subtitle: "\(section.games.count) games", glyphs: glyphs, close: close)
+                    ControllerOverlayHeader(title: section.title, subtitle: subtitle, glyphs: glyphs, close: close)
                     ScrollViewReader { scrollProxy in
                         ScrollView(.vertical, showsIndicators: false) {
                             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: columns), spacing: 16) {
@@ -1454,6 +1460,10 @@ private struct ControllerShowAllOverlay: View {
             .onAppear { columnCount = columns }
             .onChange(of: columns) { _, value in columnCount = value }
         }
+    }
+
+    private var subtitle: String {
+        section.isLoadingFullList ? "Loading full list... \(section.games.count) games loaded" : "\(section.games.count) games"
     }
 }
 
