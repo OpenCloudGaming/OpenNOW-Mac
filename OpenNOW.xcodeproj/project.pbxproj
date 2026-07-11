@@ -10,8 +10,10 @@
 		7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
 		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
-		A00000000000000000000001 /* OpenNOW/Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* OpenNOW/Resources */; };
+		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
+		B00000000000000000000001 /* OpenNOWApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* OpenNOWApp.swift */; };
+		B00000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,14 +45,71 @@
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 		7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenNOW.entitlements; sourceTree = "<group>"; };
 		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
-		A00000000000000000000002 /* OpenNOW/Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenNOW/Resources; sourceTree = "<group>"; };
+		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		A00000000000000000000502 /* OpenNOWTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenNOWTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000000000000000000002 /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenNOWApp.swift; sourceTree = "<group>"; };
+		B00000000000000000000004 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		7729CE782FDEDAB300D5C9D5 /* OpenNOW */ = {
+		7729CE782FDEDAB300D5C9D5 /* Auth */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = OpenNOW;
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000101 /* Core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Core;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000102 /* Design */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Design;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000103 /* Games */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Games;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000104 /* GFN */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = GFN;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000105 /* Models */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000106 /* Services */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Services;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000107 /* Stream */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Stream;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000108 /* Telemetry */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Telemetry;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000109 /* Twitch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Twitch;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000110 /* ViewModels */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000111 /* Views */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Views;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000501 /* OpenNOWTests */ = {
@@ -84,9 +143,22 @@
 		7729CE6D2FDEDAB300D5C9D5 = {
 			isa = PBXGroup;
 			children = (
-				7729CE782FDEDAB300D5C9D5 /* OpenNOW */,
+				7729CE782FDEDAB300D5C9D5 /* Auth */,
+				B00000000000000000000101 /* Core */,
+				B00000000000000000000102 /* Design */,
+				B00000000000000000000103 /* Games */,
+				B00000000000000000000104 /* GFN */,
+				B00000000000000000000105 /* Models */,
+				A00000000000000000000002 /* Resources */,
+				B00000000000000000000106 /* Services */,
+				B00000000000000000000107 /* Stream */,
+				B00000000000000000000108 /* Telemetry */,
+				B00000000000000000000109 /* Twitch */,
+				B00000000000000000000110 /* ViewModels */,
+				B00000000000000000000111 /* Views */,
+				B00000000000000000000004 /* Assets.xcassets */,
+				B00000000000000000000002 /* OpenNOWApp.swift */,
 				A00000000000000000000501 /* OpenNOWTests */,
-				A00000000000000000000002 /* OpenNOW/Resources */,
 				7729CE902FDF000000D5C9D5 /* OpenNOW.entitlements */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
@@ -120,7 +192,18 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				7729CE782FDEDAB300D5C9D5 /* OpenNOW */,
+				7729CE782FDEDAB300D5C9D5 /* Auth */,
+				B00000000000000000000101 /* Core */,
+				B00000000000000000000102 /* Design */,
+				B00000000000000000000103 /* Games */,
+				B00000000000000000000104 /* GFN */,
+				B00000000000000000000105 /* Models */,
+				B00000000000000000000106 /* Services */,
+				B00000000000000000000107 /* Stream */,
+				B00000000000000000000108 /* Telemetry */,
+				B00000000000000000000109 /* Twitch */,
+				B00000000000000000000110 /* ViewModels */,
+				B00000000000000000000111 /* Views */,
 			);
 			name = OpenNOW;
 			packageProductDependencies = (
@@ -200,7 +283,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A00000000000000000000001 /* OpenNOW/Resources in Resources */,
+				B00000000000000000000003 /* Assets.xcassets in Resources */,
+				A00000000000000000000001 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +302,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B00000000000000000000001 /* OpenNOWApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
