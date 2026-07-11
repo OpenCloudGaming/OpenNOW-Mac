@@ -10,6 +10,19 @@ final class OPNLocale: NSObject {
         return normalizedLocale(Locale.current.identifier.isEmpty ? "en_US" : Locale.current.identifier)
     }
 
+    @objc(currentGFNCatalogLocale)
+    static func currentGFNCatalogLocale() -> String {
+        gfnCatalogLocale(for: currentGFNLocale())
+    }
+
+    @objc(gfnCatalogLocaleForLocale:)
+    static func gfnCatalogLocale(for locale: String) -> String {
+        let normalized = normalizedLocale(locale)
+        let separator = normalized.firstIndex(of: "_")
+        let language = separator.map { String(normalized[..<$0]) } ?? normalized
+        return language == "en" ? "en_US" : normalized
+    }
+
     @objc(currentGFNLocaleURLPathComponent)
     static func currentGFNLocaleURLPathComponent() -> String {
         currentGFNLocale().replacingOccurrences(of: "_", with: "-")

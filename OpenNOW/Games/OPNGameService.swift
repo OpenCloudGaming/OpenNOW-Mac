@@ -124,7 +124,7 @@ final class OPNGameService: @unchecked Sendable {
         let token = accessToken
         let accountIdentifier = userId
         let providerBaseUrl = providerStreamingBaseURL()
-        let locale = Self.currentGFNLocale()
+        let locale = Self.currentGFNCatalogLocale()
         getServerVpcId(token: token, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
             guard let self else { return }
             self.continueBrowseCatalogGames(
@@ -287,7 +287,7 @@ final class OPNGameService: @unchecked Sendable {
     func fetchLibraryGames(completion: @escaping OPNCatalogCallback) {
         getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
-            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNLocale(), "panelNames": ["LIBRARY"]]
+            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "panelNames": ["LIBRARY"]]
             let flatten: @Sendable (NSDictionary?, String) -> Void = { [weak self] data, error in
                 guard let self else { return }
                 if !error.isEmpty {
@@ -310,7 +310,7 @@ final class OPNGameService: @unchecked Sendable {
     func fetchFavoriteGames(completion: @escaping OPNCatalogCallback) {
         getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
-            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNLocale(), "panelNames": ["FAVORITES"]]
+            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "panelNames": ["FAVORITES"]]
             let flatten: @Sendable (NSDictionary?, String) -> Void = { [weak self] data, error in
                 guard let self else { return }
                 if !error.isEmpty {
@@ -487,7 +487,7 @@ final class OPNGameService: @unchecked Sendable {
           }
         }
         """
-        postGraphQlJson(query: query, variables: ["locale": Self.currentGFNLocale()] as NSDictionary) { [weak self] data, error in
+        postGraphQlJson(query: query, variables: ["locale": Self.currentGFNCatalogLocale()] as NSDictionary) { [weak self] data, error in
             guard let self else { return }
             if !error.isEmpty {
                 self.dispatchStoreDefinitions(completion, false, [], error)
@@ -526,7 +526,7 @@ final class OPNGameService: @unchecked Sendable {
               }
             }
             """
-            let variables: NSDictionary = ["vpcId": resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId, "locale": Self.currentGFNLocale(), "appIds": uniqueAppIds]
+            let variables: NSDictionary = ["vpcId": resolvedVpcId.isEmpty ? "GFN-PC" : resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "appIds": uniqueAppIds]
             self.postGraphQlJson(query: query, variables: variables) { [weak self] data, error in
                 guard let self else { return }
                 guard error.isEmpty else {
@@ -666,7 +666,7 @@ final class OPNGameService: @unchecked Sendable {
     private func fetchPanels(operationName: String, hash: String, panelNames: [String], missingMessage: String, completion: @escaping OPNPanelCallback) {
         getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
             guard let self else { return }
-            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNLocale(), "panelNames": panelNames]
+            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "panelNames": panelNames]
             self.postGraphQL(operationName: operationName, queryHash: hash, variables: variables) { data, error in
                 if !error.isEmpty {
                     self.dispatchPanel(completion, false, [], error)
@@ -729,7 +729,7 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private func fetchAppMetadata(appIds: [String], vpcId: String, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
-        let variables: NSDictionary = ["vpcId": vpcId.isEmpty ? "GFN-PC" : vpcId, "locale": Self.currentGFNLocale(), "appIds": appIds]
+        let variables: NSDictionary = ["vpcId": vpcId.isEmpty ? "GFN-PC" : vpcId, "locale": Self.currentGFNCatalogLocale(), "appIds": appIds]
         postGraphQL(operationName: "appMetaData", queryHash: Self.appMetaDataHash, variables: variables, completion: completion)
     }
 
@@ -866,14 +866,14 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.nvidiaTech.isEmpty { merged.nvidiaTech = metadataGame.nvidiaTech }
                 return merged
             }
-            self.fetchCampaignPromoTags(vpcId: vpcId, locale: Self.currentGFNLocale()) { tagsByCampaignId in
+            self.fetchCampaignPromoTags(vpcId: vpcId, locale: Self.currentGFNCatalogLocale()) { tagsByCampaignId in
                 let campaignEnriched = enriched.map { game in
                     guard game.promoTag.isEmpty else { return game }
                     var merged = game
                     merged.promoTag = game.campaignIds.compactMap { tagsByCampaignId[$0] }.first ?? ""
                     return merged
                 }
-                self.enrichRatingMetadata(campaignEnriched, locale: Self.currentGFNLocale(), completion: completion)
+                self.enrichRatingMetadata(campaignEnriched, locale: Self.currentGFNCatalogLocale(), completion: completion)
             }
         }
     }
@@ -1264,7 +1264,7 @@ final class OPNGameService: @unchecked Sendable {
             return
         }
         let mutation = "mutation \(mutationName)($cmsId: String!, $locale: String!) { \(fieldName) (language: $locale, variantId: $cmsId) { app { id } } }"
-        let variables: NSDictionary = ["cmsId": variantId, "locale": Self.currentGFNLocale()]
+        let variables: NSDictionary = ["cmsId": variantId, "locale": Self.currentGFNCatalogLocale()]
         postGraphQlJson(query: mutation, variables: variables) { [weak self] data, error in
             guard let self else { return }
             if !error.isEmpty {
@@ -1286,7 +1286,7 @@ final class OPNGameService: @unchecked Sendable {
             return
         }
         let mutation = "mutation \(mutationName)($appId: String!, $locale: String!) { \(fieldName) (language: $locale, appId: $appId) { app { id } } }"
-        let variables: NSDictionary = ["appId": appId, "locale": Self.currentGFNLocale()]
+        let variables: NSDictionary = ["appId": appId, "locale": Self.currentGFNCatalogLocale()]
         postGraphQlJson(query: mutation, variables: variables) { [weak self] data, error in
             guard let self else { return }
             if !error.isEmpty {
@@ -1760,6 +1760,10 @@ final class OPNGameService: @unchecked Sendable {
 
     private static func currentGFNLocale() -> String {
         OPNLocale.currentGFNLocale()
+    }
+
+    private static func currentGFNCatalogLocale() -> String {
+        OPNLocale.currentGFNCatalogLocale()
     }
 
     private static func currentGFNLocaleURLPathComponentFallbacks() -> [String] {

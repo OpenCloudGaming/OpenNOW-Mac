@@ -40,6 +40,13 @@ private actor AsyncTestLock {
     #expect(OPNLaunchAppId.resolve("123")?.intValue == 123)
 }
 
+@Test func catalogLocaleUsesUSForEnglishRegionalVariants() {
+    #expect(OPNLocale.gfnCatalogLocale(for: "en_CA") == "en_US")
+    #expect(OPNLocale.gfnCatalogLocale(for: "en-GB") == "en_US")
+    #expect(OPNLocale.gfnCatalogLocale(for: "fr_CA") == "fr_CA")
+    #expect(OPNLocale.gfnCatalogLocale(for: "") == "en_US")
+}
+
 @Test func providerInfoParsesAndSelectsDigevoEndpoint() {
     let digevoIdpId = "IsvVBA3Aj8KZ7gwwuRUhB6-tOF2o2F1wncD-XjYv100"
     let providerInfo = OPNGameServiceSwiftAdapter.parseProviderInfo(from: [
