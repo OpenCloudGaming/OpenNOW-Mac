@@ -88,6 +88,13 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var prefilterModel: Int
     public var enableL4S: Bool
     public var enableHdr: Bool
+    public var transportMode: String
+    public var streamingQualityProfile: Int
+    public var enableCloudGsync: Bool
+    public var fallbackToLogicalResolution: Bool
+    public var hudStreamingMode: Int
+    public var sdrColorSpace: Int
+    public var hdrColorSpace: Int
     public var enablePowerSaver: Bool
     public var microphoneMode: String
     public var microphoneDeviceId: String
@@ -118,6 +125,13 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 prefilterModel: Int = 0,
                 enableL4S: Bool = false,
                 enableHdr: Bool = false,
+                transportMode: String = "webrtc",
+                streamingQualityProfile: Int = 0,
+                enableCloudGsync: Bool = false,
+                fallbackToLogicalResolution: Bool = false,
+                hudStreamingMode: Int = 0,
+                sdrColorSpace: Int = 2,
+                hdrColorSpace: Int = 0,
                 enablePowerSaver: Bool = false,
                 microphoneMode: String = "disabled",
                 microphoneDeviceId: String = "",
@@ -147,6 +161,13 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.prefilterModel = prefilterModel
         self.enableL4S = enableL4S
         self.enableHdr = enableHdr
+        self.transportMode = transportMode
+        self.streamingQualityProfile = streamingQualityProfile
+        self.enableCloudGsync = enableCloudGsync
+        self.fallbackToLogicalResolution = fallbackToLogicalResolution
+        self.hudStreamingMode = hudStreamingMode
+        self.sdrColorSpace = sdrColorSpace
+        self.hdrColorSpace = hdrColorSpace
         self.enablePowerSaver = enablePowerSaver
         self.microphoneMode = microphoneMode
         self.microphoneDeviceId = microphoneDeviceId
@@ -181,6 +202,13 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var enableL4S: Bool
     public var enableHdr: Bool
     public var enableReflex: Bool
+    public var transportMode: String
+    public var streamingQualityProfile: Int
+    public var enableCloudGsync: Bool
+    public var fallbackToLogicalResolution: Bool
+    public var hudStreamingMode: Int
+    public var sdrColorSpace: Int
+    public var hdrColorSpace: Int
     public var microphoneMode: String
     public var microphoneDeviceId: String
     public var microphonePushToTalkKeyCode: Int
@@ -216,6 +244,13 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "enableL4S": enableL4S,
             "enableHdr": enableHdr,
             "enableReflex": enableReflex,
+            "transportMode": transportMode,
+            "streamingQualityProfile": streamingQualityProfile,
+            "enableCloudGsync": enableCloudGsync,
+            "fallbackToLogicalResolution": fallbackToLogicalResolution,
+            "hudStreamingMode": hudStreamingMode,
+            "sdrColorSpace": sdrColorSpace,
+            "hdrColorSpace": hdrColorSpace,
             "microphoneMode": microphoneMode,
             "microphoneDeviceId": microphoneDeviceId,
             "microphonePushToTalkKeyCode": microphonePushToTalkKeyCode,
@@ -269,6 +304,13 @@ public enum WebRTCMediaStreamSettingsResolver {
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
             enableHdr: cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr,
             enableReflex: cloudVariables.allowReflex,
+            transportMode: normalizedTransportMode(profile.transportMode),
+            streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
+            enableCloudGsync: profile.enableCloudGsync,
+            fallbackToLogicalResolution: profile.fallbackToLogicalResolution,
+            hudStreamingMode: min(max(profile.hudStreamingMode, 0), 2),
+            sdrColorSpace: min(max(profile.sdrColorSpace, 0), 2),
+            hdrColorSpace: min(max(profile.hdrColorSpace, 0), 2),
             microphoneMode: profile.microphoneMode,
             microphoneDeviceId: profile.microphoneDeviceId,
             microphonePushToTalkKeyCode: profile.microphonePushToTalkKeyCode,
@@ -305,6 +347,10 @@ public enum WebRTCMediaStreamSettingsResolver {
         case 1...4: return 3
         default: return 0
         }
+    }
+
+    private static func normalizedTransportMode(_ mode: String) -> String {
+        mode.caseInsensitiveCompare("nvst") == .orderedSame ? "nvst" : "webrtc"
     }
 
     private static func resolvedCodec(profile: WebRTCMediaStreamProfile, capabilities: WebRTCMediaDeviceCapabilities, libWebRTCAvailable: Bool) -> String {

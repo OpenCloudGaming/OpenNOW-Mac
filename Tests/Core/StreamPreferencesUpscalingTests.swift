@@ -14,6 +14,21 @@ import Testing
         #expect(OPNStreamPreferences.upscalingModeOptions.map(\.value) == [0, 3])
     }
 
+    @Test func defaultsSixteenTenResolutionToNineteenTwentyByTwelveHundred() {
+        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex"]) {
+            removePreferenceValue("OpenNOW.Stream.AspectIndex")
+            removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
+
+            let profile = OPNStreamPreferences.loadProfile()
+
+            #expect(OPNStreamPreferences.defaultResolutionIndex(forAspect: 1) == 3)
+            #expect(profile.aspectIndex == 1)
+            #expect(profile.resolutionIndex == 3)
+            #expect(profile.resolution.width == 1920)
+            #expect(profile.resolution.height == 1200)
+        }
+    }
+
     @Test func defaultsUpscalingOffWithClarityTen() {
         withPreservedPreferences([upscalingModeIndexKey, upscalingSharpnessKey]) {
             removePreferenceValue(upscalingModeIndexKey)

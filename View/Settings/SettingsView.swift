@@ -1200,6 +1200,22 @@ private struct GameplaySettingsPage: View {
                 SettingsOptionRow(title: "Color Precision", subtitle: "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, action: viewModel.setColorQualityIndex)
             }
 
+            SettingsCard(title: "Stream Transport") {
+                SettingsToggleRow(title: "NVST Transport", subtitle: "Off requests WebRTC transport. On requests NVST secure RTSP transport from CloudMatch.", isOn: viewModel.streamProfile.transportMode.value == "nvst", action: viewModel.setNVSTTransportEnabled)
+                SettingsDivider()
+                SettingsOptionRow(title: "Quality Profile", subtitle: "Maps to the vendor streaming profile sent with the session request.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, action: viewModel.setStreamingQualityProfileIndex)
+                SettingsDivider()
+                SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, action: viewModel.setCloudGsyncEnabled)
+                SettingsDivider()
+                SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, action: viewModel.setFallbackToLogicalResolution)
+                SettingsDivider()
+                SettingsOptionRow(title: "HUD Stream", subtitle: "Controls vendor HUD streaming metadata mode.", options: OPNStreamPreferences.hudStreamingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.hudStreamingModeIndex, action: viewModel.setHudStreamingModeIndex)
+                SettingsDivider()
+                SettingsOptionRow(title: "SDR Color Space", subtitle: "Requested SDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.sdrColorSpaceIndex, action: viewModel.setSDRColorSpaceIndex)
+                SettingsDivider()
+                SettingsOptionRow(title: "HDR Color Space", subtitle: "Requested HDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.hdrColorSpaceIndex, action: viewModel.setHDRColorSpaceIndex)
+            }
+
             SettingsCard(title: "Gameplay") {
                 SettingsToggleRow(title: "L4S", subtitle: "Use low-latency scalable throughput when available.", isOn: viewModel.streamProfile.enableL4S, action: viewModel.setL4SEnabled)
                 SettingsDivider()

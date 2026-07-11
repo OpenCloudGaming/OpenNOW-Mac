@@ -109,6 +109,46 @@ public struct OPNStreamUpscalingTargetOption: Equatable, Sendable {
     }
 }
 
+public struct OPNStreamTransportModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamQualityProfileOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamHudModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct OPNStreamColorSpaceOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
 public struct OPNStreamMicrophoneModeOption: Equatable, Sendable {
     public var label: String
     public var value: String
@@ -180,11 +220,16 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
 
 public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var aspectIndex = 1
-    public var resolutionIndex = 2
+    public var resolutionIndex = 3
     public var fpsIndex = 1
     public var codecIndex = 0
     public var bitrateIndex = 2
     public var colorQualityIndex = 0
+    public var transportModeIndex = 0
+    public var streamingQualityProfileIndex = 0
+    public var hudStreamingModeIndex = 0
+    public var sdrColorSpaceIndex = 2
+    public var hdrColorSpaceIndex = 0
     public var fps = 60
     public var maxBitrateMbps = 50
     public var prefilterModeIndex = 0
@@ -201,6 +246,17 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var recordingVideoBitrateMbps = 0
     public var recordingAudioBitrateKbps = 160
     public var recordingEnhancedVideoEnabled = true
+    public var transportMode = OPNStreamPreferences.transportModeOptions[0]
+    public var streamingQualityProfile = 0
+    public var streamingQualityProfileOption = OPNStreamPreferences.streamingQualityProfileOptions[0]
+    public var enableCloudGsync = false
+    public var fallbackToLogicalResolution = false
+    public var hudStreamingMode = 0
+    public var hudStreamingModeOption = OPNStreamPreferences.hudStreamingModeOptions[0]
+    public var sdrColorSpace = 2
+    public var sdrColorSpaceOption = OPNStreamPreferences.colorSpaceOptions[2]
+    public var hdrColorSpace = 0
+    public var hdrColorSpaceOption = OPNStreamPreferences.colorSpaceOptions[0]
     public var enableL4S = false
     public var enableHdr = false
     public var enablePowerSaver = false
@@ -263,6 +319,27 @@ public enum OPNStreamPreferences {
         OPNStreamColorQualityOption(label: "10-bit 4:2:0", value: "10bit_420"),
         OPNStreamColorQualityOption(label: "10-bit 4:4:4", value: "10bit_444")
     ]
+    public static let transportModeOptions = [
+        OPNStreamTransportModeOption(label: "WebRTC", value: "webrtc"),
+        OPNStreamTransportModeOption(label: "NVST", value: "nvst")
+    ]
+    public static let streamingQualityProfileOptions = [
+        OPNStreamQualityProfileOption(label: "Custom", value: 0),
+        OPNStreamQualityProfileOption(label: "Balanced", value: 1),
+        OPNStreamQualityProfileOption(label: "Competitive", value: 2),
+        OPNStreamQualityProfileOption(label: "Data Saver", value: 3),
+        OPNStreamQualityProfileOption(label: "Cinematic", value: 4)
+    ]
+    public static let hudStreamingModeOptions = [
+        OPNStreamHudModeOption(label: "Off", value: 0),
+        OPNStreamHudModeOption(label: "QP Map", value: 1),
+        OPNStreamHudModeOption(label: "Separate Stream", value: 2)
+    ]
+    public static let colorSpaceOptions = [
+        OPNStreamColorSpaceOption(label: "Default", value: 0),
+        OPNStreamColorSpaceOption(label: "BT.709", value: 1),
+        OPNStreamColorSpaceOption(label: "BT.2020", value: 2)
+    ]
     public static let prefilterModeOptions = [
         OPNStreamPrefilterModeOption(label: "Off", value: 0),
         OPNStreamPrefilterModeOption(label: "Auto", value: 1),
@@ -294,6 +371,11 @@ public enum OPNStreamPreferences {
         Keys.codecIndex,
         Keys.bitrateIndex,
         Keys.colorQualityIndex,
+        Keys.transportModeIndex,
+        Keys.streamingQualityProfileIndex,
+        Keys.hudStreamingModeIndex,
+        Keys.sdrColorSpaceIndex,
+        Keys.hdrColorSpaceIndex,
         Keys.prefilterModeIndex,
         Keys.prefilterSharpness,
         Keys.prefilterDenoise,
@@ -304,6 +386,8 @@ public enum OPNStreamPreferences {
         Keys.recordingVideoBitrateMbps,
         Keys.recordingAudioBitrateKbps,
         Keys.recordingEnhancedVideoEnabled,
+        Keys.cloudGsyncEnabled,
+        Keys.fallbackToLogicalResolution,
         Keys.l4sEnabled,
         Keys.hdrEnabled,
         Keys.powerSaverEnabled,
@@ -327,6 +411,14 @@ public enum OPNStreamPreferences {
         case 2: return [(2560, 1080), (3440, 1440), (3840, 1600)].map(OPNStreamResolutionOption.init)
         case 3: return [(3840, 1080), (5120, 1440)].map(OPNStreamResolutionOption.init)
         default: return resolutionOptions(forAspect: 1)
+        }
+    }
+
+    public static func defaultResolutionIndex(forAspect aspectIndex: Int) -> Int {
+        switch aspectIndex {
+        case 0: return 2
+        case 1: return 3
+        default: return 0
         }
     }
 
@@ -765,7 +857,7 @@ public enum OPNStreamPreferences {
         let clamped = clamp(aspectIndex, 0, aspectOptions.count - 1)
         storage.set(clamped, forKey: k.aspectIndex)
         let resolutions = resolutionOptions(forAspect: clamped)
-        let currentResolution = clampedStoredInt(k.resolutionIndex, clamped == 1 ? 2 : 0, resolutions.count)
+        let currentResolution = clampedStoredInt(k.resolutionIndex, defaultResolutionIndex(forAspect: clamped), resolutions.count)
         storage.set(currentResolution, forKey: k.resolutionIndex)
     }
 
@@ -774,6 +866,14 @@ public enum OPNStreamPreferences {
     public static func saveCodecIndex(_ value: Int) { storage.set(clamp(value, 0, codecOptions.count - 1), forKey: k.codecIndex) }
     public static func saveBitrateIndex(_ value: Int) { storage.set(clamp(value, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex) }
     public static func saveColorQualityIndex(_ value: Int) { storage.set(clamp(value, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex) }
+    public static func saveTransportModeIndex(_ value: Int) { storage.set(clamp(value, 0, transportModeOptions.count - 1), forKey: k.transportModeIndex) }
+    public static func saveNVSTTransportEnabled(_ value: Bool) { saveTransportModeIndex(value ? 1 : 0) }
+    public static func saveStreamingQualityProfileIndex(_ value: Int) { storage.set(clamp(value, 0, streamingQualityProfileOptions.count - 1), forKey: k.streamingQualityProfileIndex) }
+    public static func saveCloudGsyncEnabled(_ value: Bool) { storage.set(value, forKey: k.cloudGsyncEnabled) }
+    public static func saveFallbackToLogicalResolution(_ value: Bool) { storage.set(value, forKey: k.fallbackToLogicalResolution) }
+    public static func saveHudStreamingModeIndex(_ value: Int) { storage.set(clamp(value, 0, hudStreamingModeOptions.count - 1), forKey: k.hudStreamingModeIndex) }
+    public static func saveSDRColorSpaceIndex(_ value: Int) { storage.set(clamp(value, 0, colorSpaceOptions.count - 1), forKey: k.sdrColorSpaceIndex) }
+    public static func saveHDRColorSpaceIndex(_ value: Int) { storage.set(clamp(value, 0, colorSpaceOptions.count - 1), forKey: k.hdrColorSpaceIndex) }
     public static func savePrefilterModeIndex(_ value: Int) { saveCanonicalInt(k.prefilterModeIndex, clamp(value, 0, prefilterModeOptions.count - 1)) }
     public static func savePrefilterSharpness(_ value: Int) { saveCanonicalInt(k.prefilterSharpness, clamp(value, 0, 10)) }
     public static func savePrefilterDenoise(_ value: Int) { saveCanonicalInt(k.prefilterDenoise, clamp(value, 0, 10)) }
@@ -843,7 +943,7 @@ public enum OPNStreamPreferences {
         profile.aspectIndex = clampedInt(dictionary, k.aspectIndex, 1, aspectOptions.count)
         profile.aspect = aspectOptions[profile.aspectIndex]
         let resolutions = resolutionOptions(forAspect: profile.aspectIndex)
-        profile.resolutionIndex = clampedInt(dictionary, k.resolutionIndex, profile.aspectIndex == 1 ? 2 : 0, resolutions.count)
+        profile.resolutionIndex = clampedInt(dictionary, k.resolutionIndex, defaultResolutionIndex(forAspect: profile.aspectIndex), resolutions.count)
         profile.resolution = resolutions[profile.resolutionIndex]
         profile.fpsIndex = clampedInt(dictionary, k.fpsIndex, 1, fpsOptions.count)
         profile.fps = fpsOptions[profile.fpsIndex]
@@ -854,6 +954,22 @@ public enum OPNStreamPreferences {
         profile.maxBitrateMbps = profile.bitrate.mbps
         profile.colorQualityIndex = clampedInt(dictionary, k.colorQualityIndex, 0, colorQualityOptions.count)
         profile.colorQuality = colorQualityOptions[profile.colorQualityIndex]
+        profile.transportModeIndex = clampedInt(dictionary, k.transportModeIndex, 0, transportModeOptions.count)
+        profile.transportMode = transportModeOptions[profile.transportModeIndex]
+        profile.streamingQualityProfileIndex = clampedInt(dictionary, k.streamingQualityProfileIndex, 0, streamingQualityProfileOptions.count)
+        profile.streamingQualityProfileOption = streamingQualityProfileOptions[profile.streamingQualityProfileIndex]
+        profile.streamingQualityProfile = profile.streamingQualityProfileOption.value
+        profile.enableCloudGsync = bool(value(dictionary, k.cloudGsyncEnabled), false)
+        profile.fallbackToLogicalResolution = bool(value(dictionary, k.fallbackToLogicalResolution), false)
+        profile.hudStreamingModeIndex = clampedInt(dictionary, k.hudStreamingModeIndex, 0, hudStreamingModeOptions.count)
+        profile.hudStreamingModeOption = hudStreamingModeOptions[profile.hudStreamingModeIndex]
+        profile.hudStreamingMode = profile.hudStreamingModeOption.value
+        profile.sdrColorSpaceIndex = clampedInt(dictionary, k.sdrColorSpaceIndex, 2, colorSpaceOptions.count)
+        profile.sdrColorSpaceOption = colorSpaceOptions[profile.sdrColorSpaceIndex]
+        profile.sdrColorSpace = profile.sdrColorSpaceOption.value
+        profile.hdrColorSpaceIndex = clampedInt(dictionary, k.hdrColorSpaceIndex, 0, colorSpaceOptions.count)
+        profile.hdrColorSpaceOption = colorSpaceOptions[profile.hdrColorSpaceIndex]
+        profile.hdrColorSpace = profile.hdrColorSpaceOption.value
         profile.prefilterModeIndex = clampedInt(dictionary, k.prefilterModeIndex, 0, prefilterModeOptions.count)
         profile.prefilterModeOption = prefilterModeOptions[profile.prefilterModeIndex]
         profile.prefilterMode = profile.prefilterModeOption.value
@@ -897,6 +1013,13 @@ public enum OPNStreamPreferences {
             k.codecIndex: profile.codecIndex,
             k.bitrateIndex: profile.bitrateIndex,
             k.colorQualityIndex: profile.colorQualityIndex,
+            k.transportModeIndex: profile.transportModeIndex,
+            k.streamingQualityProfileIndex: profile.streamingQualityProfileIndex,
+            k.cloudGsyncEnabled: profile.enableCloudGsync,
+            k.fallbackToLogicalResolution: profile.fallbackToLogicalResolution,
+            k.hudStreamingModeIndex: profile.hudStreamingModeIndex,
+            k.sdrColorSpaceIndex: profile.sdrColorSpaceIndex,
+            k.hdrColorSpaceIndex: profile.hdrColorSpaceIndex,
             k.prefilterModeIndex: profile.prefilterModeIndex,
             k.prefilterSharpness: profile.prefilterSharpness,
             k.prefilterDenoise: profile.prefilterDenoise,
@@ -1392,6 +1515,13 @@ public enum OPNStreamPreferences {
         static let codecIndex = "OpenNOW.Stream.CodecIndex"
         static let bitrateIndex = "OpenNOW.Stream.BitrateIndex"
         static let colorQualityIndex = "OpenNOW.Stream.ColorQualityIndex"
+        static let transportModeIndex = "OpenNOW.Stream.TransportModeIndex"
+        static let streamingQualityProfileIndex = "OpenNOW.Stream.StreamingQualityProfileIndex"
+        static let cloudGsyncEnabled = "OpenNOW.Stream.CloudGsyncEnabled"
+        static let fallbackToLogicalResolution = "OpenNOW.Stream.FallbackToLogicalResolution"
+        static let hudStreamingModeIndex = "OpenNOW.Stream.HudStreamingModeIndex"
+        static let sdrColorSpaceIndex = "OpenNOW.Stream.SDRColorSpaceIndex"
+        static let hdrColorSpaceIndex = "OpenNOW.Stream.HDRColorSpaceIndex"
         static let prefilterModeIndex = "OpenNOW.Stream.PrefilterModeIndex"
         static let prefilterSharpness = "OpenNOW.Stream.PrefilterSharpness"
         static let prefilterDenoise = "OpenNOW.Stream.PrefilterDenoise"
@@ -1432,6 +1562,10 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
     @objc public let gameVolume: Double
     @objc public let microphoneVolume: Double
     @objc public let maxBitrateMbps: Int
+    @objc public let transportMode: String
+    @objc public let streamingQualityProfile: Int
+    @objc public let enableCloudGsync: Bool
+    @objc public let fallbackToLogicalResolution: Bool
     @objc public let upscalingModeIndex: Int
     @objc public let upscalingMode: Int
     @objc public let upscalingTargetHeight: Int
@@ -1448,6 +1582,10 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
         gameVolume = profile.gameVolume
         microphoneVolume = profile.microphoneVolume
         maxBitrateMbps = profile.maxBitrateMbps
+        transportMode = profile.transportMode.value
+        streamingQualityProfile = profile.streamingQualityProfile
+        enableCloudGsync = profile.enableCloudGsync
+        fallbackToLogicalResolution = profile.fallbackToLogicalResolution
         upscalingModeIndex = profile.upscalingModeIndex
         upscalingMode = profile.upscalingMode
         upscalingTargetHeight = profile.upscalingTargetHeight

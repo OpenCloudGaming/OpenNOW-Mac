@@ -1396,6 +1396,42 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setNVSTTransportEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveNVSTTransportEnabled(enabled)
+        actionMessage = enabled ? "NVST stream transport selected." : "WebRTC stream transport selected."
+        loadSettingsPreferences()
+    }
+
+    func setStreamingQualityProfileIndex(_ index: Int) {
+        OPNStreamPreferences.saveStreamingQualityProfileIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setCloudGsyncEnabled(_ enabled: Bool) {
+        OPNStreamPreferences.saveCloudGsyncEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setFallbackToLogicalResolution(_ enabled: Bool) {
+        OPNStreamPreferences.saveFallbackToLogicalResolution(enabled)
+        loadSettingsPreferences()
+    }
+
+    func setHudStreamingModeIndex(_ index: Int) {
+        OPNStreamPreferences.saveHudStreamingModeIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setSDRColorSpaceIndex(_ index: Int) {
+        OPNStreamPreferences.saveSDRColorSpaceIndex(index)
+        loadSettingsPreferences()
+    }
+
+    func setHDRColorSpaceIndex(_ index: Int) {
+        OPNStreamPreferences.saveHDRColorSpaceIndex(index)
+        loadSettingsPreferences()
+    }
+
     func setPrefilterModeIndex(_ index: Int) {
         OPNStreamPreferences.savePrefilterModeIndex(index)
         loadSettingsPreferences()

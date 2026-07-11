@@ -366,6 +366,13 @@ import Foundation
     settings["enablePersistingInGameSettings"] = true
     settings["partnerCustomData"] = "partner-data"
     settings["userAge"] = 21
+    settings["streamingQualityProfile"] = 4
+    settings["enableCloudGsync"] = true
+    settings["fallbackToLogicalResolution"] = true
+    settings["mouseMovementFlags"] = 3
+    settings["hudStreamingMode"] = 2
+    settings["sdrColorSpace"] = 1
+    settings["hdrColorSpace"] = 2
 
     let result = await withCheckedContinuation { continuation in
         manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
@@ -396,6 +403,7 @@ import Foundation
     #expect(requestData["enablePersistingInGameSettings"] as? Bool == true)
     #expect(requestData["partnerCustomData"] as? String == "")
     #expect(requestData["userAge"] as? Int == 26)
+    #expect(requestData["secureRTSPSupported"] as? Bool == false)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
     let monitor = try #require(monitorSettings.first)
     #expect(monitor["monitorId"] as? Int == 0)
@@ -403,11 +411,52 @@ import Foundation
     #expect(monitor["positionY"] as? Int == 0)
     let streamingFeatures = try #require(requestData["requestedStreamingFeatures"] as? [String: Any])
     #expect(streamingFeatures["reflex"] as? Bool == true)
-    #expect(streamingFeatures["profile"] as? Int == 0)
-    #expect(streamingFeatures["mouseMovementFlags"] as? Int == 0)
+    #expect(streamingFeatures["cloudGsync"] as? Bool == true)
+    #expect(streamingFeatures["profile"] as? Int == 4)
+    #expect(streamingFeatures["fallbackToLogicalResolution"] as? Bool == true)
+    #expect(streamingFeatures["mouseMovementFlags"] as? Int == 3)
+    #expect(streamingFeatures["hudStreamingMode"] as? Int == 2)
+    #expect(streamingFeatures["sdrColorSpace"] as? Int == 1)
+    #expect(streamingFeatures["hdrColorSpace"] as? Int == 2)
     #expect(streamingFeatures["prefilterSharpness"] as? Int == 0)
     #expect(metadataKeys.contains("store") == true)
     #expect(metadataKeys.contains("networkLatencyMs") == true)
+    #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
+    #expect(metadata.contains { $0["key"] == "GSStreamerType" && $0["value"] == "WebRTC" })
+    }
+}
+
+@Test func sessionManagerCreateUsesNVSTCloudMatchShape() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "create-nvst-shape.example.test"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["transportMode"] = "nvst"
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
+    let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
+    let metadata = try #require(requestData["metaData"] as? [[String: String]])
+
+    #expect(result.0 == true)
+    #expect(result.1.isEmpty)
+    #expect(requestData["secureRTSPSupported"] as? Bool == true)
+    #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
+    #expect(!metadata.contains { $0["key"] == "GSStreamerType" })
     }
 }
 
@@ -444,6 +493,7 @@ import Foundation
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
+    let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
     #expect(claimPayload?["action"] as? Int == 2)
@@ -451,6 +501,38 @@ import Foundation
     #expect(claimRequestData?["appId"] as? Int == 123)
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
+    #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
+    #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
+    #expect(claimMetadata.contains { $0["key"] == "GSStreamerType" && $0["value"] == "WebRTC" })
+    }
+}
+
+@Test func sessionManagerNVSTPausedResumeSendsNVSTClaimShape() async {
+    await networkTestIsolationLock.withLock {
+    let host = "resume-nvst-success.example.test"
+    SessionManagerURLProtocol.install(host: host) { _ in
+        SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    OPNSessionManager.shared.setAccessToken("token")
+    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["transportMode"] = "nvst"
+
+    let result = await withCheckedContinuation { continuation in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
+    let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
+    let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
+    #expect(result.0 == true)
+    #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
+    #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "0" })
+    #expect(!claimMetadata.contains { $0["key"] == "GSStreamerType" })
     }
 }
 
