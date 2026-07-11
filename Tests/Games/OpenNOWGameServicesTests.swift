@@ -373,6 +373,7 @@ import Foundation
     settings["hudStreamingMode"] = 2
     settings["sdrColorSpace"] = 1
     settings["hdrColorSpace"] = 2
+    settings["resolution"] = "7680x4320"
 
     let result = await withCheckedContinuation { continuation in
         manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
@@ -409,6 +410,11 @@ import Foundation
     #expect(monitor["monitorId"] as? Int == 0)
     #expect(monitor["positionX"] as? Int == 0)
     #expect(monitor["positionY"] as? Int == 0)
+    #expect(monitor["widthInPixels"] as? Int == 7680)
+    #expect(monitor["heightInPixels"] as? Int == 4320)
+    let physicalResolution = try #require(parsePhysicalResolutionMetadata(metadata))
+    #expect(physicalResolution["horizontalPixels"] as? Int == 7680)
+    #expect(physicalResolution["verticalPixels"] as? Int == 4320)
     let streamingFeatures = try #require(requestData["requestedStreamingFeatures"] as? [String: Any])
     #expect(streamingFeatures["reflex"] as? Bool == true)
     #expect(streamingFeatures["cloudGsync"] as? Bool == true)
@@ -483,9 +489,11 @@ import Foundation
 
     OPNSessionManager.shared.setAccessToken("token")
     OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["resolution"] = "7680x4320"
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }
@@ -502,6 +510,12 @@ import Foundation
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
+    let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
+    #expect(claimMonitorSettings.first?["widthInPixels"] as? Int == 7680)
+    #expect(claimMonitorSettings.first?["heightInPixels"] as? Int == 4320)
+    let claimPhysicalResolution = parsePhysicalResolutionMetadata(claimMetadata)
+    #expect(claimPhysicalResolution?["horizontalPixels"] as? Int == 7680)
+    #expect(claimPhysicalResolution?["verticalPixels"] as? Int == 4320)
     #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
     #expect(claimMetadata.contains { $0["key"] == "GSStreamerType" && $0["value"] == "WebRTC" })
     }
@@ -649,6 +663,15 @@ private func minimalSettings() -> [String: Any] {
         "gameLanguage": "en_US",
         "keyboardLayout": "us",
     ]
+}
+
+private func parsePhysicalResolutionMetadata(_ metadata: [[String: String]]) -> [String: Any]? {
+    guard let value = metadata.first(where: { $0["key"] == "clientPhysicalResolution" })?["value"],
+          let data = value.data(using: .utf8),
+          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+    return object
 }
 
 private func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test") -> [String: Any] {

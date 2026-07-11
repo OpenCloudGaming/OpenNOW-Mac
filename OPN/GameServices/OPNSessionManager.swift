@@ -51,7 +51,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             ["key": "networkType", "value": networkTypeValue(effectiveSettings)],
             ["key": "networkLatencyMs", "value": networkLatencyValue(effectiveSettings)],
             ["key": "ClientImeSupport", "value": "0"],
-            ["key": "clientPhysicalResolution", "value": "{\"horizontalPixels\":\(max(0, capabilities.maxDisplayWidth)),\"verticalPixels\":\(max(0, capabilities.maxDisplayHeight))}"],
+            ["key": "clientPhysicalResolution", "value": clientPhysicalResolutionMetadata(settings: effectiveSettings, capabilities: capabilities)],
             ["key": "surroundAudioInfo", "value": String(int(effectiveSettings["surroundAudioMetadata"], fallback: 2))],
             ["key": "store", "value": selectedStore],
         ]
@@ -390,6 +390,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             ["key": "networkType", "value": networkTypeValue(settings)],
             ["key": "networkLatencyMs", "value": networkLatencyValue(settings)],
             ["key": "ClientImeSupport", "value": "0"],
+            ["key": "clientPhysicalResolution", "value": clientPhysicalResolutionMetadata(settings: settings, capabilities: capabilities)],
             ["key": "surroundAudioInfo", "value": String(int(settings["surroundAudioMetadata"], fallback: 2))],
             ["key": "store", "value": selectedStore],
         ]
@@ -830,9 +831,9 @@ private func settingsByApplyingCloudVariables(_ settings: [String: Any], capabil
 }
 
 private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamDeviceCapabilities, hdrEnabled: Bool) -> [String: Any] {
-    let parts = string(settings["resolution"]).split(separator: "x").compactMap { Int($0) }
-    let width = max(640, parts.first ?? 1920)
-    let height = max(360, parts.count > 1 ? parts[1] : 1080)
+    let resolution = requestedResolution(settings)
+    let width = resolution.width
+    let height = resolution.height
     return [
         "monitorId": 0,
         "positionX": 0,
@@ -845,6 +846,18 @@ private func monitorSettings(_ settings: [String: Any], capabilities: OPNStreamD
         "hdr10PlusGamingData": NSNull(),
         "dpi": max(0, capabilities.displayDpi),
     ]
+}
+
+private func clientPhysicalResolutionMetadata(settings: [String: Any], capabilities: OPNStreamDeviceCapabilities) -> String {
+    let resolution = requestedResolution(settings)
+    let width = max(max(0, capabilities.maxDisplayWidth), resolution.width)
+    let height = max(max(0, capabilities.maxDisplayHeight), resolution.height)
+    return "{\"horizontalPixels\":\(width),\"verticalPixels\":\(height)}"
+}
+
+private func requestedResolution(_ settings: [String: Any]) -> (width: Int, height: Int) {
+    let parts = string(settings["resolution"]).split(separator: "x").compactMap { Int($0) }
+    return (max(640, parts.first ?? 1920), max(360, parts.count > 1 ? parts[1] : 1080))
 }
 
 private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: Bool) -> [String: Any] {
