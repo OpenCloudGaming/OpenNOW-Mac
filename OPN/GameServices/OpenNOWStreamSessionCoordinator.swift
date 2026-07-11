@@ -431,8 +431,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
 
     private func makeSettings(configuration: StreamLaunchConfiguration) -> [String: Any] {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        var profile = OPNStreamPreferences.loadProfile(forGame: configuration.applicationID) ?? OPNStreamPreferences.loadProfile()
-        profile = OPNStreamPreferences.effectiveProfile(profile, capabilities: capabilities)
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
         let resolved = WebRTCMediaStreamSettingsResolver.resolve(
             profile: webRTCMediaProfile(from: profile),
             capabilities: webRTCMediaCapabilities(from: capabilities),

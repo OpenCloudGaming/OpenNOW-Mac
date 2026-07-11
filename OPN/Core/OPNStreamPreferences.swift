@@ -547,6 +547,21 @@ public enum OPNStreamPreferences {
         return profile(from: dictionary)
     }
 
+    public static func launchProfile(forGame appId: String, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamPreferenceProfile {
+        var profile = loadProfile()
+        if let gameProfile = loadProfile(forGame: appId) {
+            profile.upscalingModeIndex = gameProfile.upscalingModeIndex
+            profile.upscalingMode = gameProfile.upscalingMode
+            profile.upscalingModeOption = gameProfile.upscalingModeOption
+            profile.upscalingTargetIndex = gameProfile.upscalingTargetIndex
+            profile.upscalingTargetHeight = gameProfile.upscalingTargetHeight
+            profile.upscalingTargetOption = gameProfile.upscalingTargetOption
+            profile.upscalingSharpness = gameProfile.upscalingSharpness
+            profile.upscalingDenoise = gameProfile.upscalingDenoise
+        }
+        return effectiveProfile(profile, capabilities: capabilities)
+    }
+
     public static func saveProfile(forGame appId: String, profile: OPNStreamPreferenceProfile) {
         guard !appId.isEmpty else { return }
         var profiles = mutableGameProfilesDictionary()

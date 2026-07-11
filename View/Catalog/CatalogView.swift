@@ -110,12 +110,14 @@ struct CatalogView: View {
                     .id(streamConfiguration.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                    .padding(.top, CatalogVendorLayout.windowTopInset)
 
                     if viewModel.isStreamLaunchLoadingVisible {
                         VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
                             .transition(.opacity)
                             .zIndex(10)
                             .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                            .padding(.top, CatalogVendorLayout.windowTopInset)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

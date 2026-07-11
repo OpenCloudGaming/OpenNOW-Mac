@@ -29,6 +29,33 @@ import Testing
         }
     }
 
+    @Test func launchProfileKeepsSelectedResolutionWhenStaleGameProfileExists() {
+        withPreservedPreferences(["OpenNOW.Stream.AspectIndex", "OpenNOW.Stream.ResolutionIndex", gameProfilesKey]) {
+            removePreferenceValue("OpenNOW.Stream.AspectIndex")
+            removePreferenceValue("OpenNOW.Stream.ResolutionIndex")
+            removePreferenceValue(gameProfilesKey)
+            OPNStreamPreferences.saveAspectIndex(1)
+            OPNStreamPreferences.saveResolutionIndex(5)
+
+            let appId = "stale-resolution-game"
+            var gameProfile = OPNStreamPreferences.loadProfile()
+            gameProfile.resolutionIndex = 0
+            gameProfile.resolution = OPNStreamPreferences.resolutionOptions(forAspect: 1)[0]
+            gameProfile.upscalingModeIndex = 1
+            gameProfile.upscalingMode = 3
+            gameProfile.upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
+            gameProfile.upscalingSharpness = 14
+            OPNStreamPreferences.saveProfile(forGame: appId, profile: gameProfile)
+
+            let launchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
+
+            #expect(launchProfile.resolution.width == 2880)
+            #expect(launchProfile.resolution.height == 1800)
+            #expect(launchProfile.upscalingMode == 3)
+            #expect(launchProfile.upscalingSharpness == 14)
+        }
+    }
+
     @Test func defaultsUpscalingOffWithClarityTen() {
         withPreservedPreferences([upscalingModeIndexKey, upscalingSharpnessKey]) {
             removePreferenceValue(upscalingModeIndexKey)

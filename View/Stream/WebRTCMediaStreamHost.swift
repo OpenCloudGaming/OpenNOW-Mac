@@ -101,7 +101,7 @@ struct WebRTCMediaStreamView: View {
     }
 
     private static func preventDisplaySleepWhileStreaming(applicationID: String) -> Bool {
-        let profile = OPNStreamPreferences.loadProfile(forGame: applicationID) ?? OPNStreamPreferences.loadProfile()
+        let profile = OPNStreamPreferences.launchProfile(forGame: applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         return profile.preventDisplaySleepWhileStreaming
     }
 
