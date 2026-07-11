@@ -165,6 +165,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let manualIceMedia = dictionary(sessionInfo["mediaConnectionInfo"])
         let manualIceIp = extractPublicIp(string(manualIceMedia["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(manualIceMedia["ip"]))
         let manualIcePort = int(manualIceMedia["port"], fallback: 47998)
+        let directIcePort = 47998
         remoteCandidateOverrideIp = manualIceIp
         remoteCandidateOverridePort = manualIcePort
 
@@ -246,7 +247,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             guard shouldInjectDirectCandidates, !manualIceIp.isEmpty else { return }
             let serverIceUfrag = Self.iceUfrag(fromOfferSdp: offerSdp)
             guard !serverIceUfrag.isEmpty else { return }
-            self.injectManualIceCandidate(offerSdp: offerSdp, serverIceUfrag: serverIceUfrag, ip: manualIceIp, port: manualIcePort)
+            self.injectManualIceCandidate(offerSdp: offerSdp, serverIceUfrag: serverIceUfrag, ip: manualIceIp, port: directIcePort)
         }
 
         let offer = RTCSessionDescription(type: .offer, sdp: remoteOfferSdp)
@@ -882,7 +883,6 @@ func rewriteIceCandidateLine(_ candidate: String, ip: String, port: Int) -> Stri
     var parts = body.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
     guard parts.count > 5 else { return candidate }
     parts[4] = ip
-    parts[5] = String(port)
     return prefix + parts.joined(separator: " ")
 }
 

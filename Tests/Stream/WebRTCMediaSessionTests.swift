@@ -182,7 +182,7 @@ struct WebRTCMediaSessionTests {
 
         let rewritten = rewriteEmbeddedIceCandidates(sdp, ip: "66.22.138.138", port: 49000)
 
-        #expect(rewritten.contains("a=candidate:1 1 udp 2130706431 66.22.138.138 49000 typ host generation 0 ufrag serverUfrag"))
+        #expect(rewritten.contains("a=candidate:1 1 udp 2130706431 66.22.138.138 47998 typ host generation 0 ufrag serverUfrag"))
         #expect(iceUsernameFragment(fromCandidate: "candidate:1 1 udp 1 66.22.138.138 49000 typ host ufrag serverUfrag") == "serverUfrag")
     }
 
