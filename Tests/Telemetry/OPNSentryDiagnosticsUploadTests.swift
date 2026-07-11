@@ -15,76 +15,84 @@ import Testing
 }
 
 @Test func diagnosticsUploadAcceptsCreatedPasteResponse() async throws {
-    let host = "diagnostics-created.example.test"
-    DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-        (201, Data("https://paste.rs/created".utf8))
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-created.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (201, Data("https://paste.rs/created".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+
+        let uploadURL = try #require(URL(string: "https://\(host)"))
+        let result = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
+
+        #expect(result.absoluteString == "https://paste.rs/created")
+        let bodies = DiagnosticsUploadURLProtocol.recordedBodies(host: host)
+        #expect(bodies.count == 1)
+        #expect(String(decoding: bodies.first ?? Data(), as: UTF8.self) == "diagnostic line")
     }
-    defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
-
-    let uploadURL = try #require(URL(string: "https://\(host)"))
-    let result = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
-
-    #expect(result.absoluteString == "https://paste.rs/created")
-    let bodies = DiagnosticsUploadURLProtocol.recordedBodies(host: host)
-    #expect(bodies.count == 1)
-    #expect(String(decoding: bodies.first ?? Data(), as: UTF8.self) == "diagnostic line")
 }
 
 @Test func diagnosticsUploadRejectsPartialPasteResponse() async throws {
-    let host = "diagnostics-partial.example.test"
-    DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-        (206, Data("https://paste.rs/partial".utf8))
-    }
-    defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-partial.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (206, Data("https://paste.rs/partial".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
-    let uploadURL = try #require(URL(string: "https://\(host)"))
+        let uploadURL = try #require(URL(string: "https://\(host)"))
 
-    do {
-        _ = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
-        Issue.record("Expected partial paste response to fail")
-    } catch OPNSentryDiagnosticsUploadError.partialUpload {
-    } catch {
-        Issue.record("Unexpected error: \(error)")
+        do {
+            _ = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
+            Issue.record("Expected partial paste response to fail")
+        } catch OPNSentryDiagnosticsUploadError.partialUpload {
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
     }
 }
 
 @Test func diagnosticsUploadMapsServiceFailuresToRetryableMessage() async throws {
-    let host = "diagnostics-service-failure.example.test"
-    DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-        (500, Data("temporary failure".utf8))
-    }
-    defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-service-failure.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (500, Data("temporary failure".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
-    let uploadURL = try #require(URL(string: "https://\(host)"))
+        let uploadURL = try #require(URL(string: "https://\(host)"))
 
-    do {
-        _ = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
-        Issue.record("Expected service failure to throw")
-    } catch OPNSentryDiagnosticsUploadError.serviceUnavailable(let status) {
-        #expect(status == 500)
-    } catch {
-        Issue.record("Unexpected error: \(error)")
+        do {
+            _ = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
+            Issue.record("Expected service failure to throw")
+        } catch OPNSentryDiagnosticsUploadError.serviceUnavailable(let status) {
+            #expect(status == 500)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
     }
 }
 
 @Test func diagnosticsUploadCapsOversizedBodyAndSanitizesContent() async throws {
-    let host = "diagnostics-oversized.example.test"
-    DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
-        (201, Data("https://paste.rs/oversized".utf8))
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-oversized.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (201, Data("https://paste.rs/oversized".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+
+        let uploadURL = try #require(URL(string: "https://\(host)"))
+        let oversizedLog = String(repeating: "diagnostic line serverIp=10.1.2.3 token=secret-value\n", count: 12_000)
+        let result = try await OPNSentry.uploadDiagnosticsLog(oversizedLog, session: diagnosticsUploadSession(), uploadURL: uploadURL)
+
+        #expect(result.absoluteString == "https://paste.rs/oversized")
+        let body = try #require(DiagnosticsUploadURLProtocol.recordedBodies(host: host).first)
+        let text = String(decoding: body, as: UTF8.self)
+        #expect(body.count <= 384 * 1024)
+        #expect(text.contains("upload is limited to the most recent 384 KiB"))
+        #expect(text.contains("token=secret-value"))
+        #expect(!text.contains("10.1.2.3"))
     }
-    defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
-
-    let uploadURL = try #require(URL(string: "https://\(host)"))
-    let oversizedLog = String(repeating: "diagnostic line serverIp=10.1.2.3 token=secret-value\n", count: 12_000)
-    let result = try await OPNSentry.uploadDiagnosticsLog(oversizedLog, session: diagnosticsUploadSession(), uploadURL: uploadURL)
-
-    #expect(result.absoluteString == "https://paste.rs/oversized")
-    let body = try #require(DiagnosticsUploadURLProtocol.recordedBodies(host: host).first)
-    let text = String(decoding: body, as: UTF8.self)
-    #expect(body.count <= 384 * 1024)
-    #expect(text.contains("upload is limited to the most recent 384 KiB"))
-    #expect(text.contains("token=secret-value"))
-    #expect(!text.contains("10.1.2.3"))
 }
 
 private func diagnosticsUploadSession() -> URLSession {

@@ -2,35 +2,6 @@ import Testing
 import Foundation
 @testable import OpenNOW
 
-private let sessionManagerTestLock = AsyncTestLock()
-
-private actor AsyncTestLock {
-    private var locked = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
-        await acquire()
-        defer { release() }
-        return try await operation()
-    }
-
-    private func acquire() async {
-        if !locked {
-            locked = true
-            return
-        }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    private func release() {
-        guard !waiters.isEmpty else {
-            locked = false
-            return
-        }
-        waiters.removeFirst().resume()
-    }
-}
-
 @Test func launchAppIdRejectsZeroAndInvalidValues() {
     #expect(OPNLaunchAppId.resolve("0") == nil)
     #expect(OPNLaunchAppId.resolve(" 0 ") == nil)
@@ -108,7 +79,7 @@ private actor AsyncTestLock {
 }
 
 @Test func streamCoordinatorFinishSessionReportsUDSEndOfSession() async throws {
-    try await sessionManagerTestLock.withLock {
+    try await networkTestIsolationLock.withLock {
         let host = "*"
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "uds.geforcenow.com" {
@@ -146,7 +117,7 @@ private actor AsyncTestLock {
 }
 
 @Test func streamCoordinatorFinishSessionIgnoresUDSFailure() async throws {
-    try await sessionManagerTestLock.withLock {
+    try await networkTestIsolationLock.withLock {
         let host = "*"
         SessionManagerURLProtocol.install(host: host) { request in
             if request.url?.host == "uds.geforcenow.com" {
@@ -165,7 +136,7 @@ private actor AsyncTestLock {
 }
 
 @Test func streamCoordinatorFinishSessionSkipsUDSWithoutAccessToken() async throws {
-    try await sessionManagerTestLock.withLock {
+    try await networkTestIsolationLock.withLock {
         let host = "*"
         SessionManagerURLProtocol.install(host: host) { _ in
             SessionManagerURLProtocol.response(json: [:])
@@ -203,7 +174,7 @@ private actor AsyncTestLock {
 }
 
 @Test func gameLaunchBridgePrefersIdTokenForCloudMatchLaunch() async throws {
-    try await sessionManagerTestLock.withLock {
+    try await networkTestIsolationLock.withLock {
     let host = "*"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "GET")
@@ -281,7 +252,7 @@ private actor AsyncTestLock {
 }
 
 @Test func panelSectionPreservesSeeMoreCatalogParameters() async {
-    await sessionManagerTestLock.withLock {
+        await networkTestIsolationLock.withLock {
         let host = "*"
         let token = "panel-see-more-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
@@ -325,7 +296,7 @@ private actor AsyncTestLock {
 }
 
 @Test func catalogBrowseContinuesAfterFortyItemFirstPage() async {
-    await sessionManagerTestLock.withLock {
+        await networkTestIsolationLock.withLock {
         let host = "*"
         let token = "catalog-pagination-token-\(UUID().uuidString)"
         _ = OPNGameDataCache.shared.clearAllCaches()
@@ -377,7 +348,7 @@ private actor AsyncTestLock {
 }
 
 @Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
-    try await sessionManagerTestLock.withLock {
+    try await networkTestIsolationLock.withLock {
     let host = "create-release-shape.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")
@@ -440,7 +411,7 @@ private actor AsyncTestLock {
 }
 
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
-    await sessionManagerTestLock.withLock {
+    await networkTestIsolationLock.withLock {
     let host = "resume-success.example.test"
     let lock = NSLock()
     nonisolated(unsafe) var getCount = 0
@@ -483,7 +454,7 @@ private actor AsyncTestLock {
 }
 
 @Test func sessionManagerSessionNotPausedFailsWithoutPollingFallback() async {
-    await sessionManagerTestLock.withLock {
+    await networkTestIsolationLock.withLock {
     let host = "resume-not-paused.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         let path = request.url?.path ?? ""
@@ -516,7 +487,7 @@ private actor AsyncTestLock {
 }
 
 @Test func sessionManagerStaleInternalClaimErrorFailsWithoutPollingFallback() async {
-    await sessionManagerTestLock.withLock {
+    await networkTestIsolationLock.withLock {
     let host = "resume-stale-internal.example.test"
     UserDefaults.standard.set("resume-session", forKey: "OpenNOW.Stream.ActiveSessionId")
     SessionManagerURLProtocol.install(host: host) { request in
@@ -549,7 +520,7 @@ private actor AsyncTestLock {
 }
 
 @Test func sessionManagerStaleInternalCreateErrorReturnsHTTPMessage() async {
-    await sessionManagerTestLock.withLock {
+    await networkTestIsolationLock.withLock {
     let host = "create-stale-internal.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
         #expect(request.httpMethod == "POST")

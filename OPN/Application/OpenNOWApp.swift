@@ -388,7 +388,3 @@ final class OpenNOWAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
-
-extension Notification.Name {
-    static let openNOWDidOpenFile = Notification.Name("OpenNOWDidOpenFile")
-}

@@ -4,7 +4,7 @@ OpenNOW is a native macOS cloud gaming client for browsing, launching, streaming
 
 ## Current State
 
-The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and shared package modules. The visible frontend lives under `OpenNOW/Views` and includes:
+The repository contains a SwiftUI app target plus service, protocol, authentication, streaming, telemetry, and a root Swift package for tests. The visible frontend lives under `View` and includes:
 
 - OAuth sign-in and branded loading surfaces
 - Catalog home with a six-image hero rotation, game rails, search, filters, and detail panels
@@ -16,32 +16,16 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 
 ## Project Layout
 
-- `OpenNOW` - SwiftUI macOS app, views, view models, resources, and app services
-- `OPN.GameServices` - GeForce NOW catalog, library, launch, session, and store ownership services
-- `OPN.WebRTC.Media` - native WebRTC transport, stream surface, rendering, audio, input, and recording code
-- `OPN.Common` - shared stream preferences and common utilities
-- `OPN.Auth` - authentication/session support
-- `OPN.Telemetry` - local logging and Sentry-backed telemetry
-- `GFN.NVST` - NVST signaling, SDP, and Geronimo protocol types
-- `GFN.*` packages - protocol-specific GeForce NOW service modules
+- `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
+- `View` - SwiftUI/AppKit views, stream host views, design primitives, asset catalogs, and bundled resources
+- `ViewModel` - observable UI state and presentation coordination for login, catalog, controller catalog, and recordings
+- `OPN` - app entry/configuration, authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
+- `GFN` - protocol-specific GeForce NOW clients and wire types, including CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, and UDS
+- `Tests` - root SwiftPM test target covering the package-exposed production logic
 
 ## Packages
 
-- `GFN.CloudMatch`
-- `GFN.GDN`
-- `GFN.Jarvis`
-- `GFN.LCARS`
-- `GFN.NVST`
-- `GFN.NesAuth`
-- `GFN.NetworkTest`
-- `GFN.Starfleet`
-- `GFN.UDS`
-- `OPN.Auth`
-- `OPN.Common`
-- `OPN.GameServices`
-- `OPN.Telemetry`
-- `OPN.Twitch`
-- `OPN.WebRTC.Media`
+The root `Package.swift` exposes a testable `OpenNOW` library target over non-app-entry production logic from `Model`, `OPN`, and `GFN`. The Xcode app target compiles all five production directories, including `View` and `ViewModel`.
 
 ## Building
 
@@ -53,23 +37,23 @@ xcodebuild build -project OpenNOW.xcodeproj -scheme OpenNOW -configuration Debug
 
 ## Testing
 
-Build packages from the repository root so SwiftPM uses one shared `.build` graph for all local packages:
+Run package tests from the repository root so SwiftPM uses one shared `.build` graph:
 
 ```sh
-swift build --scratch-path .build/shared
+swift test --scratch-path .build/shared
 ```
 
 Useful focused checks:
 
 ```sh
-swift test --package-path OPN.GameServices --scratch-path .build/shared
+swift test --scratch-path .build/shared --filter WebRTCStreamRecording
 ```
 
 ```sh
-swift test --package-path OPN.WebRTC.Media --scratch-path .build/shared --filter WebRTCStreamRecording
+swift test --scratch-path .build/shared --filter OpenNOWGameServicesTests
 ```
 
-Avoid running `swift build` from each package directory during normal development. Each package-local build creates a separate `.build` tree and can duplicate large binary artifacts such as `sentry-cocoa`. Focused `swift test --package-path ... --scratch-path .build/shared` commands are still useful when validating one package because they keep generated SwiftPM state in the shared scratch directory.
+Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts such as `sentry-cocoa` are not duplicated.
 
 To audit generated SwiftPM disk usage:
 
