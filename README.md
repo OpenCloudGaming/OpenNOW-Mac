@@ -17,9 +17,11 @@ The repository contains a SwiftUI app target plus service, protocol, authenticat
 ## Project Layout
 
 - `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `View` - SwiftUI/AppKit views, stream host views, design primitives, asset catalogs, and bundled resources
+- `OpenNOWApp.swift` - macOS app entry point and application delegate
+- `Resources` - bundled images, fonts, and store icon assets
+- `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` - observable UI state and presentation coordination for login, catalog, controller catalog, and recordings
-- `OPN` - app entry/configuration, authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
+- `OPN` - authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
 - `GFN` - protocol-specific GeForce NOW clients and wire types, including CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, and UDS
 - `Tests` - root SwiftPM test target covering the package-exposed production logic
 

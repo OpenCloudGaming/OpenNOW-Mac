@@ -10,7 +10,8 @@
 		7729CE862FDEDAB500D5C9D5 /* WebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; };
 		7729CE882FDEDAB500D5C9D5 /* WebRTC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
-		A00000000000000000000001 /* View/Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* View/Resources */; };
+		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
+		A00000000000000000000003 /* OpenNOWApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OpenNOWApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 /* End PBXBuildFile section */
 
@@ -32,7 +33,8 @@
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenNOW.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebRTC.framework; sourceTree = "<group>"; };
 		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
-		A00000000000000000000002 /* View/Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = View/Resources; sourceTree = "<group>"; };
+		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
+		A00000000000000000000004 /* OpenNOWApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenNOWApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -80,11 +82,13 @@
 		7729CE6D2FDEDAB300D5C9D5 = {
 			isa = PBXGroup;
 			children = (
+				A00000000000000000000004 /* OpenNOWApp.swift */,
 				B00000000000000000000101 /* Model */,
 				B00000000000000000000102 /* View */,
 				B00000000000000000000110 /* ViewModel */,
 				7729CE782FDEDAB300D5C9D5 /* OPN */,
 				B00000000000000000000104 /* GFN */,
+				A00000000000000000000002 /* Resources */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* WebRTC.framework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
@@ -172,7 +176,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A00000000000000000000001 /* View/Resources in Resources */,
+				A00000000000000000000001 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,6 +187,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000003 /* OpenNOWApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
