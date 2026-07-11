@@ -15,7 +15,6 @@ public enum GeronimoInputChannel: Sendable {
     public static let partiallyReliableLabel = "input_channel_partially_reliable"
     public static let partialReliableInputLifetimeMs: Int32 = 5
     public static let partialReliableInputBacklogLimitBytes: UInt64 = 16 * 1024
-    public static let lowLatencyInputBacklogLimitBytes: UInt64 = 4 * 1024
     public static let mouseInputBacklogLimitBytes: UInt64 = 512
     public static let gamepadInputBacklogLimitBytes: UInt64 = 512
 }

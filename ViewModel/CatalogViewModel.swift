@@ -1436,11 +1436,6 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
-    func setLowLatencyModeEnabled(_ enabled: Bool) {
-        OPNStreamPreferences.saveLowLatencyModeEnabled(enabled)
-        loadSettingsPreferences()
-    }
-
     func setPowerSaverEnabled(_ enabled: Bool) {
         OPNStreamPreferences.savePowerSaverEnabled(enabled)
         loadSettingsPreferences()

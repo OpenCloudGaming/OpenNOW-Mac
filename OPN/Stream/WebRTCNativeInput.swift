@@ -22,15 +22,14 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         super.init()
     }
 
-    @objc(sendInputData:partiallyReliable:lowLatencyMode:sessionImpl:)
-    func sendInput(data: Data, partiallyReliable: Bool, lowLatencyMode: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
+    @objc(sendInputData:partiallyReliable:sessionImpl:)
+    func sendInput(data: Data, partiallyReliable: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
         guard !data.isEmpty else { return }
         let usePartial = partiallyReliable && inputConfiguration.partialReliableEnabled
         let channel = usePartial ? sessionImpl?.partialInputChannel : sessionImpl?.reliableInputChannel
         guard let channel, channel.readyState == .open else { return }
         if usePartial {
-            let backlogLimit = lowLatencyMode ? GeronimoInputChannel.lowLatencyInputBacklogLimitBytes : GeronimoInputChannel.partialReliableInputBacklogLimitBytes
-            guard channel.bufferedAmount <= backlogLimit else { return }
+            guard channel.bufferedAmount <= GeronimoInputChannel.partialReliableInputBacklogLimitBytes else { return }
         }
         channel.sendData(RTCDataBuffer(data: data, isBinary: true))
     }
@@ -67,11 +66,11 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
     @objc(sendKeyWithKeycode:scancode:modifiers:down:sessionImpl:)
     func sendKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, down: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
         let encoded = encoderLock.withLock { encoder.encodeKey(keycode: keycode, scancode: scancode, modifiers: modifiers, timestampUs: OPNInputProtocolEncoder.timestampUs(), down: down) }
-        sendInput(data: encoded, partiallyReliable: false, lowLatencyMode: false, sessionImpl: sessionImpl)
+        sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
-    @objc(sendMouseMoveWithDx:dy:lowLatencyMode:sessionImpl:)
-    func sendMouseMove(dx: Int16, dy: Int16, lowLatencyMode: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
+    @objc(sendMouseMoveWithDx:dy:sessionImpl:)
+    func sendMouseMove(dx: Int16, dy: Int16, sessionImpl: OPNLibWebRTCSessionImpl?) {
         let usePartial = shouldSendHIDPartiallyReliable()
         if usePartial {
             guard let channel = sessionImpl?.partialInputChannel,
@@ -79,28 +78,28 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                   channel.bufferedAmount <= GeronimoInputChannel.mouseInputBacklogLimitBytes else { return }
         }
         let encoded = encoderLock.withLock { encoder.encodeMouseMove(dx: dx, dy: dy, timestampUs: OPNInputProtocolEncoder.timestampUs()) }
-        sendInput(data: encoded, partiallyReliable: usePartial, lowLatencyMode: lowLatencyMode, sessionImpl: sessionImpl)
+        sendInput(data: encoded, partiallyReliable: usePartial, sessionImpl: sessionImpl)
     }
 
     @objc(sendMouseButtonWithButton:down:sessionImpl:)
     func sendMouseButton(button: UInt8, down: Bool, sessionImpl: OPNLibWebRTCSessionImpl?) {
         let encoded = encoderLock.withLock { encoder.encodeMouseButton(button: button, timestampUs: OPNInputProtocolEncoder.timestampUs(), down: down) }
-        sendInput(data: encoded, partiallyReliable: false, lowLatencyMode: false, sessionImpl: sessionImpl)
+        sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
     @objc(sendMouseWheelWithDelta:sessionImpl:)
     func sendMouseWheel(delta: Int16, sessionImpl: OPNLibWebRTCSessionImpl?) {
         let encoded = encoderLock.withLock { encoder.encodeMouseWheel(delta: delta, timestampUs: OPNInputProtocolEncoder.timestampUs()) }
-        sendInput(data: encoded, partiallyReliable: false, lowLatencyMode: false, sessionImpl: sessionImpl)
+        sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
     @objc(sendUtf8Text:sessionImpl:)
     func sendUtf8Text(_ text: String, sessionImpl: OPNLibWebRTCSessionImpl?) {
         let encoded = encoderLock.withLock { encoder.encodeUtf8Text(text) }
-        sendInput(data: encoded, partiallyReliable: false, lowLatencyMode: false, sessionImpl: sessionImpl)
+        sendInput(data: encoded, partiallyReliable: false, sessionImpl: sessionImpl)
     }
 
-    @objc(sendGamepadStateWithControllerId:buttons:leftTrigger:rightTrigger:leftStickX:leftStickY:rightStickX:rightStickY:timestampUs:bitmap:lowLatencyMode:sessionImpl:)
+    @objc(sendGamepadStateWithControllerId:buttons:leftTrigger:rightTrigger:leftStickX:leftStickY:rightStickX:rightStickY:timestampUs:bitmap:sessionImpl:)
     func sendGamepadState(controllerId: UInt16,
                           buttons: UInt16,
                           leftTrigger: UInt8,
@@ -111,7 +110,6 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                           rightStickY: Int16,
                           timestampUs: UInt64,
                           bitmap: UInt16,
-                          lowLatencyMode: Bool,
                           sessionImpl: OPNLibWebRTCSessionImpl?) {
         let usePartial = shouldSendGamepadPartiallyReliable(controllerId: controllerId)
         if usePartial {
@@ -130,7 +128,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
                                                                         timestampUs: timestampUs,
                                                                         bitmap: bitmap,
                                                                         partiallyReliable: usePartial) }
-        sendInput(data: encoded, partiallyReliable: usePartial, lowLatencyMode: lowLatencyMode, sessionImpl: sessionImpl)
+        sendInput(data: encoded, partiallyReliable: usePartial, sessionImpl: sessionImpl)
     }
 
     @objc(handleDataChannelStateWithLabel:open:)
@@ -180,7 +178,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             handshakeComplete = true
             inputReady = handshakeComplete && reliableOpen && (!inputConfiguration.partialReliableEnabled || partialOpen)
         }
-        sendInput(data: data, partiallyReliable: false, lowLatencyMode: false, sessionImpl: sessionImpl)
+        sendInput(data: data, partiallyReliable: false, sessionImpl: sessionImpl)
         startHeartbeat(sessionImpl: sessionImpl)
         WebRTCMediaTelemetry.capture("webrtc.native.input.ready", level: .debug, message: "Input handshake complete.", attributes: ["version": String(version), "inputReady": String(isInputReady)])
     }
@@ -254,7 +252,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         timer.setEventHandler { [weak self] in
             guard let self, self.isInputReady else { return }
             let heartbeat = self.encoderLock.withLock { self.encoder.encodeHeartbeat() }
-            self.sendInput(data: heartbeat, partiallyReliable: false, lowLatencyMode: false, sessionImpl: self.sessionImpl)
+            self.sendInput(data: heartbeat, partiallyReliable: false, sessionImpl: self.sessionImpl)
         }
         heartbeat = timer
         timer.resume()

@@ -94,7 +94,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             metalLayer.presentsWithTransaction = false
             metalLayer.allowsNextDrawableTimeout = false
             if #available(macOS 10.13, *) {
-                metalLayer.maximumDrawableCount = owner?.lowLatencyMode == true ? 2 : 3
+                metalLayer.maximumDrawableCount = 3
             }
         }
         addSubview(metalView)

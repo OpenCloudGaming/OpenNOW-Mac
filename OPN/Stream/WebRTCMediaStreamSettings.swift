@@ -88,7 +88,6 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var prefilterModel: Int
     public var enableL4S: Bool
     public var enableHdr: Bool
-    public var lowLatencyMode: Bool
     public var enablePowerSaver: Bool
     public var microphoneMode: String
     public var microphoneDeviceId: String
@@ -119,7 +118,6 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 prefilterModel: Int = 0,
                 enableL4S: Bool = false,
                 enableHdr: Bool = false,
-                lowLatencyMode: Bool = false,
                 enablePowerSaver: Bool = false,
                 microphoneMode: String = "disabled",
                 microphoneDeviceId: String = "",
@@ -149,7 +147,6 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.prefilterModel = prefilterModel
         self.enableL4S = enableL4S
         self.enableHdr = enableHdr
-        self.lowLatencyMode = lowLatencyMode
         self.enablePowerSaver = enablePowerSaver
         self.microphoneMode = microphoneMode
         self.microphoneDeviceId = microphoneDeviceId
@@ -184,8 +181,6 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var enableL4S: Bool
     public var enableHdr: Bool
     public var enableReflex: Bool
-    public var lowLatencyMode: Bool
-    public var streamingQualityProfile: Int
     public var microphoneMode: String
     public var microphoneDeviceId: String
     public var microphonePushToTalkKeyCode: Int
@@ -221,8 +216,6 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "enableL4S": enableL4S,
             "enableHdr": enableHdr,
             "enableReflex": enableReflex,
-            "lowLatencyMode": lowLatencyMode,
-            "streamingQualityProfile": streamingQualityProfile,
             "microphoneMode": microphoneMode,
             "microphoneDeviceId": microphoneDeviceId,
             "microphonePushToTalkKeyCode": microphonePushToTalkKeyCode,
@@ -259,18 +252,16 @@ public enum WebRTCMediaStreamSettingsResolver {
         if !cloudVariables.allowH265, codec == "H265" { codec = "H264" }
         if !cloudVariables.allowAV1, codec == "AV1" { codec = "H264" }
         let colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
-        let lowLatency = profile.lowLatencyMode
         let controllerCount = capabilities.connectedGamepadCount
-        let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables, lowLatency: lowLatency)
+        let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables)
         let upscalingMode = normalizedUpscalingMode(profile.upscalingMode)
         let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
-        let latencyCappedMaxBitrateMbps = lowLatency ? min(requestedMaxBitrateMbps, 25) : requestedMaxBitrateMbps
         return WebRTCMediaResolvedStreamSettings(
-            resolution: resolvedResolution(profile: profile).value,
+            resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
             codec: codec,
             colorQuality: colorQuality,
-            maxBitrateMbps: max(1, min(latencyCappedMaxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
+            maxBitrateMbps: max(1, min(requestedMaxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
             prefilterMode: prefilterMode,
             prefilterSharpness: prefilterMode == 0 ? 0 : profile.prefilterSharpness,
             prefilterDenoise: prefilterMode == 0 ? 0 : profile.prefilterDenoise,
@@ -278,15 +269,13 @@ public enum WebRTCMediaStreamSettingsResolver {
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
             enableHdr: cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr,
             enableReflex: cloudVariables.allowReflex,
-            lowLatencyMode: lowLatency,
-            streamingQualityProfile: lowLatency ? 2 : 0,
             microphoneMode: profile.microphoneMode,
             microphoneDeviceId: profile.microphoneDeviceId,
             microphonePushToTalkKeyCode: profile.microphonePushToTalkKeyCode,
             microphonePushToTalkModifierMask: profile.microphonePushToTalkModifierMask,
             gameVolume: profile.gameVolume,
             microphoneVolume: profile.microphoneVolume,
-            upscalingMode: lowLatency ? 0 : upscalingMode,
+            upscalingMode: upscalingMode,
             upscalingSharpness: profile.upscalingSharpness,
             upscalingDenoise: profile.upscalingDenoise,
             upscalingTargetHeight: profile.upscalingTargetHeight,
@@ -303,19 +292,8 @@ public enum WebRTCMediaStreamSettingsResolver {
         )
     }
 
-    private static func resolvedResolution(profile: WebRTCMediaStreamProfile) -> WebRTCMediaResolution {
-        guard profile.lowLatencyMode else { return profile.resolution }
-        let pixels = max(1, profile.resolution.width) * max(1, profile.resolution.height)
-        guard pixels > 1920 * 1200 else { return profile.resolution }
-        let aspectRatio = Double(profile.resolution.width) / Double(max(1, profile.resolution.height))
-        if aspectRatio >= 2.7 { return WebRTCMediaResolution(width: 3840, height: 1080) }
-        if aspectRatio >= 2.1 { return WebRTCMediaResolution(width: 2560, height: 1080) }
-        if aspectRatio >= 1.7 { return WebRTCMediaResolution(width: 1920, height: 1080) }
-        return WebRTCMediaResolution(width: 1920, height: 1200)
-    }
-
-    private static func resolvedPrefilterMode(profile: WebRTCMediaStreamProfile, cloudVariables: WebRTCMediaCloudVariables, lowLatency: Bool) -> Int {
-        guard !lowLatency, !(cloudVariables.fetched && !cloudVariables.allowPrefilter) else { return 0 }
+    private static func resolvedPrefilterMode(profile: WebRTCMediaStreamProfile, cloudVariables: WebRTCMediaCloudVariables) -> Int {
+        guard !(cloudVariables.fetched && !cloudVariables.allowPrefilter) else { return 0 }
         let mode = max(0, min(profile.prefilterMode, 2))
         guard cloudVariables.supportedPrefilterModes.isEmpty || cloudVariables.supportedPrefilterModes.contains(mode) else { return 0 }
         return mode

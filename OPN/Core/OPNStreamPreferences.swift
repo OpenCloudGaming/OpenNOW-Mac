@@ -203,7 +203,6 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var recordingEnhancedVideoEnabled = true
     public var enableL4S = false
     public var enableHdr = false
-    public var lowLatencyMode = false
     public var enablePowerSaver = false
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
@@ -246,7 +245,7 @@ public enum OPNStreamPreferences {
     ]
     public static let fpsOptions = [30, 60, 120, 240]
     public static let codecOptions = [
-        OPNStreamCodecOption(label: "H264  Low Latency", value: "H264"),
+        OPNStreamCodecOption(label: "H264", value: "H264"),
         OPNStreamCodecOption(label: "H265  Quality", value: "H265"),
         OPNStreamCodecOption(label: "AV1  CPU", value: "AV1"),
         OPNStreamCodecOption(label: "Auto", value: "auto")
@@ -307,7 +306,6 @@ public enum OPNStreamPreferences {
         Keys.recordingEnhancedVideoEnabled,
         Keys.l4sEnabled,
         Keys.hdrEnabled,
-        Keys.lowLatencyModeEnabled,
         Keys.powerSaverEnabled,
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
@@ -801,7 +799,6 @@ public enum OPNStreamPreferences {
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
-    public static func saveLowLatencyModeEnabled(_ value: Bool) { storage.set(value, forKey: k.lowLatencyModeEnabled) }
     public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
@@ -820,6 +817,7 @@ public enum OPNStreamPreferences {
         for key in streamingProfileKeys {
             storage.removeObject(forKey: key)
         }
+        storage.removeObject(forKey: "OpenNOW.Stream.LowLatencyModeEnabled")
         storage.synchronize()
     }
 
@@ -872,7 +870,6 @@ public enum OPNStreamPreferences {
         profile.recordingEnhancedVideoEnabled = bool(value(dictionary, k.recordingEnhancedVideoEnabled), true)
         profile.enableL4S = bool(value(dictionary, k.l4sEnabled), false)
         profile.enableHdr = bool(value(dictionary, k.hdrEnabled), false)
-        profile.lowLatencyMode = bool(value(dictionary, k.lowLatencyModeEnabled), false)
         profile.enablePowerSaver = bool(value(dictionary, k.powerSaverEnabled), false)
         profile.suppressInputWhenInactive = bool(value(dictionary, k.suppressInputWhenInactive), true)
         profile.directMouseInput = bool(value(dictionary, k.directMouseInput), true)
@@ -912,7 +909,6 @@ public enum OPNStreamPreferences {
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
             k.l4sEnabled: profile.enableL4S,
             k.hdrEnabled: profile.enableHdr,
-            k.lowLatencyModeEnabled: profile.lowLatencyMode,
             k.powerSaverEnabled: profile.enablePowerSaver,
             k.suppressInputWhenInactive: profile.suppressInputWhenInactive,
             k.directMouseInput: profile.directMouseInput,
@@ -1407,7 +1403,6 @@ public enum OPNStreamPreferences {
         static let recordingAudioBitrateKbps = "OpenNOW.Stream.RecordingAudioBitrateKbps"
         static let recordingEnhancedVideoEnabled = "OpenNOW.Stream.RecordingEnhancedVideoEnabled"
         static let l4sEnabled = "OpenNOW.Stream.L4SEnabled"
-        static let lowLatencyModeEnabled = "OpenNOW.Stream.LowLatencyModeEnabled"
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
@@ -1437,7 +1432,6 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
     @objc public let gameVolume: Double
     @objc public let microphoneVolume: Double
     @objc public let maxBitrateMbps: Int
-    @objc public let lowLatencyMode: Bool
     @objc public let upscalingModeIndex: Int
     @objc public let upscalingMode: Int
     @objc public let upscalingTargetHeight: Int
@@ -1454,7 +1448,6 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
         gameVolume = profile.gameVolume
         microphoneVolume = profile.microphoneVolume
         maxBitrateMbps = profile.maxBitrateMbps
-        lowLatencyMode = profile.lowLatencyMode
         upscalingModeIndex = profile.upscalingModeIndex
         upscalingMode = profile.upscalingMode
         upscalingTargetHeight = profile.upscalingTargetHeight

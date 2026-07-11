@@ -343,11 +343,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func setLocalVideoEnhancement(mode: Int, sharpness: Int, denoise: Int, targetHeight: Int) { localEnhancementMode = mode; localEnhancementSharpness = sharpness; localEnhancementDenoise = denoise; localEnhancementTargetHeight = targetHeight }
     func sendUtf8Text(_ text: String) { inputController.sendUtf8Text(text, sessionImpl: impl) }
     func sendKey(keycode: UInt16, scancode: UInt16, modifiers: UInt16, down: Bool) { inputController.sendKey(keycode: keycode, scancode: scancode, modifiers: modifiers, down: down, sessionImpl: impl) }
-    func sendMouseMove(dx: Int16, dy: Int16) { inputController.sendMouseMove(dx: dx, dy: dy, lowLatencyMode: lowLatencyMode, sessionImpl: impl) }
+    func sendMouseMove(dx: Int16, dy: Int16) { inputController.sendMouseMove(dx: dx, dy: dy, sessionImpl: impl) }
     func sendMouseButton(button: UInt8, down: Bool) { inputController.sendMouseButton(button: button, down: down, sessionImpl: impl) }
     func sendMouseWheel(delta: Int16) { inputController.sendMouseWheel(delta: delta, sessionImpl: impl) }
     func sendGamepadState(controllerId: UInt16, buttons: UInt16, leftTrigger: UInt8, rightTrigger: UInt8, leftStickX: Int16, leftStickY: Int16, rightStickX: Int16, rightStickY: Int16, connected: Bool, bitmap: UInt16, timestampUs: UInt64) {
-        inputController.sendGamepadState(controllerId: controllerId, buttons: buttons, leftTrigger: leftTrigger, rightTrigger: rightTrigger, leftStickX: leftStickX, leftStickY: leftStickY, rightStickX: rightStickX, rightStickY: rightStickY, timestampUs: timestampUs, bitmap: bitmap, lowLatencyMode: lowLatencyMode, sessionImpl: impl)
+        inputController.sendGamepadState(controllerId: controllerId, buttons: buttons, leftTrigger: leftTrigger, rightTrigger: rightTrigger, leftStickX: leftStickX, leftStickY: leftStickY, rightStickX: rightStickX, rightStickY: rightStickY, timestampUs: timestampUs, bitmap: bitmap, sessionImpl: impl)
     }
 
     func latestStatsSnapshot() -> OPNStreamStatsSnapshot {
@@ -378,7 +378,6 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                                       videoMaxFrameIntervalMs: stats.videoMaxFrameIntervalMs)
     }
 
-    var lowLatencyMode: Bool { bool(settings["lowLatencyMode"]) }
     var targetFps: Int { int(settings["fps"], fallback: 60) }
     var gameVolumeLevel: Double { gameVolume }
     func localVideoEnhancement() -> (Int32, Int32, Int32, Int32) { (Int32(localEnhancementMode), Int32(localEnhancementSharpness), Int32(localEnhancementDenoise), Int32(localEnhancementTargetHeight)) }

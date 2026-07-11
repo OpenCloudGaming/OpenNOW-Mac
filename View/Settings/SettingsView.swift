@@ -1201,8 +1201,6 @@ private struct GameplaySettingsPage: View {
             }
 
             SettingsCard(title: "Gameplay") {
-                SettingsToggleRow(title: "NVIDIA Reflex / Low Latency", subtitle: "Prioritizes responsiveness during supported sessions.", isOn: viewModel.streamProfile.lowLatencyMode, action: viewModel.setLowLatencyModeEnabled)
-                SettingsDivider()
                 SettingsToggleRow(title: "L4S", subtitle: "Use low-latency scalable throughput when available.", isOn: viewModel.streamProfile.enableL4S, action: viewModel.setL4SEnabled)
                 SettingsDivider()
                 SettingsToggleRow(title: "HDR", subtitle: "Requires a compatible display and stream capability.", isOn: viewModel.streamProfile.enableHdr, action: viewModel.setHDREnabled)
