@@ -144,6 +144,49 @@ import Testing
     #expect(profile.input.partiallyReliableHIDMask == 7)
 }
 
+@Test func nvstParsesSessionAndMediaAttributesBySection() throws {
+    let description = NVSTSessionDescription(sdp: vendorLikeNVSTSdp)
+
+    #expect(description.preambleLines.contains("v=0"))
+    #expect(description.sessionAttributesByKey["general.turnInfo"]?.contains("turn:relay.example.test:3478") == true)
+    #expect(description.mediaSections.map(\.mediaKind) == ["video", "audio", "mic", "application"])
+
+    let video = try #require(description.mediaSections.first { $0.mediaKind == "video" })
+    #expect(video.attributesByKey["video.maxFPS"] == "60")
+    #expect(video.attributesByKey["vqos.bw.maximumBitrateKbps"] == "50000")
+
+    let application = try #require(description.mediaSections.first { $0.mediaKind == "application" })
+    #expect(application.attributesByKey["ri.partialReliableThresholdMs"] == "5")
+    #expect(application.attributesByKey["ri.enablePartiallyReliableTransferGamepad"] == "15")
+}
+
+@Test func nvstAnswerExtensionAppliesSectionAwareVendorOverrides() throws {
+    let overrides = """
+    a=general.clientCapture:1
+    m=video 0 RTP/AVP
+    a=video.maxFPS:120
+    a=vqos.bw.maximumBitrateKbps:75000
+    m=application 0 RTP/AVP
+    a=ri.partialReliableThresholdMs:12
+    """
+    let credentials = NVSTIceCredentials(usernameFragment: "localUfrag", password: "localPwd", fingerprint: "sha-256 AA:BB")
+
+    let answer = try #require(NVSTSessionDescriptionBuilder.buildAnswerExtension(remoteNVSTSdp: vendorLikeNVSTSdp, serverOverrides: overrides, credentials: credentials))
+    let description = NVSTSessionDescription(sdp: answer)
+    let video = try #require(description.mediaSections.first { $0.mediaKind == "video" })
+    let application = try #require(description.mediaSections.first { $0.mediaKind == "application" })
+
+    #expect(description.sessionAttributesByKey["general.clientCapture"] == "1")
+    #expect(description.sessionAttributesByKey["general.icePassword"] == "localPwd")
+    #expect(description.sessionAttributesByKey["general.iceUserNameFragment"] == "localUfrag")
+    #expect(description.sessionAttributesByKey["general.dtlsFingerprint"] == "sha-256 AA:BB")
+    #expect(video.attributesByKey["video.maxFPS"] == "120")
+    #expect(video.attributesByKey["vqos.bw.maximumBitrateKbps"] == "75000")
+    #expect(application.attributesByKey["ri.partialReliableThresholdMs"] == "12")
+    #expect(application.attributesByKey["ri.enablePartiallyReliableTransferHid"] == "4294967295")
+    #expect(!answer.contains("serverPwd"))
+}
+
 @Test func nvstBuildsAnswerExtensionFromRemoteVendorExtension() throws {
     let remoteNVSTSdp = """
     v=0
@@ -203,3 +246,31 @@ private func jsonString(_ object: [String: Any]) throws -> String {
     let data = try JSONSerialization.data(withJSONObject: object)
     return String(data: data, encoding: .utf8) ?? ""
 }
+
+private let vendorLikeNVSTSdp = """
+v=0
+o=- 0 0 IN IP4 127.0.0.1
+s=-
+t=0 0
+a=general.clientCapture:0
+a=general.icePassword:serverPwd
+a=general.iceUserNameFragment:serverUfrag
+a=general.dtlsFingerprint:sha-256 SERVER
+a=general.turnInfo:turn:relay.example.test:3478,user,pass
+a=general.iceTransportPolicy:1
+m=video 0 RTP/AVP
+a=msid:fbc-video-0
+a=video.maxFPS:60
+a=vqos.bw.maximumBitrateKbps:50000
+a=video.bitDepth:8
+m=audio 0 RTP/AVP
+a=msid:audio
+m=mic 0 RTP/AVP
+a=msid:mic
+m=application 0 RTP/AVP
+a=msid:input_1
+a=ri.partialReliableThresholdMs:5
+a=ri.hidDeviceMask:4294967295
+a=ri.enablePartiallyReliableTransferGamepad:15
+a=ri.enablePartiallyReliableTransferHid:4294967295
+"""

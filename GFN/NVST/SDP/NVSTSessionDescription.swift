@@ -52,6 +52,120 @@ public struct NVSTInputTransportConfiguration: Equatable, Sendable {
     public static let fallback = NVSTInputTransportConfiguration()
 }
 
+public struct NVSTSDPAttribute: Equatable, Sendable {
+    public var key: String
+    public var value: String
+
+    public init(key: String, value: String) {
+        self.key = key
+        self.value = value
+    }
+
+    public var line: String {
+        "a=\(key):\(value)"
+    }
+}
+
+public struct NVSTSDPMediaSection: Equatable, Sendable {
+    public var mediaLine: String
+    public var mediaKind: String
+    public var attributes: [NVSTSDPAttribute]
+
+    public init(mediaLine: String, attributes: [NVSTSDPAttribute] = []) {
+        self.mediaLine = mediaLine
+        mediaKind = mediaLine.dropFirst(2).split(separator: " ").first.map(String.init) ?? ""
+        self.attributes = attributes
+    }
+
+    public var attributesByKey: [String: String] {
+        attributes.reduce(into: [:]) { result, attribute in
+            result[attribute.key] = attribute.value
+        }
+    }
+}
+
+public struct NVSTSessionDescription: Equatable, Sendable {
+    public var preambleLines: [String]
+    public var sessionAttributes: [NVSTSDPAttribute]
+    public var mediaSections: [NVSTSDPMediaSection]
+
+    public init(preambleLines: [String] = [], sessionAttributes: [NVSTSDPAttribute] = [], mediaSections: [NVSTSDPMediaSection] = []) {
+        self.preambleLines = preambleLines
+        self.sessionAttributes = sessionAttributes
+        self.mediaSections = mediaSections
+    }
+
+    public init(sdp: String) {
+        var preambleLines: [String] = []
+        var sessionAttributes: [NVSTSDPAttribute] = []
+        var mediaSections: [NVSTSDPMediaSection] = []
+        for line in nvstSDPLines(sdp) {
+            if line.hasPrefix("m=") {
+                mediaSections.append(NVSTSDPMediaSection(mediaLine: line))
+            } else if let attribute = nvstAttribute(fromLine: line) {
+                if mediaSections.isEmpty {
+                    sessionAttributes.append(attribute)
+                } else {
+                    mediaSections[mediaSections.count - 1].attributes.append(attribute)
+                }
+            } else if mediaSections.isEmpty {
+                preambleLines.append(line)
+            }
+        }
+        self.init(preambleLines: preambleLines, sessionAttributes: sessionAttributes, mediaSections: mediaSections)
+    }
+
+    public var sessionAttributesByKey: [String: String] {
+        sessionAttributes.reduce(into: [:]) { result, attribute in
+            result[attribute.key] = attribute.value
+        }
+    }
+
+    public var attributesByKey: [String: String] {
+        var result = sessionAttributesByKey
+        for section in mediaSections {
+            for attribute in section.attributes {
+                result[attribute.key] = attribute.value
+            }
+        }
+        return result
+    }
+
+    public mutating func removeSessionAttributes(keys: Set<String>) {
+        sessionAttributes.removeAll { keys.contains($0.key) }
+    }
+
+    public mutating func setSessionAttribute(key: String, value: String) {
+        setAttribute(key: key, value: value, in: &sessionAttributes)
+    }
+
+    public mutating func applyOverrides(_ overrides: NVSTSessionDescription) {
+        for attribute in overrides.sessionAttributes {
+            setSessionAttribute(key: attribute.key, value: attribute.value)
+        }
+        for overrideSection in overrides.mediaSections {
+            guard !overrideSection.mediaKind.isEmpty else { continue }
+            let matchingIndex = mediaSections.firstIndex { $0.mediaKind == overrideSection.mediaKind }
+            if let matchingIndex {
+                for attribute in overrideSection.attributes {
+                    setAttribute(key: attribute.key, value: attribute.value, in: &mediaSections[matchingIndex].attributes)
+                }
+            } else {
+                mediaSections.append(overrideSection)
+            }
+        }
+    }
+
+    public func serialized() -> String {
+        var lines = preambleLines + sessionAttributes.map(\.line)
+        for section in mediaSections {
+            lines.append(section.mediaLine)
+            lines.append(contentsOf: section.attributes.map(\.line))
+        }
+        return lines.joined(separator: "\r\n") + "\r\n"
+    }
+}
+
 public struct NVSTTransportProfile: Equatable, Sendable {
     public var turnServers: [NVSTTurnServer]
     public var iceTransportPolicy: NVSTIceTransportPolicy
@@ -59,11 +173,9 @@ public struct NVSTTransportProfile: Equatable, Sendable {
     public var attributes: [String: String]
 
     public init(sdp: String = "", serverOverrides: String = "") {
-        var attributes = nvstAttributes(from: sdp)
-        let overrides = nvstAttributes(from: serverOverrides)
-        for (key, value) in overrides {
-            attributes[key] = value
-        }
+        var description = NVSTSessionDescription(sdp: sdp)
+        description.applyOverrides(NVSTSessionDescription(sdp: serverOverrides))
+        let attributes = description.attributesByKey
         self.attributes = attributes
         turnServers = nvstTurnServers(from: attributes["general.turnInfo"] ?? "")
         iceTransportPolicy = nvstIntText(attributes["general.iceTransportPolicy"]) == 1 ? .relay : .all
@@ -289,18 +401,13 @@ public enum NVSTSessionDescriptionBuilder {
     public static func buildAnswerExtension(remoteNVSTSdp: String, serverOverrides: String = "", credentials: NVSTIceCredentials) -> String? {
         let trimmed = remoteNVSTSdp.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        var lines = nvstSDPLines(remoteNVSTSdp).filter { line in
-            !line.hasPrefix("a=general.icePassword:") && !line.hasPrefix("a=general.iceUserNameFragment:") && !line.hasPrefix("a=general.dtlsFingerprint:")
-        }
-        applyNVSTServerOverrides(serverOverrides, to: &lines)
-        let credentialLines = [
-            "a=general.icePassword:\(credentials.password)",
-            "a=general.iceUserNameFragment:\(credentials.usernameFragment)",
-            "a=general.dtlsFingerprint:\(credentials.fingerprint)",
-        ]
-        let insertIndex = lines.firstIndex { $0.hasPrefix("m=") } ?? lines.count
-        lines.insert(contentsOf: credentialLines, at: insertIndex)
-        return lines.joined(separator: "\r\n") + "\r\n"
+        var description = NVSTSessionDescription(sdp: remoteNVSTSdp)
+        description.removeSessionAttributes(keys: ["general.icePassword", "general.iceUserNameFragment", "general.dtlsFingerprint"])
+        description.applyOverrides(NVSTSessionDescription(sdp: serverOverrides))
+        description.setSessionAttribute(key: "general.icePassword", value: credentials.password)
+        description.setSessionAttribute(key: "general.iceUserNameFragment", value: credentials.usernameFragment)
+        description.setSessionAttribute(key: "general.dtlsFingerprint", value: credentials.fingerprint)
+        return description.serialized()
     }
 
     public static func iceCredentials(from sdp: String) -> NVSTIceCredentials {
@@ -331,30 +438,24 @@ private func nvstSDPLines(_ sdp: String) -> [String] {
 }
 
 private func nvstAttributes(from sdp: String) -> [String: String] {
-    var attributes: [String: String] = [:]
-    for line in nvstSDPLines(sdp) where line.hasPrefix("a=") {
-        let text = String(line.dropFirst(2))
-        guard let separator = text.firstIndex(of: ":") else { continue }
-        let key = String(text[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = String(text[text.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !key.isEmpty {
-            attributes[key] = value
-        }
-    }
-    return attributes
+    NVSTSessionDescription(sdp: sdp).attributesByKey
 }
 
-private func applyNVSTServerOverrides(_ overrides: String, to lines: inout [String]) {
-    let attributes = nvstAttributes(from: overrides)
-    guard !attributes.isEmpty else { return }
-    for (key, value) in attributes {
-        let replacement = "a=\(key):\(value)"
-        if let index = lines.firstIndex(where: { $0.hasPrefix("a=\(key):") }) {
-            lines[index] = replacement
-        } else {
-            let insertIndex = lines.firstIndex { $0.hasPrefix("m=") } ?? lines.count
-            lines.insert(replacement, at: insertIndex)
-        }
+private func nvstAttribute(fromLine line: String) -> NVSTSDPAttribute? {
+    guard line.hasPrefix("a=") else { return nil }
+    let text = String(line.dropFirst(2))
+    guard let separator = text.firstIndex(of: ":") else { return nil }
+    let key = String(text[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let value = String(text[text.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !key.isEmpty else { return nil }
+    return NVSTSDPAttribute(key: key, value: value)
+}
+
+private func setAttribute(key: String, value: String, in attributes: inout [NVSTSDPAttribute]) {
+    if let index = attributes.firstIndex(where: { $0.key == key }) {
+        attributes[index].value = value
+    } else {
+        attributes.append(NVSTSDPAttribute(key: key, value: value))
     }
 }
 
