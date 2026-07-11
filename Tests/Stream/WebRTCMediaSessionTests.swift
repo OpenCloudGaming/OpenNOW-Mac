@@ -102,6 +102,7 @@ private actor RecordingSignaling: StreamSignalingChannel {
     private(set) var sentAnswer: StreamAnswer?
     private(set) var sentLocalCandidates: [StreamIceCandidate] = []
     private var remoteIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
+    private var remoteEndContinuation: AsyncStream<String>.Continuation?
 
     func sendAnswer(_ answer: StreamAnswer, for session: StreamSessionDescriptor) async throws {
         sentAnswer = answer
@@ -117,12 +118,26 @@ private actor RecordingSignaling: StreamSignalingChannel {
         }
     }
 
+    nonisolated func remoteEndEvents(for session: StreamSessionDescriptor) async throws -> AsyncStream<String> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            Task { await self.setRemoteEndContinuation(continuation) }
+        }
+    }
+
     func yieldRemoteIceCandidate(_ candidate: StreamIceCandidate) {
         remoteIceContinuation?.yield(candidate)
     }
 
+    func yieldRemoteEnd(_ message: String) {
+        remoteEndContinuation?.yield(message)
+    }
+
     private func setRemoteIceContinuation(_ continuation: AsyncStream<StreamIceCandidate>.Continuation) {
         remoteIceContinuation = continuation
+    }
+
+    private func setRemoteEndContinuation(_ continuation: AsyncStream<String>.Continuation) {
+        remoteEndContinuation = continuation
     }
 }
 
@@ -154,6 +169,21 @@ struct WebRTCMediaSessionTests {
         #expect(extractPublicIp("66-22-138-138.cloudmatchbeta.nvidiagrid.net") == "66.22.138.138")
         #expect(extractPublicIp("https://66-22-138-138.cloudmatchbeta.nvidiagrid.net/nvst/sign_in") == "66.22.138.138")
         #expect(extractPublicIp("not-a-valid-local-host.invalid") == "")
+    }
+
+    @Test("rewrites embedded SDP ICE candidates with media endpoint")
+    func rewritesEmbeddedSdpIceCandidates() {
+        let sdp = """
+        v=0
+        m=video 9 UDP/TLS/RTP/SAVPF 96
+        a=candidate:1 1 udp 2130706431 10.0.0.1 47998 typ host generation 0 ufrag serverUfrag
+        a=mid:0
+        """
+
+        let rewritten = rewriteEmbeddedIceCandidates(sdp, ip: "66.22.138.138", port: 49000)
+
+        #expect(rewritten.contains("a=candidate:1 1 udp 2130706431 66.22.138.138 49000 typ host generation 0 ufrag serverUfrag"))
+        #expect(iceUsernameFragment(fromCandidate: "candidate:1 1 udp 1 66.22.138.138 49000 typ host ufrag serverUfrag") == "serverUfrag")
     }
 
     @Test("routes video frames to media subscribers")
@@ -383,7 +413,7 @@ struct WebRTCStreamingPathTests {
         let signaling = RecordingSignaling()
         let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "400", accessToken: "token", accountLinked: true, selectedStore: "steam")
-        let remoteCandidate = StreamIceCandidate(sdp: "candidate:remote", sdpMid: "0", sdpMLineIndex: 0)
+        let remoteCandidate = StreamIceCandidate(sdp: "candidate:remote ufrag remoteUfrag", sdpMid: "0", sdpMLineIndex: 0, usernameFragment: "remoteUfrag")
 
         _ = try await path.start(configuration: configuration)
         try await Task.sleep(for: .milliseconds(100))
@@ -395,6 +425,23 @@ struct WebRTCStreamingPathTests {
         #expect(await signaling.sentLocalCandidates.isEmpty)
     }
 
+    @Test("does not forward remote end-of-candidates to transport")
+    func doesNotForwardRemoteEndOfCandidates() async throws {
+        let session = StreamSessionDescriptor(id: "session-ice-end", applicationID: "402", serverAddress: "server", title: "Game")
+        let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
+        let transport = RecordingTransport()
+        let signaling = RecordingSignaling()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "402", accessToken: "token", accountLinked: true, selectedStore: "steam")
+
+        _ = try await path.start(configuration: configuration)
+        try await Task.sleep(for: .milliseconds(100))
+        await signaling.yieldRemoteIceCandidate(.endOfCandidates)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(await transport.remoteCandidates.isEmpty)
+    }
+
     @Test("forwards local ICE candidates through signaling by default")
     func forwardsLocalIceCandidatesByDefault() async throws {
         let session = StreamSessionDescriptor(id: "session-local-ice", applicationID: "401", serverAddress: "server", title: "Game")
@@ -403,7 +450,7 @@ struct WebRTCStreamingPathTests {
         let signaling = RecordingSignaling()
         let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "401", accessToken: "token", accountLinked: true, selectedStore: "steam")
-        let localCandidate = StreamIceCandidate(sdp: "candidate:local", sdpMid: "0", sdpMLineIndex: 0)
+        let localCandidate = StreamIceCandidate(sdp: "candidate:local", sdpMid: "0", sdpMLineIndex: 0, usernameFragment: "localUfrag")
 
         _ = try await path.start(configuration: configuration)
         try await Task.sleep(for: .milliseconds(100))
@@ -411,6 +458,30 @@ struct WebRTCStreamingPathTests {
         try await Task.sleep(for: .milliseconds(100))
 
         #expect(await signaling.sentLocalCandidates == [localCandidate])
+    }
+
+    @Test("remote end transitions active stream to ended")
+    func remoteEndTransitionsActiveStreamToEnded() async throws {
+        let session = StreamSessionDescriptor(id: "session-remote-end", applicationID: "403", serverAddress: "server", title: "Game")
+        let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
+        let transport = RecordingTransport()
+        let signaling = RecordingSignaling()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "403", accessToken: "token", accountLinked: true, selectedStore: "steam")
+
+        _ = try await path.start(configuration: configuration)
+        try await Task.sleep(for: .milliseconds(100))
+        await signaling.yieldRemoteEnd("peerRemoved")
+        try await Task.sleep(for: .milliseconds(100))
+
+        if case .ended(let report) = await path.currentState() {
+            #expect(report.reason == .remoteEnded)
+            #expect(report.message == "peerRemoved")
+        } else {
+            Issue.record("Expected path to transition to ended after remote end")
+        }
+        #expect(await transport.disconnected)
+        #expect(await provider.finished.map(\.1) == [.remoteEnded])
     }
 
     @Test("carries offer metadata into running session")

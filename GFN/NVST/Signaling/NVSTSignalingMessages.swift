@@ -19,12 +19,14 @@ public struct NVSTIceCandidate: Equatable, Sendable {
     public var sdpMid: String
     public var sdpMLineIndex: Int
     public var usernameFragment: String
+    public var isEndOfCandidates: Bool
 
-    public init(candidate: String, sdpMid: String = "", sdpMLineIndex: Int = 0, usernameFragment: String = "") {
+    public init(candidate: String, sdpMid: String = "", sdpMLineIndex: Int = 0, usernameFragment: String = "", isEndOfCandidates: Bool = false) {
         self.candidate = candidate
         self.sdpMid = sdpMid
         self.sdpMLineIndex = sdpMLineIndex
         self.usernameFragment = usernameFragment
+        self.isEndOfCandidates = isEndOfCandidates
     }
 
     public var dictionary: [String: Any] {
@@ -35,6 +37,9 @@ public struct NVSTIceCandidate: Equatable, Sendable {
         payload["sdpMid"] = sdpMid.isEmpty ? NSNull() : sdpMid
         if !usernameFragment.isEmpty {
             payload["usernameFragment"] = usernameFragment
+        }
+        if isEndOfCandidates {
+            payload["endOfCandidates"] = true
         }
         return payload
     }
@@ -164,13 +169,16 @@ public enum NVSTSignalingMessageParser {
             return result
         }
 
-        if let candidate = stringValue(payload["candidate"]), !candidate.isEmpty {
+        if let candidate = stringValue(payload["candidate"]) {
             result.iceCandidate = NVSTIceCandidate(
                 candidate: candidate,
                 sdpMid: stringValue(payload["sdpMid"]) ?? "",
                 sdpMLineIndex: intValue(payload["sdpMLineIndex"]) ?? 0,
-                usernameFragment: stringValue(payload["usernameFragment"]) ?? stringValue(payload["ufrag"]) ?? ""
+                usernameFragment: stringValue(payload["usernameFragment"]) ?? stringValue(payload["ufrag"]) ?? "",
+                isEndOfCandidates: candidate.isEmpty || boolValue(payload["endOfCandidates"])
             )
+        } else if boolValue(payload["endOfCandidates"]) {
+            result.iceCandidate = NVSTIceCandidate(candidate: "", isEndOfCandidates: true)
         }
         return result
     }

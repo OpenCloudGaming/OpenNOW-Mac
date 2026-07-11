@@ -127,12 +127,18 @@ public struct StreamIceCandidate: Codable, Equatable, Hashable, Sendable {
     public let sdp: String
     public let sdpMid: String
     public let sdpMLineIndex: Int
+    public let usernameFragment: String
+    public let isEndOfCandidates: Bool
 
-    public init(sdp: String, sdpMid: String, sdpMLineIndex: Int) {
+    public init(sdp: String, sdpMid: String, sdpMLineIndex: Int, usernameFragment: String = "", isEndOfCandidates: Bool = false) {
         self.sdp = sdp
         self.sdpMid = sdpMid
         self.sdpMLineIndex = max(0, sdpMLineIndex)
+        self.usernameFragment = usernameFragment
+        self.isEndOfCandidates = isEndOfCandidates
     }
+
+    public static let endOfCandidates = StreamIceCandidate(sdp: "", sdpMid: "", sdpMLineIndex: 0, isEndOfCandidates: true)
 }
 
 public enum StreamEndReason: String, Codable, Equatable, Hashable, Sendable {

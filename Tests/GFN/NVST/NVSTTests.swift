@@ -70,6 +70,15 @@ import Testing
     #expect(ice.iceCandidate?.sdpMid == "video")
     #expect(ice.iceCandidate?.sdpMLineIndex == 0)
     #expect(ice.iceCandidate?.usernameFragment == "ufrag")
+
+    let endEnvelope = try #require(NVSTSignalingMessageParser.peerMessageEnvelope(payload: [
+        "endOfCandidates": true,
+    ], from: 7, to: 42, ackID: 12))
+    let end = try #require(NVSTSignalingMessageParser.parse(text: jsonString(endEnvelope), peerName: "peer-local", currentPeerID: 42))
+    #expect(end.iceCandidate?.isEndOfCandidates == true)
+
+    let dictionary = NVSTIceCandidate(candidate: "candidate:local", sdpMid: "0", sdpMLineIndex: 0, usernameFragment: "localUfrag", isEndOfCandidates: false).dictionary
+    #expect(dictionary["usernameFragment"] as? String == "localUfrag")
 }
 
 @Test func nvstBuildsAnswerExtensionFromSettingsAndIceCredentials() {

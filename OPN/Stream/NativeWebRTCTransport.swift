@@ -107,10 +107,12 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func addRemoteIceCandidate(_ candidate: StreamIceCandidate) async throws {
+        guard !candidate.isEndOfCandidates else { return }
         session.addRemoteIceCandidatePayload([
             "candidate": candidate.sdp,
             "sdpMid": candidate.sdpMid,
             "sdpMLineIndex": candidate.sdpMLineIndex,
+            "usernameFragment": candidate.usernameFragment,
         ])
     }
 
@@ -421,7 +423,9 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         let iceCandidate = StreamIceCandidate(
             sdp: candidate,
             sdpMid: Self.stringValue(payload["sdpMid"]),
-            sdpMLineIndex: Self.intValue(payload["sdpMLineIndex"])
+            sdpMLineIndex: Self.intValue(payload["sdpMLineIndex"]),
+            usernameFragment: Self.stringValue(payload["usernameFragment"]),
+            isEndOfCandidates: false
         )
         _ = localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
     }

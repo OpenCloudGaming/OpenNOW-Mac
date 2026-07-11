@@ -8,6 +8,8 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     private var activeSession: StreamSessionDescriptor?
     private var iceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
     private var pendingIceCandidates: [StreamIceCandidate] = []
+    private var remoteEndContinuation: AsyncStream<String>.Continuation?
+    private var pendingRemoteEndMessage: String?
     private var offerContinuation: CheckedContinuation<StreamOffer, Error>?
 
     public init() {}
@@ -47,7 +49,10 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             signaling = nil
             iceContinuation?.finish()
             iceContinuation = nil
+            remoteEndContinuation?.finish()
+            remoteEndContinuation = nil
             pendingIceCandidates.removeAll()
+            pendingRemoteEndMessage = nil
             offerContinuation = nil
             if activeSession?.id == session.id { activeSession = nil }
         }
@@ -63,7 +68,10 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             signaling = nil
             iceContinuation?.finish()
             iceContinuation = nil
+            remoteEndContinuation?.finish()
+            remoteEndContinuation = nil
             pendingIceCandidates.removeAll()
+            pendingRemoteEndMessage = nil
             let continuation = offerContinuation
             offerContinuation = nil
             let session = activeSession
@@ -87,7 +95,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
         guard let signaling = lock.withLock({ self.signaling }) else {
             throw OpenNOWStreamSessionError.signalingUnavailable
         }
-        signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex))
+        signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex, usernameFragment: candidate.usernameFragment, isEndOfCandidates: candidate.isEndOfCandidates))
     }
 
     public func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate> {
@@ -103,6 +111,24 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             }
             continuation.onTermination = { [weak self] _ in
                 self?.lock.withLock { self?.iceContinuation = nil }
+            }
+        }
+    }
+
+    public func remoteEndEvents(for session: StreamSessionDescriptor) async throws -> AsyncStream<String> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let buffered = lock.withLock { () -> String? in
+                remoteEndContinuation = continuation
+                let value = pendingRemoteEndMessage
+                pendingRemoteEndMessage = nil
+                return value
+            }
+            if let buffered {
+                continuation.yield(buffered)
+                continuation.finish()
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.lock.withLock { self?.remoteEndContinuation = nil }
             }
         }
     }
@@ -268,13 +294,19 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 self.handleRemoteIceCandidate(StreamIceCandidate(
                     sdp: candidate.candidate,
                     sdpMid: candidate.sdpMid,
-                    sdpMLineIndex: candidate.sdpMLineIndex
+                    sdpMLineIndex: candidate.sdpMLineIndex,
+                    usernameFragment: candidate.usernameFragment,
+                    isEndOfCandidates: candidate.isEndOfCandidates
                 ))
             }
             client.onClosed = { [weak self] clean, reason in
                 guard let self else { return }
                 let isWaitingForOffer = self.lock.withLock { self.offerContinuation != nil }
                 guard !clean || isWaitingForOffer else { return }
+                if !isWaitingForOffer, Self.isRemoteEndReason(reason) {
+                    self.handleRemoteEnd(reason.isEmpty ? "Stream ended by remote peer." : reason)
+                    return
+                }
                 self.resumeOffer(error: OpenNOWStreamSessionError.signalingFailed(reason.isEmpty ? "Signaling connection closed before receiving an offer." : reason))
             }
 
@@ -304,7 +336,7 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
     }
 
     private func handleRemoteIceCandidate(_ candidate: StreamIceCandidate) {
-        guard !candidate.sdp.isEmpty else { return }
+        guard !candidate.sdp.isEmpty || candidate.isEndOfCandidates else { return }
         lock.withLock {
             if let iceContinuation {
                 iceContinuation.yield(candidate)
@@ -315,6 +347,22 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
                 pendingIceCandidates.removeFirst(pendingIceCandidates.count - Self.maxBufferedIceCandidates)
             }
         }
+    }
+
+    private func handleRemoteEnd(_ message: String) {
+        lock.withLock {
+            if let remoteEndContinuation {
+                remoteEndContinuation.yield(message)
+                remoteEndContinuation.finish()
+                self.remoteEndContinuation = nil
+            } else {
+                pendingRemoteEndMessage = message
+            }
+        }
+    }
+
+    private static func isRemoteEndReason(_ reason: String) -> Bool {
+        reason.contains("peerRemoved") || reason.contains("BYE")
     }
 
     private func offerMetadata(sessionInfo: AllocatedStreamSession, settingsJSON: String, descriptor: StreamSessionDescriptor) -> [String: String] {

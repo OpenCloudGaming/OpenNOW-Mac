@@ -162,6 +162,12 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         inputController.configureInput(nvstProfile.input)
         inputController.createInputChannel(sessionImpl: impl)
 
+        let manualIceMedia = dictionary(sessionInfo["mediaConnectionInfo"])
+        let manualIceIp = extractPublicIp(string(manualIceMedia["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(manualIceMedia["ip"]))
+        let manualIcePort = int(manualIceMedia["port"], fallback: 47998)
+        remoteCandidateOverrideIp = manualIceIp
+        remoteCandidateOverridePort = manualIcePort
+
         var processedOfferSdp = offerSdp
         let requestedCodec = normalizedCodec(string(settings["codec"]))
         let requestedCodecSupported = OPNWebRTCCodecSupport.supportsCodec(factory: factory, normalizedCodec: requestedCodec)
@@ -175,14 +181,10 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         } else if !requestedCodec.isEmpty, !requestedCodecSupported {
             WebRTCMediaTelemetry.capture("webrtc.native.codec.unsupported_offer", level: .warning, message: "Requested codec is not supported; retaining full offer.", attributes: ["codec": requestedCodec])
         }
+        processedOfferSdp = rewriteEmbeddedIceCandidates(processedOfferSdp, ip: manualIceIp, port: manualIcePort)
         let remoteOfferSdp = processedOfferSdp
         let canRetryOriginalOffer = processedOfferSdp != offerSdp
         logVideoSdpSummary("offer-video", remoteOfferSdp)
-        let manualIceMedia = dictionary(sessionInfo["mediaConnectionInfo"])
-        let manualIceIp = extractPublicIp(string(manualIceMedia["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(manualIceMedia["ip"]))
-        let manualIcePort = int(manualIceMedia["port"], fallback: 47998)
-        remoteCandidateOverrideIp = manualIceIp
-        remoteCandidateOverridePort = manualIcePort
         let shouldInjectDirectCandidates = configuration.iceServers.isEmpty
 
         @Sendable func handleRemoteDescriptionSet(impl: OPNLibWebRTCSessionImpl, peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
@@ -308,6 +310,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     func addRemoteIceCandidatePayload(_ payload: [AnyHashable: Any]) {
         guard let peerConnection = impl?.peerConnection else { return }
+        if bool(payload["endOfCandidates"]) { return }
         let candidate = rewrittenRemoteCandidate(string(payload["candidate"]))
         guard !candidate.isEmpty else { return }
         let sdpMid = string(payload["sdpMid"])
@@ -392,7 +395,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     func handleLocalIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int32) {
         guard !isTCPIceCandidate(candidate) else { return }
-        onIceCandidate?(["candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": Int(sdpMLineIndex)])
+        onIceCandidate?(["candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": Int(sdpMLineIndex), "usernameFragment": iceUsernameFragment(fromCandidate: candidate)])
     }
 
     func handleConnectionState(_ connected: Bool, error: String) {
@@ -623,14 +626,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     }
 
     private func rewrittenRemoteCandidate(_ candidate: String) -> String {
-        guard !remoteCandidateOverrideIp.isEmpty, remoteCandidateOverridePort > 0 else { return candidate }
-        let prefix = candidate.hasPrefix("a=") ? "a=" : ""
-        let body = prefix.isEmpty ? candidate : String(candidate.dropFirst(2))
-        var parts = body.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count > 5 else { return candidate }
-        parts[4] = remoteCandidateOverrideIp
-        parts[5] = String(remoteCandidateOverridePort)
-        return prefix + parts.joined(separator: " ")
+        rewriteIceCandidateLine(candidate, ip: remoteCandidateOverrideIp, port: remoteCandidateOverridePort)
     }
 
 }
@@ -866,6 +862,34 @@ private func joinSdpLinesLike(_ lines: [String], original: String) -> String {
     var text = lines.joined(separator: newline)
     if original.hasSuffix("\n"), !text.hasSuffix(newline) { text += newline }
     return text
+}
+
+func rewriteEmbeddedIceCandidates(_ sdp: String, ip: String, port: Int) -> String {
+    guard !ip.isEmpty, port > 0 else { return sdp }
+    let lines = sdpLines(sdp).map { line in
+        if line.hasPrefix("a=candidate:") {
+            return "a=" + rewriteIceCandidateLine(String(line.dropFirst(2)), ip: ip, port: port)
+        }
+        return line
+    }
+    return joinSdpLinesLike(lines, original: sdp)
+}
+
+func rewriteIceCandidateLine(_ candidate: String, ip: String, port: Int) -> String {
+    guard !ip.isEmpty, port > 0 else { return candidate }
+    let prefix = candidate.hasPrefix("a=") ? "a=" : ""
+    let body = prefix.isEmpty ? candidate : String(candidate.dropFirst(2))
+    var parts = body.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+    guard parts.count > 5 else { return candidate }
+    parts[4] = ip
+    parts[5] = String(port)
+    return prefix + parts.joined(separator: " ")
+}
+
+func iceUsernameFragment(fromCandidate candidate: String) -> String {
+    let parts = candidate.split(separator: " ").map(String.init)
+    guard let index = parts.firstIndex(of: "ufrag"), index + 1 < parts.count else { return "" }
+    return parts[index + 1]
 }
 
 private func isTCPIceCandidate(_ candidate: String) -> Bool {

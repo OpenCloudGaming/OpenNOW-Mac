@@ -21,6 +21,13 @@ public protocol StreamSignalingChannel: Sendable {
     func sendAnswer(_ answer: StreamAnswer, for session: StreamSessionDescriptor) async throws
     func sendLocalIceCandidate(_ candidate: StreamIceCandidate, for session: StreamSessionDescriptor) async throws
     func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate>
+    func remoteEndEvents(for session: StreamSessionDescriptor) async throws -> AsyncStream<String>
+}
+
+public extension StreamSignalingChannel {
+    func remoteEndEvents(for session: StreamSessionDescriptor) async throws -> AsyncStream<String> {
+        AsyncStream { continuation in continuation.finish() }
+    }
 }
 
 public actor WebRTCStreamingPath {
@@ -33,6 +40,7 @@ public actor WebRTCStreamingPath {
     private var startedAt: ContinuousClock.Instant?
     private var remoteIceCandidateTask: Task<Void, Never>?
     private var localIceCandidateTask: Task<Void, Never>?
+    private var remoteEndTask: Task<Void, Never>?
 
     public init(sessionProvider: any StreamSessionProvider,
                 transport: any WebRTCStreamTransport,
@@ -82,6 +90,7 @@ public actor WebRTCStreamingPath {
         guard !offer.sdp.isEmpty else { throw StreamingPathError.invalidOffer }
         if let signaling {
             startRemoteIceCandidateForwarding(session: offer.session, signaling: signaling)
+            startRemoteEndForwarding(session: offer.session, signaling: signaling)
             if Self.envFlagEnabled("OPN_ENABLE_WEBRTC_LOCAL_TRICKLE_ICE", defaultValue: true) {
                 startLocalIceCandidateForwarding(session: offer.session, signaling: signaling)
             }
@@ -199,6 +208,10 @@ public actor WebRTCStreamingPath {
             do {
                 let candidates = try await signaling.remoteIceCandidates(for: session)
                 for await candidate in candidates {
+                    if candidate.isEndOfCandidates {
+                        WebRTCMediaTelemetry.capture("webrtc.path.remote_ice.end", level: .debug, message: "Remote ICE end-of-candidates received.", attributes: ["sessionId": session.id])
+                        return
+                    }
                     try await transport.addRemoteIceCandidate(candidate)
                     WebRTCMediaTelemetry.record("webrtc.media.remote_ice_candidate.count", kind: .counter, value: 1, attributes: ["sessionId": session.id])
                 }
@@ -209,11 +222,27 @@ public actor WebRTCStreamingPath {
         }
     }
 
+    private func startRemoteEndForwarding(session: StreamSessionDescriptor, signaling: any StreamSignalingChannel) {
+        remoteEndTask?.cancel()
+        remoteEndTask = Task { [weak self] in
+            do {
+                let events = try await signaling.remoteEndEvents(for: session)
+                for await message in events {
+                    await self?.handleRemoteEnd(session: session, message: message)
+                    return
+                }
+            } catch {
+                WebRTCMediaTelemetry.capture("webrtc.path.remote_end.error", level: .warning, message: error.localizedDescription, attributes: ["sessionId": session.id])
+            }
+        }
+    }
+
     private func startLocalIceCandidateForwarding(session: StreamSessionDescriptor, signaling: any StreamSignalingChannel) {
         localIceCandidateTask?.cancel()
         localIceCandidateTask = Task { [transport] in
             let candidates = transport.localIceCandidates()
             for await candidate in candidates {
+                if candidate.isEndOfCandidates { return }
                 do {
                     try await signaling.sendLocalIceCandidate(candidate, for: session)
                     WebRTCMediaTelemetry.record("webrtc.media.local_ice_candidate.count", kind: .counter, value: 1, attributes: ["sessionId": session.id])
@@ -229,6 +258,21 @@ public actor WebRTCStreamingPath {
         remoteIceCandidateTask = nil
         localIceCandidateTask?.cancel()
         localIceCandidateTask = nil
+        remoteEndTask?.cancel()
+        remoteEndTask = nil
+    }
+
+    private func handleRemoteEnd(session: StreamSessionDescriptor, message: String) async {
+        guard activeSession?.id == session.id else { return }
+        WebRTCMediaTelemetry.capture("webrtc.path.remote_ended", level: .info, message: message.isEmpty ? "Remote peer ended stream." : message, attributes: ["sessionId": session.id])
+        cancelIceCandidateForwarding()
+        await transport.disconnect()
+        try? await sessionProvider.finishSession(session, reason: .remoteEnded)
+        await mediaSession.finish()
+        let report = StreamReport(title: session.title, success: true, reason: .remoteEnded, message: message.isEmpty ? "Stream ended by remote peer." : message, durationSeconds: streamDurationSeconds())
+        activeSession = nil
+        startedAt = nil
+        state = .ended(report)
     }
 
     private func streamDurationSeconds() -> Double {
