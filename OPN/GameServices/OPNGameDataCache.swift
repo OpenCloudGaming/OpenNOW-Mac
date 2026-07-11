@@ -6,6 +6,9 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     @objc(shared)
     static let shared = OPNGameDataCache()
 
+    private static let catalogCacheVersion = 6
+    private static let catalogDefinitionsCacheVersion = "v2"
+
     private let rootPath: String
     private let catalogPath: String
     private let catalogDefinitionsPath: String
@@ -44,7 +47,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
             "l": locale,
             "p": providerStreamingBaseUrl,
             "vp": vpcId,
-            "v": 5,
+            "v": Self.catalogCacheVersion,
         ]
         let data = (try? JSONSerialization.data(withJSONObject: key, options: [])) ?? Data()
         let string = String(data: data, encoding: .utf8) ?? ""
@@ -143,7 +146,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     }
 
     func loadCatalogDefinitions(locale: String, maxAgeSeconds: TimeInterval) -> NSDictionary? {
-        let cacheKey = sha256String(locale.isEmpty ? "default" : locale)
+        let cacheKey = catalogDefinitionsCacheKey(locale: locale)
         let path = (catalogDefinitionsPath as NSString).appendingPathComponent("\(cacheKey).bplist")
         guard let dictionary = readCacheDictionary(path: path, requireFreshness: true, maxAgeSeconds: maxAgeSeconds) else {
             return nil
@@ -152,7 +155,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     }
 
     func saveCatalogDefinitions(locale: String, definitions: NSDictionary) {
-        let cacheKey = sha256String(locale.isEmpty ? "default" : locale)
+        let cacheKey = catalogDefinitionsCacheKey(locale: locale)
         let path = (catalogDefinitionsPath as NSString).appendingPathComponent("\(cacheKey).bplist")
         writeCacheDictionary(path: path, dictionary: [
             "ts": Date().timeIntervalSince1970,
@@ -235,6 +238,11 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
 
     private func catalogFilePath(key: String) -> String {
         (catalogPath as NSString).appendingPathComponent("\(key).bplist")
+    }
+
+    private func catalogDefinitionsCacheKey(locale: String) -> String {
+        let normalizedLocale = locale.isEmpty ? "default" : locale
+        return sha256String("\(Self.catalogDefinitionsCacheVersion):\(normalizedLocale)")
     }
 
     private func imageFilePath(urlString: String) -> String {

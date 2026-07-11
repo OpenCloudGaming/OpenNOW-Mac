@@ -120,7 +120,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var selectedCatalogDestination = CatalogDestination.home
     @Published var selectedSettingsPage = CatalogSettingsPage.account
     @Published var searchQuery = ""
-    @Published var selectedSortId = "last_played"
+    @Published var selectedSortId = "a_to_z"
     @Published var selectedFilterIds: [String] = []
     @Published var isLoading = false
     @Published var isLoadingPanels = false
@@ -306,7 +306,7 @@ final class CatalogViewModel: ObservableObject {
     }
 
     var selectedSortLabel: String {
-        sortOptions.first { $0.id == selectedSortId }?.label ?? "Recently Played"
+        sortOptions.first { $0.id == selectedSortId }?.label ?? "A-Z"
     }
 
     var visibleFilterGroups: [OPNCatalogFilterGroupObject] {
@@ -403,7 +403,7 @@ final class CatalogViewModel: ObservableObject {
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(
             searchQuery: query,
-            sortId: selectedSortId.isEmpty ? "last_played" : selectedSortId,
+            sortId: selectedSortId.isEmpty ? "a_to_z" : selectedSortId,
             filterIds: selectedFilterIds,
             fetchCount: 200,
             forceRefresh: forceRefresh

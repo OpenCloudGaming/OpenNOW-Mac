@@ -313,7 +313,7 @@ import Foundation
                 return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": []]]])
             }
             if query.contains("filterGroupDefinitions") {
-                return SessionManagerURLProtocol.response(json: ["data": ["filterGroupDefinitions": [], "sortOrderDefinitions": [["id": "last_played", "label": "Last Played", "orderBy": "lastPlayedDate:DESC"]]]])
+                return SessionManagerURLProtocol.response(json: ["data": ["filterGroupDefinitions": [], "sortOrderDefinitions": [["id": "a_to_z", "label": "A-Z", "orderBy": "sortName:ASC"]]]])
             }
             let cursor = variables["cursor"] as? String ?? ""
             let start = cursor == "cursor-40" ? 40 : 0
@@ -330,7 +330,7 @@ import Foundation
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let result = await withCheckedContinuation { continuation in
-            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "last_played", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
+            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 200, forceRefresh: true) { success, browseResult, error in
                 continuation.resume(returning: (success, browseResult.games.count, browseResult.numberReturned, browseResult.totalCount, error))
             }
         }
@@ -344,6 +344,7 @@ import Foundation
             ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
         }
         #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == ["", "cursor-40"])
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["sortString"] as? String } == ["sortName:ASC", "sortName:ASC"])
     }
 }
 

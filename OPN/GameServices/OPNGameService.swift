@@ -34,6 +34,8 @@ final class OPNGameService: @unchecked Sendable {
     private static let accountLinkingServer = "https://als.geforcenow.com"
     private static let accountLinkingClientId = "gfn-pc"
     private static let defaultSubscriptionVpcId = "NP-AMS-08"
+    private static let defaultBrowseSortId = "a_to_z"
+    private static let defaultSearchSortId = "relevance"
     private static let defaultCatalogFetchCount = 96
     private static let maxCatalogPages = 150
     private static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
@@ -115,7 +117,7 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     func fetchCatalogGames(completion: @escaping OPNCatalogCallback) {
-        browseCatalogGames(searchQuery: "", sortId: "relevance", filterIds: [], fetchCount: 200, forceRefresh: false) { success, result, error in
+        browseCatalogGames(searchQuery: "", sortId: Self.defaultBrowseSortId, filterIds: [], fetchCount: 200, forceRefresh: false) { success, result, error in
             completion(success, result.games, error)
         }
     }
@@ -154,7 +156,7 @@ final class OPNGameService: @unchecked Sendable {
         forceRefresh: Bool,
         completion: @escaping OPNCatalogBrowseCallback
     ) {
-        let requestedSortId = sortId.isEmpty ? "last_played" : sortId
+        let requestedSortId = sortId.isEmpty ? Self.defaultSortId(searchQuery: searchQuery) : sortId
         let requestedFetchCount = max(24, min(fetchCount > 0 ? fetchCount : Self.defaultCatalogFetchCount, 200))
         let catalogCacheKey = OPNGameDataCache.shared.catalogKey(
             accountIdentifier: accountIdentifier,
@@ -253,7 +255,7 @@ final class OPNGameService: @unchecked Sendable {
             guard let self else { return }
             var result = OPNCatalogBrowseResult()
             let filterPayloadById = self.parseCatalogDefinitions(definitionsBox?.value, result: &result)
-            var selectedSort = OPNCatalogSortOption(id: "relevance", label: "Relevance", orderBy: "itemMetadata.relevance:DESC,sortName:ASC")
+            var selectedSort = Self.defaultSortOption(searchQuery: parameters.searchQuery)
             for option in result.sortOptions where option.id == parameters.requestedSortId {
                 selectedSort = option
                 break
@@ -282,6 +284,17 @@ final class OPNGameService: @unchecked Sendable {
                 completion: completion
             )
         }
+    }
+
+    private static func defaultSortId(searchQuery: String) -> String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultBrowseSortId : defaultSearchSortId
+    }
+
+    private static func defaultSortOption(searchQuery: String) -> OPNCatalogSortOption {
+        if defaultSortId(searchQuery: searchQuery) == defaultSearchSortId {
+            return OPNCatalogSortOption(id: defaultSearchSortId, label: "Relevance", orderBy: "itemMetadata.relevance:DESC,sortName:ASC")
+        }
+        return OPNCatalogSortOption(id: defaultBrowseSortId, label: "A-Z", orderBy: "sortName:ASC")
     }
 
     func fetchLibraryGames(completion: @escaping OPNCatalogCallback) {
