@@ -301,7 +301,7 @@ public struct WebRTCMediaStreamSurface: View {
             if quitMenuVisible { quitMenu }
         }
         .background(Color.black)
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
         .onAppear { registerStreamLifecycle() }
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
@@ -374,7 +374,7 @@ public struct WebRTCMediaStreamSurface: View {
             .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
     }
 
     private var hudDockHeader: some View {
@@ -671,7 +671,7 @@ public struct WebRTCMediaStreamSurface: View {
         ZStack {
             Rectangle()
                 .fill(.black.opacity(0.54))
-                .ignoresSafeArea()
+                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             VStack(spacing: 18) {
                 Text("STREAM PAUSED")
                     .font(.system(size: 12, weight: .black, design: .monospaced))

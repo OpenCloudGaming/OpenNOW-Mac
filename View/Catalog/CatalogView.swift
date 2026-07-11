@@ -109,17 +109,17 @@ struct CatalogView: View {
                     )
                     .id(streamConfiguration.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea(.all)
+                    .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
 
                     if viewModel.isStreamLaunchLoadingVisible {
                         VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
                             .transition(.opacity)
                             .zIndex(10)
-                            .ignoresSafeArea(.all)
+                            .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(.all)
+                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                 .transition(.opacity)
             } else {
                 if controllerModeEnabled {

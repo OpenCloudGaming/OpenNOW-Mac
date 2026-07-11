@@ -129,6 +129,7 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if window.title != title {
                 window.title = title
             }
+            centerTitle(in: window)
         }
 
         func detach() {
@@ -151,6 +152,30 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if #available(macOS 11.0, *) {
                 window.titlebarSeparatorStyle = .automatic
             }
+            centerTitle(in: window)
+        }
+
+        private func centerTitle(in window: NSWindow) {
+            DispatchQueue.main.async { [weak window] in
+                guard let window, let titlebarView = window.standardWindowButton(.closeButton)?.superview else { return }
+                titlebarView.layoutSubtreeIfNeeded()
+                for textField in Self.titleTextFields(in: titlebarView) where textField.stringValue == window.title {
+                    textField.alignment = .center
+                    guard textField.frame.width < titlebarView.bounds.width else { continue }
+                    var frame = textField.frame
+                    frame.origin.x = 0
+                    frame.size.width = titlebarView.bounds.width
+                    textField.frame = frame
+                }
+            }
+        }
+
+        private static func titleTextFields(in view: NSView) -> [NSTextField] {
+            var fields = view.subviews.flatMap { titleTextFields(in: $0) }
+            if let textField = view as? NSTextField, !textField.isEditable, !textField.isSelectable {
+                fields.append(textField)
+            }
+            return fields
         }
     }
 
