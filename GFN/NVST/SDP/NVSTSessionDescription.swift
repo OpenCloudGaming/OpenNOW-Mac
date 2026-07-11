@@ -12,6 +12,74 @@ public struct NVSTIceCredentials: Equatable, Sendable {
     }
 }
 
+public struct NVSTTurnServer: Equatable, Sendable {
+    public var urls: [String]
+    public var username: String
+    public var credential: String
+
+    public init(urls: [String], username: String = "", credential: String = "") {
+        self.urls = urls
+        self.username = username
+        self.credential = credential
+    }
+}
+
+public enum NVSTIceTransportPolicy: Equatable, Sendable {
+    case all
+    case relay
+}
+
+public struct NVSTInputTransportConfiguration: Equatable, Sendable {
+    public var partialReliableThresholdMs: Int
+    public var hidDeviceMask: UInt32
+    public var partiallyReliableGamepadMask: UInt32
+    public var partiallyReliableHIDMask: UInt32
+
+    public init(partialReliableThresholdMs: Int = Int(GeronimoInputChannel.partialReliableInputLifetimeMs),
+                hidDeviceMask: UInt32 = UInt32.max,
+                partiallyReliableGamepadMask: UInt32 = 15,
+                partiallyReliableHIDMask: UInt32 = UInt32.max) {
+        self.partialReliableThresholdMs = max(0, partialReliableThresholdMs)
+        self.hidDeviceMask = hidDeviceMask
+        self.partiallyReliableGamepadMask = partiallyReliableGamepadMask
+        self.partiallyReliableHIDMask = partiallyReliableHIDMask
+    }
+
+    public var partialReliableEnabled: Bool {
+        partialReliableThresholdMs > 0
+    }
+
+    public static let fallback = NVSTInputTransportConfiguration()
+}
+
+public struct NVSTTransportProfile: Equatable, Sendable {
+    public var turnServers: [NVSTTurnServer]
+    public var iceTransportPolicy: NVSTIceTransportPolicy
+    public var input: NVSTInputTransportConfiguration
+    public var attributes: [String: String]
+
+    public init(sdp: String = "", serverOverrides: String = "") {
+        var attributes = nvstAttributes(from: sdp)
+        let overrides = nvstAttributes(from: serverOverrides)
+        for (key, value) in overrides {
+            attributes[key] = value
+        }
+        self.attributes = attributes
+        turnServers = nvstTurnServers(from: attributes["general.turnInfo"] ?? "")
+        iceTransportPolicy = nvstIntText(attributes["general.iceTransportPolicy"]) == 1 ? .relay : .all
+        input = NVSTInputTransportConfiguration(
+            partialReliableThresholdMs: nvstIntText(attributes["ri.partialReliableThresholdMs"], fallback: Int(GeronimoInputChannel.partialReliableInputLifetimeMs)),
+            hidDeviceMask: nvstUInt32Text(attributes["ri.hidDeviceMask"], fallback: UInt32.max),
+            partiallyReliableGamepadMask: nvstUInt32Text(attributes["ri.enablePartiallyReliableTransferGamepad"], fallback: 15),
+            partiallyReliableHIDMask: nvstUInt32Text(attributes["ri.enablePartiallyReliableTransferHid"], fallback: UInt32.max)
+        )
+    }
+
+    public var hasVendorData: Bool {
+        !attributes.isEmpty
+    }
+}
+
 public struct NVSTSessionDescriptionSettings: Equatable, Sendable {
     public var resolution: String
     public var fps: Int
@@ -213,6 +281,28 @@ public enum NVSTSessionDescriptionBuilder {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    public static func buildAnswerExtension(settings: [String: Any], credentials: NVSTIceCredentials, remoteNVSTSdp: String, serverOverrides: String = "") -> String {
+        let generic = buildAnswerExtension(settings: settings, credentials: credentials)
+        return buildAnswerExtension(remoteNVSTSdp: remoteNVSTSdp, serverOverrides: serverOverrides, credentials: credentials) ?? generic
+    }
+
+    public static func buildAnswerExtension(remoteNVSTSdp: String, serverOverrides: String = "", credentials: NVSTIceCredentials) -> String? {
+        let trimmed = remoteNVSTSdp.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        var lines = nvstSDPLines(remoteNVSTSdp).filter { line in
+            !line.hasPrefix("a=general.icePassword:") && !line.hasPrefix("a=general.iceUserNameFragment:") && !line.hasPrefix("a=general.dtlsFingerprint:")
+        }
+        applyNVSTServerOverrides(serverOverrides, to: &lines)
+        let credentialLines = [
+            "a=general.icePassword:\(credentials.password)",
+            "a=general.iceUserNameFragment:\(credentials.usernameFragment)",
+            "a=general.dtlsFingerprint:\(credentials.fingerprint)",
+        ]
+        let insertIndex = lines.firstIndex { $0.hasPrefix("m=") } ?? lines.count
+        lines.insert(contentsOf: credentialLines, at: insertIndex)
+        return lines.joined(separator: "\r\n") + "\r\n"
+    }
+
     public static func iceCredentials(from sdp: String) -> NVSTIceCredentials {
         var credentials = NVSTIceCredentials()
         for line in sdp.components(separatedBy: .newlines) {
@@ -232,6 +322,60 @@ public enum NVSTSessionDescriptionBuilder {
     public static func iceUsernameFragment(from sdp: String) -> String {
         iceCredentials(from: sdp).usernameFragment
     }
+}
+
+private func nvstSDPLines(_ sdp: String) -> [String] {
+    sdp.components(separatedBy: .newlines)
+        .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\r")) }
+        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+}
+
+private func nvstAttributes(from sdp: String) -> [String: String] {
+    var attributes: [String: String] = [:]
+    for line in nvstSDPLines(sdp) where line.hasPrefix("a=") {
+        let text = String(line.dropFirst(2))
+        guard let separator = text.firstIndex(of: ":") else { continue }
+        let key = String(text[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = String(text[text.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !key.isEmpty {
+            attributes[key] = value
+        }
+    }
+    return attributes
+}
+
+private func applyNVSTServerOverrides(_ overrides: String, to lines: inout [String]) {
+    let attributes = nvstAttributes(from: overrides)
+    guard !attributes.isEmpty else { return }
+    for (key, value) in attributes {
+        let replacement = "a=\(key):\(value)"
+        if let index = lines.firstIndex(where: { $0.hasPrefix("a=\(key):") }) {
+            lines[index] = replacement
+        } else {
+            let insertIndex = lines.firstIndex { $0.hasPrefix("m=") } ?? lines.count
+            lines.insert(replacement, at: insertIndex)
+        }
+    }
+}
+
+private func nvstTurnServers(from text: String) -> [NVSTTurnServer] {
+    text.split(separator: "|").compactMap { entry in
+        let fields = entry.split(separator: ",", omittingEmptySubsequences: false).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let url = fields.first, !url.isEmpty else { return nil }
+        let username = fields.count > 1 ? fields[1] : ""
+        let credential = fields.count > 2 ? fields[2] : ""
+        return NVSTTurnServer(urls: [url], username: username, credential: credential)
+    }
+}
+
+private func nvstIntText(_ value: String?, fallback: Int = 0) -> Int {
+    guard let value, !value.isEmpty else { return fallback }
+    return Int(value) ?? fallback
+}
+
+private func nvstUInt32Text(_ value: String?, fallback: UInt32 = 0) -> UInt32 {
+    guard let value, !value.isEmpty else { return fallback }
+    return UInt32(value) ?? fallback
 }
 
 private func normalizedNVSTCodec(_ codec: String) -> String {

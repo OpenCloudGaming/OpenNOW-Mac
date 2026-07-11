@@ -255,6 +255,11 @@ public final class OpenNOWStreamSessionCoordinator: StreamSessionProvider, Strea
             client.onOffer = { [weak self] sessionOffer in
                 guard let self else { return }
                 let metadata = self.offerMetadata(sessionInfo: sessionInfo, settingsJSON: settingsJSON, descriptor: descriptor)
+                    .merging([
+                        "nvstSdp": sessionOffer.nvstSdp,
+                        "nvstServerOverrides": sessionOffer.nvstServerOverrides,
+                    ]) { current, _ in current }
+                    .filter { !$0.value.isEmpty }
                 let offer = StreamOffer(session: descriptor, sdp: sessionOffer.sdp, metadata: metadata)
                 self.resumeOffer(offer)
             }

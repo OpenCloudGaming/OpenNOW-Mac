@@ -395,6 +395,24 @@ struct WebRTCStreamingPathTests {
         #expect(await signaling.sentLocalCandidates.isEmpty)
     }
 
+    @Test("forwards local ICE candidates through signaling by default")
+    func forwardsLocalIceCandidatesByDefault() async throws {
+        let session = StreamSessionDescriptor(id: "session-local-ice", applicationID: "401", serverAddress: "server", title: "Game")
+        let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
+        let transport = RecordingTransport()
+        let signaling = RecordingSignaling()
+        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "401", accessToken: "token", accountLinked: true, selectedStore: "steam")
+        let localCandidate = StreamIceCandidate(sdp: "candidate:local", sdpMid: "0", sdpMLineIndex: 0)
+
+        _ = try await path.start(configuration: configuration)
+        try await Task.sleep(for: .milliseconds(100))
+        await transport.yieldLocalIceCandidate(localCandidate)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(await signaling.sentLocalCandidates == [localCandidate])
+    }
+
     @Test("carries offer metadata into running session")
     func carriesOfferMetadataIntoRunningSession() async throws {
         let session = StreamSessionDescriptor(id: "session-settings", applicationID: "300", serverAddress: "server", title: "Game", metadata: ["accessToken": "token"])

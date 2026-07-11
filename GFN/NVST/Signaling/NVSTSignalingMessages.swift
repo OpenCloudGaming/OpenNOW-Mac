@@ -119,7 +119,7 @@ public enum NVSTSignalingMessageParser {
         var result = NVSTSignalingParseResult()
         if let peerInfo = json["peer_info"] as? [String: Any],
            let pid = intValue(peerInfo["id"]),
-           stringValue(peerInfo["name"]) == peerName {
+           stringValue(peerInfo["name"]) == peerName || currentPeerID == 0 {
             result.assignedPeerID = pid
         }
 

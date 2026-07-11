@@ -78,8 +78,15 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 self?.broadcaster.appendMicrophoneAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
+            var sessionInfo = offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata
+            if let nvstSdp = offer.metadata["nvstSdp"], !nvstSdp.isEmpty {
+                sessionInfo["nvstSdp"] = nvstSdp
+            }
+            if let nvstServerOverrides = offer.metadata["nvstServerOverrides"], !nvstServerOverrides.isEmpty {
+                sessionInfo["nvstServerOverrides"] = nvstServerOverrides
+            }
             session.start(
-                sessionInfo: offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata,
+                sessionInfo: sessionInfo,
                 offerSdp: offer.sdp,
                 settings: offer.metadata["settings"].flatMap(Self.dictionaryValue) ?? [:],
                 answerHandler: { [weak self] sdp, nvstSdp in

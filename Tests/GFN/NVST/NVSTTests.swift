@@ -38,6 +38,12 @@ import Testing
     #expect(peerInfo.assignedPeerID == 42)
     #expect(peerInfo.ackIDToSend == 9)
 
+    let initialPeerInfoFallbackText = try jsonString([
+        "peer_info": ["id": 43, "name": "peer-server"],
+    ])
+    let initialPeerInfoFallback = try #require(NVSTSignalingMessageParser.parse(text: initialPeerInfoFallbackText, peerName: "peer-local", currentPeerID: 0))
+    #expect(initialPeerInfoFallback.assignedPeerID == 43)
+
     let heartbeat = try #require(NVSTSignalingMessageParser.parse(text: "{\"hb\":1}", peerName: "peer-local", currentPeerID: 42))
     #expect(heartbeat.shouldRespondToHeartbeat)
 
@@ -107,6 +113,60 @@ import Testing
     #expect(nvstSdp.contains("a=video.prefilterParams.prefilterModel:3"))
     #expect(nvstSdp.contains("a=ri.partialReliableThresholdMs:5"))
     #expect(nvstSdp.hasSuffix("\n\n"))
+}
+
+@Test func nvstParsesTransportProfileFromVendorExtension() {
+    let remoteNVSTSdp = """
+    v=0
+    o=- 0 0 IN IP4 127.0.0.1
+    s=-
+    t=0 0
+    a=general.turnInfo:turn:relay.example.test:3478,user,pass|turns:relay2.example.test:443,user2,pass2
+    a=general.iceTransportPolicy:1
+    m=application 0 RTP/AVP
+    a=msid:input_1
+    a=ri.partialReliableThresholdMs:12
+    a=ri.hidDeviceMask:255
+    a=ri.enablePartiallyReliableTransferGamepad:3
+    a=ri.enablePartiallyReliableTransferHid:7
+    """
+
+    let profile = NVSTTransportProfile(sdp: remoteNVSTSdp)
+
+    #expect(profile.turnServers.count == 2)
+    #expect(profile.turnServers.first?.urls == ["turn:relay.example.test:3478"])
+    #expect(profile.turnServers.first?.username == "user")
+    #expect(profile.turnServers.first?.credential == "pass")
+    #expect(profile.iceTransportPolicy == .relay)
+    #expect(profile.input.partialReliableThresholdMs == 12)
+    #expect(profile.input.hidDeviceMask == 255)
+    #expect(profile.input.partiallyReliableGamepadMask == 3)
+    #expect(profile.input.partiallyReliableHIDMask == 7)
+}
+
+@Test func nvstBuildsAnswerExtensionFromRemoteVendorExtension() throws {
+    let remoteNVSTSdp = """
+    v=0
+    o=- 0 0 IN IP4 127.0.0.1
+    s=-
+    t=0 0
+    a=general.clientCapture:0
+    a=general.icePassword:serverPwd
+    m=application 0 RTP/AVP
+    a=msid:input_1
+    a=ri.partialReliableThresholdMs:5
+    """
+    let overrides = "a=general.clientCapture:1"
+    let credentials = NVSTIceCredentials(usernameFragment: "localUfrag", password: "localPwd", fingerprint: "sha-256 AA:BB")
+
+    let answer = try #require(NVSTSessionDescriptionBuilder.buildAnswerExtension(remoteNVSTSdp: remoteNVSTSdp, serverOverrides: overrides, credentials: credentials))
+
+    #expect(answer.contains("a=general.clientCapture:1"))
+    #expect(answer.contains("a=general.icePassword:localPwd"))
+    #expect(answer.contains("a=general.iceUserNameFragment:localUfrag"))
+    #expect(answer.contains("a=general.dtlsFingerprint:sha-256 AA:BB"))
+    #expect(!answer.contains("serverPwd"))
+    #expect(answer.contains("a=ri.partialReliableThresholdMs:5"))
 }
 
 @Test func nvstLimitsH265ReferenceFramesForLowDecodeLatency() {

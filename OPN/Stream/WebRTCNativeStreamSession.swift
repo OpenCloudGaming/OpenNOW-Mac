@@ -22,6 +22,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     private var disconnectGraceTimer: DispatchSourceTimer?
     private var nativeWindow: UnsafeMutableRawPointer?
     private var settings: [String: Any] = [:]
+    private var remoteCandidateOverrideIp = ""
+    private var remoteCandidateOverridePort = 0
     private var latestStats = OPNStreamStatsState()
     private var previousStatsTimestampMs: UInt64 = 0
     private var previousBytesReceived: UInt64 = 0
@@ -129,10 +131,19 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             return
         }
 
+        let remoteNVSTSdp = string(sessionInfo["nvstSdp"])
+        let remoteNVSTServerOverrides = string(sessionInfo["nvstServerOverrides"])
+        let nvstProfile = NVSTTransportProfile(sdp: remoteNVSTSdp, serverOverrides: remoteNVSTServerOverrides)
         let configuration = RTCConfiguration()
         let configuredIceServers = iceServers(from: sessionInfo)
+        let nvstIceServers = configuredIceServers.isEmpty ? iceServers(from: nvstProfile.turnServers) : []
         configuration.iceServers = configuredIceServers
-        WebRTCMediaTelemetry.capture("webrtc.native.ice_servers", level: .debug, message: "Configured ICE servers.", attributes: ["count": String(configuration.iceServers.count)])
+        if configuration.iceServers.isEmpty {
+            configuration.iceServers = nvstIceServers
+        }
+        configuration.iceTransportPolicy = nvstProfile.iceTransportPolicy == .relay ? .relay : .all
+        let iceSource = configuredIceServers.isEmpty ? (nvstIceServers.isEmpty ? "manualDirect" : "nvstSdp") : "sessionInfo"
+        WebRTCMediaTelemetry.capture("webrtc.native.ice_servers", level: .debug, message: "Configured ICE servers.", attributes: ["count": String(configuration.iceServers.count), "source": iceSource, "policy": nvstProfile.iceTransportPolicy == .relay ? "relay" : "all"])
         configuration.sdpSemantics = .unifiedPlan
         configuration.bundlePolicy = .maxBundle
         configuration.rtcpMuxPolicy = .require
@@ -148,6 +159,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         }
         self.impl = impl
         audioController.startAudioDeviceMonitoring()
+        inputController.configureInput(nvstProfile.input)
         inputController.createInputChannel(sessionImpl: impl)
 
         var processedOfferSdp = offerSdp
@@ -169,7 +181,9 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
         let manualIceMedia = dictionary(sessionInfo["mediaConnectionInfo"])
         let manualIceIp = extractPublicIp(string(manualIceMedia["ip"]).isEmpty ? string(sessionInfo["serverIp"]) : string(manualIceMedia["ip"]))
         let manualIcePort = int(manualIceMedia["port"], fallback: 47998)
-        let shouldInjectDirectCandidates = configuredIceServers.isEmpty
+        remoteCandidateOverrideIp = manualIceIp
+        remoteCandidateOverridePort = manualIcePort
+        let shouldInjectDirectCandidates = configuration.iceServers.isEmpty
 
         @Sendable func handleRemoteDescriptionSet(impl: OPNLibWebRTCSessionImpl, peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
             self.prepareMicrophoneIfNeeded(impl: impl, factory: factory)
@@ -218,7 +232,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
                             return
                         }
                         self.statsLock.withLock { self.latestStats.videoPipelineMode = "libwebrtc answer sent" }
-                        self.onAnswer?(answerSdp, NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: self.settings, credentials: NVSTSessionDescriptionBuilder.iceCredentials(from: answerSdp)))
+                        self.onAnswer?(answerSdp, NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: self.settings, credentials: NVSTSessionDescriptionBuilder.iceCredentials(from: answerSdp), remoteNVSTSdp: remoteNVSTSdp, serverOverrides: remoteNVSTServerOverrides))
                     }
                 }
             }
@@ -294,7 +308,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
 
     func addRemoteIceCandidatePayload(_ payload: [AnyHashable: Any]) {
         guard let peerConnection = impl?.peerConnection else { return }
-        let candidate = string(payload["candidate"])
+        let candidate = rewrittenRemoteCandidate(string(payload["candidate"]))
         guard !candidate.isEmpty else { return }
         let sdpMid = string(payload["sdpMid"])
         let sdpMLineIndex = Int32(int(payload["sdpMLineIndex"]))
@@ -377,6 +391,7 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
     func refreshAudioDevices() { audioController.refreshAudioDevices(sessionImpl: impl) }
 
     func handleLocalIceCandidate(candidate: String, sdpMid: String, sdpMLineIndex: Int32) {
+        guard !isTCPIceCandidate(candidate) else { return }
         onIceCandidate?(["candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": Int(sdpMLineIndex)])
     }
 
@@ -598,6 +613,24 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             guard !urls.isEmpty else { return nil }
             return RTCIceServer(urlStrings: urls, username: emptyNil(string(dictionary["username"])), credential: emptyNil(string(dictionary["credential"])))
         }
+    }
+
+    private func iceServers(from turnServers: [NVSTTurnServer]) -> [RTCIceServer] {
+        turnServers.compactMap { server in
+            guard !server.urls.isEmpty else { return nil }
+            return RTCIceServer(urlStrings: server.urls, username: emptyNil(server.username), credential: emptyNil(server.credential))
+        }
+    }
+
+    private func rewrittenRemoteCandidate(_ candidate: String) -> String {
+        guard !remoteCandidateOverrideIp.isEmpty, remoteCandidateOverridePort > 0 else { return candidate }
+        let prefix = candidate.hasPrefix("a=") ? "a=" : ""
+        let body = prefix.isEmpty ? candidate : String(candidate.dropFirst(2))
+        var parts = body.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count > 5 else { return candidate }
+        parts[4] = remoteCandidateOverrideIp
+        parts[5] = String(remoteCandidateOverridePort)
+        return prefix + parts.joined(separator: " ")
     }
 
 }
@@ -833,6 +866,11 @@ private func joinSdpLinesLike(_ lines: [String], original: String) -> String {
     var text = lines.joined(separator: newline)
     if original.hasSuffix("\n"), !text.hasSuffix(newline) { text += newline }
     return text
+}
+
+private func isTCPIceCandidate(_ candidate: String) -> Bool {
+    let fields = candidate.lowercased().split(separator: " ").map(String.init)
+    return fields.count > 2 && fields[2] == "tcp"
 }
 
 private func videoSdpHasMediaCodec(_ sdp: String) -> Bool {

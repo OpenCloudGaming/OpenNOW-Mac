@@ -82,7 +82,7 @@ public actor WebRTCStreamingPath {
         guard !offer.sdp.isEmpty else { throw StreamingPathError.invalidOffer }
         if let signaling {
             startRemoteIceCandidateForwarding(session: offer.session, signaling: signaling)
-            if Self.envFlagEnabled("OPN_ENABLE_WEBRTC_LOCAL_TRICKLE_ICE", defaultValue: false) {
+            if Self.envFlagEnabled("OPN_ENABLE_WEBRTC_LOCAL_TRICKLE_ICE", defaultValue: true) {
                 startLocalIceCandidateForwarding(session: offer.session, signaling: signaling)
             }
         }
