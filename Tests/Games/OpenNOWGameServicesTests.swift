@@ -411,6 +411,37 @@ import Foundation
     }
 }
 
+@Test func sessionManagerCreateSendsLowLatencyStreamingProfile() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "create-low-latency-profile.example.test"
+    SessionManagerURLProtocol.install(host: host) { _ in
+        SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let manager = OPNSessionManager()
+    manager.setAccessToken("token")
+    manager.setStreamingBaseUrl("https://\(host)")
+    var settings = minimalSettings()
+    settings["lowLatencyMode"] = true
+    settings["streamingQualityProfile"] = 2
+
+    let result = await withCheckedContinuation { continuation in
+        manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings) { success, _, error in
+            continuation.resume(returning: (success, error))
+        }
+    }
+
+    let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
+    let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
+    let streamingFeatures = try #require(requestData["requestedStreamingFeatures"] as? [String: Any])
+
+    #expect(result.0 == true)
+    #expect(result.1.isEmpty)
+    #expect(streamingFeatures["profile"] as? Int == 2)
+    }
+}
+
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-success.example.test"

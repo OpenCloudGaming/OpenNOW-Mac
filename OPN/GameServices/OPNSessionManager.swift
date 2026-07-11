@@ -42,7 +42,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
 
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) resolution=\(string(effectiveSettings["resolution"])) fps=\(int(effectiveSettings["fps"], fallback: 60)) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") lowLatency=\(bool(effectiveSettings["lowLatencyMode"]) ? "on" : "off") profile=\(int(effectiveSettings["streamingQualityProfile"])) networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
 
         let sessionRequestData: [String: Any] = [
             "appId": launchAppId.stringValue,
@@ -340,7 +340,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "Invalid validation URL")
             return
         }
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) resolution=\(string(settings["resolution"])) fps=\(int(settings["fps"], fallback: 60)) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") lowLatency=\(bool(settings["lowLatencyMode"]) ? "on" : "off") profile=\(int(settings["streamingQualityProfile"])) recovery=\(recoveryMode)"))
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let claimSettings = settings
         let validationNetworkStart = OPNNetworkLog.start(&validationRequest, operation: "cloudmatch.validateSessionClaim")
@@ -850,7 +850,7 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
         "mouseMovementFlags": 0,
         "trueHdr": hdrEnabled,
         "supportedHidDevices": int(settings["supportedHidDevices"]),
-        "profile": 0,
+        "profile": min(max(int(settings["streamingQualityProfile"]), 0), 4),
         "fallbackToLogicalResolution": false,
         "hidDevices": NSNull(),
         "chromaFormat": chromaFormat,

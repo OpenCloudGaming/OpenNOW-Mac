@@ -185,6 +185,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var enableHdr: Bool
     public var enableReflex: Bool
     public var lowLatencyMode: Bool
+    public var streamingQualityProfile: Int
     public var microphoneMode: String
     public var microphoneDeviceId: String
     public var microphonePushToTalkKeyCode: Int
@@ -221,6 +222,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "enableHdr": enableHdr,
             "enableReflex": enableReflex,
             "lowLatencyMode": lowLatencyMode,
+            "streamingQualityProfile": streamingQualityProfile,
             "microphoneMode": microphoneMode,
             "microphoneDeviceId": microphoneDeviceId,
             "microphonePushToTalkKeyCode": microphonePushToTalkKeyCode,
@@ -261,12 +263,14 @@ public enum WebRTCMediaStreamSettingsResolver {
         let controllerCount = capabilities.connectedGamepadCount
         let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables, lowLatency: lowLatency)
         let upscalingMode = normalizedUpscalingMode(profile.upscalingMode)
+        let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
+        let latencyCappedMaxBitrateMbps = lowLatency ? min(requestedMaxBitrateMbps, 25) : requestedMaxBitrateMbps
         return WebRTCMediaResolvedStreamSettings(
-            resolution: profile.resolution.value,
+            resolution: resolvedResolution(profile: profile).value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
             codec: codec,
             colorQuality: colorQuality,
-            maxBitrateMbps: max(1, min(profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
+            maxBitrateMbps: max(1, min(latencyCappedMaxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
             prefilterMode: prefilterMode,
             prefilterSharpness: prefilterMode == 0 ? 0 : profile.prefilterSharpness,
             prefilterDenoise: prefilterMode == 0 ? 0 : profile.prefilterDenoise,
@@ -275,6 +279,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             enableHdr: cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr,
             enableReflex: cloudVariables.allowReflex,
             lowLatencyMode: lowLatency,
+            streamingQualityProfile: lowLatency ? 2 : 0,
             microphoneMode: profile.microphoneMode,
             microphoneDeviceId: profile.microphoneDeviceId,
             microphonePushToTalkKeyCode: profile.microphonePushToTalkKeyCode,
@@ -296,6 +301,17 @@ public enum WebRTCMediaStreamSettingsResolver {
             supportedHidDevices: 0,
             availableSupportedControllers: []
         )
+    }
+
+    private static func resolvedResolution(profile: WebRTCMediaStreamProfile) -> WebRTCMediaResolution {
+        guard profile.lowLatencyMode else { return profile.resolution }
+        let pixels = max(1, profile.resolution.width) * max(1, profile.resolution.height)
+        guard pixels > 1920 * 1200 else { return profile.resolution }
+        let aspectRatio = Double(profile.resolution.width) / Double(max(1, profile.resolution.height))
+        if aspectRatio >= 2.7 { return WebRTCMediaResolution(width: 3840, height: 1080) }
+        if aspectRatio >= 2.1 { return WebRTCMediaResolution(width: 2560, height: 1080) }
+        if aspectRatio >= 1.7 { return WebRTCMediaResolution(width: 1920, height: 1080) }
+        return WebRTCMediaResolution(width: 1920, height: 1200)
     }
 
     private static func resolvedPrefilterMode(profile: WebRTCMediaStreamProfile, cloudVariables: WebRTCMediaCloudVariables, lowLatency: Bool) -> Int {

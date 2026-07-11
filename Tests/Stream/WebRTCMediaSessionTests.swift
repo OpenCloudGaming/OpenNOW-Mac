@@ -304,6 +304,58 @@ struct WebRTCStreamingPathTests {
         #expect(settings.upscalingDenoise == 7)
     }
 
+    @Test("uses competitive stream profile for low latency mode")
+    func usesCompetitiveStreamProfileForLowLatencyMode() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(lowLatencyMode: true),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+        let dictionary = settings.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "steam")
+
+        #expect(settings.streamingQualityProfile == 2)
+        #expect(dictionary["streamingQualityProfile"] as? Int == 2)
+    }
+
+    @Test("keeps balanced stream profile outside low latency mode")
+    func keepsBalancedStreamProfileOutsideLowLatencyMode() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(lowLatencyMode: false),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+
+        #expect(settings.streamingQualityProfile == 0)
+    }
+
+    @Test("caps high resolution and bitrate for low latency mode")
+    func capsHighResolutionAndBitrateForLowLatencyMode() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(
+                resolution: WebRTCMediaResolution(width: 2880, height: 1800),
+                maxBitrateMbps: 50,
+                lowLatencyMode: true
+            ),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+
+        #expect(settings.resolution == "1920x1200")
+        #expect(settings.maxBitrateMbps == 25)
+    }
+
+    @Test("preserves high resolution and bitrate outside low latency mode")
+    func preservesHighResolutionAndBitrateOutsideLowLatencyMode() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(
+                resolution: WebRTCMediaResolution(width: 2880, height: 1800),
+                maxBitrateMbps: 50,
+                lowLatencyMode: false
+            ),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+
+        #expect(settings.resolution == "2880x1800")
+        #expect(settings.maxBitrateMbps == 50)
+    }
+
     @Test("carries display sleep prevention setting into resolved metadata")
     func carriesDisplaySleepPreventionSettingIntoResolvedMetadata() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
