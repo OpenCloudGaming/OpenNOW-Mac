@@ -77,6 +77,7 @@ public enum NVSTSessionDescriptionBuilder {
         let prefilterSharpness = max(0, min(settings.prefilterSharpness, 10))
         let prefilterDenoise = max(0, min(settings.prefilterDenoise, 10))
         let prefilterModel = max(0, settings.prefilterModel)
+        let maxReferenceFrames = codec == "H265" ? 1 : 4
         let isAv1 = codec == "AV1"
         let isHighFps = fps >= 90
         let is120Fps = fps == 120
@@ -186,7 +187,7 @@ public enum NVSTSessionDescriptionBuilder {
             "a=vqos.bw.disableBitrateLimit:0",
             "a=vqos.grc.maximumBitrateKbps:\(maxBitrateKbps)",
             "a=vqos.grc.enable:0",
-            "a=video.maxNumReferenceFrames:4",
+            "a=video.maxNumReferenceFrames:\(maxReferenceFrames)",
             "a=video.mapRtpTimestampsToFrames:1",
             "a=video.encoderCscMode:3",
             "a=video.dynamicRangeMode:0",

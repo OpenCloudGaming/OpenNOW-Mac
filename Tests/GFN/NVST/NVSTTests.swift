@@ -109,6 +109,22 @@ import Testing
     #expect(nvstSdp.hasSuffix("\n\n"))
 }
 
+@Test func nvstLimitsH265ReferenceFramesForLowDecodeLatency() {
+    let settings = NVSTSessionDescriptionSettings(codec: "H265")
+
+    let nvstSdp = NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: settings, credentials: NVSTIceCredentials())
+
+    #expect(nvstSdp.contains("a=video.maxNumReferenceFrames:1"))
+}
+
+@Test func nvstPreservesH264ReferenceFrameContract() {
+    let settings = NVSTSessionDescriptionSettings(codec: "H264")
+
+    let nvstSdp = NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: settings, credentials: NVSTIceCredentials())
+
+    #expect(nvstSdp.contains("a=video.maxNumReferenceFrames:4"))
+}
+
 @Test func geronimoInputConstantsMatchExistingWireProtocol() {
     #expect(GeronimoInputEventType.heartbeat.rawValue == 2)
     #expect(GeronimoInputEventType.keyDown.rawValue == 3)
