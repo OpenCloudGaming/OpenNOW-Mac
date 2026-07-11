@@ -458,9 +458,6 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             latestStats.videoEnhancementDroppedFrames = enhancementDroppedFrames
             latestStats.videoFrameIntervalMs = frameIntervalMs
             latestStats.videoMaxFrameIntervalMs = maxFrameIntervalMs
-            if !enhancementSourceResolution.isEmpty, enhancementSourceResolution != "unknown", enhancementSourceResolution != "pending" {
-                latestStats.resolution = enhancementSourceResolution
-            }
         }
     }
 
@@ -476,6 +473,8 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             latestStats.framesReceived = uint64(report["framesReceived"])
             latestStats.framesDropped = uint64(report["framesDropped"])
             latestStats.packetsLost = int64(report["packetsLost"])
+            latestStats.resolution = string(report["resolution"]).isEmpty ? latestStats.resolution : string(report["resolution"])
+            latestStats.codec = string(report["codec"]).isEmpty ? latestStats.codec : string(report["codec"])
             latestStats.videoDecoder = string(report["videoDecoder"]).isEmpty ? latestStats.videoDecoder : string(report["videoDecoder"])
             latestStats.videoSink = string(report["videoSink"]).isEmpty ? latestStats.videoSink : string(report["videoSink"])
             latestStats.videoPipelineMode = string(report["videoPipelineMode"]).isEmpty ? latestStats.videoPipelineMode : string(report["videoPipelineMode"])

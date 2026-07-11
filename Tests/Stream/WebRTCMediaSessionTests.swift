@@ -306,6 +306,42 @@ struct WebRTCStreamingPathTests {
         #expect(settings.maxBitrateMbps == 50)
     }
 
+    @Test("decoded stats resolution is not overwritten by renderer diagnostics")
+    func decodedStatsResolutionWinsOverRendererDiagnostics() {
+        let session = OPNLibWebRTCStreamSession()
+
+        session.handleStatsReport([
+            "available": true,
+            "resolution": "2880x1800",
+            "codec": "H264",
+            "framesReceived": UInt64(12),
+            "framesDecoded": UInt64(12),
+        ])
+        session.setVideoRenderDiagnostics(
+            pixelFormat: "420v/NV12",
+            renderMode: "NV12",
+            frameSource: "CVPixelBuffer",
+            renderPath: "RTCMTLNV12Renderer",
+            fallback: "",
+            enhancementConfiguredTier: "Off",
+            enhancementActiveTier: "Native",
+            enhancementFallbackReason: "",
+            enhancementSourceResolution: "1152x720",
+            enhancementDrawableResolution: "2304x1440",
+            enhancementDiagnostics: "",
+            enhancementFrameTimeMs: -1,
+            enhancementDroppedFrames: 0,
+            frameIntervalMs: 16.7,
+            maxFrameIntervalMs: 20.0
+        )
+
+        let snapshot = session.latestStatsSnapshot()
+        #expect(snapshot.resolution == "2880x1800")
+        #expect(snapshot.codec == "H264")
+        #expect(snapshot.videoEnhancementSourceResolution == "1152x720")
+        #expect(snapshot.videoEnhancementDrawableResolution == "2304x1440")
+    }
+
     @Test("carries display sleep prevention setting into resolved metadata")
     func carriesDisplaySleepPreventionSettingIntoResolvedMetadata() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
