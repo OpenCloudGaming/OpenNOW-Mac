@@ -16,9 +16,77 @@ public enum OPNRemoteCoOpTransportMode: String, CaseIterable, Codable, Equatable
 
     public var description: String {
         switch self {
-        case .automatic: return "Try a direct WebRTC path first and fall back to relay when needed."
-        case .directOnly: return "Only connect when guests can reach the host directly."
-        case .relayOnly: return "Force relayed connectivity to avoid exposing peer IP addresses."
+        case .automatic: return "Default. Try direct WebRTC first and fall back to relay through TURN when routers or firewalls block direct paths."
+        case .directOnly: return "Only connect when guests can reach the host directly. This may expose peer network information."
+        case .relayOnly: return "Force TURN relay connectivity to avoid exposing direct peer IP candidates."
+        }
+    }
+
+    public var iceTransportPolicy: OPNRemoteCoOpICETransportPolicy {
+        switch self {
+        case .automatic, .directOnly: .all
+        case .relayOnly: .relay
+        }
+    }
+
+    public var allowsRelayFallback: Bool {
+        switch self {
+        case .automatic, .relayOnly: true
+        case .directOnly: false
+        }
+    }
+
+    public var hidesDirectPeerCandidates: Bool {
+        self == .relayOnly
+    }
+}
+
+public enum OPNRemoteCoOpICETransportPolicy: String, Codable, Equatable, Sendable {
+    case all
+    case relay
+}
+
+public struct OPNRemoteCoOpICEServer: Codable, Equatable, Sendable {
+    public var urls: [String]
+    public var username: String?
+    public var credential: String?
+
+    public init(urls: [String], username: String? = nil, credential: String? = nil) {
+        self.urls = urls.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        self.username = username?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.credential = credential?.nilIfEmpty
+    }
+}
+
+public struct OPNRemoteCoOpNetworkConfiguration: Codable, Equatable, Sendable {
+    public var transportMode: OPNRemoteCoOpTransportMode
+    public var iceTransportPolicy: OPNRemoteCoOpICETransportPolicy
+    public var iceServers: [OPNRemoteCoOpICEServer]
+    public var dataChannelInputEnabled: Bool
+    public var websocketInputFallbackEnabled: Bool
+    public var directPeerCandidateWarning: String
+
+    public init(transportMode: OPNRemoteCoOpTransportMode,
+                iceServers: [OPNRemoteCoOpICEServer] = [],
+                dataChannelInputEnabled: Bool = true,
+                websocketInputFallbackEnabled: Bool = true,
+                directPeerCandidateWarning: String = "") {
+        self.transportMode = transportMode
+        self.iceTransportPolicy = transportMode.iceTransportPolicy
+        self.iceServers = iceServers
+        self.dataChannelInputEnabled = dataChannelInputEnabled
+        self.websocketInputFallbackEnabled = websocketInputFallbackEnabled
+        self.directPeerCandidateWarning = directPeerCandidateWarning.isEmpty ? Self.warning(for: transportMode) : directPeerCandidateWarning
+    }
+
+    public static func warning(for mode: OPNRemoteCoOpTransportMode) -> String {
+        switch mode {
+        case .automatic:
+            return "Automatic mode may use direct peer candidates before falling back to TURN relay. Use Relay Only to hide direct IP candidates."
+        case .directOnly:
+            return "Direct Only mode can expose direct peer IP candidates and may fail behind strict routers or firewalls."
+        case .relayOnly:
+            return "Relay Only mode uses TURN relay candidates to avoid exposing direct peer IP candidates."
         }
     }
 }
@@ -66,6 +134,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataRequireHostApprovalKey = "remoteCoOpRequireHostApproval"
     public static let launchMetadataSignalingServerURLKey = "remoteCoOpSignalingServerURL"
     public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
+    public static let launchMetadataHideGuestInviteDetailsKey = "remoteCoOpHideGuestInviteDetails"
 
     public static let defaultSignalingServerURL = "ws://127.0.0.1:8787/remote-coop"
     public static let defaultGuestJoinBaseURL = "http://127.0.0.1:8787/"
@@ -77,6 +146,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public var requireHostApproval: Bool
     public var signalingServerURL: String
     public var guestJoinBaseURL: String
+    public var hideGuestInviteDetails: Bool
 
     public init(isEnabled: Bool = false,
                 reservedGuestSlots: Int = 1,
@@ -84,7 +154,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
                 requireHostApproval: Bool = true,
                 signalingServerURL: String = Self.defaultSignalingServerURL,
-                guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL) {
+                guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL,
+                hideGuestInviteDetails: Bool = false) {
         self.isEnabled = isEnabled
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
         self.transportMode = transportMode
@@ -92,6 +163,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         self.requireHostApproval = requireHostApproval
         self.signalingServerURL = Self.normalizedURLString(signalingServerURL, fallback: Self.defaultSignalingServerURL)
         self.guestJoinBaseURL = Self.normalizedURLString(guestJoinBaseURL, fallback: Self.defaultGuestJoinBaseURL)
+        self.hideGuestInviteDetails = hideGuestInviteDetails
     }
 
     public var effectiveReservedGuestSlots: Int {
@@ -111,6 +183,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             Self.launchMetadataRequireHostApprovalKey: String(requireHostApproval),
             Self.launchMetadataSignalingServerURLKey: signalingServerURL,
             Self.launchMetadataGuestJoinBaseURLKey: guestJoinBaseURL,
+            Self.launchMetadataHideGuestInviteDetailsKey: String(hideGuestInviteDetails),
         ]
     }
 
@@ -122,7 +195,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: metadata[launchMetadataQualityPresetKey] ?? "") ?? fallback.qualityPreset,
             requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval),
             signalingServerURL: string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL),
-            guestJoinBaseURL: string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL)
+            guestJoinBaseURL: string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL),
+            hideGuestInviteDetails: bool(metadata[launchMetadataHideGuestInviteDetailsKey], defaultValue: fallback.hideGuestInviteDetails)
         )
     }
 
@@ -172,6 +246,7 @@ public struct OPNRemoteCoOpInviteTokenPayload: Codable, Equatable, Sendable {
     public let transportMode: OPNRemoteCoOpTransportMode
     public let qualityPreset: OPNRemoteCoOpQualityPreset
     public let requireHostApproval: Bool
+    public let hideGuestInviteDetails: Bool
 
     public init(version: Int = 1,
                 inviteID: UUID,
@@ -184,14 +259,15 @@ public struct OPNRemoteCoOpInviteTokenPayload: Codable, Equatable, Sendable {
         self.version = version
         self.inviteID = inviteID
         self.code = code
-        self.applicationID = applicationID
-        self.title = title
+        self.applicationID = preferences.hideGuestInviteDetails ? "" : applicationID
+        self.title = preferences.hideGuestInviteDetails ? "" : title
         self.createdAtEpochSeconds = createdAt.timeIntervalSince1970
         self.expiresAtEpochSeconds = expiresAt.timeIntervalSince1970
         self.reservedGuestSlots = preferences.effectiveReservedGuestSlots
         self.transportMode = preferences.transportMode
         self.qualityPreset = preferences.qualityPreset
         self.requireHostApproval = preferences.requireHostApproval
+        self.hideGuestInviteDetails = preferences.hideGuestInviteDetails
     }
 
     public var createdAt: Date { Date(timeIntervalSince1970: createdAtEpochSeconds) }
@@ -307,6 +383,7 @@ public struct OPNRemoteCoOpInvite: Identifiable, Codable, Equatable, Sendable {
     public let joinURL: URL?
     public let applicationID: String
     public let title: String
+    public let hideGuestInviteDetails: Bool
 
     public init(id: UUID = UUID(),
                 code: String,
@@ -315,7 +392,8 @@ public struct OPNRemoteCoOpInvite: Identifiable, Codable, Equatable, Sendable {
                 token: String = "",
                 joinURL: URL? = nil,
                 applicationID: String = "",
-                title: String = "") {
+                title: String = "",
+                hideGuestInviteDetails: Bool = false) {
         self.id = id
         self.code = code
         self.createdAt = createdAt
@@ -324,6 +402,7 @@ public struct OPNRemoteCoOpInvite: Identifiable, Codable, Equatable, Sendable {
         self.joinURL = joinURL
         self.applicationID = applicationID
         self.title = title
+        self.hideGuestInviteDetails = hideGuestInviteDetails
     }
 
     public var isExpired: Bool {

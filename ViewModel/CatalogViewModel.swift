@@ -1561,6 +1561,12 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {
+        OPNRemoteCoOpPreferencesStore.setHideGuestInviteDetails(hidden)
+        actionMessage = hidden ? "Remote Co-Op guest invites will hide game details." : "Remote Co-Op guest invites will show game details."
+        loadSettingsPreferences()
+    }
+
     func setPreventDisplaySleepWhileStreaming(_ enabled: Bool) {
         OPNStreamPreferences.savePreventDisplaySleepWhileStreaming(enabled)
         actionMessage = enabled ? "Display sleep prevention enabled for active streams." : "Display sleep prevention disabled for active streams."

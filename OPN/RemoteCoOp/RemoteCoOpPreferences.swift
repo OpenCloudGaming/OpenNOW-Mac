@@ -9,6 +9,7 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let requireHostApprovalKey = "OpenNOW.RemoteCoOp.RequireHostApproval"
     private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
     private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
+    private static let hideGuestInviteDetailsKey = "OpenNOW.RemoteCoOp.HideGuestInviteDetails"
 
     public static func load() -> OPNRemoteCoOpPreferences {
         OPNRemoteCoOpPreferences(
@@ -18,7 +19,8 @@ public enum OPNRemoteCoOpPreferencesStore {
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,
             requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
             signalingServerURL: string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL),
-            guestJoinBaseURL: string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+            guestJoinBaseURL: string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL),
+            hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false)
         )
     }
 
@@ -30,6 +32,7 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.set(preferences.requireHostApproval, forKey: requireHostApprovalKey)
         storage.set(preferences.signalingServerURL, forKey: signalingServerURLKey)
         storage.set(preferences.guestJoinBaseURL, forKey: guestJoinBaseURLKey)
+        storage.set(preferences.hideGuestInviteDetails, forKey: hideGuestInviteDetailsKey)
         storage.synchronize()
     }
 
@@ -72,6 +75,12 @@ public enum OPNRemoteCoOpPreferencesStore {
     public static func setGuestJoinBaseURL(_ url: String) {
         var preferences = load()
         preferences.guestJoinBaseURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+        save(preferences)
+    }
+
+    public static func setHideGuestInviteDetails(_ hidden: Bool) {
+        var preferences = load()
+        preferences.hideGuestInviteDetails = hidden
         save(preferences)
     }
 

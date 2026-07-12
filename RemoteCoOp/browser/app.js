@@ -12,6 +12,8 @@ const elements = {
   dot: document.querySelector("#connection-dot"),
   gamepadName: document.querySelector("#gamepad-name"),
   gamepadDetail: document.querySelector("#gamepad-detail"),
+  networkState: document.querySelector("#network-state"),
+  networkDetail: document.querySelector("#network-detail"),
   disconnectButton: document.querySelector("#disconnect-button")
 };
 
@@ -26,6 +28,9 @@ let sequenceNumber = 0;
 let lastSentState = "";
 let lastSentAt = 0;
 let pollHandle = 0;
+let networkConfiguration = null;
+let peerConnection = null;
+let inputChannel = null;
 
 elements.inviteToken.value = inviteFromURL;
 renderInvite(inviteFromURL);
@@ -78,7 +83,11 @@ function joinRoom() {
     elements.sessionCard.classList.remove("hidden");
     setState("Waiting", "Waiting for host approval.", false);
   });
-  socket.addEventListener("message", event => handleMessage(JSON.parse(event.data)));
+  socket.addEventListener("message", event => {
+    handleMessage(JSON.parse(event.data)).catch(error => {
+      setNetworkState("Peer setup failed", error.message || "WebRTC negotiation failed.");
+    });
+  });
   socket.addEventListener("close", () => {
     stopPolling();
     setState("Disconnected", "The Remote Co-Op connection closed.", false);
@@ -86,9 +95,17 @@ function joinRoom() {
   });
 }
 
-function handleMessage(message) {
+async function handleMessage(message) {
   if (message.kind === "heartbeat") {
     send({ kind: "heartbeat", roomID: invite?.inviteID, participantID });
+    return;
+  }
+  if (message.kind === "networkConfiguration") {
+    configurePeerConnection(message.networkConfiguration);
+    return;
+  }
+  if (message.kind === "peerSignal") {
+    await handlePeerSignal(message.peerSignal);
     return;
   }
   if (message.kind === "participantUpdated" && message.participant?.id === participantID) {
@@ -138,7 +155,7 @@ function startPolling() {
     if (state === lastSentState && time - lastSentAt < 250) return;
     lastSentState = state;
     lastSentAt = time;
-    send({ kind: "guestInput", roomID: invite.inviteID, participantID, input });
+    sendInput(input);
     elements.gamepadDetail.textContent = `Sending input sequence ${input.sequenceNumber}.`;
   };
   pollHandle = requestAnimationFrame(poll);
@@ -192,9 +209,124 @@ function send(message) {
   socket.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
 }
 
+function sendInput(input) {
+  const message = { kind: "guestInput", roomID: invite.inviteID, participantID, input };
+  if (inputChannel?.readyState === "open") {
+    inputChannel.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
+    return;
+  }
+  if (networkConfiguration?.websocketInputFallbackEnabled !== false) send(message);
+}
+
+function configurePeerConnection(configuration) {
+  networkConfiguration = configuration ?? automaticFallbackConfiguration();
+  closePeerConnection();
+  const rtcConfiguration = {
+    iceServers: networkConfiguration.iceServers ?? [],
+    iceTransportPolicy: networkConfiguration.iceTransportPolicy ?? "all"
+  };
+  peerConnection = new RTCPeerConnection(rtcConfiguration);
+  peerConnection.addTransceiver("video", { direction: "recvonly" });
+  peerConnection.addTransceiver("audio", { direction: "recvonly" });
+  if (networkConfiguration.dataChannelInputEnabled !== false) bindInputChannel(peerConnection.createDataChannel("input", { ordered: false, maxRetransmits: 0 }));
+  peerConnection.addEventListener("datachannel", event => bindInputChannel(event.channel));
+  peerConnection.addEventListener("icecandidate", event => {
+    if (!event.candidate) return;
+    send({
+      kind: "peerSignal",
+      roomID: invite.inviteID,
+      participantID,
+      peerSignal: {
+        kind: "iceCandidate",
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex
+      }
+    });
+  });
+  peerConnection.addEventListener("connectionstatechange", () => setNetworkState(networkLabel(), connectionDetail()));
+  peerConnection.addEventListener("iceconnectionstatechange", () => setNetworkState(networkLabel(), connectionDetail()));
+  peerConnection.addEventListener("track", event => attachRemoteTrack(event.track, event.streams[0]));
+  setNetworkState(networkLabel(), networkConfiguration.directPeerCandidateWarning || connectionDetail());
+}
+
+async function handlePeerSignal(signal) {
+  if (!signal) return;
+  if (!peerConnection) configurePeerConnection(automaticFallbackConfiguration());
+  if (signal.kind === "offer") {
+    await peerConnection.setRemoteDescription({ type: "offer", sdp: signal.sdp });
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    send({ kind: "peerSignal", roomID: invite.inviteID, participantID, peerSignal: { kind: "answer", sdp: answer.sdp } });
+    setNetworkState(networkLabel(), "WebRTC answer sent. Waiting for ICE connectivity.");
+    return;
+  }
+  if (signal.kind === "answer") {
+    await peerConnection.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+    return;
+  }
+  if (signal.kind === "iceCandidate" && signal.candidate) {
+    await peerConnection.addIceCandidate({ candidate: signal.candidate, sdpMid: signal.sdpMid ?? null, sdpMLineIndex: signal.sdpMLineIndex ?? null });
+  }
+}
+
+function bindInputChannel(channel) {
+  inputChannel = channel;
+  channel.addEventListener("open", () => setNetworkState(networkLabel(), "Input data channel connected."));
+  channel.addEventListener("close", () => setNetworkState(networkLabel(), "Input data channel closed. WebSocket fallback remains available."));
+}
+
+function closePeerConnection() {
+  inputChannel?.close();
+  inputChannel = null;
+  peerConnection?.close();
+  peerConnection = null;
+}
+
+function automaticFallbackConfiguration() {
+  return {
+    transportMode: invite?.transportMode ?? "automatic",
+    iceTransportPolicy: invite?.transportMode === "relayOnly" ? "relay" : "all",
+    iceServers: [],
+    dataChannelInputEnabled: true,
+    websocketInputFallbackEnabled: true,
+    directPeerCandidateWarning: "Using invite defaults until the broker provides ICE settings."
+  };
+}
+
+function networkLabel() {
+  const mode = networkConfiguration?.transportMode ?? invite?.transportMode ?? "automatic";
+  if (mode === "relayOnly") return "Private relay";
+  if (mode === "directOnly") return "Direct only";
+  return "Automatic";
+}
+
+function connectionDetail() {
+  const connection = peerConnection?.connectionState ?? "new";
+  const ice = peerConnection?.iceConnectionState ?? "new";
+  return `WebRTC ${connection}; ICE ${ice}; policy ${networkConfiguration?.iceTransportPolicy ?? "all"}.`;
+}
+
+function setNetworkState(title, detail) {
+  elements.networkState.textContent = title;
+  elements.networkDetail.textContent = detail;
+}
+
+function attachRemoteTrack(track, stream) {
+  const existing = document.querySelector("#remote-media");
+  const media = existing ?? document.createElement(track.kind === "audio" ? "audio" : "video");
+  media.id = "remote-media";
+  media.autoplay = true;
+  media.playsInline = true;
+  media.controls = false;
+  media.srcObject = stream ?? new MediaStream([track]);
+  if (!existing) document.querySelector(".video-placeholder")?.replaceChildren(media);
+}
+
 function disconnect() {
   approved = false;
   stopPolling();
+  closePeerConnection();
   if (socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: invite?.inviteID, participantID });
   socket?.close();
   socket = null;

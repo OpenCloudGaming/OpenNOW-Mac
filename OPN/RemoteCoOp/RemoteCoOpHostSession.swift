@@ -64,7 +64,7 @@ public actor OPNRemoteCoOpHostSession {
         OPNRemoteCoOpHostSnapshot(preferences: preferences, invite: invite, participants: participants.sorted { $0.joinedAt < $1.joinedAt })
     }
 
-    public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, lifetimeSeconds: TimeInterval = 3_600) throws -> OPNRemoteCoOpInvite {
+    public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, signalingServerURL: String = "", lifetimeSeconds: TimeInterval = 3_600) throws -> OPNRemoteCoOpInvite {
         guard preferences.isEnabled else { throw OPNRemoteCoOpHostSessionError.disabled }
         guard preferences.effectiveReservedGuestSlots > 0 else { throw OPNRemoteCoOpHostSessionError.noAvailablePlayerSlots }
         let now = Date()
@@ -87,9 +87,10 @@ public actor OPNRemoteCoOpHostSession {
             createdAt: now,
             expiresAt: expiresAt,
             token: token,
-            joinURL: Self.joinURL(baseURL: joinBaseURL, token: token),
+            joinURL: Self.joinURL(baseURL: joinBaseURL, token: token, signalingServerURL: signalingServerURL),
             applicationID: applicationID,
-            title: title
+            title: title,
+            hideGuestInviteDetails: preferences.hideGuestInviteDetails
         )
         self.invite = invite
         return invite
@@ -189,12 +190,16 @@ public actor OPNRemoteCoOpHostSession {
         }
     }
 
-    private static func joinURL(baseURL: URL?, token: String) -> URL? {
+    private static func joinURL(baseURL: URL?, token: String, signalingServerURL: String) -> URL? {
         guard let baseURL else { return nil }
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
         var items = components?.queryItems ?? []
         items.removeAll { $0.name == "invite" }
+        items.removeAll { $0.name == "server" }
         items.append(URLQueryItem(name: "invite", value: token))
+        if !signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "server", value: signalingServerURL))
+        }
         components?.queryItems = items
         return components?.url
     }

@@ -146,6 +146,7 @@ button:disabled {
 }
 
 .gamepad,
+.network,
 .video-placeholder {
   padding: 16px;
   border: 1px solid var(--line);

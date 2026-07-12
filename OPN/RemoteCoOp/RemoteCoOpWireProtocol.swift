@@ -12,6 +12,7 @@ public enum OPNRemoteCoOpWireMessageKind: String, Codable, Equatable, Sendable {
     case guestDisconnected
     case heartbeat
     case peerSignal
+    case networkConfiguration
     case error
 }
 
@@ -76,6 +77,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     public var inputRejection: OPNRemoteCoOpWireInputRoutingRejection?
     public var reason: String?
     public var peerSignal: OPNRemoteCoOpWirePeerSignal?
+    public var networkConfiguration: OPNRemoteCoOpNetworkConfiguration?
     public var sentAtEpochMilliseconds: Int64
 
     public init(kind: OPNRemoteCoOpWireMessageKind,
@@ -89,6 +91,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
                 inputRejection: OPNRemoteCoOpWireInputRoutingRejection? = nil,
                 reason: String? = nil,
                 peerSignal: OPNRemoteCoOpWirePeerSignal? = nil,
+                networkConfiguration: OPNRemoteCoOpNetworkConfiguration? = nil,
                 sentAt: Date = Date()) {
         self.protocolVersion = 1
         self.kind = kind
@@ -102,6 +105,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         self.inputRejection = inputRejection
         self.reason = reason
         self.peerSignal = peerSignal
+        self.networkConfiguration = networkConfiguration
         self.sentAtEpochMilliseconds = Int64((sentAt.timeIntervalSince1970 * 1_000).rounded())
     }
 
@@ -119,6 +123,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         inputRejection = try container.decodeIfPresent(OPNRemoteCoOpWireInputRoutingRejection.self, forKey: .inputRejection)
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         peerSignal = try container.decodeIfPresent(OPNRemoteCoOpWirePeerSignal.self, forKey: .peerSignal)
+        networkConfiguration = try container.decodeIfPresent(OPNRemoteCoOpNetworkConfiguration.self, forKey: .networkConfiguration)
         sentAtEpochMilliseconds = try container.decodeIfPresent(Int64.self, forKey: .sentAtEpochMilliseconds) ?? Int64((Date().timeIntervalSince1970 * 1_000).rounded())
     }
 
@@ -133,7 +138,10 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         case .guestDisconnected:
             guard let participantID else { return nil }
             return .guestDisconnected(participantID)
-        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat, .peerSignal, .error:
+        case .peerSignal:
+            guard let participantID, let peerSignal else { return nil }
+            return .peerSignal(participantID: participantID, signal: peerSignal)
+        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat, .networkConfiguration, .error:
             return nil
         }
     }
@@ -153,6 +161,8 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         case .inputRejected(let participantID, let result):
             guard let rejection = OPNRemoteCoOpWireInputRoutingRejection(result) else { return nil }
             return OPNRemoteCoOpWireMessage(kind: .inputRejected, roomID: fallbackRoomID, participantID: participantID, inputRejection: rejection)
+        case .peerSignal(let participantID, let signal):
+            return OPNRemoteCoOpWireMessage(kind: .peerSignal, roomID: fallbackRoomID, participantID: participantID, peerSignal: signal)
         }
     }
 }

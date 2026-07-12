@@ -529,6 +529,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
                 settingsRow("Reserved Slots", "\(remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
                 settingsRow("Guest Quality", remoteCoOpSnapshot.preferences.qualityPreset.label)
+                settingsRow("Invite Details", remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
                 if !remoteCoOpMessage.isEmpty {
                     Text(remoteCoOpMessage)
                         .font(.streamNvidia(size: 11, weight: .medium))
@@ -1098,7 +1099,7 @@ public struct WebRTCMediaStreamSurface: View {
             await remoteCoOpHostSession.updatePreferences(preferences)
             do {
                 let coordinator = makeRemoteCoOpCoordinator(preferences: preferences)
-                let invite = try await coordinator.startInvite(applicationID: configuration.applicationID, title: configuration.title, joinBaseURL: remoteCoOpJoinBaseURL(preferences))
+                let invite = try await coordinator.startInvite(applicationID: configuration.applicationID, title: configuration.title, joinBaseURL: remoteCoOpJoinBaseURL(preferences), signalingServerURL: preferences.signalingServerURL)
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 copyRemoteCoOpInvite(invite)
                 remoteCoOpMessage = invite.joinURL == nil ? "Invite copied. Share code \(invite.code) with your remote player." : "Invite link copied. Keep this stream open while your guest joins."
@@ -1138,7 +1139,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func remoteCoOpShareText(_ invite: OPNRemoteCoOpInvite) -> String {
-        let title = configuration.title.isEmpty ? "GeForce NOW" : configuration.title
+        let title = invite.hideGuestInviteDetails ? "a private session" : (configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
         if let joinURL = invite.joinURL {
             return "OpenNOW Remote Co-Op invite for \(title): \(joinURL.absoluteString)"
         }

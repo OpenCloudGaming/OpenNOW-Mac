@@ -10,6 +10,8 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 7).reservedGuestSlots == 3)
         #expect(OPNRemoteCoOpPreferences(isEnabled: false, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 2)
+        #expect(OPNRemoteCoOpPreferences().transportMode == .automatic)
+        #expect(!OPNRemoteCoOpPreferences().hideGuestInviteDetails)
     }
 
     @Test("preferences round-trip through stream launch metadata")
@@ -21,10 +23,21 @@ struct RemoteCoOpTests {
             qualityPreset: .p1080f60,
             requireHostApproval: false,
             signalingServerURL: "wss://coop.example.test/remote-coop",
-            guestJoinBaseURL: "https://coop.example.test/"
+            guestJoinBaseURL: "https://coop.example.test/",
+            hideGuestInviteDetails: true
         )
 
         #expect(OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences()) == preferences)
+    }
+
+    @Test("transport modes map to ICE policies for router traversal")
+    func transportModesMapToICEPoliciesForRouterTraversal() {
+        #expect(OPNRemoteCoOpTransportMode.automatic.iceTransportPolicy == .all)
+        #expect(OPNRemoteCoOpTransportMode.automatic.allowsRelayFallback)
+        #expect(OPNRemoteCoOpTransportMode.directOnly.iceTransportPolicy == .all)
+        #expect(!OPNRemoteCoOpTransportMode.directOnly.allowsRelayFallback)
+        #expect(OPNRemoteCoOpTransportMode.relayOnly.iceTransportPolicy == .relay)
+        #expect(OPNRemoteCoOpTransportMode.relayOnly.hidesDirectPeerCandidates)
     }
 
     @Test("wire codec maps browser messages into signaling events")
@@ -41,6 +54,37 @@ struct RemoteCoOpTests {
         #expect(decodedInput.signalingEvent() == .guestInput(packet))
     }
 
+    @Test("wire codec decodes browser numeric gamepad button masks")
+    func wireCodecDecodesBrowserNumericGamepadButtonMasks() throws {
+        let participantID = UUID()
+        let json = """
+        {
+          "kind": "guestInput",
+          "participantID": "\(participantID.uuidString)",
+          "input": {
+            "participantID": "\(participantID.uuidString)",
+            "sequenceNumber": 7,
+            "buttons": \(GamepadButtons([.south, .dpadRight]).rawValue),
+            "leftTrigger": 1,
+            "rightTrigger": 0,
+            "leftStickX": 0,
+            "leftStickY": 0,
+            "rightStickX": 0,
+            "rightStickY": 0,
+            "sentAtNanoseconds": 100
+          }
+        }
+        """
+
+        let message = try OPNRemoteCoOpWireCodec.decode(json)
+
+        guard case .guestInput(let packet)? = message.signalingEvent() else {
+            Issue.record("Expected guest input event")
+            return
+        }
+        #expect(packet.buttons == [.south, .dpadRight])
+    }
+
     @Test("wire codec maps host commands into broker messages")
     func wireCodecMapsHostCommandsIntoBrokerMessages() throws {
         let roomID = UUID()
@@ -54,6 +98,20 @@ struct RemoteCoOpTests {
         #expect(participantMessage.participant == participant)
         #expect(rejectionMessage.kind == .inputRejected)
         #expect(rejectionMessage.inputRejection == .stalePacket)
+    }
+
+    @Test("wire codec carries ICE network configuration")
+    func wireCodecCarriesICENetworkConfiguration() throws {
+        let configuration = OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .relayOnly,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
+        )
+        let message = OPNRemoteCoOpWireMessage(kind: .networkConfiguration, roomID: UUID(), networkConfiguration: configuration)
+
+        let decoded = try OPNRemoteCoOpWireCodec.decode(OPNRemoteCoOpWireCodec.encode(message))
+
+        #expect(decoded.networkConfiguration == configuration)
+        #expect(decoded.networkConfiguration?.iceTransportPolicy == .relay)
     }
 
     @Test("invite token signs and verifies launch metadata")
@@ -73,6 +131,27 @@ struct RemoteCoOpTests {
         #expect(payload.transportMode == .relayOnly)
         #expect(payload.qualityPreset == .p1080f60)
         #expect(!payload.requireHostApproval)
+        #expect(!payload.hideGuestInviteDetails)
+    }
+
+    @Test("private invites hide guest visible title and app id")
+    func privateInvitesHideGuestVisibleTitleAndAppID() async throws {
+        let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 9, count: 32))
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, hideGuestInviteDetails: true)
+        let host = OPNRemoteCoOpHostSession(preferences: preferences, inviteSigner: signer)
+
+        let invite = try await host.startInvite(applicationID: "secret-app", title: "Secret Game", joinBaseURL: URL(string: "https://join.example.test/")!, signalingServerURL: "wss://signal.example.test/remote-coop", lifetimeSeconds: 120)
+        let payload = try signer.verify(invite.token)
+        let joinURL = try #require(invite.joinURL)
+        let components = try #require(URLComponents(url: joinURL, resolvingAgainstBaseURL: false))
+
+        #expect(payload.applicationID.isEmpty)
+        #expect(payload.title.isEmpty)
+        #expect(payload.hideGuestInviteDetails)
+        #expect(invite.applicationID == "secret-app")
+        #expect(invite.title == "Secret Game")
+        #expect(invite.hideGuestInviteDetails)
+        #expect(components.queryItems?.contains(URLQueryItem(name: "server", value: "wss://signal.example.test/remote-coop")) == true)
     }
 
     @Test("stream settings advertise reserved controller bitmap")

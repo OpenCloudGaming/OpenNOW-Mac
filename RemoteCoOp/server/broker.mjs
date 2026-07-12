@@ -1,11 +1,17 @@
 import { createServer } from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const port = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_PORT ?? "8787", 10);
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
+const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
+const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", "");
+const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
+const turnCredential = process.env.OPENNOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
+const turnSharedSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
+const turnCredentialTTLSeconds = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "3600", 10);
 const rooms = new Map();
 const sockets = new Set();
 
@@ -19,6 +25,15 @@ const contentTypes = new Map([
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+    if (url.pathname === "/remote-coop/network-config") {
+      const payload = decodeInvitePayload(url.searchParams.get("invite") ?? "");
+      if (!payload) {
+        response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: "invalid_invite" }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(networkConfigurationFor(payload, payload.inviteID ?? "")));
+      return;
+    }
     const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
     const file = normalize(join(root, pathname));
     if (!file.startsWith(root)) {
@@ -168,7 +183,7 @@ function handleMessage(state, message) {
     registerGuest(state, message);
     return;
   }
-  if (message.kind === "guestInput" || message.kind === "guestDisconnected") {
+  if (message.kind === "guestInput" || message.kind === "guestDisconnected" || message.kind === "peerSignal") {
     relayGuestEvent(state, message);
     return;
   }
@@ -184,8 +199,10 @@ function registerHost(state, message) {
     return;
   }
   const room = roomFor(roomID);
+  const payload = decodeInvitePayload(message.invite?.token);
   room.host = state;
   room.invite = message.invite ?? null;
+  room.networkConfiguration = networkConfigurationFor(payload, roomID);
   room.expiresAtMs = inviteExpiryMilliseconds(message.invite?.token);
   state.role = "host";
   state.roomID = roomID;
@@ -208,6 +225,7 @@ function registerGuest(state, message) {
   state.roomID = roomID;
   state.participantID = participantID;
   room.guests.set(participantID, state);
+  send(state, { kind: "networkConfiguration", roomID, participantID, networkConfiguration: room.networkConfiguration });
   send(room.host, sanitizeMessage({ ...message, roomID, participantID }));
 }
 
@@ -285,9 +303,51 @@ function closeRoom(roomID) {
 function roomFor(roomID) {
   const existing = rooms.get(roomID);
   if (existing) return existing;
-  const room = { host: null, guests: new Map(), invite: null, expiresAtMs: 0 };
+  const room = { host: null, guests: new Map(), invite: null, networkConfiguration: networkConfigurationFor(null, roomID), expiresAtMs: 0 };
   rooms.set(roomID, room);
   return room;
+}
+
+function networkConfigurationFor(payload, roomID) {
+  const transportMode = ["automatic", "directOnly", "relayOnly"].includes(payload?.transportMode) ? payload.transportMode : "automatic";
+  const iceTransportPolicy = transportMode === "relayOnly" ? "relay" : "all";
+  const iceServers = iceServersFor(transportMode, roomID);
+  return {
+    transportMode,
+    iceTransportPolicy,
+    iceServers,
+    dataChannelInputEnabled: true,
+    websocketInputFallbackEnabled: true,
+    directPeerCandidateWarning: warningFor(transportMode, iceServers)
+  };
+}
+
+function iceServersFor(transportMode, roomID) {
+  const servers = [];
+  if (transportMode !== "relayOnly" && stunURLs.length > 0) servers.push({ urls: stunURLs });
+  if (transportMode !== "directOnly" && turnURLs.length > 0) {
+    const credentials = turnCredentials(roomID);
+    servers.push({ urls: turnURLs, ...credentials });
+  }
+  return servers;
+}
+
+function turnCredentials(roomID) {
+  if (turnSharedSecret) {
+    const expiry = Math.floor(Date.now() / 1000) + Math.max(60, turnCredentialTTLSeconds);
+    const username = `${expiry}:${roomID}`;
+    const credential = createHmac("sha1", turnSharedSecret).update(username).digest("base64");
+    return { username, credential };
+  }
+  if (turnUsername && turnCredential) return { username: turnUsername, credential: turnCredential };
+  return {};
+}
+
+function warningFor(transportMode, iceServers) {
+  if (transportMode === "relayOnly" && iceServers.length === 0) return "Relay Only requires TURN credentials, but this broker has no TURN server configured.";
+  if (transportMode === "relayOnly") return "Relay Only uses TURN relay candidates to avoid exposing direct peer IP candidates.";
+  if (transportMode === "directOnly") return "Direct Only can expose direct peer IP candidates and may fail behind strict routers or firewalls.";
+  return "Automatic may use direct peer candidates before falling back to TURN relay. Use Relay Only to hide direct IP candidates.";
 }
 
 function inviteExpiryMilliseconds(token) {
@@ -318,6 +378,13 @@ function sanitizeMessage(message) {
 
 function stringValue(value) {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function splitEnv(name, fallback) {
+  return (process.env[name] ?? fallback)
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
 }
 
 function isRateLimited(state) {

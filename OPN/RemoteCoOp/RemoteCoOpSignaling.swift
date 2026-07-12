@@ -4,6 +4,7 @@ public enum OPNRemoteCoOpSignalingEvent: Equatable, Sendable {
     case guestJoinRequested(participantID: UUID, inviteToken: String, displayName: String)
     case guestInput(OPNRemoteCoOpInputPacket)
     case guestDisconnected(UUID)
+    case peerSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal)
 }
 
 public enum OPNRemoteCoOpSignalingCommand: Equatable, Sendable {
@@ -13,6 +14,7 @@ public enum OPNRemoteCoOpSignalingCommand: Equatable, Sendable {
     case participantRemoved(UUID)
     case guestRejected(participantID: UUID, reason: String)
     case inputRejected(participantID: UUID, result: OPNRemoteCoOpInputRoutingResult)
+    case peerSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal)
 }
 
 public protocol OPNRemoteCoOpSignalingSession: Sendable {
@@ -107,8 +109,8 @@ public actor OPNRemoteCoOpHostCoordinator {
         await hostSession.snapshot()
     }
 
-    public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, lifetimeSeconds: TimeInterval = 3_600) async throws -> OPNRemoteCoOpInvite {
-        let invite = try await hostSession.startInvite(applicationID: applicationID, title: title, joinBaseURL: joinBaseURL, lifetimeSeconds: lifetimeSeconds)
+    public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, signalingServerURL: String = "", lifetimeSeconds: TimeInterval = 3_600) async throws -> OPNRemoteCoOpInvite {
+        let invite = try await hostSession.startInvite(applicationID: applicationID, title: title, joinBaseURL: joinBaseURL, signalingServerURL: signalingServerURL, lifetimeSeconds: lifetimeSeconds)
         await signaling.send(.inviteCreated(invite))
         return invite
     }
@@ -161,6 +163,8 @@ public actor OPNRemoteCoOpHostCoordinator {
                 await signaling.send(.guestRejected(participantID: participantID, reason: Self.message(for: error)))
                 return []
             }
+        case .peerSignal:
+            return []
         }
     }
 

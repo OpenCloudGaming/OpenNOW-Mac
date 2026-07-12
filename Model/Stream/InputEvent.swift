@@ -117,6 +117,25 @@ public struct GamepadButtons: OptionSet, Codable, Equatable, Hashable, Sendable 
         self.rawValue = rawValue
     }
 
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let rawValue = try? container.decode(UInt32.self) {
+            self.init(rawValue: rawValue)
+            return
+        }
+        let keyed = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(rawValue: try keyed.decode(UInt32.self, forKey: .rawValue))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rawValue
+    }
+
     public static let south = GamepadButtons(rawValue: 1 << 0)
     public static let east = GamepadButtons(rawValue: 1 << 1)
     public static let west = GamepadButtons(rawValue: 1 << 2)
