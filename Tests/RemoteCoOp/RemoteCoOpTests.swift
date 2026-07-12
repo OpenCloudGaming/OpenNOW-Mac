@@ -18,6 +18,14 @@ struct RemoteCoOpTests {
         #expect(!OPNRemoteCoOpPreferences().hideGuestInviteDetails)
     }
 
+    @Test("preferences default to production broker URLs")
+    func preferencesDefaultToProductionBrokerURLs() {
+        let preferences = OPNRemoteCoOpPreferences()
+
+        #expect(preferences.signalingServerURL == "ws://jayian.dev:8788/remote-coop")
+        #expect(preferences.guestJoinBaseURL == "http://jayian.dev:8788/")
+    }
+
     @Test("preferences round-trip through stream launch metadata")
     func preferencesRoundTripThroughStreamLaunchMetadata() {
         let preferences = OPNRemoteCoOpPreferences(

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { networkInterfaces } from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +8,7 @@ const args = new Set(process.argv.slice(2));
 const root = dirname(fileURLToPath(import.meta.url));
 const brokerScript = join(root, "server", "broker.mjs");
 const turnScript = join(root, "turn", "turn-server.mjs");
+const productionHost = "jayian.dev";
 
 if (args.has("--help") || args.has("-h")) {
   printHelp();
@@ -34,13 +34,13 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 function buildConfig() {
-  const publicHost = stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", "") || firstLANIPv4() || "127.0.0.1";
+  const publicHost = stringEnv("OPENNOW_REMOTE_COOP_PUBLIC_HOST", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", "") || productionHost;
   const generatedSecret = !stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
   const sharedSecret = generatedSecret ? randomBytes(32).toString("base64url") : stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", "");
   const turnPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 3478);
   const turnTLSPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 443);
   const tlsEnabled = Boolean(stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "") && stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", ""));
-  const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8787);
+  const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8788);
   const brokerPortCandidates = portCandidates(brokerPort, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
   const brokerBindHost = stringEnv("OPENNOW_REMOTE_COOP_BIND_HOST", "0.0.0.0");
   const turnListeningIP = stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", "0.0.0.0");
@@ -148,15 +148,6 @@ function buildTurnURLs(host, port, tlsPort, tlsEnabled) {
   return urls.join(",");
 }
 
-function firstLANIPv4() {
-  for (const addresses of Object.values(networkInterfaces())) {
-    for (const address of addresses ?? []) {
-      if (address.family === "IPv4" && !address.internal) return address.address;
-    }
-  }
-  return "";
-}
-
 function stringEnv(name, fallback) {
   const value = process.env[name];
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -172,7 +163,7 @@ function portCandidates(preferredPort, alternateValue) {
     ? alternateValue.split(",").map(value => Number.parseInt(value.trim(), 10))
     : [preferredPort + 1, preferredPort + 2];
   const candidates = Array.from(new Set([preferredPort, ...parsedAlternates].filter(isUsablePort)));
-  return candidates.length > 0 ? candidates : [8787, 8788, 8789];
+  return candidates.length > 0 ? candidates : [8788, 8789, 8790];
 }
 
 function isUsablePort(value) {
@@ -191,14 +182,14 @@ interfaces by default:
   - broker: OPENNOW_REMOTE_COOP_BIND_HOST=0.0.0.0
   - TURN:   OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=0.0.0.0
 
-The runner derives a LAN IPv4 address for invite URLs when possible. Override it
-with OPENNOW_REMOTE_COOP_PUBLIC_HOST for LAN/WAN deployments, or set the lower
-level OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST and OPENNOW_REMOTE_COOP_TURN_URLS
-variables directly.
+The runner defaults to jayian.dev for production URLs. Override it with
+OPENNOW_REMOTE_COOP_PUBLIC_HOST for LAN deployments, or set the lower level
+OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST and OPENNOW_REMOTE_COOP_TURN_URLS variables
+directly.
 
 Useful environment:
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs
-  OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 8787
+  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default jayian.dev
+  OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 8788
   OPENNOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET   Shared TURN REST secret; generated if omitted
   OPENNOW_REMOTE_COOP_TURN_CERT            Enables turns: URL when paired with key
@@ -208,9 +199,9 @@ Useful environment:
 Examples:
   node RemoteCoOp/run-servers.mjs --dry-run
   OPENNOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 node RemoteCoOp/run-servers.mjs
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST=turn.example.com \
+  OPENNOW_REMOTE_COOP_PUBLIC_HOST=jayian.dev \
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
-  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/turn.example.com/fullchain.pem \
-  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/turn.example.com/privkey.pem \
+  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/jayian.dev/fullchain.pem \
+  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/jayian.dev/privkey.pem \
   node RemoteCoOp/run-servers.mjs`);
 }

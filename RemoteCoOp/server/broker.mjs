@@ -4,12 +4,13 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8787);
+const productionHost = "jayian.dev";
+const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8788);
 const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
 const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? "127.0.0.1";
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
 const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
-const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", "");
+const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:3478?transport=udp,turn:${productionHost}:3478?transport=tcp,turns:${productionHost}:443?transport=tcp`);
 const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
 const turnCredential = process.env.OPENNOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
 const turnSharedSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
@@ -458,7 +459,7 @@ function portCandidates(preferredPort, alternateValue) {
     ? alternateValue.split(",").map(value => Number.parseInt(value.trim(), 10))
     : [preferredPort + 1, preferredPort + 2];
   const candidates = Array.from(new Set([preferredPort, ...parsedAlternates].filter(isUsablePort)));
-  return candidates.length > 0 ? candidates : [8787, 8788, 8789];
+  return candidates.length > 0 ? candidates : [8788, 8789, 8790];
 }
 
 function isUsablePort(value) {
