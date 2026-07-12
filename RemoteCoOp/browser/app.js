@@ -318,7 +318,7 @@ function configurePeerConnection(configuration) {
   peerConnection.addEventListener("iceconnectionstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("icegatheringstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("signalingstatechange", () => updatePeerConnectionState());
-  peerConnection.addEventListener("track", event => attachRemoteTrack(event.track, event.streams[0]));
+  peerConnection.addEventListener("track", event => attachRemoteTrack(event.track));
   setNetworkState(networkLabel(), networkConfiguration.directPeerCandidateWarning || connectionDetail());
   updatePeerConnectionState();
   startStatsPolling();
@@ -619,12 +619,13 @@ function audioDescriptor(track, state) {
   return `${state}; ${track.readyState}`;
 }
 
-function attachRemoteTrack(track, stream) {
+function attachRemoteTrack(track) {
   const media = track.kind === "audio" ? remoteAudioElement() : remoteVideoElement();
   media.autoplay = true;
   media.playsInline = true;
   media.controls = false;
-  media.srcObject = stream ?? appendTrack(media.srcObject, track);
+  media.muted = track.kind === "video";
+  media.srcObject = appendTrack(media.srcObject, track);
   updateMediaDiagnostics(track, media, "attached");
   track.addEventListener("mute", () => updateMediaDiagnostics(track, media, "muted"));
   track.addEventListener("unmute", () => updateMediaDiagnostics(track, media, "live"));
