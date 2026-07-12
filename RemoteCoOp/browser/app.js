@@ -14,8 +14,13 @@ const elements = {
   gamepadDetail: document.querySelector("#gamepad-detail"),
   networkState: document.querySelector("#network-state"),
   networkDetail: document.querySelector("#network-detail"),
+  diagnosticsPanel: document.querySelector("#diagnostics-panel"),
+  diagnosticsToggle: document.querySelector("#diagnostics-toggle"),
   diagnosticsList: document.querySelector("#diagnostics-list"),
   copyDiagnosticsButton: document.querySelector("#copy-diagnostics-button"),
+  playerBadge: document.querySelector("#player-badge"),
+  playerLabel: document.querySelector("#player-label"),
+  playerNumber: document.querySelector("#player-number"),
   disconnectButton: document.querySelector("#disconnect-button")
 };
 
@@ -35,6 +40,7 @@ let peerConnection = null;
 let inputChannel = null;
 let statsHandle = 0;
 let diagnostics = initialDiagnostics();
+let sessionState = "Connecting";
 const playbackPromises = new WeakMap();
 
 elements.inviteToken.value = inviteFromURL;
@@ -43,15 +49,17 @@ renderDiagnostics();
 
 elements.inviteToken.addEventListener("input", () => renderInvite(elements.inviteToken.value));
 elements.joinButton.addEventListener("click", joinRoom);
-elements.copyDiagnosticsButton.addEventListener("click", event => {
+elements.diagnosticsToggle?.addEventListener("click", toggleDiagnostics);
+elements.copyDiagnosticsButton?.addEventListener("click", event => {
   event.preventDefault();
   event.stopPropagation();
   copyDiagnostics();
 });
 elements.disconnectButton?.addEventListener("click", disconnect);
 window.addEventListener("gamepadconnected", event => {
-  elements.gamepadName.textContent = event.gamepad.id;
-  elements.gamepadDetail.textContent = "Controller connected. Waiting for host approval.";
+  if (elements.gamepadName) elements.gamepadName.textContent = event.gamepad.id;
+  if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Controller connected. Waiting for host approval.";
+  updateDiagnostics({ input: "controller connected" });
 });
 window.addEventListener("pagehide", disconnect);
 
@@ -139,8 +147,9 @@ async function handleMessage(message) {
   if (message.kind === "participantUpdated" && sameParticipantID(message.participant?.id, participantID)) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
     if (approved) {
-      setState("Approved", `Input enabled as player ${(message.participant.playerIndex ?? 1) + 1}.`, true);
-      updateDiagnostics({ approval: "approved", playerSlot: `player ${(message.participant.playerIndex ?? 1) + 1}` });
+      const playerNumber = (message.participant.playerIndex ?? 1) + 1;
+      setState("Approved", `Input enabled as player ${playerNumber}.`, true, playerNumber);
+      updateDiagnostics({ approval: "approved", playerSlot: `player ${playerNumber}` });
       startPolling();
     } else {
       setState("Waiting", "Host approval pending.", false);
@@ -164,7 +173,7 @@ async function handleMessage(message) {
   }
   if (message.kind === "inputRejected") {
     if (!isForThisParticipant(message)) return;
-    elements.gamepadDetail.textContent = `Input rejected: ${message.inputRejection ?? "unknown"}`;
+    if (elements.gamepadDetail) elements.gamepadDetail.textContent = `Input rejected: ${message.inputRejection ?? "unknown"}`;
     updateDiagnostics({ input: `rejected: ${message.inputRejection ?? "unknown"}` });
     return;
   }
@@ -191,18 +200,18 @@ function startPolling() {
     if (!approved || socket?.readyState !== WebSocket.OPEN) return;
     const gamepad = navigator.getGamepads().find(Boolean);
     if (!gamepad) {
-      elements.gamepadName.textContent = "No gamepad detected";
-      elements.gamepadDetail.textContent = "Connect a controller and press any button.";
+      if (elements.gamepadName) elements.gamepadName.textContent = "No gamepad detected";
+      if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Connect a controller and press any button.";
       return;
     }
-    elements.gamepadName.textContent = gamepad.id;
+    if (elements.gamepadName) elements.gamepadName.textContent = gamepad.id;
     const input = inputPacket(gamepad);
     const state = inputStateKey(input);
     if (state === lastSentState && time - lastSentAt < 250) return;
     lastSentState = state;
     lastSentAt = time;
     sendInput(input);
-    elements.gamepadDetail.textContent = `Sending input sequence ${input.sequenceNumber}.`;
+    if (elements.gamepadDetail) elements.gamepadDetail.textContent = `Sending input sequence ${input.sequenceNumber}.`;
   };
   pollHandle = requestAnimationFrame(poll);
 }
@@ -403,8 +412,8 @@ function connectionDetail() {
 }
 
 function setNetworkState(title, detail) {
-  elements.networkState.textContent = title;
-  elements.networkDetail.textContent = detail;
+  if (elements.networkState) elements.networkState.textContent = title;
+  if (elements.networkDetail) elements.networkDetail.textContent = detail;
 }
 
 function initialDiagnostics() {
@@ -479,12 +488,20 @@ async function copyDiagnostics() {
   const text = diagnosticsRows().map(([label, value]) => `${label}: ${value}`).join("\n");
   try {
     await navigator.clipboard.writeText(text);
+    if (!elements.copyDiagnosticsButton) return;
     const previous = elements.copyDiagnosticsButton.textContent;
     elements.copyDiagnosticsButton.textContent = "Copied";
     setTimeout(() => { elements.copyDiagnosticsButton.textContent = previous; }, 1_200);
   } catch (error) {
     updateDiagnostics({ stats: `copy failed: ${error.message || "clipboard unavailable"}` });
   }
+}
+
+function toggleDiagnostics() {
+  if (!elements.diagnosticsPanel || !elements.diagnosticsToggle) return;
+  const isOpen = elements.diagnosticsToggle.getAttribute("aria-expanded") === "true";
+  elements.diagnosticsToggle.setAttribute("aria-expanded", String(!isOpen));
+  elements.diagnosticsPanel.hidden = isOpen;
 }
 
 function updatePeerConnectionState() {
@@ -729,7 +746,8 @@ function disconnect(notifyHost = true) {
   socket = null;
 }
 
-function setState(title, detail, connected) {
+function setState(title, detail, connected, playerNumber = null) {
+  sessionState = title;
   if (elements.state) elements.state.textContent = title;
   if (elements.detail) elements.detail.textContent = detail;
   elements.dot?.classList.toggle("connected", connected);
@@ -737,11 +755,27 @@ function setState(title, detail, connected) {
     elements.networkState.textContent = title;
     elements.networkDetail.textContent = detail;
   }
+  updatePlayerBadge(title, playerNumber);
 }
 
 function hasTerminalState() {
-  const state = elements.state?.textContent ?? elements.networkState?.textContent ?? "";
-  return ["Ended", "Rejected", "Removed"].includes(state);
+  return ["Ended", "Rejected", "Removed"].includes(sessionState);
+}
+
+function updatePlayerBadge(state, playerNumber = null) {
+  if (!elements.playerLabel || !elements.playerNumber) return;
+  if (Number.isInteger(playerNumber)) {
+    elements.playerLabel.textContent = "Controller";
+    elements.playerNumber.textContent = `P${playerNumber}`;
+    return;
+  }
+  if (["Rejected", "Removed", "Ended", "Disconnected"].includes(state)) {
+    elements.playerLabel.textContent = state;
+    elements.playerNumber.textContent = "!";
+    return;
+  }
+  elements.playerLabel.textContent = state || "Waiting";
+  elements.playerNumber.textContent = "P?";
 }
 
 function displayName() {

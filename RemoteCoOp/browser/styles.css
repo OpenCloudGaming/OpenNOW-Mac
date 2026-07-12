@@ -226,8 +226,6 @@ input::placeholder,
 textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
 
 .status,
-.meter p,
-.status-card p,
 .video-placeholder p {
   margin: 0;
   color: var(--muted);
@@ -244,33 +242,35 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
 }
 
 .session-deck {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
   display: grid;
-  gap: 14px;
+  width: 100vw;
+  height: 100svh;
+  background: #000;
 }
 
 .video-frame {
   position: relative;
   display: grid;
-  min-height: min(82svh, 900px);
+  width: 100%;
+  height: 100svh;
+  min-height: 100svh;
   overflow: hidden;
-  border: 1px solid rgba(246, 239, 227, 0.14);
-  border-radius: 34px;
+  border: 0;
+  border-radius: 0;
   background:
     radial-gradient(circle at 50% 34%, rgba(120, 216, 255, 0.12), transparent 24rem),
     #020303;
-  box-shadow: var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-.status-card strong {
-  display: block;
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1.2;
+  box-shadow: none;
 }
 
 .video-placeholder {
   display: grid;
-  min-height: min(82svh, 900px);
+  width: 100%;
+  height: 100svh;
+  min-height: 100svh;
   place-items: center;
   padding: 40px 28px;
   text-align: center;
@@ -301,43 +301,93 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
 #remote-video {
   display: block;
   width: 100%;
-  height: min(82svh, 900px);
-  min-height: 420px;
+  height: 100svh;
+  min-height: 100svh;
   background: #000;
   object-fit: contain;
 }
 
 #remote-audio { display: none; }
 
-.session-rail {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(260px, 0.78fr);
-  gap: 12px;
+.player-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 8px;
+  max-width: min(300px, calc(100% - 88px));
+  padding: 9px 12px;
+  color: var(--ink);
+  background: rgba(8, 10, 12, 0.62);
+  border: 1px solid rgba(246, 239, 227, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(18px);
 }
 
-.status-card,
+.player-badge span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.player-badge strong {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.diagnostics-toggle {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 5;
+  display: grid;
+  width: 42px;
+  min-height: 42px;
+  place-items: center;
+  color: var(--ink);
+  background: rgba(8, 10, 12, 0.72);
+  border: 1px solid rgba(246, 239, 227, 0.18);
+  border-radius: 999px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.diagnostics-toggle[aria-expanded="true"] {
+  color: #10140f;
+  background: linear-gradient(135deg, var(--blue), var(--green));
+}
+
 .diagnostics {
+  position: absolute;
+  right: 16px;
+  bottom: 68px;
+  z-index: 5;
+  width: min(620px, calc(100% - 32px));
+  max-height: min(56svh, 430px);
   min-width: 0;
   background: rgba(11, 13, 15, 0.72);
   border: 1px solid var(--line);
   border-radius: 20px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(18px);
-}
-
-.status-card {
-  display: grid;
-  gap: 6px;
-  min-height: 112px;
-  padding: 14px;
-}
-
-.status-card p {
-  font-size: 13px;
-}
-
-.diagnostics {
-  padding: 0;
 }
 
 .diagnostics-bar {
@@ -351,27 +401,17 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
 .diagnostics-bar .compact { margin-left: auto; }
 
 #diagnostics-list {
-  display: none;
+  display: grid;
   grid-template-columns: minmax(110px, 0.32fr) 1fr;
   gap: 8px 12px;
-  max-height: 0;
+  max-height: calc(min(56svh, 430px) - 62px);
   margin: 0;
-  padding: 0 14px;
+  padding: 0 14px 14px;
   overflow: auto;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.42;
-  opacity: 0;
-  transition: max-height 160ms ease, opacity 160ms ease, padding-bottom 160ms ease;
-}
-
-.diagnostics:hover #diagnostics-list,
-.diagnostics:focus-within #diagnostics-list {
-  display: grid;
-  max-height: 220px;
-  padding-bottom: 14px;
-  opacity: 1;
 }
 
 #diagnostics-list dt {
@@ -398,7 +438,9 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
     margin-top: 12px;
   }
 
-  .session-rail { grid-template-columns: 1fr; }
+  .diagnostics {
+    width: min(520px, calc(100% - 32px));
+  }
 }
 
 @media (max-width: 640px) {
@@ -419,8 +461,29 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
   .video-frame,
   .video-placeholder,
   #remote-video {
-    min-height: 58svh;
-    height: 58svh;
+    min-height: 100svh;
+    height: 100svh;
+  }
+
+  .session-deck .video-frame { border-radius: 0; }
+
+  .player-badge {
+    top: 12px;
+    left: 12px;
+    max-width: calc(100% - 76px);
+    padding: 8px 10px;
+  }
+
+  .diagnostics-toggle {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .diagnostics {
+    right: 12px;
+    bottom: 62px;
+    width: calc(100% - 24px);
+    max-height: min(62svh, 420px);
   }
 
   #diagnostics-list { grid-template-columns: 1fr; }

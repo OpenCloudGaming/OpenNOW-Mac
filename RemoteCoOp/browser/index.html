@@ -32,20 +32,12 @@
             <span>Waiting for host</span>
             <p>Video appears here after approval.</p>
           </div>
-        </div>
-
-        <div class="session-rail" aria-label="Session readiness">
-          <div class="status-card gamepad">
-            <span class="status-label">Controller</span>
-            <strong id="gamepad-name">No gamepad detected</strong>
-            <p id="gamepad-detail">Connect a controller, press any button, then keep this tab focused.</p>
+          <div class="player-badge" id="player-badge" aria-live="polite">
+            <span id="player-label">Waiting</span>
+            <strong id="player-number">P?</strong>
           </div>
-          <div class="status-card network">
-            <span class="status-label">Network</span>
-            <strong id="network-state">Network traversal pending</strong>
-            <p id="network-detail">The broker will provide ICE/STUN/TURN settings after join.</p>
-          </div>
-          <div class="diagnostics">
+          <button id="diagnostics-toggle" class="diagnostics-toggle" type="button" aria-expanded="false" aria-controls="diagnostics-panel">i</button>
+          <div class="diagnostics" id="diagnostics-panel" hidden>
             <div class="diagnostics-bar">
               <span class="status-label">Diagnostics</span>
               <button id="copy-diagnostics-button" class="secondary compact" type="button">Copy</button>
