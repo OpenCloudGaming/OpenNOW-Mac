@@ -342,6 +342,30 @@ struct WebRTCStreamingPathTests {
         #expect(snapshot.videoEnhancementDrawableResolution == "2304x1440")
     }
 
+    @Test("decoded frame resolution does not replace requested stream resolution")
+    func decodedFrameResolutionDoesNotReplaceRequestedStreamResolution() {
+        let session = OPNLibWebRTCStreamSession()
+
+        session.handleStatsReport([
+            "available": true,
+            "resolution": "2880x1800",
+            "codec": "H264",
+            "framesReceived": UInt64(12),
+            "framesDecoded": UInt64(12),
+        ])
+        session.handleStatsReport([
+            "available": true,
+            "resolution": "1152x720",
+            "codec": "H264",
+            "framesReceived": UInt64(24),
+            "framesDecoded": UInt64(24),
+        ])
+
+        let snapshot = session.latestStatsSnapshot()
+        #expect(snapshot.resolution == "2880x1800")
+        #expect(snapshot.videoEnhancementSourceResolution == "1152x720")
+    }
+
     @Test("carries display sleep prevention setting into resolved metadata")
     func carriesDisplaySleepPreventionSettingIntoResolvedMetadata() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(

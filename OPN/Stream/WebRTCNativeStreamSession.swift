@@ -473,7 +473,11 @@ final class OPNLibWebRTCStreamSession: NSObject, @unchecked Sendable {
             latestStats.framesReceived = uint64(report["framesReceived"])
             latestStats.framesDropped = uint64(report["framesDropped"])
             latestStats.packetsLost = int64(report["packetsLost"])
-            latestStats.resolution = string(report["resolution"]).isEmpty ? latestStats.resolution : string(report["resolution"])
+            let decodedResolution = string(report["resolution"])
+            if !decodedResolution.isEmpty {
+                if latestStats.resolution.isEmpty { latestStats.resolution = decodedResolution }
+                latestStats.videoEnhancementSourceResolution = decodedResolution
+            }
             latestStats.codec = string(report["codec"]).isEmpty ? latestStats.codec : string(report["codec"])
             latestStats.videoDecoder = string(report["videoDecoder"]).isEmpty ? latestStats.videoDecoder : string(report["videoDecoder"])
             latestStats.videoSink = string(report["videoSink"]).isEmpty ? latestStats.videoSink : string(report["videoSink"])
