@@ -14,6 +14,8 @@ const elements = {
   gamepadDetail: document.querySelector("#gamepad-detail"),
   networkState: document.querySelector("#network-state"),
   networkDetail: document.querySelector("#network-detail"),
+  diagnosticsList: document.querySelector("#diagnostics-list"),
+  copyDiagnosticsButton: document.querySelector("#copy-diagnostics-button"),
   disconnectButton: document.querySelector("#disconnect-button")
 };
 
@@ -31,12 +33,16 @@ let pollHandle = 0;
 let networkConfiguration = null;
 let peerConnection = null;
 let inputChannel = null;
+let statsHandle = 0;
+let diagnostics = initialDiagnostics();
 
 elements.inviteToken.value = inviteFromURL;
 renderInvite(inviteFromURL);
+renderDiagnostics();
 
 elements.inviteToken.addEventListener("input", () => renderInvite(elements.inviteToken.value));
 elements.joinButton.addEventListener("click", joinRoom);
+elements.copyDiagnosticsButton.addEventListener("click", copyDiagnostics);
 elements.disconnectButton.addEventListener("click", disconnect);
 window.addEventListener("gamepadconnected", event => {
   elements.gamepadName.textContent = event.gamepad.id;
@@ -68,10 +74,13 @@ function joinRoom() {
     return;
   }
   const endpoint = signalingEndpoint();
+  diagnostics = initialDiagnostics();
+  updateDiagnostics({ websocket: `connecting ${endpoint}`, transportMode: invite.transportMode ?? "automatic" });
   socket = new WebSocket(endpoint);
   elements.joinButton.disabled = true;
   elements.joinStatus.textContent = `Connecting to ${endpoint}`;
   socket.addEventListener("open", () => {
+    updateDiagnostics({ websocket: "open" });
     send({
       kind: "guestJoinRequested",
       roomID: invite.inviteID,
@@ -84,15 +93,26 @@ function joinRoom() {
     setState("Waiting", "Waiting for host approval.", false);
   });
   socket.addEventListener("message", event => {
-    handleMessage(JSON.parse(event.data)).catch(error => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      updateDiagnostics({ websocket: "invalid message" });
+      setNetworkState("Broker message failed", error.message || "Invalid JSON from signaling broker.");
+      return;
+    }
+    handleMessage(message).catch(error => {
       setNetworkState("Peer setup failed", error.message || "WebRTC negotiation failed.");
+      updateDiagnostics({ signaling: error.message || "WebRTC negotiation failed" });
     });
   });
   socket.addEventListener("close", () => {
     stopPolling();
+    updateDiagnostics({ websocket: "closed" });
     setState("Disconnected", "The Remote Co-Op connection closed.", false);
     elements.joinButton.disabled = false;
   });
+  socket.addEventListener("error", () => updateDiagnostics({ websocket: "error" }));
 }
 
 async function handleMessage(message) {
@@ -101,10 +121,12 @@ async function handleMessage(message) {
     return;
   }
   if (message.kind === "networkConfiguration") {
+    updateDiagnostics({ signaling: "network configuration received" });
     configurePeerConnection(message.networkConfiguration);
     return;
   }
   if (message.kind === "peerSignal") {
+    updateDiagnostics({ signaling: `peer signal ${message.peerSignal?.kind ?? "unknown"}` });
     await handlePeerSignal(message.peerSignal);
     return;
   }
@@ -112,28 +134,34 @@ async function handleMessage(message) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
     if (approved) {
       setState("Approved", `Input enabled as player ${(message.participant.playerIndex ?? 1) + 1}.`, true);
+      updateDiagnostics({ approval: "approved", playerSlot: `player ${(message.participant.playerIndex ?? 1) + 1}` });
       startPolling();
     } else {
       setState("Waiting", "Host approval pending.", false);
+      updateDiagnostics({ approval: "waiting" });
     }
     return;
   }
   if (message.kind === "participantRemoved") {
     setState("Removed", "The host removed you from the room.", false);
+    updateDiagnostics({ approval: "removed" });
     disconnect();
     return;
   }
   if (message.kind === "guestRejected") {
     setState("Rejected", message.reason ?? "The host rejected this join request.", false);
+    updateDiagnostics({ approval: `rejected: ${message.reason ?? "host rejected join"}` });
     disconnect();
     return;
   }
   if (message.kind === "inputRejected") {
     elements.gamepadDetail.textContent = `Input rejected: ${message.inputRejection ?? "unknown"}`;
+    updateDiagnostics({ input: `rejected: ${message.inputRejection ?? "unknown"}` });
     return;
   }
   if (message.kind === "inviteEnded") {
     setState("Ended", message.reason ?? "The host ended the invite.", false);
+    updateDiagnostics({ approval: `ended: ${message.reason ?? "host ended invite"}` });
     disconnect();
   }
 }
@@ -213,14 +241,30 @@ function sendInput(input) {
   const message = { kind: "guestInput", roomID: invite.inviteID, participantID, input };
   if (inputChannel?.readyState === "open") {
     inputChannel.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
+    recordInputSent(input, "data channel");
     return;
   }
-  if (networkConfiguration?.websocketInputFallbackEnabled !== false) send(message);
+  if (networkConfiguration?.websocketInputFallbackEnabled !== false) {
+    send(message);
+    recordInputSent(input, "WebSocket fallback");
+  } else {
+    updateDiagnostics({ input: "blocked: no open data channel and fallback disabled" });
+  }
 }
 
 function configurePeerConnection(configuration) {
   networkConfiguration = configuration ?? automaticFallbackConfiguration();
   closePeerConnection();
+  updateDiagnostics({
+    transportMode: networkConfiguration.transportMode ?? "automatic",
+    icePolicy: networkConfiguration.iceTransportPolicy ?? "all",
+    iceServers: describeIceServers(networkConfiguration.iceServers ?? []),
+    localCandidates: 0,
+    remoteCandidates: 0,
+    selectedRoute: "waiting",
+    inputChannel: networkConfiguration.dataChannelInputEnabled === false ? "disabled by configuration" : "creating",
+    signaling: "creating peer connection"
+  });
   const rtcConfiguration = {
     iceServers: networkConfiguration.iceServers ?? [],
     iceTransportPolicy: networkConfiguration.iceTransportPolicy ?? "all"
@@ -232,6 +276,7 @@ function configurePeerConnection(configuration) {
   peerConnection.addEventListener("datachannel", event => bindInputChannel(event.channel));
   peerConnection.addEventListener("icecandidate", event => {
     if (!event.candidate) return;
+    updateDiagnostics({ localCandidates: diagnostics.localCandidates + 1 });
     send({
       kind: "peerSignal",
       roomID: invite.inviteID,
@@ -244,43 +289,61 @@ function configurePeerConnection(configuration) {
       }
     });
   });
-  peerConnection.addEventListener("connectionstatechange", () => setNetworkState(networkLabel(), connectionDetail()));
-  peerConnection.addEventListener("iceconnectionstatechange", () => setNetworkState(networkLabel(), connectionDetail()));
+  peerConnection.addEventListener("connectionstatechange", () => updatePeerConnectionState());
+  peerConnection.addEventListener("iceconnectionstatechange", () => updatePeerConnectionState());
+  peerConnection.addEventListener("icegatheringstatechange", () => updatePeerConnectionState());
+  peerConnection.addEventListener("signalingstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("track", event => attachRemoteTrack(event.track, event.streams[0]));
   setNetworkState(networkLabel(), networkConfiguration.directPeerCandidateWarning || connectionDetail());
+  updatePeerConnectionState();
+  startStatsPolling();
 }
 
 async function handlePeerSignal(signal) {
   if (!signal) return;
   if (!peerConnection) configurePeerConnection(automaticFallbackConfiguration());
   if (signal.kind === "offer") {
+    updateDiagnostics({ signaling: "offer received" });
     await peerConnection.setRemoteDescription({ type: "offer", sdp: signal.sdp });
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
     send({ kind: "peerSignal", roomID: invite.inviteID, participantID, peerSignal: { kind: "answer", sdp: answer.sdp } });
     setNetworkState(networkLabel(), "WebRTC answer sent. Waiting for ICE connectivity.");
+    updateDiagnostics({ signaling: "answer sent" });
     return;
   }
   if (signal.kind === "answer") {
     await peerConnection.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+    updateDiagnostics({ signaling: "answer received" });
     return;
   }
   if (signal.kind === "iceCandidate" && signal.candidate) {
+    updateDiagnostics({ remoteCandidates: diagnostics.remoteCandidates + 1, signaling: "remote ICE candidate received" });
     await peerConnection.addIceCandidate({ candidate: signal.candidate, sdpMid: signal.sdpMid ?? null, sdpMLineIndex: signal.sdpMLineIndex ?? null });
   }
 }
 
 function bindInputChannel(channel) {
   inputChannel = channel;
-  channel.addEventListener("open", () => setNetworkState(networkLabel(), "Input data channel connected."));
-  channel.addEventListener("close", () => setNetworkState(networkLabel(), "Input data channel closed. WebSocket fallback remains available."));
+  updateDiagnostics({ inputChannel: `${channel.label || "input"} ${channel.readyState}` });
+  channel.addEventListener("open", () => {
+    setNetworkState(networkLabel(), "Input data channel connected.");
+    updateDiagnostics({ inputChannel: `${channel.label || "input"} open`, input: "data channel ready" });
+  });
+  channel.addEventListener("close", () => {
+    setNetworkState(networkLabel(), "Input data channel closed. WebSocket fallback remains available.");
+    updateDiagnostics({ inputChannel: `${channel.label || "input"} closed` });
+  });
+  channel.addEventListener("error", () => updateDiagnostics({ inputChannel: `${channel.label || "input"} error` }));
 }
 
 function closePeerConnection() {
+  stopStatsPolling();
   inputChannel?.close();
   inputChannel = null;
   peerConnection?.close();
   peerConnection = null;
+  updateDiagnostics({ rtcConnection: "closed", iceConnection: "closed", inputChannel: "closed" });
 }
 
 function automaticFallbackConfiguration() {
@@ -312,12 +375,238 @@ function setNetworkState(title, detail) {
   elements.networkDetail.textContent = detail;
 }
 
+function initialDiagnostics() {
+  return {
+    websocket: "idle",
+    approval: "not joined",
+    playerSlot: "unassigned",
+    transportMode: invite?.transportMode ?? "automatic",
+    icePolicy: "all",
+    iceServers: "not received",
+    rtcConnection: "not started",
+    rtcSignaling: "not started",
+    iceConnection: "not started",
+    iceGathering: "not started",
+    signaling: "idle",
+    localCandidates: 0,
+    remoteCandidates: 0,
+    selectedRoute: "not selected",
+    inputChannel: "not created",
+    input: "waiting",
+    inputPackets: 0,
+    lastInputSequence: 0,
+    lastInputSentAt: 0,
+    video: "waiting",
+    audio: "waiting",
+    stats: "waiting"
+  };
+}
+
+function updateDiagnostics(patch) {
+  diagnostics = { ...diagnostics, ...patch };
+  renderDiagnostics();
+}
+
+function renderDiagnostics() {
+  if (!elements.diagnosticsList) return;
+  const fragment = document.createDocumentFragment();
+  for (const [label, value] of diagnosticsRows()) {
+    const title = document.createElement("dt");
+    title.textContent = label;
+    const detail = document.createElement("dd");
+    detail.textContent = value;
+    fragment.append(title, detail);
+  }
+  elements.diagnosticsList.replaceChildren(fragment);
+}
+
+function diagnosticsRows() {
+  return [
+    ["WebSocket", diagnostics.websocket],
+    ["Approval", `${diagnostics.approval}; ${diagnostics.playerSlot}`],
+    ["Transport", `${diagnostics.transportMode}; policy ${diagnostics.icePolicy}; ${diagnostics.iceServers}`],
+    ["WebRTC", `connection ${diagnostics.rtcConnection}; signaling ${diagnostics.rtcSignaling}; ICE ${diagnostics.iceConnection}; gathering ${diagnostics.iceGathering}`],
+    ["Signaling", diagnostics.signaling],
+    ["Candidates", `local ${diagnostics.localCandidates}; remote ${diagnostics.remoteCandidates}`],
+    ["Selected route", diagnostics.selectedRoute],
+    ["Media", `video ${diagnostics.video}; audio ${diagnostics.audio}`],
+    ["Input", inputDiagnosticsDetail()],
+    ["Stats", diagnostics.stats]
+  ];
+}
+
+function inputDiagnosticsDetail() {
+  if (!diagnostics.lastInputSentAt) return `${diagnostics.input}; channel ${diagnostics.inputChannel}; 0 packets`;
+  const ageMilliseconds = Math.max(0, Math.round(performance.now() - diagnostics.lastInputSentAt));
+  return `${diagnostics.input}; channel ${diagnostics.inputChannel}; ${diagnostics.inputPackets} packets; last sequence ${diagnostics.lastInputSequence}; ${ageMilliseconds} ms ago`;
+}
+
+async function copyDiagnostics() {
+  const text = diagnosticsRows().map(([label, value]) => `${label}: ${value}`).join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    const previous = elements.copyDiagnosticsButton.textContent;
+    elements.copyDiagnosticsButton.textContent = "Copied";
+    setTimeout(() => { elements.copyDiagnosticsButton.textContent = previous; }, 1_200);
+  } catch (error) {
+    updateDiagnostics({ stats: `copy failed: ${error.message || "clipboard unavailable"}` });
+  }
+}
+
+function updatePeerConnectionState() {
+  if (!peerConnection) return;
+  updateDiagnostics({
+    rtcConnection: peerConnection.connectionState ?? "unknown",
+    rtcSignaling: peerConnection.signalingState ?? "unknown",
+    iceConnection: peerConnection.iceConnectionState ?? "unknown",
+    iceGathering: peerConnection.iceGatheringState ?? "unknown"
+  });
+  setNetworkState(networkLabel(), connectionDetail());
+}
+
+function recordInputSent(input, transport) {
+  updateDiagnostics({
+    input: transport,
+    inputPackets: diagnostics.inputPackets + 1,
+    lastInputSequence: input.sequenceNumber,
+    lastInputSentAt: performance.now()
+  });
+}
+
+function describeIceServers(servers) {
+  const counts = { stun: 0, turn: 0, turns: 0 };
+  for (const server of servers) {
+    for (const value of iceServerURLs(server)) {
+      if (value.startsWith("stun:")) counts.stun += 1;
+      if (value.startsWith("turn:")) counts.turn += 1;
+      if (value.startsWith("turns:")) counts.turns += 1;
+    }
+  }
+  const parts = [];
+  if (counts.stun > 0) parts.push(`${counts.stun} STUN`);
+  if (counts.turn > 0) parts.push(`${counts.turn} TURN`);
+  if (counts.turns > 0) parts.push(`${counts.turns} TURNS`);
+  return parts.length > 0 ? parts.join(", ") : "no ICE servers";
+}
+
+function iceServerURLs(server) {
+  if (Array.isArray(server.urls)) return server.urls;
+  return typeof server.urls === "string" ? [server.urls] : [];
+}
+
+function startStatsPolling() {
+  if (statsHandle) return;
+  samplePeerStats();
+  statsHandle = setInterval(samplePeerStats, 1_500);
+}
+
+function stopStatsPolling() {
+  if (!statsHandle) return;
+  clearInterval(statsHandle);
+  statsHandle = 0;
+}
+
+async function samplePeerStats() {
+  if (!peerConnection) return;
+  try {
+    const report = await peerConnection.getStats();
+    updateDiagnostics({
+      selectedRoute: selectedRouteFromStats(report),
+      stats: inboundStatsSummary(report)
+    });
+  } catch (error) {
+    updateDiagnostics({ stats: `stats failed: ${error.message || "getStats failed"}` });
+  }
+}
+
+function selectedRouteFromStats(report) {
+  let pair = null;
+  for (const stats of report.values()) {
+    if (stats.type === "transport" && stats.selectedCandidatePairId) {
+      pair = report.get(stats.selectedCandidatePairId);
+      break;
+    }
+  }
+  if (!pair) {
+    for (const stats of report.values()) {
+      if (stats.type === "candidate-pair" && (stats.selected || (stats.nominated && stats.state === "succeeded"))) {
+        pair = stats;
+        break;
+      }
+    }
+  }
+  if (!pair) return diagnostics.selectedRoute;
+  const local = report.get(pair.localCandidateId);
+  const remote = report.get(pair.remoteCandidateId);
+  const rtt = typeof pair.currentRoundTripTime === "number" ? `; RTT ${Math.round(pair.currentRoundTripTime * 1_000)} ms` : "";
+  return `${candidateSummary(local)} -> ${candidateSummary(remote)}${rtt}`;
+}
+
+function candidateSummary(candidate) {
+  if (!candidate) return "unknown";
+  const type = candidate.candidateType ?? "candidate";
+  const protocol = candidate.protocol ? `/${candidate.protocol}` : "";
+  const relay = candidate.relayProtocol ? `/${candidate.relayProtocol}` : "";
+  return `${type}${protocol}${relay}`;
+}
+
+function inboundStatsSummary(report) {
+  const parts = [];
+  for (const stats of report.values()) {
+    if (stats.type !== "inbound-rtp" || stats.isRemote) continue;
+    const kind = stats.kind ?? stats.mediaType;
+    if (kind === "video") parts.push(videoStatsSummary(stats));
+    if (kind === "audio") parts.push(audioStatsSummary(stats));
+  }
+  return parts.length > 0 ? parts.join("; ") : diagnostics.stats;
+}
+
+function videoStatsSummary(stats) {
+  const size = stats.frameWidth && stats.frameHeight ? `${stats.frameWidth}x${stats.frameHeight}` : "size pending";
+  const fps = typeof stats.framesPerSecond === "number" ? `${Math.round(stats.framesPerSecond)} fps` : "fps pending";
+  const loss = stats.packetsLost > 0 ? `, ${stats.packetsLost} lost` : "";
+  return `video ${size} ${fps}, ${formatBytes(stats.bytesReceived ?? 0)} received${loss}`;
+}
+
+function audioStatsSummary(stats) {
+  const jitter = typeof stats.jitter === "number" ? `, jitter ${Math.round(stats.jitter * 1_000)} ms` : "";
+  const loss = stats.packetsLost > 0 ? `, ${stats.packetsLost} lost` : "";
+  return `audio ${formatBytes(stats.bytesReceived ?? 0)} received${jitter}${loss}`;
+}
+
+function formatBytes(value) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)} KB`;
+  return `${value} B`;
+}
+
+function updateMediaDiagnostics(track, media, state) {
+  const descriptor = track.kind === "video" ? videoDescriptor(media, state) : audioDescriptor(track, state);
+  updateDiagnostics(track.kind === "video" ? { video: descriptor } : { audio: descriptor });
+}
+
+function videoDescriptor(media, state) {
+  const size = media.videoWidth && media.videoHeight ? ` ${media.videoWidth}x${media.videoHeight}` : "";
+  return `${state}${size}`;
+}
+
+function audioDescriptor(track, state) {
+  return `${state}; ${track.readyState}`;
+}
+
 function attachRemoteTrack(track, stream) {
   const media = track.kind === "audio" ? remoteAudioElement() : remoteVideoElement();
   media.autoplay = true;
   media.playsInline = true;
   media.controls = false;
   media.srcObject = stream ?? appendTrack(media.srcObject, track);
+  updateMediaDiagnostics(track, media, "attached");
+  track.addEventListener("mute", () => updateMediaDiagnostics(track, media, "muted"));
+  track.addEventListener("unmute", () => updateMediaDiagnostics(track, media, "live"));
+  track.addEventListener("ended", () => updateMediaDiagnostics(track, media, "ended"));
+  media.addEventListener("loadedmetadata", () => updateMediaDiagnostics(track, media, "metadata loaded"));
+  const playback = media.play?.();
+  playback?.catch(error => updateMediaDiagnostics(track, media, `autoplay blocked: ${error.message || "user gesture required"}`));
 }
 
 function remoteVideoElement() {
@@ -325,7 +614,9 @@ function remoteVideoElement() {
   if (existing) return existing;
   const media = document.createElement("video");
   media.id = "remote-video";
-  document.querySelector(".video-placeholder")?.replaceChildren(media);
+  const container = document.querySelector(".video-placeholder");
+  container?.classList.add("streaming");
+  container?.replaceChildren(media);
   return media;
 }
 

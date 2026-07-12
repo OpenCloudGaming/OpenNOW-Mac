@@ -119,6 +119,13 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
+.compact {
+  width: auto;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .status,
 .meter p,
 .gamepad p,
@@ -147,7 +154,8 @@ button:disabled {
 
 .gamepad,
 .network,
-.video-placeholder {
+.video-placeholder,
+.diagnostics {
   padding: 16px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.045);
@@ -167,7 +175,55 @@ button:disabled {
   letter-spacing: -0.07em;
 }
 
+.video-placeholder.streaming {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+#remote-video {
+  width: 100%;
+  max-height: min(62vh, 520px);
+  background: #000;
+}
+
+#remote-audio {
+  display: none;
+}
+
+.diagnostics {
+  display: grid;
+  gap: 12px;
+}
+
+.diagnostics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#diagnostics-list {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.34fr) 1fr;
+  gap: 9px 14px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#diagnostics-list dt {
+  color: var(--green-soft);
+  font-weight: 800;
+}
+
+#diagnostics-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 640px) {
   .shell { padding: 28px 0; }
   .card { padding: 16px; }
+  #diagnostics-list { grid-template-columns: 1fr; }
 }

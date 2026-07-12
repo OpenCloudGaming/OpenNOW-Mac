@@ -205,6 +205,7 @@ Local validation:
 9. Verify guest video renders.
 10. Verify guest audio plays game audio.
 11. Verify guest input controls the native GFN session.
+12. Check the browser diagnostics panel for WebRTC `connected`, a selected ICE route, inbound audio/video stats, and input packets using the data channel.
 
 WAN validation:
 
@@ -214,6 +215,20 @@ WAN validation:
 4. Test host and guest on different networks.
 5. Repeat in Automatic mode.
 6. Repeat in Relay Only mode.
+7. Use the browser diagnostics copy button to capture candidate route, RTT, media stats, and input transport for failures.
+
+## Browser Diagnostics
+
+The browser guest page includes a connection diagnostics panel after joining a room. It reports:
+
+- WebSocket broker state and host approval state.
+- Transport mode, ICE policy, configured STUN/TURN/TURNS counts, and local/remote candidate counts.
+- WebRTC connection, signaling, ICE connection, and ICE gathering state.
+- Selected candidate route by candidate type/protocol without printing raw IP addresses.
+- Inbound video/audio stats, including dimensions, FPS, bytes received, jitter, packet loss, and route RTT when the browser exposes them.
+- Input transport, packet count, last sequence number, and whether input is using the data channel or WebSocket fallback.
+
+Use the Copy button when reporting E2E failures. Avoid sharing invite tokens or raw SDP separately.
 
 ## Security Notes
 

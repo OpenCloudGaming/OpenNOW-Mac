@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OpenNOW Remote Co-Op</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -40,8 +41,15 @@
           <p id="network-detail">The broker will provide ICE/STUN/TURN settings after join.</p>
         </div>
         <div class="video-placeholder">
-          <span>Stream relay pending</span>
-          <p>This guest client is ready for host media tracks when the macOS app exposes them.</p>
+          <span>Waiting for stream</span>
+          <p>Video appears here after host approval and WebRTC negotiation.</p>
+        </div>
+        <div class="diagnostics">
+          <div class="diagnostics-header">
+            <strong>Connection diagnostics</strong>
+            <button id="copy-diagnostics-button" class="secondary compact" type="button">Copy</button>
+          </div>
+          <dl id="diagnostics-list"></dl>
         </div>
         <button id="disconnect-button" class="secondary">Disconnect</button>
       </section>
