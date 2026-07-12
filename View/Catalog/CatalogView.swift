@@ -773,8 +773,8 @@ private struct CatalogTopBar: View {
                         .frame(height: 40, alignment: .center)
                     Spacer()
                 }
-                .frame(height: CatalogVendorLayout.appBarHeight, alignment: .center)
-                .padding(.leading, 84)
+                .frame(maxWidth: .infinity, minHeight: CatalogVendorLayout.appBarHeight, alignment: .leading)
+                .padding(.leading, 22)
 
                 if viewModel.selectedMainPage == .games {
                     catalogSearchField
