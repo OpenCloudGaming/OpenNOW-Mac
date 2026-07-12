@@ -4,7 +4,6 @@ const elements = {
   joinCard: document.querySelector("#join-card"),
   sessionCard: document.querySelector("#session-card"),
   displayName: document.querySelector("#display-name"),
-  inviteToken: document.querySelector("#invite-token"),
   joinButton: document.querySelector("#join-button"),
   joinStatus: document.querySelector("#join-status"),
   state: document.querySelector("#session-state"),
@@ -25,6 +24,7 @@ const elements = {
 
 const url = new URL(window.location.href);
 const inviteFromURL = url.searchParams.get("invite") ?? "";
+const inviteToken = inviteFromURL.trim();
 const serverFromURL = url.searchParams.get("server") ?? "";
 let socket = null;
 let invite = null;
@@ -43,11 +43,9 @@ let diagnostics = initialDiagnostics();
 let sessionState = "Connecting";
 const playbackPromises = new WeakMap();
 
-elements.inviteToken.value = inviteFromURL;
-renderInvite(inviteFromURL);
+renderInvite(inviteToken);
 renderDiagnostics();
 
-elements.inviteToken.addEventListener("input", () => renderInvite(elements.inviteToken.value));
 elements.joinButton.addEventListener("click", joinRoom);
 elements.diagnosticsToggle?.addEventListener("click", toggleDiagnostics);
 elements.copyDiagnosticsButton?.addEventListener("click", event => {
@@ -68,19 +66,21 @@ function renderInvite(token) {
   invite = decodeInvite(token);
   if (!invite) {
     if (elements.title) elements.title.textContent = "Join a cloud couch session";
-    if (elements.subtitle) elements.subtitle.textContent = "Paste an invite token or open the link your host sent.";
-    elements.joinStatus.textContent = "Waiting for invite.";
+    if (elements.subtitle) elements.subtitle.textContent = "Open the invite link your host sent.";
+    elements.joinStatus.textContent = inviteToken ? "Invite link is invalid." : "Waiting for invite link.";
+    elements.joinButton.disabled = true;
     return;
   }
   if (elements.title) elements.title.textContent = invite.title ? `Join ${invite.title}` : "Join this Remote Co-Op room";
   if (elements.subtitle) elements.subtitle.textContent = `Room ${invite.code ?? invite.inviteID}. ${invite.requireHostApproval ? "Host approval required." : "Input starts after connection."}`;
   elements.joinStatus.textContent = "Invite loaded. Enter a name and join.";
+  elements.joinButton.disabled = false;
 }
 
 function joinRoom() {
-  invite = decodeInvite(elements.inviteToken.value);
+  invite = decodeInvite(inviteToken);
   if (!invite) {
-    elements.joinStatus.textContent = "Invite token is malformed.";
+    elements.joinStatus.textContent = "Invite link is invalid.";
     return;
   }
   if (invite.expiresAtEpochSeconds * 1000 <= Date.now()) {
@@ -99,7 +99,7 @@ function joinRoom() {
       kind: "guestJoinRequested",
       roomID: invite.inviteID,
       participantID,
-      inviteToken: elements.inviteToken.value.trim(),
+      inviteToken,
       displayName: displayName()
     });
     elements.joinCard.classList.add("hidden");
