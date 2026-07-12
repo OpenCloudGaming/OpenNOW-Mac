@@ -282,6 +282,10 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[0]
     public var upscalingTargetOption = OPNStreamPreferences.upscalingTargetOptions[1]
 
+    public var allowsStreamingCustomization: Bool {
+        streamingQualityProfileIndex == 0
+    }
+
     public var aspectRatio: Double {
         aspect.heightRatio > 0 ? Double(aspect.widthRatio) / Double(aspect.heightRatio) : 16.0 / 9.0
     }
@@ -364,6 +368,23 @@ public enum OPNStreamPreferences {
     private static let defaultUpscalingTargetIndex = 1
     private static let maxConcurrentRegionMeasurements = 4
     private static let k = Keys.self
+    private struct StreamingQualityPreset {
+        let aspectIndex: Int
+        let resolutionIndex: Int
+        let fpsIndex: Int
+        let codecIndex: Int
+        let bitrateIndex: Int
+        let colorQualityIndex: Int
+        let transportModeIndex: Int
+        let cloudGsyncEnabled: Bool
+        let fallbackToLogicalResolution: Bool
+        let hudStreamingModeIndex: Int
+        let sdrColorSpaceIndex: Int
+        let hdrColorSpaceIndex: Int
+        let l4sEnabled: Bool
+        let hdrEnabled: Bool
+        let powerSaverEnabled: Bool
+    }
     private static let streamingProfileKeys = [
         Keys.aspectIndex,
         Keys.resolutionIndex,
@@ -883,7 +904,14 @@ public enum OPNStreamPreferences {
     public static func saveColorQualityIndex(_ value: Int) { storage.set(clamp(value, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex) }
     public static func saveTransportModeIndex(_ value: Int) { storage.set(clamp(value, 0, transportModeOptions.count - 1), forKey: k.transportModeIndex) }
     public static func saveNVSTTransportEnabled(_ value: Bool) { saveTransportModeIndex(value ? 1 : 0) }
-    public static func saveStreamingQualityProfileIndex(_ value: Int) { storage.set(clamp(value, 0, streamingQualityProfileOptions.count - 1), forKey: k.streamingQualityProfileIndex) }
+    public static func saveStreamingQualityProfileIndex(_ value: Int) {
+        let index = clamp(value, 0, streamingQualityProfileOptions.count - 1)
+        storage.set(index, forKey: k.streamingQualityProfileIndex)
+        if let preset = streamingQualityPreset(for: index) {
+            saveStreamingQualityPreset(preset)
+        }
+        storage.synchronize()
+    }
     public static func saveCloudGsyncEnabled(_ value: Bool) { storage.set(value, forKey: k.cloudGsyncEnabled) }
     public static func saveFallbackToLogicalResolution(_ value: Bool) { storage.set(value, forKey: k.fallbackToLogicalResolution) }
     public static func saveHudStreamingModeIndex(_ value: Int) { storage.set(clamp(value, 0, hudStreamingModeOptions.count - 1), forKey: k.hudStreamingModeIndex) }
@@ -1016,6 +1044,9 @@ public enum OPNStreamPreferences {
         profile.microphonePushToTalkKeyLabel = microphonePushToTalkKeyLabel(profile.microphonePushToTalkKeyCode)
         profile.microphonePushToTalkComboLabel = microphonePushToTalkComboLabel(keyCode: profile.microphonePushToTalkKeyCode, modifierMask: profile.microphonePushToTalkModifierMask)
         profile.selectedRegionUrl = string(value(dictionary, k.selectedRegionUrl), "")
+        if let preset = streamingQualityPreset(for: profile.streamingQualityProfileIndex) {
+            applyStreamingQualityPreset(preset, to: &profile)
+        }
         return profile
     }
 
@@ -1077,6 +1108,74 @@ public enum OPNStreamPreferences {
             fallbackFps = fps
         }
         return fallbackIndex
+    }
+
+    private static func streamingQualityPreset(for index: Int) -> StreamingQualityPreset? {
+        switch index {
+        case 1:
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 1, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: false)
+        case 2:
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 2, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: true, hdrEnabled: false, powerSaverEnabled: false)
+        case 3:
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 0, fpsIndex: 0, codecIndex: 0, bitrateIndex: 0, colorQualityIndex: 0, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: true)
+        case 4:
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 5, fpsIndex: 1, codecIndex: 3, bitrateIndex: 3, colorQualityIndex: 2, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 2, l4sEnabled: false, hdrEnabled: true, powerSaverEnabled: false)
+        default:
+            return nil
+        }
+    }
+
+    private static func applyStreamingQualityPreset(_ preset: StreamingQualityPreset, to profile: inout OPNStreamPreferenceProfile) {
+        profile.aspectIndex = clamp(preset.aspectIndex, 0, aspectOptions.count - 1)
+        profile.aspect = aspectOptions[profile.aspectIndex]
+        let resolutions = resolutionOptions(forAspect: profile.aspectIndex)
+        profile.resolutionIndex = clamp(preset.resolutionIndex, 0, resolutions.count - 1)
+        profile.resolution = resolutions[profile.resolutionIndex]
+        profile.fpsIndex = clamp(preset.fpsIndex, 0, fpsOptions.count - 1)
+        profile.fps = fpsOptions[profile.fpsIndex]
+        profile.codecIndex = clamp(preset.codecIndex, 0, codecOptions.count - 1)
+        profile.codec = codecOptions[profile.codecIndex]
+        profile.bitrateIndex = clamp(preset.bitrateIndex, 0, bitrateOptions.count - 1)
+        profile.bitrate = bitrateOptions[profile.bitrateIndex]
+        profile.maxBitrateMbps = profile.bitrate.mbps
+        profile.colorQualityIndex = clamp(preset.colorQualityIndex, 0, colorQualityOptions.count - 1)
+        profile.colorQuality = colorQualityOptions[profile.colorQualityIndex]
+        profile.transportModeIndex = clamp(preset.transportModeIndex, 0, transportModeOptions.count - 1)
+        profile.transportMode = transportModeOptions[profile.transportModeIndex]
+        profile.enableCloudGsync = preset.cloudGsyncEnabled
+        profile.fallbackToLogicalResolution = preset.fallbackToLogicalResolution
+        profile.hudStreamingModeIndex = clamp(preset.hudStreamingModeIndex, 0, hudStreamingModeOptions.count - 1)
+        profile.hudStreamingModeOption = hudStreamingModeOptions[profile.hudStreamingModeIndex]
+        profile.hudStreamingMode = profile.hudStreamingModeOption.value
+        profile.sdrColorSpaceIndex = clamp(preset.sdrColorSpaceIndex, 0, colorSpaceOptions.count - 1)
+        profile.sdrColorSpaceOption = colorSpaceOptions[profile.sdrColorSpaceIndex]
+        profile.sdrColorSpace = profile.sdrColorSpaceOption.value
+        profile.hdrColorSpaceIndex = clamp(preset.hdrColorSpaceIndex, 0, colorSpaceOptions.count - 1)
+        profile.hdrColorSpaceOption = colorSpaceOptions[profile.hdrColorSpaceIndex]
+        profile.hdrColorSpace = profile.hdrColorSpaceOption.value
+        profile.enableL4S = preset.l4sEnabled
+        profile.enableHdr = preset.hdrEnabled
+        profile.enablePowerSaver = preset.powerSaverEnabled
+    }
+
+    private static func saveStreamingQualityPreset(_ preset: StreamingQualityPreset) {
+        let aspectIndex = clamp(preset.aspectIndex, 0, aspectOptions.count - 1)
+        let resolutionIndex = clamp(preset.resolutionIndex, 0, resolutionOptions(forAspect: aspectIndex).count - 1)
+        storage.set(aspectIndex, forKey: k.aspectIndex)
+        storage.set(resolutionIndex, forKey: k.resolutionIndex)
+        storage.set(clamp(preset.fpsIndex, 0, fpsOptions.count - 1), forKey: k.fpsIndex)
+        storage.set(clamp(preset.codecIndex, 0, codecOptions.count - 1), forKey: k.codecIndex)
+        storage.set(clamp(preset.bitrateIndex, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex)
+        storage.set(clamp(preset.colorQualityIndex, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex)
+        storage.set(clamp(preset.transportModeIndex, 0, transportModeOptions.count - 1), forKey: k.transportModeIndex)
+        storage.set(preset.cloudGsyncEnabled, forKey: k.cloudGsyncEnabled)
+        storage.set(preset.fallbackToLogicalResolution, forKey: k.fallbackToLogicalResolution)
+        storage.set(clamp(preset.hudStreamingModeIndex, 0, hudStreamingModeOptions.count - 1), forKey: k.hudStreamingModeIndex)
+        storage.set(clamp(preset.sdrColorSpaceIndex, 0, colorSpaceOptions.count - 1), forKey: k.sdrColorSpaceIndex)
+        storage.set(clamp(preset.hdrColorSpaceIndex, 0, colorSpaceOptions.count - 1), forKey: k.hdrColorSpaceIndex)
+        storage.set(preset.l4sEnabled, forKey: k.l4sEnabled)
+        storage.set(preset.hdrEnabled, forKey: k.hdrEnabled)
+        storage.set(preset.powerSaverEnabled, forKey: k.powerSaverEnabled)
     }
 
     private static func applyDefaultUpscalingTarget(_ profile: inout OPNStreamPreferenceProfile) {

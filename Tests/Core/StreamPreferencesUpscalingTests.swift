@@ -56,6 +56,56 @@ import Testing
         }
     }
 
+    @Test func qualityProfilesApplyAndLockPresetStreamingValues() {
+        withPreservedPreferences(streamingProfileKeys) {
+            OPNStreamPreferences.restoreStreamingProfileDefaults()
+
+            OPNStreamPreferences.saveStreamingQualityProfileIndex(3)
+
+            var profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.streamingQualityProfileIndex == 3)
+            #expect(profile.streamingQualityProfileOption.label == "Data Saver")
+            #expect(!profile.allowsStreamingCustomization)
+            #expect(profile.aspectIndex == 1)
+            #expect(profile.resolution.width == 1280)
+            #expect(profile.resolution.height == 800)
+            #expect(profile.fps == 30)
+            #expect(profile.maxBitrateMbps == 15)
+            #expect(profile.enablePowerSaver)
+
+            OPNStreamPreferences.saveResolutionIndex(5)
+            OPNStreamPreferences.saveFpsIndex(2)
+            profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.resolution.width == 1280)
+            #expect(profile.resolution.height == 800)
+            #expect(profile.fps == 30)
+
+            OPNStreamPreferences.saveStreamingQualityProfileIndex(0)
+            profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.streamingQualityProfileIndex == 0)
+            #expect(profile.allowsStreamingCustomization)
+        }
+    }
+
+    @Test func cinematicQualityProfileAppliesHighQualityPreset() {
+        withPreservedPreferences(streamingProfileKeys) {
+            OPNStreamPreferences.restoreStreamingProfileDefaults()
+
+            OPNStreamPreferences.saveStreamingQualityProfileIndex(4)
+
+            let profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.streamingQualityProfileIndex == 4)
+            #expect(profile.streamingQualityProfileOption.label == "Cinematic")
+            #expect(profile.resolution.width == 2880)
+            #expect(profile.resolution.height == 1800)
+            #expect(profile.fps == 60)
+            #expect(profile.codec.value == "auto")
+            #expect(profile.maxBitrateMbps == 75)
+            #expect(profile.colorQuality.value == "10bit_420")
+            #expect(profile.enableHdr)
+        }
+    }
+
     @Test func defaultsUpscalingOffWithClarityTen() {
         withPreservedPreferences([upscalingModeIndexKey, upscalingSharpnessKey]) {
             removePreferenceValue(upscalingModeIndexKey)
@@ -167,6 +217,27 @@ import Testing
             defaults.synchronize()
         }
         body()
+    }
+
+    private var streamingProfileKeys: [String] {
+        [
+            "OpenNOW.Stream.AspectIndex",
+            "OpenNOW.Stream.ResolutionIndex",
+            "OpenNOW.Stream.FpsIndex",
+            "OpenNOW.Stream.CodecIndex",
+            "OpenNOW.Stream.BitrateIndex",
+            "OpenNOW.Stream.ColorQualityIndex",
+            "OpenNOW.Stream.TransportModeIndex",
+            "OpenNOW.Stream.StreamingQualityProfileIndex",
+            "OpenNOW.Stream.CloudGsyncEnabled",
+            "OpenNOW.Stream.FallbackToLogicalResolution",
+            "OpenNOW.Stream.HudStreamingModeIndex",
+            "OpenNOW.Stream.SDRColorSpaceIndex",
+            "OpenNOW.Stream.HDRColorSpaceIndex",
+            "OpenNOW.Stream.L4SEnabled",
+            "OpenNOW.Stream.HDREnabled",
+            "OpenNOW.Stream.PowerSaverEnabled",
+        ]
     }
 
     private func removePreferenceValue(_ key: String) {

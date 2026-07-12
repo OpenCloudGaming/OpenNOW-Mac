@@ -761,19 +761,22 @@ private struct CatalogTopBar: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack {
-                HStack(spacing: 18) {
+            ZStack(alignment: .center) {
+                HStack(alignment: .center, spacing: 14) {
                     Button { showsMainMenu.toggle() } label: {
                         CatalogHamburgerLabel(isOpen: showsMainMenu)
                     }
+                    .frame(width: 44, height: 40)
                     .buttonStyle(.plain)
                     .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                     Text(mainPageTitle)
                         .font(.nvidia(size: 17, weight: .medium))
                         .foregroundStyle(.white.opacity(0.92))
+                        .frame(height: 40, alignment: .center)
                     Spacer()
                 }
-                .padding(.leading, 86)
+                .frame(height: CatalogVendorLayout.appBarHeight, alignment: .center)
+                .padding(.leading, 84)
 
                 if viewModel.selectedMainPage == .games {
                     catalogSearchField
@@ -816,6 +819,7 @@ private struct CatalogTopBar: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .frame(height: CatalogVendorLayout.appBarHeight, alignment: .center)
                 .padding(.trailing, 22)
             }
         }

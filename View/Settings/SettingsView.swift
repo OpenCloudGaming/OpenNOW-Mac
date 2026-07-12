@@ -1173,6 +1173,7 @@ private struct GameplaySettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
 
     var body: some View {
+        let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
         VStack(alignment: .leading, spacing: 16) {
             SettingsCard(title: "Streaming Profile") {
                 GameplayProfileOverview(
@@ -1187,41 +1188,41 @@ private struct GameplaySettingsPage: View {
             }
 
             SettingsCard(title: "Streaming Quality") {
-                SettingsOptionRow(title: "Aspect Ratio", subtitle: "Controls the available resolution list.", options: OPNStreamPreferences.aspectOptions.map(\.label), selectedIndex: viewModel.streamProfile.aspectIndex, action: viewModel.setAspectIndex)
+                SettingsOptionRow(title: "Aspect Ratio", subtitle: qualityLocked ? lockedProfileSubtitle : "Controls the available resolution list.", options: OPNStreamPreferences.aspectOptions.map(\.label), selectedIndex: viewModel.streamProfile.aspectIndex, isLocked: qualityLocked, action: viewModel.setAspectIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "Resolution", subtitle: "Current target: \(viewModel.streamProfile.resolution.label).", options: OPNStreamPreferences.resolutionOptions(forAspect: viewModel.streamProfile.aspectIndex).map(\.label), selectedIndex: viewModel.streamProfile.resolutionIndex, action: viewModel.setResolutionIndex)
+                SettingsOptionRow(title: "Resolution", subtitle: qualityLocked ? lockedProfileSubtitle : "Current target: \(viewModel.streamProfile.resolution.label).", options: OPNStreamPreferences.resolutionOptions(forAspect: viewModel.streamProfile.aspectIndex).map(\.label), selectedIndex: viewModel.streamProfile.resolutionIndex, isLocked: qualityLocked, action: viewModel.setResolutionIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "Frame Rate", subtitle: "Limited by the active display refresh rate.", options: OPNStreamPreferences.fpsOptions.map { "\($0) FPS" }, selectedIndex: viewModel.streamProfile.fpsIndex, enabled: OPNStreamPreferences.fpsOptions.map { OPNStreamPreferences.fpsSupported($0, capabilities: viewModel.streamCapabilities) }, action: viewModel.setFpsIndex)
+                SettingsOptionRow(title: "Frame Rate", subtitle: qualityLocked ? lockedProfileSubtitle : "Limited by the active display refresh rate.", options: OPNStreamPreferences.fpsOptions.map { "\($0) FPS" }, selectedIndex: viewModel.streamProfile.fpsIndex, enabled: OPNStreamPreferences.fpsOptions.map { OPNStreamPreferences.fpsSupported($0, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, action: viewModel.setFpsIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "Codec", subtitle: "Unavailable hardware codecs are disabled.", options: OPNStreamPreferences.codecOptions.map(\.label), selectedIndex: viewModel.streamProfile.codecIndex, enabled: OPNStreamPreferences.codecOptions.map { OPNStreamPreferences.codecSupported($0, capabilities: viewModel.streamCapabilities) }, action: viewModel.setCodecIndex)
+                SettingsOptionRow(title: "Codec", subtitle: qualityLocked ? lockedProfileSubtitle : "Unavailable hardware codecs are disabled.", options: OPNStreamPreferences.codecOptions.map(\.label), selectedIndex: viewModel.streamProfile.codecIndex, enabled: OPNStreamPreferences.codecOptions.map { OPNStreamPreferences.codecSupported($0, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, action: viewModel.setCodecIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "Maximum Bitrate", subtitle: "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, action: viewModel.setBitrateIndex)
+                SettingsOptionRow(title: "Maximum Bitrate", subtitle: qualityLocked ? lockedProfileSubtitle : "Higher bitrate improves clarity on stable connections.", options: OPNStreamPreferences.bitrateOptions.map(\.label), selectedIndex: viewModel.streamProfile.bitrateIndex, isLocked: qualityLocked, action: viewModel.setBitrateIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "Color Precision", subtitle: "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, action: viewModel.setColorQualityIndex)
+                SettingsOptionRow(title: "Color Precision", subtitle: qualityLocked ? lockedProfileSubtitle : "10-bit modes require HEVC, AV1, or Auto support.", options: OPNStreamPreferences.colorQualityOptions.map(\.label), selectedIndex: viewModel.streamProfile.colorQualityIndex, enabled: OPNStreamPreferences.colorQualityOptions.map { OPNStreamPreferences.colorQualitySupported($0, codec: viewModel.streamProfile.codec, capabilities: viewModel.streamCapabilities) }, isLocked: qualityLocked, action: viewModel.setColorQualityIndex)
             }
 
             SettingsCard(title: "Stream Transport") {
-                SettingsToggleRow(title: "NVST Transport", subtitle: "Off requests WebRTC transport. On requests NVST secure RTSP transport from CloudMatch.", isOn: viewModel.streamProfile.transportMode.value == "nvst", action: viewModel.setNVSTTransportEnabled)
+                SettingsToggleRow(title: "NVST Transport", subtitle: qualityLocked ? lockedProfileSubtitle : "Off requests WebRTC transport. On requests NVST secure RTSP transport from CloudMatch.", isOn: viewModel.streamProfile.transportMode.value == "nvst", isLocked: qualityLocked, action: viewModel.setNVSTTransportEnabled)
                 SettingsDivider()
                 SettingsOptionRow(title: "Quality Profile", subtitle: "Maps to the vendor streaming profile sent with the session request.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, action: viewModel.setStreamingQualityProfileIndex)
                 SettingsDivider()
-                SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, action: viewModel.setCloudGsyncEnabled)
+                SettingsToggleRow(title: "Cloud G-Sync", subtitle: qualityLocked ? lockedProfileSubtitle : "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isLocked: qualityLocked, action: viewModel.setCloudGsyncEnabled)
                 SettingsDivider()
-                SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, action: viewModel.setFallbackToLogicalResolution)
+                SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: qualityLocked ? lockedProfileSubtitle : "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, isLocked: qualityLocked, action: viewModel.setFallbackToLogicalResolution)
                 SettingsDivider()
-                SettingsOptionRow(title: "HUD Stream", subtitle: "Controls vendor HUD streaming metadata mode.", options: OPNStreamPreferences.hudStreamingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.hudStreamingModeIndex, action: viewModel.setHudStreamingModeIndex)
+                SettingsOptionRow(title: "HUD Stream", subtitle: qualityLocked ? lockedProfileSubtitle : "Controls vendor HUD streaming metadata mode.", options: OPNStreamPreferences.hudStreamingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.hudStreamingModeIndex, isLocked: qualityLocked, action: viewModel.setHudStreamingModeIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "SDR Color Space", subtitle: "Requested SDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.sdrColorSpaceIndex, action: viewModel.setSDRColorSpaceIndex)
+                SettingsOptionRow(title: "SDR Color Space", subtitle: qualityLocked ? lockedProfileSubtitle : "Requested SDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.sdrColorSpaceIndex, isLocked: qualityLocked, action: viewModel.setSDRColorSpaceIndex)
                 SettingsDivider()
-                SettingsOptionRow(title: "HDR Color Space", subtitle: "Requested HDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.hdrColorSpaceIndex, action: viewModel.setHDRColorSpaceIndex)
+                SettingsOptionRow(title: "HDR Color Space", subtitle: qualityLocked ? lockedProfileSubtitle : "Requested HDR color-space metadata.", options: OPNStreamPreferences.colorSpaceOptions.map(\.label), selectedIndex: viewModel.streamProfile.hdrColorSpaceIndex, isLocked: qualityLocked, action: viewModel.setHDRColorSpaceIndex)
             }
 
             SettingsCard(title: "Gameplay") {
-                SettingsToggleRow(title: "L4S", subtitle: "Use low-latency scalable throughput when available.", isOn: viewModel.streamProfile.enableL4S, action: viewModel.setL4SEnabled)
+                SettingsToggleRow(title: "L4S", subtitle: qualityLocked ? lockedProfileSubtitle : "Use low-latency scalable throughput when available.", isOn: viewModel.streamProfile.enableL4S, isLocked: qualityLocked, action: viewModel.setL4SEnabled)
                 SettingsDivider()
-                SettingsToggleRow(title: "HDR", subtitle: "Requires a compatible display and stream capability.", isOn: viewModel.streamProfile.enableHdr, action: viewModel.setHDREnabled)
+                SettingsToggleRow(title: "HDR", subtitle: qualityLocked ? lockedProfileSubtitle : "Requires a compatible display and stream capability.", isOn: viewModel.streamProfile.enableHdr, isLocked: qualityLocked, action: viewModel.setHDREnabled)
                 SettingsDivider()
-                SettingsToggleRow(title: "Power Saver", subtitle: "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, action: viewModel.setPowerSaverEnabled)
+                SettingsToggleRow(title: "Power Saver", subtitle: qualityLocked ? lockedProfileSubtitle : "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, isLocked: qualityLocked, action: viewModel.setPowerSaverEnabled)
                 SettingsDivider()
                 SettingsToggleRow(title: "Prevent Display Sleep", subtitle: "Keeps the monitor awake while a stream is active.", isOn: viewModel.streamProfile.preventDisplaySleepWhileStreaming, action: viewModel.setPreventDisplaySleepWhileStreaming)
                 SettingsDivider()
@@ -1283,7 +1284,11 @@ private struct GameplaySettingsPage: View {
     }
 
     private var streamingProfileMode: String {
-        viewModel.streamProfile == OPNStreamPreferenceProfile() ? "Balanced defaults" : "Custom"
+        viewModel.streamProfile.allowsStreamingCustomization ? "Custom" : "\(viewModel.streamProfile.streamingQualityProfileOption.label) preset"
+    }
+
+    private var lockedProfileSubtitle: String {
+        "Managed by the \(viewModel.streamProfile.streamingQualityProfileOption.label) quality profile. Select Custom to edit."
     }
 
     private var estimatedDataUsage: String {
@@ -2144,6 +2149,7 @@ private struct SettingsOptionRow: View {
     let options: [String]
     let selectedIndex: Int
     var enabled: [Bool] = []
+    var isLocked = false
     let action: (Int) -> Void
 
     var body: some View {
@@ -2151,24 +2157,24 @@ private struct SettingsOptionRow: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                     .font(.settingsNvidia(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
                 Text(subtitle)
                     .font(.settingsNvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(width: 250, alignment: .leading)
             SettingsFlowLayout(spacing: 8) {
                 ForEach(options.indices, id: \.self) { index in
-                    let optionEnabled = enabled.indices.contains(index) ? enabled[index] : true
+                    let optionEnabled = !isLocked && (enabled.indices.contains(index) ? enabled[index] : true)
                     Button { action(index) } label: {
                         Text(options[index])
                             .font(.settingsNvidia(size: 12, weight: .bold))
-                            .foregroundStyle(index == selectedIndex ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
+                            .foregroundStyle(index == selectedIndex && !isLocked ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
                             .padding(.horizontal, 12)
                             .frame(height: 32)
-                            .background(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
-                            .overlay { Rectangle().stroke(index == selectedIndex ? Color.openNowGreen : Color.white.opacity(0.12), lineWidth: 1) }
+                            .background(index == selectedIndex ? Color.openNowGreen.opacity(isLocked ? 0.32 : 1) : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
+                            .overlay { Rectangle().stroke(index == selectedIndex ? Color.openNowGreen.opacity(isLocked ? 0.42 : 1) : Color.white.opacity(0.12), lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
@@ -2183,6 +2189,7 @@ private struct SettingsToggleRow: View {
     let title: String
     let subtitle: String
     let isOn: Bool
+    var isLocked = false
     let action: @MainActor @Sendable (Bool) -> Void
 
     var body: some View {
@@ -2190,15 +2197,17 @@ private struct SettingsToggleRow: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                     .font(.settingsNvidia(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
                 Text(subtitle)
                     .font(.settingsNvidia(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(.white.opacity(isLocked ? 0.38 : 0.58))
             }
             Spacer()
             Toggle("", isOn: Binding(get: { isOn }, set: action))
                 .toggleStyle(.switch)
                 .labelsHidden()
+                .disabled(isLocked)
+                .opacity(isLocked ? 0.45 : 1)
         }
     }
 }
@@ -2281,6 +2290,7 @@ private struct SettingsSliderRow: View {
     let value: Double
     let range: ClosedRange<Double>
     var step = 1.0
+    var isLocked = false
     let action: @MainActor @Sendable (Double) -> Void
 
     var body: some View {
@@ -2288,14 +2298,16 @@ private struct SettingsSliderRow: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                     .font(.settingsNvidia(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.white.opacity(isLocked ? 0.58 : 1))
                 Text(valueText)
                     .font(.settingsNvidia(size: 12, weight: .bold))
-                    .foregroundStyle(Color.openNowGreen)
+                    .foregroundStyle(Color.openNowGreen.opacity(isLocked ? 0.48 : 1))
             }
             .frame(width: 250, alignment: .leading)
             Slider(value: Binding(get: { value }, set: action), in: range, step: step)
                 .tint(Color.openNowGreen)
+                .disabled(isLocked)
+                .opacity(isLocked ? 0.45 : 1)
         }
     }
 }

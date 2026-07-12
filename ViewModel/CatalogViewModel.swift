@@ -1366,37 +1366,52 @@ final class CatalogViewModel: ObservableObject {
         accountStores.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
     }
 
+    var streamingQualityProfileAllowsCustomization: Bool {
+        streamProfile.allowsStreamingCustomization
+    }
+
+    private func canEditStreamingQualitySettings() -> Bool {
+        streamingQualityProfileAllowsCustomization
+    }
+
     func setAspectIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveAspectIndex(index)
         loadSettingsPreferences()
     }
 
     func setResolutionIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveResolutionIndex(index)
         loadSettingsPreferences()
     }
 
     func setFpsIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveFpsIndex(index)
         loadSettingsPreferences()
     }
 
     func setCodecIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveCodecIndex(index)
         loadSettingsPreferences()
     }
 
     func setBitrateIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveBitrateIndex(index)
         loadSettingsPreferences()
     }
 
     func setColorQualityIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveColorQualityIndex(index)
         loadSettingsPreferences()
     }
 
     func setNVSTTransportEnabled(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveNVSTTransportEnabled(enabled)
         actionMessage = enabled ? "NVST stream transport selected." : "WebRTC stream transport selected."
         loadSettingsPreferences()
@@ -1408,26 +1423,31 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func setCloudGsyncEnabled(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveCloudGsyncEnabled(enabled)
         loadSettingsPreferences()
     }
 
     func setFallbackToLogicalResolution(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveFallbackToLogicalResolution(enabled)
         loadSettingsPreferences()
     }
 
     func setHudStreamingModeIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveHudStreamingModeIndex(index)
         loadSettingsPreferences()
     }
 
     func setSDRColorSpaceIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveSDRColorSpaceIndex(index)
         loadSettingsPreferences()
     }
 
     func setHDRColorSpaceIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveHDRColorSpaceIndex(index)
         loadSettingsPreferences()
     }
@@ -1463,16 +1483,19 @@ final class CatalogViewModel: ObservableObject {
     }
 
     func setL4SEnabled(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveL4SEnabled(enabled)
         loadSettingsPreferences()
     }
 
     func setHDREnabled(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveHDREnabled(enabled)
         loadSettingsPreferences()
     }
 
     func setPowerSaverEnabled(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.savePowerSaverEnabled(enabled)
         loadSettingsPreferences()
     }
