@@ -20,8 +20,8 @@ public enum OPNRemoteCoOpPreferencesStore {
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,
             latencyMode: OPNRemoteCoOpLatencyMode(rawValue: string(storage.object(forKey: latencyModeKey))) ?? .quality,
             requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
-            signalingServerURL: string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL),
-            guestJoinBaseURL: string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL),
+            signalingServerURL: OPNRemoteCoOpPreferences.migratedSignalingServerURL(string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL)),
+            guestJoinBaseURL: OPNRemoteCoOpPreferences.migratedGuestJoinBaseURL(string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)),
             hideGuestInviteDetails: bool(storage.object(forKey: hideGuestInviteDetailsKey), defaultValue: false)
         )
     }

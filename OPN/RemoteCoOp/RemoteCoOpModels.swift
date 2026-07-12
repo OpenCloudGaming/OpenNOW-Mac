@@ -272,8 +272,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: metadata[launchMetadataQualityPresetKey] ?? "") ?? fallback.qualityPreset,
             latencyMode: OPNRemoteCoOpLatencyMode(rawValue: metadata[launchMetadataLatencyModeKey] ?? "") ?? fallback.latencyMode,
             requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval),
-            signalingServerURL: string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL),
-            guestJoinBaseURL: string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL),
+            signalingServerURL: migratedSignalingServerURL(string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL)),
+            guestJoinBaseURL: migratedGuestJoinBaseURL(string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL)),
             hideGuestInviteDetails: bool(metadata[launchMetadataHideGuestInviteDetailsKey], defaultValue: fallback.hideGuestInviteDetails)
         )
     }
@@ -281,6 +281,36 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static func normalizedURLString(_ value: String, fallback: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    public static func migratedSignalingServerURL(_ value: String) -> String {
+        legacySignalingServerURLs.contains(normalizedURLKey(value)) ? defaultSignalingServerURL : normalizedURLString(value, fallback: defaultSignalingServerURL)
+    }
+
+    public static func migratedGuestJoinBaseURL(_ value: String) -> String {
+        legacyGuestJoinBaseURLs.contains(normalizedURLKey(value)) ? defaultGuestJoinBaseURL : normalizedURLString(value, fallback: defaultGuestJoinBaseURL)
+    }
+
+    private static let legacySignalingServerURLs: Set<String> = [
+        "ws://127.0.0.1:8787/remote-coop",
+        "ws://localhost:8787/remote-coop",
+        "ws://jayian.dev:8788/remote-coop",
+        "ws://relay.jayian.dev:8788/remote-coop",
+        "wss://relay.jayian.dev:8788/remote-coop"
+    ]
+
+    private static let legacyGuestJoinBaseURLs: Set<String> = [
+        "http://127.0.0.1:8787",
+        "http://localhost:8787",
+        "http://jayian.dev:8788",
+        "http://relay.jayian.dev:8788",
+        "https://relay.jayian.dev:8788"
+    ]
+
+    private static func normalizedURLKey(_ value: String) -> String {
+        var key = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while key.count > 1 && key.hasSuffix("/") { key.removeLast() }
+        return key
     }
 
     private static func int(_ value: String?, defaultValue: Int) -> Int {

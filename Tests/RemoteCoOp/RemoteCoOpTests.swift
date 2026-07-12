@@ -26,6 +26,20 @@ struct RemoteCoOpTests {
         #expect(preferences.guestJoinBaseURL == "http://198.12.95.48:8788/")
     }
 
+    @Test("preferences migrate legacy invite URL defaults")
+    func preferencesMigrateLegacyInviteURLDefaults() {
+        let metadata = [
+            OPNRemoteCoOpPreferences.launchMetadataSignalingServerURLKey: "ws://127.0.0.1:8787/remote-coop",
+            OPNRemoteCoOpPreferences.launchMetadataGuestJoinBaseURLKey: "http://127.0.0.1:8787/"
+        ]
+        let preferences = OPNRemoteCoOpPreferences.launchPreferences(from: metadata, fallback: OPNRemoteCoOpPreferences())
+
+        #expect(preferences.signalingServerURL == OPNRemoteCoOpPreferences.defaultSignalingServerURL)
+        #expect(preferences.guestJoinBaseURL == OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+        #expect(OPNRemoteCoOpPreferences.migratedSignalingServerURL("wss://relay.jayian.dev:8788/remote-coop") == OPNRemoteCoOpPreferences.defaultSignalingServerURL)
+        #expect(OPNRemoteCoOpPreferences.migratedGuestJoinBaseURL("https://relay.jayian.dev:8788/") == OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+    }
+
     @Test("preferences round-trip through stream launch metadata")
     func preferencesRoundTripThroughStreamLaunchMetadata() {
         let preferences = OPNRemoteCoOpPreferences(

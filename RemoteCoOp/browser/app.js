@@ -43,7 +43,11 @@ renderDiagnostics();
 
 elements.inviteToken.addEventListener("input", () => renderInvite(elements.inviteToken.value));
 elements.joinButton.addEventListener("click", joinRoom);
-elements.copyDiagnosticsButton.addEventListener("click", copyDiagnostics);
+elements.copyDiagnosticsButton.addEventListener("click", event => {
+  event.preventDefault();
+  event.stopPropagation();
+  copyDiagnostics();
+});
 elements.disconnectButton.addEventListener("click", disconnect);
 window.addEventListener("gamepadconnected", event => {
   elements.gamepadName.textContent = event.gamepad.id;
@@ -54,13 +58,13 @@ window.addEventListener("pagehide", disconnect);
 function renderInvite(token) {
   invite = decodeInvite(token);
   if (!invite) {
-    elements.title.textContent = "Join a cloud couch session";
-    elements.subtitle.textContent = "Paste an invite token or open the link your host sent.";
+    if (elements.title) elements.title.textContent = "Join a cloud couch session";
+    if (elements.subtitle) elements.subtitle.textContent = "Paste an invite token or open the link your host sent.";
     elements.joinStatus.textContent = "Waiting for invite.";
     return;
   }
-  elements.title.textContent = invite.title ? `Join ${invite.title}` : "Join this Remote Co-Op room";
-  elements.subtitle.textContent = `Room ${invite.code ?? invite.inviteID}. ${invite.requireHostApproval ? "Host approval required." : "Input starts after connection."}`;
+  if (elements.title) elements.title.textContent = invite.title ? `Join ${invite.title}` : "Join this Remote Co-Op room";
+  if (elements.subtitle) elements.subtitle.textContent = `Room ${invite.code ?? invite.inviteID}. ${invite.requireHostApproval ? "Host approval required." : "Input starts after connection."}`;
   elements.joinStatus.textContent = "Invite loaded. Enter a name and join.";
 }
 

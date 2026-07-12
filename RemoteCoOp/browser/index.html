@@ -8,112 +8,56 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <div class="ambient ambient-one"></div>
-    <div class="ambient ambient-two"></div>
     <main class="shell">
-      <header class="topbar" aria-label="Remote Co-Op service status">
-        <a class="brand" href="/" aria-label="OpenNOW Remote Co-Op home">
-          <span class="brand-mark">ON</span>
-          <span>
-            <strong>OpenNOW</strong>
-            <small>Remote Co-Op</small>
-          </span>
-        </a>
-        <div class="topbar-pills" aria-label="Session capabilities">
-          <span>WebRTC video</span>
-          <span>Gamepad input</span>
-          <span>TURN relay ready</span>
-        </div>
-      </header>
+      <section class="lobby" id="join-card" aria-label="Remote Co-Op lobby">
+        <section class="poster-screen" aria-label="Remote Co-Op stream preview"></section>
 
-      <section class="lobby-grid" aria-label="Remote Co-Op lobby">
-        <section class="hero">
-          <p class="eyebrow">Cloud couch uplink</p>
-          <h1 id="title">Join a cloud couch session</h1>
-          <p id="subtitle">Paste an invite token or open the link your host sent.</p>
-          <div class="hero-meter" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-          <div class="signal-board" aria-label="Connection requirements">
-            <article>
-              <b>01</b>
-              <span>Open invite</span>
-            </article>
-            <article>
-              <b>02</b>
-              <span>Wait for host approval</span>
-            </article>
-            <article>
-              <b>03</b>
-              <span>Keep this tab focused</span>
-            </article>
-          </div>
-        </section>
-
-        <section class="join-panel" id="join-card" aria-labelledby="join-panel-title">
-          <div class="panel-heading">
-            <span class="panel-kicker">Guest station</span>
-            <h2 id="join-panel-title">Enter the room</h2>
-          </div>
-          <div class="field-grid">
-            <label class="field" for="display-name">
-              <span>Display name</span>
-              <input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Guest">
-            </label>
-            <label class="field" for="invite-token">
-              <span>Invite token</span>
-              <textarea id="invite-token" rows="4" spellcheck="false" placeholder="Paste the invite token from your host"></textarea>
-            </label>
-          </div>
+        <section class="join-panel" aria-label="Join Remote Co-Op room">
+          <label class="field" for="display-name">
+            <span>Name</span>
+            <input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Guest">
+          </label>
+          <label class="field token-field" for="invite-token">
+            <span>Invite token</span>
+            <textarea id="invite-token" rows="4" spellcheck="false" placeholder="Paste token"></textarea>
+          </label>
           <button id="join-button" type="button">Join Room</button>
           <p class="status" id="join-status" role="status">Waiting for invite.</p>
         </section>
       </section>
 
       <section class="session-deck hidden" id="session-card" aria-label="Active Remote Co-Op session">
-        <div class="session-header">
-          <div class="meter">
-            <span id="connection-dot" aria-hidden="true"></span>
-            <div>
-              <strong id="session-state">Connecting</strong>
-              <p id="session-detail">Waiting for host approval.</p>
+        <div class="video-frame">
+          <div class="session-header">
+            <div class="meter">
+              <span id="connection-dot" aria-hidden="true"></span>
+              <div>
+                <strong id="session-state">Connecting</strong>
+                <p id="session-detail">Waiting for host approval.</p>
+              </div>
             </div>
+            <button id="disconnect-button" class="secondary" type="button">Disconnect</button>
           </div>
-          <button id="disconnect-button" class="secondary" type="button">Disconnect</button>
+          <div class="video-placeholder">
+            <span>Waiting for host</span>
+            <p>Video appears here after approval.</p>
+          </div>
         </div>
 
-        <div class="session-grid">
-          <aside class="status-stack" aria-label="Session readiness">
-            <div class="status-card gamepad">
-              <span class="status-label">Controller</span>
-              <strong id="gamepad-name">No gamepad detected</strong>
-              <p id="gamepad-detail">Connect a controller, press any button, then keep this tab focused.</p>
-            </div>
-            <div class="status-card network">
-              <span class="status-label">Network</span>
-              <strong id="network-state">Network traversal pending</strong>
-              <p id="network-detail">The broker will provide ICE/STUN/TURN settings after join.</p>
-            </div>
-          </aside>
-
-          <div class="video-frame">
-            <div class="video-placeholder">
-              <span>Stream standby</span>
-              <p>Video appears here after host approval and WebRTC negotiation.</p>
-            </div>
+        <div class="session-rail" aria-label="Session readiness">
+          <div class="status-card gamepad">
+            <span class="status-label">Controller</span>
+            <strong id="gamepad-name">No gamepad detected</strong>
+            <p id="gamepad-detail">Connect a controller, press any button, then keep this tab focused.</p>
           </div>
-
+          <div class="status-card network">
+            <span class="status-label">Network</span>
+            <strong id="network-state">Network traversal pending</strong>
+            <p id="network-detail">The broker will provide ICE/STUN/TURN settings after join.</p>
+          </div>
           <div class="diagnostics">
-            <div class="diagnostics-header">
-              <div>
-                <span class="status-label">Telemetry</span>
-                <strong>Connection diagnostics</strong>
-              </div>
+            <div class="diagnostics-bar">
+              <span class="status-label">Diagnostics</span>
               <button id="copy-diagnostics-button" class="secondary compact" type="button">Copy</button>
             </div>
             <dl id="diagnostics-list"></dl>
