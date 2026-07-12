@@ -56,7 +56,10 @@ const server = await makeBrokerServer(async (request, response) => {
       return;
     }
     const data = await readFile(file);
-    response.writeHead(200, { "content-type": contentTypes.get(extname(file)) ?? "application/octet-stream" }).end(data);
+    response.writeHead(200, {
+      "cache-control": "no-store",
+      "content-type": contentTypes.get(extname(file)) ?? "application/octet-stream"
+    }).end(data);
   } catch {
     response.writeHead(404).end("Not found");
   }
