@@ -1135,22 +1135,21 @@ public struct WebRTCMediaStreamSurface: View {
     private func copyRemoteCoOpInvite() {
         guard let invite = remoteCoOpSnapshot.invite else { return }
         copyRemoteCoOpInvite(invite)
-        remoteCoOpMessage = "Invite copied. Share code \(invite.code) with your remote player."
+        remoteCoOpMessage = invite.joinURL == nil ? "Invite token copied." : "Invite link copied."
         showTransientStreamMessage("Remote Co-Op invite copied")
     }
 
     private func copyRemoteCoOpInvite(_ invite: OPNRemoteCoOpInvite) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(remoteCoOpShareText(invite), forType: .string)
+        pasteboard.setString(remoteCoOpClipboardText(invite), forType: .string)
     }
 
-    private func remoteCoOpShareText(_ invite: OPNRemoteCoOpInvite) -> String {
-        let title = invite.hideGuestInviteDetails ? "a private session" : (configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+    private func remoteCoOpClipboardText(_ invite: OPNRemoteCoOpInvite) -> String {
         if let joinURL = invite.joinURL {
-            return "OpenNOW Remote Co-Op invite for \(title): \(joinURL.absoluteString)"
+            return joinURL.absoluteString
         }
-        return "OpenNOW Remote Co-Op invite for \(title): \(invite.code)\nToken: \(invite.token)"
+        return invite.token
     }
 
     private func approveRemoteCoOpParticipant(_ participantID: UUID) {
