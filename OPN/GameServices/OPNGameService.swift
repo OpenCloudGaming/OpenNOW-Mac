@@ -1042,7 +1042,7 @@ final class OPNGameService: @unchecked Sendable {
             for item in variants {
                 var variant = OPNGameVariant()
                 variant.id = safeString(item["id"]) ?? ""
-                variant.appStore = safeString(item["appStore"]) ?? ""
+                variant.appStore = Self.normalizedVariantAppStore(safeString(item["appStore"]) ?? "")
                 variant.storeUrl = safeString(item["storeUrl"]) ?? ""
                 if let appStoreInfo = item["appStoreInfo"] as? NSDictionary {
                     variant.appStoreLabel = safeString(appStoreInfo["label"]) ?? ""
@@ -1060,13 +1060,12 @@ final class OPNGameService: @unchecked Sendable {
                     }
                 }
                 if game.contentRatings.isEmpty { assignContentRatings(item["contentRatings"], to: &game) }
-                if !variant.appStore.isEmpty, variant.appStore != "UNKNOWN", variant.appStore != "NONE" {
-                    if let index = game.variants.firstIndex(where: { $0.appStore.caseInsensitiveCompare(variant.appStore) == .orderedSame }) {
-                        _ = mergeVariantFromSameStore(target: &game.variants[index], source: variant)
-                    } else {
-                        game.availableStores.append(variant.appStore)
-                        game.variants.append(variant)
-                    }
+                guard Self.variantIsRelevant(variant) else { continue }
+                if let index = game.variants.firstIndex(where: { variantMatchesStoreMetadata(target: $0, metadata: variant) }) {
+                    _ = mergeVariantFromSameStore(target: &game.variants[index], source: variant)
+                } else {
+                    if !variant.appStore.isEmpty { game.availableStores.append(variant.appStore) }
+                    game.variants.append(variant)
                 }
             }
         }
@@ -1681,6 +1680,17 @@ final class OPNGameService: @unchecked Sendable {
     private static func libraryStatusIsOwned(_ status: String) -> Bool {
         let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines)
         return !normalized.isEmpty && normalized.caseInsensitiveCompare("NOT_OWNED") != .orderedSame
+    }
+
+    private static func normalizedVariantAppStore(_ appStore: String) -> String {
+        let normalized = appStore.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.caseInsensitiveCompare("UNKNOWN") == .orderedSame { return "" }
+        if normalized.caseInsensitiveCompare("NONE") == .orderedSame { return "" }
+        return normalized
+    }
+
+    private static func variantIsRelevant(_ variant: OPNGameVariant) -> Bool {
+        !variant.appStore.isEmpty || variant.inLibrary || variant.librarySelected || OPNLaunchAppId.resolve(variant.id) != nil
     }
 
     private func storeURLForKnownGame(_ game: OPNGameInfo, variantIndex: Int) -> String? {

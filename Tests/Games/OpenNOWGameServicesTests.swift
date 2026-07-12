@@ -470,6 +470,64 @@ import Foundation
     }
 }
 
+@Test func libraryFetchKeepsOwnedDirectGFNVariantWithoutStore() async {
+        await networkTestIsolationLock.withLock {
+        let host = "*"
+        let token = "library-direct-gfn-token-\(UUID().uuidString)"
+        _ = OPNGameDataCache.shared.clearAllCaches()
+        OPNGameServiceSwiftAdapter.setAccessToken(token)
+        OPNGameServiceSwiftAdapter.setUserId("library-direct-gfn-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            if variables["appIds"] != nil {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": []]]])
+            }
+            if query.contains("campaigns") {
+                return SessionManagerURLProtocol.response(json: ["data": ["campaigns": ["items": []]]])
+            }
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": 1,
+                "numberSupported": 5_758,
+                "pageInfo": ["hasNextPage": false, "endCursor": "", "totalCount": 1],
+                "items": [catalogGraphQLGame(id: "genshin-impact", title: "Genshin Impact", libraryStatus: "MANUAL", librarySelected: false, appStore: "UNKNOWN", variantId: "145491")],
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
+                let game = games.first
+                continuation.resume(returning: (
+                    success,
+                    games.count,
+                    game?.title ?? "",
+                    game?.isInLibrary == true,
+                    game?.launchAppId ?? "",
+                    game?.variants.first?.appStore ?? "missing",
+                    game?.variants.first?.inLibrary == true,
+                    game?.availableStores ?? [],
+                    error
+                ))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.8.isEmpty)
+        #expect(result.1 == 1)
+        #expect(result.2 == "Genshin Impact")
+        #expect(result.3 == true)
+        #expect(result.4 == "145491")
+        #expect(result.5.isEmpty)
+        #expect(result.6 == true)
+        #expect(result.7.isEmpty)
+    }
+}
+
 @Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
     try await networkTestIsolationLock.withLock {
     let host = "create-release-shape.example.test"
@@ -838,14 +896,14 @@ private func staleSessionResponse() -> [String: Any] {
     ]
 }
 
-private func catalogGraphQLGame(id: String, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false) -> [String: Any] {
+private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil) -> [String: Any] {
     [
         "id": id,
-        "title": "Catalog Game \(id)",
+        "title": title ?? "Catalog Game \(id)",
         "images": ["TV_BANNER": ["https://assets.example.invalid/\(id).jpg"]],
         "variants": [[
-            "id": "1\(abs(id.hashValue % 1_000_000))",
-            "appStore": "STEAM",
+            "id": variantId ?? "1\(abs(id.hashValue % 1_000_000))",
+            "appStore": appStore,
             "storeUrl": "https://store.example.invalid/\(id)",
             "gfn": ["status": "AVAILABLE", "library": ["status": libraryStatus, "selected": librarySelected]],
         ]],
