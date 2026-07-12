@@ -477,6 +477,44 @@ struct RemoteCoOpTests {
         #expect(signaling.commandHistory().last == .inputRejected(participantID: participantID, result: .stalePacket))
     }
 
+    @Test("low latency host peer input coalesces bursts to newest packet")
+    func lowLatencyHostPeerInputCoalescesBurstsToNewestPacket() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true)
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let hostSession = OPNRemoteCoOpHostSession(preferences: preferences)
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: hostSession, signaling: signaling)
+        let factory = RecordingRemoteCoOpHostPeerFactory()
+        let inputRecorder = RemoteCoOpInputRecorder()
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), latencyMode: .lowLatency, peerFactory: factory) { event in
+            await inputRecorder.append(event)
+        }
+        let participantID = UUID()
+        let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        let approved = try await coordinator.approveParticipant(participantID)
+        try await controller.sync(participants: [approved])
+        let peer = try #require(factory.peer(for: participantID))
+        let first = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 1, buttons: [.south], leftStickX: -1)
+        let second = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 2, buttons: [.east], leftStickX: 0)
+        let newest = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 3, buttons: [.north], leftStickX: 1)
+
+        for packet in [first, second, newest] {
+            let message = OPNRemoteCoOpWireMessage(kind: .guestInput, roomID: invite.id, participantID: participantID, input: packet)
+            await peer.receiveDataChannelText(try OPNRemoteCoOpWireCodec.encode(message))
+        }
+        try await Task.sleep(for: .milliseconds(30))
+
+        let events = await inputRecorder.events()
+        #expect(events.count == 1)
+        guard case .gamepad(let state) = events.first else {
+            Issue.record("Expected routed gamepad event")
+            return
+        }
+        #expect(state.buttons == [.north])
+        #expect(state.leftStickX == 1)
+        #expect(!signaling.commandHistory().contains(.inputRejected(participantID: participantID, result: .stalePacket)))
+    }
+
     @Test("host peer controller registers approved peers as media sinks")
     func hostPeerControllerRegistersApprovedPeersAsMediaSinks() async throws {
         let signaling = OPNInProcessRemoteCoOpSignalingSession()

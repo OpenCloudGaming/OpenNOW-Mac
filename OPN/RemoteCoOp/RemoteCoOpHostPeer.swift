@@ -59,7 +59,7 @@ public actor OPNRemoteCoOpHostPeerController {
     private let signaling: any OPNRemoteCoOpSignalingSession
     private let coordinator: OPNRemoteCoOpHostCoordinator
     private let peerFactory: any OPNRemoteCoOpHostPeerFactory
-    private let forwardInput: @Sendable (UserInputEvent) async -> Void
+    private let inputScheduler: OPNRemoteCoOpHostInputScheduler
     private let videoRelay: OPNRemoteCoOpHostVideoRelay?
     private let audioRelay: OPNRemoteCoOpHostAudioRelay?
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
@@ -84,7 +84,7 @@ public actor OPNRemoteCoOpHostPeerController {
         self.videoRelay = videoRelay
         self.audioRelay = audioRelay
         self.peerFactory = peerFactory
-        self.forwardInput = forwardInput
+        self.inputScheduler = OPNRemoteCoOpHostInputScheduler(coordinator: coordinator, latencyMode: latencyMode, forwardInput: forwardInput)
     }
 
     public func updateNetworkConfiguration(_ configuration: OPNRemoteCoOpNetworkConfiguration) {
@@ -95,8 +95,9 @@ public actor OPNRemoteCoOpHostPeerController {
         qualityPreset = preset
     }
 
-    public func updateLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) {
+    public func updateLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) async {
         latencyMode = mode
+        await inputScheduler.updateLatencyMode(mode)
     }
 
     public func sync(participants: [OPNRemoteCoOpParticipant]) async throws {
@@ -104,6 +105,7 @@ public actor OPNRemoteCoOpHostPeerController {
         let eligibleIDs = Set(eligibleParticipants.map(\.id))
         for (participantID, peer) in peers where !eligibleIDs.contains(participantID) {
             peers[participantID] = nil
+            await inputScheduler.remove(participantID: participantID)
             videoRelay?.remove(participantID: participantID)
             audioRelay?.remove(participantID: participantID)
             await peer.close()
@@ -123,10 +125,8 @@ public actor OPNRemoteCoOpHostPeerController {
                 WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.signal.send", level: .info, message: "Sending Remote Co-Op peer signal.", attributes: ["participantID": participantID.uuidString, "kind": signal.kind.rawValue])
                 await signaling.send(.peerSignal(participantID: participantID, signal: signal))
             },
-            receiveInput: { [coordinator, forwardInput] packet in
-                guard packet.participantID == participantID else { return }
-                let routedEvents = await coordinator.handle(.guestInput(packet))
-                for routedEvent in routedEvents { await forwardInput(routedEvent) }
+            receiveInput: { [inputScheduler] packet in
+                await inputScheduler.receive(packet, expectedParticipantID: participantID)
             }
         )
         let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, latencyMode: latencyMode, callbacks: callbacks)
@@ -153,6 +153,7 @@ public actor OPNRemoteCoOpHostPeerController {
 
     public func removePeer(participantID: UUID) async {
         guard let peer = peers.removeValue(forKey: participantID) else { return }
+        await inputScheduler.remove(participantID: participantID)
         videoRelay?.remove(participantID: participantID)
         audioRelay?.remove(participantID: participantID)
         await peer.close()
@@ -161,8 +162,114 @@ public actor OPNRemoteCoOpHostPeerController {
     public func removeAll() async {
         let currentPeers = Array(peers.values)
         peers.removeAll()
+        await inputScheduler.removeAll()
         videoRelay?.removeAll()
         audioRelay?.removeAll()
         for peer in currentPeers { await peer.close() }
+    }
+}
+
+private actor OPNRemoteCoOpHostInputScheduler {
+    private struct PendingInput: Sendable {
+        var packet: OPNRemoteCoOpInputPacket
+        var receivedAtNanoseconds: UInt64
+    }
+
+    private static let lowLatencyDrainDelayNanoseconds: UInt64 = 4_000_000
+    private static let telemetryInterval: UInt64 = 240
+
+    private let coordinator: OPNRemoteCoOpHostCoordinator
+    private let forwardInput: @Sendable (UserInputEvent) async -> Void
+    private var latencyMode: OPNRemoteCoOpLatencyMode
+    private var pendingInputs: [UUID: PendingInput] = [:]
+    private var drainTask: Task<Void, Never>?
+    private var routedInputCount: UInt64 = 0
+    private var supersededInputCount: UInt64 = 0
+
+    init(coordinator: OPNRemoteCoOpHostCoordinator,
+         latencyMode: OPNRemoteCoOpLatencyMode,
+         forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) {
+        self.coordinator = coordinator
+        self.latencyMode = latencyMode
+        self.forwardInput = forwardInput
+    }
+
+    func updateLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) async {
+        latencyMode = mode
+        guard mode == .quality else { return }
+        await drainPendingInputs(shouldCancelScheduledDrain: true)
+    }
+
+    func receive(_ packet: OPNRemoteCoOpInputPacket, expectedParticipantID: UUID) async {
+        guard packet.participantID == expectedParticipantID else { return }
+        let receivedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+        guard latencyMode == .lowLatency else {
+            await route(packet, receivedAtNanoseconds: receivedAtNanoseconds)
+            return
+        }
+
+        if let pending = pendingInputs[packet.participantID] {
+            supersededInputCount &+= 1
+            guard pending.packet.sequenceNumber < packet.sequenceNumber else { return }
+        }
+        pendingInputs[packet.participantID] = PendingInput(packet: packet, receivedAtNanoseconds: receivedAtNanoseconds)
+        scheduleDrainIfNeeded()
+    }
+
+    func remove(participantID: UUID) {
+        pendingInputs[participantID] = nil
+        if pendingInputs.isEmpty { cancelScheduledDrain() }
+    }
+
+    func removeAll() {
+        pendingInputs.removeAll()
+        cancelScheduledDrain()
+    }
+
+    private func scheduleDrainIfNeeded() {
+        guard drainTask == nil else { return }
+        drainTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.lowLatencyDrainDelayNanoseconds)
+                guard !Task.isCancelled else { return }
+                await self?.drainPendingInputs(shouldCancelScheduledDrain: false)
+            } catch {}
+        }
+    }
+
+    private func drainPendingInputs(shouldCancelScheduledDrain: Bool) async {
+        if shouldCancelScheduledDrain { cancelScheduledDrain() }
+        drainTask = nil
+        let inputs = pendingInputs.values.sorted { $0.receivedAtNanoseconds < $1.receivedAtNanoseconds }
+        pendingInputs.removeAll()
+        for input in inputs {
+            await route(input.packet, receivedAtNanoseconds: input.receivedAtNanoseconds)
+        }
+        if !pendingInputs.isEmpty { scheduleDrainIfNeeded() }
+    }
+
+    private func route(_ packet: OPNRemoteCoOpInputPacket, receivedAtNanoseconds: UInt64) async {
+        let routedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+        let routedEvents = await coordinator.handle(.guestInput(packet))
+        for routedEvent in routedEvents { await forwardInput(routedEvent) }
+        routedInputCount &+= 1
+        guard latencyMode == .lowLatency, routedInputCount.isMultiple(of: Self.telemetryInterval) else { return }
+        WebRTCMediaTelemetry.capture("webrtc.remote_coop.input.coalesced", level: .debug, message: "Remote Co-Op low latency input coalescing active.", attributes: [
+            "coalescingDelayMilliseconds": String(Self.millisecondsBetween(receivedAtNanoseconds, routedAtNanoseconds)),
+            "participantID": packet.participantID.uuidString,
+            "routedInputs": String(routedInputCount),
+            "sequenceNumber": String(packet.sequenceNumber),
+            "supersededInputs": String(supersededInputCount)
+        ])
+    }
+
+    private func cancelScheduledDrain() {
+        drainTask?.cancel()
+        drainTask = nil
+    }
+
+    private static func millisecondsBetween(_ startNanoseconds: UInt64, _ endNanoseconds: UInt64) -> Int {
+        guard endNanoseconds >= startNanoseconds else { return 0 }
+        return Int((endNanoseconds - startNanoseconds) / 1_000_000)
     }
 }

@@ -33,7 +33,8 @@ let approved = false;
 let sequenceNumber = 0;
 let lastSentState = "";
 let lastSentAt = 0;
-let pollHandle = 0;
+let pollHandle = null;
+let pollMode = "stopped";
 let networkConfiguration = null;
 let peerConnection = null;
 let inputChannel = null;
@@ -61,6 +62,7 @@ window.addEventListener("gamepadconnected", event => {
   updateDiagnostics({ input: "controller connected" });
 });
 window.addEventListener("pagehide", disconnect);
+document.addEventListener("visibilitychange", restartPollingIfActive);
 
 function renderInvite(token) {
   invite = decodeInvite(token);
@@ -195,7 +197,6 @@ function sameParticipantID(left, right) {
 function startPolling() {
   if (pollHandle) return;
   const poll = time => {
-    pollHandle = requestAnimationFrame(poll);
     if (!approved || socket?.readyState !== WebSocket.OPEN) return;
     const gamepad = navigator.getGamepads().find(Boolean);
     if (!gamepad) {
@@ -204,7 +205,7 @@ function startPolling() {
       return;
     }
     if (elements.gamepadName) elements.gamepadName.textContent = gamepad.id;
-    const input = inputPacket(gamepad);
+    const input = inputPacket(gamepad, time);
     const state = inputStateKey(input);
     if (state === lastSentState && time - lastSentAt < 250) return;
     lastSentState = state;
@@ -212,16 +213,47 @@ function startPolling() {
     sendInput(input);
     if (elements.gamepadDetail) elements.gamepadDetail.textContent = `Sending input sequence ${input.sequenceNumber}.`;
   };
-  pollHandle = requestAnimationFrame(poll);
+  const interval = inputPollIntervalMilliseconds();
+  if (interval > 0) {
+    pollMode = "interval";
+    pollHandle = window.setInterval(() => poll(performance.now()), interval);
+    updateDiagnostics({ inputSampling: `${Math.round(1_000 / interval)} Hz interval` });
+    poll(performance.now());
+    return;
+  }
+  pollMode = "animationFrame";
+  updateDiagnostics({ inputSampling: "display frame" });
+  const frame = time => {
+    poll(time);
+    pollHandle = requestAnimationFrame(frame);
+  };
+  pollHandle = requestAnimationFrame(frame);
 }
 
 function stopPolling() {
   if (!pollHandle) return;
-  cancelAnimationFrame(pollHandle);
-  pollHandle = 0;
+  if (pollMode === "interval") {
+    clearInterval(pollHandle);
+  } else {
+    cancelAnimationFrame(pollHandle);
+  }
+  pollHandle = null;
+  pollMode = "stopped";
+  updateDiagnostics({ inputSampling: "stopped" });
 }
 
-function inputPacket(gamepad) {
+function restartPollingIfActive() {
+  if (!approved || !pollHandle) return;
+  stopPolling();
+  startPolling();
+}
+
+function inputPollIntervalMilliseconds() {
+  if (latencyMode() !== "lowLatency") return 0;
+  return document.visibilityState === "visible" ? 4 : 16;
+}
+
+function inputPacket(gamepad, sampledAtMilliseconds = performance.now()) {
   return {
     participantID,
     sequenceNumber: ++sequenceNumber,
@@ -232,7 +264,8 @@ function inputPacket(gamepad) {
     leftStickY: axis(gamepad, 1),
     rightStickX: axis(gamepad, 2),
     rightStickY: axis(gamepad, 3),
-    sentAtNanoseconds: Math.round(performance.now() * 1_000_000)
+    sentAtNanoseconds: Math.round(sampledAtMilliseconds * 1_000_000),
+    sampledAtMilliseconds
   };
 }
 
@@ -276,15 +309,18 @@ function send(message) {
 }
 
 function sendInput(input) {
-  const message = { kind: "guestInput", roomID: invite.inviteID, participantID, input };
+  const sampledAtMilliseconds = input.sampledAtMilliseconds ?? performance.now();
+  const wireInput = { ...input };
+  delete wireInput.sampledAtMilliseconds;
+  const message = { kind: "guestInput", roomID: invite.inviteID, participantID, input: wireInput };
   if (inputChannel?.readyState === "open") {
     inputChannel.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
-    recordInputSent(input, "data channel");
+    recordInputSent(input, "data channel", sampledAtMilliseconds);
     return;
   }
   if (networkConfiguration?.websocketInputFallbackEnabled !== false) {
     send(message);
-    recordInputSent(input, "WebSocket fallback");
+    recordInputSent(input, "WebSocket fallback", sampledAtMilliseconds);
   } else {
     updateDiagnostics({ input: "blocked: no open data channel and fallback disabled" });
   }
@@ -435,9 +471,11 @@ function initialDiagnostics() {
     selectedRoute: "not selected",
     inputChannel: "not created",
     input: "waiting",
+    inputSampling: "stopped",
     inputPackets: 0,
     lastInputSequence: 0,
     lastInputSentAt: 0,
+    lastInputSampleToSendMs: 0,
     video: "waiting",
     audio: "waiting",
     stats: "waiting"
@@ -478,9 +516,9 @@ function diagnosticsRows() {
 }
 
 function inputDiagnosticsDetail() {
-  if (!diagnostics.lastInputSentAt) return `${diagnostics.input}; channel ${diagnostics.inputChannel}; 0 packets`;
+  if (!diagnostics.lastInputSentAt) return `${diagnostics.input}; sampling ${diagnostics.inputSampling}; channel ${diagnostics.inputChannel}; 0 packets`;
   const ageMilliseconds = Math.max(0, Math.round(performance.now() - diagnostics.lastInputSentAt));
-  return `${diagnostics.input}; channel ${diagnostics.inputChannel}; ${diagnostics.inputPackets} packets; last sequence ${diagnostics.lastInputSequence}; ${ageMilliseconds} ms ago`;
+  return `${diagnostics.input}; sampling ${diagnostics.inputSampling}; channel ${diagnostics.inputChannel}; ${diagnostics.inputPackets} packets; last sequence ${diagnostics.lastInputSequence}; sample-to-send ${diagnostics.lastInputSampleToSendMs} ms; ${ageMilliseconds} ms ago`;
 }
 
 async function copyDiagnostics() {
@@ -514,12 +552,13 @@ function updatePeerConnectionState() {
   setNetworkState(networkLabel(), connectionDetail());
 }
 
-function recordInputSent(input, transport) {
+function recordInputSent(input, transport, sampledAtMilliseconds = performance.now()) {
   updateDiagnostics({
     input: transport,
     inputPackets: diagnostics.inputPackets + 1,
     lastInputSequence: input.sequenceNumber,
-    lastInputSentAt: performance.now()
+    lastInputSentAt: performance.now(),
+    lastInputSampleToSendMs: Math.max(0, Math.round((performance.now() - sampledAtMilliseconds) * 10) / 10)
   });
 }
 
