@@ -12,7 +12,7 @@ public struct OPNRemoteCoOpWebRTCHostPeerFactory: OPNRemoteCoOpHostPeerFactory {
     }
 }
 
-public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, RTCPeerConnectionDelegate, RTCDataChannelDelegate, @unchecked Sendable {
+public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, OPNRemoteCoOpHostAudioSink, RTCPeerConnectionDelegate, RTCDataChannelDelegate, @unchecked Sendable {
     public let participantID: UUID
     private static let inputChannelLabel = "remote-coop-input"
     private let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
@@ -25,6 +25,10 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private var videoCapturer: RTCVideoCapturer?
     private var videoTrack: RTCVideoTrack?
     private var videoSender: RTCRtpSender?
+    private var audioDevice: OPNRemoteCoOpHostAudioDevice?
+    private var audioSource: RTCAudioSource?
+    private var audioTrack: RTCAudioTrack?
+    private var audioSender: RTCRtpSender?
     private var inputChannels: [RTCDataChannel] = []
     private var isClosed = false
 
@@ -66,15 +70,25 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             let inputChannels = inputChannels
             let videoTrack = videoTrack
             let videoSender = videoSender
+            let audioDevice = audioDevice
+            let audioTrack = audioTrack
+            let audioSender = audioSender
             self.peerConnection = nil
             self.inputChannels = []
             self.videoSource = nil
             self.videoCapturer = nil
             self.videoTrack = nil
             self.videoSender = nil
+            self.audioDevice = nil
+            self.audioSource = nil
+            self.audioTrack = nil
+            self.audioSender = nil
             factory = nil
             if let videoSender { _ = peerConnection?.removeTrack(videoSender) }
+            if let audioSender { _ = peerConnection?.removeTrack(audioSender) }
             videoTrack?.isEnabled = false
+            audioTrack?.isEnabled = false
+            audioDevice?.shutdown()
             return (peerConnection, inputChannels)
         }
         for inputChannel in state.1 {
@@ -125,6 +139,10 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         capturer.delegate?.capturer(capturer, didCapture: frame)
     }
 
+    public func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
+        stateLock.withLock { audioDevice }?.renderAudioFrame(frame)
+    }
+
     private var closed: Bool {
         stateLock.withLock { isClosed }
     }
@@ -135,7 +153,8 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
 
         let encoderFactory = RTCDefaultVideoEncoderFactory()
         let decoderFactory = RTCDefaultVideoDecoderFactory()
-        let factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
+        let audioDevice = OPNRemoteCoOpHostAudioDevice()
+        let factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)
         let configuration = RTCConfiguration()
         configuration.iceServers = iceServers()
         configuration.iceTransportPolicy = networkConfiguration.iceTransportPolicy == .relay ? .relay : .all
@@ -150,9 +169,11 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             throw OPNRemoteCoOpHostPeerError.negotiationFailed("Unable to create Remote Co-Op WebRTC peer connection.")
         }
         attachVideoTrack(peerConnection: peerConnection, factory: factory)
+        attachAudioTrack(peerConnection: peerConnection, factory: factory)
         stateLock.withLock {
             self.factory = factory
             self.peerConnection = peerConnection
+            self.audioDevice = audioDevice
         }
         return peerConnection
     }
@@ -189,6 +210,18 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             videoCapturer = capturer
             videoTrack = track
             videoSender = sender
+        }
+    }
+
+    private func attachAudioTrack(peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
+        let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
+        let track = factory.audioTrack(with: source, trackId: "remote-coop-audio-\(participantID.uuidString)")
+        track.isEnabled = true
+        let sender = peerConnection.add(track, streamIds: ["remote-coop-stream-\(participantID.uuidString)"])
+        stateLock.withLock {
+            audioSource = source
+            audioTrack = track
+            audioSender = sender
         }
     }
 

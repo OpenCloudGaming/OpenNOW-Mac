@@ -1,4 +1,5 @@
 import Testing
+import AudioUnit
 import Foundation
 import CoreVideo
 @preconcurrency import WebRTC
@@ -448,24 +449,55 @@ struct RemoteCoOpTests {
         #expect(signaling.commandHistory().last == .inputRejected(participantID: participantID, result: .stalePacket))
     }
 
-    @Test("host peer controller registers approved peers as video sinks")
-    func hostPeerControllerRegistersApprovedPeersAsVideoSinks() async throws {
+    @Test("host peer controller registers approved peers as media sinks")
+    func hostPeerControllerRegistersApprovedPeersAsMediaSinks() async throws {
         let signaling = OPNInProcessRemoteCoOpSignalingSession()
         let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1)), signaling: signaling)
         let factory = RecordingRemoteCoOpHostPeerFactory()
-        let relay = OPNRemoteCoOpHostVideoRelay()
+        let videoRelay = OPNRemoteCoOpHostVideoRelay()
+        let audioRelay = OPNRemoteCoOpHostAudioRelay()
         let participantID = UUID()
         let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
-        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), videoRelay: relay, peerFactory: factory, forwardInput: { _ in })
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), videoRelay: videoRelay, audioRelay: audioRelay, peerFactory: factory, forwardInput: { _ in })
 
         try await controller.startPeer(for: participant)
         let peer = try #require(factory.peer(for: participantID))
-        relay.renderVideoFrame(try Self.makeVideoFrame())
+        videoRelay.renderVideoFrame(try Self.makeVideoFrame())
+        audioRelay.renderAudioFrame(Self.makeAudioFrame())
         await controller.removePeer(participantID: participantID)
-        relay.renderVideoFrame(try Self.makeVideoFrame())
+        videoRelay.renderVideoFrame(try Self.makeVideoFrame())
+        audioRelay.renderAudioFrame(Self.makeAudioFrame())
 
-        #expect(relay.activeSinkCount() == 0)
+        #expect(videoRelay.activeSinkCount() == 0)
+        #expect(audioRelay.activeSinkCount() == 0)
         #expect(peer.renderedVideoFrameCount() == 1)
+        #expect(peer.renderedAudioFrameCount() == 1)
+    }
+
+    @Test("audio relay copies game audio frames before fanout")
+    func audioRelayCopiesGameAudioFramesBeforeFanout() throws {
+        let relay = OPNRemoteCoOpHostAudioRelay()
+        let sink = RecordingRemoteCoOpAudioSink(participantID: UUID())
+        var samples: [Int16] = [10, -10, 20, -20]
+        relay.upsert(sink)
+
+        samples.withUnsafeMutableBytes { sampleBytes in
+            var audioBufferList = AudioBufferList(
+                mNumberBuffers: 1,
+                mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(sampleBytes.count), mData: sampleBytes.baseAddress)
+            )
+            withUnsafePointer(to: &audioBufferList) { pointer in
+                relay.renderAudioFrame(audioBufferList: UnsafeRawPointer(pointer), frameCount: 2, sampleRate: 48_000, channels: 2)
+            }
+        }
+        samples = [0, 0, 0, 0]
+
+        let frames = sink.renderedAudioFrames()
+        #expect(frames.count == 1)
+        #expect(frames.first?.frameCount == 2)
+        #expect(frames.first?.sampleRate == 48_000)
+        #expect(frames.first?.channels == 2)
+        #expect(frames.first?.samples == Self.audioData([10, -10, 20, -20]))
     }
 
     @Test("host peer input decoder rejects mismatched participants")
@@ -485,6 +517,17 @@ struct RemoteCoOpTests {
         #expect(status == kCVReturnSuccess)
         let buffer = RTCCVPixelBuffer(pixelBuffer: try #require(pixelBuffer))
         return RTCVideoFrame(buffer: buffer, rotation: ._0, timeStampNs: 1)
+    }
+
+    private static func makeAudioFrame() -> OPNRemoteCoOpHostAudioFrame {
+        OPNRemoteCoOpHostAudioFrame(samples: audioData([1, -1]), frameCount: 1)
+    }
+
+    private static func audioData(_ samples: [Int16]) -> Data {
+        samples.withUnsafeBufferPointer { buffer -> Data in
+            guard let baseAddress = buffer.baseAddress else { return Data() }
+            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int16>.size)
+        }
     }
 }
 
@@ -518,7 +561,7 @@ private final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFac
     }
 }
 
-private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, @unchecked Sendable {
+private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, OPNRemoteCoOpHostAudioSink, @unchecked Sendable {
     let participantID: UUID
     let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     let qualityPreset: OPNRemoteCoOpQualityPreset
@@ -527,6 +570,7 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemot
     private var started = 0
     private var closed = 0
     private var renderedFrames = 0
+    private var renderedAudioFrames = 0
     private var signals: [OPNRemoteCoOpWirePeerSignal] = []
 
     init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, qualityPreset: OPNRemoteCoOpQualityPreset, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
@@ -558,6 +602,10 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemot
         lock.withLock { renderedFrames += 1 }
     }
 
+    func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
+        lock.withLock { renderedAudioFrames += 1 }
+    }
+
     func startCount() -> Int {
         lock.withLock { started }
     }
@@ -572,6 +620,28 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemot
 
     func renderedVideoFrameCount() -> Int {
         lock.withLock { renderedFrames }
+    }
+
+    func renderedAudioFrameCount() -> Int {
+        lock.withLock { renderedAudioFrames }
+    }
+}
+
+private final class RecordingRemoteCoOpAudioSink: OPNRemoteCoOpHostAudioSink, @unchecked Sendable {
+    let participantID: UUID
+    private let lock = NSLock()
+    private var frames: [OPNRemoteCoOpHostAudioFrame] = []
+
+    init(participantID: UUID) {
+        self.participantID = participantID
+    }
+
+    func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
+        lock.withLock { frames.append(frame) }
+    }
+
+    func renderedAudioFrames() -> [OPNRemoteCoOpHostAudioFrame] {
+        lock.withLock { frames }
     }
 }
 

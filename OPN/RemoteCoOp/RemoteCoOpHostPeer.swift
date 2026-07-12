@@ -60,6 +60,7 @@ public actor OPNRemoteCoOpHostPeerController {
     private let peerFactory: any OPNRemoteCoOpHostPeerFactory
     private let forwardInput: @Sendable (UserInputEvent) async -> Void
     private let videoRelay: OPNRemoteCoOpHostVideoRelay?
+    private let audioRelay: OPNRemoteCoOpHostAudioRelay?
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private var qualityPreset: OPNRemoteCoOpQualityPreset
     private var peers: [UUID: any OPNRemoteCoOpHostPeer] = [:]
@@ -69,6 +70,7 @@ public actor OPNRemoteCoOpHostPeerController {
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
                 videoRelay: OPNRemoteCoOpHostVideoRelay? = nil,
+                audioRelay: OPNRemoteCoOpHostAudioRelay? = nil,
                 peerFactory: any OPNRemoteCoOpHostPeerFactory = OPNRemoteCoOpWebRTCHostPeerFactory(),
                 forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) {
         self.signaling = signaling
@@ -76,6 +78,7 @@ public actor OPNRemoteCoOpHostPeerController {
         self.networkConfiguration = networkConfiguration
         self.qualityPreset = qualityPreset
         self.videoRelay = videoRelay
+        self.audioRelay = audioRelay
         self.peerFactory = peerFactory
         self.forwardInput = forwardInput
     }
@@ -94,6 +97,7 @@ public actor OPNRemoteCoOpHostPeerController {
         for (participantID, peer) in peers where !eligibleIDs.contains(participantID) {
             peers[participantID] = nil
             videoRelay?.remove(participantID: participantID)
+            audioRelay?.remove(participantID: participantID)
             await peer.close()
         }
         for participant in eligibleParticipants where peers[participant.id] == nil {
@@ -120,9 +124,11 @@ public actor OPNRemoteCoOpHostPeerController {
         do {
             try await peer.start()
             if let sink = peer as? any OPNRemoteCoOpHostVideoSink { videoRelay?.upsert(sink) }
+            if let sink = peer as? any OPNRemoteCoOpHostAudioSink { audioRelay?.upsert(sink) }
         } catch {
             peers[participantID] = nil
             videoRelay?.remove(participantID: participantID)
+            audioRelay?.remove(participantID: participantID)
             await peer.close()
             throw error
         }
@@ -136,6 +142,7 @@ public actor OPNRemoteCoOpHostPeerController {
     public func removePeer(participantID: UUID) async {
         guard let peer = peers.removeValue(forKey: participantID) else { return }
         videoRelay?.remove(participantID: participantID)
+        audioRelay?.remove(participantID: participantID)
         await peer.close()
     }
 
@@ -143,6 +150,7 @@ public actor OPNRemoteCoOpHostPeerController {
         let currentPeers = Array(peers.values)
         peers.removeAll()
         videoRelay?.removeAll()
+        audioRelay?.removeAll()
         for peer in currentPeers { await peer.close() }
     }
 }

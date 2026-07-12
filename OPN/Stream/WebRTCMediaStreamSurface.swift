@@ -253,6 +253,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     @State private var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
     @State private var remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
+    @State private var remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
     @State private var remoteCoOpListenTask: Task<Void, Never>?
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode)
@@ -1240,6 +1241,7 @@ public struct WebRTCMediaStreamSurface: View {
             networkConfiguration: remoteCoOpNetworkConfiguration,
             qualityPreset: remoteCoOpLaunchPreferences.qualityPreset,
             videoRelay: remoteCoOpVideoRelay,
+            audioRelay: remoteCoOpAudioRelay,
             forwardInput: { event in inputTransport?.sendNow(event) }
         )
     }
@@ -1271,6 +1273,7 @@ public struct WebRTCMediaStreamSurface: View {
         remoteCoOpListenTask = nil
         await remoteCoOpPeerController?.removeAll()
         remoteCoOpVideoRelay.removeAll()
+        remoteCoOpAudioRelay.removeAll()
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil
@@ -1486,6 +1489,7 @@ public struct WebRTCMediaStreamSurface: View {
         beginStreamingPerformanceMode()
         let transport = NativeWebRTCTransport(nativeView: nativeView)
         transport.setRemoteCoOpVideoRelay(remoteCoOpVideoRelay)
+        transport.setRemoteCoOpAudioRelay(remoteCoOpAudioRelay)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         transport.onEnded = { message in
             handleTransportEnded(message: message)

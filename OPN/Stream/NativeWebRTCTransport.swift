@@ -14,6 +14,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     private weak var nativeView: NativeWebRTCStreamView?
     private let remoteCoOpVideoRelayLock = NSLock()
     private var remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay?
+    private let remoteCoOpAudioRelayLock = NSLock()
+    private var remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay?
     private var broadcastStatusObserverID: UUID?
     private let localIceLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
@@ -76,6 +78,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             self.session.onGameAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
                 self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
                 self?.broadcaster.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+                self?.currentRemoteCoOpAudioRelay()?.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
             self.session.onMicrophoneAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
                 self?.broadcaster.appendMicrophoneAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
@@ -136,6 +139,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay = relay }
     }
 
+    public func setRemoteCoOpAudioRelay(_ relay: OPNRemoteCoOpHostAudioRelay?) {
+        remoteCoOpAudioRelayLock.withLock { remoteCoOpAudioRelay = relay }
+    }
+
     public func sendNow(_ event: UserInputEvent) {
         switch event {
         case .keyboard(let keyboard):
@@ -189,6 +196,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         broadcaster.resumeUICapture()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         setRemoteCoOpVideoRelay(nil)
+        setRemoteCoOpAudioRelay(nil)
         localIceLock.withLock {
             localIceContinuation?.finish()
             localIceContinuation = nil
@@ -441,6 +449,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
 
     private func currentRemoteCoOpVideoRelay() -> OPNRemoteCoOpHostVideoRelay? {
         remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay }
+    }
+
+    private func currentRemoteCoOpAudioRelay() -> OPNRemoteCoOpHostAudioRelay? {
+        remoteCoOpAudioRelayLock.withLock { remoteCoOpAudioRelay }
     }
 
     private func handleEnded(message: String) {
