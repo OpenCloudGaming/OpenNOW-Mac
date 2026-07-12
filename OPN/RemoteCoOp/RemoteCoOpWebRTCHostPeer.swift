@@ -211,6 +211,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         let track = factory.videoTrack(with: source, trackId: "remote-coop-video-\(participantID.uuidString)")
         track.isEnabled = true
         let sender = peerConnection.add(track, streamIds: ["remote-coop-stream-\(participantID.uuidString)"])
+        if let sender { configureVideoSender(sender) }
         stateLock.withLock {
             videoSource = source
             videoCapturer = capturer
@@ -232,6 +233,22 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             lastVideoFrameTimestampNs = timestamp
             return timestamp
         }
+    }
+
+    private func configureVideoSender(_ sender: RTCRtpSender) {
+        let parameters = sender.parameters
+        let encodings = parameters.encodings.isEmpty ? [RTCRtpEncodingParameters()] : parameters.encodings
+        for encoding in encodings {
+            encoding.isActive = true
+            encoding.maxBitrateBps = NSNumber(value: qualityPreset.videoMaxBitrateBps)
+            encoding.minBitrateBps = NSNumber(value: qualityPreset.videoMinBitrateBps)
+            encoding.maxFramerate = NSNumber(value: qualityPreset.fps)
+            encoding.scaleResolutionDownBy = 1
+            encoding.bitratePriority = 2
+            encoding.networkPriority = .high
+        }
+        parameters.encodings = encodings
+        sender.parameters = parameters
     }
 
     private func attachAudioTrack(peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {

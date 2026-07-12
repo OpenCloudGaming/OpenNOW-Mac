@@ -124,6 +124,22 @@ public enum OPNRemoteCoOpQualityPreset: String, CaseIterable, Codable, Equatable
         case .p720f60, .p1080f60: return 60
         }
     }
+
+    public var videoMaxBitrateBps: Int {
+        switch self {
+        case .p720f30: return 6_000_000
+        case .p720f60: return 12_000_000
+        case .p1080f60: return 20_000_000
+        }
+    }
+
+    public var videoMinBitrateBps: Int {
+        switch self {
+        case .p720f30: return 2_500_000
+        case .p720f60: return 5_000_000
+        case .p1080f60: return 8_000_000
+        }
+    }
 }
 
 public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
