@@ -311,15 +311,15 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
 
 .player-badge {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 12px;
+  left: 12px;
   z-index: 5;
   display: inline-grid;
   grid-template-columns: auto auto;
-  align-items: baseline;
-  gap: 8px;
-  max-width: min(300px, calc(100% - 88px));
-  padding: 9px 12px;
+  align-items: center;
+  gap: 6px;
+  max-width: min(120px, calc(100% - 80px));
+  padding: 6px 9px;
   color: var(--ink);
   background: rgba(8, 10, 12, 0.62);
   border: 1px solid rgba(246, 239, 227, 0.16);
@@ -328,22 +328,29 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
   backdrop-filter: blur(18px);
 }
 
-.player-badge span {
+.player-icon {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
   color: var(--muted);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 950;
-  letter-spacing: 0.14em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
+}
+
+.player-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .player-badge strong {
   color: var(--ink);
   font-family: var(--display);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 950;
   letter-spacing: -0.04em;
   line-height: 1;
@@ -468,10 +475,10 @@ textarea::placeholder { color: rgba(246, 239, 227, 0.34); }
   .session-deck .video-frame { border-radius: 0; }
 
   .player-badge {
-    top: 12px;
-    left: 12px;
-    max-width: calc(100% - 76px);
-    padding: 8px 10px;
+    top: 10px;
+    left: 10px;
+    max-width: calc(100% - 72px);
+    padding: 5px 8px;
   }
 
   .diagnostics-toggle {

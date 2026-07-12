@@ -19,7 +19,6 @@ const elements = {
   diagnosticsList: document.querySelector("#diagnostics-list"),
   copyDiagnosticsButton: document.querySelector("#copy-diagnostics-button"),
   playerBadge: document.querySelector("#player-badge"),
-  playerLabel: document.querySelector("#player-label"),
   playerNumber: document.querySelector("#player-number"),
   disconnectButton: document.querySelector("#disconnect-button")
 };
@@ -763,19 +762,19 @@ function hasTerminalState() {
 }
 
 function updatePlayerBadge(state, playerNumber = null) {
-  if (!elements.playerLabel || !elements.playerNumber) return;
+  if (!elements.playerBadge || !elements.playerNumber) return;
   if (Number.isInteger(playerNumber)) {
-    elements.playerLabel.textContent = "Controller";
     elements.playerNumber.textContent = `P${playerNumber}`;
+    elements.playerBadge.setAttribute("aria-label", `Controller player ${playerNumber}`);
     return;
   }
   if (["Rejected", "Removed", "Ended", "Disconnected"].includes(state)) {
-    elements.playerLabel.textContent = state;
     elements.playerNumber.textContent = "!";
+    elements.playerBadge.setAttribute("aria-label", state);
     return;
   }
-  elements.playerLabel.textContent = state || "Waiting";
   elements.playerNumber.textContent = "P?";
+  elements.playerBadge.setAttribute("aria-label", "Waiting for controller assignment");
 }
 
 function displayName() {

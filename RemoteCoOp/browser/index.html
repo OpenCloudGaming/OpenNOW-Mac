@@ -32,8 +32,13 @@
             <span>Waiting for host</span>
             <p>Video appears here after approval.</p>
           </div>
-          <div class="player-badge" id="player-badge" aria-live="polite">
-            <span id="player-label">Waiting</span>
+          <div class="player-badge" id="player-badge" aria-live="polite" aria-label="Waiting for controller assignment">
+            <span class="player-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M7.2 9.2h9.6c2.1 0 3.8 1.5 4.1 3.6l.5 3.5c.2 1.4-.9 2.7-2.3 2.7-.7 0-1.4-.3-1.8-.9l-1.6-2.1H8.3l-1.6 2.1c-.4.6-1.1.9-1.8.9-1.4 0-2.5-1.3-2.3-2.7l.5-3.5c.3-2.1 2-3.6 4.1-3.6Z" />
+                <path d="M8 12v3M6.5 13.5h3M15.5 13.2h.1M18 14.8h.1" />
+              </svg>
+            </span>
             <strong id="player-number">P?</strong>
           </div>
           <button id="diagnostics-toggle" class="diagnostics-toggle" type="button" aria-expanded="false" aria-controls="diagnostics-panel">i</button>
