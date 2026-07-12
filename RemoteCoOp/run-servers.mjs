@@ -8,7 +8,7 @@ const args = new Set(process.argv.slice(2));
 const root = dirname(fileURLToPath(import.meta.url));
 const brokerScript = join(root, "server", "broker.mjs");
 const turnScript = join(root, "turn", "turn-server.mjs");
-const productionHost = "jayian.dev";
+const productionHost = "relay.jayian.dev";
 
 if (args.has("--help") || args.has("-h")) {
   printHelp();
@@ -182,13 +182,13 @@ interfaces by default:
   - broker: OPENNOW_REMOTE_COOP_BIND_HOST=0.0.0.0
   - TURN:   OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=0.0.0.0
 
-The runner defaults to jayian.dev for production URLs. Override it with
+The runner defaults to relay.jayian.dev for production URLs. Override it with
 OPENNOW_REMOTE_COOP_PUBLIC_HOST for LAN deployments, or set the lower level
 OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST and OPENNOW_REMOTE_COOP_TURN_URLS variables
 directly.
 
 Useful environment:
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default jayian.dev
+  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default relay.jayian.dev
   OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 8788
   OPENNOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET   Shared TURN REST secret; generated if omitted
@@ -199,9 +199,9 @@ Useful environment:
 Examples:
   node RemoteCoOp/run-servers.mjs --dry-run
   OPENNOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 node RemoteCoOp/run-servers.mjs
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST=jayian.dev \
+  OPENNOW_REMOTE_COOP_PUBLIC_HOST=relay.jayian.dev \
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
-  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/jayian.dev/fullchain.pem \
-  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/jayian.dev/privkey.pem \
+  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/relay.jayian.dev/fullchain.pem \
+  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/relay.jayian.dev/privkey.pem \
   node RemoteCoOp/run-servers.mjs`);
 }

@@ -4,7 +4,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 import { spawn } from "node:child_process";
 
 const args = new Set(process.argv.slice(2));
-const productionHost = "jayian.dev";
+const productionHost = "relay.jayian.dev";
 
 if (args.has("--help") || args.has("-h")) {
   printHelp();
@@ -224,7 +224,7 @@ Starts coturn for OpenNOW Remote Co-Op. This Node app manages the system
 turnserver binary; it does not implement TURN itself.
 
 Required environment:
-  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST       Public DNS name or IP for clients, default jayian.dev
+  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST       Public DNS name or IP for clients, default relay.jayian.dev
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET    Shared REST auth secret, also used by broker
 
 Common environment:
@@ -245,9 +245,9 @@ Examples:
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=local-development-secret \
   node RemoteCoOp/turn/turn-server.mjs --dry-run
 
-  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=jayian.dev \
+  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=relay.jayian.dev \
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
-  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/jayian.dev/fullchain.pem \
-  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/jayian.dev/privkey.pem \
+  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/relay.jayian.dev/fullchain.pem \
+  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/relay.jayian.dev/privkey.pem \
   node RemoteCoOp/turn/turn-server.mjs`);
 }

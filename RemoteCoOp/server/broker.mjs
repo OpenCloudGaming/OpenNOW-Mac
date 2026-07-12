@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const productionHost = "jayian.dev";
+const productionHost = "relay.jayian.dev";
 const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8788);
 const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
 const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? "127.0.0.1";

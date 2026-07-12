@@ -11,7 +11,7 @@ The broker is signaling-only. It relays JSON messages between the macOS host and
 
 ## All Server Nodes
 
-For production hosting on `jayian.dev`, run every Remote Co-Op server-side Node process with broker and TURN listeners bound to all local interfaces:
+For production hosting on `relay.jayian.dev`, run every Remote Co-Op server-side Node process with broker and TURN listeners bound to all local interfaces:
 
 ```sh
 node RemoteCoOp/run-servers.mjs
@@ -22,7 +22,7 @@ The runner starts:
 - `server/broker.mjs` with `OPENNOW_REMOTE_COOP_BIND_HOST=0.0.0.0`.
 - `turn/turn-server.mjs` with `OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=0.0.0.0`.
 
-It defaults printed join/TURN URLs to `jayian.dev`, generates an ephemeral TURN shared secret when one is not provided, and injects matching `OPENNOW_REMOTE_COOP_TURN_URLS` into the broker.
+It defaults printed join/TURN URLs to `relay.jayian.dev`, generates an ephemeral TURN shared secret when one is not provided, and injects matching `OPENNOW_REMOTE_COOP_TURN_URLS` into the broker.
 
 If the broker port is busy, the runner lets the broker fall back to the next available configured alternate and prints the actual browser/WebSocket URLs after the broker binds. By default, `8789` and `8790` are tried after `8788`.
 
@@ -42,10 +42,10 @@ node RemoteCoOp/run-servers.mjs
 For production, provide a stable secret and TLS cert/key for TURNS:
 
 ```sh
-OPENNOW_REMOTE_COOP_PUBLIC_HOST=jayian.dev \
+OPENNOW_REMOTE_COOP_PUBLIC_HOST=relay.jayian.dev \
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
-OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/jayian.dev/fullchain.pem \
-OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/jayian.dev/privkey.pem \
+OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/relay.jayian.dev/fullchain.pem \
+OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/relay.jayian.dev/privkey.pem \
 node RemoteCoOp/run-servers.mjs
 ```
 
@@ -62,8 +62,8 @@ node RemoteCoOp/server/broker.mjs
 Default endpoints:
 
 ```text
-Browser join page: http://jayian.dev:8788/
-WebSocket signaling: ws://jayian.dev:8788/remote-coop
+Browser join page: http://relay.jayian.dev:8788/
+WebSocket signaling: ws://relay.jayian.dev:8788/remote-coop
 ```
 
 Broker environment:
@@ -73,7 +73,7 @@ OPENNOW_REMOTE_COOP_BIND_HOST=127.0.0.1
 OPENNOW_REMOTE_COOP_PORT=8788
 OPENNOW_REMOTE_COOP_PORT_ALTERNATES=8789,8790
 OPENNOW_REMOTE_COOP_STUN_URLS=stun:stun.l.google.com:19302
-OPENNOW_REMOTE_COOP_TURN_URLS=turn:jayian.dev:3478?transport=udp,turn:jayian.dev:3478?transport=tcp,turns:jayian.dev:443?transport=tcp
+OPENNOW_REMOTE_COOP_TURN_URLS=turn:relay.jayian.dev:3478?transport=udp,turn:relay.jayian.dev:3478?transport=tcp,turns:relay.jayian.dev:443?transport=tcp
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=shared-coturn-rest-secret
 OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600
 ```
@@ -124,14 +124,14 @@ node RemoteCoOp/server/broker.mjs
 
 ## Production TURN
 
-Run TURN on the production host `jayian.dev`:
+Run TURN on the production host `relay.jayian.dev`:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=jayian.dev \
-OPENNOW_REMOTE_COOP_TURN_REALM=jayian.dev \
+OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=relay.jayian.dev \
+OPENNOW_REMOTE_COOP_TURN_REALM=relay.jayian.dev \
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
-OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/jayian.dev/fullchain.pem \
-OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/jayian.dev/privkey.pem \
+OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/relay.jayian.dev/fullchain.pem \
+OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/relay.jayian.dev/privkey.pem \
 OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP=203.0.113.10 \
 node RemoteCoOp/turn/turn-server.mjs
 ```
@@ -148,7 +148,7 @@ Expose these firewall ports on the TURN host:
 Configure the broker with the same secret:
 
 ```sh
-OPENNOW_REMOTE_COOP_TURN_URLS='turn:jayian.dev:3478?transport=udp,turn:jayian.dev:3478?transport=tcp,turns:jayian.dev:443?transport=tcp' \
+OPENNOW_REMOTE_COOP_TURN_URLS='turn:relay.jayian.dev:3478?transport=udp,turn:relay.jayian.dev:3478?transport=tcp,turns:relay.jayian.dev:443?transport=tcp' \
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
 OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600 \
 node RemoteCoOp/server/broker.mjs
