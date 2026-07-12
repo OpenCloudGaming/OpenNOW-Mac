@@ -283,6 +283,7 @@ function configurePeerConnection(configuration) {
   closePeerConnection();
   updateDiagnostics({
     transportMode: networkConfiguration.transportMode ?? "automatic",
+    latencyMode: latencyMode(),
     icePolicy: networkConfiguration.iceTransportPolicy ?? "all",
     iceServers: describeIceServers(networkConfiguration.iceServers ?? []),
     localCandidates: 0,
@@ -296,8 +297,8 @@ function configurePeerConnection(configuration) {
     iceTransportPolicy: networkConfiguration.iceTransportPolicy ?? "all"
   };
   peerConnection = new RTCPeerConnection(rtcConfiguration);
-  peerConnection.addTransceiver("video", { direction: "recvonly" });
-  peerConnection.addTransceiver("audio", { direction: "recvonly" });
+  configureReceiverLatency(peerConnection.addTransceiver("video", { direction: "recvonly" }).receiver);
+  configureReceiverLatency(peerConnection.addTransceiver("audio", { direction: "recvonly" }).receiver);
   if (networkConfiguration.dataChannelInputEnabled !== false) bindInputChannel(peerConnection.createDataChannel("input", { ordered: false, maxRetransmits: 0 }));
   peerConnection.addEventListener("datachannel", event => bindInputChannel(event.channel));
   peerConnection.addEventListener("icecandidate", event => {
@@ -319,7 +320,7 @@ function configurePeerConnection(configuration) {
   peerConnection.addEventListener("iceconnectionstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("icegatheringstatechange", () => updatePeerConnectionState());
   peerConnection.addEventListener("signalingstatechange", () => updatePeerConnectionState());
-  peerConnection.addEventListener("track", event => attachRemoteTrack(event.track));
+  peerConnection.addEventListener("track", event => attachRemoteTrack(event.track, event.receiver));
   setNetworkState(networkLabel(), networkConfiguration.directPeerCandidateWarning || connectionDetail());
   updatePeerConnectionState();
   startStatsPolling();
@@ -376,6 +377,7 @@ function automaticFallbackConfiguration() {
   return {
     transportMode: invite?.transportMode ?? "automatic",
     iceTransportPolicy: invite?.transportMode === "relayOnly" ? "relay" : "all",
+    latencyMode: invite?.latencyMode ?? "quality",
     iceServers: [],
     dataChannelInputEnabled: true,
     websocketInputFallbackEnabled: true,
@@ -407,6 +409,8 @@ function initialDiagnostics() {
     approval: "not joined",
     playerSlot: "unassigned",
     transportMode: invite?.transportMode ?? "automatic",
+    latencyMode: invite?.latencyMode ?? "quality",
+    playoutDelay: "default",
     icePolicy: "all",
     iceServers: "not received",
     rtcConnection: "not started",
@@ -450,12 +454,12 @@ function diagnosticsRows() {
   return [
     ["WebSocket", diagnostics.websocket],
     ["Approval", `${diagnostics.approval}; ${diagnostics.playerSlot}`],
-    ["Transport", `${diagnostics.transportMode}; policy ${diagnostics.icePolicy}; ${diagnostics.iceServers}`],
+    ["Transport", `${diagnostics.transportMode}; ${diagnostics.latencyMode}; policy ${diagnostics.icePolicy}; ${diagnostics.iceServers}`],
     ["WebRTC", `connection ${diagnostics.rtcConnection}; signaling ${diagnostics.rtcSignaling}; ICE ${diagnostics.iceConnection}; gathering ${diagnostics.iceGathering}`],
     ["Signaling", diagnostics.signaling],
     ["Candidates", `local ${diagnostics.localCandidates}; remote ${diagnostics.remoteCandidates}`],
     ["Selected route", diagnostics.selectedRoute],
-    ["Media", `video ${diagnostics.video}; audio ${diagnostics.audio}`],
+    ["Media", `video ${diagnostics.video}; audio ${diagnostics.audio}; playout ${diagnostics.playoutDelay}`],
     ["Input", inputDiagnosticsDetail()],
     ["Stats", diagnostics.stats]
   ];
@@ -591,13 +595,36 @@ function videoStatsSummary(stats) {
   const size = stats.frameWidth && stats.frameHeight ? `${stats.frameWidth}x${stats.frameHeight}` : "size pending";
   const fps = typeof stats.framesPerSecond === "number" ? `${Math.round(stats.framesPerSecond)} fps` : "fps pending";
   const loss = stats.packetsLost > 0 ? `, ${stats.packetsLost} lost` : "";
-  return `video ${size} ${fps}, ${formatBytes(stats.bytesReceived ?? 0)} received${loss}`;
+  const jitterFrames = stats.jitterBufferEmittedCount ?? 0;
+  const jitterDelay = jitterFrames > 0 && typeof stats.jitterBufferDelay === "number" ? `, jitter buffer ${Math.round((stats.jitterBufferDelay / jitterFrames) * 1_000)} ms` : "";
+  const decodedFrames = stats.framesDecoded ?? 0;
+  const decodeDelay = decodedFrames > 0 && typeof stats.totalDecodeTime === "number" ? `, decode ${Math.round((stats.totalDecodeTime / decodedFrames) * 1_000)} ms` : "";
+  const dropped = stats.framesDropped > 0 ? `, ${stats.framesDropped} dropped` : "";
+  return `video ${size} ${fps}, ${formatBytes(stats.bytesReceived ?? 0)} received${loss}${dropped}${jitterDelay}${decodeDelay}`;
 }
 
 function audioStatsSummary(stats) {
   const jitter = typeof stats.jitter === "number" ? `, jitter ${Math.round(stats.jitter * 1_000)} ms` : "";
   const loss = stats.packetsLost > 0 ? `, ${stats.packetsLost} lost` : "";
   return `audio ${formatBytes(stats.bytesReceived ?? 0)} received${jitter}${loss}`;
+}
+
+function latencyMode() {
+  return networkConfiguration?.latencyMode ?? invite?.latencyMode ?? "quality";
+}
+
+function configureReceiverLatency(receiver) {
+  if (!receiver || latencyMode() !== "lowLatency") return;
+  try {
+    if ("playoutDelayHint" in receiver) {
+      receiver.playoutDelayHint = 0;
+      updateDiagnostics({ playoutDelay: "0 ms hint" });
+    } else {
+      updateDiagnostics({ playoutDelay: "unsupported" });
+    }
+  } catch (error) {
+    updateDiagnostics({ playoutDelay: `hint failed: ${error.message || "unavailable"}` });
+  }
 }
 
 function formatBytes(value) {
@@ -620,7 +647,8 @@ function audioDescriptor(track, state) {
   return `${state}; ${track.readyState}`;
 }
 
-function attachRemoteTrack(track) {
+function attachRemoteTrack(track, receiver) {
+  configureReceiverLatency(receiver);
   const media = track.kind === "audio" ? remoteAudioElement() : remoteVideoElement();
   media.autoplay = true;
   media.playsInline = true;

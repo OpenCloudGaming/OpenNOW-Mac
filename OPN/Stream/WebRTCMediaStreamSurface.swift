@@ -256,7 +256,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
     @State private var remoteCoOpListenTask: Task<Void, Never>?
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
-    @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode)
+    @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode, latencyMode: OPNRemoteCoOpPreferencesStore.load().latencyMode)
     @State private var remoteCoOpMessage = ""
 
     public init(configuration: StreamLaunchConfiguration,
@@ -533,6 +533,7 @@ public struct WebRTCMediaStreamSurface: View {
                 }
                 settingsRow("Reserved Slots", "\(remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
                 settingsRow("Guest Quality", remoteCoOpSnapshot.preferences.qualityPreset.label)
+                settingsRow("Latency Mode", remoteCoOpSnapshot.preferences.latencyMode.label)
                 settingsRow("Invite Details", remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
                 if !remoteCoOpMessage.isEmpty {
                     Text(remoteCoOpMessage)
@@ -1089,12 +1090,13 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func refreshRemoteCoOpState() {
         let preferences = remoteCoOpLaunchPreferences
-        remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode)
+        remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode, latencyMode: preferences.latencyMode)
         remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: preferences, invite: remoteCoOpSnapshot.invite, participants: remoteCoOpSnapshot.participants)
         Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
             await remoteCoOpPeerController?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             await remoteCoOpPeerController?.updateQualityPreset(preferences.qualityPreset)
+            await remoteCoOpPeerController?.updateLatencyMode(preferences.latencyMode)
             remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
         }
     }
@@ -1111,7 +1113,7 @@ public struct WebRTCMediaStreamSurface: View {
                 copyRemoteCoOpInvite(invite)
                 remoteCoOpMessage = invite.joinURL == nil ? "Invite copied. Share code \(invite.code) with your remote player." : "Invite link copied. Keep this stream open while your guest joins."
                 showTransientStreamMessage("Remote Co-Op invite copied")
-                WebRTCMediaTelemetry.capture("webrtc.remote_coop.invite.created", level: .info, message: "Remote Co-Op invite created.", attributes: ["applicationID": configuration.applicationID, "reservedSlots": String(preferences.effectiveReservedGuestSlots), "transportMode": preferences.transportMode.rawValue])
+                WebRTCMediaTelemetry.capture("webrtc.remote_coop.invite.created", level: .info, message: "Remote Co-Op invite created.", attributes: ["applicationID": configuration.applicationID, "reservedSlots": String(preferences.effectiveReservedGuestSlots), "transportMode": preferences.transportMode.rawValue, "latencyMode": preferences.latencyMode.rawValue])
             } catch {
                 _ = await stopRemoteCoOpSession()
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
@@ -1204,7 +1206,7 @@ public struct WebRTCMediaStreamSurface: View {
         }
         let signaling = makeRemoteCoOpSignalingSession(preferences: preferences)
         let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: remoteCoOpHostSession, signaling: signaling)
-        remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode)
+        remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode, latencyMode: preferences.latencyMode)
         remoteCoOpSignalingSession = signaling
         remoteCoOpHostCoordinator = coordinator
         remoteCoOpPeerController = makeRemoteCoOpPeerController(signaling: signaling, coordinator: coordinator)
@@ -1239,6 +1241,7 @@ public struct WebRTCMediaStreamSurface: View {
             coordinator: coordinator,
             networkConfiguration: remoteCoOpNetworkConfiguration,
             qualityPreset: remoteCoOpLaunchPreferences.qualityPreset,
+            latencyMode: remoteCoOpLaunchPreferences.latencyMode,
             videoRelay: remoteCoOpVideoRelay,
             audioRelay: remoteCoOpAudioRelay,
             forwardInput: { event in inputTransport?.sendNow(event) }

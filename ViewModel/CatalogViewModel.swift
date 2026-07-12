@@ -1546,6 +1546,13 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setRemoteCoOpLatencyModeIndex(_ index: Int) {
+        let modes = OPNRemoteCoOpLatencyMode.allCases
+        guard modes.indices.contains(index) else { return }
+        OPNRemoteCoOpPreferencesStore.setLatencyMode(modes[index])
+        loadSettingsPreferences()
+    }
+
     func setRemoteCoOpRequireHostApproval(_ required: Bool) {
         OPNRemoteCoOpPreferencesStore.setRequireHostApproval(required)
         loadSettingsPreferences()

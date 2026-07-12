@@ -46,6 +46,25 @@ public enum OPNRemoteCoOpICETransportPolicy: String, Codable, Equatable, Sendabl
     case relay
 }
 
+public enum OPNRemoteCoOpLatencyMode: String, CaseIterable, Codable, Equatable, Sendable {
+    case quality
+    case lowLatency
+
+    public var label: String {
+        switch self {
+        case .quality: return "Quality"
+        case .lowLatency: return "Low Latency"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .quality: return "Prioritizes image quality with higher bitrate targets. Best for watching or stable LAN sessions."
+        case .lowLatency: return "Prioritizes responsiveness by reducing buffering and letting WebRTC lower quality before queueing frames."
+        }
+    }
+}
+
 public struct OPNRemoteCoOpICEServer: Codable, Equatable, Sendable {
     public var urls: [String]
     public var username: String?
@@ -61,22 +80,37 @@ public struct OPNRemoteCoOpICEServer: Codable, Equatable, Sendable {
 public struct OPNRemoteCoOpNetworkConfiguration: Codable, Equatable, Sendable {
     public var transportMode: OPNRemoteCoOpTransportMode
     public var iceTransportPolicy: OPNRemoteCoOpICETransportPolicy
+    public var latencyMode: OPNRemoteCoOpLatencyMode
     public var iceServers: [OPNRemoteCoOpICEServer]
     public var dataChannelInputEnabled: Bool
     public var websocketInputFallbackEnabled: Bool
     public var directPeerCandidateWarning: String
 
     public init(transportMode: OPNRemoteCoOpTransportMode,
+                latencyMode: OPNRemoteCoOpLatencyMode = .quality,
                 iceServers: [OPNRemoteCoOpICEServer] = [],
                 dataChannelInputEnabled: Bool = true,
                 websocketInputFallbackEnabled: Bool = true,
                 directPeerCandidateWarning: String = "") {
         self.transportMode = transportMode
         self.iceTransportPolicy = transportMode.iceTransportPolicy
+        self.latencyMode = latencyMode
         self.iceServers = iceServers
         self.dataChannelInputEnabled = dataChannelInputEnabled
         self.websocketInputFallbackEnabled = websocketInputFallbackEnabled
         self.directPeerCandidateWarning = directPeerCandidateWarning.isEmpty ? Self.warning(for: transportMode) : directPeerCandidateWarning
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        transportMode = try container.decodeIfPresent(OPNRemoteCoOpTransportMode.self, forKey: .transportMode) ?? .automatic
+        iceTransportPolicy = try container.decodeIfPresent(OPNRemoteCoOpICETransportPolicy.self, forKey: .iceTransportPolicy) ?? transportMode.iceTransportPolicy
+        latencyMode = try container.decodeIfPresent(OPNRemoteCoOpLatencyMode.self, forKey: .latencyMode) ?? .quality
+        iceServers = try container.decodeIfPresent([OPNRemoteCoOpICEServer].self, forKey: .iceServers) ?? []
+        dataChannelInputEnabled = try container.decodeIfPresent(Bool.self, forKey: .dataChannelInputEnabled) ?? true
+        websocketInputFallbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .websocketInputFallbackEnabled) ?? true
+        let warning = try container.decodeIfPresent(String.self, forKey: .directPeerCandidateWarning) ?? ""
+        directPeerCandidateWarning = warning.isEmpty ? Self.warning(for: transportMode) : warning
     }
 
     public static func warning(for mode: OPNRemoteCoOpTransportMode) -> String {
@@ -140,6 +174,28 @@ public enum OPNRemoteCoOpQualityPreset: String, CaseIterable, Codable, Equatable
         case .p1080f60: return 8_000_000
         }
     }
+
+    public func videoMaxBitrateBps(for latencyMode: OPNRemoteCoOpLatencyMode) -> Int {
+        switch latencyMode {
+        case .quality:
+            return videoMaxBitrateBps
+        case .lowLatency:
+            switch self {
+            case .p720f30: return 4_000_000
+            case .p720f60: return 8_000_000
+            case .p1080f60: return 12_000_000
+            }
+        }
+    }
+
+    public func videoMinBitrateBps(for latencyMode: OPNRemoteCoOpLatencyMode) -> Int? {
+        switch latencyMode {
+        case .quality:
+            return videoMinBitrateBps
+        case .lowLatency:
+            return nil
+        }
+    }
 }
 
 public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
@@ -147,6 +203,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataReservedGuestSlotsKey = "remoteCoOpReservedGuestSlots"
     public static let launchMetadataTransportModeKey = "remoteCoOpTransportMode"
     public static let launchMetadataQualityPresetKey = "remoteCoOpQualityPreset"
+    public static let launchMetadataLatencyModeKey = "remoteCoOpLatencyMode"
     public static let launchMetadataRequireHostApprovalKey = "remoteCoOpRequireHostApproval"
     public static let launchMetadataSignalingServerURLKey = "remoteCoOpSignalingServerURL"
     public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
@@ -159,6 +216,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public var reservedGuestSlots: Int
     public var transportMode: OPNRemoteCoOpTransportMode
     public var qualityPreset: OPNRemoteCoOpQualityPreset
+    public var latencyMode: OPNRemoteCoOpLatencyMode
     public var requireHostApproval: Bool
     public var signalingServerURL: String
     public var guestJoinBaseURL: String
@@ -168,6 +226,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 reservedGuestSlots: Int = 1,
                 transportMode: OPNRemoteCoOpTransportMode = .automatic,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
+                latencyMode: OPNRemoteCoOpLatencyMode = .quality,
                 requireHostApproval: Bool = true,
                 signalingServerURL: String = Self.defaultSignalingServerURL,
                 guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL,
@@ -176,6 +235,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
         self.transportMode = transportMode
         self.qualityPreset = qualityPreset
+        self.latencyMode = latencyMode
         self.requireHostApproval = requireHostApproval
         self.signalingServerURL = Self.normalizedURLString(signalingServerURL, fallback: Self.defaultSignalingServerURL)
         self.guestJoinBaseURL = Self.normalizedURLString(guestJoinBaseURL, fallback: Self.defaultGuestJoinBaseURL)
@@ -196,6 +256,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             Self.launchMetadataReservedGuestSlotsKey: String(Self.clampedGuestSlots(reservedGuestSlots)),
             Self.launchMetadataTransportModeKey: transportMode.rawValue,
             Self.launchMetadataQualityPresetKey: qualityPreset.rawValue,
+            Self.launchMetadataLatencyModeKey: latencyMode.rawValue,
             Self.launchMetadataRequireHostApprovalKey: String(requireHostApproval),
             Self.launchMetadataSignalingServerURLKey: signalingServerURL,
             Self.launchMetadataGuestJoinBaseURLKey: guestJoinBaseURL,
@@ -209,6 +270,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             reservedGuestSlots: int(metadata[launchMetadataReservedGuestSlotsKey], defaultValue: fallback.reservedGuestSlots),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: metadata[launchMetadataTransportModeKey] ?? "") ?? fallback.transportMode,
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: metadata[launchMetadataQualityPresetKey] ?? "") ?? fallback.qualityPreset,
+            latencyMode: OPNRemoteCoOpLatencyMode(rawValue: metadata[launchMetadataLatencyModeKey] ?? "") ?? fallback.latencyMode,
             requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval),
             signalingServerURL: string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL),
             guestJoinBaseURL: string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL),
@@ -261,6 +323,7 @@ public struct OPNRemoteCoOpInviteTokenPayload: Codable, Equatable, Sendable {
     public let reservedGuestSlots: Int
     public let transportMode: OPNRemoteCoOpTransportMode
     public let qualityPreset: OPNRemoteCoOpQualityPreset
+    public let latencyMode: OPNRemoteCoOpLatencyMode
     public let requireHostApproval: Bool
     public let hideGuestInviteDetails: Bool
 
@@ -282,8 +345,26 @@ public struct OPNRemoteCoOpInviteTokenPayload: Codable, Equatable, Sendable {
         self.reservedGuestSlots = preferences.effectiveReservedGuestSlots
         self.transportMode = preferences.transportMode
         self.qualityPreset = preferences.qualityPreset
+        self.latencyMode = preferences.latencyMode
         self.requireHostApproval = preferences.requireHostApproval
         self.hideGuestInviteDetails = preferences.hideGuestInviteDetails
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        inviteID = try container.decode(UUID.self, forKey: .inviteID)
+        code = try container.decode(String.self, forKey: .code)
+        applicationID = try container.decodeIfPresent(String.self, forKey: .applicationID) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        createdAtEpochSeconds = try container.decode(TimeInterval.self, forKey: .createdAtEpochSeconds)
+        expiresAtEpochSeconds = try container.decode(TimeInterval.self, forKey: .expiresAtEpochSeconds)
+        reservedGuestSlots = try container.decodeIfPresent(Int.self, forKey: .reservedGuestSlots) ?? 0
+        transportMode = try container.decodeIfPresent(OPNRemoteCoOpTransportMode.self, forKey: .transportMode) ?? .automatic
+        qualityPreset = try container.decodeIfPresent(OPNRemoteCoOpQualityPreset.self, forKey: .qualityPreset) ?? .p720f60
+        latencyMode = try container.decodeIfPresent(OPNRemoteCoOpLatencyMode.self, forKey: .latencyMode) ?? .quality
+        requireHostApproval = try container.decodeIfPresent(Bool.self, forKey: .requireHostApproval) ?? true
+        hideGuestInviteDetails = try container.decodeIfPresent(Bool.self, forKey: .hideGuestInviteDetails) ?? false
     }
 
     public var createdAt: Date { Date(timeIntervalSince1970: createdAtEpochSeconds) }

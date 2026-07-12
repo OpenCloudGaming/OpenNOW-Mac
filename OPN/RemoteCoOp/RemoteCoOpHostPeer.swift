@@ -36,6 +36,7 @@ public protocol OPNRemoteCoOpHostPeerFactory: Sendable {
     func makePeer(participantID: UUID,
                   networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                   qualityPreset: OPNRemoteCoOpQualityPreset,
+                  latencyMode: OPNRemoteCoOpLatencyMode,
                   callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer
 }
 
@@ -63,12 +64,14 @@ public actor OPNRemoteCoOpHostPeerController {
     private let audioRelay: OPNRemoteCoOpHostAudioRelay?
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private var qualityPreset: OPNRemoteCoOpQualityPreset
+    private var latencyMode: OPNRemoteCoOpLatencyMode
     private var peers: [UUID: any OPNRemoteCoOpHostPeer] = [:]
 
     public init(signaling: any OPNRemoteCoOpSignalingSession,
                 coordinator: OPNRemoteCoOpHostCoordinator,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
+                latencyMode: OPNRemoteCoOpLatencyMode = .quality,
                 videoRelay: OPNRemoteCoOpHostVideoRelay? = nil,
                 audioRelay: OPNRemoteCoOpHostAudioRelay? = nil,
                 peerFactory: any OPNRemoteCoOpHostPeerFactory = OPNRemoteCoOpWebRTCHostPeerFactory(),
@@ -77,6 +80,7 @@ public actor OPNRemoteCoOpHostPeerController {
         self.coordinator = coordinator
         self.networkConfiguration = networkConfiguration
         self.qualityPreset = qualityPreset
+        self.latencyMode = latencyMode
         self.videoRelay = videoRelay
         self.audioRelay = audioRelay
         self.peerFactory = peerFactory
@@ -89,6 +93,10 @@ public actor OPNRemoteCoOpHostPeerController {
 
     public func updateQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) {
         qualityPreset = preset
+    }
+
+    public func updateLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) {
+        latencyMode = mode
     }
 
     public func sync(participants: [OPNRemoteCoOpParticipant]) async throws {
@@ -121,7 +129,7 @@ public actor OPNRemoteCoOpHostPeerController {
                 for routedEvent in routedEvents { await forwardInput(routedEvent) }
             }
         )
-        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, callbacks: callbacks)
+        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, latencyMode: latencyMode, callbacks: callbacks)
         peers[participantID] = peer
         do {
             try await peer.start()

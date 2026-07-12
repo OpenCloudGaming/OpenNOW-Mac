@@ -8,8 +8,9 @@ public struct OPNRemoteCoOpWebRTCHostPeerFactory: OPNRemoteCoOpHostPeerFactory {
     public func makePeer(participantID: UUID,
                          networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                          qualityPreset: OPNRemoteCoOpQualityPreset,
+                         latencyMode: OPNRemoteCoOpLatencyMode,
                          callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer {
-        OPNRemoteCoOpWebRTCHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, callbacks: callbacks)
+        OPNRemoteCoOpWebRTCHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, latencyMode: latencyMode, callbacks: callbacks)
     }
 }
 
@@ -18,6 +19,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private static let inputChannelLabel = "remote-coop-input"
     private let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private let qualityPreset: OPNRemoteCoOpQualityPreset
+    private let latencyMode: OPNRemoteCoOpLatencyMode
     private let callbacks: OPNRemoteCoOpHostPeerCallbacks
     private let stateLock = NSLock()
     private var factory: RTCPeerConnectionFactory?
@@ -37,10 +39,12 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     public init(participantID: UUID,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                 qualityPreset: OPNRemoteCoOpQualityPreset,
+                latencyMode: OPNRemoteCoOpLatencyMode,
                 callbacks: OPNRemoteCoOpHostPeerCallbacks) {
         self.participantID = participantID
         self.networkConfiguration = networkConfiguration
         self.qualityPreset = qualityPreset
+        self.latencyMode = latencyMode
         self.callbacks = callbacks
         super.init()
     }
@@ -240,12 +244,15 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         let encodings = parameters.encodings.isEmpty ? [RTCRtpEncodingParameters()] : parameters.encodings
         for encoding in encodings {
             encoding.isActive = true
-            encoding.maxBitrateBps = NSNumber(value: qualityPreset.videoMaxBitrateBps)
-            encoding.minBitrateBps = NSNumber(value: qualityPreset.videoMinBitrateBps)
+            encoding.maxBitrateBps = NSNumber(value: qualityPreset.videoMaxBitrateBps(for: latencyMode))
+            encoding.minBitrateBps = qualityPreset.videoMinBitrateBps(for: latencyMode).map(NSNumber.init(value:))
             encoding.maxFramerate = NSNumber(value: qualityPreset.fps)
             encoding.scaleResolutionDownBy = 1
-            encoding.bitratePriority = 2
+            encoding.bitratePriority = latencyMode == .lowLatency ? 1 : 2
             encoding.networkPriority = .high
+        }
+        if latencyMode == .lowLatency {
+            parameters.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainFramerate.rawValue)
         }
         parameters.encodings = encodings
         sender.parameters = parameters

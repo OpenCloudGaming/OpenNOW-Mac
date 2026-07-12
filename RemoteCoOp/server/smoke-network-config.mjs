@@ -64,6 +64,7 @@ async function runSmokeChecks(brokerURL) {
   await assertRelayOnly(brokerURL);
   await assertAutomatic(brokerURL);
   await assertDirectOnly(brokerURL);
+  await assertLowLatencyMode(brokerURL);
 }
 
 async function assertRelayOnly(brokerURL) {
@@ -99,6 +100,11 @@ async function assertDirectOnly(brokerURL) {
   assert(config.iceTransportPolicy === "all", "directOnly should not force relay policy");
   const urls = config.iceServers.flatMap(server => server.urls ?? []);
   assert(!urls.some(url => url.startsWith("turn:") || url.startsWith("turns:")), "directOnly should not include TURN URLs");
+}
+
+async function assertLowLatencyMode(brokerURL) {
+  const config = await fetchNetworkConfiguration(brokerURL, inviteToken({ inviteID: randomUUID(), transportMode: "automatic", latencyMode: "lowLatency" }));
+  assert(config.latencyMode === "lowLatency", "lowLatency mode was not preserved");
 }
 
 async function fetchNetworkConfiguration(brokerURL, invite) {

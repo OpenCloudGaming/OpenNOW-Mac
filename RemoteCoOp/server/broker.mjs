@@ -325,11 +325,13 @@ function roomFor(roomID) {
 
 function networkConfigurationFor(payload, roomID) {
   const transportMode = ["automatic", "directOnly", "relayOnly"].includes(payload?.transportMode) ? payload.transportMode : "automatic";
+  const latencyMode = ["quality", "lowLatency"].includes(payload?.latencyMode) ? payload.latencyMode : "quality";
   const iceTransportPolicy = transportMode === "relayOnly" ? "relay" : "all";
   const iceServers = iceServersFor(transportMode, roomID);
   return {
     transportMode,
     iceTransportPolicy,
+    latencyMode,
     iceServers,
     dataChannelInputEnabled: true,
     websocketInputFallbackEnabled: true,

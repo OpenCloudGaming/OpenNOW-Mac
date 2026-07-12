@@ -1242,6 +1242,8 @@ private struct GameplaySettingsPage: View {
                 SettingsDivider()
                 SettingsOptionRow(title: "Guest Quality", subtitle: "Caps the outbound Remote Co-Op stream sent to guests.", options: OPNRemoteCoOpQualityPreset.allCases.map(\.label), selectedIndex: selectedRemoteCoOpQualityPresetIndex, action: viewModel.setRemoteCoOpQualityPresetIndex)
                 SettingsDivider()
+                SettingsOptionRow(title: "Latency Mode", subtitle: viewModel.remoteCoOpPreferences.latencyMode.description, options: OPNRemoteCoOpLatencyMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpLatencyModeIndex, action: viewModel.setRemoteCoOpLatencyModeIndex)
+                SettingsDivider()
                 SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, action: viewModel.setRemoteCoOpRequireHostApproval)
                 SettingsDivider()
                 SettingsToggleRow(title: "Hide Guest Invite Details", subtitle: "Share opaque invites that do not reveal the game title or app ID to guests.", isOn: viewModel.remoteCoOpPreferences.hideGuestInviteDetails, action: viewModel.setRemoteCoOpHideGuestInviteDetails)
@@ -1307,6 +1309,10 @@ private struct GameplaySettingsPage: View {
 
     private var selectedRemoteCoOpQualityPresetIndex: Int {
         OPNRemoteCoOpQualityPreset.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.qualityPreset) ?? 0
+    }
+
+    private var selectedRemoteCoOpLatencyModeIndex: Int {
+        OPNRemoteCoOpLatencyMode.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.latencyMode) ?? 0
     }
 
     private var streamingProfileMode: String {

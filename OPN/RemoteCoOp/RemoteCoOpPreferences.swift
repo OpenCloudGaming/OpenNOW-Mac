@@ -6,6 +6,7 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
     private static let transportModeKey = "OpenNOW.RemoteCoOp.TransportMode"
     private static let qualityPresetKey = "OpenNOW.RemoteCoOp.QualityPreset"
+    private static let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
     private static let requireHostApprovalKey = "OpenNOW.RemoteCoOp.RequireHostApproval"
     private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
     private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
@@ -17,6 +18,7 @@ public enum OPNRemoteCoOpPreferencesStore {
             reservedGuestSlots: int(storage.object(forKey: reservedGuestSlotsKey), defaultValue: 1),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: string(storage.object(forKey: transportModeKey))) ?? .automatic,
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,
+            latencyMode: OPNRemoteCoOpLatencyMode(rawValue: string(storage.object(forKey: latencyModeKey))) ?? .quality,
             requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
             signalingServerURL: string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL),
             guestJoinBaseURL: string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL),
@@ -29,6 +31,7 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.set(OPNRemoteCoOpPreferences.clampedGuestSlots(preferences.reservedGuestSlots), forKey: reservedGuestSlotsKey)
         storage.set(preferences.transportMode.rawValue, forKey: transportModeKey)
         storage.set(preferences.qualityPreset.rawValue, forKey: qualityPresetKey)
+        storage.set(preferences.latencyMode.rawValue, forKey: latencyModeKey)
         storage.set(preferences.requireHostApproval, forKey: requireHostApprovalKey)
         storage.set(preferences.signalingServerURL, forKey: signalingServerURLKey)
         storage.set(preferences.guestJoinBaseURL, forKey: guestJoinBaseURLKey)
@@ -57,6 +60,12 @@ public enum OPNRemoteCoOpPreferencesStore {
     public static func setQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) {
         var preferences = load()
         preferences.qualityPreset = preset
+        save(preferences)
+    }
+
+    public static func setLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) {
+        var preferences = load()
+        preferences.latencyMode = mode
         save(preferences)
     }
 

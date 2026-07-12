@@ -14,6 +14,7 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences(isEnabled: false, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 2)
         #expect(OPNRemoteCoOpPreferences().transportMode == .automatic)
+        #expect(OPNRemoteCoOpPreferences().latencyMode == .quality)
         #expect(!OPNRemoteCoOpPreferences().hideGuestInviteDetails)
     }
 
@@ -24,6 +25,7 @@ struct RemoteCoOpTests {
             reservedGuestSlots: 2,
             transportMode: .relayOnly,
             qualityPreset: .p1080f60,
+            latencyMode: .lowLatency,
             requireHostApproval: false,
             signalingServerURL: "wss://coop.example.test/remote-coop",
             guestJoinBaseURL: "https://coop.example.test/",
@@ -107,6 +109,7 @@ struct RemoteCoOpTests {
     func wireCodecCarriesICENetworkConfiguration() throws {
         let configuration = OPNRemoteCoOpNetworkConfiguration(
             transportMode: .relayOnly,
+            latencyMode: .lowLatency,
             iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
         )
         let message = OPNRemoteCoOpWireMessage(kind: .networkConfiguration, roomID: UUID(), networkConfiguration: configuration)
@@ -115,6 +118,7 @@ struct RemoteCoOpTests {
 
         #expect(decoded.networkConfiguration == configuration)
         #expect(decoded.networkConfiguration?.iceTransportPolicy == .relay)
+        #expect(decoded.networkConfiguration?.latencyMode == .lowLatency)
     }
 
     @Test("wire codec maps broker network config into signaling event")
@@ -133,7 +137,7 @@ struct RemoteCoOpTests {
     @Test("invite token signs and verifies launch metadata")
     func inviteTokenSignsAndVerifiesLaunchMetadata() async throws {
         let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 7, count: 32))
-        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2, transportMode: .relayOnly, qualityPreset: .p1080f60, requireHostApproval: false)
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2, transportMode: .relayOnly, qualityPreset: .p1080f60, latencyMode: .lowLatency, requireHostApproval: false)
         let host = OPNRemoteCoOpHostSession(preferences: preferences, inviteSigner: signer)
 
         let invite = try await host.startInvite(applicationID: "123", title: "Portal", lifetimeSeconds: 120)
@@ -146,6 +150,7 @@ struct RemoteCoOpTests {
         #expect(payload.reservedGuestSlots == 2)
         #expect(payload.transportMode == .relayOnly)
         #expect(payload.qualityPreset == .p1080f60)
+        #expect(payload.latencyMode == .lowLatency)
         #expect(!payload.requireHostApproval)
         #expect(!payload.hideGuestInviteDetails)
     }
@@ -376,7 +381,7 @@ struct RemoteCoOpTests {
             transportMode: .relayOnly,
             iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
         )
-        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: networkConfiguration, peerFactory: factory, forwardInput: { _ in })
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: networkConfiguration, latencyMode: .lowLatency, peerFactory: factory, forwardInput: { _ in })
 
         try await controller.startPeer(for: participant)
 
@@ -389,6 +394,7 @@ struct RemoteCoOpTests {
         #expect(signal.kind == .offer)
         #expect(signal.sdp == "offer-\(participantID.uuidString)")
         #expect(peer.networkConfiguration == networkConfiguration)
+        #expect(peer.latencyMode == .lowLatency)
         #expect(peer.startCount() == 1)
     }
 
@@ -550,8 +556,9 @@ private final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFac
     func makePeer(participantID: UUID,
                   networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                   qualityPreset: OPNRemoteCoOpQualityPreset,
+                  latencyMode: OPNRemoteCoOpLatencyMode,
                   callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer {
-        let peer = RecordingRemoteCoOpHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, callbacks: callbacks)
+        let peer = RecordingRemoteCoOpHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, latencyMode: latencyMode, callbacks: callbacks)
         lock.withLock { peers[participantID] = peer }
         return peer
     }
@@ -565,6 +572,7 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemot
     let participantID: UUID
     let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     let qualityPreset: OPNRemoteCoOpQualityPreset
+    let latencyMode: OPNRemoteCoOpLatencyMode
     private let callbacks: OPNRemoteCoOpHostPeerCallbacks
     private let lock = NSLock()
     private var started = 0
@@ -573,10 +581,11 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemot
     private var renderedAudioFrames = 0
     private var signals: [OPNRemoteCoOpWirePeerSignal] = []
 
-    init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, qualityPreset: OPNRemoteCoOpQualityPreset, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
+    init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, qualityPreset: OPNRemoteCoOpQualityPreset, latencyMode: OPNRemoteCoOpLatencyMode, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
         self.participantID = participantID
         self.networkConfiguration = networkConfiguration
         self.qualityPreset = qualityPreset
+        self.latencyMode = latencyMode
         self.callbacks = callbacks
     }
 
