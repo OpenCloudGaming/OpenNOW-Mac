@@ -21,9 +21,11 @@ const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
 const turnCredential = process.env.OPENNOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
 const turnSharedSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
 const turnCredentialTTLSeconds = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "3600", 10);
-const messageFlowLoggingEnabled = ["1", "true", "yes"].includes((process.env.OPENNOW_REMOTE_COOP_LOG_MESSAGES ?? "").toLowerCase());
+const networkLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_NETWORK", true);
+const messageFlowLoggingEnabled = booleanEnv("OPENNOW_REMOTE_COOP_LOG_MESSAGES", false);
 const rooms = new Map();
 const sockets = new Set();
+let nextSocketID = 1;
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -38,14 +40,26 @@ if (Boolean(brokerCertificatePath) !== Boolean(brokerKeyPath)) {
 }
 
 const server = await makeBrokerServer(async (request, response) => {
+  const startedAt = Date.now();
+  const remote = socketAddress(request.socket);
   try {
     const url = new URL(request.url ?? "/", `${brokerHTTPProtocol}://${request.headers.host ?? "localhost"}`);
+    response.on("finish", () => logNetwork("http.request", {
+      method: request.method ?? "GET",
+      path: url.pathname,
+      status: response.statusCode,
+      durationMs: Date.now() - startedAt,
+      remote,
+      forwardedFor: request.headers["x-forwarded-for"]
+    }));
     if (url.pathname === "/remote-coop/network-config") {
       const payload = decodeInvitePayload(url.searchParams.get("invite") ?? "");
       if (!payload) {
+        logNetwork("network-config.rejected", { remote, reason: "invalid_invite" });
         response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: "invalid_invite" }));
         return;
       }
+      logNetwork("network-config.served", { remote, roomID: payload.inviteID ?? "none", transportMode: payload.transportMode ?? "automatic", latencyMode: payload.latencyMode ?? "quality" });
       response.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(networkConfigurationFor(payload, payload.inviteID ?? "")));
       return;
     }
@@ -60,7 +74,8 @@ const server = await makeBrokerServer(async (request, response) => {
       "cache-control": "no-store",
       "content-type": contentTypes.get(extname(file)) ?? "application/octet-stream"
     }).end(data);
-  } catch {
+  } catch (error) {
+    logNetwork("http.error", { remote, error: error.message || "not_found" });
     response.writeHead(404).end("Not found");
   }
 });
@@ -68,11 +83,13 @@ const server = await makeBrokerServer(async (request, response) => {
 server.on("upgrade", (request, socket) => {
   const url = new URL(request.url ?? "/", `${brokerHTTPProtocol}://${request.headers.host ?? "localhost"}`);
   if (url.pathname !== "/remote-coop") {
+    logNetwork("ws.upgrade.rejected", { remote: socketAddress(socket), path: url.pathname, reason: "invalid_path" });
     socket.destroy();
     return;
   }
   const key = request.headers["sec-websocket-key"];
   if (typeof key !== "string") {
+    logNetwork("ws.upgrade.rejected", { remote: socketAddress(socket), path: url.pathname, reason: "missing_key" });
     socket.destroy();
     return;
   }
@@ -85,6 +102,7 @@ server.on("upgrade", (request, socket) => {
     "",
     ""
   ].join("\r\n"));
+  logNetwork("ws.upgrade.accepted", { remote: socketAddress(socket), path: url.pathname, forwardedFor: request.headers["x-forwarded-for"] });
   attachSocket(socket);
 });
 
@@ -116,6 +134,7 @@ function listenOnAvailablePort(index) {
 
 server.on("listening", () => {
   console.log(`Remote Co-Op ICE: stun=${stunURLs.length} turn=${turnURLs.length} turnAuth=${turnAuthSummary()} brokerWebSocket=${brokerWebSocketProtocol}`);
+  console.log(`Remote Co-Op logging: network=${networkLoggingEnabled ? "enabled" : "disabled"} messageFlow=${messageFlowLoggingEnabled ? "enabled" : "disabled"}`);
 });
 
 async function makeBrokerServer(handler) {
@@ -132,12 +151,14 @@ setInterval(() => {
   const now = Date.now();
   for (const [roomID, room] of rooms) {
     if (room.expiresAtMs > 0 && room.expiresAtMs <= now) {
+      logNetwork("room.expired", { roomID, guests: room.guests.size, hostConnected: Boolean(room.host) });
       broadcast(room, { kind: "inviteEnded", roomID, reason: "Invite expired" });
       closeRoom(roomID);
     }
   }
   for (const state of sockets) {
     if (now - state.lastSeenAt > 45_000) {
+      logNetwork("socket.timeout", socketLogFields(state));
       state.socket.destroy();
     } else {
       send(state, { kind: "heartbeat", roomID: state.roomID });
@@ -146,28 +167,35 @@ setInterval(() => {
 }, 10_000).unref();
 
 function attachSocket(socket) {
-  const state = { socket, buffer: Buffer.alloc(0), role: "unknown", roomID: null, participantID: null, inviteToken: null, displayName: null, lastSeenAt: Date.now(), messageTimes: [] };
+  const state = { id: nextSocketID++, socket, buffer: Buffer.alloc(0), role: "unknown", roomID: null, participantID: null, inviteToken: null, displayName: null, connectedAt: Date.now(), lastSeenAt: Date.now(), messageTimes: [], bytesIn: 0, framesIn: 0, framesOut: 0, detached: false };
   sockets.add(state);
+  logNetwork("socket.open", socketLogFields(state));
   socket.on("data", chunk => {
+    state.bytesIn += chunk.length;
     state.buffer = Buffer.concat([state.buffer, chunk]);
     parseFrames(state);
   });
-  socket.on("close", () => detachSocket(state));
-  socket.on("error", () => detachSocket(state));
+  socket.on("close", () => detachSocket(state, "close"));
+  socket.on("error", error => detachSocket(state, "error", error));
 }
 
-function detachSocket(state) {
+function detachSocket(state, reason = "close", error = null) {
+  if (state.detached) return;
+  state.detached = true;
   sockets.delete(state);
+  logNetwork("socket.close", { ...socketLogFields(state), reason, error: error?.message, durationMs: Date.now() - state.connectedAt, bytesIn: state.bytesIn, framesIn: state.framesIn, framesOut: state.framesOut });
   if (!state.roomID) return;
   const room = rooms.get(state.roomID);
   if (!room) return;
   if (state.role === "host" && room.host === state) {
+    logNetwork("host.disconnected", { ...socketLogFields(state), guests: room.guests.size });
     broadcast(room, { kind: "inviteEnded", roomID: state.roomID, reason: "Host disconnected" }, state);
     closeRoom(state.roomID);
     return;
   }
   if (state.role === "guest" && state.participantID) {
     room.guests.delete(participantKey(state.participantID));
+    logNetwork("guest.disconnected", { ...socketLogFields(state), hostConnected: Boolean(room.host) });
     if (room.host) send(room.host, { kind: "guestDisconnected", roomID: state.roomID, participantID: state.participantID });
   }
 }
@@ -200,6 +228,7 @@ function parseFrames(state) {
       payload = Buffer.from(payload.map((value, index) => value ^ mask[index % 4]));
     }
     state.buffer = state.buffer.subarray(offset + length);
+    state.framesIn += 1;
     handleFrame(state, opcode, payload);
   }
 }
@@ -207,22 +236,29 @@ function parseFrames(state) {
 function handleFrame(state, opcode, payload) {
   state.lastSeenAt = Date.now();
   if (opcode === 0x8) {
+    logNetwork("socket.close-frame", socketLogFields(state));
     state.socket.end();
     return;
   }
   if (opcode === 0x9) {
+    logNetwork("socket.ping", socketLogFields(state));
     sendFrame(state.socket, 0xA, payload);
     return;
   }
-  if (opcode !== 0x1) return;
+  if (opcode !== 0x1) {
+    logNetwork("socket.frame.ignored", { ...socketLogFields(state), opcode });
+    return;
+  }
   if (isRateLimited(state)) {
+    logNetwork("socket.rate_limited", socketLogFields(state));
     send(state, { kind: "error", reason: "Rate limit exceeded" });
     state.socket.destroy();
     return;
   }
   try {
     handleMessage(state, JSON.parse(payload.toString("utf8")));
-  } catch {
+  } catch (error) {
+    logNetwork("message.invalid_json", { ...socketLogFields(state), error: error.message });
     send(state, { kind: "error", reason: "Invalid JSON message" });
   }
 }
@@ -258,6 +294,7 @@ function handleMessage(state, message) {
 function registerHost(state, message) {
   const roomID = stringValue(message.roomID ?? message.invite?.id);
   if (!roomID) {
+    logNetwork("host.rejected", { ...socketLogFields(state), reason: "missing_room" });
     send(state, { kind: "error", reason: "Missing room ID" });
     return;
   }
@@ -269,9 +306,11 @@ function registerHost(state, message) {
   room.expiresAtMs = inviteExpiryMilliseconds(message.invite?.token);
   state.role = "host";
   state.roomID = roomID;
+  logNetwork("host.registered", { ...socketLogFields(state), pendingGuests: room.guests.size, transportMode: room.networkConfiguration.transportMode, latencyMode: room.networkConfiguration.latencyMode });
   send(state, { kind: "heartbeat", roomID });
   send(state, { kind: "networkConfiguration", roomID, networkConfiguration: room.networkConfiguration });
   for (const guest of room.guests.values()) {
+    logNetwork("guest.forwarded_to_host", { socketID: guest.id, roomID, participantID: guest.participantID });
     send(state, sanitizeMessage({
       kind: "guestJoinRequested",
       roomID,
@@ -287,10 +326,12 @@ function registerGuest(state, message) {
   const participantID = stringValue(message.participantID);
   const inviteToken = stringValue(message.inviteToken);
   if (!roomID || !participantID) {
+    logNetwork("guest.rejected", { ...socketLogFields(state), roomID: roomID ?? "none", participantID: participantID ?? "none", reason: "missing_room_or_participant" });
     send(state, { kind: "guestRejected", participantID, reason: "Missing room or participant ID" });
     return;
   }
   if (!inviteToken) {
+    logNetwork("guest.rejected", { ...socketLogFields(state), roomID, participantID, reason: "missing_invite_token" });
     send(state, { kind: "guestRejected", roomID, participantID, reason: "Missing invite token" });
     return;
   }
@@ -304,6 +345,7 @@ function registerGuest(state, message) {
   const payload = decodeInvitePayload(state.inviteToken);
   if (!room.invite && payload) room.networkConfiguration = networkConfigurationFor(payload, roomID);
   if (room.expiresAtMs <= 0) room.expiresAtMs = inviteExpiryMilliseconds(state.inviteToken);
+  logNetwork(room.host ? "guest.joined" : "guest.pending", { ...socketLogFields(state), hostConnected: Boolean(room.host), guests: room.guests.size, transportMode: room.networkConfiguration.transportMode, latencyMode: room.networkConfiguration.latencyMode });
   send(state, { kind: "networkConfiguration", roomID, participantID, networkConfiguration: room.networkConfiguration });
   if (room.host) send(room.host, sanitizeMessage({ ...message, roomID, participantID }));
 }
@@ -311,9 +353,11 @@ function registerGuest(state, message) {
 function relayGuestEvent(state, message) {
   const room = state.roomID ? rooms.get(state.roomID) : null;
   if (state.role !== "guest" || !room?.host) {
+    logNetwork("guest.event.rejected", { ...socketLogFields(state), kind: message.kind ?? "unknown", reason: "not_joined_or_host_missing" });
     send(state, { kind: "guestRejected", roomID: state.roomID, participantID: state.participantID, reason: "Guest is not joined" });
     return;
   }
+  logNetwork("guest.event.relayed", { ...socketLogFields(state), kind: message.kind ?? "unknown" });
   send(room.host, sanitizeMessage({ ...message, roomID: state.roomID, participantID: state.participantID }));
 }
 
@@ -321,11 +365,13 @@ function relayHostCommand(state, message) {
   const roomID = stringValue(message.roomID ?? state.roomID);
   const room = roomID ? rooms.get(roomID) : null;
   if (state.role !== "host" || !room || room.host !== state) {
+    logNetwork("host.command.rejected", { ...socketLogFields(state), kind: message.kind ?? "unknown", roomID: roomID ?? "none", reason: "host_not_registered" });
     send(state, { kind: "error", reason: "Host is not registered" });
     return;
   }
   const outbound = sanitizeMessage({ ...message, roomID });
   if (message.kind === "inviteEnded") {
+    logNetwork("room.ended", { ...socketLogFields(state), guests: room.guests.size });
     broadcast(room, outbound, state);
     closeRoom(roomID);
     return;
@@ -333,9 +379,11 @@ function relayHostCommand(state, message) {
   const participantID = stringValue(message.participantID ?? message.participant?.id);
   const key = participantKey(participantID);
   if (key && room.guests.has(key)) {
+    logNetwork("host.command.relayed", { ...socketLogFields(state), kind: message.kind ?? "unknown", participantID });
     send(room.guests.get(key), outbound);
     if (message.kind === "participantRemoved" || message.kind === "guestRejected") room.guests.delete(key);
   } else {
+    logNetwork("host.command.broadcast", { ...socketLogFields(state), kind: message.kind ?? "unknown", guests: room.guests.size });
     broadcast(room, outbound, state);
   }
 }
@@ -343,6 +391,7 @@ function relayHostCommand(state, message) {
 function send(state, message) {
   if (!state || state.socket.destroyed) return;
   logMessageFlow("out", state, message);
+  state.framesOut += 1;
   sendFrame(state.socket, 0x1, Buffer.from(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }), "utf8"));
 }
 
@@ -376,6 +425,7 @@ function broadcast(room, message, except = null) {
 function closeRoom(roomID) {
   const room = rooms.get(roomID);
   if (!room) return;
+  logNetwork("room.closed", { roomID, hostConnected: Boolean(room.host), guests: room.guests.size });
   if (room.host) room.host.roomID = null;
   for (const guest of room.guests.values()) guest.roomID = null;
   rooms.delete(roomID);
@@ -481,6 +531,35 @@ function logMessageFlow(direction, state, message) {
   console.log(`[flow] ${direction} role=${state.role} kind=${message.kind ?? "unknown"}${signalKind} room=${roomID} participant=${participantID}`);
 }
 
+function logNetwork(event, fields = {}) {
+  if (!networkLoggingEnabled) return;
+  const details = Object.entries(fields)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => `${key}=${logValue(value)}`)
+    .join(" ");
+  console.log(`[network] ${new Date().toISOString()} event=${event}${details ? ` ${details}` : ""}`);
+}
+
+function socketLogFields(state) {
+  return {
+    socketID: state.id,
+    remote: socketAddress(state.socket),
+    role: state.role,
+    roomID: state.roomID ?? "none",
+    participantID: state.participantID ?? "none"
+  };
+}
+
+function socketAddress(socket) {
+  return `${socket.remoteAddress ?? "unknown"}:${socket.remotePort ?? "unknown"}`;
+}
+
+function logValue(value) {
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return JSON.stringify(value.map(String));
+  return JSON.stringify(String(value));
+}
+
 function splitEnv(name, fallback) {
   return (process.env[name] ?? fallback)
     .split(",")
@@ -496,6 +575,12 @@ function integerEnv(name, fallback) {
 function stringEnv(name, fallback) {
   const value = process.env[name];
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function booleanEnv(name, fallback) {
+  const value = process.env[name];
+  if (typeof value !== "string") return fallback;
+  return !["0", "false", "no", "off", ""].includes(value.trim().toLowerCase());
 }
 
 function portCandidates(preferredPort, alternateValue) {

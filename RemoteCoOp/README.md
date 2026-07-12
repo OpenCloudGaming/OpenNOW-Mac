@@ -76,6 +76,8 @@ OPENNOW_REMOTE_COOP_STUN_URLS=stun:stun.l.google.com:19302
 OPENNOW_REMOTE_COOP_TURN_URLS=turn:198.12.95.48:3478?transport=udp,turn:198.12.95.48:3478?transport=tcp
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=shared-coturn-rest-secret
 OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600
+OPENNOW_REMOTE_COOP_LOG_NETWORK=1
+OPENNOW_REMOTE_COOP_LOG_MESSAGES=0
 ```
 
 When `OPENNOW_REMOTE_COOP_PORT` is unavailable, the broker retries the comma-separated `OPENNOW_REMOTE_COOP_PORT_ALTERNATES` list. Keep OpenNOW's Remote Co-Op Signaling Server and Guest Join URL settings aligned with the actual broker URL printed at startup.
@@ -83,6 +85,24 @@ When `OPENNOW_REMOTE_COOP_PORT` is unavailable, the broker retries the comma-sep
 If broker certificate/key paths are configured, the broker serves HTTPS/WSS. Without them, it serves HTTP/WS.
 
 Static TURN credentials are also supported with `OPENNOW_REMOTE_COOP_TURN_USERNAME` and `OPENNOW_REMOTE_COOP_TURN_CREDENTIAL`, but shared-secret REST credentials are preferred for production.
+
+## Broker Network Logging
+
+The broker writes network lifecycle logs to stdout by default. Disable them with:
+
+```sh
+OPENNOW_REMOTE_COOP_LOG_NETWORK=0 node RemoteCoOp/server/broker.mjs
+```
+
+Network logs use `[network]` lines and include HTTP request status, WebSocket upgrade decisions, socket open/close/error, host registration, guest pending/join/disconnect, room expiry/close, relay decisions, and rejection reasons. They intentionally omit invite tokens, raw SDP, TURN secrets, and full message payloads.
+
+Full signaling message flow logs remain opt-in for short debugging windows:
+
+```sh
+OPENNOW_REMOTE_COOP_LOG_MESSAGES=1 node RemoteCoOp/server/broker.mjs
+```
+
+Message flow logs print message kind, role, room ID, participant ID, and peer signal kind only; they do not print full payloads.
 
 ## TURN Server
 
@@ -178,6 +198,7 @@ This starts a temporary broker with test STUN/TURN settings and verifies:
 - Relay Only forces `iceTransportPolicy: "relay"`.
 - Relay Only emits expiring TURN REST credentials.
 - Direct Only omits TURN.
+- A guest that joins before the host remains pending and is forwarded when the host registers.
 
 Target an already running broker:
 

@@ -48,7 +48,7 @@ elements.copyDiagnosticsButton.addEventListener("click", event => {
   event.stopPropagation();
   copyDiagnostics();
 });
-elements.disconnectButton.addEventListener("click", disconnect);
+elements.disconnectButton?.addEventListener("click", disconnect);
 window.addEventListener("gamepadconnected", event => {
   elements.gamepadName.textContent = event.gamepad.id;
   elements.gamepadDetail.textContent = "Controller connected. Waiting for host approval.";
@@ -730,13 +730,18 @@ function disconnect(notifyHost = true) {
 }
 
 function setState(title, detail, connected) {
-  elements.state.textContent = title;
-  elements.detail.textContent = detail;
-  elements.dot.classList.toggle("connected", connected);
+  if (elements.state) elements.state.textContent = title;
+  if (elements.detail) elements.detail.textContent = detail;
+  elements.dot?.classList.toggle("connected", connected);
+  if (!elements.state && elements.networkState && elements.networkDetail) {
+    elements.networkState.textContent = title;
+    elements.networkDetail.textContent = detail;
+  }
 }
 
 function hasTerminalState() {
-  return ["Ended", "Rejected", "Removed"].includes(elements.state.textContent);
+  const state = elements.state?.textContent ?? elements.networkState?.textContent ?? "";
+  return ["Ended", "Rejected", "Removed"].includes(state);
 }
 
 function displayName() {
