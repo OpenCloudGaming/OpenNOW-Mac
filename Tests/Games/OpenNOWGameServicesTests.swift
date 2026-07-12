@@ -218,6 +218,62 @@ import Foundation
     }
 }
 
+@Test func gameLaunchBridgePromptsBeforeReusingMatchingActiveSession() async throws {
+    try await networkTestIsolationLock.withLock {
+    let host = "*"
+    SessionManagerURLProtocol.install(host: host) { request in
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/v2/session")
+        return SessionManagerURLProtocol.response(json: [
+            "requestStatus": [
+                "statusCode": 1,
+                "statusDescription": "SUCCESS",
+            ],
+            "sessions": [[
+                "sessionId": "active-session",
+                "status": 2,
+                "sessionRequestData": ["appId": 123],
+                "sessionControlInfo": ["ip": "control.example.test"],
+                "connectionInfo": [[
+                    "usage": 14,
+                    "ip": "signaling.example.test",
+                    "port": 443,
+                    "resourcePath": "/nvst/",
+                ]],
+            ]],
+        ])
+    }
+    defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+    let result: (Bool, String, OPNGameLaunchPlan?) = await withCheckedContinuation { continuation in
+        Task { @MainActor in
+            let game = OPNCatalogGameObject()
+            game.launchAppId = "123"
+            game.title = "Regression Game"
+            game.isInLibrary = true
+            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1) { success, message, plan in
+                continuation.resume(returning: (success, message, plan))
+            }
+        }
+    }
+
+    let plan = try #require(result.2)
+    #expect(result.0 == true)
+    #expect(result.1 == "A GeForce NOW session is already active for Regression Game.")
+    if case let .activeSession(active, resume, replacement) = plan {
+        #expect(active.id == "active-session")
+        #expect(active.appId == 123)
+        #expect(active.title == "Regression Game")
+        #expect(resume.resumeSessionId == "active-session")
+        #expect(resume.resumeServer == "control.example.test")
+        #expect(replacement.resumeSessionId.isEmpty)
+        #expect(replacement.appId == "123")
+    } else {
+        Issue.record("Expected an active session plan")
+    }
+    }
+}
+
 @Test @MainActor func gameLaunchBridgeBlocksPatchingGamesBeforeNetworkWork() async throws {
     let game = OPNCatalogGameObject()
     game.launchAppId = "123"

@@ -115,32 +115,12 @@ public final class OPNGameLaunchBridge {
                 let sessions = sessionsBox.value
                 if ok {
                     if let requestedSession = sessions.first(where: { self.activeSession($0, matches: game, appId: appId) }) {
-                        completion(true, "Resuming \(title)...", .ready(OPNStreamLaunchConfiguration(
-                            title: title,
-                            appId: requestedSession.appId > 0 ? String(requestedSession.appId) : appId,
-                            apiToken: token,
-                            accountLinked: true,
-                            selectedStore: "",
-                            resumeSessionId: requestedSession.sessionId,
-                            resumeServer: requestedSession.serverIp,
-                            metadata: launchMetadata
-                        )))
+                        completion(true, "A GeForce NOW session is already active for \(title).", self.activeSessionPlan(activeSession: requestedSession, activeTitle: title, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
                         return
                     }
                     if let activeSession = sessions.first {
                         let activeTitle = activeSession.appId > 0 ? "App ID \(activeSession.appId)" : "Current Stream"
-                        let active = OPNActiveStreamSessionDescriptor(sessionId: activeSession.sessionId, appId: activeSession.appId, serverIp: activeSession.serverIp, title: activeTitle)
-                        let resume = OPNStreamLaunchConfiguration(
-                            title: active.title,
-                            appId: activeSession.appId > 0 ? String(activeSession.appId) : appId,
-                            apiToken: token,
-                            accountLinked: true,
-                            selectedStore: "",
-                            resumeSessionId: activeSession.sessionId,
-                            resumeServer: activeSession.serverIp,
-                            metadata: launchMetadata
-                        )
-                        completion(true, "Another GeForce NOW session is already active.", .activeSession(active: active, resume: resume, replacement: replacement))
+                        completion(true, "Another GeForce NOW session is already active.", self.activeSessionPlan(activeSession: activeSession, activeTitle: activeTitle, fallbackAppId: appId, token: token, launchMetadata: launchMetadata, replacement: replacement))
                         return
                     }
                 }
@@ -148,6 +128,21 @@ public final class OPNGameLaunchBridge {
                 completion(true, "Launching \(title)...", .ready(replacement))
             }
         }
+    }
+
+    private func activeSessionPlan(activeSession: OPNActiveSessionObject, activeTitle: String, fallbackAppId: String, token: String, launchMetadata: [String: String], replacement: OPNStreamLaunchConfiguration) -> OPNGameLaunchPlan {
+        let active = OPNActiveStreamSessionDescriptor(sessionId: activeSession.sessionId, appId: activeSession.appId, serverIp: activeSession.serverIp, title: activeTitle)
+        let resume = OPNStreamLaunchConfiguration(
+            title: active.title,
+            appId: activeSession.appId > 0 ? String(activeSession.appId) : fallbackAppId,
+            apiToken: token,
+            accountLinked: true,
+            selectedStore: "",
+            resumeSessionId: activeSession.sessionId,
+            resumeServer: activeSession.serverIp,
+            metadata: launchMetadata
+        )
+        return .activeSession(active: active, resume: resume, replacement: replacement)
     }
 
     public func stopActiveSession(_ session: OPNActiveStreamSessionDescriptor, accessToken: String, completion: @escaping OPNGameLaunchSessionStopCompletion) {
