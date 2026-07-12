@@ -47,7 +47,8 @@ async function startBroker() {
       OPENNOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
       OPENNOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
       OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
-      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds
+      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
+      ...httpBrokerEnvironment()
     }
   });
   if (verbose) {
@@ -125,7 +126,8 @@ async function assertPortFallback() {
       OPENNOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
       OPENNOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
       OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
-      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds
+      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds,
+      ...httpBrokerEnvironment()
     }
   });
   if (verbose) {
@@ -255,6 +257,17 @@ function envFlag(name, fallback) {
   const value = process.env[name];
   if (typeof value !== "string") return fallback;
   return !["0", "false", "no", "off", ""].includes(value.trim().toLowerCase());
+}
+
+function httpBrokerEnvironment() {
+  return {
+    OPENNOW_REMOTE_COOP_BROKER_CERT: "",
+    OPENNOW_REMOTE_COOP_BROKER_KEY: "",
+    OPENNOW_REMOTE_COOP_TLS_CERT: "",
+    OPENNOW_REMOTE_COOP_TLS_KEY: "",
+    OPENNOW_REMOTE_COOP_TURN_CERT: "",
+    OPENNOW_REMOTE_COOP_TURN_KEY: ""
+  };
 }
 
 function printHelp() {

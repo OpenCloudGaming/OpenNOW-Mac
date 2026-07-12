@@ -1,4 +1,5 @@
-import { createServer } from "node:http";
+import { createServer as createHTTPServer } from "node:http";
+import { createServer as createHTTPSServer } from "node:https";
 import { createHash, createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
@@ -9,6 +10,11 @@ const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8788);
 const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
 const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? "127.0.0.1";
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
+const brokerCertificatePath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_CERT", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "");
+const brokerKeyPath = stringEnv("OPENNOW_REMOTE_COOP_BROKER_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TLS_KEY", "") || stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", "");
+const brokerTLSEnabled = Boolean(brokerCertificatePath && brokerKeyPath);
+const brokerHTTPProtocol = brokerTLSEnabled ? "https" : "http";
+const brokerWebSocketProtocol = brokerTLSEnabled ? "wss" : "ws";
 const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
 const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", `turn:${productionHost}:3478?transport=udp,turn:${productionHost}:3478?transport=tcp,turns:${productionHost}:443?transport=tcp`);
 const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
@@ -26,9 +32,14 @@ const contentTypes = new Map([
   [".json", "application/json; charset=utf-8"]
 ]);
 
-const server = createServer(async (request, response) => {
+if (Boolean(brokerCertificatePath) !== Boolean(brokerKeyPath)) {
+  console.error("OpenNOW Remote Co-Op broker HTTPS requires both OPENNOW_REMOTE_COOP_BROKER_CERT and OPENNOW_REMOTE_COOP_BROKER_KEY, or matching TLS/TURN cert and key environment variables.");
+  process.exit(1);
+}
+
+const server = await makeBrokerServer(async (request, response) => {
   try {
-    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+    const url = new URL(request.url ?? "/", `${brokerHTTPProtocol}://${request.headers.host ?? "localhost"}`);
     if (url.pathname === "/remote-coop/network-config") {
       const payload = decodeInvitePayload(url.searchParams.get("invite") ?? "");
       if (!payload) {
@@ -52,7 +63,7 @@ const server = createServer(async (request, response) => {
 });
 
 server.on("upgrade", (request, socket) => {
-  const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  const url = new URL(request.url ?? "/", `${brokerHTTPProtocol}://${request.headers.host ?? "localhost"}`);
   if (url.pathname !== "/remote-coop") {
     socket.destroy();
     return;
@@ -92,8 +103,8 @@ function listenOnAvailablePort(index) {
     server.off("error", onError);
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : candidate;
-    console.log(`OpenNOW Remote Co-Op broker listening on http://${bindHost}:${actualPort}`);
-    if (typeof process.send === "function") process.send({ kind: "remoteCoOpBrokerListening", bindHost, port: actualPort, requestedPort: port });
+    console.log(`OpenNOW Remote Co-Op broker listening on ${brokerHTTPProtocol}://${bindHost}:${actualPort}`);
+    if (typeof process.send === "function") process.send({ kind: "remoteCoOpBrokerListening", bindHost, port: actualPort, requestedPort: port, secure: brokerTLSEnabled });
   };
   server.once("error", onError);
   server.once("listening", onListening);
@@ -101,8 +112,18 @@ function listenOnAvailablePort(index) {
 }
 
 server.on("listening", () => {
-  console.log(`Remote Co-Op ICE: stun=${stunURLs.length} turn=${turnURLs.length} turnAuth=${turnAuthSummary()}`);
+  console.log(`Remote Co-Op ICE: stun=${stunURLs.length} turn=${turnURLs.length} turnAuth=${turnAuthSummary()} brokerWebSocket=${brokerWebSocketProtocol}`);
 });
+
+async function makeBrokerServer(handler) {
+  if (!brokerTLSEnabled) return createHTTPServer(handler);
+  try {
+    return createHTTPSServer({ cert: await readFile(brokerCertificatePath), key: await readFile(brokerKeyPath) }, handler);
+  } catch (error) {
+    console.error(`OpenNOW Remote Co-Op broker failed to load HTTPS certificate/key: ${error.message}`);
+    process.exit(1);
+  }
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -452,6 +473,11 @@ function splitEnv(name, fallback) {
 function integerEnv(name, fallback) {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function stringEnv(name, fallback) {
+  const value = process.env[name];
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function portCandidates(preferredPort, alternateValue) {
