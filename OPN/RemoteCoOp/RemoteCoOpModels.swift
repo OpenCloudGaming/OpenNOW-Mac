@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public enum OPNRemoteCoOpTransportMode: String, CaseIterable, Codable, Equatable, Sendable {
     case automatic
@@ -121,6 +122,115 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     }
 }
 
+public enum OPNRemoteCoOpInviteTokenError: LocalizedError, Equatable, Sendable {
+    case malformed
+    case invalidSignature
+    case expired
+
+    public var errorDescription: String? {
+        switch self {
+        case .malformed: return "Remote Co-Op invite token is malformed."
+        case .invalidSignature: return "Remote Co-Op invite token signature is invalid."
+        case .expired: return "Remote Co-Op invite token has expired."
+        }
+    }
+}
+
+public struct OPNRemoteCoOpInviteTokenPayload: Codable, Equatable, Sendable {
+    public let version: Int
+    public let inviteID: UUID
+    public let code: String
+    public let applicationID: String
+    public let title: String
+    public let createdAtEpochSeconds: TimeInterval
+    public let expiresAtEpochSeconds: TimeInterval
+    public let reservedGuestSlots: Int
+    public let transportMode: OPNRemoteCoOpTransportMode
+    public let qualityPreset: OPNRemoteCoOpQualityPreset
+    public let requireHostApproval: Bool
+
+    public init(version: Int = 1,
+                inviteID: UUID,
+                code: String,
+                applicationID: String,
+                title: String,
+                createdAt: Date,
+                expiresAt: Date,
+                preferences: OPNRemoteCoOpPreferences) {
+        self.version = version
+        self.inviteID = inviteID
+        self.code = code
+        self.applicationID = applicationID
+        self.title = title
+        self.createdAtEpochSeconds = createdAt.timeIntervalSince1970
+        self.expiresAtEpochSeconds = expiresAt.timeIntervalSince1970
+        self.reservedGuestSlots = preferences.effectiveReservedGuestSlots
+        self.transportMode = preferences.transportMode
+        self.qualityPreset = preferences.qualityPreset
+        self.requireHostApproval = preferences.requireHostApproval
+    }
+
+    public var createdAt: Date { Date(timeIntervalSince1970: createdAtEpochSeconds) }
+    public var expiresAt: Date { Date(timeIntervalSince1970: expiresAtEpochSeconds) }
+}
+
+public struct OPNRemoteCoOpInviteTokenSigner: Equatable, Sendable {
+    private let secret: Data
+
+    public init() {
+        self.secret = Self.randomSecret()
+    }
+
+    public init(secret: Data) {
+        self.secret = secret.isEmpty ? Self.randomSecret() : secret
+    }
+
+    public func token(for payload: OPNRemoteCoOpInviteTokenPayload) throws -> String {
+        let payloadData = try Self.encoder().encode(payload)
+        let signature = HMAC<SHA256>.authenticationCode(for: payloadData, using: SymmetricKey(data: secret))
+        return "\(Self.base64URLEncoded(payloadData)).\(Self.base64URLEncoded(Data(signature)))"
+    }
+
+    public func verify(_ token: String, now: Date = Date()) throws -> OPNRemoteCoOpInviteTokenPayload {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let payloadData = Self.base64URLDecoded(String(parts[0])),
+              let signatureData = Self.base64URLDecoded(String(parts[1])) else { throw OPNRemoteCoOpInviteTokenError.malformed }
+        let expected = Data(HMAC<SHA256>.authenticationCode(for: payloadData, using: SymmetricKey(data: secret)))
+        guard expected == signatureData else { throw OPNRemoteCoOpInviteTokenError.invalidSignature }
+        let payload = try JSONDecoder().decode(OPNRemoteCoOpInviteTokenPayload.self, from: payloadData)
+        guard payload.expiresAt > now else { throw OPNRemoteCoOpInviteTokenError.expired }
+        return payload
+    }
+
+    private static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+
+    private static func randomSecret() -> Data {
+        var generator = SystemRandomNumberGenerator()
+        return Data((0..<32).map { _ in UInt8.random(in: 0...255, using: &generator) })
+    }
+
+    private static func base64URLEncoded(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func base64URLDecoded(_ value: String) -> Data? {
+        var base64 = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = base64.count % 4
+        if padding > 0 { base64.append(String(repeating: "=", count: 4 - padding)) }
+        return Data(base64Encoded: base64)
+    }
+}
+
 public enum OPNRemoteCoOpParticipantRole: String, Codable, Equatable, Sendable {
     case host
     case guest
@@ -169,12 +279,27 @@ public struct OPNRemoteCoOpInvite: Identifiable, Codable, Equatable, Sendable {
     public let code: String
     public let createdAt: Date
     public let expiresAt: Date
+    public let token: String
+    public let joinURL: URL?
+    public let applicationID: String
+    public let title: String
 
-    public init(id: UUID = UUID(), code: String, createdAt: Date = Date(), expiresAt: Date) {
+    public init(id: UUID = UUID(),
+                code: String,
+                createdAt: Date = Date(),
+                expiresAt: Date,
+                token: String = "",
+                joinURL: URL? = nil,
+                applicationID: String = "",
+                title: String = "") {
         self.id = id
         self.code = code
         self.createdAt = createdAt
         self.expiresAt = expiresAt
+        self.token = token
+        self.joinURL = joinURL
+        self.applicationID = applicationID
+        self.title = title
     }
 
     public var isExpired: Bool {

@@ -546,6 +546,16 @@ public struct WebRTCMediaStreamSurface: View {
                                 Text(participant.playerIndex.map { "P\($0 + 1)" } ?? participant.connectionState.rawValue)
                                     .font(.streamNvidia(size: 10, weight: .bold))
                                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                                if participant.connectionState == .waitingForApproval {
+                                    Button("Approve") { approveRemoteCoOpParticipant(participant.id) }
+                                        .font(.streamNvidia(size: 10, weight: .bold))
+                                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                                        .buttonStyle(.plain)
+                                }
+                                Button("Remove") { removeRemoteCoOpParticipant(participant.id) }
+                                    .font(.streamNvidia(size: 10, weight: .bold))
+                                    .foregroundStyle(WebRTCMediaStreamTheme.danger)
+                                    .buttonStyle(.plain)
                             }
                         }
                     }
@@ -1084,7 +1094,7 @@ public struct WebRTCMediaStreamSurface: View {
         Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
             do {
-                let invite = try await remoteCoOpHostSession.startInvite()
+                let invite = try await remoteCoOpHostSession.startInvite(applicationID: configuration.applicationID, title: configuration.title)
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 copyRemoteCoOpInvite(invite)
                 remoteCoOpMessage = "Invite copied. Share code \(invite.code) with your remote player."
@@ -1123,7 +1133,38 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private func remoteCoOpShareText(_ invite: OPNRemoteCoOpInvite) -> String {
-        "OpenNOW Remote Co-Op invite for \(configuration.title.isEmpty ? "GeForce NOW" : configuration.title): \(invite.code)"
+        let title = configuration.title.isEmpty ? "GeForce NOW" : configuration.title
+        if let joinURL = invite.joinURL {
+            return "OpenNOW Remote Co-Op invite for \(title): \(joinURL.absoluteString)"
+        }
+        return "OpenNOW Remote Co-Op invite for \(title): \(invite.code)\nToken: \(invite.token)"
+    }
+
+    private func approveRemoteCoOpParticipant(_ participantID: UUID) {
+        Task { @MainActor in
+            do {
+                let participant = try await remoteCoOpHostSession.approveParticipant(participantID)
+                remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+                remoteCoOpMessage = "Approved \(participant.displayName) for player \((participant.playerIndex ?? 0) + 1)."
+                showTransientStreamMessage("Remote Co-Op guest approved")
+            } catch {
+                remoteCoOpMessage = Self.message(for: error)
+            }
+        }
+    }
+
+    private func removeRemoteCoOpParticipant(_ participantID: UUID) {
+        Task { @MainActor in
+            do {
+                let neutralEvents = try await remoteCoOpHostSession.removeParticipant(participantID)
+                neutralEvents.forEach { transport?.sendNow($0) }
+                remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+                remoteCoOpMessage = "Remote Co-Op guest removed."
+                showTransientStreamMessage("Remote Co-Op guest removed")
+            } catch {
+                remoteCoOpMessage = Self.message(for: error)
+            }
+        }
     }
 
     private var remoteCoOpLaunchPreferences: OPNRemoteCoOpPreferences {

@@ -3,6 +3,7 @@ import Foundation
 public enum OPNRemoteCoOpHostSessionError: LocalizedError, Equatable, Sendable {
     case disabled
     case inviteExpired
+    case invalidInviteToken
     case participantNotFound
     case noAvailablePlayerSlots
 
@@ -10,6 +11,7 @@ public enum OPNRemoteCoOpHostSessionError: LocalizedError, Equatable, Sendable {
         switch self {
         case .disabled: "Remote Co-Op is disabled."
         case .inviteExpired: "Remote Co-Op invite has expired."
+        case .invalidInviteToken: "Remote Co-Op invite token is invalid."
         case .participantNotFound: "Remote Co-Op participant was not found."
         case .noAvailablePlayerSlots: "No Remote Co-Op player slots are available."
         }
@@ -45,10 +47,12 @@ public actor OPNRemoteCoOpHostSession {
     private var preferences: OPNRemoteCoOpPreferences
     private var invite: OPNRemoteCoOpInvite?
     private var participants: [OPNRemoteCoOpParticipant] = []
+    private let inviteSigner: OPNRemoteCoOpInviteTokenSigner
     private let inputRouter = OPNRemoteCoOpInputRouter()
 
-    public init(preferences: OPNRemoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()) {
+    public init(preferences: OPNRemoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load(), inviteSigner: OPNRemoteCoOpInviteTokenSigner = OPNRemoteCoOpInviteTokenSigner()) {
         self.preferences = preferences
+        self.inviteSigner = inviteSigner
     }
 
     public func updatePreferences(_ preferences: OPNRemoteCoOpPreferences) async {
@@ -60,11 +64,33 @@ public actor OPNRemoteCoOpHostSession {
         OPNRemoteCoOpHostSnapshot(preferences: preferences, invite: invite, participants: participants.sorted { $0.joinedAt < $1.joinedAt })
     }
 
-    public func startInvite(lifetimeSeconds: TimeInterval = 3_600) throws -> OPNRemoteCoOpInvite {
+    public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, lifetimeSeconds: TimeInterval = 3_600) throws -> OPNRemoteCoOpInvite {
         guard preferences.isEnabled else { throw OPNRemoteCoOpHostSessionError.disabled }
         guard preferences.effectiveReservedGuestSlots > 0 else { throw OPNRemoteCoOpHostSessionError.noAvailablePlayerSlots }
         let now = Date()
-        let invite = OPNRemoteCoOpInvite(code: Self.makeInviteCode(), createdAt: now, expiresAt: now.addingTimeInterval(max(60, lifetimeSeconds)))
+        let inviteID = UUID()
+        let code = Self.makeInviteCode()
+        let expiresAt = now.addingTimeInterval(max(60, lifetimeSeconds))
+        let payload = OPNRemoteCoOpInviteTokenPayload(
+            inviteID: inviteID,
+            code: code,
+            applicationID: applicationID,
+            title: title,
+            createdAt: now,
+            expiresAt: expiresAt,
+            preferences: preferences
+        )
+        let token = try inviteSigner.token(for: payload)
+        let invite = OPNRemoteCoOpInvite(
+            id: inviteID,
+            code: code,
+            createdAt: now,
+            expiresAt: expiresAt,
+            token: token,
+            joinURL: Self.joinURL(baseURL: joinBaseURL, token: token),
+            applicationID: applicationID,
+            title: title
+        )
         self.invite = invite
         return invite
     }
@@ -77,10 +103,14 @@ public actor OPNRemoteCoOpHostSession {
         return neutralEvents
     }
 
-    public func registerGuest(displayName: String, now: Date = Date()) async throws -> OPNRemoteCoOpParticipant {
+    public func registerGuest(displayName: String, inviteToken: String, participantID: UUID = UUID(), now: Date = Date()) async throws -> OPNRemoteCoOpParticipant {
         guard preferences.isEnabled else { throw OPNRemoteCoOpHostSessionError.disabled }
         guard let invite, invite.expiresAt > now else { throw OPNRemoteCoOpHostSessionError.inviteExpired }
+        try validate(inviteToken: inviteToken, expectedInvite: invite, now: now)
+        if let existing = participants.first(where: { $0.id == participantID }) { return existing }
+        guard participants.count < preferences.effectiveReservedGuestSlots else { throw OPNRemoteCoOpHostSessionError.noAvailablePlayerSlots }
         var participant = OPNRemoteCoOpParticipant(
+            id: participantID,
             displayName: displayName,
             role: .guest,
             connectionState: preferences.requireHostApproval ? .waitingForApproval : .connected,
@@ -146,6 +176,27 @@ public actor OPNRemoteCoOpHostSession {
             return playerIndex
         }
         throw OPNRemoteCoOpHostSessionError.noAvailablePlayerSlots
+    }
+
+    private func validate(inviteToken: String, expectedInvite: OPNRemoteCoOpInvite, now: Date) throws {
+        do {
+            let payload = try inviteSigner.verify(inviteToken, now: now)
+            guard payload.inviteID == expectedInvite.id, payload.code == expectedInvite.code else { throw OPNRemoteCoOpHostSessionError.invalidInviteToken }
+        } catch let error as OPNRemoteCoOpHostSessionError {
+            throw error
+        } catch {
+            throw OPNRemoteCoOpHostSessionError.invalidInviteToken
+        }
+    }
+
+    private static func joinURL(baseURL: URL?, token: String) -> URL? {
+        guard let baseURL else { return nil }
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        var items = components?.queryItems ?? []
+        items.removeAll { $0.name == "invite" }
+        items.append(URLQueryItem(name: "invite", value: token))
+        components?.queryItems = items
+        return components?.url
     }
 
     private static func makeInviteCode() -> String {

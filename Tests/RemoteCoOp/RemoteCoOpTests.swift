@@ -19,6 +19,25 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences()) == preferences)
     }
 
+    @Test("invite token signs and verifies launch metadata")
+    func inviteTokenSignsAndVerifiesLaunchMetadata() async throws {
+        let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 7, count: 32))
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2, transportMode: .relayOnly, qualityPreset: .p1080f60, requireHostApproval: false)
+        let host = OPNRemoteCoOpHostSession(preferences: preferences, inviteSigner: signer)
+
+        let invite = try await host.startInvite(applicationID: "123", title: "Portal", lifetimeSeconds: 120)
+        let payload = try signer.verify(invite.token)
+
+        #expect(payload.inviteID == invite.id)
+        #expect(payload.code == invite.code)
+        #expect(payload.applicationID == "123")
+        #expect(payload.title == "Portal")
+        #expect(payload.reservedGuestSlots == 2)
+        #expect(payload.transportMode == .relayOnly)
+        #expect(payload.qualityPreset == .p1080f60)
+        #expect(!payload.requireHostApproval)
+    }
+
     @Test("stream settings advertise reserved controller bitmap")
     func streamSettingsAdvertiseReservedControllerBitmap() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
@@ -35,7 +54,7 @@ struct RemoteCoOpTests {
         let host = OPNRemoteCoOpHostSession(preferences: preferences)
 
         let invite = try await host.startInvite(lifetimeSeconds: 120)
-        let pending = try await host.registerGuest(displayName: "Mia")
+        let pending = try await host.registerGuest(displayName: "Mia", inviteToken: invite.token)
         let approved = try await host.approveParticipant(pending.id)
         let snapshot = await host.snapshot()
 
@@ -45,6 +64,33 @@ struct RemoteCoOpTests {
         #expect(approved.inputEnabled)
         #expect(approved.playerIndex == 1)
         #expect(snapshot.participants == [approved])
+    }
+
+    @Test("host rejects guest with invalid invite token")
+    func hostRejectsGuestWithInvalidInviteToken() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true)
+        let host = OPNRemoteCoOpHostSession(preferences: preferences)
+
+        _ = try await host.startInvite(lifetimeSeconds: 120)
+
+        await #expect(throws: OPNRemoteCoOpHostSessionError.invalidInviteToken) {
+            try await host.registerGuest(displayName: "Mia", inviteToken: "bad-token")
+        }
+    }
+
+    @Test("host treats duplicate guest join as idempotent retry")
+    func hostTreatsDuplicateGuestJoinAsIdempotentRetry() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true)
+        let host = OPNRemoteCoOpHostSession(preferences: preferences)
+        let participantID = UUID()
+
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        let first = try await host.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let retry = try await host.registerGuest(displayName: "Mia", inviteToken: invite.token, participantID: participantID)
+        let snapshot = await host.snapshot()
+
+        #expect(first == retry)
+        #expect(snapshot.participants == [first])
     }
 
     @Test("host rejects invite when no guest controller slot was reserved")
@@ -105,8 +151,8 @@ struct RemoteCoOpTests {
         let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: false)
         let host = OPNRemoteCoOpHostSession(preferences: preferences)
 
-        _ = try await host.startInvite(lifetimeSeconds: 120)
-        let guest = try await host.registerGuest(displayName: "Guest")
+        let invite = try await host.startInvite(lifetimeSeconds: 120)
+        let guest = try await host.registerGuest(displayName: "Guest", inviteToken: invite.token)
         let events = await host.stopInvite()
         let snapshot = await host.snapshot()
 
@@ -119,6 +165,71 @@ struct RemoteCoOpTests {
         #expect(state.playerIndex == 1)
         #expect(state.buttons.isEmpty)
         #expect(snapshot.invite == nil)
+        #expect(snapshot.participants.isEmpty)
+    }
+
+    @Test("coordinator joins approves routes input and rejects stale packet")
+    func coordinatorJoinsApprovesRoutesInputAndRejectsStalePacket() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true)
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: preferences), signaling: signaling)
+
+        let participantID = UUID()
+        let invite = try await coordinator.startInvite(applicationID: "123", title: "Portal", lifetimeSeconds: 120)
+        let joinEvents = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        let pendingCommand = signaling.commandHistory().last
+        let approved = try await coordinator.approveParticipant(participantID)
+        let approvedCommand = signaling.commandHistory().last
+        let packet = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 1, buttons: [.south], leftTrigger: 1)
+        let routedEvents = await coordinator.handle(.guestInput(packet))
+        let staleEvents = await coordinator.handle(.guestInput(packet))
+        let commands = signaling.commandHistory()
+        let staleCommand = commands.last
+
+        #expect(commands.first == .inviteCreated(invite))
+        #expect(joinEvents.isEmpty)
+        guard case .participantUpdated(let pending)? = pendingCommand else {
+            Issue.record("Expected pending participant command")
+            return
+        }
+        #expect(pending.id == participantID)
+        #expect(pending.connectionState == .waitingForApproval)
+        #expect(approved.id == participantID)
+        #expect(approved.playerIndex == 1)
+        #expect(approvedCommand == .participantUpdated(approved))
+        #expect(routedEvents.count == 1)
+        guard case .gamepad(let state) = routedEvents.first else {
+            Issue.record("Expected routed gamepad event")
+            return
+        }
+        #expect(state.playerIndex == 1)
+        #expect(state.buttons == GamepadButtons.south)
+        #expect(state.leftTrigger == 1)
+        #expect(staleEvents.isEmpty)
+        #expect(staleCommand == .inputRejected(participantID: participantID, result: .stalePacket))
+    }
+
+    @Test("coordinator disconnect removes guest and emits neutral input")
+    func coordinatorDisconnectRemovesGuestAndEmitsNeutralInput() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: false)
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: preferences), signaling: signaling)
+
+        let participantID = UUID()
+        let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        let neutralEvents = await coordinator.handle(.guestDisconnected(participantID))
+        let removedCommand = signaling.commandHistory().last
+        let snapshot = await coordinator.snapshot()
+
+        #expect(neutralEvents.count == 1)
+        guard case .gamepad(let state) = neutralEvents.first else {
+            Issue.record("Expected neutral gamepad event")
+            return
+        }
+        #expect(state.playerIndex == 1)
+        #expect(state.buttons.isEmpty)
+        #expect(removedCommand == .participantRemoved(participantID))
         #expect(snapshot.participants.isEmpty)
     }
 }
