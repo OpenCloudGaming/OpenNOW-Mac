@@ -1202,7 +1202,7 @@ private struct GameplaySettingsPage: View {
             }
 
             SettingsCard(title: "Stream Transport") {
-                SettingsToggleRow(title: "NVST Transport", subtitle: qualityLocked ? lockedProfileSubtitle : "Off requests WebRTC transport. On requests NVST secure RTSP transport from CloudMatch.", isOn: viewModel.streamProfile.transportMode.value == "nvst", isLocked: qualityLocked, action: viewModel.setNVSTTransportEnabled)
+                SettingsToggleRow(title: "NVST Transport (Early Alpha)", subtitle: qualityLocked ? lockedProfileSubtitle : "Experimental early alpha mode. Off requests WebRTC transport; on requests NVST secure RTSP transport from CloudMatch.", isOn: viewModel.streamProfile.transportMode.value == "nvst", isLocked: qualityLocked, action: viewModel.setNVSTTransportEnabled)
                 SettingsDivider()
                 SettingsOptionRow(title: "Quality Profile", subtitle: "Maps to the vendor streaming profile sent with the session request.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, action: viewModel.setStreamingQualityProfileIndex)
                 SettingsDivider()

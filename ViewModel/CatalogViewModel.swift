@@ -1413,7 +1413,7 @@ final class CatalogViewModel: ObservableObject {
     func setNVSTTransportEnabled(_ enabled: Bool) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveNVSTTransportEnabled(enabled)
-        actionMessage = enabled ? "NVST stream transport selected." : "WebRTC stream transport selected."
+        actionMessage = enabled ? "NVST stream transport selected (early alpha)." : "WebRTC stream transport selected."
         loadSettingsPreferences()
     }
 
