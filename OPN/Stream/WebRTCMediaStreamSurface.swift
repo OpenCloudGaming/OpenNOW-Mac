@@ -1163,7 +1163,7 @@ public struct WebRTCMediaStreamSurface: View {
                     participant = try await remoteCoOpHostSession.approveParticipant(participantID)
                 }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
-                await syncRemoteCoOpPeers()
+                try await syncRemoteCoOpPeers()
                 remoteCoOpMessage = "Approved \(participant.displayName) for player \((participant.playerIndex ?? 0) + 1)."
                 showTransientStreamMessage("Remote Co-Op guest approved")
             } catch {
@@ -1227,7 +1227,7 @@ public struct WebRTCMediaStreamSurface: View {
                     for routedEvent in routedEvents { transport?.sendNow(routedEvent) }
                 }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
-                await syncRemoteCoOpPeers()
+                try? await syncRemoteCoOpPeers()
             }
         }
         return coordinator
@@ -1246,9 +1246,15 @@ public struct WebRTCMediaStreamSurface: View {
         )
     }
 
-    private func syncRemoteCoOpPeers() async {
+    private func syncRemoteCoOpPeers() async throws {
         guard let remoteCoOpPeerController else { return }
-        await remoteCoOpPeerController.sync(participants: remoteCoOpSnapshot.participants)
+        do {
+            try await remoteCoOpPeerController.sync(participants: remoteCoOpSnapshot.participants)
+        } catch {
+            remoteCoOpMessage = Self.message(for: error)
+            WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer_sync.failed", level: .warning, message: remoteCoOpMessage, attributes: ["applicationID": configuration.applicationID])
+            throw error
+        }
     }
 
     private func makeRemoteCoOpSignalingSession(preferences: OPNRemoteCoOpPreferences) -> any OPNRemoteCoOpSignalingSession {

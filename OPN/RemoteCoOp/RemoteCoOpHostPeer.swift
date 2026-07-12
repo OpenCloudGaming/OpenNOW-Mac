@@ -91,7 +91,7 @@ public actor OPNRemoteCoOpHostPeerController {
         qualityPreset = preset
     }
 
-    public func sync(participants: [OPNRemoteCoOpParticipant]) async {
+    public func sync(participants: [OPNRemoteCoOpParticipant]) async throws {
         let eligibleParticipants = participants.filter { $0.connectionState == .connected && $0.inputEnabled }
         let eligibleIDs = Set(eligibleParticipants.map(\.id))
         for (participantID, peer) in peers where !eligibleIDs.contains(participantID) {
@@ -101,7 +101,7 @@ public actor OPNRemoteCoOpHostPeerController {
             await peer.close()
         }
         for participant in eligibleParticipants where peers[participant.id] == nil {
-            try? await startPeer(for: participant)
+            try await startPeer(for: participant)
         }
     }
 
@@ -109,8 +109,10 @@ public actor OPNRemoteCoOpHostPeerController {
         guard participant.connectionState == .connected, participant.inputEnabled else { return }
         guard peers[participant.id] == nil else { return }
         let participantID = participant.id
+        WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.start", level: .info, message: "Starting Remote Co-Op host peer.", attributes: ["participantID": participantID.uuidString])
         let callbacks = OPNRemoteCoOpHostPeerCallbacks(
             sendSignal: { [signaling] signal in
+                WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.signal.send", level: .info, message: "Sending Remote Co-Op peer signal.", attributes: ["participantID": participantID.uuidString, "kind": signal.kind.rawValue])
                 await signaling.send(.peerSignal(participantID: participantID, signal: signal))
             },
             receiveInput: { [coordinator, forwardInput] packet in
@@ -123,9 +125,11 @@ public actor OPNRemoteCoOpHostPeerController {
         peers[participantID] = peer
         do {
             try await peer.start()
+            WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.started", level: .info, message: "Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
             if let sink = peer as? any OPNRemoteCoOpHostVideoSink { videoRelay?.upsert(sink) }
             if let sink = peer as? any OPNRemoteCoOpHostAudioSink { audioRelay?.upsert(sink) }
         } catch {
+            WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.start.failed", level: .warning, message: error.localizedDescription, attributes: ["participantID": participantID.uuidString])
             peers[participantID] = nil
             videoRelay?.remove(participantID: participantID)
             audioRelay?.remove(participantID: participantID)

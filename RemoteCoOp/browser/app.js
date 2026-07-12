@@ -126,11 +126,12 @@ async function handleMessage(message) {
     return;
   }
   if (message.kind === "peerSignal") {
+    if (!isForThisParticipant(message)) return;
     updateDiagnostics({ signaling: `peer signal ${message.peerSignal?.kind ?? "unknown"}` });
     await handlePeerSignal(message.peerSignal);
     return;
   }
-  if (message.kind === "participantUpdated" && message.participant?.id === participantID) {
+  if (message.kind === "participantUpdated" && sameParticipantID(message.participant?.id, participantID)) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
     if (approved) {
       setState("Approved", `Input enabled as player ${(message.participant.playerIndex ?? 1) + 1}.`, true);
@@ -143,18 +144,21 @@ async function handleMessage(message) {
     return;
   }
   if (message.kind === "participantRemoved") {
+    if (!isForThisParticipant(message)) return;
     setState("Removed", "The host removed you from the room.", false);
     updateDiagnostics({ approval: "removed" });
     disconnect();
     return;
   }
   if (message.kind === "guestRejected") {
+    if (!isForThisParticipant(message)) return;
     setState("Rejected", message.reason ?? "The host rejected this join request.", false);
     updateDiagnostics({ approval: `rejected: ${message.reason ?? "host rejected join"}` });
     disconnect();
     return;
   }
   if (message.kind === "inputRejected") {
+    if (!isForThisParticipant(message)) return;
     elements.gamepadDetail.textContent = `Input rejected: ${message.inputRejection ?? "unknown"}`;
     updateDiagnostics({ input: `rejected: ${message.inputRejection ?? "unknown"}` });
     return;
@@ -164,6 +168,15 @@ async function handleMessage(message) {
     updateDiagnostics({ approval: `ended: ${message.reason ?? "host ended invite"}` });
     disconnect();
   }
+}
+
+function isForThisParticipant(message) {
+  const target = message.participantID ?? message.participant?.id;
+  return !target || sameParticipantID(target, participantID);
+}
+
+function sameParticipantID(left, right) {
+  return typeof left === "string" && typeof right === "string" && left.toLowerCase() === right.toLowerCase();
 }
 
 function startPolling() {
@@ -179,7 +192,7 @@ function startPolling() {
     }
     elements.gamepadName.textContent = gamepad.id;
     const input = inputPacket(gamepad);
-    const state = JSON.stringify(input);
+    const state = inputStateKey(input);
     if (state === lastSentState && time - lastSentAt < 250) return;
     lastSentState = state;
     lastSentAt = time;
@@ -208,6 +221,18 @@ function inputPacket(gamepad) {
     rightStickY: axis(gamepad, 3),
     sentAtNanoseconds: Math.round(performance.now() * 1_000_000)
   };
+}
+
+function inputStateKey(input) {
+  return JSON.stringify({
+    buttons: input.buttons,
+    leftTrigger: input.leftTrigger,
+    rightTrigger: input.rightTrigger,
+    leftStickX: input.leftStickX,
+    leftStickY: input.leftStickY,
+    rightStickX: input.rightStickX,
+    rightStickY: input.rightStickY
+  });
 }
 
 function buttonMask(gamepad) {

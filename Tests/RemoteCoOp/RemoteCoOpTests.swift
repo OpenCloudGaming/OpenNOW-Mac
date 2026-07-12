@@ -427,7 +427,7 @@ struct RemoteCoOpTests {
         let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
         _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
         let approved = try await coordinator.approveParticipant(participantID)
-        await controller.sync(participants: [approved])
+        try await controller.sync(participants: [approved])
         let peer = try #require(factory.peer(for: participantID))
         let packet = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 1, buttons: [.south, .rightShoulder], leftTrigger: 1, rightStickX: -0.5)
         let message = OPNRemoteCoOpWireMessage(kind: .guestInput, roomID: invite.id, participantID: participantID, input: packet)

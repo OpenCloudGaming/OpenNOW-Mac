@@ -13,6 +13,7 @@ const turnUsername = process.env.OPENNOW_REMOTE_COOP_TURN_USERNAME ?? "";
 const turnCredential = process.env.OPENNOW_REMOTE_COOP_TURN_CREDENTIAL ?? "";
 const turnSharedSecret = process.env.OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET ?? "";
 const turnCredentialTTLSeconds = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS ?? "3600", 10);
+const messageFlowLoggingEnabled = ["1", "true", "yes"].includes((process.env.OPENNOW_REMOTE_COOP_LOG_MESSAGES ?? "").toLowerCase());
 const rooms = new Map();
 const sockets = new Set();
 
@@ -115,7 +116,7 @@ function detachSocket(state) {
     return;
   }
   if (state.role === "guest" && state.participantID) {
-    room.guests.delete(state.participantID);
+    room.guests.delete(participantKey(state.participantID));
     if (room.host) send(room.host, { kind: "guestDisconnected", roomID: state.roomID, participantID: state.participantID });
   }
 }
@@ -176,6 +177,7 @@ function handleFrame(state, opcode, payload) {
 }
 
 function handleMessage(state, message) {
+  logMessageFlow("in", state, message);
   if (message.kind === "heartbeat") return;
   if (message.kind === "hostHello") {
     registerHost(state, message);
@@ -185,12 +187,20 @@ function handleMessage(state, message) {
     registerGuest(state, message);
     return;
   }
-  if (message.kind === "guestInput" || message.kind === "guestDisconnected" || message.kind === "peerSignal") {
-    relayGuestEvent(state, message);
+  if (message.kind === "peerSignal") {
+    if (state.role === "host") {
+      relayHostCommand(state, message);
+    } else {
+      relayGuestEvent(state, message);
+    }
     return;
   }
-  if (["participantUpdated", "participantRemoved", "guestRejected", "inputRejected", "inviteEnded", "peerSignal"].includes(message.kind)) {
+  if (["participantUpdated", "participantRemoved", "guestRejected", "inputRejected", "inviteEnded"].includes(message.kind)) {
     relayHostCommand(state, message);
+    return;
+  }
+  if (message.kind === "guestInput" || message.kind === "guestDisconnected") {
+    relayGuestEvent(state, message);
   }
 }
 
@@ -227,7 +237,7 @@ function registerGuest(state, message) {
   state.role = "guest";
   state.roomID = roomID;
   state.participantID = participantID;
-  room.guests.set(participantID, state);
+  room.guests.set(participantKey(participantID), state);
   send(state, { kind: "networkConfiguration", roomID, participantID, networkConfiguration: room.networkConfiguration });
   send(room.host, sanitizeMessage({ ...message, roomID, participantID }));
 }
@@ -255,9 +265,10 @@ function relayHostCommand(state, message) {
     return;
   }
   const participantID = stringValue(message.participantID ?? message.participant?.id);
-  if (participantID && room.guests.has(participantID)) {
-    send(room.guests.get(participantID), outbound);
-    if (message.kind === "participantRemoved" || message.kind === "guestRejected") room.guests.delete(participantID);
+  const key = participantKey(participantID);
+  if (key && room.guests.has(key)) {
+    send(room.guests.get(key), outbound);
+    if (message.kind === "participantRemoved" || message.kind === "guestRejected") room.guests.delete(key);
   } else {
     broadcast(room, outbound, state);
   }
@@ -265,6 +276,7 @@ function relayHostCommand(state, message) {
 
 function send(state, message) {
   if (!state || state.socket.destroyed) return;
+  logMessageFlow("out", state, message);
   sendFrame(state.socket, 0x1, Buffer.from(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }), "utf8"));
 }
 
@@ -387,6 +399,18 @@ function sanitizeMessage(message) {
 
 function stringValue(value) {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function participantKey(value) {
+  return typeof value === "string" && value.length > 0 ? value.toLowerCase() : null;
+}
+
+function logMessageFlow(direction, state, message) {
+  if (!messageFlowLoggingEnabled) return;
+  const participantID = stringValue(message.participantID ?? message.participant?.id) ?? "none";
+  const roomID = stringValue(message.roomID ?? state.roomID) ?? "none";
+  const signalKind = message.peerSignal?.kind ? ` signal=${message.peerSignal.kind}` : "";
+  console.log(`[flow] ${direction} role=${state.role} kind=${message.kind ?? "unknown"}${signalKind} room=${roomID} participant=${participantID}`);
 }
 
 function splitEnv(name, fallback) {
