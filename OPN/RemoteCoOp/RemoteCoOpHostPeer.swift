@@ -35,6 +35,7 @@ public protocol OPNRemoteCoOpHostPeer: Sendable {
 public protocol OPNRemoteCoOpHostPeerFactory: Sendable {
     func makePeer(participantID: UUID,
                   networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                  qualityPreset: OPNRemoteCoOpQualityPreset,
                   callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer
 }
 
@@ -58,17 +59,23 @@ public actor OPNRemoteCoOpHostPeerController {
     private let coordinator: OPNRemoteCoOpHostCoordinator
     private let peerFactory: any OPNRemoteCoOpHostPeerFactory
     private let forwardInput: @Sendable (UserInputEvent) async -> Void
+    private let videoRelay: OPNRemoteCoOpHostVideoRelay?
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    private var qualityPreset: OPNRemoteCoOpQualityPreset
     private var peers: [UUID: any OPNRemoteCoOpHostPeer] = [:]
 
     public init(signaling: any OPNRemoteCoOpSignalingSession,
                 coordinator: OPNRemoteCoOpHostCoordinator,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
+                videoRelay: OPNRemoteCoOpHostVideoRelay? = nil,
                 peerFactory: any OPNRemoteCoOpHostPeerFactory = OPNRemoteCoOpWebRTCHostPeerFactory(),
                 forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) {
         self.signaling = signaling
         self.coordinator = coordinator
         self.networkConfiguration = networkConfiguration
+        self.qualityPreset = qualityPreset
+        self.videoRelay = videoRelay
         self.peerFactory = peerFactory
         self.forwardInput = forwardInput
     }
@@ -77,11 +84,16 @@ public actor OPNRemoteCoOpHostPeerController {
         networkConfiguration = configuration
     }
 
+    public func updateQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) {
+        qualityPreset = preset
+    }
+
     public func sync(participants: [OPNRemoteCoOpParticipant]) async {
         let eligibleParticipants = participants.filter { $0.connectionState == .connected && $0.inputEnabled }
         let eligibleIDs = Set(eligibleParticipants.map(\.id))
         for (participantID, peer) in peers where !eligibleIDs.contains(participantID) {
             peers[participantID] = nil
+            videoRelay?.remove(participantID: participantID)
             await peer.close()
         }
         for participant in eligibleParticipants where peers[participant.id] == nil {
@@ -103,12 +115,14 @@ public actor OPNRemoteCoOpHostPeerController {
                 for routedEvent in routedEvents { await forwardInput(routedEvent) }
             }
         )
-        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, callbacks: callbacks)
+        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, callbacks: callbacks)
         peers[participantID] = peer
         do {
             try await peer.start()
+            if let sink = peer as? any OPNRemoteCoOpHostVideoSink { videoRelay?.upsert(sink) }
         } catch {
             peers[participantID] = nil
+            videoRelay?.remove(participantID: participantID)
             await peer.close()
             throw error
         }
@@ -121,12 +135,14 @@ public actor OPNRemoteCoOpHostPeerController {
 
     public func removePeer(participantID: UUID) async {
         guard let peer = peers.removeValue(forKey: participantID) else { return }
+        videoRelay?.remove(participantID: participantID)
         await peer.close()
     }
 
     public func removeAll() async {
         let currentPeers = Array(peers.values)
         peers.removeAll()
+        videoRelay?.removeAll()
         for peer in currentPeers { await peer.close() }
     }
 }

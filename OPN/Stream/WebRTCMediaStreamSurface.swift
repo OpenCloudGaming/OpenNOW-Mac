@@ -252,6 +252,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
     @State private var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     @State private var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
+    @State private var remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
     @State private var remoteCoOpListenTask: Task<Void, Never>?
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: OPNRemoteCoOpPreferencesStore.load().transportMode)
@@ -1092,6 +1093,7 @@ public struct WebRTCMediaStreamSurface: View {
         Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
             await remoteCoOpPeerController?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
+            await remoteCoOpPeerController?.updateQualityPreset(preferences.qualityPreset)
             remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
         }
     }
@@ -1236,6 +1238,8 @@ public struct WebRTCMediaStreamSurface: View {
             signaling: signaling,
             coordinator: coordinator,
             networkConfiguration: remoteCoOpNetworkConfiguration,
+            qualityPreset: remoteCoOpLaunchPreferences.qualityPreset,
+            videoRelay: remoteCoOpVideoRelay,
             forwardInput: { event in inputTransport?.sendNow(event) }
         )
     }
@@ -1266,6 +1270,7 @@ public struct WebRTCMediaStreamSurface: View {
         remoteCoOpListenTask?.cancel()
         remoteCoOpListenTask = nil
         await remoteCoOpPeerController?.removeAll()
+        remoteCoOpVideoRelay.removeAll()
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil
@@ -1480,6 +1485,7 @@ public struct WebRTCMediaStreamSurface: View {
         defer { startTask = nil }
         beginStreamingPerformanceMode()
         let transport = NativeWebRTCTransport(nativeView: nativeView)
+        transport.setRemoteCoOpVideoRelay(remoteCoOpVideoRelay)
         let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         transport.onEnded = { message in
             handleTransportEnded(message: message)

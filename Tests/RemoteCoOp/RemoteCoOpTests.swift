@@ -1,5 +1,7 @@
 import Testing
 import Foundation
+import CoreVideo
+@preconcurrency import WebRTC
 @testable import OpenNOW
 
 @Suite("Remote Co-Op")
@@ -446,6 +448,26 @@ struct RemoteCoOpTests {
         #expect(signaling.commandHistory().last == .inputRejected(participantID: participantID, result: .stalePacket))
     }
 
+    @Test("host peer controller registers approved peers as video sinks")
+    func hostPeerControllerRegistersApprovedPeersAsVideoSinks() async throws {
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1)), signaling: signaling)
+        let factory = RecordingRemoteCoOpHostPeerFactory()
+        let relay = OPNRemoteCoOpHostVideoRelay()
+        let participantID = UUID()
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), videoRelay: relay, peerFactory: factory, forwardInput: { _ in })
+
+        try await controller.startPeer(for: participant)
+        let peer = try #require(factory.peer(for: participantID))
+        relay.renderVideoFrame(try Self.makeVideoFrame())
+        await controller.removePeer(participantID: participantID)
+        relay.renderVideoFrame(try Self.makeVideoFrame())
+
+        #expect(relay.activeSinkCount() == 0)
+        #expect(peer.renderedVideoFrameCount() == 1)
+    }
+
     @Test("host peer input decoder rejects mismatched participants")
     func hostPeerInputDecoderRejectsMismatchedParticipants() throws {
         let expectedParticipantID = UUID()
@@ -455,6 +477,14 @@ struct RemoteCoOpTests {
         let text = try OPNRemoteCoOpWireCodec.encode(message)
 
         #expect(OPNRemoteCoOpHostPeerInputDecoder.decode(text, expectedParticipantID: expectedParticipantID) == nil)
+    }
+
+    private static func makeVideoFrame() throws -> RTCVideoFrame {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(nil, 2, 2, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
+        #expect(status == kCVReturnSuccess)
+        let buffer = RTCCVPixelBuffer(pixelBuffer: try #require(pixelBuffer))
+        return RTCVideoFrame(buffer: buffer, rotation: ._0, timeStampNs: 1)
     }
 }
 
@@ -476,8 +506,9 @@ private final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFac
 
     func makePeer(participantID: UUID,
                   networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                  qualityPreset: OPNRemoteCoOpQualityPreset,
                   callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer {
-        let peer = RecordingRemoteCoOpHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, callbacks: callbacks)
+        let peer = RecordingRemoteCoOpHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, callbacks: callbacks)
         lock.withLock { peers[participantID] = peer }
         return peer
     }
@@ -487,18 +518,21 @@ private final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFac
     }
 }
 
-private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, @unchecked Sendable {
+private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, @unchecked Sendable {
     let participantID: UUID
     let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    let qualityPreset: OPNRemoteCoOpQualityPreset
     private let callbacks: OPNRemoteCoOpHostPeerCallbacks
     private let lock = NSLock()
     private var started = 0
     private var closed = 0
+    private var renderedFrames = 0
     private var signals: [OPNRemoteCoOpWirePeerSignal] = []
 
-    init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
+    init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, qualityPreset: OPNRemoteCoOpQualityPreset, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
         self.participantID = participantID
         self.networkConfiguration = networkConfiguration
+        self.qualityPreset = qualityPreset
         self.callbacks = callbacks
     }
 
@@ -520,6 +554,10 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, @uncheck
         await callbacks.receiveInput(packet)
     }
 
+    func renderVideoFrame(_ frame: RTCVideoFrame) {
+        lock.withLock { renderedFrames += 1 }
+    }
+
     func startCount() -> Int {
         lock.withLock { started }
     }
@@ -530,6 +568,10 @@ private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, @uncheck
 
     func appliedSignals() -> [OPNRemoteCoOpWirePeerSignal] {
         lock.withLock { signals }
+    }
+
+    func renderedVideoFrameCount() -> Int {
+        lock.withLock { renderedFrames }
     }
 }
 

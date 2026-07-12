@@ -12,6 +12,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     private let recorder = WebRTCStreamRecorder()
     private let broadcaster = WebRTCLiveBroadcastController.shared
     private weak var nativeView: NativeWebRTCStreamView?
+    private let remoteCoOpVideoRelayLock = NSLock()
+    private var remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay?
     private var broadcastStatusObserverID: UUID?
     private let localIceLock = NSLock()
     private var localIceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
@@ -63,6 +65,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
                 self?.recorder.appendVideoFrame(frame)
                 self?.broadcaster.appendVideoFrame(frame)
+                self?.currentRemoteCoOpVideoRelay()?.renderVideoFrame(frame)
             }
             self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
                 guard let pixelBufferPointer else { return }
@@ -129,6 +132,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         sendNow(event)
     }
 
+    public func setRemoteCoOpVideoRelay(_ relay: OPNRemoteCoOpHostVideoRelay?) {
+        remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay = relay }
+    }
+
     public func sendNow(_ event: UserInputEvent) {
         switch event {
         case .keyboard(let keyboard):
@@ -181,6 +188,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         recorder.stop()
         broadcaster.resumeUICapture()
         session.setEnhancedVideoFrameCaptureEnabled(false)
+        setRemoteCoOpVideoRelay(nil)
         localIceLock.withLock {
             localIceContinuation?.finish()
             localIceContinuation = nil
@@ -429,6 +437,10 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
             isEndOfCandidates: false
         )
         _ = localIceLock.withLock { localIceContinuation?.yield(iceCandidate) }
+    }
+
+    private func currentRemoteCoOpVideoRelay() -> OPNRemoteCoOpHostVideoRelay? {
+        remoteCoOpVideoRelayLock.withLock { remoteCoOpVideoRelay }
     }
 
     private func handleEnded(message: String) {

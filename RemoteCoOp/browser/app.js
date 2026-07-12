@@ -313,14 +313,35 @@ function setNetworkState(title, detail) {
 }
 
 function attachRemoteTrack(track, stream) {
-  const existing = document.querySelector("#remote-media");
-  const media = existing ?? document.createElement(track.kind === "audio" ? "audio" : "video");
-  media.id = "remote-media";
+  const media = track.kind === "audio" ? remoteAudioElement() : remoteVideoElement();
   media.autoplay = true;
   media.playsInline = true;
   media.controls = false;
-  media.srcObject = stream ?? new MediaStream([track]);
-  if (!existing) document.querySelector(".video-placeholder")?.replaceChildren(media);
+  media.srcObject = stream ?? appendTrack(media.srcObject, track);
+}
+
+function remoteVideoElement() {
+  const existing = document.querySelector("#remote-video");
+  if (existing) return existing;
+  const media = document.createElement("video");
+  media.id = "remote-video";
+  document.querySelector(".video-placeholder")?.replaceChildren(media);
+  return media;
+}
+
+function remoteAudioElement() {
+  const existing = document.querySelector("#remote-audio");
+  if (existing) return existing;
+  const media = document.createElement("audio");
+  media.id = "remote-audio";
+  document.body.append(media);
+  return media;
+}
+
+function appendTrack(currentObject, track) {
+  const mediaStream = currentObject instanceof MediaStream ? currentObject : new MediaStream();
+  if (!mediaStream.getTracks().some(existing => existing.id === track.id)) mediaStream.addTrack(track);
+  return mediaStream;
 }
 
 function disconnect() {

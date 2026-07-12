@@ -6,27 +6,35 @@ public struct OPNRemoteCoOpWebRTCHostPeerFactory: OPNRemoteCoOpHostPeerFactory {
 
     public func makePeer(participantID: UUID,
                          networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                         qualityPreset: OPNRemoteCoOpQualityPreset,
                          callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer {
-        OPNRemoteCoOpWebRTCHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, callbacks: callbacks)
+        OPNRemoteCoOpWebRTCHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, qualityPreset: qualityPreset, callbacks: callbacks)
     }
 }
 
-public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer, RTCPeerConnectionDelegate, RTCDataChannelDelegate, @unchecked Sendable {
+public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, RTCPeerConnectionDelegate, RTCDataChannelDelegate, @unchecked Sendable {
     public let participantID: UUID
     private static let inputChannelLabel = "remote-coop-input"
     private let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    private let qualityPreset: OPNRemoteCoOpQualityPreset
     private let callbacks: OPNRemoteCoOpHostPeerCallbacks
     private let stateLock = NSLock()
     private var factory: RTCPeerConnectionFactory?
     private var peerConnection: RTCPeerConnection?
+    private var videoSource: RTCVideoSource?
+    private var videoCapturer: RTCVideoCapturer?
+    private var videoTrack: RTCVideoTrack?
+    private var videoSender: RTCRtpSender?
     private var inputChannels: [RTCDataChannel] = []
     private var isClosed = false
 
     public init(participantID: UUID,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                qualityPreset: OPNRemoteCoOpQualityPreset,
                 callbacks: OPNRemoteCoOpHostPeerCallbacks) {
         self.participantID = participantID
         self.networkConfiguration = networkConfiguration
+        self.qualityPreset = qualityPreset
         self.callbacks = callbacks
         super.init()
     }
@@ -56,9 +64,17 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             isClosed = true
             let peerConnection = peerConnection
             let inputChannels = inputChannels
+            let videoTrack = videoTrack
+            let videoSender = videoSender
             self.peerConnection = nil
             self.inputChannels = []
+            self.videoSource = nil
+            self.videoCapturer = nil
+            self.videoTrack = nil
+            self.videoSender = nil
             factory = nil
+            if let videoSender { _ = peerConnection?.removeTrack(videoSender) }
+            videoTrack?.isEnabled = false
             return (peerConnection, inputChannels)
         }
         for inputChannel in state.1 {
@@ -104,6 +120,11 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         Task { await callbacks.receiveInput(packet) }
     }
 
+    public func renderVideoFrame(_ frame: RTCVideoFrame) {
+        guard let capturer = stateLock.withLock({ videoCapturer }) else { return }
+        capturer.delegate?.capturer(capturer, didCapture: frame)
+    }
+
     private var closed: Bool {
         stateLock.withLock { isClosed }
     }
@@ -128,6 +149,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         guard let peerConnection = factory.peerConnection(with: configuration, constraints: constraints, delegate: self) else {
             throw OPNRemoteCoOpHostPeerError.negotiationFailed("Unable to create Remote Co-Op WebRTC peer connection.")
         }
+        attachVideoTrack(peerConnection: peerConnection, factory: factory)
         stateLock.withLock {
             self.factory = factory
             self.peerConnection = peerConnection
@@ -153,6 +175,21 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             return true
         }
         if shouldBind { channel.delegate = self }
+    }
+
+    private func attachVideoTrack(peerConnection: RTCPeerConnection, factory: RTCPeerConnectionFactory) {
+        let source = factory.videoSource(forScreenCast: true)
+        source.adaptOutputFormat(toWidth: Int32(qualityPreset.width), height: Int32(qualityPreset.height), fps: Int32(qualityPreset.fps))
+        let capturer = RTCVideoCapturer(delegate: source)
+        let track = factory.videoTrack(with: source, trackId: "remote-coop-video-\(participantID.uuidString)")
+        track.isEnabled = true
+        let sender = peerConnection.add(track, streamIds: ["remote-coop-stream-\(participantID.uuidString)"])
+        stateLock.withLock {
+            videoSource = source
+            videoCapturer = capturer
+            videoTrack = track
+            videoSender = sender
+        }
     }
 
     private func createAndSendOffer(peerConnection: RTCPeerConnection) async throws {
