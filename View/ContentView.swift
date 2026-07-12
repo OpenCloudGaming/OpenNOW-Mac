@@ -143,13 +143,13 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if !window.styleMask.contains(.fullSizeContentView) {
                 window.styleMask.insert(.fullSizeContentView)
             }
-            window.titleVisibility = .visible
-            window.titlebarAppearsTransparent = false
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = false
             window.isOpaque = true
-            window.backgroundColor = .windowBackgroundColor
+            window.backgroundColor = .black
             if #available(macOS 11.0, *) {
-                window.titlebarSeparatorStyle = .automatic
+                window.titlebarSeparatorStyle = .none
             }
         }
     }
