@@ -1,0 +1,132 @@
+import Foundation
+
+public enum OPNRemoteCoOpHostPeerError: LocalizedError, Equatable, Sendable {
+    case peerNotFound
+    case invalidSignal
+    case negotiationFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .peerNotFound: "Remote Co-Op peer was not found."
+        case .invalidSignal: "Remote Co-Op peer signal is invalid."
+        case .negotiationFailed(let message): message.isEmpty ? "Remote Co-Op WebRTC negotiation failed." : message
+        }
+    }
+}
+
+public struct OPNRemoteCoOpHostPeerCallbacks: Sendable {
+    public var sendSignal: @Sendable (OPNRemoteCoOpWirePeerSignal) async -> Void
+    public var receiveInput: @Sendable (OPNRemoteCoOpInputPacket) async -> Void
+
+    public init(sendSignal: @escaping @Sendable (OPNRemoteCoOpWirePeerSignal) async -> Void,
+                receiveInput: @escaping @Sendable (OPNRemoteCoOpInputPacket) async -> Void) {
+        self.sendSignal = sendSignal
+        self.receiveInput = receiveInput
+    }
+}
+
+public protocol OPNRemoteCoOpHostPeer: Sendable {
+    var participantID: UUID { get }
+    func start() async throws
+    func apply(_ signal: OPNRemoteCoOpWirePeerSignal) async throws
+    func close() async
+}
+
+public protocol OPNRemoteCoOpHostPeerFactory: Sendable {
+    func makePeer(participantID: UUID,
+                  networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                  callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer
+}
+
+public enum OPNRemoteCoOpHostPeerInputDecoder {
+    public static func decode(_ text: String, expectedParticipantID: UUID? = nil) -> OPNRemoteCoOpInputPacket? {
+        decode(Data(text.utf8), expectedParticipantID: expectedParticipantID)
+    }
+
+    public static func decode(_ data: Data, expectedParticipantID: UUID? = nil) -> OPNRemoteCoOpInputPacket? {
+        guard let message = try? OPNRemoteCoOpWireCodec.decode(data),
+              message.kind == .guestInput,
+              let packet = message.input else { return nil }
+        if let expectedParticipantID, packet.participantID != expectedParticipantID { return nil }
+        if let participantID = message.participantID, participantID != packet.participantID { return nil }
+        return packet
+    }
+}
+
+public actor OPNRemoteCoOpHostPeerController {
+    private let signaling: any OPNRemoteCoOpSignalingSession
+    private let coordinator: OPNRemoteCoOpHostCoordinator
+    private let peerFactory: any OPNRemoteCoOpHostPeerFactory
+    private let forwardInput: @Sendable (UserInputEvent) async -> Void
+    private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    private var peers: [UUID: any OPNRemoteCoOpHostPeer] = [:]
+
+    public init(signaling: any OPNRemoteCoOpSignalingSession,
+                coordinator: OPNRemoteCoOpHostCoordinator,
+                networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                peerFactory: any OPNRemoteCoOpHostPeerFactory = OPNRemoteCoOpWebRTCHostPeerFactory(),
+                forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) {
+        self.signaling = signaling
+        self.coordinator = coordinator
+        self.networkConfiguration = networkConfiguration
+        self.peerFactory = peerFactory
+        self.forwardInput = forwardInput
+    }
+
+    public func updateNetworkConfiguration(_ configuration: OPNRemoteCoOpNetworkConfiguration) {
+        networkConfiguration = configuration
+    }
+
+    public func sync(participants: [OPNRemoteCoOpParticipant]) async {
+        let eligibleParticipants = participants.filter { $0.connectionState == .connected && $0.inputEnabled }
+        let eligibleIDs = Set(eligibleParticipants.map(\.id))
+        for (participantID, peer) in peers where !eligibleIDs.contains(participantID) {
+            peers[participantID] = nil
+            await peer.close()
+        }
+        for participant in eligibleParticipants where peers[participant.id] == nil {
+            try? await startPeer(for: participant)
+        }
+    }
+
+    public func startPeer(for participant: OPNRemoteCoOpParticipant) async throws {
+        guard participant.connectionState == .connected, participant.inputEnabled else { return }
+        guard peers[participant.id] == nil else { return }
+        let participantID = participant.id
+        let callbacks = OPNRemoteCoOpHostPeerCallbacks(
+            sendSignal: { [signaling] signal in
+                await signaling.send(.peerSignal(participantID: participantID, signal: signal))
+            },
+            receiveInput: { [coordinator, forwardInput] packet in
+                guard packet.participantID == participantID else { return }
+                let routedEvents = await coordinator.handle(.guestInput(packet))
+                for routedEvent in routedEvents { await forwardInput(routedEvent) }
+            }
+        )
+        let peer = peerFactory.makePeer(participantID: participantID, networkConfiguration: networkConfiguration, callbacks: callbacks)
+        peers[participantID] = peer
+        do {
+            try await peer.start()
+        } catch {
+            peers[participantID] = nil
+            await peer.close()
+            throw error
+        }
+    }
+
+    public func receiveSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal) async throws {
+        guard let peer = peers[participantID] else { throw OPNRemoteCoOpHostPeerError.peerNotFound }
+        try await peer.apply(signal)
+    }
+
+    public func removePeer(participantID: UUID) async {
+        guard let peer = peers.removeValue(forKey: participantID) else { return }
+        await peer.close()
+    }
+
+    public func removeAll() async {
+        let currentPeers = Array(peers.values)
+        peers.removeAll()
+        for peer in currentPeers { await peer.close() }
+    }
+}

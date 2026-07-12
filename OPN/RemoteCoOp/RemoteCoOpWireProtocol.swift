@@ -141,7 +141,10 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         case .peerSignal:
             guard let participantID, let peerSignal else { return nil }
             return .peerSignal(participantID: participantID, signal: peerSignal)
-        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat, .networkConfiguration, .error:
+        case .networkConfiguration:
+            guard let networkConfiguration else { return nil }
+            return .networkConfiguration(networkConfiguration)
+        case .hostHello, .inviteEnded, .participantUpdated, .participantRemoved, .guestRejected, .inputRejected, .heartbeat, .error:
             return nil
         }
     }

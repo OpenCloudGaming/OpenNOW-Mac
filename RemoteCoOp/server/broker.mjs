@@ -207,6 +207,7 @@ function registerHost(state, message) {
   state.role = "host";
   state.roomID = roomID;
   send(state, { kind: "heartbeat", roomID });
+  send(state, { kind: "networkConfiguration", roomID, networkConfiguration: room.networkConfiguration });
 }
 
 function registerGuest(state, message) {

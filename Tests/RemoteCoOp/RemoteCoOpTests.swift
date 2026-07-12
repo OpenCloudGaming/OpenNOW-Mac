@@ -114,6 +114,19 @@ struct RemoteCoOpTests {
         #expect(decoded.networkConfiguration?.iceTransportPolicy == .relay)
     }
 
+    @Test("wire codec maps broker network config into signaling event")
+    func wireCodecMapsBrokerNetworkConfigIntoSignalingEvent() throws {
+        let configuration = OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .relayOnly,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
+        )
+        let message = OPNRemoteCoOpWireMessage(kind: .networkConfiguration, roomID: UUID(), networkConfiguration: configuration)
+
+        let decoded = try OPNRemoteCoOpWireCodec.decode(OPNRemoteCoOpWireCodec.encode(message))
+
+        #expect(decoded.signalingEvent() == .networkConfiguration(configuration))
+    }
+
     @Test("invite token signs and verifies launch metadata")
     func inviteTokenSignsAndVerifiesLaunchMetadata() async throws {
         let signer = OPNRemoteCoOpInviteTokenSigner(secret: Data(repeating: 7, count: 32))
@@ -347,5 +360,183 @@ struct RemoteCoOpTests {
         #expect(state.buttons.isEmpty)
         #expect(removedCommand == .participantRemoved(participantID))
         #expect(snapshot.participants.isEmpty)
+    }
+
+    @Test("host peer controller emits offer after approval")
+    func hostPeerControllerEmitsOfferAfterApproval() async throws {
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1)), signaling: signaling)
+        let factory = RecordingRemoteCoOpHostPeerFactory()
+        let participantID = UUID()
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        let networkConfiguration = OPNRemoteCoOpNetworkConfiguration(
+            transportMode: .relayOnly,
+            iceServers: [OPNRemoteCoOpICEServer(urls: ["turns:turn.example.test:443?transport=tcp"], username: "room", credential: "secret")]
+        )
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: networkConfiguration, peerFactory: factory, forwardInput: { _ in })
+
+        try await controller.startPeer(for: participant)
+
+        let peer = try #require(factory.peer(for: participantID))
+        guard case .peerSignal(let commandParticipantID, let signal)? = signaling.commandHistory().last else {
+            Issue.record("Expected peer signal command")
+            return
+        }
+        #expect(commandParticipantID == participantID)
+        #expect(signal.kind == .offer)
+        #expect(signal.sdp == "offer-\(participantID.uuidString)")
+        #expect(peer.networkConfiguration == networkConfiguration)
+        #expect(peer.startCount() == 1)
+    }
+
+    @Test("host peer controller applies browser answer and ICE")
+    func hostPeerControllerAppliesBrowserAnswerAndICE() async throws {
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1)), signaling: signaling)
+        let factory = RecordingRemoteCoOpHostPeerFactory()
+        let participantID = UUID()
+        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), peerFactory: factory, forwardInput: { _ in })
+
+        try await controller.startPeer(for: participant)
+        try await controller.receiveSignal(participantID: participantID, signal: OPNRemoteCoOpWirePeerSignal(kind: .answer, sdp: "answer-sdp"))
+        try await controller.receiveSignal(participantID: participantID, signal: OPNRemoteCoOpWirePeerSignal(kind: .iceCandidate, candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host", sdpMid: "0", sdpMLineIndex: 0))
+
+        let peer = try #require(factory.peer(for: participantID))
+        #expect(peer.appliedSignals() == [
+            OPNRemoteCoOpWirePeerSignal(kind: .answer, sdp: "answer-sdp"),
+            OPNRemoteCoOpWirePeerSignal(kind: .iceCandidate, candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host", sdpMid: "0", sdpMLineIndex: 0),
+        ])
+    }
+
+    @Test("host peer data channel input routes through coordinator")
+    func hostPeerDataChannelInputRoutesThroughCoordinator() async throws {
+        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1, requireHostApproval: true)
+        let signaling = OPNInProcessRemoteCoOpSignalingSession()
+        let hostSession = OPNRemoteCoOpHostSession(preferences: preferences)
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: hostSession, signaling: signaling)
+        let factory = RecordingRemoteCoOpHostPeerFactory()
+        let inputRecorder = RemoteCoOpInputRecorder()
+        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), peerFactory: factory) { event in
+            await inputRecorder.append(event)
+        }
+        let participantID = UUID()
+        let invite = try await coordinator.startInvite(lifetimeSeconds: 120)
+        _ = await coordinator.handle(.guestJoinRequested(participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
+        let approved = try await coordinator.approveParticipant(participantID)
+        await controller.sync(participants: [approved])
+        let peer = try #require(factory.peer(for: participantID))
+        let packet = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 1, buttons: [.south, .rightShoulder], leftTrigger: 1, rightStickX: -0.5)
+        let message = OPNRemoteCoOpWireMessage(kind: .guestInput, roomID: invite.id, participantID: participantID, input: packet)
+        let text = try OPNRemoteCoOpWireCodec.encode(message)
+
+        await peer.receiveDataChannelText(text)
+        await peer.receiveDataChannelText(text)
+
+        let events = await inputRecorder.events()
+        #expect(events.count == 1)
+        guard case .gamepad(let state) = events.first else {
+            Issue.record("Expected routed gamepad event")
+            return
+        }
+        #expect(state.playerIndex == 1)
+        #expect(state.buttons == [.south, .rightShoulder])
+        #expect(state.leftTrigger == 1)
+        #expect(state.rightStickX == -0.5)
+        #expect(signaling.commandHistory().last == .inputRejected(participantID: participantID, result: .stalePacket))
+    }
+
+    @Test("host peer input decoder rejects mismatched participants")
+    func hostPeerInputDecoderRejectsMismatchedParticipants() throws {
+        let expectedParticipantID = UUID()
+        let spoofedParticipantID = UUID()
+        let packet = OPNRemoteCoOpInputPacket(participantID: spoofedParticipantID, sequenceNumber: 1, buttons: [.south])
+        let message = OPNRemoteCoOpWireMessage(kind: .guestInput, participantID: expectedParticipantID, input: packet)
+        let text = try OPNRemoteCoOpWireCodec.encode(message)
+
+        #expect(OPNRemoteCoOpHostPeerInputDecoder.decode(text, expectedParticipantID: expectedParticipantID) == nil)
+    }
+}
+
+private actor RemoteCoOpInputRecorder {
+    private var recordedEvents: [UserInputEvent] = []
+
+    func append(_ event: UserInputEvent) {
+        recordedEvents.append(event)
+    }
+
+    func events() -> [UserInputEvent] {
+        recordedEvents
+    }
+}
+
+private final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFactory, @unchecked Sendable {
+    private let lock = NSLock()
+    private var peers: [UUID: RecordingRemoteCoOpHostPeer] = [:]
+
+    func makePeer(participantID: UUID,
+                  networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                  callbacks: OPNRemoteCoOpHostPeerCallbacks) -> any OPNRemoteCoOpHostPeer {
+        let peer = RecordingRemoteCoOpHostPeer(participantID: participantID, networkConfiguration: networkConfiguration, callbacks: callbacks)
+        lock.withLock { peers[participantID] = peer }
+        return peer
+    }
+
+    func peer(for participantID: UUID) -> RecordingRemoteCoOpHostPeer? {
+        lock.withLock { peers[participantID] }
+    }
+}
+
+private final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, @unchecked Sendable {
+    let participantID: UUID
+    let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
+    private let callbacks: OPNRemoteCoOpHostPeerCallbacks
+    private let lock = NSLock()
+    private var started = 0
+    private var closed = 0
+    private var signals: [OPNRemoteCoOpWirePeerSignal] = []
+
+    init(participantID: UUID, networkConfiguration: OPNRemoteCoOpNetworkConfiguration, callbacks: OPNRemoteCoOpHostPeerCallbacks) {
+        self.participantID = participantID
+        self.networkConfiguration = networkConfiguration
+        self.callbacks = callbacks
+    }
+
+    func start() async throws {
+        lock.withLock { started += 1 }
+        await callbacks.sendSignal(OPNRemoteCoOpWirePeerSignal(kind: .offer, sdp: "offer-\(participantID.uuidString)"))
+    }
+
+    func apply(_ signal: OPNRemoteCoOpWirePeerSignal) async throws {
+        lock.withLock { signals.append(signal) }
+    }
+
+    func close() async {
+        lock.withLock { closed += 1 }
+    }
+
+    func receiveDataChannelText(_ text: String) async {
+        guard let packet = OPNRemoteCoOpHostPeerInputDecoder.decode(text, expectedParticipantID: participantID) else { return }
+        await callbacks.receiveInput(packet)
+    }
+
+    func startCount() -> Int {
+        lock.withLock { started }
+    }
+
+    func closeCount() -> Int {
+        lock.withLock { closed }
+    }
+
+    func appliedSignals() -> [OPNRemoteCoOpWirePeerSignal] {
+        lock.withLock { signals }
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ body: () -> T) -> T {
+        lock()
+        defer { unlock() }
+        return body()
     }
 }

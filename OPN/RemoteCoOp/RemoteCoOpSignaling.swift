@@ -5,6 +5,7 @@ public enum OPNRemoteCoOpSignalingEvent: Equatable, Sendable {
     case guestInput(OPNRemoteCoOpInputPacket)
     case guestDisconnected(UUID)
     case peerSignal(participantID: UUID, signal: OPNRemoteCoOpWirePeerSignal)
+    case networkConfiguration(OPNRemoteCoOpNetworkConfiguration)
 }
 
 public enum OPNRemoteCoOpSignalingCommand: Equatable, Sendable {
@@ -163,7 +164,7 @@ public actor OPNRemoteCoOpHostCoordinator {
                 await signaling.send(.guestRejected(participantID: participantID, reason: Self.message(for: error)))
                 return []
             }
-        case .peerSignal:
+        case .peerSignal, .networkConfiguration:
             return []
         }
     }
