@@ -146,7 +146,7 @@ setInterval(() => {
 }, 10_000).unref();
 
 function attachSocket(socket) {
-  const state = { socket, buffer: Buffer.alloc(0), role: "unknown", roomID: null, participantID: null, lastSeenAt: Date.now(), messageTimes: [] };
+  const state = { socket, buffer: Buffer.alloc(0), role: "unknown", roomID: null, participantID: null, inviteToken: null, displayName: null, lastSeenAt: Date.now(), messageTimes: [] };
   sockets.add(state);
   socket.on("data", chunk => {
     state.buffer = Buffer.concat([state.buffer, chunk]);
@@ -271,26 +271,41 @@ function registerHost(state, message) {
   state.roomID = roomID;
   send(state, { kind: "heartbeat", roomID });
   send(state, { kind: "networkConfiguration", roomID, networkConfiguration: room.networkConfiguration });
+  for (const guest of room.guests.values()) {
+    send(state, sanitizeMessage({
+      kind: "guestJoinRequested",
+      roomID,
+      participantID: guest.participantID,
+      inviteToken: guest.inviteToken,
+      displayName: guest.displayName || "Guest"
+    }));
+  }
 }
 
 function registerGuest(state, message) {
   const roomID = stringValue(message.roomID);
   const participantID = stringValue(message.participantID);
+  const inviteToken = stringValue(message.inviteToken);
   if (!roomID || !participantID) {
     send(state, { kind: "guestRejected", participantID, reason: "Missing room or participant ID" });
     return;
   }
-  const room = rooms.get(roomID);
-  if (!room?.host) {
-    send(state, { kind: "guestRejected", roomID, participantID, reason: "Host is not connected" });
+  if (!inviteToken) {
+    send(state, { kind: "guestRejected", roomID, participantID, reason: "Missing invite token" });
     return;
   }
+  const room = roomFor(roomID);
   state.role = "guest";
   state.roomID = roomID;
   state.participantID = participantID;
+  state.inviteToken = inviteToken;
+  state.displayName = stringValue(message.displayName) || "Guest";
   room.guests.set(participantKey(participantID), state);
+  const payload = decodeInvitePayload(state.inviteToken);
+  if (!room.invite && payload) room.networkConfiguration = networkConfigurationFor(payload, roomID);
+  if (room.expiresAtMs <= 0) room.expiresAtMs = inviteExpiryMilliseconds(state.inviteToken);
   send(state, { kind: "networkConfiguration", roomID, participantID, networkConfiguration: room.networkConfiguration });
-  send(room.host, sanitizeMessage({ ...message, roomID, participantID }));
+  if (room.host) send(room.host, sanitizeMessage({ ...message, roomID, participantID }));
 }
 
 function relayGuestEvent(state, message) {
@@ -395,7 +410,7 @@ function iceServersFor(transportMode, roomID) {
   if (transportMode !== "relayOnly" && stunURLs.length > 0) servers.push({ urls: stunURLs });
   if (transportMode !== "directOnly" && turnURLs.length > 0) {
     const credentials = turnCredentials(roomID);
-    servers.push({ urls: turnURLs, ...credentials });
+    if (credentials.username && credentials.credential) servers.push({ urls: turnURLs, ...credentials });
   }
   return servers;
 }

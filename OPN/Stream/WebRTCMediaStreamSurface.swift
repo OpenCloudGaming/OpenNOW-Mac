@@ -1105,6 +1105,8 @@ public struct WebRTCMediaStreamSurface: View {
         let preferences = remoteCoOpLaunchPreferences
         remoteCoOpMessage = "Creating invite..."
         Task { @MainActor in
+            let neutralEvents = await stopRemoteCoOpSession()
+            neutralEvents.forEach { transport?.sendNow($0) }
             await remoteCoOpHostSession.updatePreferences(preferences)
             do {
                 let coordinator = makeRemoteCoOpCoordinator(preferences: preferences)

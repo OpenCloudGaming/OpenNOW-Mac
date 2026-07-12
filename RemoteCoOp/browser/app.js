@@ -114,7 +114,7 @@ function joinRoom() {
   socket.addEventListener("close", () => {
     stopPolling();
     updateDiagnostics({ websocket: "closed" });
-    setState("Disconnected", "The Remote Co-Op connection closed.", false);
+    if (!hasTerminalState()) setState("Disconnected", "The Remote Co-Op connection closed.", false);
     elements.joinButton.disabled = false;
   });
   socket.addEventListener("error", () => updateDiagnostics({ websocket: "error" }));
@@ -159,7 +159,7 @@ async function handleMessage(message) {
     if (!isForThisParticipant(message)) return;
     setState("Rejected", message.reason ?? "The host rejected this join request.", false);
     updateDiagnostics({ approval: `rejected: ${message.reason ?? "host rejected join"}` });
-    disconnect();
+    disconnect(false);
     return;
   }
   if (message.kind === "inputRejected") {
@@ -720,11 +720,11 @@ function appendTrack(currentObject, track) {
   return mediaStream;
 }
 
-function disconnect() {
+function disconnect(notifyHost = true) {
   approved = false;
   stopPolling();
   closePeerConnection();
-  if (socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: invite?.inviteID, participantID });
+  if (notifyHost && socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: invite?.inviteID, participantID });
   socket?.close();
   socket = null;
 }
@@ -733,6 +733,10 @@ function setState(title, detail, connected) {
   elements.state.textContent = title;
   elements.detail.textContent = detail;
   elements.dot.classList.toggle("connected", connected);
+}
+
+function hasTerminalState() {
+  return ["Ended", "Rejected", "Removed"].includes(elements.state.textContent);
 }
 
 function displayName() {

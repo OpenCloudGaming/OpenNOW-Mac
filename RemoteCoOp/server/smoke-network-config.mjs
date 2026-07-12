@@ -67,6 +67,7 @@ async function runSmokeChecks(brokerURL) {
   await assertAutomatic(brokerURL);
   await assertDirectOnly(brokerURL);
   await assertLowLatencyMode(brokerURL);
+  await assertPendingGuestWaitsForHost(brokerURL);
 }
 
 async function assertRelayOnly(brokerURL) {
@@ -107,6 +108,32 @@ async function assertDirectOnly(brokerURL) {
 async function assertLowLatencyMode(brokerURL) {
   const config = await fetchNetworkConfiguration(brokerURL, inviteToken({ inviteID: randomUUID(), transportMode: "automatic", latencyMode: "lowLatency" }));
   assert(config.latencyMode === "lowLatency", "lowLatency mode was not preserved");
+}
+
+async function assertPendingGuestWaitsForHost(brokerURL) {
+  const roomID = randomUUID();
+  const participantID = randomUUID();
+  const token = inviteToken({ inviteID: roomID, code: "SMOKE123", transportMode: "automatic" });
+  const guest = await openWebSocket(brokerURL);
+  try {
+    sendWebSocketJSON(guest, { kind: "guestJoinRequested", roomID, participantID, inviteToken: token, displayName: "Smoke Guest" });
+    const guestConfig = await nextWebSocketMessage(guest);
+    assert(guestConfig.kind === "networkConfiguration", "pending guest did not receive network configuration");
+
+    const host = await openWebSocket(brokerURL);
+    try {
+      sendWebSocketJSON(host, { kind: "hostHello", roomID, invite: { id: roomID, token } });
+      const hostJoin = await waitForWebSocketMessage(host, message => message.kind === "guestJoinRequested");
+      assert(hostJoin.roomID === roomID, "pending guest was relayed to the wrong room");
+      assert(hostJoin.participantID === participantID, "pending guest participant ID was not preserved");
+      assert(hostJoin.inviteToken === token, "pending guest invite token was not preserved");
+      assert(hostJoin.displayName === "Smoke Guest", "pending guest display name was not preserved");
+    } finally {
+      host.close();
+    }
+  } finally {
+    guest.close();
+  }
 }
 
 async function assertPortFallback() {
@@ -189,6 +216,62 @@ function getJSON(url, timeoutMilliseconds = 2_000) {
     request.on("timeout", () => request.destroy(new Error(`request timed out: ${url}`)));
     request.on("error", reject);
     request.end();
+  });
+}
+
+function openWebSocket(brokerURL) {
+  const url = new URL("/remote-coop", brokerURL);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    const timer = setTimeout(() => reject(new Error(`websocket open timed out: ${url}`)), 2_000);
+    socket.addEventListener("open", () => {
+      clearTimeout(timer);
+      resolve(socket);
+    }, { once: true });
+    socket.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error(`websocket failed: ${url}`));
+    }, { once: true });
+  });
+}
+
+function sendWebSocketJSON(socket, message) {
+  socket.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
+}
+
+function nextWebSocketMessage(socket, timeoutMilliseconds = 2_000) {
+  return waitForWebSocketMessage(socket, () => true, timeoutMilliseconds);
+}
+
+function waitForWebSocketMessage(socket, predicate, timeoutMilliseconds = 2_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("websocket message timed out"));
+    }, timeoutMilliseconds);
+    const onMessage = event => {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (!predicate(message)) return;
+      cleanup();
+      resolve(message);
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error("websocket closed before expected message"));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+    };
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose);
   });
 }
 
