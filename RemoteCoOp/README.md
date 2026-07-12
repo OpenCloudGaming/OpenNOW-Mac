@@ -2,11 +2,52 @@
 
 This folder contains the repo-local browser Remote Co-Op reference stack:
 
+- `run-servers.mjs`: all-server Node runner for LAN/all-interface testing.
 - `server/broker.mjs`: signaling broker and static browser app server.
 - `browser/`: guest join page.
 - `turn/turn-server.mjs`: Node launcher/manager for a system `coturn` TURN server.
 
 The broker is signaling-only. It relays JSON messages between the macOS host and browser guests. It does not relay media and does not validate gameplay authority. The host app validates signed invite tokens, approves guests, assigns player slots, rejects stale input, and routes accepted input through the native GFN input path.
+
+## All Server Nodes
+
+For LAN testing, run every Remote Co-Op server-side Node process with broker and TURN listeners bound to all local interfaces:
+
+```sh
+node RemoteCoOp/run-servers.mjs
+```
+
+The runner starts:
+
+- `server/broker.mjs` with `OPENNOW_REMOTE_COOP_BIND_HOST=0.0.0.0`.
+- `turn/turn-server.mjs` with `OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=0.0.0.0`.
+
+It derives a LAN IPv4 address for printed join/TURN URLs when possible, generates an ephemeral TURN shared secret when one is not provided, and injects matching `OPENNOW_REMOTE_COOP_TURN_URLS` into the broker.
+
+Dry-run without starting long-lived servers:
+
+```sh
+node RemoteCoOp/run-servers.mjs --dry-run
+```
+
+Override the advertised public host for another LAN device or a production DNS name:
+
+```sh
+OPENNOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 \
+node RemoteCoOp/run-servers.mjs
+```
+
+For production, provide a stable secret and TLS cert/key for TURNS:
+
+```sh
+OPENNOW_REMOTE_COOP_PUBLIC_HOST=turn.example.com \
+OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET='replace-with-long-random-secret' \
+OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/turn.example.com/fullchain.pem \
+OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/turn.example.com/privkey.pem \
+node RemoteCoOp/run-servers.mjs
+```
+
+Install `coturn` before running without `--dry-run`.
 
 ## Local Broker
 
