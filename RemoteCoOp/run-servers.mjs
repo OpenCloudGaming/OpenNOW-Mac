@@ -27,7 +27,7 @@ const children = new Map();
 let stopping = false;
 
 startChild("turn", [turnScript]);
-startChild("broker", [brokerScript]);
+startChild("broker", [brokerScript], { ipc: true });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => stopAll(signal, 0));
@@ -41,6 +41,7 @@ function buildConfig() {
   const turnTLSPort = integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 443);
   const tlsEnabled = Boolean(stringEnv("OPENNOW_REMOTE_COOP_TURN_CERT", "") && stringEnv("OPENNOW_REMOTE_COOP_TURN_KEY", ""));
   const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8787);
+  const brokerPortCandidates = portCandidates(brokerPort, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
   const brokerBindHost = stringEnv("OPENNOW_REMOTE_COOP_BIND_HOST", "0.0.0.0");
   const turnListeningIP = stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", "0.0.0.0");
   const turnURLs = stringEnv("OPENNOW_REMOTE_COOP_TURN_URLS", buildTurnURLs(publicHost, turnPort, turnTLSPort, tlsEnabled));
@@ -48,6 +49,7 @@ function buildConfig() {
     ...process.env,
     OPENNOW_REMOTE_COOP_BIND_HOST: brokerBindHost,
     OPENNOW_REMOTE_COOP_PORT: String(brokerPort),
+    OPENNOW_REMOTE_COOP_PORT_ALTERNATES: brokerPortCandidates.filter(candidate => candidate !== brokerPort).join(","),
     OPENNOW_REMOTE_COOP_TURN_LISTENING_IP: turnListeningIP,
     OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST: stringEnv("OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST", publicHost),
     OPENNOW_REMOTE_COOP_TURN_REALM: stringEnv("OPENNOW_REMOTE_COOP_TURN_REALM", publicHost),
@@ -58,12 +60,17 @@ function buildConfig() {
   if (isLoopbackHost(env.OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST) && !process.env.OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK) {
     env.OPENNOW_REMOTE_COOP_TURN_DEV_ALLOW_LOOPBACK = "1";
   }
-  return { publicHost, generatedSecret, sharedSecret, turnURLs, brokerBindHost, brokerPort, turnListeningIP, env };
+  return { publicHost, generatedSecret, sharedSecret, turnURLs, brokerBindHost, brokerPort, brokerPortCandidates, turnListeningIP, env };
 }
 
-function startChild(label, scriptArgs) {
-  const child = spawn(process.execPath, scriptArgs, { env: config.env, stdio: ["ignore", "pipe", "pipe"] });
+function startChild(label, scriptArgs, options = {}) {
+  const child = spawn(process.execPath, scriptArgs, { env: config.env, stdio: options.ipc ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"] });
   children.set(label, child);
+  if (options.ipc) {
+    child.on("message", message => {
+      if (label === "broker" && message?.kind === "remoteCoOpBrokerListening") printBrokerEndpoints(config, message.port);
+    });
+  }
   prefixStream(label, child.stdout, process.stdout);
   prefixStream(label, child.stderr, process.stderr);
   child.on("exit", (code, signal) => {
@@ -117,14 +124,22 @@ function prefixStream(label, stream, output) {
 
 function printSummary(config) {
   console.log("OpenNOW Remote Co-Op all-server runner");
-  console.log(`  broker bind: ${config.brokerBindHost}:${config.brokerPort}`);
+  console.log(`  broker bind: ${config.brokerBindHost}:${config.brokerPort}${alternatePortSummary(config.brokerPortCandidates)}`);
   console.log(`  turn listen: ${config.turnListeningIP}`);
   console.log(`  public host: ${config.publicHost}`);
-  console.log(`  browser URL: http://${config.publicHost}:${config.brokerPort}/`);
-  console.log(`  websocket URL: ws://${config.publicHost}:${config.brokerPort}/remote-coop`);
   console.log(`  TURN URLs: ${config.turnURLs}`);
   console.log(`  TURN shared secret: ${config.generatedSecret ? "generated for this run" : "provided by environment"}`);
   console.log("  production: put the broker behind HTTPS/WSS and use a public TURN host with certificates.");
+}
+
+function printBrokerEndpoints(config, brokerPort) {
+  console.log(`  browser URL: http://${config.publicHost}:${brokerPort}/`);
+  console.log(`  websocket URL: ws://${config.publicHost}:${brokerPort}/remote-coop`);
+}
+
+function alternatePortSummary(candidates) {
+  const alternates = candidates.slice(1);
+  return alternates.length > 0 ? ` (alternates: ${alternates.join(", ")})` : "";
 }
 
 function buildTurnURLs(host, port, tlsPort, tlsEnabled) {
@@ -152,6 +167,18 @@ function integerEnv(name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function portCandidates(preferredPort, alternateValue) {
+  const parsedAlternates = typeof alternateValue === "string" && alternateValue.trim()
+    ? alternateValue.split(",").map(value => Number.parseInt(value.trim(), 10))
+    : [preferredPort + 1, preferredPort + 2];
+  const candidates = Array.from(new Set([preferredPort, ...parsedAlternates].filter(isUsablePort)));
+  return candidates.length > 0 ? candidates : [8787, 8788, 8789];
+}
+
+function isUsablePort(value) {
+  return Number.isInteger(value) && value > 0 && value <= 65_535;
+}
+
 function isLoopbackHost(host) {
   return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host.toLowerCase());
 }
@@ -172,6 +199,7 @@ variables directly.
 Useful environment:
   OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs
   OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 8787
+  OPENNOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET   Shared TURN REST secret; generated if omitted
   OPENNOW_REMOTE_COOP_TURN_CERT            Enables turns: URL when paired with key
   OPENNOW_REMOTE_COOP_TURN_KEY             Enables turns: URL when paired with cert

@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const port = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_PORT ?? "8787", 10);
+const port = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8787);
+const portAlternates = portCandidates(port, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
 const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? "127.0.0.1";
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
 const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
@@ -72,8 +73,33 @@ server.on("upgrade", (request, socket) => {
   attachSocket(socket);
 });
 
-server.listen(port, bindHost, () => {
-  console.log(`OpenNOW Remote Co-Op broker listening on http://${bindHost}:${port}`);
+listenOnAvailablePort(0);
+
+function listenOnAvailablePort(index) {
+  const candidate = portAlternates[index];
+  const onError = error => {
+    server.off("listening", onListening);
+    if (error.code === "EADDRINUSE" && index + 1 < portAlternates.length) {
+      console.warn(`OpenNOW Remote Co-Op broker port ${candidate} is in use; trying ${portAlternates[index + 1]}.`);
+      listenOnAvailablePort(index + 1);
+      return;
+    }
+    console.error(`OpenNOW Remote Co-Op broker failed to listen on ${bindHost}:${candidate}: ${error.message}`);
+    process.exit(1);
+  };
+  const onListening = () => {
+    server.off("error", onError);
+    const address = server.address();
+    const actualPort = typeof address === "object" && address ? address.port : candidate;
+    console.log(`OpenNOW Remote Co-Op broker listening on http://${bindHost}:${actualPort}`);
+    if (typeof process.send === "function") process.send({ kind: "remoteCoOpBrokerListening", bindHost, port: actualPort, requestedPort: port });
+  };
+  server.once("error", onError);
+  server.once("listening", onListening);
+  server.listen(candidate, bindHost);
+}
+
+server.on("listening", () => {
   console.log(`Remote Co-Op ICE: stun=${stunURLs.length} turn=${turnURLs.length} turnAuth=${turnAuthSummary()}`);
 });
 
@@ -420,6 +446,23 @@ function splitEnv(name, fallback) {
     .split(",")
     .map(value => value.trim())
     .filter(Boolean);
+}
+
+function integerEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function portCandidates(preferredPort, alternateValue) {
+  const parsedAlternates = typeof alternateValue === "string" && alternateValue.trim()
+    ? alternateValue.split(",").map(value => Number.parseInt(value.trim(), 10))
+    : [preferredPort + 1, preferredPort + 2];
+  const candidates = Array.from(new Set([preferredPort, ...parsedAlternates].filter(isUsablePort)));
+  return candidates.length > 0 ? candidates : [8787, 8788, 8789];
+}
+
+function isUsablePort(value) {
+  return Number.isInteger(value) && value > 0 && value <= 65_535;
 }
 
 function isRateLimited(state) {

@@ -24,6 +24,8 @@ The runner starts:
 
 It derives a LAN IPv4 address for printed join/TURN URLs when possible, generates an ephemeral TURN shared secret when one is not provided, and injects matching `OPENNOW_REMOTE_COOP_TURN_URLS` into the broker.
 
+If the broker port is busy, the runner lets the broker fall back to the next available configured alternate and prints the actual browser/WebSocket URLs after the broker binds. By default, `8788` and `8789` are tried after `8787`.
+
 Dry-run without starting long-lived servers:
 
 ```sh
@@ -69,11 +71,14 @@ Broker environment:
 ```text
 OPENNOW_REMOTE_COOP_BIND_HOST=127.0.0.1
 OPENNOW_REMOTE_COOP_PORT=8787
+OPENNOW_REMOTE_COOP_PORT_ALTERNATES=8788,8789
 OPENNOW_REMOTE_COOP_STUN_URLS=stun:stun.l.google.com:19302
 OPENNOW_REMOTE_COOP_TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp,turns:turn.example.com:443?transport=tcp
 OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=shared-coturn-rest-secret
 OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS=3600
 ```
+
+When `OPENNOW_REMOTE_COOP_PORT` is unavailable, the broker retries the comma-separated `OPENNOW_REMOTE_COOP_PORT_ALTERNATES` list. Keep OpenNOW's Remote Co-Op Signaling Server and Guest Join URL settings aligned with the actual broker URL printed at startup.
 
 Static TURN credentials are also supported with `OPENNOW_REMOTE_COOP_TURN_USERNAME` and `OPENNOW_REMOTE_COOP_TURN_CREDENTIAL`, but shared-secret REST credentials are preferred for production.
 

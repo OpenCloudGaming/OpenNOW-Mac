@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHmac, randomUUID } from "node:crypto";
-import { request as httpRequest } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,7 @@ let brokerStopping = false;
 try {
   const brokerURL = brokerURLArg ? new URL(brokerURLArg) : await startBroker();
   await runSmokeChecks(brokerURL);
+  if (!brokerURLArg) await assertPortFallback();
   console.log("Remote Co-Op network-config smoke passed.");
 } catch (error) {
   console.error(`Remote Co-Op network-config smoke failed: ${error.message}`);
@@ -107,6 +108,40 @@ async function assertLowLatencyMode(brokerURL) {
   assert(config.latencyMode === "lowLatency", "lowLatency mode was not preserved");
 }
 
+async function assertPortFallback() {
+  const blocker = createServer((request, response) => response.writeHead(204).end());
+  await listen(blocker, 0, "127.0.0.1");
+  const blockedPort = serverPort(blocker);
+  const alternatePort = await reserveAvailablePort();
+  const brokerURL = new URL(`http://127.0.0.1:${alternatePort}`);
+  const brokerScript = fileURLToPath(new URL("./broker.mjs", import.meta.url));
+  const child = spawn(process.execPath, [brokerScript], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      OPENNOW_REMOTE_COOP_PORT: String(blockedPort),
+      OPENNOW_REMOTE_COOP_PORT_ALTERNATES: String(alternatePort),
+      OPENNOW_REMOTE_COOP_BIND_HOST: "127.0.0.1",
+      OPENNOW_REMOTE_COOP_STUN_URLS: smokeStunURLs,
+      OPENNOW_REMOTE_COOP_TURN_URLS: smokeTurnURLs,
+      OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET: smokeSecret,
+      OPENNOW_REMOTE_COOP_TURN_TTL_SECONDS: smokeTTLSeconds
+    }
+  });
+  if (verbose) {
+    child.stdout.on("data", data => process.stdout.write(`[broker-fallback] ${data}`));
+    child.stderr.on("data", data => process.stderr.write(`[broker-fallback] ${data}`));
+  }
+  try {
+    await waitForBroker(brokerURL);
+    const config = await fetchNetworkConfiguration(brokerURL, inviteToken({ inviteID: randomUUID(), transportMode: "automatic" }));
+    assert(config.transportMode === "automatic", "fallback broker did not serve network config");
+  } finally {
+    await stopProcess(child);
+    await closeServer(blocker);
+  }
+}
+
 async function fetchNetworkConfiguration(brokerURL, invite) {
   const url = new URL("/remote-coop/network-config", brokerURL);
   url.searchParams.set("invite", invite);
@@ -158,10 +193,49 @@ function getJSON(url, timeoutMilliseconds = 2_000) {
 async function stopBroker() {
   if (!brokerProcess || brokerProcess.exitCode !== null) return;
   brokerStopping = true;
-  brokerProcess.kill("SIGTERM");
+  await stopProcess(brokerProcess);
+}
+
+async function stopProcess(processHandle) {
+  if (!processHandle || processHandle.exitCode !== null) return;
+  processHandle.kill("SIGTERM");
   const deadline = Date.now() + 2_000;
-  while (brokerProcess.exitCode === null && Date.now() < deadline) await sleep(50);
-  if (brokerProcess.exitCode === null) brokerProcess.kill("SIGKILL");
+  while (processHandle.exitCode === null && Date.now() < deadline) await sleep(50);
+  if (processHandle.exitCode === null) processHandle.kill("SIGKILL");
+}
+
+async function reserveAvailablePort() {
+  const server = createServer();
+  await listen(server, 0, "127.0.0.1");
+  const port = serverPort(server);
+  await closeServer(server);
+  return port;
+}
+
+function listen(server, port, host) {
+  return new Promise((resolve, reject) => {
+    const onError = error => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
+}
+
+function serverPort(server) {
+  const address = server.address();
+  if (typeof address === "object" && address) return address.port;
+  throw new Error("server did not expose a TCP port");
+}
+
+function closeServer(server) {
+  return new Promise(resolve => server.close(() => resolve()));
 }
 
 function assert(condition, message) {
