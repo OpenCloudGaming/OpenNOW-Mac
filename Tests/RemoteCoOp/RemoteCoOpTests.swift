@@ -22,8 +22,8 @@ struct RemoteCoOpTests {
     func preferencesDefaultToProductionBrokerURLs() {
         let preferences = OPNRemoteCoOpPreferences()
 
-        #expect(preferences.signalingServerURL == "wss://relay.jayian.dev:8788/remote-coop")
-        #expect(preferences.guestJoinBaseURL == "https://relay.jayian.dev:8788/")
+        #expect(preferences.signalingServerURL == "ws://198.12.95.48:8788/remote-coop")
+        #expect(preferences.guestJoinBaseURL == "http://198.12.95.48:8788/")
     }
 
     @Test("preferences round-trip through stream launch metadata")

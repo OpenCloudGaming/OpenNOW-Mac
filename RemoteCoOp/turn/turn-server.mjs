@@ -4,7 +4,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 import { spawn } from "node:child_process";
 
 const args = new Set(process.argv.slice(2));
-const productionHost = "relay.jayian.dev";
+const productionHost = "198.12.95.48";
 
 if (args.has("--help") || args.has("-h")) {
   printHelp();
@@ -76,7 +76,7 @@ function readConfig() {
     publicHost,
     realm: stringEnv("OPENNOW_REMOTE_COOP_TURN_REALM", publicHost || "opennow-remote-coop"),
     sharedSecret: stringEnv("OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET", ""),
-    listeningIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", "0.0.0.0"),
+    listeningIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost),
     externalIP: stringEnv("OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP", ""),
     port: integerEnv("OPENNOW_REMOTE_COOP_TURN_PORT", 3478),
     tlsPort: integerEnv("OPENNOW_REMOTE_COOP_TURN_TLS_PORT", 443),
@@ -224,7 +224,7 @@ Starts coturn for OpenNOW Remote Co-Op. This Node app manages the system
 turnserver binary; it does not implement TURN itself.
 
 Required environment:
-  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST       Public DNS name or IP for clients, default relay.jayian.dev
+  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST       Public DNS name or IP for clients, default 198.12.95.48
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET    Shared REST auth secret, also used by broker
 
 Common environment:
@@ -234,7 +234,7 @@ Common environment:
   OPENNOW_REMOTE_COOP_TURN_TLS_PORT         TLS/TCP TURNS port, default 443
   OPENNOW_REMOTE_COOP_TURN_MIN_PORT         Relay min UDP port, default 49160
   OPENNOW_REMOTE_COOP_TURN_MAX_PORT         Relay max UDP port, default 49200
-  OPENNOW_REMOTE_COOP_TURN_LISTENING_IP     Local listen IP, default 0.0.0.0
+  OPENNOW_REMOTE_COOP_TURN_LISTENING_IP     Local listen IP, default public host
   OPENNOW_REMOTE_COOP_TURN_EXTERNAL_IP      Public relay IP when behind NAT
   OPENNOW_REMOTE_COOP_TURN_CERT             TLS certificate path
   OPENNOW_REMOTE_COOP_TURN_KEY              TLS private key path
@@ -245,9 +245,7 @@ Examples:
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=local-development-secret \
   node RemoteCoOp/turn/turn-server.mjs --dry-run
 
-  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=relay.jayian.dev \
+  OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST=198.12.95.48 \
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
-  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/relay.jayian.dev/fullchain.pem \
-  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/relay.jayian.dev/privkey.pem \
   node RemoteCoOp/turn/turn-server.mjs`);
 }

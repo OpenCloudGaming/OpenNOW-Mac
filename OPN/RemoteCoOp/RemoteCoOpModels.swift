@@ -209,8 +209,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
     public static let launchMetadataHideGuestInviteDetailsKey = "remoteCoOpHideGuestInviteDetails"
 
-    public static let defaultSignalingServerURL = "wss://relay.jayian.dev:8788/remote-coop"
-    public static let defaultGuestJoinBaseURL = "https://relay.jayian.dev:8788/"
+    public static let defaultSignalingServerURL = "ws://198.12.95.48:8788/remote-coop"
+    public static let defaultGuestJoinBaseURL = "http://198.12.95.48:8788/"
 
     public var isEnabled: Bool
     public var reservedGuestSlots: Int

@@ -8,7 +8,7 @@ const args = new Set(process.argv.slice(2));
 const root = dirname(fileURLToPath(import.meta.url));
 const brokerScript = join(root, "server", "broker.mjs");
 const turnScript = join(root, "turn", "turn-server.mjs");
-const productionHost = "relay.jayian.dev";
+const productionHost = "198.12.95.48";
 
 if (args.has("--help") || args.has("-h")) {
   printHelp();
@@ -47,8 +47,8 @@ function buildConfig() {
   const brokerTLSEnabled = Boolean(brokerCertificatePath && brokerKeyPath);
   const brokerPort = integerEnv("OPENNOW_REMOTE_COOP_PORT", 8788);
   const brokerPortCandidates = portCandidates(brokerPort, process.env.OPENNOW_REMOTE_COOP_PORT_ALTERNATES);
-  const brokerBindHost = stringEnv("OPENNOW_REMOTE_COOP_BIND_HOST", "0.0.0.0");
-  const turnListeningIP = stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", "0.0.0.0");
+  const brokerBindHost = stringEnv("OPENNOW_REMOTE_COOP_BIND_HOST", publicHost);
+  const turnListeningIP = stringEnv("OPENNOW_REMOTE_COOP_TURN_LISTENING_IP", publicHost);
   const turnURLs = stringEnv("OPENNOW_REMOTE_COOP_TURN_URLS", buildTurnURLs(publicHost, turnPort, turnTLSPort, tlsEnabled));
   const env = {
     ...process.env,
@@ -137,7 +137,7 @@ function printSummary(config) {
   console.log(`  public host: ${config.publicHost}`);
   console.log(`  TURN URLs: ${config.turnURLs}`);
   console.log(`  TURN shared secret: ${config.generatedSecret ? "generated for this run" : "provided by environment"}`);
-  console.log("  production: configure broker HTTPS/WSS directly or put it behind an HTTPS/WSS reverse proxy.");
+  console.log("  production: defaults use HTTP/WS on the public IP. Configure broker HTTPS/WSS only when explicitly needed.");
 }
 
 function printBrokerEndpoints(config, brokerPort, secure) {
@@ -185,18 +185,18 @@ function isLoopbackHost(host) {
 function printHelp() {
   console.log(`Usage: node RemoteCoOp/run-servers.mjs [--dry-run]
 
-Starts all Remote Co-Op server-side Node processes and binds them to all local
-interfaces by default:
-  - broker: OPENNOW_REMOTE_COOP_BIND_HOST=0.0.0.0
-  - TURN:   OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=0.0.0.0
+Starts all Remote Co-Op server-side Node processes and binds them to the
+production public IP by default:
+  - broker: OPENNOW_REMOTE_COOP_BIND_HOST=198.12.95.48
+  - TURN:   OPENNOW_REMOTE_COOP_TURN_LISTENING_IP=198.12.95.48
 
-The runner defaults to relay.jayian.dev for production URLs. Override it with
+The runner defaults to 198.12.95.48 for production URLs. Override it with
 OPENNOW_REMOTE_COOP_PUBLIC_HOST for LAN deployments, or set the lower level
 OPENNOW_REMOTE_COOP_TURN_PUBLIC_HOST and OPENNOW_REMOTE_COOP_TURN_URLS variables
 directly.
 
 Useful environment:
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default relay.jayian.dev
+  OPENNOW_REMOTE_COOP_PUBLIC_HOST          Public DNS/IP to print and use for TURN URLs, default 198.12.95.48
   OPENNOW_REMOTE_COOP_PORT                 Broker HTTP/WebSocket port, default 8788
   OPENNOW_REMOTE_COOP_PORT_ALTERNATES      Comma-separated fallback broker ports, default next two ports
   OPENNOW_REMOTE_COOP_BROKER_CERT          HTTPS certificate for broker; defaults to TURN cert
@@ -209,9 +209,7 @@ Useful environment:
 Examples:
   node RemoteCoOp/run-servers.mjs --dry-run
   OPENNOW_REMOTE_COOP_PUBLIC_HOST=192.168.1.25 node RemoteCoOp/run-servers.mjs
-  OPENNOW_REMOTE_COOP_PUBLIC_HOST=relay.jayian.dev \
+  OPENNOW_REMOTE_COOP_PUBLIC_HOST=198.12.95.48 \
   OPENNOW_REMOTE_COOP_TURN_SHARED_SECRET=replace-with-long-random-secret \
-  OPENNOW_REMOTE_COOP_TURN_CERT=/etc/letsencrypt/live/relay.jayian.dev/fullchain.pem \
-  OPENNOW_REMOTE_COOP_TURN_KEY=/etc/letsencrypt/live/relay.jayian.dev/privkey.pem \
   node RemoteCoOp/run-servers.mjs`);
 }
