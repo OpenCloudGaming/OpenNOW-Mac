@@ -14,9 +14,46 @@ struct RemoteCoOpTests {
 
     @Test("preferences round-trip through stream launch metadata")
     func preferencesRoundTripThroughStreamLaunchMetadata() {
-        let preferences = OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2, transportMode: .relayOnly, qualityPreset: .p1080f60, requireHostApproval: false)
+        let preferences = OPNRemoteCoOpPreferences(
+            isEnabled: true,
+            reservedGuestSlots: 2,
+            transportMode: .relayOnly,
+            qualityPreset: .p1080f60,
+            requireHostApproval: false,
+            signalingServerURL: "wss://coop.example.test/remote-coop",
+            guestJoinBaseURL: "https://coop.example.test/"
+        )
 
         #expect(OPNRemoteCoOpPreferences.launchPreferences(from: preferences.launchMetadata, fallback: OPNRemoteCoOpPreferences()) == preferences)
+    }
+
+    @Test("wire codec maps browser messages into signaling events")
+    func wireCodecMapsBrowserMessagesIntoSignalingEvents() throws {
+        let participantID = UUID()
+        let packet = OPNRemoteCoOpInputPacket(participantID: participantID, sequenceNumber: 42, buttons: [.south, .dpadRight], leftTrigger: 0.75, rightStickX: -0.5)
+        let join = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, roomID: UUID(), participantID: participantID, inviteToken: "token", displayName: "Mia")
+        let input = OPNRemoteCoOpWireMessage(kind: .guestInput, roomID: UUID(), participantID: participantID, input: packet)
+
+        let decodedJoin = try OPNRemoteCoOpWireCodec.decode(OPNRemoteCoOpWireCodec.encode(join))
+        let decodedInput = try OPNRemoteCoOpWireCodec.decode(OPNRemoteCoOpWireCodec.encode(input))
+
+        #expect(decodedJoin.signalingEvent() == .guestJoinRequested(participantID: participantID, inviteToken: "token", displayName: "Mia"))
+        #expect(decodedInput.signalingEvent() == .guestInput(packet))
+    }
+
+    @Test("wire codec maps host commands into broker messages")
+    func wireCodecMapsHostCommandsIntoBrokerMessages() throws {
+        let roomID = UUID()
+        let participant = OPNRemoteCoOpParticipant(id: UUID(), displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
+
+        let participantMessage = try #require(OPNRemoteCoOpWireMessage.message(for: .participantUpdated(participant), roomID: roomID))
+        let rejectionMessage = try #require(OPNRemoteCoOpWireMessage.message(for: .inputRejected(participantID: participant.id, result: .stalePacket), roomID: roomID))
+
+        #expect(participantMessage.kind == .participantUpdated)
+        #expect(participantMessage.roomID == roomID)
+        #expect(participantMessage.participant == participant)
+        #expect(rejectionMessage.kind == .inputRejected)
+        #expect(rejectionMessage.inputRejection == .stalePacket)
     }
 
     @Test("invite token signs and verifies launch metadata")

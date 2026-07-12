@@ -64,23 +64,34 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let launchMetadataTransportModeKey = "remoteCoOpTransportMode"
     public static let launchMetadataQualityPresetKey = "remoteCoOpQualityPreset"
     public static let launchMetadataRequireHostApprovalKey = "remoteCoOpRequireHostApproval"
+    public static let launchMetadataSignalingServerURLKey = "remoteCoOpSignalingServerURL"
+    public static let launchMetadataGuestJoinBaseURLKey = "remoteCoOpGuestJoinBaseURL"
+
+    public static let defaultSignalingServerURL = "ws://127.0.0.1:8787/remote-coop"
+    public static let defaultGuestJoinBaseURL = "http://127.0.0.1:8787/"
 
     public var isEnabled: Bool
     public var reservedGuestSlots: Int
     public var transportMode: OPNRemoteCoOpTransportMode
     public var qualityPreset: OPNRemoteCoOpQualityPreset
     public var requireHostApproval: Bool
+    public var signalingServerURL: String
+    public var guestJoinBaseURL: String
 
     public init(isEnabled: Bool = false,
                 reservedGuestSlots: Int = 1,
                 transportMode: OPNRemoteCoOpTransportMode = .automatic,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
-                requireHostApproval: Bool = true) {
+                requireHostApproval: Bool = true,
+                signalingServerURL: String = Self.defaultSignalingServerURL,
+                guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL) {
         self.isEnabled = isEnabled
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
         self.transportMode = transportMode
         self.qualityPreset = qualityPreset
         self.requireHostApproval = requireHostApproval
+        self.signalingServerURL = Self.normalizedURLString(signalingServerURL, fallback: Self.defaultSignalingServerURL)
+        self.guestJoinBaseURL = Self.normalizedURLString(guestJoinBaseURL, fallback: Self.defaultGuestJoinBaseURL)
     }
 
     public var effectiveReservedGuestSlots: Int {
@@ -98,6 +109,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             Self.launchMetadataTransportModeKey: transportMode.rawValue,
             Self.launchMetadataQualityPresetKey: qualityPreset.rawValue,
             Self.launchMetadataRequireHostApprovalKey: String(requireHostApproval),
+            Self.launchMetadataSignalingServerURLKey: signalingServerURL,
+            Self.launchMetadataGuestJoinBaseURLKey: guestJoinBaseURL,
         ]
     }
 
@@ -107,8 +120,15 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
             reservedGuestSlots: int(metadata[launchMetadataReservedGuestSlotsKey], defaultValue: fallback.reservedGuestSlots),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: metadata[launchMetadataTransportModeKey] ?? "") ?? fallback.transportMode,
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: metadata[launchMetadataQualityPresetKey] ?? "") ?? fallback.qualityPreset,
-            requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval)
+            requireHostApproval: bool(metadata[launchMetadataRequireHostApprovalKey], defaultValue: fallback.requireHostApproval),
+            signalingServerURL: string(metadata[launchMetadataSignalingServerURLKey], defaultValue: fallback.signalingServerURL),
+            guestJoinBaseURL: string(metadata[launchMetadataGuestJoinBaseURLKey], defaultValue: fallback.guestJoinBaseURL)
         )
+    }
+
+    public static func normalizedURLString(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
     }
 
     private static func int(_ value: String?, defaultValue: Int) -> Int {
@@ -119,6 +139,10 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     private static func bool(_ value: String?, defaultValue: Bool) -> Bool {
         guard let value else { return defaultValue }
         return value == "1" || value.caseInsensitiveCompare("true") == .orderedSame || value.caseInsensitiveCompare("yes") == .orderedSame
+    }
+
+    private static func string(_ value: String?, defaultValue: String) -> String {
+        normalizedURLString(value ?? "", fallback: defaultValue)
     }
 }
 

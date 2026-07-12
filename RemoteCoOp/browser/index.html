@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenNOW Remote Co-Op</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">OpenNOW Remote Co-Op</p>
+        <h1 id="title">Join a cloud couch session</h1>
+        <p id="subtitle">Paste an invite token or open the link your host sent.</p>
+      </section>
+
+      <section class="card" id="join-card">
+        <label for="display-name">Display name</label>
+        <input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Guest">
+        <label for="invite-token">Invite token</label>
+        <textarea id="invite-token" rows="4" spellcheck="false" placeholder="Invite token"></textarea>
+        <button id="join-button">Join Room</button>
+        <p class="status" id="join-status">Waiting for invite.</p>
+      </section>
+
+      <section class="card hidden" id="session-card">
+        <div class="meter">
+          <span id="connection-dot"></span>
+          <div>
+            <strong id="session-state">Connecting</strong>
+            <p id="session-detail">Waiting for host approval.</p>
+          </div>
+        </div>
+        <div class="gamepad">
+          <strong id="gamepad-name">No gamepad detected</strong>
+          <p id="gamepad-detail">Connect a controller, press any button, then keep this tab focused.</p>
+        </div>
+        <div class="video-placeholder">
+          <span>Stream relay pending</span>
+          <p>This guest client is ready for host media tracks when the macOS app exposes them.</p>
+        </div>
+        <button id="disconnect-button" class="secondary">Disconnect</button>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -249,6 +249,9 @@ public struct WebRTCMediaStreamSurface: View {
     @State private var transientStreamMessageTask: Task<Void, Never>?
     @State private var streamingPerformanceActivity: (any NSObjectProtocol)?
     @State private var remoteCoOpHostSession = OPNRemoteCoOpHostSession()
+    @State private var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
+    @State private var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
+    @State private var remoteCoOpListenTask: Task<Void, Never>?
     @State private var remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: OPNRemoteCoOpPreferencesStore.load(), invite: nil, participants: [])
     @State private var remoteCoOpMessage = ""
 
@@ -1094,13 +1097,15 @@ public struct WebRTCMediaStreamSurface: View {
         Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
             do {
-                let invite = try await remoteCoOpHostSession.startInvite(applicationID: configuration.applicationID, title: configuration.title)
+                let coordinator = makeRemoteCoOpCoordinator(preferences: preferences)
+                let invite = try await coordinator.startInvite(applicationID: configuration.applicationID, title: configuration.title, joinBaseURL: remoteCoOpJoinBaseURL(preferences))
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 copyRemoteCoOpInvite(invite)
-                remoteCoOpMessage = "Invite copied. Share code \(invite.code) with your remote player."
+                remoteCoOpMessage = invite.joinURL == nil ? "Invite copied. Share code \(invite.code) with your remote player." : "Invite link copied. Keep this stream open while your guest joins."
                 showTransientStreamMessage("Remote Co-Op invite copied")
                 WebRTCMediaTelemetry.capture("webrtc.remote_coop.invite.created", level: .info, message: "Remote Co-Op invite created.", attributes: ["applicationID": configuration.applicationID, "reservedSlots": String(preferences.effectiveReservedGuestSlots), "transportMode": preferences.transportMode.rawValue])
             } catch {
+                _ = await stopRemoteCoOpSession()
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 remoteCoOpMessage = Self.message(for: error)
                 WebRTCMediaTelemetry.capture("webrtc.remote_coop.invite.failed", level: .warning, message: remoteCoOpMessage, attributes: ["applicationID": configuration.applicationID])
@@ -1110,7 +1115,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func stopRemoteCoOpInvite() {
         Task { @MainActor in
-            let neutralEvents = await remoteCoOpHostSession.stopInvite()
+            let neutralEvents = await stopRemoteCoOpSession()
             neutralEvents.forEach { transport?.sendNow($0) }
             remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
             remoteCoOpMessage = "Remote Co-Op invite ended."
@@ -1143,7 +1148,12 @@ public struct WebRTCMediaStreamSurface: View {
     private func approveRemoteCoOpParticipant(_ participantID: UUID) {
         Task { @MainActor in
             do {
-                let participant = try await remoteCoOpHostSession.approveParticipant(participantID)
+                let participant: OPNRemoteCoOpParticipant
+                if let remoteCoOpHostCoordinator {
+                    participant = try await remoteCoOpHostCoordinator.approveParticipant(participantID)
+                } else {
+                    participant = try await remoteCoOpHostSession.approveParticipant(participantID)
+                }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 remoteCoOpMessage = "Approved \(participant.displayName) for player \((participant.playerIndex ?? 0) + 1)."
                 showTransientStreamMessage("Remote Co-Op guest approved")
@@ -1156,7 +1166,12 @@ public struct WebRTCMediaStreamSurface: View {
     private func removeRemoteCoOpParticipant(_ participantID: UUID) {
         Task { @MainActor in
             do {
-                let neutralEvents = try await remoteCoOpHostSession.removeParticipant(participantID)
+                let neutralEvents: [UserInputEvent]
+                if let remoteCoOpHostCoordinator {
+                    neutralEvents = try await remoteCoOpHostCoordinator.removeParticipant(participantID)
+                } else {
+                    neutralEvents = try await remoteCoOpHostSession.removeParticipant(participantID)
+                }
                 neutralEvents.forEach { transport?.sendNow($0) }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 remoteCoOpMessage = "Remote Co-Op guest removed."
@@ -1169,6 +1184,49 @@ public struct WebRTCMediaStreamSurface: View {
 
     private var remoteCoOpLaunchPreferences: OPNRemoteCoOpPreferences {
         OPNRemoteCoOpPreferences.launchPreferences(from: configuration.metadata, fallback: OPNRemoteCoOpPreferencesStore.load())
+    }
+
+    private func makeRemoteCoOpCoordinator(preferences: OPNRemoteCoOpPreferences) -> OPNRemoteCoOpHostCoordinator {
+        if let remoteCoOpHostCoordinator { return remoteCoOpHostCoordinator }
+        let signaling = makeRemoteCoOpSignalingSession(preferences: preferences)
+        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: remoteCoOpHostSession, signaling: signaling)
+        remoteCoOpSignalingSession = signaling
+        remoteCoOpHostCoordinator = coordinator
+        remoteCoOpListenTask?.cancel()
+        remoteCoOpListenTask = Task { @MainActor in
+            for await event in signaling.events() {
+                let routedEvents = await coordinator.handle(event)
+                for routedEvent in routedEvents { transport?.sendNow(routedEvent) }
+                remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+            }
+        }
+        return coordinator
+    }
+
+    private func makeRemoteCoOpSignalingSession(preferences: OPNRemoteCoOpPreferences) -> any OPNRemoteCoOpSignalingSession {
+        if let serverURL = URL(string: preferences.signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)), serverURL.scheme?.hasPrefix("ws") == true {
+            return OPNRemoteCoOpWebSocketSignalingSession(serverURL: serverURL)
+        }
+        return OPNInProcessRemoteCoOpSignalingSession()
+    }
+
+    private func remoteCoOpJoinBaseURL(_ preferences: OPNRemoteCoOpPreferences) -> URL? {
+        URL(string: preferences.guestJoinBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func stopRemoteCoOpSession() async -> [UserInputEvent] {
+        let neutralEvents: [UserInputEvent]
+        if let remoteCoOpHostCoordinator {
+            neutralEvents = await remoteCoOpHostCoordinator.stopInvite()
+        } else {
+            neutralEvents = await remoteCoOpHostSession.stopInvite()
+        }
+        remoteCoOpListenTask?.cancel()
+        remoteCoOpListenTask = nil
+        await remoteCoOpSignalingSession?.close()
+        remoteCoOpSignalingSession = nil
+        remoteCoOpHostCoordinator = nil
+        return neutralEvents
     }
 
     private func twitchPanelRow(_ label: String, _ value: String) -> some View {
@@ -1833,7 +1891,7 @@ public struct WebRTCMediaStreamSurface: View {
         guard shouldFinish else { return fallbackReport }
         antiAFKMouseMovementTask?.cancel()
         antiAFKMouseMovementTask = nil
-        let remoteNeutralEvents = await remoteCoOpHostSession.stopInvite()
+        let remoteNeutralEvents = await stopRemoteCoOpSession()
         remoteNeutralEvents.forEach { transport?.sendNow($0) }
         remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
         guard let path else { return fallbackReport }
@@ -1872,7 +1930,7 @@ public struct WebRTCMediaStreamSurface: View {
         transport?.stopRecording()
         let currentTransport = transport
         Task { @MainActor in
-            let neutralEvents = await remoteCoOpHostSession.stopInvite()
+            let neutralEvents = await stopRemoteCoOpSession()
             neutralEvents.forEach { currentTransport?.sendNow($0) }
             remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
         }

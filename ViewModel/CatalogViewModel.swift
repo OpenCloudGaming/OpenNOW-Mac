@@ -1551,6 +1551,16 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setRemoteCoOpSignalingServerURL(_ url: String) {
+        OPNRemoteCoOpPreferencesStore.setSignalingServerURL(url)
+        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpGuestJoinBaseURL(_ url: String) {
+        OPNRemoteCoOpPreferencesStore.setGuestJoinBaseURL(url)
+        loadSettingsPreferences()
+    }
+
     func setPreventDisplaySleepWhileStreaming(_ enabled: Bool) {
         OPNStreamPreferences.savePreventDisplaySleepWhileStreaming(enabled)
         actionMessage = enabled ? "Display sleep prevention enabled for active streams." : "Display sleep prevention disabled for active streams."

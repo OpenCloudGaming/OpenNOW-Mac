@@ -7,6 +7,8 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let transportModeKey = "OpenNOW.RemoteCoOp.TransportMode"
     private static let qualityPresetKey = "OpenNOW.RemoteCoOp.QualityPreset"
     private static let requireHostApprovalKey = "OpenNOW.RemoteCoOp.RequireHostApproval"
+    private static let signalingServerURLKey = "OpenNOW.RemoteCoOp.SignalingServerURL"
+    private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
 
     public static func load() -> OPNRemoteCoOpPreferences {
         OPNRemoteCoOpPreferences(
@@ -14,7 +16,9 @@ public enum OPNRemoteCoOpPreferencesStore {
             reservedGuestSlots: int(storage.object(forKey: reservedGuestSlotsKey), defaultValue: 1),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: string(storage.object(forKey: transportModeKey))) ?? .automatic,
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,
-            requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true)
+            requireHostApproval: bool(storage.object(forKey: requireHostApprovalKey), defaultValue: true),
+            signalingServerURL: string(storage.object(forKey: signalingServerURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultSignalingServerURL),
+            guestJoinBaseURL: string(storage.object(forKey: guestJoinBaseURLKey), defaultValue: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
         )
     }
 
@@ -24,6 +28,8 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.set(preferences.transportMode.rawValue, forKey: transportModeKey)
         storage.set(preferences.qualityPreset.rawValue, forKey: qualityPresetKey)
         storage.set(preferences.requireHostApproval, forKey: requireHostApprovalKey)
+        storage.set(preferences.signalingServerURL, forKey: signalingServerURLKey)
+        storage.set(preferences.guestJoinBaseURL, forKey: guestJoinBaseURLKey)
         storage.synchronize()
     }
 
@@ -57,6 +63,18 @@ public enum OPNRemoteCoOpPreferencesStore {
         save(preferences)
     }
 
+    public static func setSignalingServerURL(_ url: String) {
+        var preferences = load()
+        preferences.signalingServerURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultSignalingServerURL)
+        save(preferences)
+    }
+
+    public static func setGuestJoinBaseURL(_ url: String) {
+        var preferences = load()
+        preferences.guestJoinBaseURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
+        save(preferences)
+    }
+
     public static func reservedControllerSlotsForLaunch() -> Int {
         load().effectiveReservedGuestSlots
     }
@@ -66,6 +84,10 @@ public enum OPNRemoteCoOpPreferencesStore {
         if let value = value as? NSString { return value as String }
         if let value = value as? NSNumber { return value.stringValue }
         return ""
+    }
+
+    private static func string(_ value: Any?, defaultValue: String) -> String {
+        OPNRemoteCoOpPreferences.normalizedURLString(string(value), fallback: defaultValue)
     }
 
     private static func int(_ value: Any?, defaultValue: Int) -> Int {
