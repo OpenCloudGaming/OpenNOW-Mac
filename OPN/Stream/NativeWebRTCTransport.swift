@@ -268,7 +268,8 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     static func gfnControllerBitmap(playerIndex: Int) -> UInt16 {
-        let connectedCount = max(1, min(4, max(NativeWebRTCGamepadMonitor.connectedGamepadCount(), playerIndex + 1)))
+        let configuredCount = NativeWebRTCGamepadMonitor.connectedGamepadCount() + OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch()
+        let connectedCount = max(1, min(4, max(configuredCount, playerIndex + 1)))
         return (0..<connectedCount).reduce(UInt16(0)) { partial, index in
             partial | UInt16(1 << index) | UInt16(1 << (index + 8))
         }

@@ -1233,6 +1233,18 @@ private struct GameplaySettingsPage: View {
                 SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, action: viewModel.setSuppressInputWhenInactive)
             }
 
+            SettingsCard(title: "Remote Co-Op") {
+                SettingsToggleRow(title: "Enable Remote Co-Op", subtitle: "Allows the stream HUD to generate an invite code for a remote player. Changes apply to newly launched streams.", isOn: viewModel.remoteCoOpPreferences.isEnabled, action: viewModel.setRemoteCoOpEnabled)
+                SettingsDivider()
+                SettingsOptionRow(title: "Reserved Controllers", subtitle: "Advertises remote gamepad slots to GeForce NOW before launch. Player 2 requires at least one reserved slot.", options: ["None", "1 Guest", "2 Guests", "3 Guests"], selectedIndex: viewModel.remoteCoOpPreferences.reservedGuestSlots, action: viewModel.setRemoteCoOpReservedGuestSlots)
+                SettingsDivider()
+                SettingsOptionRow(title: "Transport", subtitle: viewModel.remoteCoOpPreferences.transportMode.description, options: OPNRemoteCoOpTransportMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpTransportModeIndex, action: viewModel.setRemoteCoOpTransportModeIndex)
+                SettingsDivider()
+                SettingsOptionRow(title: "Guest Quality", subtitle: "Caps the outbound Remote Co-Op stream sent to guests.", options: OPNRemoteCoOpQualityPreset.allCases.map(\.label), selectedIndex: selectedRemoteCoOpQualityPresetIndex, action: viewModel.setRemoteCoOpQualityPresetIndex)
+                SettingsDivider()
+                SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, action: viewModel.setRemoteCoOpRequireHostApproval)
+            }
+
             SettingsCard(title: "Recording") {
                 SettingsSliderRow(title: "Video Bitrate", valueText: recordingVideoBitrateText, value: Double(viewModel.streamProfile.recordingVideoBitrateMbps), range: 0...200, step: 1, action: viewModel.setRecordingVideoBitrateMbps)
                 SettingsDivider()
@@ -1281,6 +1293,14 @@ private struct GameplaySettingsPage: View {
 
     private var selectedMicrophoneDeviceIndex: Int {
         viewModel.microphoneDeviceOptions.firstIndex { $0.uniqueId == viewModel.streamProfile.microphoneDeviceId } ?? 0
+    }
+
+    private var selectedRemoteCoOpTransportModeIndex: Int {
+        OPNRemoteCoOpTransportMode.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.transportMode) ?? 0
+    }
+
+    private var selectedRemoteCoOpQualityPresetIndex: Int {
+        OPNRemoteCoOpQualityPreset.allCases.firstIndex(of: viewModel.remoteCoOpPreferences.qualityPreset) ?? 0
     }
 
     private var streamingProfileMode: String {

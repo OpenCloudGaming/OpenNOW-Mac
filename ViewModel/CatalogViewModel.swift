@@ -36,6 +36,7 @@ private final class CatalogSendableValue<T>: @unchecked Sendable {
 private struct CatalogSettingsPreferencesSnapshot: Sendable {
     let capabilities: OPNStreamDeviceCapabilities
     let profile: OPNStreamPreferenceProfile
+    let remoteCoOpPreferences: OPNRemoteCoOpPreferences
     let selectedRegionUrl: String
     let regionOptions: [OPNStreamRegionOption]
     let microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption]
@@ -153,6 +154,7 @@ final class CatalogViewModel: ObservableObject {
     @Published var launchFlowError = ""
     @Published var activeLaunchSession: OPNActiveStreamSessionDescriptor?
     @Published var streamProfile = OPNStreamPreferenceProfile()
+    @Published var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     @Published var streamCapabilities = OPNStreamDeviceCapabilities()
     @Published var settingsRegionOptions: [OPNStreamRegionOption] = []
     @Published var selectedSettingsRegionUrl = ""
@@ -1014,6 +1016,8 @@ final class CatalogViewModel: ObservableObject {
 
     private static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "") -> StreamLaunchConfiguration {
         let overrideTitle = titleOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        var metadata = configuration.metadata
+        metadata.merge(OPNRemoteCoOpPreferencesStore.load().launchMetadata) { _, launchValue in launchValue }
         return StreamLaunchConfiguration(
             title: overrideTitle.isEmpty ? configuration.title : overrideTitle,
             applicationID: configuration.appId,
@@ -1022,7 +1026,7 @@ final class CatalogViewModel: ObservableObject {
             selectedStore: configuration.selectedStore,
             resumeSessionID: configuration.resumeSessionId,
             resumeServer: configuration.resumeServer,
-            metadata: configuration.metadata
+            metadata: metadata
         )
     }
 
@@ -1516,6 +1520,37 @@ final class CatalogViewModel: ObservableObject {
         loadSettingsPreferences()
     }
 
+    func setRemoteCoOpEnabled(_ enabled: Bool) {
+        OPNRemoteCoOpPreferencesStore.setEnabled(enabled)
+        actionMessage = enabled ? "Remote Co-Op enabled. Reserved guest slots apply to newly launched streams." : "Remote Co-Op disabled."
+        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpReservedGuestSlots(_ index: Int) {
+        OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(index)
+        actionMessage = index > 0 ? "Remote Co-Op will reserve \(index) guest controller slot(s) on newly launched streams." : "Remote Co-Op guest controller slots disabled."
+        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpTransportModeIndex(_ index: Int) {
+        let modes = OPNRemoteCoOpTransportMode.allCases
+        guard modes.indices.contains(index) else { return }
+        OPNRemoteCoOpPreferencesStore.setTransportMode(modes[index])
+        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpQualityPresetIndex(_ index: Int) {
+        let presets = OPNRemoteCoOpQualityPreset.allCases
+        guard presets.indices.contains(index) else { return }
+        OPNRemoteCoOpPreferencesStore.setQualityPreset(presets[index])
+        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpRequireHostApproval(_ required: Bool) {
+        OPNRemoteCoOpPreferencesStore.setRequireHostApproval(required)
+        loadSettingsPreferences()
+    }
+
     func setPreventDisplaySleepWhileStreaming(_ enabled: Bool) {
         OPNStreamPreferences.savePreventDisplaySleepWhileStreaming(enabled)
         actionMessage = enabled ? "Display sleep prevention enabled for active streams." : "Display sleep prevention disabled for active streams."
@@ -1726,6 +1761,7 @@ final class CatalogViewModel: ObservableObject {
             let snapshot = CatalogSettingsPreferencesSnapshot(
                 capabilities: capabilities,
                 profile: profile,
+                remoteCoOpPreferences: OPNRemoteCoOpPreferencesStore.load(),
                 selectedRegionUrl: OPNStreamPreferences.loadSelectedRegionUrl(),
                 regionOptions: Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions()),
                 microphoneDeviceOptions: OPNStreamPreferences.loadMicrophoneDeviceOptions()
@@ -1734,6 +1770,7 @@ final class CatalogViewModel: ObservableObject {
                 guard let self, generation == self.settingsPreferencesGeneration, !Task.isCancelled else { return }
                 self.streamCapabilities = snapshot.capabilities
                 self.streamProfile = snapshot.profile
+                self.remoteCoOpPreferences = snapshot.remoteCoOpPreferences
                 self.selectedSettingsRegionUrl = snapshot.selectedRegionUrl
                 self.settingsRegionOptions = snapshot.regionOptions
                 self.unavailableSettingsRegionUrl = snapshot.selectedRegionUrl.isEmpty || snapshot.regionOptions.contains(where: { $0.url == snapshot.selectedRegionUrl }) ? "" : snapshot.selectedRegionUrl

@@ -1,7 +1,9 @@
 import Foundation
 
 func webRTCMediaCapabilities(from capabilities: OPNStreamDeviceCapabilities) -> WebRTCMediaDeviceCapabilities {
-    WebRTCMediaDeviceCapabilities(
+    let connectedGamepads = NativeWebRTCGamepadMonitor.connectedGamepadCount()
+    let reservedRemoteGamepads = OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch()
+    return WebRTCMediaDeviceCapabilities(
         h264HardwareDecodeSupported: capabilities.h264HardwareDecodeSupported,
         h265HardwareDecodeSupported: capabilities.h265HardwareDecodeSupported,
         av1HardwareDecodeSupported: capabilities.av1HardwareDecodeSupported,
@@ -10,7 +12,7 @@ func webRTCMediaCapabilities(from capabilities: OPNStreamDeviceCapabilities) -> 
         maxDisplayHeight: capabilities.maxDisplayHeight,
         maxDisplayRefreshRate: capabilities.maxDisplayRefreshRate,
         displayDpi: capabilities.displayDpi,
-        connectedGamepadCount: NativeWebRTCGamepadMonitor.connectedGamepadCount()
+        connectedGamepadCount: min(4, connectedGamepads + reservedRemoteGamepads)
     )
 }
 
