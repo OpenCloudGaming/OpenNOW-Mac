@@ -404,6 +404,72 @@ import Foundation
     }
 }
 
+@Test func libraryFetchUsesVendorOwnedFilterAndPaginatesAllResults() async {
+        await networkTestIsolationLock.withLock {
+        let host = "*"
+        let token = "library-pagination-token-\(UUID().uuidString)"
+        _ = OPNGameDataCache.shared.clearAllCaches()
+        OPNGameServiceSwiftAdapter.setAccessToken(token)
+        OPNGameServiceSwiftAdapter.setUserId("library-pagination-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            if variables["appIds"] != nil {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": []]]])
+            }
+            if query.contains("campaigns") {
+                return SessionManagerURLProtocol.response(json: ["data": ["campaigns": ["items": []]]])
+            }
+            let cursor = variables["cursor"] as? String ?? ""
+            let start = cursor == "library-cursor-2" ? 2 : 0
+            let count = cursor == "library-cursor-2" ? 1 : 2
+            let hasNextPage = cursor.isEmpty
+            let endCursor = hasNextPage ? "library-cursor-2" : "library-cursor-3"
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": count,
+                "numberSupported": 5_758,
+                "pageInfo": ["hasNextPage": hasNextPage, "endCursor": endCursor, "totalCount": 3],
+                "items": (start..<(start + count)).map { catalogGraphQLGame(id: "library-game-\($0)", libraryStatus: $0.isMultiple(of: 2) ? "PLATFORM_SYNC" : "MANUAL", librarySelected: false) },
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.fetchLibraryGameObjects { success, games, error in
+                continuation.resume(returning: (
+                    success,
+                    games.count,
+                    games.map { $0.isInLibrary },
+                    games.map { $0.variants.first?.inLibrary == true },
+                    games.map { $0.variants.first?.librarySelected == false },
+                    error
+                ))
+            }
+        }
+
+        #expect(result.0 == true)
+        #expect(result.5.isEmpty)
+        #expect(result.1 == 3)
+        #expect(result.2.allSatisfy { $0 })
+        #expect(result.3.allSatisfy { $0 })
+        #expect(result.4.allSatisfy { $0 })
+        let catalogBodies = SessionManagerURLProtocol.recordedJSONBodies(host: host).filter { body in
+            ((body["query"] as? String) ?? "").contains("GetFilterBrowseResults")
+        }
+        #expect(catalogBodies.compactMap { ($0["variables"] as? [String: Any])?["cursor"] as? String } == ["", "library-cursor-2"])
+        let filters = catalogBodies.first?["variables"].flatMap { ($0 as? [String: Any])?["filters"] as? [String: Any] }
+        let variants = filters?["variants"] as? [String: Any]
+        let gfn = variants?["gfn"] as? [String: Any]
+        let library = gfn?["library"] as? [String: Any]
+        let status = library?["status"] as? [String: Any]
+        #expect(status?["notEquals"] as? String == "NOT_OWNED")
+    }
+}
+
 @Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
     try await networkTestIsolationLock.withLock {
     let host = "create-release-shape.example.test"
@@ -772,7 +838,7 @@ private func staleSessionResponse() -> [String: Any] {
     ]
 }
 
-private func catalogGraphQLGame(id: String) -> [String: Any] {
+private func catalogGraphQLGame(id: String, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false) -> [String: Any] {
     [
         "id": id,
         "title": "Catalog Game \(id)",
@@ -781,7 +847,7 @@ private func catalogGraphQLGame(id: String) -> [String: Any] {
             "id": "1\(abs(id.hashValue % 1_000_000))",
             "appStore": "STEAM",
             "storeUrl": "https://store.example.invalid/\(id)",
-            "gfn": ["status": "AVAILABLE", "library": ["status": "NOT_OWNED", "selected": false]],
+            "gfn": ["status": "AVAILABLE", "library": ["status": libraryStatus, "selected": librarySelected]],
         ]],
         "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free"],
         "itemMetadata": ["campaignIds": []],

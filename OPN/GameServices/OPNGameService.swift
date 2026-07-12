@@ -39,6 +39,7 @@ final class OPNGameService: @unchecked Sendable {
     private static let defaultCatalogFetchCount = 96
     private static let maxCatalogPages = 150
     private static let catalogCacheFreshSeconds: TimeInterval = 15 * 60
+    private static let libraryCatalogFilterId = "gfn-library-owned"
     private static let catalogDefinitionsFreshSeconds: TimeInterval = TimeInterval(LCARS.RequestType.staticAppData.cachePolicy.maxAgeSeconds)
     private static let accountLinkingRequestTimeoutSeconds: TimeInterval = 15
     private static let accountLinkingCallbackTimeoutSeconds: TimeInterval = 5 * 60
@@ -298,25 +299,38 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     func fetchLibraryGames(completion: @escaping OPNCatalogCallback) {
-        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerStreamingBaseURL()) { [weak self] resolvedVpcId in
+        let accountIdentifier = userId
+        let providerBaseUrl = providerStreamingBaseURL()
+        let locale = Self.currentGFNCatalogLocale()
+        getServerVpcId(token: accessToken, providerStreamingBaseUrl: providerBaseUrl) { [weak self] resolvedVpcId in
             guard let self else { return }
-            let variables: NSDictionary = ["vpcId": resolvedVpcId, "locale": Self.currentGFNCatalogLocale(), "panelNames": ["LIBRARY"]]
-            let flatten: @Sendable (NSDictionary?, String) -> Void = { [weak self] data, error in
-                guard let self else { return }
-                if !error.isEmpty {
-                    self.dispatchCatalog(completion, false, [], error)
-                    return
-                }
-                guard let panels = data?["panels"] as? [NSDictionary] else {
-                    self.dispatchCatalog(completion, false, [], "No panels in library response")
-                    return
-                }
-                let games = self.parsePanelResults(panels).flatMap { $0.sections }.flatMap { $0.games }
-                self.enrichGames(games, vpcId: resolvedVpcId) { enriched in
-                    self.dispatchCatalog(completion, true, self.deduplicateGames(enriched), "")
-                }
+            var result = OPNCatalogBrowseResult()
+            result.selectedSortId = Self.defaultBrowseSortId
+            result.selectedFilterIds = [Self.libraryCatalogFilterId]
+            let catalogCacheKey = OPNGameDataCache.shared.catalogKey(
+                accountIdentifier: accountIdentifier,
+                searchQuery: "",
+                sortId: Self.defaultBrowseSortId,
+                filterIds: result.selectedFilterIds,
+                fetchCount: 200,
+                locale: locale,
+                providerStreamingBaseUrl: providerBaseUrl,
+                vpcId: resolvedVpcId
+            )
+            self.fetchCatalogPages(
+                baseResult: result,
+                query: Self.catalogQuery,
+                vpcId: resolvedVpcId,
+                locale: locale,
+                sortString: "sortName:ASC",
+                fetchCount: 200,
+                searchString: "",
+                filters: Self.libraryCatalogFilter,
+                catalogCacheKey: catalogCacheKey,
+                deliveredCachedResult: AtomicFlag()
+            ) { [weak self] success, browseResult, error in
+                self?.dispatchCatalog(completion, success, browseResult.games, error)
             }
-            self.postGraphQL(operationName: "panels/Library", queryHash: Self.panelsHash, variables: variables, authenticatedHuId: true, completion: flatten)
         }
     }
 
@@ -1038,10 +1052,11 @@ final class OPNGameService: @unchecked Sendable {
                     variant.serviceStatus = safeString(gfn["status"]) ?? ""
                     variant.isPatching = isAppPatchingStatus(gfn["status"]) || isAppPatchingStatus(gfn["playabilityState"]) || isAppPatchingStatus(gfn["stateDetails"])
                     if let library = gfn["library"] as? NSDictionary {
-                        variant.serviceStatus = firstSafeString(library, keys: ["status"]) ?? variant.serviceStatus
+                        let libraryStatus = firstSafeString(library, keys: ["status"]) ?? ""
+                        variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
                         variant.isPatching = variant.isPatching || isAppPatchingStatus(library["status"])
                         variant.librarySelected = safeBool(library["selected"])
-                        if variant.librarySelected { variant.inLibrary = true }
+                        if variant.librarySelected || Self.libraryStatusIsOwned(libraryStatus) { variant.inLibrary = true }
                     }
                 }
                 if game.contentRatings.isEmpty { assignContentRatings(item["contentRatings"], to: &game) }
@@ -1057,7 +1072,7 @@ final class OPNGameService: @unchecked Sendable {
         }
         var firstNumericVariant = ""
         for variant in game.variants {
-            if variant.inLibrary, !variant.serviceStatus.isEmpty { game.isInLibrary = true }
+            if variant.inLibrary { game.isInLibrary = true }
             if variant.isPatching { game.isPatching = true }
             let numeric = !variant.id.isEmpty && variant.id.allSatisfy(\.isNumber)
             if numeric, variant.librarySelected { game.launchAppId = variant.id }
@@ -1657,6 +1672,15 @@ final class OPNGameService: @unchecked Sendable {
         if !target.id.isEmpty, !metadata.id.isEmpty, target.id == metadata.id { return true }
         if !target.appStore.isEmpty, !metadata.appStore.isEmpty, target.appStore.caseInsensitiveCompare(metadata.appStore) == .orderedSame { return true }
         return false
+    }
+
+    private static var libraryCatalogFilter: NSDictionary {
+        ["variants": ["gfn": ["library": ["status": ["notEquals": "NOT_OWNED"]]]]] as NSDictionary
+    }
+
+    private static func libraryStatusIsOwned(_ status: String) -> Bool {
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !normalized.isEmpty && normalized.caseInsensitiveCompare("NOT_OWNED") != .orderedSame
     }
 
     private func storeURLForKnownGame(_ game: OPNGameInfo, variantIndex: Int) -> String? {

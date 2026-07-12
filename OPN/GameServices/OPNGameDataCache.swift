@@ -6,7 +6,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     @objc(shared)
     static let shared = OPNGameDataCache()
 
-    private static let catalogCacheVersion = 6
+    private static let catalogCacheVersion = 7
     private static let catalogDefinitionsCacheVersion = "v2"
 
     private let rootPath: String
