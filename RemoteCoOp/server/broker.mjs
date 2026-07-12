@@ -5,6 +5,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const port = Number.parseInt(process.env.OPENNOW_REMOTE_COOP_PORT ?? "8787", 10);
+const bindHost = process.env.OPENNOW_REMOTE_COOP_BIND_HOST ?? "127.0.0.1";
 const root = normalize(join(fileURLToPath(new URL(".", import.meta.url)), "../browser"));
 const stunURLs = splitEnv("OPENNOW_REMOTE_COOP_STUN_URLS", "stun:stun.l.google.com:19302");
 const turnURLs = splitEnv("OPENNOW_REMOTE_COOP_TURN_URLS", "");
@@ -70,8 +71,9 @@ server.on("upgrade", (request, socket) => {
   attachSocket(socket);
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`OpenNOW Remote Co-Op broker listening on http://127.0.0.1:${port}`);
+server.listen(port, bindHost, () => {
+  console.log(`OpenNOW Remote Co-Op broker listening on http://${bindHost}:${port}`);
+  console.log(`Remote Co-Op ICE: stun=${stunURLs.length} turn=${turnURLs.length} turnAuth=${turnAuthSummary()}`);
 });
 
 setInterval(() => {
@@ -349,6 +351,12 @@ function warningFor(transportMode, iceServers) {
   if (transportMode === "relayOnly") return "Relay Only uses TURN relay candidates to avoid exposing direct peer IP candidates.";
   if (transportMode === "directOnly") return "Direct Only can expose direct peer IP candidates and may fail behind strict routers or firewalls.";
   return "Automatic may use direct peer candidates before falling back to TURN relay. Use Relay Only to hide direct IP candidates.";
+}
+
+function turnAuthSummary() {
+  if (turnSharedSecret) return `shared-secret ttl=${Math.max(60, turnCredentialTTLSeconds)}s`;
+  if (turnUsername && turnCredential) return "static-credentials";
+  return "none";
 }
 
 function inviteExpiryMilliseconds(token) {
