@@ -35,6 +35,7 @@ let peerConnection = null;
 let inputChannel = null;
 let statsHandle = 0;
 let diagnostics = initialDiagnostics();
+const playbackPromises = new WeakMap();
 
 elements.inviteToken.value = inviteFromURL;
 renderInvite(inviteFromURL);
@@ -625,14 +626,40 @@ function attachRemoteTrack(track) {
   media.playsInline = true;
   media.controls = false;
   media.muted = track.kind === "video";
-  media.srcObject = appendTrack(media.srcObject, track);
+  const stream = appendTrack(media.srcObject, track);
+  if (media.srcObject !== stream) media.srcObject = stream;
   updateMediaDiagnostics(track, media, "attached");
   track.addEventListener("mute", () => updateMediaDiagnostics(track, media, "muted"));
   track.addEventListener("unmute", () => updateMediaDiagnostics(track, media, "live"));
   track.addEventListener("ended", () => updateMediaDiagnostics(track, media, "ended"));
-  media.addEventListener("loadedmetadata", () => updateMediaDiagnostics(track, media, "metadata loaded"));
-  const playback = media.play?.();
-  playback?.catch(error => updateMediaDiagnostics(track, media, `autoplay blocked: ${error.message || "user gesture required"}`));
+  media.addEventListener("loadedmetadata", () => {
+    updateMediaDiagnostics(track, media, "metadata loaded");
+    requestMediaPlayback(track, media);
+  });
+  media.addEventListener("canplay", () => requestMediaPlayback(track, media));
+  media.addEventListener("playing", () => updateMediaDiagnostics(track, media, "playing"));
+  requestMediaPlayback(track, media);
+}
+
+function requestMediaPlayback(track, media, attempt = 0) {
+  if (!media.play || (!media.paused && !media.ended) || playbackPromises.has(media)) return;
+  const playback = media.play();
+  if (!playback) return;
+  playbackPromises.set(media, playback);
+  playback.then(() => {
+    if (playbackPromises.get(media) === playback) playbackPromises.delete(media);
+    updateMediaDiagnostics(track, media, "playing");
+  }).catch(error => {
+    if (playbackPromises.get(media) === playback) playbackPromises.delete(media);
+    const message = error?.message || "user gesture required";
+    if (error?.name === "AbortError" && attempt < 5) {
+      updateMediaDiagnostics(track, media, `play retry ${attempt + 1}: ${message}`);
+      window.setTimeout(() => requestMediaPlayback(track, media, attempt + 1), 120 * (attempt + 1));
+      return;
+    }
+    const prefix = error?.name === "NotAllowedError" ? "autoplay blocked" : "playback failed";
+    updateMediaDiagnostics(track, media, `${prefix}: ${message}`);
+  });
 }
 
 function remoteVideoElement() {
