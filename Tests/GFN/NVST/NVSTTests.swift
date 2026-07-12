@@ -196,6 +196,41 @@ import Testing
     #expect(!answer.contains("serverPwd"))
 }
 
+@Test func nvstAnswerExtensionAppliesSelectedStreamSettingsToRemoteTemplate() throws {
+    let remoteNVSTSdp = """
+    v=0
+    o=- 0 0 IN IP4 127.0.0.1
+    s=-
+    t=0 0
+    a=general.icePassword:serverPwd
+    m=video 0 RTP/AVP
+    a=msid:fbc-video-0
+    a=video.clientViewportWd:1152
+    a=video.clientViewportHt:720
+    a=video.maxFPS:30
+    a=vqos.bw.maximumBitrateKbps:25000
+    m=application 0 RTP/AVP
+    a=msid:input_1
+    a=ri.partialReliableThresholdMs:5
+    """
+    let settings = NVSTSessionDescriptionSettings(resolution: "2880x1800", fps: 60, maxBitrateMbps: 50, colorQuality: "10bit_420", codec: "H265")
+    let credentials = NVSTIceCredentials(usernameFragment: "localUfrag", password: "localPwd", fingerprint: "sha-256 AA:BB")
+
+    let answer = NVSTSessionDescriptionBuilder.buildAnswerExtension(settings: settings, credentials: credentials, remoteNVSTSdp: remoteNVSTSdp)
+    let description = NVSTSessionDescription(sdp: answer)
+    let video = try #require(description.mediaSections.first { $0.mediaKind == "video" })
+    let application = try #require(description.mediaSections.first { $0.mediaKind == "application" })
+
+    #expect(video.attributesByKey["video.clientViewportWd"] == "2880")
+    #expect(video.attributesByKey["video.clientViewportHt"] == "1800")
+    #expect(video.attributesByKey["video.maxFPS"] == "60")
+    #expect(video.attributesByKey["vqos.bw.maximumBitrateKbps"] == "50000")
+    #expect(video.attributesByKey["video.bitDepth"] == "10")
+    #expect(video.attributesByKey["video.maxNumReferenceFrames"] == "1")
+    #expect(application.attributesByKey["ri.partialReliableThresholdMs"] == "5")
+    #expect(!answer.contains("serverPwd"))
+}
+
 @Test func nvstBuildsAnswerExtensionFromRemoteVendorExtension() throws {
     let remoteNVSTSdp = """
     v=0

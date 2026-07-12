@@ -139,6 +139,14 @@ public struct NVSTSessionDescription: Equatable, Sendable {
         setAttribute(key: key, value: value, in: &sessionAttributes)
     }
 
+    public mutating func setMediaAttribute(mediaKind: String, defaultMediaLine: String, key: String, value: String) {
+        if let index = mediaSections.firstIndex(where: { $0.mediaKind == mediaKind }) {
+            setAttribute(key: key, value: value, in: &mediaSections[index].attributes)
+            return
+        }
+        mediaSections.append(NVSTSDPMediaSection(mediaLine: defaultMediaLine, attributes: [NVSTSDPAttribute(key: key, value: value)]))
+    }
+
     public mutating func applyOverrides(_ overrides: NVSTSessionDescription) {
         for attribute in overrides.sessionAttributes {
             setSessionAttribute(key: attribute.key, value: attribute.value)
@@ -394,8 +402,20 @@ public enum NVSTSessionDescriptionBuilder {
     }
 
     public static func buildAnswerExtension(settings: [String: Any], credentials: NVSTIceCredentials, remoteNVSTSdp: String, serverOverrides: String = "") -> String {
-        let generic = buildAnswerExtension(settings: settings, credentials: credentials)
-        return buildAnswerExtension(remoteNVSTSdp: remoteNVSTSdp, serverOverrides: serverOverrides, credentials: credentials) ?? generic
+        buildAnswerExtension(settings: NVSTSessionDescriptionSettings(dictionary: settings), credentials: credentials, remoteNVSTSdp: remoteNVSTSdp, serverOverrides: serverOverrides)
+    }
+
+    public static func buildAnswerExtension(settings: NVSTSessionDescriptionSettings, credentials: NVSTIceCredentials, remoteNVSTSdp: String, serverOverrides: String = "") -> String {
+        let trimmed = remoteNVSTSdp.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return buildAnswerExtension(settings: settings, credentials: credentials) }
+        var description = NVSTSessionDescription(sdp: remoteNVSTSdp)
+        description.removeSessionAttributes(keys: ["general.icePassword", "general.iceUserNameFragment", "general.dtlsFingerprint"])
+        description.applyOverrides(NVSTSessionDescription(sdp: serverOverrides))
+        applyClientStreamSettings(settings, to: &description)
+        description.setSessionAttribute(key: "general.icePassword", value: credentials.password)
+        description.setSessionAttribute(key: "general.iceUserNameFragment", value: credentials.usernameFragment)
+        description.setSessionAttribute(key: "general.dtlsFingerprint", value: credentials.fingerprint)
+        return description.serialized()
     }
 
     public static func buildAnswerExtension(remoteNVSTSdp: String, serverOverrides: String = "", credentials: NVSTIceCredentials) -> String? {
@@ -428,6 +448,46 @@ public enum NVSTSessionDescriptionBuilder {
 
     public static func iceUsernameFragment(from sdp: String) -> String {
         iceCredentials(from: sdp).usernameFragment
+    }
+
+    private static func applyClientStreamSettings(_ settings: NVSTSessionDescriptionSettings, to description: inout NVSTSessionDescription) {
+        let parts = settings.resolution.split(separator: "x").compactMap { Int($0) }
+        let width = max(1, parts.first ?? 1920)
+        let height = max(1, parts.count > 1 ? parts[1] : 1080)
+        let fps = max(1, settings.fps)
+        let maxBitrateKbps = max(1000, settings.maxBitrateMbps * 1000)
+        let minBitrateKbps = max(5000, maxBitrateKbps * 35 / 100)
+        let initialBitrateKbps = max(minBitrateKbps, maxBitrateKbps * 70 / 100)
+        let bitDepth = settings.colorQuality.hasPrefix("10bit") ? 10 : 8
+        let codec = normalizedNVSTCodec(settings.codec)
+        let prefilterMode = max(0, min(settings.prefilterMode, 2))
+        let prefilterSharpness = max(0, min(settings.prefilterSharpness, 10))
+        let prefilterDenoise = max(0, min(settings.prefilterDenoise, 10))
+        let prefilterModel = max(0, settings.prefilterModel)
+        let maxReferenceFrames = codec == "H265" ? 1 : 4
+        let videoLine = "m=video 0 RTP/AVP"
+        let videoAttributes = [
+            ("video.clientViewportWd", String(width)),
+            ("video.clientViewportHt", String(height)),
+            ("video.maxFPS", String(fps)),
+            ("video.initialBitrateKbps", String(initialBitrateKbps)),
+            ("video.initialPeakBitrateKbps", String(maxBitrateKbps)),
+            ("vqos.bw.maximumBitrateKbps", String(maxBitrateKbps)),
+            ("vqos.bw.minimumBitrateKbps", String(minBitrateKbps)),
+            ("vqos.bw.peakBitrateKbps", String(maxBitrateKbps)),
+            ("vqos.bw.serverPeakBitrateKbps", String(maxBitrateKbps)),
+            ("vqos.grc.maximumBitrateKbps", String(maxBitrateKbps)),
+            ("video.bitDepth", String(bitDepth)),
+            ("video.scalingFeature1", codec == "AV1" ? "1" : "0"),
+            ("video.maxNumReferenceFrames", String(maxReferenceFrames)),
+            ("video.prefilterParams.prefilterMode", String(prefilterMode)),
+            ("video.prefilterParams.prefilterModel", String(prefilterModel)),
+            ("video.prefilterParams.sharpnessLevel", String(prefilterSharpness)),
+            ("video.prefilterParams.denoiseLevel", String(prefilterDenoise)),
+        ]
+        for (key, value) in videoAttributes {
+            description.setMediaAttribute(mediaKind: "video", defaultMediaLine: videoLine, key: key, value: value)
+        }
     }
 }
 
