@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 @preconcurrency import WebRTC
 
@@ -30,6 +31,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private var audioTrack: RTCAudioTrack?
     private var audioSender: RTCRtpSender?
     private var inputChannels: [RTCDataChannel] = []
+    private var lastVideoFrameTimestampNs: Int64 = 0
     private var isClosed = false
 
     public init(participantID: UUID,
@@ -138,7 +140,8 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
 
     public func renderVideoFrame(_ frame: RTCVideoFrame) {
         guard let capturer = stateLock.withLock({ videoCapturer }) else { return }
-        capturer.delegate?.capturer(capturer, didCapture: frame)
+        guard let relayFrame = makeRelayVideoFrame(from: frame) else { return }
+        capturer.delegate?.capturer(capturer, didCapture: relayFrame)
     }
 
     public func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
@@ -213,6 +216,21 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             videoCapturer = capturer
             videoTrack = track
             videoSender = sender
+        }
+    }
+
+    private func makeRelayVideoFrame(from frame: RTCVideoFrame) -> RTCVideoFrame? {
+        let buffer = frame.buffer is RTCI420Buffer ? frame.buffer : frame.newI420().buffer
+        guard buffer.width > 0, buffer.height > 0 else { return nil }
+        return RTCVideoFrame(buffer: buffer, rotation: frame.rotation, timeStampNs: nextVideoFrameTimestampNs())
+    }
+
+    private func nextVideoFrameTimestampNs() -> Int64 {
+        stateLock.withLock {
+            let now = Int64(truncatingIfNeeded: DispatchTime.now().uptimeNanoseconds)
+            let timestamp = max(now, lastVideoFrameTimestampNs + 1)
+            lastVideoFrameTimestampNs = timestamp
+            return timestamp
         }
     }
 
