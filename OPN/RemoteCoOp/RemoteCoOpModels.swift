@@ -226,7 +226,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 reservedGuestSlots: Int = 1,
                 transportMode: OPNRemoteCoOpTransportMode = .automatic,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
-                latencyMode: OPNRemoteCoOpLatencyMode = .quality,
+                latencyMode: OPNRemoteCoOpLatencyMode = .lowLatency,
                 requireHostApproval: Bool = true,
                 signalingServerURL: String = Self.defaultSignalingServerURL,
                 guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL,

@@ -5,8 +5,12 @@ import CoreVideo
 @preconcurrency import WebRTC
 @testable import OpenNOW
 
-@Suite("Remote Co-Op")
+@Suite("Remote Co-Op", .serialized)
 struct RemoteCoOpTests {
+    private let preferenceDomain = "io.github.opencloudgaming.opennow"
+    private let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
+    private let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
+
     @Test("preferences clamp guest slots")
     func preferencesClampGuestSlots() {
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: -2).reservedGuestSlots == 0)
@@ -14,8 +18,35 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences(isEnabled: false, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 2)
         #expect(OPNRemoteCoOpPreferences().transportMode == .automatic)
-        #expect(OPNRemoteCoOpPreferences().latencyMode == .quality)
+        #expect(OPNRemoteCoOpPreferences().latencyMode == .lowLatency)
         #expect(!OPNRemoteCoOpPreferences().hideGuestInviteDetails)
+    }
+
+    @Test("preferences store migrates old quality latency default to low latency")
+    func preferencesStoreMigratesOldQualityLatencyDefaultToLowLatency() {
+        withPreservedRemoteCoOpPreferences {
+            setPreferenceValue(OPNRemoteCoOpLatencyMode.quality.rawValue, forKey: latencyModeKey)
+            removePreferenceValue(lowLatencyDefaultMigrationVersionKey)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(preferences.latencyMode == .lowLatency)
+            #expect(UserDefaults.standard.string(forKey: latencyModeKey) == OPNRemoteCoOpLatencyMode.lowLatency.rawValue)
+            #expect(UserDefaults.standard.integer(forKey: lowLatencyDefaultMigrationVersionKey) == 1)
+        }
+    }
+
+    @Test("preferences store keeps explicit quality latency after migration")
+    func preferencesStoreKeepsExplicitQualityLatencyAfterMigration() {
+        withPreservedRemoteCoOpPreferences {
+            setPreferenceValue(OPNRemoteCoOpLatencyMode.quality.rawValue, forKey: latencyModeKey)
+            setPreferenceValue(1, forKey: lowLatencyDefaultMigrationVersionKey)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(preferences.latencyMode == .quality)
+            #expect(UserDefaults.standard.string(forKey: latencyModeKey) == OPNRemoteCoOpLatencyMode.quality.rawValue)
+        }
     }
 
     @Test("preferences default to production broker URLs")
@@ -592,6 +623,44 @@ struct RemoteCoOpTests {
         let text = try OPNRemoteCoOpWireCodec.encode(message)
 
         #expect(OPNRemoteCoOpHostPeerInputDecoder.decode(text, expectedParticipantID: expectedParticipantID) == nil)
+    }
+
+    private func withPreservedRemoteCoOpPreferences(_ body: () -> Void) {
+        let keys = [latencyModeKey, lowLatencyDefaultMigrationVersionKey]
+        let defaults = UserDefaults.standard
+        let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
+        defer {
+            for (key, value) in previousValues {
+                if let value {
+                    defaults.set(value, forKey: key)
+                    var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]
+                    domain[key] = value
+                    defaults.setPersistentDomain(domain, forName: preferenceDomain)
+                } else {
+                    removePreferenceValue(key)
+                }
+            }
+            defaults.synchronize()
+        }
+        body()
+    }
+
+    private func setPreferenceValue(_ value: Any, forKey key: String) {
+        let defaults = UserDefaults.standard
+        defaults.set(value, forKey: key)
+        var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]
+        domain[key] = value
+        defaults.setPersistentDomain(domain, forName: preferenceDomain)
+        defaults.synchronize()
+    }
+
+    private func removePreferenceValue(_ key: String) {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: key)
+        var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]
+        domain.removeValue(forKey: key)
+        defaults.setPersistentDomain(domain, forName: preferenceDomain)
+        defaults.synchronize()
     }
 
     private static func makeVideoFrame() throws -> RTCVideoFrame {

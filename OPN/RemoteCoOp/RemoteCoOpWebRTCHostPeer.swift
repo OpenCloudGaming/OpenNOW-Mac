@@ -22,6 +22,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private let latencyMode: OPNRemoteCoOpLatencyMode
     private let callbacks: OPNRemoteCoOpHostPeerCallbacks
     private let stateLock = NSLock()
+    private let videoQueue: DispatchQueue
     private var factory: RTCPeerConnectionFactory?
     private var peerConnection: RTCPeerConnection?
     private var videoSource: RTCVideoSource?
@@ -34,6 +35,11 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     private var audioSender: RTCRtpSender?
     private var inputChannels: [RTCDataChannel] = []
     private var lastVideoFrameTimestampNs: Int64 = 0
+    private var pendingVideoFrame: RTCVideoFrame?
+    private var isVideoFrameDeliveryScheduled = false
+    private var nextVideoFrameDeliveryNanoseconds: UInt64 = 0
+    private var deliveredVideoFrameCount: UInt64 = 0
+    private var droppedVideoFrameCount: UInt64 = 0
     private var isClosed = false
 
     public init(participantID: UUID,
@@ -46,6 +52,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         self.qualityPreset = qualityPreset
         self.latencyMode = latencyMode
         self.callbacks = callbacks
+        self.videoQueue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.video.\(participantID.uuidString)")
         super.init()
     }
 
@@ -99,6 +106,10 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             audioDevice?.shutdown()
             return (peerConnection, inputChannels)
         }
+        videoQueue.async { [weak self] in
+            self?.pendingVideoFrame = nil
+            self?.isVideoFrameDeliveryScheduled = false
+        }
         for inputChannel in state.1 {
             inputChannel.delegate = nil
             inputChannel.close()
@@ -143,9 +154,10 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     }
 
     public func renderVideoFrame(_ frame: RTCVideoFrame) {
-        guard let capturer = stateLock.withLock({ videoCapturer }) else { return }
-        guard let relayFrame = makeRelayVideoFrame(from: frame) else { return }
-        capturer.delegate?.capturer(capturer, didCapture: relayFrame)
+        guard stateLock.withLock({ !isClosed && videoCapturer != nil }) else { return }
+        videoQueue.async { [weak self] in
+            self?.enqueueVideoFrame(frame)
+        }
     }
 
     public func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
@@ -222,6 +234,57 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
             videoTrack = track
             videoSender = sender
         }
+    }
+
+    private func enqueueVideoFrame(_ frame: RTCVideoFrame) {
+        guard !closed else {
+            pendingVideoFrame = nil
+            return
+        }
+        if pendingVideoFrame != nil { droppedVideoFrameCount &+= 1 }
+        pendingVideoFrame = frame
+        scheduleVideoFrameDeliveryIfNeeded()
+    }
+
+    private func scheduleVideoFrameDeliveryIfNeeded() {
+        guard !isVideoFrameDeliveryScheduled else { return }
+        isVideoFrameDeliveryScheduled = true
+        let now = DispatchTime.now().uptimeNanoseconds
+        let deadlineNanoseconds = max(now, nextVideoFrameDeliveryNanoseconds)
+        videoQueue.asyncAfter(deadline: DispatchTime(uptimeNanoseconds: deadlineNanoseconds)) { [weak self] in
+            self?.deliverPendingVideoFrame()
+        }
+    }
+
+    private func deliverPendingVideoFrame() {
+        isVideoFrameDeliveryScheduled = false
+        guard !closed else {
+            pendingVideoFrame = nil
+            return
+        }
+        guard let frame = pendingVideoFrame else { return }
+        pendingVideoFrame = nil
+        guard let capturer = stateLock.withLock({ videoCapturer }), let relayFrame = makeRelayVideoFrame(from: frame) else { return }
+        capturer.delegate?.capturer(capturer, didCapture: relayFrame)
+        deliveredVideoFrameCount &+= 1
+        nextVideoFrameDeliveryNanoseconds = DispatchTime.now().uptimeNanoseconds &+ videoFrameIntervalNanoseconds
+        captureVideoPacingTelemetryIfNeeded()
+        if pendingVideoFrame != nil { scheduleVideoFrameDeliveryIfNeeded() }
+    }
+
+    private var videoFrameIntervalNanoseconds: UInt64 {
+        UInt64(1_000_000_000 / max(1, qualityPreset.fps))
+    }
+
+    private func captureVideoPacingTelemetryIfNeeded() {
+        guard deliveredVideoFrameCount.isMultiple(of: 240), droppedVideoFrameCount > 0 else { return }
+        WebRTCMediaTelemetry.capture("webrtc.remote_coop.video.paced", level: .debug, message: "Remote Co-Op video pacing dropped stale frames.", attributes: [
+            "participantID": participantID.uuidString,
+            "deliveredFrames": String(deliveredVideoFrameCount),
+            "droppedFrames": String(droppedVideoFrameCount),
+            "fps": String(qualityPreset.fps),
+            "latencyMode": latencyMode.rawValue
+        ])
     }
 
     private func makeRelayVideoFrame(from frame: RTCVideoFrame) -> RTCVideoFrame? {
