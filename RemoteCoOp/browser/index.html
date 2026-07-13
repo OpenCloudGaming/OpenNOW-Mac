@@ -9,16 +9,71 @@
   </head>
   <body>
     <main class="shell">
-      <section class="lobby" id="join-card" aria-label="Remote Co-Op lobby">
-        <section class="poster-screen" aria-label="Remote Co-Op stream preview"></section>
+      <section class="home" id="join-card" aria-label="Remote Co-Op home">
+        <header class="topbar" aria-label="OpenNOW Remote Co-Op">
+          <a class="brand" href="./" aria-label="OpenNOW Remote Co-Op home">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>
+              <strong>OpenNOW</strong>
+              <small>Remote Co-Op</small>
+            </span>
+          </a>
+          <div class="topbar-status" aria-label="Connection mode">
+            <span class="live-dot" aria-hidden="true"></span>
+            Browser gamepad relay
+          </div>
+        </header>
 
-        <section class="join-panel" aria-label="Join Remote Co-Op room">
-          <label class="field" for="display-name">
-            <span>Name</span>
-            <input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Guest">
-          </label>
-          <button id="join-button" type="button">Join Room</button>
-          <p class="status" id="join-status" role="status">Waiting for invite.</p>
+        <section class="hero-grid">
+          <section class="hero-copy" aria-labelledby="title">
+            <p class="eyebrow">Cloud couch link-in</p>
+            <h1 id="title">Join the session from your browser.</h1>
+            <p id="subtitle" class="lede">Enter the invite code from your host, connect a controller, and jump in as the next player.</p>
+
+            <div class="hero-actions" aria-label="Join steps">
+              <span>01 Invite</span>
+              <span>02 Controller</span>
+              <span>03 Approval</span>
+            </div>
+          </section>
+
+          <section class="join-console" aria-label="Join Remote Co-Op room">
+            <div class="console-header">
+              <span class="status-label">GFN Co-Op Gateway</span>
+              <strong id="invite-source">Invite required</strong>
+            </div>
+
+            <label class="field code-field" for="invite-code">
+              <span>Invite Code</span>
+              <input id="invite-code" inputmode="text" autocomplete="one-time-code" maxlength="128" spellcheck="false" placeholder="ABC123" aria-describedby="join-status">
+            </label>
+
+            <label class="field" for="display-name">
+              <span>Player Name</span>
+              <input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Guest">
+            </label>
+
+            <button id="join-button" type="button">Join Room</button>
+            <p class="status" id="join-status" role="status">Enter the six-character invite code from your host.</p>
+          </section>
+        </section>
+
+        <section class="readiness-grid" aria-label="Remote Co-Op readiness">
+          <article class="readiness-card featured">
+            <span class="status-label">Stream Path</span>
+            <strong id="network-state">Waiting for invite</strong>
+            <p id="network-detail">The host chooses direct or relay transport after you join.</p>
+          </article>
+          <article class="readiness-card">
+            <span class="status-label">Controller</span>
+            <strong id="gamepad-name">No gamepad detected</strong>
+            <p id="gamepad-detail">Connect a controller and press any button before joining.</p>
+          </article>
+          <article class="readiness-card">
+            <span class="status-label">Session</span>
+            <strong id="session-state">Home</strong>
+            <p id="session-detail">Approval may be required before your input becomes active.</p>
+          </article>
         </section>
       </section>
 
@@ -37,6 +92,7 @@
             </span>
             <strong id="player-number">P?</strong>
           </div>
+          <button id="disconnect-button" class="disconnect-button" type="button">Leave</button>
           <button id="diagnostics-toggle" class="diagnostics-toggle" type="button" aria-expanded="false" aria-controls="diagnostics-panel">i</button>
           <div class="diagnostics" id="diagnostics-panel" hidden>
             <div class="diagnostics-bar">
@@ -48,6 +104,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./app.js?v=hide-token-20260712"></script>
+    <script type="module" src="./app.js?v=home-20260712"></script>
   </body>
 </html>

@@ -3,6 +3,8 @@ const elements = {
   subtitle: document.querySelector("#subtitle"),
   joinCard: document.querySelector("#join-card"),
   sessionCard: document.querySelector("#session-card"),
+  inviteCode: document.querySelector("#invite-code"),
+  inviteSource: document.querySelector("#invite-source"),
   displayName: document.querySelector("#display-name"),
   joinButton: document.querySelector("#join-button"),
   joinStatus: document.querySelector("#join-status"),
@@ -24,7 +26,7 @@ const elements = {
 
 const url = new URL(window.location.href);
 const inviteFromURL = url.searchParams.get("invite") ?? "";
-const inviteToken = inviteFromURL.trim();
+let inviteToken = inviteFromURL.trim();
 const serverFromURL = url.searchParams.get("server") ?? "";
 let socket = null;
 let invite = parseInvite(inviteToken);
@@ -45,7 +47,12 @@ const playbackPromises = new WeakMap();
 
 renderInvite(inviteToken);
 renderDiagnostics();
+if (inviteFromURL && elements.inviteCode) elements.inviteCode.readOnly = true;
 
+elements.inviteCode?.addEventListener("input", () => {
+  if (!inviteFromURL) normalizeInviteCodeInput();
+  renderInvite(currentInviteToken());
+});
 elements.joinButton.addEventListener("click", joinRoom);
 elements.diagnosticsToggle?.addEventListener("click", toggleDiagnostics);
 elements.copyDiagnosticsButton?.addEventListener("click", event => {
@@ -66,21 +73,35 @@ function renderInvite(token) {
   invite = parseInvite(token);
   if (!invite) {
     if (elements.title) elements.title.textContent = "Join a cloud couch session";
-    if (elements.subtitle) elements.subtitle.textContent = "Open the invite link your host sent.";
-    elements.joinStatus.textContent = inviteToken ? "Invite link is invalid." : "Waiting for invite link.";
+    if (elements.subtitle) elements.subtitle.textContent = "Enter the invite code from your host, connect a controller, and jump in as the next player.";
+    if (elements.inviteSource) elements.inviteSource.textContent = inviteFromURL ? "Invalid URL invite" : "Invite required";
+    if (elements.networkState) elements.networkState.textContent = "Waiting for invite";
+    if (elements.networkDetail) elements.networkDetail.textContent = "The host chooses direct or relay transport after you join.";
+    elements.joinStatus.textContent = token ? "Invite code is invalid. Enter the six-character code from your host." : "Enter the six-character invite code from your host.";
     elements.joinButton.disabled = true;
     return;
   }
+  inviteToken = token.trim();
+  const visibleInviteToken = inviteFromURL ? invite.code ?? "LINK READY" : displayInviteToken(inviteToken);
+  if (elements.inviteCode && elements.inviteCode.value.trim() !== visibleInviteToken) {
+    elements.inviteCode.value = visibleInviteToken;
+  }
+  const roomLabel = invite.code ?? invite.inviteID ?? "ready";
   if (elements.title) elements.title.textContent = invite.title ? `Join ${invite.title}` : "Join this Remote Co-Op room";
-  if (elements.subtitle) elements.subtitle.textContent = `Room ${invite.code ?? invite.inviteID}. ${invite.requireHostApproval ? "Host approval required." : "Input starts after connection."}`;
-  elements.joinStatus.textContent = "Invite loaded. Enter a name and join.";
+  if (elements.subtitle) elements.subtitle.textContent = `Room ${roomLabel}. ${invite.requireHostApproval ? "Host approval required." : "Input starts after connection."}`;
+  if (elements.inviteSource) elements.inviteSource.textContent = inviteFromURL ? "Loaded from link" : "Code accepted";
+  if (elements.networkState) elements.networkState.textContent = "Invite ready";
+  if (elements.networkDetail) elements.networkDetail.textContent = `${networkModeLabel(invite.transportMode)} transport. ${latencyModeLabel(invite.latencyMode)}.`;
+  elements.joinStatus.textContent = "Invite loaded. Enter a player name and join.";
   elements.joinButton.disabled = false;
 }
 
 function joinRoom() {
+  inviteToken = currentInviteToken();
   invite = parseInvite(inviteToken);
   if (!invite) {
-    elements.joinStatus.textContent = "Invite link is invalid.";
+    elements.joinStatus.textContent = "Enter a valid invite code before joining.";
+    elements.joinButton.disabled = true;
     return;
   }
   if (invite.expiresAtEpochSeconds * 1000 <= Date.now()) {
@@ -564,6 +585,32 @@ function recordInputSent(input, transport, sampledAtMilliseconds = performance.n
   });
 }
 
+function currentInviteToken() {
+  if (inviteFromURL) return inviteFromURL.trim();
+  return elements.inviteCode?.value.trim().toUpperCase() ?? "";
+}
+
+function normalizeInviteCodeInput() {
+  if (!elements.inviteCode) return;
+  const normalized = elements.inviteCode.value.toUpperCase().replace(/[^A-Z0-9.\-_]/g, "");
+  if (elements.inviteCode.value !== normalized) elements.inviteCode.value = normalized;
+}
+
+function displayInviteToken(token) {
+  const trimmed = token.trim();
+  return /^[A-Z0-9]{6}$/i.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+}
+
+function networkModeLabel(mode) {
+  if (mode === "relayOnly") return "Private relay";
+  if (mode === "directOnly") return "Direct only";
+  return "Automatic";
+}
+
+function latencyModeLabel(mode) {
+  return mode === "lowLatency" ? "Low latency" : "Quality mode";
+}
+
 function describeIceServers(servers) {
   const counts = { stun: 0, turn: 0, turns: 0 };
   for (const server of servers) {
@@ -863,7 +910,7 @@ function parseInvite(token) {
     expiresAtEpochSeconds: Number.POSITIVE_INFINITY,
     requireHostApproval: true,
     transportMode: "automatic",
-    latencyMode: "quality"
+    latencyMode: "lowLatency"
   };
 }
 
