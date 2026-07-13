@@ -27,7 +27,7 @@ const inviteFromURL = url.searchParams.get("invite") ?? "";
 const inviteToken = inviteFromURL.trim();
 const serverFromURL = url.searchParams.get("server") ?? "";
 let socket = null;
-let invite = null;
+let invite = parseInvite(inviteToken);
 const participantID = createParticipantID();
 let approved = false;
 let sequenceNumber = 0;
@@ -63,7 +63,7 @@ window.addEventListener("pagehide", disconnect);
 document.addEventListener("visibilitychange", restartPollingIfActive);
 
 function renderInvite(token) {
-  invite = decodeInvite(token);
+  invite = parseInvite(token);
   if (!invite) {
     if (elements.title) elements.title.textContent = "Join a cloud couch session";
     if (elements.subtitle) elements.subtitle.textContent = "Open the invite link your host sent.";
@@ -78,7 +78,7 @@ function renderInvite(token) {
 }
 
 function joinRoom() {
-  invite = decodeInvite(inviteToken);
+  invite = parseInvite(inviteToken);
   if (!invite) {
     elements.joinStatus.textContent = "Invite link is invalid.";
     return;
@@ -97,7 +97,7 @@ function joinRoom() {
     updateDiagnostics({ websocket: "open" });
     send({
       kind: "guestJoinRequested",
-      roomID: invite.inviteID,
+      roomID: inviteRoomID(),
       participantID,
       inviteToken,
       displayName: displayName()
@@ -131,10 +131,12 @@ function joinRoom() {
 
 async function handleMessage(message) {
   if (message.kind === "heartbeat") {
-    send({ kind: "heartbeat", roomID: invite?.inviteID, participantID });
+    if (message.roomID && invite) invite.inviteID = message.roomID;
+    send({ kind: "heartbeat", roomID: inviteRoomID(), participantID });
     return;
   }
   if (message.kind === "networkConfiguration") {
+    if (message.roomID && invite) invite.inviteID = message.roomID;
     updateDiagnostics({ signaling: "network configuration received" });
     configurePeerConnection(message.networkConfiguration);
     return;
@@ -312,7 +314,7 @@ function sendInput(input) {
   const sampledAtMilliseconds = input.sampledAtMilliseconds ?? performance.now();
   const wireInput = { ...input };
   delete wireInput.sampledAtMilliseconds;
-  const message = { kind: "guestInput", roomID: invite.inviteID, participantID, input: wireInput };
+  const message = { kind: "guestInput", roomID: inviteRoomID(), participantID, input: wireInput };
   if (inputChannel?.readyState === "open") {
     inputChannel.send(JSON.stringify({ protocolVersion: 1, sentAtEpochMilliseconds: Date.now(), ...message }));
     recordInputSent(input, "data channel", sampledAtMilliseconds);
@@ -354,7 +356,7 @@ function configurePeerConnection(configuration) {
     updateDiagnostics({ localCandidates: diagnostics.localCandidates + 1 });
     send({
       kind: "peerSignal",
-      roomID: invite.inviteID,
+      roomID: inviteRoomID(),
       participantID,
       peerSignal: {
         kind: "iceCandidate",
@@ -382,7 +384,7 @@ async function handlePeerSignal(signal) {
     await peerConnection.setRemoteDescription({ type: "offer", sdp: signal.sdp });
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
-    send({ kind: "peerSignal", roomID: invite.inviteID, participantID, peerSignal: { kind: "answer", sdp: answer.sdp } });
+    send({ kind: "peerSignal", roomID: inviteRoomID(), participantID, peerSignal: { kind: "answer", sdp: answer.sdp } });
     setNetworkState(networkLabel(), "WebRTC answer sent. Waiting for ICE connectivity.");
     updateDiagnostics({ signaling: "answer sent" });
     return;
@@ -779,7 +781,7 @@ function disconnect(notifyHost = true) {
   approved = false;
   stopPolling();
   closePeerConnection();
-  if (notifyHost && socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: invite?.inviteID, participantID });
+  if (notifyHost && socket?.readyState === WebSocket.OPEN) send({ kind: "guestDisconnected", roomID: inviteRoomID(), participantID });
   socket?.close();
   socket = null;
 }
@@ -844,6 +846,25 @@ function signalingEndpoint() {
   if (serverFromURL) return serverFromURL;
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${scheme}//${window.location.host}/remote-coop`;
+}
+
+function inviteRoomID() {
+  return invite?.inviteID || undefined;
+}
+
+function parseInvite(token) {
+  const decoded = decodeInvite(token);
+  if (decoded) return decoded;
+  const code = token.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) return null;
+  return {
+    inviteID: null,
+    code,
+    expiresAtEpochSeconds: Number.POSITIVE_INFINITY,
+    requireHostApproval: true,
+    transportMode: "automatic",
+    latencyMode: "quality"
+  };
 }
 
 function decodeInvite(token) {

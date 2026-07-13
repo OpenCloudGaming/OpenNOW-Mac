@@ -53,14 +53,18 @@ const server = await makeBrokerServer(async (request, response) => {
       forwardedFor: request.headers["x-forwarded-for"]
     }));
     if (url.pathname === "/remote-coop/network-config") {
-      const payload = decodeInvitePayload(url.searchParams.get("invite") ?? "");
-      if (!payload) {
+      const inviteParameter = url.searchParams.get("invite") ?? "";
+      const payload = decodeInvitePayload(inviteParameter);
+      const roomID = stringValue(payload?.inviteID) ?? roomIDForInviteCode(inviteParameter);
+      const room = roomID ? rooms.get(roomID) : null;
+      if (!payload && !room) {
         logNetwork("network-config.rejected", { remote, reason: "invalid_invite" });
         response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: "invalid_invite" }));
         return;
       }
-      logNetwork("network-config.served", { remote, roomID: payload.inviteID ?? "none", transportMode: payload.transportMode ?? "automatic", latencyMode: payload.latencyMode ?? "quality" });
-      response.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(networkConfigurationFor(payload, payload.inviteID ?? "")));
+      const networkConfiguration = room?.networkConfiguration ?? networkConfigurationFor(payload, roomID ?? "");
+      logNetwork("network-config.served", { remote, roomID: roomID ?? "none", transportMode: networkConfiguration.transportMode, latencyMode: networkConfiguration.latencyMode });
+      response.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(networkConfiguration));
       return;
     }
     const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
@@ -322,17 +326,23 @@ function registerHost(state, message) {
 }
 
 function registerGuest(state, message) {
-  const roomID = stringValue(message.roomID);
   const participantID = stringValue(message.participantID);
   const inviteToken = stringValue(message.inviteToken);
-  if (!roomID || !participantID) {
-    logNetwork("guest.rejected", { ...socketLogFields(state), roomID: roomID ?? "none", participantID: participantID ?? "none", reason: "missing_room_or_participant" });
-    send(state, { kind: "guestRejected", participantID, reason: "Missing room or participant ID" });
+  if (!participantID) {
+    logNetwork("guest.rejected", { ...socketLogFields(state), participantID: "none", reason: "missing_participant" });
+    send(state, { kind: "guestRejected", reason: "Missing participant ID" });
     return;
   }
   if (!inviteToken) {
-    logNetwork("guest.rejected", { ...socketLogFields(state), roomID, participantID, reason: "missing_invite_token" });
-    send(state, { kind: "guestRejected", roomID, participantID, reason: "Missing invite token" });
+    logNetwork("guest.rejected", { ...socketLogFields(state), participantID, reason: "missing_invite_token" });
+    send(state, { kind: "guestRejected", participantID, reason: "Missing invite token" });
+    return;
+  }
+  const payload = decodeInvitePayload(inviteToken);
+  const roomID = stringValue(message.roomID) ?? stringValue(payload?.inviteID) ?? roomIDForInviteCode(inviteToken);
+  if (!roomID) {
+    logNetwork("guest.rejected", { ...socketLogFields(state), participantID, reason: "room_not_found" });
+    send(state, { kind: "guestRejected", participantID, reason: "Host room not found" });
     return;
   }
   const room = roomFor(roomID);
@@ -342,7 +352,6 @@ function registerGuest(state, message) {
   state.inviteToken = inviteToken;
   state.displayName = stringValue(message.displayName) || "Guest";
   room.guests.set(participantKey(participantID), state);
-  const payload = decodeInvitePayload(state.inviteToken);
   if (!room.invite && payload) room.networkConfiguration = networkConfigurationFor(payload, roomID);
   if (room.expiresAtMs <= 0) room.expiresAtMs = inviteExpiryMilliseconds(state.inviteToken);
   logNetwork(room.host ? "guest.joined" : "guest.pending", { ...socketLogFields(state), hostConnected: Boolean(room.host), guests: room.guests.size, transportMode: room.networkConfiguration.transportMode, latencyMode: room.networkConfiguration.latencyMode });
@@ -439,6 +448,15 @@ function roomFor(roomID) {
   return room;
 }
 
+function roomIDForInviteCode(value) {
+  const code = inviteCodeValue(value);
+  if (!code) return null;
+  for (const [roomID, room] of rooms) {
+    if (inviteCodeValue(room.invite?.code) === code) return roomID;
+  }
+  return null;
+}
+
 function networkConfigurationFor(payload, roomID) {
   const transportMode = ["automatic", "directOnly", "relayOnly"].includes(payload?.transportMode) ? payload.transportMode : "automatic";
   const latencyMode = ["quality", "lowLatency"].includes(payload?.latencyMode) ? payload.latencyMode : "quality";
@@ -521,6 +539,12 @@ function stringValue(value) {
 
 function participantKey(value) {
   return typeof value === "string" && value.length > 0 ? value.toLowerCase() : null;
+}
+
+function inviteCodeValue(value) {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toUpperCase();
+  return /^[A-Z0-9]{6}$/.test(code) ? code : null;
 }
 
 function logMessageFlow(direction, state, message) {

@@ -195,15 +195,35 @@ public actor OPNRemoteCoOpHostSession {
         guard let baseURL else { return nil }
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
         let trimmedCode = String(code.trimmingCharacters(in: .whitespacesAndNewlines).prefix(6))
+        let trimmedSignalingServerURL = signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
         var items = components?.queryItems ?? []
         items.removeAll { $0.name == "invite" }
         items.removeAll { $0.name == "server" }
         items.append(URLQueryItem(name: "invite", value: trimmedCode))
-        if !signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            items.append(URLQueryItem(name: "server", value: signalingServerURL))
+        if Self.shouldAppendSignalingServer(baseURL: baseURL, signalingServerURL: trimmedSignalingServerURL) {
+            items.append(URLQueryItem(name: "server", value: trimmedSignalingServerURL))
         }
         components?.queryItems = items.isEmpty ? nil : items
         return components?.url
+    }
+
+    private static func shouldAppendSignalingServer(baseURL: URL, signalingServerURL: String) -> Bool {
+        guard !signalingServerURL.isEmpty else { return false }
+        guard let signalingURL = URL(string: signalingServerURL), signalingURL.scheme?.hasPrefix("ws") == true else { return true }
+        guard let baseHost = baseURL.host?.lowercased(), let signalingHost = signalingURL.host?.lowercased(), baseHost == signalingHost else { return true }
+        let expectedScheme = baseURL.scheme == "https" ? "wss" : "ws"
+        guard signalingURL.scheme == expectedScheme else { return true }
+        guard Self.effectivePort(baseURL) == Self.effectivePort(signalingURL) else { return true }
+        return signalingURL.path != "/remote-coop"
+    }
+
+    private static func effectivePort(_ url: URL) -> Int? {
+        if let port = url.port { return port }
+        switch url.scheme {
+        case "http", "ws": return 80
+        case "https", "wss": return 443
+        default: return nil
+        }
     }
 
     private static func makeInviteCode() -> String {

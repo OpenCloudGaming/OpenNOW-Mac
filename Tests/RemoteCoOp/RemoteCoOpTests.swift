@@ -202,6 +202,18 @@ struct RemoteCoOpTests {
         #expect(components.queryItems?.contains(URLQueryItem(name: "server", value: "wss://signal.example.test/remote-coop")) == true)
     }
 
+    @Test("invite URLs omit same origin signaling server")
+    func inviteURLsOmitSameOriginSignalingServer() async throws {
+        let host = OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1))
+
+        let invite = try await host.startInvite(joinBaseURL: URL(string: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)!, signalingServerURL: OPNRemoteCoOpPreferences.defaultSignalingServerURL, lifetimeSeconds: 120)
+        let joinURL = try #require(invite.joinURL)
+        let components = try #require(URLComponents(url: joinURL, resolvingAgainstBaseURL: false))
+
+        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.code)) == true)
+        #expect(components.queryItems?.contains { $0.name == "server" } == false)
+    }
+
     @Test("stream settings advertise reserved controller bitmap")
     func streamSettingsAdvertiseReservedControllerBitmap() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
