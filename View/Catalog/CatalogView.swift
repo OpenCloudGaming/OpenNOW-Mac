@@ -74,6 +74,7 @@ struct CatalogView: View {
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
+    @State private var streamWindowTopInset: CGFloat = 0
 
     init(
         account: LoginAccount,
@@ -99,25 +100,41 @@ struct CatalogView: View {
     var body: some View {
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
-                ZStack {
-                    WebRTCMediaStreamView(
-                        configuration: streamConfiguration,
-                        onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
-                        onEnd: { success, message, report in
-                            viewModel.finishActiveStream(success: success, message: message, report: report)
-                        }
-                    )
-                    .id(streamConfiguration.id)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
+                GeometryReader { proxy in
+                    let topInset = min(max(streamWindowTopInset, 0), proxy.size.height)
+                    let contentHeight = max(proxy.size.height - topInset, 0)
+                    let streamSize = streamContentSize(availableWidth: proxy.size.width, availableHeight: contentHeight, topInset: topInset)
+                    VStack(spacing: 0) {
+                        Color.black
+                            .frame(height: topInset)
+                        ZStack {
+                            Color.black
+                            ZStack {
+                                WebRTCMediaStreamView(
+                                    configuration: streamConfiguration,
+                                    onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                                    onEnd: { success, message, report in
+                                        viewModel.finishActiveStream(success: success, message: message, report: report)
+                                    }
+                                )
+                                .id(streamConfiguration.id)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
 
-                    if viewModel.isStreamLaunchLoadingVisible {
-                        VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
-                            .transition(.opacity)
-                            .zIndex(10)
-                            .ignoresSafeArea()
+                                if viewModel.isStreamLaunchLoadingVisible {
+                                    VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
+                                        .transition(.opacity)
+                                        .zIndex(10)
+                                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                                }
+                            }
+                            .frame(width: streamSize.width, height: streamSize.height)
+                        }
+                        .frame(width: proxy.size.width, height: contentHeight)
                     }
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                 }
+                .background(StreamWindowTopInsetReader { streamWindowTopInset = $0 })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
                 .transition(.opacity)
@@ -179,6 +196,21 @@ struct CatalogView: View {
         .preferredColorScheme(.dark)
     }
 
+    private func streamContentSize(availableWidth: CGFloat, availableHeight: CGFloat, topInset: CGFloat) -> CGSize {
+        guard topInset > 0, availableWidth > 0, availableHeight > 0 else {
+            return CGSize(width: availableWidth, height: availableHeight)
+        }
+        let aspectRatio = CGFloat(viewModel.streamProfile.aspectRatio)
+        guard aspectRatio.isFinite, aspectRatio > 0 else {
+            return CGSize(width: availableWidth, height: availableHeight)
+        }
+        let heightForFullWidth = availableWidth / aspectRatio
+        if heightForFullWidth <= availableHeight {
+            return CGSize(width: availableWidth, height: heightForFullWidth)
+        }
+        return CGSize(width: availableHeight * aspectRatio, height: availableHeight)
+    }
+
     private func updateWindowTitleForActiveStream() {
         guard let configuration = viewModel.activeStreamConfiguration else {
             onWindowTitleChange(nil)
@@ -219,6 +251,140 @@ private struct VendorLaunchFlowOverlay: View {
             case .idle:
                 EmptyView()
             }
+        }
+    }
+}
+
+private struct StreamWindowTopInsetReader: NSViewRepresentable {
+    let onChange: @MainActor (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChange: onChange)
+    }
+
+    func makeNSView(context: Context) -> WindowTopInsetView {
+        let view = WindowTopInsetView(frame: .zero)
+        let coordinator = context.coordinator
+        view.onWindowChanged = { window in coordinator.attach(window) }
+        view.onLayoutChanged = { coordinator.update() }
+        return view
+    }
+
+    func updateNSView(_ view: WindowTopInsetView, context: Context) {
+        context.coordinator.update()
+    }
+
+    static func dismantleNSView(_ nsView: WindowTopInsetView, coordinator: Coordinator) {
+        nsView.onWindowChanged = nil
+        nsView.onLayoutChanged = nil
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var observerTokens: [NSObjectProtocol] = []
+        private var lastInset: CGFloat = -1
+        private let onChange: @MainActor (CGFloat) -> Void
+
+        init(onChange: @escaping @MainActor (CGFloat) -> Void) {
+            self.onChange = onChange
+        }
+
+        func attach(_ window: NSWindow?) {
+            guard self.window !== window else {
+                update()
+                return
+            }
+            removeObservers()
+            self.window = window
+            lastInset = -1
+            addObservers(for: window)
+            update()
+        }
+
+        func update() {
+            publish(calculatedInset())
+        }
+
+        func detach() {
+            removeObservers()
+            window = nil
+            publish(0)
+        }
+
+        private func addObservers(for window: NSWindow?) {
+            guard let window else { return }
+            let notificationCenter = NotificationCenter.default
+            let updateNotifications: [Notification.Name] = [
+                NSWindow.didResizeNotification,
+                NSWindow.didMoveNotification,
+                NSWindow.didExitFullScreenNotification,
+            ]
+            observerTokens = updateNotifications.map { name in
+                notificationCenter.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    Task { @MainActor in self?.update() }
+                }
+            }
+            let willEnterToken = notificationCenter.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.publish(0) }
+            }
+            let didEnterToken = notificationCenter.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.publish(0) }
+            }
+            observerTokens.append(contentsOf: [willEnterToken, didEnterToken])
+        }
+
+        private func removeObservers() {
+            let notificationCenter = NotificationCenter.default
+            for token in observerTokens {
+                notificationCenter.removeObserver(token)
+            }
+            observerTokens = []
+        }
+
+        private func calculatedInset() -> CGFloat {
+            guard let window, let contentView = window.contentView else { return 0 }
+            guard !window.styleMask.contains(.fullScreen) else { return 0 }
+
+            let safeTopInset = contentView.safeAreaInsets.top
+            let layoutTopInset = contentLayoutTopInset(window: window, contentView: contentView)
+            let frameTopInset = frameTitlebarInset(window: window)
+            return min(max(safeTopInset, layoutTopInset, frameTopInset), min(contentView.bounds.height, 120))
+        }
+
+        private func contentLayoutTopInset(window: NSWindow, contentView: NSView) -> CGFloat {
+            let layoutRect = window.contentLayoutRect
+            let bounds = contentView.bounds
+            guard layoutRect.minY >= bounds.minY - 1, layoutRect.maxY <= bounds.maxY + 1 else { return 0 }
+            return max(bounds.maxY - layoutRect.maxY, 0)
+        }
+
+        private func frameTitlebarInset(window: NSWindow) -> CGFloat {
+            let contentRect = NSWindow.contentRect(forFrameRect: window.frame, styleMask: window.styleMask)
+            return max(window.frame.height - contentRect.height, 0)
+        }
+
+        private func publish(_ inset: CGFloat) {
+            guard abs(lastInset - inset) > 0.5 else { return }
+            lastInset = inset
+            let onChange = onChange
+            Task { @MainActor in onChange(inset) }
+        }
+    }
+
+    final class WindowTopInsetView: NSView {
+        var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
+        var onLayoutChanged: (@MainActor () -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChanged?(window)
+        }
+
+        override func layout() {
+            super.layout()
+            onLayoutChanged?()
         }
     }
 }
