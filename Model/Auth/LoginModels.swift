@@ -113,6 +113,38 @@ final class LoginSession {
     var isExpired: Bool {
         expiresAt <= Date()
     }
+
+    func updateAuthentication(
+        accountEmail: String,
+        authMethod: String,
+        accessToken: String,
+        clientToken: String,
+        idToken: String,
+        refreshToken: String,
+        userId: String,
+        idpId: String,
+        deviceId: String,
+        issuedAt: Date,
+        expiresAt: Date,
+        clientTokenExpiresAt: Date,
+        isActive: Bool,
+        canContinueOffline: Bool
+    ) {
+        self.accountEmail = accountEmail
+        self.authMethod = authMethod
+        self.accessToken = accessToken
+        self.clientToken = clientToken
+        self.idToken = idToken
+        self.refreshToken = refreshToken
+        self.userId = userId
+        self.idpId = idpId
+        self.deviceId = deviceId
+        self.issuedAt = issuedAt
+        self.expiresAt = expiresAt
+        self.clientTokenExpiresAt = clientTokenExpiresAt
+        self.isActive = isActive
+        self.canContinueOffline = canContinueOffline
+    }
 }
 
 @Model

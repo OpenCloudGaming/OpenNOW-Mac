@@ -346,6 +346,7 @@ final class LoginViewModel: ObservableObject {
         let displayName = Self.displayName(session: session, userInfo: userInfo, email: normalizedEmail)
         let providerIdpId = session.idpId.isEmpty ? selectedProvider.idpId : session.idpId
         let resolvedProvider = providerOption(idpId: providerIdpId, fallbackName: selectedProvider.title)
+        let existingSession = sessions.first { $0.accountEmail == normalizedEmail && $0.isActive } ?? sessions.first { $0.accountEmail == normalizedEmail }
 
         for account in accounts { account.isActive = false }
         for storedSession in sessions { storedSession.isActive = false }
@@ -379,7 +380,7 @@ final class LoginViewModel: ObservableObject {
 
         let expiry = Date(timeIntervalSince1970: TimeInterval(session.expiresAt > 0 ? session.expiresAt : Int64(now.addingTimeInterval(86_400).timeIntervalSince1970)))
         let clientExpiry = session.clientTokenExpiry > 0 ? Date(timeIntervalSince1970: TimeInterval(session.clientTokenExpiry) / 1000.0) : expiry
-        let storedSession = LoginSession(
+        let storedSession = existingSession ?? LoginSession(
             accountEmail: normalizedEmail,
             authMethod: authMethod,
             accessToken: session.accessToken,
@@ -395,8 +396,29 @@ final class LoginViewModel: ObservableObject {
             isActive: true,
             canContinueOffline: rememberSession
         )
-        modelContext.insert(storedSession)
-        sessions.insert(storedSession, at: 0)
+        storedSession.updateAuthentication(
+            accountEmail: normalizedEmail,
+            authMethod: authMethod,
+            accessToken: session.accessToken,
+            clientToken: session.clientToken,
+            idToken: session.idToken,
+            refreshToken: session.refreshToken,
+            userId: session.userId,
+            idpId: providerIdpId,
+            deviceId: primaryDevice.deviceId,
+            issuedAt: now,
+            expiresAt: expiry,
+            clientTokenExpiresAt: clientExpiry,
+            isActive: true,
+            canContinueOffline: rememberSession
+        )
+        if existingSession == nil {
+            modelContext.insert(storedSession)
+            sessions.insert(storedSession, at: 0)
+        } else if let index = sessions.firstIndex(where: { $0.id == storedSession.id }), index > 0 {
+            sessions.remove(at: index)
+            sessions.insert(storedSession, at: 0)
+        }
         primaryDevice.lastUsedAt = now
         trySave()
         OpenNOWLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
