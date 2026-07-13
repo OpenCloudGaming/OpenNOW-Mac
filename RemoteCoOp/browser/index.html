@@ -10,78 +10,55 @@
   <body>
     <main class="shell">
       <section class="home" id="join-card" aria-label="Remote Co-Op home">
-        <header class="topbar" aria-label="OpenNOW Remote Co-Op">
+        <header class="topbar">
           <a class="brand" href="./" aria-label="OpenNOW Remote Co-Op home">
             <span class="brand-mark" aria-hidden="true"></span>
-            <span>
-              <strong>OpenNOW</strong>
-              <small>Remote Co-Op</small>
-            </span>
+            <span class="brand-text">OpenNOW</span>
           </a>
-          <div class="topbar-status" aria-label="Connection mode">
-            <span class="live-dot" aria-hidden="true"></span>
-            Browser gamepad relay
-          </div>
+          <span class="mode-pill" id="network-state">CODE</span>
         </header>
 
-        <section class="hero-grid">
-          <section class="hero-copy" aria-labelledby="title">
-            <p class="eyebrow">Cloud couch link-in</p>
-            <h1 id="title">Join the session from your browser.</h1>
-            <p id="subtitle" class="lede">Enter the invite code from your host, connect a controller, and jump in as the next player.</p>
-
-            <div class="hero-actions" aria-label="Join steps">
-              <span>01 Invite</span>
-              <span>02 Controller</span>
-              <span>03 Approval</span>
-            </div>
-          </section>
+        <section class="entry-stage" aria-labelledby="title">
+          <div class="signal-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
 
           <section class="join-console" aria-label="Join Remote Co-Op room">
-            <div class="console-header">
-              <span class="status-label">GFN Co-Op Gateway</span>
-              <strong id="invite-source">Invite required</strong>
-            </div>
+            <p class="eyebrow" id="invite-source">REMOTE CO-OP</p>
+            <h1 id="title">CO-OP</h1>
+            <p id="subtitle" class="sr-only">Enter an invite code and join.</p>
 
             <label class="field code-field" for="invite-code">
-              <span>Invite Code</span>
+              <span>Code</span>
               <input id="invite-code" inputmode="text" autocomplete="one-time-code" maxlength="128" spellcheck="false" placeholder="ABC123" aria-describedby="join-status">
             </label>
 
             <label class="field" for="display-name">
-              <span>Player Name</span>
+              <span>Player</span>
               <input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Guest">
             </label>
 
-            <button id="join-button" type="button">Join Room</button>
-            <p class="status" id="join-status" role="status">Enter the six-character invite code from your host.</p>
+            <button id="join-button" type="button">Join</button>
+            <p class="status" id="join-status" role="status">Code required</p>
           </section>
         </section>
 
-        <section class="readiness-grid" aria-label="Remote Co-Op readiness">
-          <article class="readiness-card featured">
-            <span class="status-label">Stream Path</span>
-            <strong id="network-state">Waiting for invite</strong>
-            <p id="network-detail">The host chooses direct or relay transport after you join.</p>
-          </article>
-          <article class="readiness-card">
-            <span class="status-label">Controller</span>
-            <strong id="gamepad-name">No gamepad detected</strong>
-            <p id="gamepad-detail">Connect a controller and press any button before joining.</p>
-          </article>
-          <article class="readiness-card">
-            <span class="status-label">Session</span>
-            <strong id="session-state">Home</strong>
-            <p id="session-detail">Approval may be required before your input becomes active.</p>
-          </article>
+        <section class="micro-status" aria-label="Remote Co-Op status">
+          <span id="network-detail">Automatic</span>
+          <span id="gamepad-name">Controller</span>
+          <span id="gamepad-detail">Waiting</span>
+          <span id="session-state">Home</span>
+          <span id="session-detail">Idle</span>
         </section>
       </section>
 
       <section class="session-deck hidden" id="session-card" aria-label="Active Remote Co-Op session">
         <div class="video-frame">
           <div class="video-placeholder">
-            <span>Waiting for host</span>
-            <p>Video appears here after approval.</p>
+            <span>Waiting</span>
+            <p>Host</p>
           </div>
           <div class="player-badge" id="player-badge" aria-live="polite" aria-label="Waiting for controller assignment">
             <span class="player-icon" aria-hidden="true">
@@ -104,6 +81,6 @@
         </div>
       </section>
     </main>
-    <script type="module" src="./app.js?v=home-20260712"></script>
+    <script type="module" src="./app.js?v=minimal-home-20260712"></script>
   </body>
 </html>

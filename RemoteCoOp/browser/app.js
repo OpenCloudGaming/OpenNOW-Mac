@@ -63,7 +63,7 @@ elements.copyDiagnosticsButton?.addEventListener("click", event => {
 elements.disconnectButton?.addEventListener("click", disconnect);
 window.addEventListener("gamepadconnected", event => {
   if (elements.gamepadName) elements.gamepadName.textContent = event.gamepad.id;
-  if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Controller connected. Waiting for host approval.";
+  if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Ready";
   updateDiagnostics({ input: "controller connected" });
 });
 window.addEventListener("pagehide", disconnect);
@@ -72,27 +72,27 @@ document.addEventListener("visibilitychange", restartPollingIfActive);
 function renderInvite(token) {
   invite = parseInvite(token);
   if (!invite) {
-    if (elements.title) elements.title.textContent = "Join a cloud couch session";
-    if (elements.subtitle) elements.subtitle.textContent = "Enter the invite code from your host, connect a controller, and jump in as the next player.";
-    if (elements.inviteSource) elements.inviteSource.textContent = inviteFromURL ? "Invalid URL invite" : "Invite required";
-    if (elements.networkState) elements.networkState.textContent = "Waiting for invite";
-    if (elements.networkDetail) elements.networkDetail.textContent = "The host chooses direct or relay transport after you join.";
-    elements.joinStatus.textContent = token ? "Invite code is invalid. Enter the six-character code from your host." : "Enter the six-character invite code from your host.";
+    if (elements.title) elements.title.textContent = "CO-OP";
+    if (elements.subtitle) elements.subtitle.textContent = "Enter an invite code and join.";
+    if (elements.inviteSource) elements.inviteSource.textContent = inviteFromURL ? "INVALID" : "REMOTE CO-OP";
+    if (elements.networkState) elements.networkState.textContent = "CODE";
+    if (elements.networkDetail) elements.networkDetail.textContent = "Automatic";
+    elements.joinStatus.textContent = token ? "Invalid" : "Code required";
     elements.joinButton.disabled = true;
     return;
   }
   inviteToken = token.trim();
-  const visibleInviteToken = inviteFromURL ? invite.code ?? "LINK READY" : displayInviteToken(inviteToken);
+  const visibleInviteToken = inviteFromURL ? invite.code ?? "LINK" : displayInviteToken(inviteToken);
   if (elements.inviteCode && elements.inviteCode.value.trim() !== visibleInviteToken) {
     elements.inviteCode.value = visibleInviteToken;
   }
   const roomLabel = invite.code ?? invite.inviteID ?? "ready";
-  if (elements.title) elements.title.textContent = invite.title ? `Join ${invite.title}` : "Join this Remote Co-Op room";
-  if (elements.subtitle) elements.subtitle.textContent = `Room ${roomLabel}. ${invite.requireHostApproval ? "Host approval required." : "Input starts after connection."}`;
-  if (elements.inviteSource) elements.inviteSource.textContent = inviteFromURL ? "Loaded from link" : "Code accepted";
-  if (elements.networkState) elements.networkState.textContent = "Invite ready";
-  if (elements.networkDetail) elements.networkDetail.textContent = `${networkModeLabel(invite.transportMode)} transport. ${latencyModeLabel(invite.latencyMode)}.`;
-  elements.joinStatus.textContent = "Invite loaded. Enter a player name and join.";
+  if (elements.title) elements.title.textContent = "CO-OP";
+  if (elements.subtitle) elements.subtitle.textContent = `Room ${roomLabel}.`;
+  if (elements.inviteSource) elements.inviteSource.textContent = inviteFromURL ? "LINK" : "READY";
+  if (elements.networkState) elements.networkState.textContent = "READY";
+  if (elements.networkDetail) elements.networkDetail.textContent = networkModeLabel(invite.transportMode);
+  elements.joinStatus.textContent = "Ready";
   elements.joinButton.disabled = false;
 }
 
@@ -100,12 +100,12 @@ function joinRoom() {
   inviteToken = currentInviteToken();
   invite = parseInvite(inviteToken);
   if (!invite) {
-    elements.joinStatus.textContent = "Enter a valid invite code before joining.";
+    elements.joinStatus.textContent = "Invalid";
     elements.joinButton.disabled = true;
     return;
   }
   if (invite.expiresAtEpochSeconds * 1000 <= Date.now()) {
-    elements.joinStatus.textContent = "Invite has expired.";
+    elements.joinStatus.textContent = "Expired";
     return;
   }
   const endpoint = signalingEndpoint();
@@ -113,7 +113,7 @@ function joinRoom() {
   updateDiagnostics({ websocket: `connecting ${endpoint}`, transportMode: invite.transportMode ?? "automatic" });
   socket = new WebSocket(endpoint);
   elements.joinButton.disabled = true;
-  elements.joinStatus.textContent = `Connecting to ${endpoint}`;
+  elements.joinStatus.textContent = "Connecting";
   socket.addEventListener("open", () => {
     updateDiagnostics({ websocket: "open" });
     send({
@@ -125,7 +125,7 @@ function joinRoom() {
     });
     elements.joinCard.classList.add("hidden");
     elements.sessionCard.classList.remove("hidden");
-    setState("Waiting", "Waiting for host approval.", false);
+    setState("Waiting", "Host", false);
   });
   socket.addEventListener("message", event => {
     let message;
@@ -133,18 +133,18 @@ function joinRoom() {
       message = JSON.parse(event.data);
     } catch (error) {
       updateDiagnostics({ websocket: "invalid message" });
-      setNetworkState("Broker message failed", error.message || "Invalid JSON from signaling broker.");
+      setNetworkState("Error", "Broker");
       return;
     }
     handleMessage(message).catch(error => {
-      setNetworkState("Peer setup failed", error.message || "WebRTC negotiation failed.");
+      setNetworkState("Error", "Peer");
       updateDiagnostics({ signaling: error.message || "WebRTC negotiation failed" });
     });
   });
   socket.addEventListener("close", () => {
     stopPolling();
     updateDiagnostics({ websocket: "closed" });
-    if (!hasTerminalState()) setState("Disconnected", "The Remote Co-Op connection closed.", false);
+    if (!hasTerminalState()) setState("Closed", "Offline", false);
     elements.joinButton.disabled = false;
   });
   socket.addEventListener("error", () => updateDiagnostics({ websocket: "error" }));
@@ -172,37 +172,37 @@ async function handleMessage(message) {
     approved = message.participant.connectionState === "connected" && message.participant.inputEnabled === true;
     if (approved) {
       const playerNumber = (message.participant.playerIndex ?? 1) + 1;
-      setState("Approved", `Input enabled as player ${playerNumber}.`, true, playerNumber);
+      setState("Approved", `P${playerNumber}`, true, playerNumber);
       updateDiagnostics({ approval: "approved", playerSlot: `player ${playerNumber}` });
       startPolling();
     } else {
-      setState("Waiting", "Host approval pending.", false);
+      setState("Waiting", "Host", false);
       updateDiagnostics({ approval: "waiting" });
     }
     return;
   }
   if (message.kind === "participantRemoved") {
     if (!isForThisParticipant(message)) return;
-    setState("Removed", "The host removed you from the room.", false);
+    setState("Removed", "Host", false);
     updateDiagnostics({ approval: "removed" });
     disconnect();
     return;
   }
   if (message.kind === "guestRejected") {
     if (!isForThisParticipant(message)) return;
-    setState("Rejected", message.reason ?? "The host rejected this join request.", false);
+    setState("Rejected", message.reason ?? "Host", false);
     updateDiagnostics({ approval: `rejected: ${message.reason ?? "host rejected join"}` });
     disconnect(false);
     return;
   }
   if (message.kind === "inputRejected") {
     if (!isForThisParticipant(message)) return;
-    if (elements.gamepadDetail) elements.gamepadDetail.textContent = `Input rejected: ${message.inputRejection ?? "unknown"}`;
+    if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Rejected";
     updateDiagnostics({ input: `rejected: ${message.inputRejection ?? "unknown"}` });
     return;
   }
   if (message.kind === "inviteEnded") {
-    setState("Ended", message.reason ?? "The host ended the invite.", false);
+    setState("Ended", message.reason ?? "Host", false);
     updateDiagnostics({ approval: `ended: ${message.reason ?? "host ended invite"}` });
     disconnect();
   }
@@ -223,8 +223,8 @@ function startPolling() {
     if (!approved || socket?.readyState !== WebSocket.OPEN) return;
     const gamepad = navigator.getGamepads().find(Boolean);
     if (!gamepad) {
-      if (elements.gamepadName) elements.gamepadName.textContent = "No gamepad detected";
-      if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Connect a controller and press any button.";
+      if (elements.gamepadName) elements.gamepadName.textContent = "Controller";
+      if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Waiting";
       return;
     }
     if (elements.gamepadName) elements.gamepadName.textContent = gamepad.id;
@@ -234,7 +234,7 @@ function startPolling() {
     lastSentState = state;
     lastSentAt = time;
     sendInput(input);
-    if (elements.gamepadDetail) elements.gamepadDetail.textContent = `Sending input sequence ${input.sequenceNumber}.`;
+    if (elements.gamepadDetail) elements.gamepadDetail.textContent = "Live";
   };
   const interval = inputPollIntervalMilliseconds();
   if (interval > 0) {
@@ -406,7 +406,7 @@ async function handlePeerSignal(signal) {
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
     send({ kind: "peerSignal", roomID: inviteRoomID(), participantID, peerSignal: { kind: "answer", sdp: answer.sdp } });
-    setNetworkState(networkLabel(), "WebRTC answer sent. Waiting for ICE connectivity.");
+    setNetworkState(networkLabel(), "ICE");
     updateDiagnostics({ signaling: "answer sent" });
     return;
   }
@@ -429,7 +429,7 @@ function bindInputChannel(channel) {
     updateDiagnostics({ inputChannel: `${channel.label || "input"} open`, input: "data channel ready" });
   });
   channel.addEventListener("close", () => {
-    setNetworkState(networkLabel(), "Input data channel closed. WebSocket fallback remains available.");
+    setNetworkState(networkLabel(), "Fallback");
     updateDiagnostics({ inputChannel: `${channel.label || "input"} closed` });
   });
   channel.addEventListener("error", () => updateDiagnostics({ inputChannel: `${channel.label || "input"} error` }));
@@ -458,15 +458,15 @@ function automaticFallbackConfiguration() {
 
 function networkLabel() {
   const mode = networkConfiguration?.transportMode ?? invite?.transportMode ?? "automatic";
-  if (mode === "relayOnly") return "Private relay";
-  if (mode === "directOnly") return "Direct only";
-  return "Automatic";
+  if (mode === "relayOnly") return "Relay";
+  if (mode === "directOnly") return "Direct";
+  return "Auto";
 }
 
 function connectionDetail() {
   const connection = peerConnection?.connectionState ?? "new";
   const ice = peerConnection?.iceConnectionState ?? "new";
-  return `WebRTC ${connection}; ICE ${ice}; policy ${networkConfiguration?.iceTransportPolicy ?? "all"}.`;
+  return `${connection}/${ice}`;
 }
 
 function setNetworkState(title, detail) {
@@ -602,13 +602,9 @@ function displayInviteToken(token) {
 }
 
 function networkModeLabel(mode) {
-  if (mode === "relayOnly") return "Private relay";
-  if (mode === "directOnly") return "Direct only";
-  return "Automatic";
-}
-
-function latencyModeLabel(mode) {
-  return mode === "lowLatency" ? "Low latency" : "Quality mode";
+  if (mode === "relayOnly") return "Relay";
+  if (mode === "directOnly") return "Direct";
+  return "Auto";
 }
 
 function describeIceServers(servers) {
