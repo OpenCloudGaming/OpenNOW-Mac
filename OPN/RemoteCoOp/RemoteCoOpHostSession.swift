@@ -87,7 +87,7 @@ public actor OPNRemoteCoOpHostSession {
             createdAt: now,
             expiresAt: expiresAt,
             token: token,
-            joinURL: Self.joinURL(baseURL: joinBaseURL, token: token, signalingServerURL: signalingServerURL),
+            joinURL: Self.joinURL(baseURL: joinBaseURL, code: code, signalingServerURL: signalingServerURL),
             applicationID: applicationID,
             title: title,
             hideGuestInviteDetails: preferences.hideGuestInviteDetails
@@ -181,6 +181,7 @@ public actor OPNRemoteCoOpHostSession {
 
     private func validate(inviteToken: String, expectedInvite: OPNRemoteCoOpInvite, now: Date) throws {
         do {
+            if inviteToken == expectedInvite.code { return }
             let payload = try inviteSigner.verify(inviteToken, now: now)
             guard payload.inviteID == expectedInvite.id, payload.code == expectedInvite.code else { throw OPNRemoteCoOpHostSessionError.invalidInviteToken }
         } catch let error as OPNRemoteCoOpHostSessionError {
@@ -190,23 +191,24 @@ public actor OPNRemoteCoOpHostSession {
         }
     }
 
-    private static func joinURL(baseURL: URL?, token: String, signalingServerURL: String) -> URL? {
+    private static func joinURL(baseURL: URL?, code: String, signalingServerURL: String) -> URL? {
         guard let baseURL else { return nil }
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        let trimmedCode = String(code.trimmingCharacters(in: .whitespacesAndNewlines).prefix(6))
         var items = components?.queryItems ?? []
         items.removeAll { $0.name == "invite" }
         items.removeAll { $0.name == "server" }
-        items.append(URLQueryItem(name: "invite", value: token))
+        items.append(URLQueryItem(name: "invite", value: trimmedCode))
         if !signalingServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             items.append(URLQueryItem(name: "server", value: signalingServerURL))
         }
-        components?.queryItems = items
+        components?.queryItems = items.isEmpty ? nil : items
         return components?.url
     }
 
     private static func makeInviteCode() -> String {
         let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
         var generator = SystemRandomNumberGenerator()
-        return String((0..<8).map { _ in alphabet.randomElement(using: &generator) ?? "X" })
+        return String((0..<6).map { _ in alphabet.randomElement(using: &generator) ?? "X" })
     }
 }

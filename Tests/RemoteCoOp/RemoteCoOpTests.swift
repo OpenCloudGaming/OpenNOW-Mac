@@ -167,6 +167,7 @@ struct RemoteCoOpTests {
 
         #expect(payload.inviteID == invite.id)
         #expect(payload.code == invite.code)
+        #expect(invite.code.count == 6)
         #expect(payload.applicationID == "123")
         #expect(payload.title == "Portal")
         #expect(payload.reservedGuestSlots == 2)
@@ -194,6 +195,10 @@ struct RemoteCoOpTests {
         #expect(invite.applicationID == "secret-app")
         #expect(invite.title == "Secret Game")
         #expect(invite.hideGuestInviteDetails)
+        #expect(invite.code.count == 6)
+        #expect(components.queryItems?.contains(URLQueryItem(name: "invite", value: invite.code)) == true)
+        #expect(components.queryItems?.first { $0.name == "invite" }?.value?.count == 6)
+        #expect(components.queryItems?.first { $0.name == "invite" }?.value != invite.token)
         #expect(components.queryItems?.contains(URLQueryItem(name: "server", value: "wss://signal.example.test/remote-coop")) == true)
     }
 
@@ -213,11 +218,11 @@ struct RemoteCoOpTests {
         let host = OPNRemoteCoOpHostSession(preferences: preferences)
 
         let invite = try await host.startInvite(lifetimeSeconds: 120)
-        let pending = try await host.registerGuest(displayName: "Mia", inviteToken: invite.token)
+        let pending = try await host.registerGuest(displayName: "Mia", inviteToken: invite.code)
         let approved = try await host.approveParticipant(pending.id)
         let snapshot = await host.snapshot()
 
-        #expect(invite.code.count == 8)
+        #expect(invite.code.count == 6)
         #expect(pending.connectionState == .waitingForApproval)
         #expect(approved.connectionState == .connected)
         #expect(approved.inputEnabled)

@@ -1250,7 +1250,7 @@ private struct GameplaySettingsPage: View {
                 SettingsDivider()
                 SettingsTextFieldRow(title: "Signaling Server", subtitle: "WebSocket endpoint used by the host and browser guest app.", text: viewModel.remoteCoOpPreferences.signalingServerURL, placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL, action: viewModel.setRemoteCoOpSignalingServerURL)
                 SettingsDivider()
-                SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Browser page copied into Remote Co-Op invites. The invite token is appended automatically.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
+                SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Browser page copied into Remote Co-Op invites. A 6-character invite code is appended automatically.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
             }
 
             SettingsCard(title: "Recording") {
