@@ -63,59 +63,29 @@ private struct StreamHUDActionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 13) {
-                ZStack {
+            Image(systemName: systemName)
+                .font(.streamNvidia(size: 15, weight: .bold))
+                .foregroundStyle(iconColor)
+                .frame(width: 42, height: 38)
+                .background(rowBackground)
+                .overlay {
                     Rectangle()
-                        .fill(iconBackground)
-                    Image(systemName: systemName)
-                        .font(.streamNvidia(size: 14, weight: .bold))
-                        .foregroundStyle(iconColor)
+                        .stroke(isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider, lineWidth: 1)
                 }
-                .frame(width: 34, height: 34)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.streamNvidia(size: 14, weight: .bold))
-                        .foregroundStyle(titleColor)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.streamNvidia(size: 11, weight: .medium))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 8)
-            .padding(.trailing, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 50)
-            .background(rowBackground)
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(isActive ? WebRTCMediaStreamTheme.accent : Color.clear)
-                    .frame(width: 3)
-            }
-            .contentShape(Rectangle())
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.46 : 1)
         .onHover { isHovering = $0 }
         .accessibilityLabel(title)
+        .accessibilityHint(subtitle)
+        .help(subtitle.isEmpty ? title : "\(title): \(subtitle)")
     }
 
     private var rowBackground: Color {
-        if isActive { return WebRTCMediaStreamTheme.accent.opacity(0.095) }
-        return Color.white.opacity(isHovering ? 0.085 : 0)
-    }
-
-    private var iconBackground: Color {
         if isActive { return WebRTCMediaStreamTheme.accent }
-        return Color.white.opacity(isHovering ? 0.16 : 0.08)
-    }
-
-    private var titleColor: Color {
-        isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+        return Color.white.opacity(isHovering ? 0.14 : 0.075)
     }
 
     private var iconColor: Color {
@@ -395,11 +365,11 @@ public struct WebRTCMediaStreamSurface: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("GEFORCE NOW")
+                    Text("GFN")
                         .font(.streamNvidia(size: 11, weight: .bold))
                         .tracking(1.4)
                         .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                    Text("Stream HUD")
+                    Text("HUD")
                         .font(.streamNvidia(size: 20, weight: .bold))
                         .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
                         .lineLimit(1)
@@ -420,40 +390,39 @@ public struct WebRTCMediaStreamSurface: View {
             Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
                 .font(.streamNvidia(size: 13, weight: .medium))
                 .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .padding(.horizontal, 22)
-        .padding(.top, 20)
-        .padding(.bottom, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
         .background(WebRTCMediaStreamTheme.appBar)
     }
 
     private var hudStatusPanel: some View {
         HStack(spacing: 8) {
             hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
-            hudMetricCard(title: "Recording", value: recordingStatusText, positive: recordingStatus.isRecording)
-            hudMetricCard(title: "Anti-AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
+            hudMetricCard(title: "Rec", value: recordingStatusText, positive: recordingStatus.isRecording)
+            hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
             hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isEnabled)
         }
     }
 
     private var hudShortcutFooter: some View {
-        Text("CMD-G HUD  |  CMD-M MIC  |  CMD-R REC  |  CMD-K ANTI-AFK  |  CMD-Q QUIT")
+        Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
             .font(.streamNvidia(size: 10, weight: .bold))
             .tracking(0.8)
             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
+            .lineLimit(1)
             .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.vertical, 9)
     }
 
     private var hudControlsPanel: some View {
-        hudSection(label: "CONTROLS") {
-            VStack(alignment: .leading, spacing: 4) {
+        hudSection(label: "CONTROLS", spacing: 8) {
+            HStack(spacing: 8) {
                 StreamHUDActionRow(
-                    title: microphoneEnabled ? "Mute Mic" : "Unmute Mic",
+                    title: microphoneEnabled ? "Mute microphone" : "Unmute microphone",
                     subtitle: microphoneStatusText,
                     systemName: microphoneEnabled ? "mic.slash.fill" : "mic.fill",
                     isActive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled",
@@ -469,8 +438,8 @@ public struct WebRTCMediaStreamSurface: View {
                     action: toggleRecording
                 )
                 StreamHUDActionRow(
-                    title: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK Off" : "Anti-AFK On",
-                    subtitle: runtimeSettings.antiAFKMouseMovementEnabled ? "Mouse keepalive active" : "Mouse keepalive idle",
+                    title: runtimeSettings.antiAFKMouseMovementEnabled ? "Disable Anti-AFK" : "Enable Anti-AFK",
+                    subtitle: runtimeSettings.antiAFKMouseMovementEnabled ? "Active" : "Idle",
                     systemName: "cursorarrow.motionlines",
                     isActive: runtimeSettings.antiAFKMouseMovementEnabled,
                     isDisabled: !isStreamReady,
@@ -478,7 +447,7 @@ public struct WebRTCMediaStreamSurface: View {
                 )
                 StreamHUDActionRow(
                     title: "Quit Menu",
-                    subtitle: "Pause input and end session",
+                    subtitle: "End session",
                     systemName: "power",
                     isActive: false,
                     isDisabled: false,
@@ -489,8 +458,8 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudRemoteCoOpPanel: some View {
-        hudSection(label: "REMOTE CO-OP") {
-            VStack(alignment: .leading, spacing: 10) {
+        hudSection(label: "CO-OP", spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(remoteCoOpTitle)
@@ -499,7 +468,7 @@ public struct WebRTCMediaStreamSurface: View {
                         Text(remoteCoOpSubtitle)
                             .font(.streamNvidia(size: 11, weight: .medium))
                             .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     Text(remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
@@ -511,7 +480,7 @@ public struct WebRTCMediaStreamSurface: View {
                         .background(Color.white.opacity(0.07))
                         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
                 }
-                VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
                     StreamHUDActionRow(
                         title: remoteCoOpSnapshot.invite == nil ? "Create Invite" : "End Invite",
                         subtitle: remoteCoOpInviteActionSubtitle,
@@ -530,16 +499,17 @@ public struct WebRTCMediaStreamSurface: View {
                             action: copyRemoteCoOpInvite
                         )
                     }
+                    Spacer(minLength: 0)
                 }
-                settingsRow("Reserved Slots", "\(remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
-                settingsRow("Guest Quality", remoteCoOpSnapshot.preferences.qualityPreset.label)
-                settingsRow("Latency Mode", remoteCoOpSnapshot.preferences.latencyMode.label)
-                settingsRow("Invite Details", remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
+                settingsRow("Slots", "\(remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
+                settingsRow("Quality", remoteCoOpSnapshot.preferences.qualityPreset.label)
+                settingsRow("Latency", remoteCoOpSnapshot.preferences.latencyMode.label)
+                settingsRow("Details", remoteCoOpSnapshot.preferences.hideGuestInviteDetails ? "Hidden" : "Visible")
                 if !remoteCoOpMessage.isEmpty {
                     Text(remoteCoOpMessage)
                         .font(.streamNvidia(size: 11, weight: .medium))
                         .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
                 }
                 if !remoteCoOpSnapshot.participants.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -556,15 +526,13 @@ public struct WebRTCMediaStreamSurface: View {
                                     .font(.streamNvidia(size: 10, weight: .bold))
                                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
                                 if participant.connectionState == .waitingForApproval {
-                                    Button("Approve") { approveRemoteCoOpParticipant(participant.id) }
-                                        .font(.streamNvidia(size: 10, weight: .bold))
-                                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
-                                        .buttonStyle(.plain)
+                                    participantIconButton(systemName: "checkmark", label: "Approve guest", color: WebRTCMediaStreamTheme.accent) {
+                                        approveRemoteCoOpParticipant(participant.id)
+                                    }
                                 }
-                                Button("Remove") { removeRemoteCoOpParticipant(participant.id) }
-                                    .font(.streamNvidia(size: 10, weight: .bold))
-                                    .foregroundStyle(WebRTCMediaStreamTheme.danger)
-                                    .buttonStyle(.plain)
+                                participantIconButton(systemName: "xmark", label: "Remove guest", color: WebRTCMediaStreamTheme.danger) {
+                                    removeRemoteCoOpParticipant(participant.id)
+                                }
                             }
                         }
                     }
@@ -573,18 +541,32 @@ public struct WebRTCMediaStreamSurface: View {
         }
     }
 
-    private func hudSection<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private func hudSection<Content: View>(label: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
             Text(label)
                 .font(.streamNvidia(size: 10, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
             content()
         }
-        .padding(12)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.055))
         .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+    }
+
+    private func participantIconButton(systemName: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.streamNvidia(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .frame(width: 22, height: 22)
+                .background(Color.white.opacity(0.07))
+                .overlay { Rectangle().stroke(color.opacity(0.32), lineWidth: 1) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .help(label)
     }
 
     private var microphoneToggleOverlay: some View {
@@ -629,7 +611,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudStatsPanel: some View {
-        hudSection(label: "STREAM STATS") {
+        hudSection(label: "STATS") {
             VStack(alignment: .leading, spacing: 8) {
                 statsRow("Transport", latestStats?.transport.isEmpty == false ? latestStats?.transport ?? "-" : "-")
                 statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
@@ -646,7 +628,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var hudVideoPanel: some View {
-        hudSection(label: "VIDEO ENHANCEMENT") {
+        hudSection(label: "VIDEO") {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("MetalFX Upscaling", selection: Binding(get: { runtimeSettings.upscalingMode }, set: { updateVideoEnhancement(mode: $0) })) {
                     ForEach(StreamRuntimeSettings.upscalingModes, id: \.value) { option in
@@ -1047,18 +1029,18 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var remoteCoOpTitle: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Remote Co-Op Disabled" }
-        guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "No Remote Slot Reserved" }
+        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Disabled" }
+        guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "No Slot" }
         if let invite = remoteCoOpSnapshot.invite, !invite.isExpired { return "Invite Ready" }
-        if remoteCoOpSnapshot.invite?.isExpired == true { return "Invite Expired" }
-        return "Host A Remote Player"
+        if remoteCoOpSnapshot.invite?.isExpired == true { return "Expired" }
+        return "Ready"
     }
 
     private var remoteCoOpSubtitle: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Enable Remote Co-Op in Settings > Gameplay before launching a stream so controller slots are reserved." }
-        guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "Reserve at least one remote controller slot before launch to let a guest control player 2." }
-        if let invite = remoteCoOpSnapshot.invite, !invite.isExpired { return "Share this invite code with your remote player. Guest control maps to reserved gamepad slots only." }
-        return "Create an invite code for a remote player. The stream will keep using the existing local GFN session."
+        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Enable in Settings" }
+        guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "Reserve slot before launch" }
+        if let invite = remoteCoOpSnapshot.invite, !invite.isExpired { return "Code \(invite.code)" }
+        return "Create invite"
     }
 
     private var remoteCoOpInviteCode: String {
@@ -1066,12 +1048,12 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var remoteCoOpInviteActionSubtitle: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Enable in Settings first" }
-        guard isStreamReady else { return "Available after stream connects" }
+        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Enable in Settings" }
+        guard isStreamReady else { return "Stream not ready" }
         if let invite = remoteCoOpSnapshot.invite {
-            return invite.isExpired ? "Create a fresh invite" : "Code \(invite.code)"
+            return invite.isExpired ? "Refresh" : invite.code
         }
-        return "Generate and copy invite code"
+        return "Create + copy"
     }
 
     private var twitchStatusText: String {
@@ -1103,7 +1085,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func startRemoteCoOpInvite() {
         let preferences = remoteCoOpLaunchPreferences
-        remoteCoOpMessage = "Creating invite..."
+        remoteCoOpMessage = "Creating..."
         Task { @MainActor in
             let neutralEvents = await stopRemoteCoOpSession()
             neutralEvents.forEach { transport?.sendNow($0) }
@@ -1113,7 +1095,7 @@ public struct WebRTCMediaStreamSurface: View {
                 let invite = try await coordinator.startInvite(applicationID: configuration.applicationID, title: configuration.title, joinBaseURL: remoteCoOpJoinBaseURL(preferences), signalingServerURL: preferences.signalingServerURL)
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 copyRemoteCoOpInvite(invite)
-                remoteCoOpMessage = invite.joinURL == nil ? "Invite copied. Share code \(invite.code) with your remote player." : "Invite link copied. Keep this stream open while your guest joins."
+                remoteCoOpMessage = invite.joinURL == nil ? "Copied \(invite.code)" : "Link copied"
                 showTransientStreamMessage("Remote Co-Op invite copied")
                 WebRTCMediaTelemetry.capture("webrtc.remote_coop.invite.created", level: .info, message: "Remote Co-Op invite created.", attributes: ["applicationID": configuration.applicationID, "reservedSlots": String(preferences.effectiveReservedGuestSlots), "transportMode": preferences.transportMode.rawValue, "latencyMode": preferences.latencyMode.rawValue])
             } catch {
@@ -1130,7 +1112,7 @@ public struct WebRTCMediaStreamSurface: View {
             let neutralEvents = await stopRemoteCoOpSession()
             neutralEvents.forEach { transport?.sendNow($0) }
             remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
-            remoteCoOpMessage = "Remote Co-Op invite ended."
+            remoteCoOpMessage = "Ended"
             showTransientStreamMessage("Remote Co-Op invite ended")
             WebRTCMediaTelemetry.capture("webrtc.remote_coop.invite.ended", level: .info, message: "Remote Co-Op invite ended.", attributes: ["applicationID": configuration.applicationID])
         }
@@ -1139,7 +1121,7 @@ public struct WebRTCMediaStreamSurface: View {
     private func copyRemoteCoOpInvite() {
         guard let invite = remoteCoOpSnapshot.invite else { return }
         copyRemoteCoOpInvite(invite)
-        remoteCoOpMessage = invite.joinURL == nil ? "Invite token copied." : "Invite link copied."
+        remoteCoOpMessage = invite.joinURL == nil ? "Token copied" : "Link copied"
         showTransientStreamMessage("Remote Co-Op invite copied")
     }
 
