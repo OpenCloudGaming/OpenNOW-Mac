@@ -207,6 +207,7 @@ private struct SettingsSidebar: View {
         case .connections: return "link"
         case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
+        case .experimentalFeatures: return "testtube.2"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"
         case .system: return "desktopcomputer"
@@ -251,6 +252,8 @@ private struct SettingsContent: View {
             TwitchSettingsPage(viewModel: viewModel)
         case .gameplay:
             GameplaySettingsPage(viewModel: viewModel)
+        case .experimentalFeatures:
+            ExperimentalFeaturesSettingsPage(viewModel: viewModel)
         case .serverLocation:
             ServerLocationSettingsPage(viewModel: viewModel)
         case .resolutionUpscaling:
@@ -269,6 +272,7 @@ private struct SettingsContent: View {
         case .connections: return "Manage store accounts used for library sync and ownership detection."
         case .twitch: return "Connect Twitch and configure live gameplay broadcasting controls."
         case .gameplay: return "Tune streaming quality, latency, input, audio, and microphone behavior."
+        case .experimentalFeatures: return "Opt in to alpha, beta, and test features before they appear elsewhere."
         case .serverLocation: return "Select Automatic or a measured Cloudmatch region for launches."
         case .resolutionUpscaling: return "Control MetalFX presentation, clarity, and noise reduction for Apple Silicon."
         case .system: return "Review decoder, display, network, and device capability state."
@@ -1169,6 +1173,52 @@ private enum StoreIconAsset: CaseIterable {
     }
 }
 
+private struct ExperimentalFeaturesSettingsPage: View {
+    @ObservedObject var viewModel: CatalogViewModel
+    @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
+
+    var body: some View {
+        let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
+        VStack(alignment: .leading, spacing: 16) {
+            SettingsCard(title: "Alpha Access") {
+                SettingsToggleRow(
+                    title: "Remote Co-Op Alpha",
+                    subtitle: viewModel.remoteCoOpPreferences.isAlphaOptedIn ? "Remote Co-Op settings are available from Gameplay settings." : "Opt in before Remote Co-Op settings, preferences, and stream HUD controls appear.",
+                    isOn: viewModel.remoteCoOpPreferences.isAlphaOptedIn,
+                    action: viewModel.setRemoteCoOpAlphaOptedIn
+                )
+            }
+
+            SettingsCard(title: "Stream Transport") {
+                SettingsToggleRow(
+                    title: "NVST Transport Early Alpha",
+                    subtitle: qualityLocked ? lockedProfileSubtitle : "Experimental transport mode. Off requests WebRTC transport; on requests NVST secure RTSP transport from CloudMatch.",
+                    isOn: viewModel.streamProfile.transportMode.value == "nvst",
+                    isLocked: qualityLocked,
+                    action: viewModel.setNVSTTransportEnabled
+                )
+            }
+
+            SettingsCard(title: "Recording") {
+                SettingsToggleRow(
+                    title: "Recording Editor Early Beta",
+                    subtitle: recordingEditorEarlyBetaEnabled ? "Trim, arrange, crop, audio, and export tools are unlocked in Recordings." : "Opt in before recording editor controls appear in Recordings.",
+                    isOn: recordingEditorEarlyBetaEnabled,
+                    action: setRecordingEditorEarlyBetaEnabled
+                )
+            }
+        }
+    }
+
+    private var lockedProfileSubtitle: String {
+        "Managed by the \(viewModel.streamProfile.streamingQualityProfileOption.label) quality profile. Select Custom in Gameplay to edit."
+    }
+
+    private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {
+        recordingEditorEarlyBetaEnabled = enabled
+    }
+}
+
 private struct GameplaySettingsPage: View {
     @ObservedObject var viewModel: CatalogViewModel
 
@@ -1202,8 +1252,6 @@ private struct GameplaySettingsPage: View {
             }
 
             SettingsCard(title: "Stream Transport") {
-                SettingsToggleRow(title: "NVST Transport (Early Alpha)", subtitle: qualityLocked ? lockedProfileSubtitle : "Experimental early alpha mode. Off requests WebRTC transport; on requests NVST secure RTSP transport from CloudMatch.", isOn: viewModel.streamProfile.transportMode.value == "nvst", isLocked: qualityLocked, action: viewModel.setNVSTTransportEnabled)
-                SettingsDivider()
                 SettingsOptionRow(title: "Quality Profile", subtitle: "Maps to the vendor streaming profile sent with the session request.", options: OPNStreamPreferences.streamingQualityProfileOptions.map(\.label), selectedIndex: viewModel.streamProfile.streamingQualityProfileIndex, action: viewModel.setStreamingQualityProfileIndex)
                 SettingsDivider()
                 SettingsToggleRow(title: "Cloud G-Sync", subtitle: qualityLocked ? lockedProfileSubtitle : "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isLocked: qualityLocked, action: viewModel.setCloudGsyncEnabled)

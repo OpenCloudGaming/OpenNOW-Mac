@@ -1230,6 +1230,7 @@ private struct CatalogMainMenuPanel: View {
         case .connections: return "link"
         case .twitch: return "dot.radiowaves.left.and.right"
         case .gameplay: return "slider.horizontal.3"
+        case .experimentalFeatures: return "testtube.2"
         case .serverLocation: return "network"
         case .resolutionUpscaling: return "sparkles.tv.fill"
         case .system: return "desktopcomputer"

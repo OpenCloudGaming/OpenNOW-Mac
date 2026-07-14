@@ -93,6 +93,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
     case connections
     case twitch
     case gameplay
+    case experimentalFeatures
     case serverLocation
     case resolutionUpscaling
     case system
@@ -107,6 +108,7 @@ enum CatalogSettingsPage: String, CaseIterable, Identifiable {
         case .connections: return "Connections"
         case .twitch: return "Twitch"
         case .gameplay: return "Gameplay"
+        case .experimentalFeatures: return "Experimental Features"
         case .serverLocation: return "Server Location"
         case .resolutionUpscaling: return "MetalFX Upscaling"
         case .system: return "System"
@@ -1523,6 +1525,12 @@ final class CatalogViewModel: ObservableObject {
     func setRemoteCoOpEnabled(_ enabled: Bool) {
         OPNRemoteCoOpPreferencesStore.setEnabled(enabled)
         actionMessage = enabled ? "Remote Co-Op enabled. Reserved guest slots apply to newly launched streams." : "Remote Co-Op disabled."
+        loadSettingsPreferences()
+    }
+
+    func setRemoteCoOpAlphaOptedIn(_ optedIn: Bool) {
+        OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(optedIn)
+        actionMessage = optedIn ? "Remote Co-Op alpha access enabled. Configure Remote Co-Op from Gameplay settings." : "Remote Co-Op alpha access disabled. Remote Co-Op settings are hidden."
         loadSettingsPreferences()
     }
 

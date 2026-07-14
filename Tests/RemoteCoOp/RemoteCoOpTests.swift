@@ -65,6 +65,42 @@ struct RemoteCoOpTests {
         }
     }
 
+    @Test("preferences store remote co-op alpha opt in reveals saved settings")
+    func preferencesStoreRemoteCoOpAlphaOptInRevealsSavedSettings() {
+        withPreservedRemoteCoOpPreferences {
+            removePreferenceValue(alphaOptInKey)
+            setPreferenceValue(true, forKey: enabledKey)
+            setPreferenceValue(2, forKey: reservedGuestSlotsKey)
+
+            OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(true)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(preferences.isAlphaOptedIn)
+            #expect(preferences.isAvailable)
+            #expect(preferences.effectiveReservedGuestSlots == 2)
+            #expect(OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch() == 2)
+        }
+    }
+
+    @Test("preferences store remote co-op alpha opt out disables remote co-op")
+    func preferencesStoreRemoteCoOpAlphaOptOutDisablesRemoteCoOp() {
+        withPreservedRemoteCoOpPreferences {
+            setPreferenceValue(true, forKey: alphaOptInKey)
+            setPreferenceValue(true, forKey: enabledKey)
+            setPreferenceValue(2, forKey: reservedGuestSlotsKey)
+
+            OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(false)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(!preferences.isAlphaOptedIn)
+            #expect(!preferences.isEnabled)
+            #expect(!preferences.isAvailable)
+            #expect(preferences.effectiveReservedGuestSlots == 0)
+        }
+    }
+
     @Test("preferences store migrates old quality latency default to low latency")
     func preferencesStoreMigratesOldQualityLatencyDefaultToLowLatency() {
         withPreservedRemoteCoOpPreferences {

@@ -53,6 +53,7 @@ public enum OPNRemoteCoOpPreferencesStore {
     public static func setAlphaOptedIn(_ optedIn: Bool) {
         var preferences = load()
         preferences.isAlphaOptedIn = optedIn
+        if !optedIn { preferences.isEnabled = false }
         save(preferences)
     }
 

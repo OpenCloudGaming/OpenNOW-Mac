@@ -18,7 +18,7 @@ extension Font {
     }
 }
 
-private enum RecordingEditorBetaPreference {
+enum RecordingEditorBetaPreference {
     static let key = "OpenNOW.Recordings.EditorEarlyBetaOptIn"
 }
 
@@ -118,7 +118,7 @@ struct RecordingsView: View {
                                 if recordingEditorEarlyBetaEnabled {
                                     Button("Edit Recording") { startEditing(recording) }
                                 } else {
-                                    Button("Enable Early Beta Editor") { enableRecordingEditorBeta() }
+                                    Button("Enable in Settings > Experimental Features") { showRecordingEditorBetaSettingsMessage() }
                                 }
                                 Button("Reveal in Finder") { reveal(recording) }
                                 Button("Copy File Path") { copyPath(recording) }
@@ -171,9 +171,6 @@ struct RecordingsView: View {
                 RecordingMetric(title: "SIZE", value: compactFileSizeText(stats.totalBytes))
             }
 
-            RecordingEditorBetaCard(enabled: recordingEditorEarlyBetaEnabled) {
-                setRecordingEditorBetaEnabled(!recordingEditorEarlyBetaEnabled)
-            }
         }
         .padding(.horizontal, 22)
         .padding(.top, 22)
@@ -261,7 +258,7 @@ struct RecordingsView: View {
                 editorEarlyBetaEnabled: recordingEditorEarlyBetaEnabled,
                 onRestart: { restart(recording) },
                 onEdit: { startEditing(recording) },
-                onToggleEditorBeta: { setRecordingEditorBetaEnabled(!recordingEditorEarlyBetaEnabled) },
+                onEditorLocked: showRecordingEditorBetaSettingsMessage,
                 onOpen: { open(recording) },
                 onReveal: { reveal(recording) },
                 onCopyPath: { copyPath(recording) },
@@ -367,7 +364,7 @@ struct RecordingsView: View {
 
     private func startEditing(_ recording: WebRTCStreamRecording) {
         guard recordingEditorEarlyBetaEnabled else {
-            message = "Recording editor is early beta. Opt in to unlock editing tools."
+            showRecordingEditorBetaSettingsMessage()
             return
         }
         if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
@@ -384,13 +381,8 @@ struct RecordingsView: View {
         message = "Editor closed."
     }
 
-    private func enableRecordingEditorBeta() {
-        setRecordingEditorBetaEnabled(true)
-    }
-
-    private func setRecordingEditorBetaEnabled(_ enabled: Bool) {
-        recordingEditorEarlyBetaEnabled = enabled
-        message = enabled ? "Recording editor early beta enabled. Editing tools unlocked." : "Recording editor early beta disabled. Editing tools locked."
+    private func showRecordingEditorBetaSettingsMessage() {
+        message = "Enable Recording Editor Early Beta in Settings > Experimental Features."
     }
 
     private func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
@@ -533,50 +525,6 @@ private struct RecordingMetric: View {
         .padding(10)
         .background(RecordingsLayout.card)
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
-    }
-}
-
-private struct RecordingEditorBetaCard: View {
-    let enabled: Bool
-    let action: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: enabled ? "checkmark.seal.fill" : "lock.fill")
-                .font(.recordingsNvidia(size: 18, weight: .bold))
-                .foregroundStyle(enabled ? Color.openNowGreen : .white.opacity(0.60))
-                .frame(width: 34, height: 34)
-                .background(Color.white.opacity(enabled ? 0.08 : 0.055))
-                .overlay { Rectangle().stroke(enabled ? Color.openNowGreen.opacity(0.38) : RecordingsLayout.stroke, lineWidth: 1) }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 7) {
-                    Text("RECORDING EDITOR")
-                        .font(.recordingsNvidia(size: 10, weight: .bold))
-                        .tracking(1.2)
-                        .foregroundStyle(.white.opacity(0.78))
-                    Text("EARLY BETA")
-                        .font(.recordingsNvidia(size: 9, weight: .bold))
-                        .tracking(0.8)
-                        .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, 7)
-                        .frame(height: 18)
-                        .background(Color.openNowGreen)
-                }
-                Text(enabled ? "Editing tools are unlocked for this beta feature." : "Opt in to unlock trim, arrange, crop, audio, and export tools.")
-                    .font(.recordingsNvidia(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.56))
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-
-            Button(enabled ? "Disable Beta" : "Opt In", action: action)
-                .buttonStyle(RecordingActionButtonStyle(tone: enabled ? .secondary : .primary))
-        }
-        .padding(12)
-        .background(Color.white.opacity(0.045))
-        .overlay { Rectangle().stroke(enabled ? Color.openNowGreen.opacity(0.34) : RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
 
@@ -854,7 +802,7 @@ private struct RecordingInspector: View {
     let editorEarlyBetaEnabled: Bool
     let onRestart: () -> Void
     let onEdit: () -> Void
-    let onToggleEditorBeta: () -> Void
+    let onEditorLocked: () -> Void
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onCopyPath: () -> Void
@@ -880,7 +828,7 @@ private struct RecordingInspector: View {
                     Button("Edit", action: onEdit)
                         .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
                 } else {
-                    Button("Unlock Beta Editor", action: onToggleEditorBeta)
+                    Button("Editor Locked", action: onEditorLocked)
                         .buttonStyle(RecordingActionButtonStyle(tone: .secondary))
                 }
                 Button("Open", action: onOpen)
