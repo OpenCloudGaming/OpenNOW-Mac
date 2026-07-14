@@ -199,6 +199,7 @@ public enum OPNRemoteCoOpQualityPreset: String, CaseIterable, Codable, Equatable
 }
 
 public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
+    public static let launchMetadataAlphaOptedInKey = "remoteCoOpAlphaOptedIn"
     public static let launchMetadataEnabledKey = "remoteCoOpEnabled"
     public static let launchMetadataReservedGuestSlotsKey = "remoteCoOpReservedGuestSlots"
     public static let launchMetadataTransportModeKey = "remoteCoOpTransportMode"
@@ -212,6 +213,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public static let defaultSignalingServerURL = "ws://198.12.95.48:8788/remote-coop"
     public static let defaultGuestJoinBaseURL = "http://198.12.95.48:8788/"
 
+    public var isAlphaOptedIn: Bool
     public var isEnabled: Bool
     public var reservedGuestSlots: Int
     public var transportMode: OPNRemoteCoOpTransportMode
@@ -222,7 +224,8 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     public var guestJoinBaseURL: String
     public var hideGuestInviteDetails: Bool
 
-    public init(isEnabled: Bool = false,
+    public init(isAlphaOptedIn: Bool = true,
+                isEnabled: Bool = false,
                 reservedGuestSlots: Int = 1,
                 transportMode: OPNRemoteCoOpTransportMode = .automatic,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
@@ -231,6 +234,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
                 signalingServerURL: String = Self.defaultSignalingServerURL,
                 guestJoinBaseURL: String = Self.defaultGuestJoinBaseURL,
                 hideGuestInviteDetails: Bool = false) {
+        self.isAlphaOptedIn = isAlphaOptedIn
         self.isEnabled = isEnabled
         self.reservedGuestSlots = Self.clampedGuestSlots(reservedGuestSlots)
         self.transportMode = transportMode
@@ -242,8 +246,12 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
         self.hideGuestInviteDetails = hideGuestInviteDetails
     }
 
+    public var isAvailable: Bool {
+        isAlphaOptedIn && isEnabled
+    }
+
     public var effectiveReservedGuestSlots: Int {
-        isEnabled ? Self.clampedGuestSlots(reservedGuestSlots) : 0
+        isAvailable ? Self.clampedGuestSlots(reservedGuestSlots) : 0
     }
 
     public static func clampedGuestSlots(_ value: Int) -> Int {
@@ -251,7 +259,16 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
     }
 
     public var launchMetadata: [String: String] {
-        [
+        guard isAlphaOptedIn else {
+            return [
+                Self.launchMetadataAlphaOptedInKey: String(false),
+                Self.launchMetadataEnabledKey: String(false),
+                Self.launchMetadataReservedGuestSlotsKey: String(0),
+            ]
+        }
+
+        return [
+            Self.launchMetadataAlphaOptedInKey: String(isAlphaOptedIn),
             Self.launchMetadataEnabledKey: String(isEnabled),
             Self.launchMetadataReservedGuestSlotsKey: String(Self.clampedGuestSlots(reservedGuestSlots)),
             Self.launchMetadataTransportModeKey: transportMode.rawValue,
@@ -266,6 +283,7 @@ public struct OPNRemoteCoOpPreferences: Codable, Equatable, Sendable {
 
     public static func launchPreferences(from metadata: [String: String], fallback: OPNRemoteCoOpPreferences) -> OPNRemoteCoOpPreferences {
         OPNRemoteCoOpPreferences(
+            isAlphaOptedIn: bool(metadata[launchMetadataAlphaOptedInKey], defaultValue: fallback.isAlphaOptedIn),
             isEnabled: bool(metadata[launchMetadataEnabledKey], defaultValue: fallback.isEnabled),
             reservedGuestSlots: int(metadata[launchMetadataReservedGuestSlotsKey], defaultValue: fallback.reservedGuestSlots),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: metadata[launchMetadataTransportModeKey] ?? "") ?? fallback.transportMode,

@@ -8,6 +8,9 @@ import CoreVideo
 @Suite("Remote Co-Op", .serialized)
 struct RemoteCoOpTests {
     private let preferenceDomain = "io.github.opencloudgaming.opennow"
+    private let alphaOptInKey = "OpenNOW.RemoteCoOp.AlphaOptIn"
+    private let enabledKey = "OpenNOW.RemoteCoOp.Enabled"
+    private let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
     private let latencyModeKey = "OpenNOW.RemoteCoOp.LatencyMode"
     private let lowLatencyDefaultMigrationVersionKey = "OpenNOW.RemoteCoOp.LowLatencyDefaultMigrationVersion"
 
@@ -17,9 +20,49 @@ struct RemoteCoOpTests {
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 7).reservedGuestSlots == 3)
         #expect(OPNRemoteCoOpPreferences(isEnabled: false, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 2)
+        #expect(!OPNRemoteCoOpPreferences(isAlphaOptedIn: false, isEnabled: true, reservedGuestSlots: 2).isAvailable)
+        #expect(OPNRemoteCoOpPreferences(isAlphaOptedIn: false, isEnabled: true, reservedGuestSlots: 2).effectiveReservedGuestSlots == 0)
         #expect(OPNRemoteCoOpPreferences().transportMode == .automatic)
         #expect(OPNRemoteCoOpPreferences().latencyMode == .lowLatency)
         #expect(!OPNRemoteCoOpPreferences().hideGuestInviteDetails)
+    }
+
+    @Test("preferences store defaults remote co-op alpha gate off")
+    func preferencesStoreDefaultsRemoteCoOpAlphaGateOff() {
+        withPreservedRemoteCoOpPreferences {
+            removePreferenceValue(alphaOptInKey)
+            setPreferenceValue(true, forKey: enabledKey)
+            setPreferenceValue(2, forKey: reservedGuestSlotsKey)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(!preferences.isAlphaOptedIn)
+            #expect(!preferences.isAvailable)
+            #expect(preferences.effectiveReservedGuestSlots == 0)
+            #expect(OPNRemoteCoOpPreferencesStore.reservedControllerSlotsForLaunch() == 0)
+            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataEnabledKey] == "false")
+            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataReservedGuestSlotsKey] == "0")
+            #expect(preferences.launchMetadata[OPNRemoteCoOpPreferences.launchMetadataSignalingServerURLKey] == nil)
+        }
+    }
+
+    @Test("preferences store ignores remote co-op setting writes before alpha opt in")
+    func preferencesStoreIgnoresRemoteCoOpSettingWritesBeforeAlphaOptIn() {
+        withPreservedRemoteCoOpPreferences {
+            removePreferenceValue(alphaOptInKey)
+            setPreferenceValue(false, forKey: enabledKey)
+            setPreferenceValue(0, forKey: reservedGuestSlotsKey)
+
+            OPNRemoteCoOpPreferencesStore.setEnabled(true)
+            OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(2)
+
+            let preferences = OPNRemoteCoOpPreferencesStore.load()
+
+            #expect(!preferences.isAlphaOptedIn)
+            #expect(!preferences.isEnabled)
+            #expect(preferences.reservedGuestSlots == 0)
+            #expect(preferences.effectiveReservedGuestSlots == 0)
+        }
     }
 
     @Test("preferences store migrates old quality latency default to low latency")
@@ -626,7 +669,7 @@ struct RemoteCoOpTests {
     }
 
     private func withPreservedRemoteCoOpPreferences(_ body: () -> Void) {
-        let keys = [latencyModeKey, lowLatencyDefaultMigrationVersionKey]
+        let keys = [alphaOptInKey, enabledKey, reservedGuestSlotsKey, latencyModeKey, lowLatencyDefaultMigrationVersionKey]
         let defaults = UserDefaults.standard
         let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
         defer {

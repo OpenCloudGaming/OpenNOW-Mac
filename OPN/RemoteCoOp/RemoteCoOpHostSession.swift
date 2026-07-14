@@ -65,7 +65,7 @@ public actor OPNRemoteCoOpHostSession {
     }
 
     public func startInvite(applicationID: String = "", title: String = "", joinBaseURL: URL? = nil, signalingServerURL: String = "", lifetimeSeconds: TimeInterval = 3_600) throws -> OPNRemoteCoOpInvite {
-        guard preferences.isEnabled else { throw OPNRemoteCoOpHostSessionError.disabled }
+        guard preferences.isAvailable else { throw OPNRemoteCoOpHostSessionError.disabled }
         guard preferences.effectiveReservedGuestSlots > 0 else { throw OPNRemoteCoOpHostSessionError.noAvailablePlayerSlots }
         let now = Date()
         let inviteID = UUID()
@@ -105,7 +105,7 @@ public actor OPNRemoteCoOpHostSession {
     }
 
     public func registerGuest(displayName: String, inviteToken: String, participantID: UUID = UUID(), now: Date = Date()) async throws -> OPNRemoteCoOpParticipant {
-        guard preferences.isEnabled else { throw OPNRemoteCoOpHostSessionError.disabled }
+        guard preferences.isAvailable else { throw OPNRemoteCoOpHostSessionError.disabled }
         guard let invite, invite.expiresAt > now else { throw OPNRemoteCoOpHostSessionError.inviteExpired }
         try validate(inviteToken: inviteToken, expectedInvite: invite, now: now)
         if let existing = participants.first(where: { $0.id == participantID }) { return existing }

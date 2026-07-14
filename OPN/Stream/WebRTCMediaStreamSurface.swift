@@ -332,7 +332,9 @@ public struct WebRTCMediaStreamSurface: View {
                     VStack(alignment: .leading, spacing: 14) {
                         hudStatusPanel
                         hudControlsPanel
-                        hudRemoteCoOpPanel
+                        if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+                            hudRemoteCoOpPanel
+                        }
                         hudVideoPanel
                     }
                     .padding(.horizontal, 18)
@@ -404,7 +406,9 @@ public struct WebRTCMediaStreamSurface: View {
             hudMetricCard(title: "Mic", value: microphoneStatusText, positive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
             hudMetricCard(title: "Rec", value: recordingStatusText, positive: recordingStatus.isRecording)
             hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", positive: runtimeSettings.antiAFKMouseMovementEnabled)
-            hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isEnabled)
+            if remoteCoOpSnapshot.preferences.isAlphaOptedIn {
+                hudMetricCard(title: "Co-Op", value: remoteCoOpSummaryText, positive: remoteCoOpSnapshot.invite != nil && remoteCoOpSnapshot.preferences.isAvailable)
+            }
         }
     }
 
@@ -486,7 +490,7 @@ public struct WebRTCMediaStreamSurface: View {
                         subtitle: remoteCoOpInviteActionSubtitle,
                         systemName: remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
                         isActive: remoteCoOpSnapshot.invite != nil,
-                        isDisabled: !remoteCoOpSnapshot.preferences.isEnabled || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
+                        isDisabled: !remoteCoOpSnapshot.preferences.isAvailable || remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots == 0 || !isStreamReady,
                         action: remoteCoOpSnapshot.invite == nil ? startRemoteCoOpInvite : stopRemoteCoOpInvite
                     )
                     if remoteCoOpSnapshot.invite != nil {
@@ -1021,7 +1025,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var remoteCoOpSummaryText: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Off" }
+        guard remoteCoOpSnapshot.preferences.isAvailable else { return "Off" }
         guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "No Slot" }
         guard let invite = remoteCoOpSnapshot.invite else { return "Ready" }
         if invite.isExpired { return "Expired" }
@@ -1029,7 +1033,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var remoteCoOpTitle: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Disabled" }
+        guard remoteCoOpSnapshot.preferences.isAvailable else { return "Disabled" }
         guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "No Slot" }
         if let invite = remoteCoOpSnapshot.invite, !invite.isExpired { return "Invite Ready" }
         if remoteCoOpSnapshot.invite?.isExpired == true { return "Expired" }
@@ -1037,7 +1041,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var remoteCoOpSubtitle: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Enable in Settings" }
+        guard remoteCoOpSnapshot.preferences.isAvailable else { return "Enable in Settings" }
         guard remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots > 0 else { return "Reserve slot before launch" }
         if let invite = remoteCoOpSnapshot.invite, !invite.isExpired { return "Code \(invite.code)" }
         return "Create invite"
@@ -1048,7 +1052,7 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     private var remoteCoOpInviteActionSubtitle: String {
-        guard remoteCoOpSnapshot.preferences.isEnabled else { return "Enable in Settings" }
+        guard remoteCoOpSnapshot.preferences.isAvailable else { return "Enable in Settings" }
         guard isStreamReady else { return "Stream not ready" }
         if let invite = remoteCoOpSnapshot.invite {
             return invite.isExpired ? "Refresh" : invite.code
@@ -1085,6 +1089,7 @@ public struct WebRTCMediaStreamSurface: View {
 
     private func startRemoteCoOpInvite() {
         let preferences = remoteCoOpLaunchPreferences
+        guard preferences.isAlphaOptedIn else { return }
         remoteCoOpMessage = "Creating..."
         Task { @MainActor in
             let neutralEvents = await stopRemoteCoOpSession()

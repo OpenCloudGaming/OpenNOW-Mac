@@ -1233,24 +1233,26 @@ private struct GameplaySettingsPage: View {
                 SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, action: viewModel.setSuppressInputWhenInactive)
             }
 
-            SettingsCard(title: "Remote Co-Op") {
-                SettingsToggleRow(title: "Enable Remote Co-Op", subtitle: "Allows the stream HUD to generate an invite code for a remote player. Changes apply to newly launched streams.", isOn: viewModel.remoteCoOpPreferences.isEnabled, action: viewModel.setRemoteCoOpEnabled)
-                SettingsDivider()
-                SettingsOptionRow(title: "Reserved Controllers", subtitle: "Advertises remote gamepad slots to GeForce NOW before launch. Player 2 requires at least one reserved slot.", options: ["None", "1 Guest", "2 Guests", "3 Guests"], selectedIndex: viewModel.remoteCoOpPreferences.reservedGuestSlots, action: viewModel.setRemoteCoOpReservedGuestSlots)
-                SettingsDivider()
-                SettingsOptionRow(title: "Transport", subtitle: viewModel.remoteCoOpPreferences.transportMode.description, options: OPNRemoteCoOpTransportMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpTransportModeIndex, action: viewModel.setRemoteCoOpTransportModeIndex)
-                SettingsDivider()
-                SettingsOptionRow(title: "Guest Quality", subtitle: "Caps the outbound Remote Co-Op stream sent to guests.", options: OPNRemoteCoOpQualityPreset.allCases.map(\.label), selectedIndex: selectedRemoteCoOpQualityPresetIndex, action: viewModel.setRemoteCoOpQualityPresetIndex)
-                SettingsDivider()
-                SettingsOptionRow(title: "Latency Mode", subtitle: viewModel.remoteCoOpPreferences.latencyMode.description, options: OPNRemoteCoOpLatencyMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpLatencyModeIndex, action: viewModel.setRemoteCoOpLatencyModeIndex)
-                SettingsDivider()
-                SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, action: viewModel.setRemoteCoOpRequireHostApproval)
-                SettingsDivider()
-                SettingsToggleRow(title: "Hide Guest Invite Details", subtitle: "Share opaque invites that do not reveal the game title or app ID to guests.", isOn: viewModel.remoteCoOpPreferences.hideGuestInviteDetails, action: viewModel.setRemoteCoOpHideGuestInviteDetails)
-                SettingsDivider()
-                SettingsTextFieldRow(title: "Signaling Server", subtitle: "WebSocket endpoint used by the host and browser guest app.", text: viewModel.remoteCoOpPreferences.signalingServerURL, placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL, action: viewModel.setRemoteCoOpSignalingServerURL)
-                SettingsDivider()
-                SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Browser page copied into Remote Co-Op invites. A 6-character invite code is appended automatically.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
+            if viewModel.remoteCoOpPreferences.isAlphaOptedIn {
+                SettingsCard(title: "Remote Co-Op") {
+                    SettingsToggleRow(title: "Enable Remote Co-Op", subtitle: "Allows the stream HUD to generate an invite code for a remote player. Changes apply to newly launched streams.", isOn: viewModel.remoteCoOpPreferences.isEnabled, action: viewModel.setRemoteCoOpEnabled)
+                    SettingsDivider()
+                    SettingsOptionRow(title: "Reserved Controllers", subtitle: "Advertises remote gamepad slots to GeForce NOW before launch. Player 2 requires at least one reserved slot.", options: ["None", "1 Guest", "2 Guests", "3 Guests"], selectedIndex: viewModel.remoteCoOpPreferences.reservedGuestSlots, action: viewModel.setRemoteCoOpReservedGuestSlots)
+                    SettingsDivider()
+                    SettingsOptionRow(title: "Transport", subtitle: viewModel.remoteCoOpPreferences.transportMode.description, options: OPNRemoteCoOpTransportMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpTransportModeIndex, action: viewModel.setRemoteCoOpTransportModeIndex)
+                    SettingsDivider()
+                    SettingsOptionRow(title: "Guest Quality", subtitle: "Caps the outbound Remote Co-Op stream sent to guests.", options: OPNRemoteCoOpQualityPreset.allCases.map(\.label), selectedIndex: selectedRemoteCoOpQualityPresetIndex, action: viewModel.setRemoteCoOpQualityPresetIndex)
+                    SettingsDivider()
+                    SettingsOptionRow(title: "Latency Mode", subtitle: viewModel.remoteCoOpPreferences.latencyMode.description, options: OPNRemoteCoOpLatencyMode.allCases.map(\.label), selectedIndex: selectedRemoteCoOpLatencyModeIndex, action: viewModel.setRemoteCoOpLatencyModeIndex)
+                    SettingsDivider()
+                    SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, action: viewModel.setRemoteCoOpRequireHostApproval)
+                    SettingsDivider()
+                    SettingsToggleRow(title: "Hide Guest Invite Details", subtitle: "Share opaque invites that do not reveal the game title or app ID to guests.", isOn: viewModel.remoteCoOpPreferences.hideGuestInviteDetails, action: viewModel.setRemoteCoOpHideGuestInviteDetails)
+                    SettingsDivider()
+                    SettingsTextFieldRow(title: "Signaling Server", subtitle: "WebSocket endpoint used by the host and browser guest app.", text: viewModel.remoteCoOpPreferences.signalingServerURL, placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL, action: viewModel.setRemoteCoOpSignalingServerURL)
+                    SettingsDivider()
+                    SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Browser page copied into Remote Co-Op invites. A 6-character invite code is appended automatically.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
+                }
             }
 
             SettingsCard(title: "Recording") {

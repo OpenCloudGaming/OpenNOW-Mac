@@ -2,6 +2,7 @@ import Foundation
 
 public enum OPNRemoteCoOpPreferencesStore {
     private static let storage = OPNAppPreferenceStorage.standard
+    private static let alphaOptInKey = "OpenNOW.RemoteCoOp.AlphaOptIn"
     private static let enabledKey = "OpenNOW.RemoteCoOp.Enabled"
     private static let reservedGuestSlotsKey = "OpenNOW.RemoteCoOp.ReservedGuestSlots"
     private static let transportModeKey = "OpenNOW.RemoteCoOp.TransportMode"
@@ -14,9 +15,14 @@ public enum OPNRemoteCoOpPreferencesStore {
     private static let guestJoinBaseURLKey = "OpenNOW.RemoteCoOp.GuestJoinBaseURL"
     private static let hideGuestInviteDetailsKey = "OpenNOW.RemoteCoOp.HideGuestInviteDetails"
 
+    public static var isAlphaOptedIn: Bool {
+        bool(storage.object(forKey: alphaOptInKey), defaultValue: false)
+    }
+
     public static func load() -> OPNRemoteCoOpPreferences {
         let latencyMode = migratedLatencyMode()
         return OPNRemoteCoOpPreferences(
+            isAlphaOptedIn: isAlphaOptedIn,
             isEnabled: bool(storage.object(forKey: enabledKey), defaultValue: false),
             reservedGuestSlots: int(storage.object(forKey: reservedGuestSlotsKey), defaultValue: 1),
             transportMode: OPNRemoteCoOpTransportMode(rawValue: string(storage.object(forKey: transportModeKey))) ?? .automatic,
@@ -30,6 +36,7 @@ public enum OPNRemoteCoOpPreferencesStore {
     }
 
     public static func save(_ preferences: OPNRemoteCoOpPreferences) {
+        storage.set(preferences.isAlphaOptedIn, forKey: alphaOptInKey)
         storage.set(preferences.isEnabled, forKey: enabledKey)
         storage.set(OPNRemoteCoOpPreferences.clampedGuestSlots(preferences.reservedGuestSlots), forKey: reservedGuestSlotsKey)
         storage.set(preferences.transportMode.rawValue, forKey: transportModeKey)
@@ -43,55 +50,70 @@ public enum OPNRemoteCoOpPreferencesStore {
         storage.synchronize()
     }
 
+    public static func setAlphaOptedIn(_ optedIn: Bool) {
+        var preferences = load()
+        preferences.isAlphaOptedIn = optedIn
+        save(preferences)
+    }
+
     public static func setEnabled(_ enabled: Bool) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.isEnabled = enabled
         save(preferences)
     }
 
     public static func setReservedGuestSlots(_ slots: Int) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.reservedGuestSlots = OPNRemoteCoOpPreferences.clampedGuestSlots(slots)
         save(preferences)
     }
 
     public static func setTransportMode(_ mode: OPNRemoteCoOpTransportMode) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.transportMode = mode
         save(preferences)
     }
 
     public static func setQualityPreset(_ preset: OPNRemoteCoOpQualityPreset) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.qualityPreset = preset
         save(preferences)
     }
 
     public static func setLatencyMode(_ mode: OPNRemoteCoOpLatencyMode) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.latencyMode = mode
         save(preferences)
     }
 
     public static func setRequireHostApproval(_ required: Bool) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.requireHostApproval = required
         save(preferences)
     }
 
     public static func setSignalingServerURL(_ url: String) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.signalingServerURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultSignalingServerURL)
         save(preferences)
     }
 
     public static func setGuestJoinBaseURL(_ url: String) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.guestJoinBaseURL = OPNRemoteCoOpPreferences.normalizedURLString(url, fallback: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL)
         save(preferences)
     }
 
     public static func setHideGuestInviteDetails(_ hidden: Bool) {
+        guard isAlphaOptedIn else { return }
         var preferences = load()
         preferences.hideGuestInviteDetails = hidden
         save(preferences)
