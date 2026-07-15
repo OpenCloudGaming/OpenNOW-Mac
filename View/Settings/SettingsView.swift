@@ -1296,10 +1296,6 @@ private struct GameplaySettingsPage: View {
                     SettingsToggleRow(title: "Require Host Approval", subtitle: "Guests can join the room, but input remains disabled until the host approves them.", isOn: viewModel.remoteCoOpPreferences.requireHostApproval, action: viewModel.setRemoteCoOpRequireHostApproval)
                     SettingsDivider()
                     SettingsToggleRow(title: "Hide Guest Invite Details", subtitle: "Share opaque invites that do not reveal the game title or app ID to guests.", isOn: viewModel.remoteCoOpPreferences.hideGuestInviteDetails, action: viewModel.setRemoteCoOpHideGuestInviteDetails)
-                    SettingsDivider()
-                    SettingsTextFieldRow(title: "Signaling Server", subtitle: "WebSocket endpoint used by the host and browser guest app.", text: viewModel.remoteCoOpPreferences.signalingServerURL, placeholder: OPNRemoteCoOpPreferences.defaultSignalingServerURL, action: viewModel.setRemoteCoOpSignalingServerURL)
-                    SettingsDivider()
-                    SettingsTextFieldRow(title: "Guest Join URL", subtitle: "Browser page copied into Remote Co-Op invites. A 6-character invite code is appended automatically.", text: viewModel.remoteCoOpPreferences.guestJoinBaseURL, placeholder: OPNRemoteCoOpPreferences.defaultGuestJoinBaseURL, action: viewModel.setRemoteCoOpGuestJoinBaseURL)
                 }
             }
 
