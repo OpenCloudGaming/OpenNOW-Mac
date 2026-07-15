@@ -1524,18 +1524,21 @@ final class CatalogViewModel: ObservableObject {
 
     func setRemoteCoOpEnabled(_ enabled: Bool) {
         OPNRemoteCoOpPreferencesStore.setEnabled(enabled)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         actionMessage = enabled ? "Remote Co-Op enabled. Reserved guest slots apply to newly launched streams." : "Remote Co-Op disabled."
         loadSettingsPreferences()
     }
 
     func setRemoteCoOpAlphaOptedIn(_ optedIn: Bool) {
         OPNRemoteCoOpPreferencesStore.setAlphaOptedIn(optedIn)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         actionMessage = optedIn ? "Remote Co-Op alpha access enabled. Configure Remote Co-Op from Gameplay settings." : "Remote Co-Op alpha access disabled. Remote Co-Op settings are hidden."
         loadSettingsPreferences()
     }
 
     func setRemoteCoOpReservedGuestSlots(_ index: Int) {
         OPNRemoteCoOpPreferencesStore.setReservedGuestSlots(index)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         actionMessage = index > 0 ? "Remote Co-Op will reserve \(index) guest controller slot(s) on newly launched streams." : "Remote Co-Op guest controller slots disabled."
         loadSettingsPreferences()
     }
@@ -1544,6 +1547,7 @@ final class CatalogViewModel: ObservableObject {
         let modes = OPNRemoteCoOpTransportMode.allCases
         guard modes.indices.contains(index) else { return }
         OPNRemoteCoOpPreferencesStore.setTransportMode(modes[index])
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         loadSettingsPreferences()
     }
 
@@ -1551,6 +1555,7 @@ final class CatalogViewModel: ObservableObject {
         let presets = OPNRemoteCoOpQualityPreset.allCases
         guard presets.indices.contains(index) else { return }
         OPNRemoteCoOpPreferencesStore.setQualityPreset(presets[index])
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         loadSettingsPreferences()
     }
 
@@ -1558,26 +1563,31 @@ final class CatalogViewModel: ObservableObject {
         let modes = OPNRemoteCoOpLatencyMode.allCases
         guard modes.indices.contains(index) else { return }
         OPNRemoteCoOpPreferencesStore.setLatencyMode(modes[index])
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         loadSettingsPreferences()
     }
 
     func setRemoteCoOpRequireHostApproval(_ required: Bool) {
         OPNRemoteCoOpPreferencesStore.setRequireHostApproval(required)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         loadSettingsPreferences()
     }
 
     func setRemoteCoOpSignalingServerURL(_ url: String) {
         OPNRemoteCoOpPreferencesStore.setSignalingServerURL(url)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         loadSettingsPreferences()
     }
 
     func setRemoteCoOpGuestJoinBaseURL(_ url: String) {
         OPNRemoteCoOpPreferencesStore.setGuestJoinBaseURL(url)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         loadSettingsPreferences()
     }
 
     func setRemoteCoOpHideGuestInviteDetails(_ hidden: Bool) {
         OPNRemoteCoOpPreferencesStore.setHideGuestInviteDetails(hidden)
+        remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
         actionMessage = hidden ? "Remote Co-Op guest invites will hide game details." : "Remote Co-Op guest invites will show game details."
         loadSettingsPreferences()
     }
