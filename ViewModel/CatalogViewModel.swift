@@ -578,6 +578,12 @@ final class CatalogViewModel: ObservableObject {
             launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
             return
         }
+        if let game = Self.launchGame(from: shortcut, title: title) {
+            OpenNOWLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+            selectGame(game)
+            launch(game: game, variantIndex: 0)
+            return
+        }
         OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let selfBox = CatalogWeakObject(self)
         OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { success, result, error in
@@ -1200,6 +1206,7 @@ final class CatalogViewModel: ObservableObject {
             }
             let shortcut = GFNGameShortcut(sourceURL: nil, displayName: title, cmsId: cmsId, shortName: shortName, parentGameId: shortName)
             try shortcut.write(to: shortcutURL)
+            Self.applyShortcutIcon(to: shortcutURL)
             actionMessage = "Added GeForce NOW shortcut to Desktop."
         } catch {
             errorMessage = "Unable to add shortcut: \(error.localizedDescription)"
@@ -2117,6 +2124,12 @@ final class CatalogViewModel: ObservableObject {
         return "\(baseName) on GeForce NOW.gfnpc"
     }
 
+    private static func applyShortcutIcon(to url: URL) {
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let icon = NSImage(contentsOf: iconURL) else { return }
+        NSWorkspace.shared.setIcon(icon, forFile: url.path)
+    }
+
     private func requestSelectedGameReveal(for game: OPNCatalogGameObject, sectionId: String) {
         selectedGameRevealSequence += 1
         selectedGameRevealRequest = CatalogGameRevealRequest(sectionId: sectionId, gameIdentity: Self.identity(for: game), sequence: selectedGameRevealSequence)
@@ -2131,6 +2144,24 @@ final class CatalogViewModel: ObservableObject {
         }
         if let variantId = variant?.id, !variantId.isEmpty { return variantId }
         return identity(for: game)
+    }
+
+    private static func launchGame(from shortcut: GFNGameShortcut, title: String) -> OPNCatalogGameObject? {
+        let cmsId = shortcut.cmsId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPositiveInteger(cmsId) else { return nil }
+        let game = OPNCatalogGameObject()
+        game.id = shortcut.parentGameId.isEmpty ? cmsId : shortcut.parentGameId
+        game.uuid = game.id
+        game.launchAppId = cmsId
+        game.title = title.isEmpty ? "GeForce NOW" : title
+        game.shortName = shortcut.shortName
+        game.isInLibrary = true
+        let variant = OPNCatalogGameVariantObject()
+        variant.id = cmsId
+        variant.inLibrary = true
+        variant.librarySelected = true
+        game.variants = [variant]
+        return game
     }
 
     private static func isPositiveInteger(_ value: String) -> Bool {

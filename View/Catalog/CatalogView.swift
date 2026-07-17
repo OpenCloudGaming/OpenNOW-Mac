@@ -3531,7 +3531,9 @@ private struct GameDetailPanel: View {
             .fixedSize()
 
             Menu {
-                Button("Change game store") { viewModel.changeSelectedGameStore() }
+                if game.variants.count > 1 {
+                    Button("Change game store") { viewModel.changeSelectedGameStore() }
+                }
                 Button("Share") { viewModel.shareSelectedGame() }
                 Button("Add shortcut") { viewModel.addShortcutForSelectedGame() }
                 if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {

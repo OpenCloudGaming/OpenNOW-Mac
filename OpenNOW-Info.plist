@@ -19,6 +19,8 @@
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeIconFile</key>
+			<string>AppIcon</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>gfnpc</string>
