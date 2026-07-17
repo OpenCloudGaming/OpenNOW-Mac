@@ -96,7 +96,7 @@ public final class OPNGameLaunchBridge {
         let title = game.title.isEmpty ? "GeForce NOW" : game.title
         let accountLinked = game.isInLibrary || selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true
         let selectedStore = selectedVariant?.appStore ?? ""
-        let launchMetadata = Self.launchMetadata(for: game, userId: userId, idpId: idpId)
+        let launchMetadata = Self.launchMetadata(for: game, selectedVariant: selectedVariant, userId: userId, idpId: idpId)
         let replacement = OPNStreamLaunchConfiguration(
             title: title,
             appId: appId,
@@ -177,7 +177,7 @@ public final class OPNGameLaunchBridge {
         return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
     }
 
-    private static func launchMetadata(for game: OPNCatalogGameObject, userId: String = "", idpId: String = "") -> [String: String] {
+    private static func launchMetadata(for game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject? = nil, userId: String = "", idpId: String = "") -> [String: String] {
         var imageUrls: [String] = []
         var seen = Set<String>()
 
@@ -204,6 +204,12 @@ public final class OPNGameLaunchBridge {
         var metadata: [String: String] = [:]
         if !userId.isEmpty { metadata["userId"] = userId }
         if !idpId.isEmpty { metadata["idpId"] = idpId }
+        let selectedControls = selectedVariant?.supportedControls ?? []
+        let supportedControls = selectedControls.isEmpty ? game.supportedControls : selectedControls
+        if !supportedControls.isEmpty { metadata["supportedControls"] = supportedControls.joined(separator: ",") }
+        if !game.contentRatings.isEmpty { metadata["contentRating"] = game.contentRatings.joined(separator: ",") }
+        if game.displaysOwnRatingDuringGameplay { metadata["gameDisplayOwnRating"] = "true" }
+        if let selectedVariant, !selectedVariant.appStore.isEmpty { metadata["storeName"] = selectedVariant.appStore }
         if !imageUrls.isEmpty { metadata["loadingScreenshotUrls"] = imageUrls.joined(separator: "\n") }
         return metadata
     }

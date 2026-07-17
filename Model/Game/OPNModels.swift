@@ -27,11 +27,27 @@ public struct OPNSubscriptionInfo: Equatable, Sendable {
 
 public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var id = ""
+    public var shortName = ""
     public var appStore = ""
     public var appStoreLabel = ""
     public var appStoreSmallImageUrl = ""
     public var storeUrl = ""
+    public var developerName = ""
+    public var publisherName = ""
+    public var releaseDate = ""
+    public var supportedControls: [String] = []
     public var serviceStatus = ""
+    public var libraryStatus = ""
+    public var libraryPlayStatus = ""
+    public var libraryInstalled = false
+    public var librarySubscription = ""
+    public var subscriptionIds: [String] = []
+    public var paymentModelTypes: [String] = []
+    public var minimumSizeInBytes = 0
+    public var cloudSaveSupported = false
+    public var installTimeInMinutes = 0
+    public var supportedLanguages: [String] = []
+    public var gfnFeatureLabels: [String] = []
     public var isPatching = false
     public var librarySelected = false
     public var inLibrary = false
@@ -116,6 +132,7 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var promoTag = ""
     public var campaignIds: [String] = []
     public var skuTags: [String] = []
+    public var displaysOwnRatingDuringGameplay = false
     public var isInLibrary = false
     public var isPatching = false
     public var variants: [OPNGameVariant] = []
@@ -299,11 +316,27 @@ public struct OPNFeaturedGamesResult: Equatable, Sendable {
 @objcMembers
 public final class OPNCatalogGameVariantObject: NSObject {
     public var id: String
+    public var shortName: String
     public var appStore: String
     public var appStoreLabel: String
     public var appStoreSmallImageUrl: String
     public var storeUrl: String
+    public var developerName: String
+    public var publisherName: String
+    public var releaseDate: String
+    public var supportedControls: [String]
     public var serviceStatus: String
+    public var libraryStatus: String
+    public var libraryPlayStatus: String
+    public var libraryInstalled: Bool
+    public var librarySubscription: String
+    public var subscriptionIds: [String]
+    public var paymentModelTypes: [String]
+    public var minimumSizeInBytes: Int
+    public var cloudSaveSupported: Bool
+    public var installTimeInMinutes: Int
+    public var supportedLanguages: [String]
+    public var gfnFeatureLabels: [String]
     public var isPatching: Bool
     public var librarySelected: Bool
     public var inLibrary: Bool
@@ -314,11 +347,27 @@ public final class OPNCatalogGameVariantObject: NSObject {
 
     public init(variant: OPNGameVariant) {
         id = variant.id
+        shortName = variant.shortName
         appStore = variant.appStore
         appStoreLabel = variant.appStoreLabel
         appStoreSmallImageUrl = variant.appStoreSmallImageUrl
         storeUrl = variant.storeUrl
+        developerName = variant.developerName
+        publisherName = variant.publisherName
+        releaseDate = variant.releaseDate
+        supportedControls = variant.supportedControls
         serviceStatus = variant.serviceStatus
+        libraryStatus = variant.libraryStatus
+        libraryPlayStatus = variant.libraryPlayStatus
+        libraryInstalled = variant.libraryInstalled
+        librarySubscription = variant.librarySubscription
+        subscriptionIds = variant.subscriptionIds
+        paymentModelTypes = variant.paymentModelTypes
+        minimumSizeInBytes = variant.minimumSizeInBytes
+        cloudSaveSupported = variant.cloudSaveSupported
+        installTimeInMinutes = variant.installTimeInMinutes
+        supportedLanguages = variant.supportedLanguages
+        gfnFeatureLabels = variant.gfnFeatureLabels
         isPatching = variant.isPatching
         librarySelected = variant.librarySelected
         inLibrary = variant.inLibrary
@@ -328,11 +377,27 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var swiftValue: OPNGameVariant {
         OPNGameVariant(
             id: id,
+            shortName: shortName,
             appStore: appStore,
             appStoreLabel: appStoreLabel,
             appStoreSmallImageUrl: appStoreSmallImageUrl,
             storeUrl: storeUrl,
+            developerName: developerName,
+            publisherName: publisherName,
+            releaseDate: releaseDate,
+            supportedControls: supportedControls,
             serviceStatus: serviceStatus,
+            libraryStatus: libraryStatus,
+            libraryPlayStatus: libraryPlayStatus,
+            libraryInstalled: libraryInstalled,
+            librarySubscription: librarySubscription,
+            subscriptionIds: subscriptionIds,
+            paymentModelTypes: paymentModelTypes,
+            minimumSizeInBytes: minimumSizeInBytes,
+            cloudSaveSupported: cloudSaveSupported,
+            installTimeInMinutes: installTimeInMinutes,
+            supportedLanguages: supportedLanguages,
+            gfnFeatureLabels: gfnFeatureLabels,
             isPatching: isPatching,
             librarySelected: librarySelected,
             inLibrary: inLibrary
@@ -378,6 +443,7 @@ public final class OPNCatalogGameObject: NSObject {
     public var promoTag: String
     public var campaignIds: [String]
     public var skuTags: [String]
+    public var displaysOwnRatingDuringGameplay: Bool
     public var isInLibrary: Bool
     public var isPatching: Bool
     public var variants: [OPNCatalogGameVariantObject]
@@ -422,6 +488,7 @@ public final class OPNCatalogGameObject: NSObject {
         promoTag = game.promoTag
         campaignIds = game.campaignIds
         skuTags = game.skuTags
+        displaysOwnRatingDuringGameplay = game.displaysOwnRatingDuringGameplay
         isInLibrary = game.isInLibrary
         isPatching = game.isPatching
         variants = game.variants.map(OPNCatalogGameVariantObject.init)
@@ -465,6 +532,7 @@ public final class OPNCatalogGameObject: NSObject {
         game.promoTag = promoTag
         game.campaignIds = campaignIds
         game.skuTags = skuTags
+        game.displaysOwnRatingDuringGameplay = displaysOwnRatingDuringGameplay
         game.isInLibrary = isInLibrary
         game.isPatching = isPatching
         game.variants = variants.map(\.swiftValue)

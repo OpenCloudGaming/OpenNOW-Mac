@@ -891,6 +891,7 @@ final class OPNGameService: @unchecked Sendable {
                 if merged.ratingInteractiveElements.isEmpty { merged.ratingInteractiveElements = metadataGame.ratingInteractiveElements }
                 if merged.ratingImageUrl.isEmpty { merged.ratingImageUrl = metadataGame.ratingImageUrl }
                 if merged.nvidiaTech.isEmpty { merged.nvidiaTech = metadataGame.nvidiaTech }
+                if !merged.displaysOwnRatingDuringGameplay { merged.displaysOwnRatingDuringGameplay = metadataGame.displaysOwnRatingDuringGameplay }
                 return merged
             }
             self.fetchCampaignPromoTags(vpcId: vpcId, locale: Self.currentGFNCatalogLocale()) { tagsByCampaignId in
@@ -992,6 +993,7 @@ final class OPNGameService: @unchecked Sendable {
         game.releaseDate = firstSafeString(app, keys: ["streetDate", "releaseDate", "releasedAt"]) ?? ""
         game.maxLocalPlayers = safeInt(app["maxLocalPlayers"])
         game.maxOnlinePlayers = safeInt(app["maxOnlinePlayers"])
+        game.displaysOwnRatingDuringGameplay = safeBool(app["displaysOwnRatingDuringGameplay"])
         appendStringValues(&game.supportedControls, app["supportedControls"])
         assignContentRatings(app["contentRatings"], to: &game)
         game.nvidiaTech = parseFeatureFlags(app["nvidiaTech"])
@@ -1042,8 +1044,17 @@ final class OPNGameService: @unchecked Sendable {
             for item in variants {
                 var variant = OPNGameVariant()
                 variant.id = safeString(item["id"]) ?? ""
+                variant.shortName = safeString(item["shortName"]) ?? ""
                 variant.appStore = Self.normalizedVariantAppStore(safeString(item["appStore"]) ?? "")
                 variant.storeUrl = safeString(item["storeUrl"]) ?? ""
+                variant.developerName = safeString(item["developerName"]) ?? ""
+                variant.publisherName = safeString(item["publisherName"]) ?? ""
+                variant.releaseDate = firstSafeString(item, keys: ["streetDate", "releaseDate", "releasedAt"]) ?? ""
+                appendStringValues(&variant.supportedControls, item["supportedControls"])
+                appendStringValues(&variant.subscriptionIds, item["subscriptions"])
+                variant.paymentModelTypes = parsePaymentModelTypes(item["paymentModels"])
+                variant.minimumSizeInBytes = safeInt(item["minimumSizeInBytes"])
+                variant.cloudSaveSupported = safeBool(item["cloudSaveSupported"])
                 if let appStoreInfo = item["appStoreInfo"] as? NSDictionary {
                     variant.appStoreLabel = safeString(appStoreInfo["label"]) ?? ""
                     variant.appStoreSmallImageUrl = safeString(appStoreInfo["smallImageUrl"]) ?? ""
@@ -1051,8 +1062,15 @@ final class OPNGameService: @unchecked Sendable {
                 if let gfn = item["gfn"] as? NSDictionary {
                     variant.serviceStatus = safeString(gfn["status"]) ?? ""
                     variant.isPatching = isAppPatchingStatus(gfn["status"]) || isAppPatchingStatus(gfn["playabilityState"]) || isAppPatchingStatus(gfn["stateDetails"])
+                    variant.installTimeInMinutes = safeInt(gfn["installTimeInMinutes"])
+                    variant.supportedLanguages = parseSupportedLanguages(gfn["supportedLanguages"])
+                    variant.gfnFeatureLabels = parseGfnFeatureLabels(gfn["features"])
                     if let library = gfn["library"] as? NSDictionary {
                         let libraryStatus = firstSafeString(library, keys: ["status"]) ?? ""
+                        variant.libraryStatus = libraryStatus
+                        variant.libraryPlayStatus = safeString(library["playStatus"]) ?? ""
+                        variant.libraryInstalled = safeBool(library["installed"])
+                        variant.librarySubscription = safeString(library["subscription"]) ?? ""
                         variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
                         variant.isPatching = variant.isPatching || isAppPatchingStatus(library["status"])
                         variant.librarySelected = safeBool(library["selected"])
@@ -1546,6 +1564,37 @@ final class OPNGameService: @unchecked Sendable {
         return values.map(readableMetadataLabel)
     }
 
+    private func parsePaymentModelTypes(_ rawValue: Any?) -> [String] {
+        var values: [String] = []
+        for item in rawValue as? [Any] ?? [] {
+            if let text = item as? String { appendUnique(&values, text) }
+            if let dictionary = item as? NSDictionary { appendUnique(&values, safeString(dictionary["__typename"]) ?? "") }
+        }
+        return values
+    }
+
+    private func parseSupportedLanguages(_ rawValue: Any?) -> [String] {
+        var values: [String] = []
+        for item in rawValue as? [Any] ?? [] {
+            if let text = item as? String { appendUnique(&values, text) }
+            if let dictionary = item as? NSDictionary { appendUnique(&values, safeString(dictionary["language"]) ?? "") }
+        }
+        return values
+    }
+
+    private func parseGfnFeatureLabels(_ rawValue: Any?) -> [String] {
+        var values: [String] = []
+        for item in rawValue as? [Any] ?? [] {
+            if let text = item as? String { appendUnique(&values, readableMetadataLabel(text)) }
+            guard let dictionary = item as? NSDictionary else { continue }
+            let key = safeString(dictionary["key"]) ?? safeString(dictionary["__typename"]) ?? ""
+            if !key.isEmpty { appendUnique(&values, readableMetadataLabel(key)) }
+            appendStringValues(&values, dictionary["values"])
+            appendStringValues(&values, dictionary["value"])
+        }
+        return values
+    }
+
     private func parseRatingMetadata(_ dictionary: NSDictionary?) -> RatingMetadata {
         var metadata = RatingMetadata()
         for entry in dictionary?["ratings"] as? [NSDictionary] ?? [] {
@@ -1638,10 +1687,26 @@ final class OPNGameService: @unchecked Sendable {
     private func mergeVariantFromSameStore(target: inout OPNGameVariant, source: OPNGameVariant) -> Bool {
         var changed = false
         if !source.id.isEmpty, target.id.isEmpty || (!target.librarySelected && source.librarySelected) { target.id = source.id; changed = true }
+        if target.shortName.isEmpty, !source.shortName.isEmpty { target.shortName = source.shortName; changed = true }
         if target.appStoreLabel.isEmpty, !source.appStoreLabel.isEmpty { target.appStoreLabel = source.appStoreLabel; changed = true }
         if target.appStoreSmallImageUrl.isEmpty, !source.appStoreSmallImageUrl.isEmpty { target.appStoreSmallImageUrl = source.appStoreSmallImageUrl; changed = true }
         if target.storeUrl.isEmpty, !source.storeUrl.isEmpty { target.storeUrl = source.storeUrl; changed = true }
+        if target.developerName.isEmpty, !source.developerName.isEmpty { target.developerName = source.developerName; changed = true }
+        if target.publisherName.isEmpty, !source.publisherName.isEmpty { target.publisherName = source.publisherName; changed = true }
+        if target.releaseDate.isEmpty, !source.releaseDate.isEmpty { target.releaseDate = source.releaseDate; changed = true }
+        if target.supportedControls.isEmpty, !source.supportedControls.isEmpty { target.supportedControls = source.supportedControls; changed = true }
         if !source.serviceStatus.isEmpty, target.serviceStatus.isEmpty || (!target.librarySelected && source.librarySelected) { target.serviceStatus = source.serviceStatus; changed = true }
+        if target.libraryStatus.isEmpty, !source.libraryStatus.isEmpty { target.libraryStatus = source.libraryStatus; changed = true }
+        if target.libraryPlayStatus.isEmpty, !source.libraryPlayStatus.isEmpty { target.libraryPlayStatus = source.libraryPlayStatus; changed = true }
+        if !target.libraryInstalled, source.libraryInstalled { target.libraryInstalled = true; changed = true }
+        if target.librarySubscription.isEmpty, !source.librarySubscription.isEmpty { target.librarySubscription = source.librarySubscription; changed = true }
+        if target.subscriptionIds.isEmpty, !source.subscriptionIds.isEmpty { target.subscriptionIds = source.subscriptionIds; changed = true }
+        if target.paymentModelTypes.isEmpty, !source.paymentModelTypes.isEmpty { target.paymentModelTypes = source.paymentModelTypes; changed = true }
+        if target.minimumSizeInBytes <= 0, source.minimumSizeInBytes > 0 { target.minimumSizeInBytes = source.minimumSizeInBytes; changed = true }
+        if !target.cloudSaveSupported, source.cloudSaveSupported { target.cloudSaveSupported = true; changed = true }
+        if target.installTimeInMinutes <= 0, source.installTimeInMinutes > 0 { target.installTimeInMinutes = source.installTimeInMinutes; changed = true }
+        if target.supportedLanguages.isEmpty, !source.supportedLanguages.isEmpty { target.supportedLanguages = source.supportedLanguages; changed = true }
+        if target.gfnFeatureLabels.isEmpty, !source.gfnFeatureLabels.isEmpty { target.gfnFeatureLabels = source.gfnFeatureLabels; changed = true }
         if !target.librarySelected, source.librarySelected { target.librarySelected = true; changed = true }
         if !target.inLibrary, source.inLibrary { target.inLibrary = true; changed = true }
         return changed
@@ -1649,15 +1714,32 @@ final class OPNGameService: @unchecked Sendable {
 
     private func mergeMissingStoreMetadata(target: inout OPNGameInfo, metadata: OPNGameInfo) {
         if target.launchAppId.isEmpty { target.launchAppId = metadata.launchAppId }
+        if !target.displaysOwnRatingDuringGameplay { target.displaysOwnRatingDuringGameplay = metadata.displaysOwnRatingDuringGameplay }
         for store in metadata.availableStores where !target.availableStores.contains(where: { $0.caseInsensitiveCompare(store) == .orderedSame }) { target.availableStores.append(store) }
         for metadataVariant in metadata.variants {
             if let index = target.variants.firstIndex(where: { variantMatchesStoreMetadata(target: $0, metadata: metadataVariant) }) {
                 if target.variants[index].id.isEmpty { target.variants[index].id = metadataVariant.id }
+                if target.variants[index].shortName.isEmpty { target.variants[index].shortName = metadataVariant.shortName }
                 if target.variants[index].appStore.isEmpty { target.variants[index].appStore = metadataVariant.appStore }
                 if target.variants[index].appStoreLabel.isEmpty { target.variants[index].appStoreLabel = metadataVariant.appStoreLabel }
                 if target.variants[index].appStoreSmallImageUrl.isEmpty { target.variants[index].appStoreSmallImageUrl = metadataVariant.appStoreSmallImageUrl }
                 if target.variants[index].storeUrl.isEmpty { target.variants[index].storeUrl = metadataVariant.storeUrl }
+                if target.variants[index].developerName.isEmpty { target.variants[index].developerName = metadataVariant.developerName }
+                if target.variants[index].publisherName.isEmpty { target.variants[index].publisherName = metadataVariant.publisherName }
+                if target.variants[index].releaseDate.isEmpty { target.variants[index].releaseDate = metadataVariant.releaseDate }
+                if target.variants[index].supportedControls.isEmpty { target.variants[index].supportedControls = metadataVariant.supportedControls }
                 if target.variants[index].serviceStatus.isEmpty { target.variants[index].serviceStatus = metadataVariant.serviceStatus }
+                if target.variants[index].libraryStatus.isEmpty { target.variants[index].libraryStatus = metadataVariant.libraryStatus }
+                if target.variants[index].libraryPlayStatus.isEmpty { target.variants[index].libraryPlayStatus = metadataVariant.libraryPlayStatus }
+                if !target.variants[index].libraryInstalled { target.variants[index].libraryInstalled = metadataVariant.libraryInstalled }
+                if target.variants[index].librarySubscription.isEmpty { target.variants[index].librarySubscription = metadataVariant.librarySubscription }
+                if target.variants[index].subscriptionIds.isEmpty { target.variants[index].subscriptionIds = metadataVariant.subscriptionIds }
+                if target.variants[index].paymentModelTypes.isEmpty { target.variants[index].paymentModelTypes = metadataVariant.paymentModelTypes }
+                if target.variants[index].minimumSizeInBytes <= 0 { target.variants[index].minimumSizeInBytes = metadataVariant.minimumSizeInBytes }
+                if !target.variants[index].cloudSaveSupported { target.variants[index].cloudSaveSupported = metadataVariant.cloudSaveSupported }
+                if target.variants[index].installTimeInMinutes <= 0 { target.variants[index].installTimeInMinutes = metadataVariant.installTimeInMinutes }
+                if target.variants[index].supportedLanguages.isEmpty { target.variants[index].supportedLanguages = metadataVariant.supportedLanguages }
+                if target.variants[index].gfnFeatureLabels.isEmpty { target.variants[index].gfnFeatureLabels = metadataVariant.gfnFeatureLabels }
                 if !target.variants[index].librarySelected { target.variants[index].librarySelected = metadataVariant.librarySelected }
                 if !target.variants[index].inLibrary { target.variants[index].inLibrary = metadataVariant.inLibrary }
             } else if !metadataVariant.appStore.isEmpty {

@@ -307,6 +307,67 @@ import Foundation
     #expect(roundTrip.variants.first?.isPatching == true)
 }
 
+@Test func catalogBrowsePreservesVendorVariantMetadata() async {
+        await networkTestIsolationLock.withLock {
+        let host = "*"
+        let token = "catalog-vendor-metadata-token-\(UUID().uuidString)"
+        _ = OPNGameDataCache.shared.clearAllCaches()
+        OPNGameServiceSwiftAdapter.setAccessToken(token)
+        OPNGameServiceSwiftAdapter.setUserId("catalog-vendor-metadata-user")
+        SessionManagerURLProtocol.install(host: host) { request in
+            if request.url?.host == "prod.cloudmatchbeta.nvidiagrid.net" {
+                return SessionManagerURLProtocol.response(json: ["requestStatus": ["serverId": "GFN-PC"]])
+            }
+            let body = SessionManagerURLProtocol.bodyData(from: request).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let query = body["query"] as? String ?? ""
+            let variables = body["variables"] as? [String: Any] ?? [:]
+            if query.contains("filterGroupDefinitions") {
+                return SessionManagerURLProtocol.response(json: ["data": ["filterGroupDefinitions": [], "sortOrderDefinitions": [["id": "a_to_z", "label": "A-Z", "orderBy": "sortName:ASC"]]]])
+            }
+            if query.contains("campaigns") || query.contains("ratingDefinitions") {
+                return SessionManagerURLProtocol.response(json: ["data": [:]])
+            }
+            if variables["appIds"] != nil {
+                return SessionManagerURLProtocol.response(json: ["data": ["apps": ["items": [catalogGraphQLGame(id: "vendor-game", libraryStatus: "PLATFORM_SYNC", librarySelected: true, variantId: "123456")]]]])
+            }
+            return SessionManagerURLProtocol.response(json: ["data": ["apps": [
+                "numberReturned": 1,
+                "numberSupported": 1,
+                "pageInfo": ["hasNextPage": false, "endCursor": "", "totalCount": 1],
+                "items": [catalogGraphQLGame(id: "vendor-game", libraryStatus: "PLATFORM_SYNC", librarySelected: true, variantId: "123456")],
+            ]]])
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let result = await withCheckedContinuation { continuation in
+            OPNGameServiceSwiftAdapter.browseCatalogObject(searchQuery: "", sortId: "", filterIds: [], fetchCount: 24, forceRefresh: true) { success, browseResult, error in
+                continuation.resume(returning: (success, browseResult.games.first?.swiftValue, error))
+            }
+        }
+
+        let game = result.1
+        #expect(result.0 == true)
+        #expect(result.2.isEmpty)
+        #expect(game?.displaysOwnRatingDuringGameplay == true)
+        #expect(game?.supportedControls == ["KEYBOARD_MOUSE"])
+        #expect(game?.ratingCategoryKey == "TEEN")
+        let variant = game?.variants.first
+        #expect(variant?.shortName == "vendor-short")
+        #expect(variant?.supportedControls == ["GAMEPAD"])
+        #expect(variant?.libraryStatus == "PLATFORM_SYNC")
+        #expect(variant?.libraryPlayStatus == "PLAYABLE")
+        #expect(variant?.libraryInstalled == true)
+        #expect(variant?.librarySubscription == "GFN_PREMIUM")
+        #expect(variant?.subscriptionIds == ["sub-ultimate"])
+        #expect(variant?.paymentModelTypes == ["IncludedWithSubscription"])
+        #expect(variant?.minimumSizeInBytes == 42_000_000)
+        #expect(variant?.cloudSaveSupported == true)
+        #expect(variant?.installTimeInMinutes == 7)
+        #expect(variant?.supportedLanguages == ["en_US"])
+        #expect(variant?.gfnFeatureLabels.contains("Ray Tracing") == true)
+    }
+}
+
 @Test func panelSectionPreservesSeeMoreCatalogParameters() async {
         await networkTestIsolationLock.withLock {
         let host = "*"
@@ -900,14 +961,38 @@ private func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus:
     [
         "id": id,
         "title": title ?? "Catalog Game \(id)",
+        "shortName": "vendor-title",
+        "developerName": "Vendor Developer",
+        "publisherName": "Vendor Publisher",
+        "maxLocalPlayers": 4,
+        "maxOnlinePlayers": 8,
+        "supportedControls": ["KEYBOARD_MOUSE"],
+        "displaysOwnRatingDuringGameplay": true,
+        "genres": ["ACTION"],
+        "contentRatings": [["categoryKey": "TEEN", "contentDescriptorKeys": ["VIOLENCE"], "interactiveElementKeys": ["USERS_INTERACT"], "type": "ESRB"]],
         "images": ["TV_BANNER": ["https://assets.example.invalid/\(id).jpg"]],
         "variants": [[
             "id": variantId ?? "1\(abs(id.hashValue % 1_000_000))",
+            "shortName": "vendor-short",
             "appStore": appStore,
             "storeUrl": "https://store.example.invalid/\(id)",
-            "gfn": ["status": "AVAILABLE", "library": ["status": libraryStatus, "selected": librarySelected]],
+            "developerName": "Variant Developer",
+            "publisherName": "Variant Publisher",
+            "streetDate": "2026-07-17",
+            "supportedControls": ["GAMEPAD"],
+            "subscriptions": ["sub-ultimate"],
+            "paymentModels": [["__typename": "IncludedWithSubscription"]],
+            "minimumSizeInBytes": 42_000_000,
+            "cloudSaveSupported": true,
+            "gfn": [
+                "status": "AVAILABLE",
+                "installTimeInMinutes": 7,
+                "supportedLanguages": [["language": "en_US"]],
+                "features": [["__typename": "GfnSubscriptionFeatureValue", "key": "RAY_TRACING", "value": "SUPPORTED"]],
+                "library": ["status": libraryStatus, "selected": librarySelected, "playStatus": "PLAYABLE", "installed": true, "subscription": "GFN_PREMIUM"],
+            ],
         ]],
-        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free"],
+        "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free", "playType": "FULL_GAME"],
         "itemMetadata": ["campaignIds": []],
     ]
 }

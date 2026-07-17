@@ -3853,7 +3853,7 @@ private struct GameDetailPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             CatalogDetailRow(label: "Publisher", value: game.publisherName)
             CatalogDetailRow(label: "Developer", value: game.developerName)
-            CatalogDetailRow(label: "Input", value: inputLine(game: game))
+            CatalogDetailRow(label: "Input", value: inputLine(game: game, selectedVariant: selectedVariant))
             CatalogDetailRow(label: "Players", value: playerLine(game: game))
             CatalogDetailRow(label: "Release Date", value: releaseDateLine(game: game))
             CatalogDetailRow(label: "Stores", value: game.storeLine)
@@ -3871,9 +3871,10 @@ private struct GameDetailPanel: View {
         return value
     }
 
-    private func inputLine(game: OPNCatalogGameObject) -> String {
+    private func inputLine(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?) -> String {
         var labels: [String] = []
-        for control in game.supportedControls { appendUnique(readableControlLabel(control), to: &labels) }
+        let controls = selectedVariant?.supportedControls.isEmpty == false ? selectedVariant?.supportedControls ?? [] : game.supportedControls
+        for control in controls { appendUnique(readableControlLabel(control), to: &labels) }
         return labels.joined(separator: ", ")
     }
 
@@ -4670,8 +4671,15 @@ extension OPNCatalogGameObject {
         values.append(contentsOf: campaignIds)
         values.append(contentsOf: skuTags)
         for variant in variants {
-            values.append(contentsOf: [variant.id, variant.appStore, variant.appStoreLabel, variant.serviceStatus])
+            values.append(contentsOf: [variant.id, variant.shortName, variant.appStore, variant.appStoreLabel, variant.serviceStatus, variant.libraryStatus, variant.libraryPlayStatus, variant.librarySubscription, variant.developerName, variant.publisherName, variant.releaseDate])
+            values.append(contentsOf: variant.supportedControls)
+            values.append(contentsOf: variant.subscriptionIds)
+            values.append(contentsOf: variant.paymentModelTypes)
+            values.append(contentsOf: variant.supportedLanguages)
+            values.append(contentsOf: variant.gfnFeatureLabels)
             if variant.inLibrary || variant.librarySelected { values.append("owned in library") }
+            if variant.libraryInstalled { values.append("installed") }
+            if variant.cloudSaveSupported { values.append("cloud saves") }
         }
         if isInLibrary { values.append("owned in library") }
         return values.joined(separator: " ").lowercased()

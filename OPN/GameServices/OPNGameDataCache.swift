@@ -6,7 +6,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     @objc(shared)
     static let shared = OPNGameDataCache()
 
-    private static let catalogCacheVersion = 8
+    private static let catalogCacheVersion = 9
     private static let catalogDefinitionsCacheVersion = "v2"
 
     private let rootPath: String
@@ -314,6 +314,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         putString(game.promoTag, key: "pr", into: &dictionary)
         putArray(game.campaignIds, key: "ci", into: &dictionary)
         putArray(game.skuTags, key: "sk", into: &dictionary)
+        if game.displaysOwnRatingDuringGameplay { dictionary["or"] = true }
         if game.isInLibrary { dictionary["il"] = true }
         if game.isPatching { dictionary["ip"] = true }
         if !game.variants.isEmpty { dictionary["z"] = game.variants.map(variantDictionary) }
@@ -358,6 +359,7 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         game.promoTag = dictionary["pr"] as? String ?? ""
         game.campaignIds = dictionary["ci"] as? [String] ?? []
         game.skuTags = dictionary["sk"] as? [String] ?? []
+        game.displaysOwnRatingDuringGameplay = (dictionary["or"] as? NSNumber)?.boolValue ?? false
         game.isInLibrary = (dictionary["il"] as? NSNumber)?.boolValue ?? false
         game.isPatching = (dictionary["ip"] as? NSNumber)?.boolValue ?? false
         game.variants = (dictionary["z"] as? [Any] ?? []).map(gameVariant)
@@ -367,11 +369,27 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
     private func variantDictionary(_ variant: OPNGameVariant) -> [String: Any] {
         var dictionary: [String: Any] = [:]
         putString(variant.id, key: "i", into: &dictionary)
+        putString(variant.shortName, key: "h", into: &dictionary)
         putString(variant.appStore, key: "s", into: &dictionary)
         putString(variant.appStoreLabel, key: "n", into: &dictionary)
         putString(variant.appStoreSmallImageUrl, key: "m", into: &dictionary)
         putString(variant.storeUrl, key: "u", into: &dictionary)
+        putString(variant.developerName, key: "d", into: &dictionary)
+        putString(variant.publisherName, key: "r", into: &dictionary)
+        putString(variant.releaseDate, key: "e", into: &dictionary)
+        putArray(variant.supportedControls, key: "c", into: &dictionary)
         putString(variant.serviceStatus, key: "t", into: &dictionary)
+        putString(variant.libraryStatus, key: "ls", into: &dictionary)
+        putString(variant.libraryPlayStatus, key: "lp", into: &dictionary)
+        if variant.libraryInstalled { dictionary["li"] = true }
+        putString(variant.librarySubscription, key: "lb", into: &dictionary)
+        putArray(variant.subscriptionIds, key: "sb", into: &dictionary)
+        putArray(variant.paymentModelTypes, key: "pm", into: &dictionary)
+        if variant.minimumSizeInBytes > 0 { dictionary["ms"] = variant.minimumSizeInBytes }
+        if variant.cloudSaveSupported { dictionary["cs"] = true }
+        if variant.installTimeInMinutes > 0 { dictionary["it"] = variant.installTimeInMinutes }
+        putArray(variant.supportedLanguages, key: "sl", into: &dictionary)
+        putArray(variant.gfnFeatureLabels, key: "gf", into: &dictionary)
         if variant.isPatching { dictionary["p"] = true }
         if variant.librarySelected { dictionary["l"] = true }
         if variant.inLibrary { dictionary["b"] = true }
@@ -382,11 +400,27 @@ final class OPNGameDataCache: NSObject, @unchecked Sendable {
         let dictionary = value as? [String: Any] ?? [:]
         return OPNGameVariant(
             id: dictionary["i"] as? String ?? "",
+            shortName: dictionary["h"] as? String ?? "",
             appStore: dictionary["s"] as? String ?? "",
             appStoreLabel: dictionary["n"] as? String ?? "",
             appStoreSmallImageUrl: dictionary["m"] as? String ?? "",
             storeUrl: dictionary["u"] as? String ?? "",
+            developerName: dictionary["d"] as? String ?? "",
+            publisherName: dictionary["r"] as? String ?? "",
+            releaseDate: dictionary["e"] as? String ?? "",
+            supportedControls: dictionary["c"] as? [String] ?? [],
             serviceStatus: dictionary["t"] as? String ?? "",
+            libraryStatus: dictionary["ls"] as? String ?? "",
+            libraryPlayStatus: dictionary["lp"] as? String ?? "",
+            libraryInstalled: (dictionary["li"] as? NSNumber)?.boolValue ?? false,
+            librarySubscription: dictionary["lb"] as? String ?? "",
+            subscriptionIds: dictionary["sb"] as? [String] ?? [],
+            paymentModelTypes: dictionary["pm"] as? [String] ?? [],
+            minimumSizeInBytes: (dictionary["ms"] as? NSNumber)?.intValue ?? 0,
+            cloudSaveSupported: (dictionary["cs"] as? NSNumber)?.boolValue ?? false,
+            installTimeInMinutes: (dictionary["it"] as? NSNumber)?.intValue ?? 0,
+            supportedLanguages: dictionary["sl"] as? [String] ?? [],
+            gfnFeatureLabels: dictionary["gf"] as? [String] ?? [],
             isPatching: (dictionary["p"] as? NSNumber)?.boolValue ?? false,
             librarySelected: (dictionary["l"] as? NSNumber)?.boolValue ?? false,
             inLibrary: (dictionary["b"] as? NSNumber)?.boolValue ?? false
