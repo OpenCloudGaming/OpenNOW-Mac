@@ -88,6 +88,25 @@ import Testing
         }
     }
 
+    @Test func streamTransportSelectionSurvivesQualityProfileChanges() {
+        withPreservedPreferences(streamingProfileKeys) {
+            OPNStreamPreferences.restoreStreamingProfileDefaults()
+
+            OPNStreamPreferences.saveTransportModeIndex(1)
+            OPNStreamPreferences.saveStreamingQualityProfileIndex(3)
+
+            var profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.streamingQualityProfileIndex == 3)
+            #expect(profile.transportMode.value == "nvst")
+            #expect(profile.transportMode.label == "Native/NVST")
+
+            OPNStreamPreferences.saveStreamingQualityProfileIndex(4)
+            profile = OPNStreamPreferences.loadProfile()
+            #expect(profile.streamingQualityProfileIndex == 4)
+            #expect(profile.transportMode.value == "nvst")
+        }
+    }
+
     @Test func cinematicQualityProfileAppliesHighQualityPreset() {
         withPreservedPreferences(streamingProfileKeys) {
             OPNStreamPreferences.restoreStreamingProfileDefaults()

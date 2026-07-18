@@ -325,7 +325,7 @@ public enum OPNStreamPreferences {
     ]
     public static let transportModeOptions = [
         OPNStreamTransportModeOption(label: "WebRTC", value: "webrtc"),
-        OPNStreamTransportModeOption(label: "NVST", value: "nvst")
+        OPNStreamTransportModeOption(label: "Native/NVST", value: "nvst")
     ]
     public static let streamingQualityProfileOptions = [
         OPNStreamQualityProfileOption(label: "Custom", value: 0),
@@ -375,7 +375,6 @@ public enum OPNStreamPreferences {
         let codecIndex: Int
         let bitrateIndex: Int
         let colorQualityIndex: Int
-        let transportModeIndex: Int
         let cloudGsyncEnabled: Bool
         let fallbackToLogicalResolution: Bool
         let hudStreamingModeIndex: Int
@@ -1113,13 +1112,13 @@ public enum OPNStreamPreferences {
     private static func streamingQualityPreset(for index: Int) -> StreamingQualityPreset? {
         switch index {
         case 1:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 1, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: false)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 1, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: false)
         case 2:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 2, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: true, hdrEnabled: false, powerSaverEnabled: false)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 2, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: true, hdrEnabled: false, powerSaverEnabled: false)
         case 3:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 0, fpsIndex: 0, codecIndex: 0, bitrateIndex: 0, colorQualityIndex: 0, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: true)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 0, fpsIndex: 0, codecIndex: 0, bitrateIndex: 0, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: true)
         case 4:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 5, fpsIndex: 1, codecIndex: 3, bitrateIndex: 3, colorQualityIndex: 2, transportModeIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 2, l4sEnabled: false, hdrEnabled: true, powerSaverEnabled: false)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 5, fpsIndex: 1, codecIndex: 3, bitrateIndex: 3, colorQualityIndex: 2, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 2, l4sEnabled: false, hdrEnabled: true, powerSaverEnabled: false)
         default:
             return nil
         }
@@ -1140,8 +1139,6 @@ public enum OPNStreamPreferences {
         profile.maxBitrateMbps = profile.bitrate.mbps
         profile.colorQualityIndex = clamp(preset.colorQualityIndex, 0, colorQualityOptions.count - 1)
         profile.colorQuality = colorQualityOptions[profile.colorQualityIndex]
-        profile.transportModeIndex = clamp(preset.transportModeIndex, 0, transportModeOptions.count - 1)
-        profile.transportMode = transportModeOptions[profile.transportModeIndex]
         profile.enableCloudGsync = preset.cloudGsyncEnabled
         profile.fallbackToLogicalResolution = preset.fallbackToLogicalResolution
         profile.hudStreamingModeIndex = clamp(preset.hudStreamingModeIndex, 0, hudStreamingModeOptions.count - 1)
@@ -1167,7 +1164,6 @@ public enum OPNStreamPreferences {
         storage.set(clamp(preset.codecIndex, 0, codecOptions.count - 1), forKey: k.codecIndex)
         storage.set(clamp(preset.bitrateIndex, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex)
         storage.set(clamp(preset.colorQualityIndex, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex)
-        storage.set(clamp(preset.transportModeIndex, 0, transportModeOptions.count - 1), forKey: k.transportModeIndex)
         storage.set(preset.cloudGsyncEnabled, forKey: k.cloudGsyncEnabled)
         storage.set(preset.fallbackToLogicalResolution, forKey: k.fallbackToLogicalResolution)
         storage.set(clamp(preset.hudStreamingModeIndex, 0, hudStreamingModeOptions.count - 1), forKey: k.hudStreamingModeIndex)

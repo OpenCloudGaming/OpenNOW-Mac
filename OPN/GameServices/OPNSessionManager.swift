@@ -70,7 +70,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "clientVersion": "30.0",
             "sdkVersion": "1.0",
             "streamerVersion": 1,
-            "clientPlatformName": "windows",
+            "clientPlatformName": sessionClientPlatformName(transportMode),
             "clientRequestMonitorSettings": [monitorSettings(effectiveSettings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
             "useOps": bool(effectiveSettings["useOps"], fallback: true),
             "audioMode": int(effectiveSettings["audioMode"], fallback: 2),
@@ -102,7 +102,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             completion(false, [:], "Failed to encode session create request")
             return
         }
-        guard var request = CloudMatchRequestFactory.createSessionRequest(baseURLString: baseUrl, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData) else {
+        let headers = CloudMatchClientHeaders.streamSession(transportMode: transportMode)
+        guard var request = CloudMatchRequestFactory.createSessionRequest(baseURLString: baseUrl, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
             completion(false, [:], "Invalid session create URL")
             return
         }
@@ -132,7 +133,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                     if self.isReadyActiveSessionStatus(int(selected["status"])) {
                         self.claimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), appId: string(selected["appId"]).isEmpty ? launchAppId.stringValue : string(selected["appId"]), settings: createEffectiveSettings, recoveryMode: true, completion: createCompletion)
                     } else {
-                        self.pollClaimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), deviceId: deviceId, clientId: clientId, initialProfile: [:], completion: createCompletion)
+                        self.pollClaimSession(sessionId: string(selected["sessionId"]), serverIp: string(selected["serverIp"]), deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: [:], completion: createCompletion)
                     }
                     return
                 }
@@ -342,7 +343,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let clientId = UUID().uuidString.lowercased()
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        guard var validationRequest = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, timeoutInterval: 30) else {
+        let headers = CloudMatchClientHeaders.streamSession(transportMode: streamTransportMode(settings))
+        guard var validationRequest = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, timeoutInterval: 30, headers: headers) else {
             completion(false, [:], "Invalid validation URL")
             return
         }
@@ -410,7 +412,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 "clientVersion": "30.0",
                 "deviceHashId": deviceId,
                 "internalTitle": NSNull(),
-                "clientPlatformName": "windows",
+                "clientPlatformName": sessionClientPlatformName(transportMode),
                 "clientRequestMonitorSettings": [monitorSettings(settings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
                 "metaData": metadata,
                 "surroundAudioInfo": int(settings["surroundAudioInfo"], fallback: 0),
@@ -445,7 +447,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return
         }
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        guard var request = CloudMatchRequestFactory.claimSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData) else {
+        let headers = CloudMatchClientHeaders.streamSession(transportMode: transportMode)
+        guard var request = CloudMatchRequestFactory.claimSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
             completion(false, [:], "Invalid claim URL")
             return
         }
@@ -496,17 +499,18 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                 return
             }
             let claimProfile = (json["session"] as? [String: Any]).map { self.negotiatedStreamProfile(from: $0) } ?? [:]
-            self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, initialProfile: claimProfile, completion: completion)
+            self.pollClaimSession(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: claimProfile, completion: completion)
         }.resume()
     }
 
-    private func pollClaimSession(sessionId: String, serverIp: String, deviceId: String, clientId: String, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+    private func pollClaimSession(sessionId: String, serverIp: String, deviceId: String, clientId: String, headers: CloudMatchClientHeaders, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
         OPNPollClaimSessionContext(manager: self,
                                    sessionId: sessionId,
                                    base: CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp),
                                    token: currentAccessToken(),
                                    deviceId: deviceId,
                                    clientId: clientId,
+                                   headers: headers,
                                    initialProfile: initialProfile,
                                    completion: completion).poll(attempt: 0)
     }
@@ -785,17 +789,19 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
     fileprivate let token: String
     fileprivate let deviceId: String
     fileprivate let clientId: String
+    fileprivate let headers: CloudMatchClientHeaders
     fileprivate let initialProfile: [String: Any]
     private let completion: (Bool, [String: Any], String) -> Void
     private let maxRetries = 60
 
-    init(manager: OPNSessionManager, sessionId: String, base: String, token: String, deviceId: String, clientId: String, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
+    init(manager: OPNSessionManager, sessionId: String, base: String, token: String, deviceId: String, clientId: String, headers: CloudMatchClientHeaders, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
         self.manager = manager
         self.sessionId = sessionId
         self.base = base
         self.token = token
         self.deviceId = deviceId
         self.clientId = clientId
+        self.headers = headers
         self.initialProfile = initialProfile
         self.completion = completion
     }
@@ -805,7 +811,7 @@ private final class OPNPollClaimSessionContext: @unchecked Sendable {
             complete(false, [:], "Timeout polling for session ready")
             return
         }
-        guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId) else {
+        guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, headers: headers) else {
             complete(false, [:], "Invalid poll claim URL")
             return
         }
@@ -897,6 +903,10 @@ private func requestedStreamingFeatures(_ settings: [String: Any], hdrEnabled: B
 private func streamTransportMode(_ settings: [String: Any]) -> String {
     let value = string(settings["transportMode"])
     return value.caseInsensitiveCompare("nvst") == .orderedSame ? "nvst" : "webrtc"
+}
+
+private func sessionClientPlatformName(_ transportMode: String) -> String {
+    transportMode == "nvst" ? "windows" : "browser"
 }
 
 private func sessionTransportPolicy(_ settings: [String: Any]) -> [String: Any] {

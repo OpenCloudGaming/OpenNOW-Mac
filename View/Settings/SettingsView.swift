@@ -1178,7 +1178,6 @@ private struct ExperimentalFeaturesSettingsPage: View {
     @AppStorage(RecordingEditorBetaPreference.key) private var recordingEditorEarlyBetaEnabled = false
 
     var body: some View {
-        let qualityLocked = !viewModel.streamingQualityProfileAllowsCustomization
         VStack(alignment: .leading, spacing: 16) {
             SettingsCard(title: "Alpha Access") {
                 SettingsToggleRow(
@@ -1191,10 +1190,9 @@ private struct ExperimentalFeaturesSettingsPage: View {
 
             SettingsCard(title: "Stream Transport") {
                 SettingsToggleRow(
-                    title: "NVST Transport Early Alpha",
-                    subtitle: qualityLocked ? lockedProfileSubtitle : "Experimental transport mode. Off requests WebRTC transport; on requests NVST secure RTSP transport from CloudMatch.",
+                    title: "Native/NVST Transport",
+                    subtitle: "Off uses the default WebRTC session path. On requests native NVST secure RTSP transport with matching CloudMatch headers.",
                     isOn: viewModel.streamProfile.transportMode.value == "nvst",
-                    isLocked: qualityLocked,
                     action: viewModel.setNVSTTransportEnabled
                 )
             }
@@ -1208,10 +1206,6 @@ private struct ExperimentalFeaturesSettingsPage: View {
                 )
             }
         }
-    }
-
-    private var lockedProfileSubtitle: String {
-        "Managed by the \(viewModel.streamProfile.streamingQualityProfileOption.label) quality profile. Select Custom in Gameplay to edit."
     }
 
     private func setRecordingEditorEarlyBetaEnabled(_ enabled: Bool) {

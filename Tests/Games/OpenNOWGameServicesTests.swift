@@ -669,14 +669,14 @@ import Foundation
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
     #expect(request.url?.query?.contains("keyboardLayout=us") == true)
-    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
-    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.85.135")
+    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == nil)
-    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
+    #expect(request.value(forHTTPHeaderField: "nv-device-make") == nil)
     #expect(requestData["internalTitle"] as? String == "Test Game")
-    #expect(requestData["clientPlatformName"] as? String == "windows")
+    #expect(requestData["clientPlatformName"] as? String == "browser")
     #expect(requestData["clientDisplayHdrCapabilities"] is [String: Any])
     #expect(requestData["networkTestSessionId"] as? String == "stale-session-id")
     #expect(requestData["accountLinked"] as? Bool == true)
@@ -735,6 +735,7 @@ import Foundation
         }
     }
 
+    let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
     let metadata = try #require(requestData["metaData"] as? [[String: String]])
@@ -742,6 +743,10 @@ import Foundation
 
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
+    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+    #expect(request.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(requestData["clientPlatformName"] as? String == "windows")
     #expect(requestData["secureRTSPSupported"] as? Bool == true)
     #expect(transport["policy"] as? Int == 2)
     #expect(transport["relayProtocol"] as? Int == 0)
@@ -823,15 +828,20 @@ import Foundation
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    let claimRequest = requests.first { $0.httpMethod == "PUT" }
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
     let claimTransport = claimRequestData?["transport"] as? [String: Any]
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == "2.0.85.135")
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
     #expect(claimPayload?["action"] as? Int == 2)
     #expect(claimPayload?["data"] as? String == "RESUME")
     #expect(claimRequestData?["appId"] as? Int == 123)
+    #expect(claimRequestData?["clientPlatformName"] as? String == "browser")
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
@@ -868,10 +878,15 @@ import Foundation
     }
 
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
+    let claimRequest = SessionManagerURLProtocol.recordedRequests(host: host).first { $0.httpMethod == "PUT" }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
     let claimTransport = claimRequestData?["transport"] as? [String: Any]
     #expect(result.0 == true)
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == "2.0.80.173")
+    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
     #expect(claimTransport?["policy"] as? Int == 2)
     #expect(claimTransport?["relayProtocol"] as? Int == 0)

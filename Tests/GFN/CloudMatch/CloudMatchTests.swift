@@ -53,6 +53,10 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(create.value(forHTTPHeaderField: "Origin") == nil)
     #expect(create.httpBody == Data("{}".utf8))
 
+    let webRTCCreate = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://cloudmatch.example.test/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8), headers: .streamSession(transportMode: "webrtc")))
+    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
+    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+
     let poll = try #require(CloudMatchRequestFactory.pollSessionRequest(baseURLString: "cloudmatch.example.test", sessionId: "session/with slash", accessToken: "access", deviceId: "device"))
     #expect(poll.url?.absoluteString == "https://cloudmatch.example.test/v2/session/session%2Fwith%20slash")
     #expect(poll.httpMethod == "GET")

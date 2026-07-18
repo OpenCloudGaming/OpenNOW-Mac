@@ -135,6 +135,10 @@ public struct CloudMatchClientHeaders: Equatable, Sendable {
         CloudMatchClientHeaders(clientId: clientId, clientType: "BROWSER", clientVersion: clientVersion, clientStreamer: "WEBRTC", deviceOS: "WINDOWS", deviceType: "DESKTOP", deviceMake: "", deviceModel: "", browserType: "CHROME", userAgent: userAgent)
     }
 
+    public static func streamSession(transportMode: String) -> CloudMatchClientHeaders {
+        transportMode.caseInsensitiveCompare("nvst") == .orderedSame ? nativeGFNPC : browserWebRTC()
+    }
+
     public func apply(to request: inout URLRequest, accessToken: String, deviceId: String = "", includeOrigin: Bool = false, accept: String = "application/json", contentType: String? = "application/json") {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(accept, forHTTPHeaderField: "Accept")
@@ -185,13 +189,13 @@ public enum CloudMatchRequestFactory {
         return request(endpoint: .serverInfo, accessToken: accessToken, configuration: configuration, timeoutInterval: timeoutInterval, deviceId: deviceId)
     }
 
-    public static func createSessionRequest(baseURLString: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+    public static func createSessionRequest(baseURLString: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
         let queryItems = [URLQueryItem(name: "keyboardLayout", value: keyboardLayout), URLQueryItem(name: "languageCode", value: languageCode)]
-        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: false, timeoutInterval: timeoutInterval)
+        return sessionRequest(baseURLString: baseURLString, sessionId: "", method: "POST", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: false, timeoutInterval: timeoutInterval, headers: headers)
     }
 
-    public static func pollSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15) -> URLRequest? {
-        sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "GET", accessToken: accessToken, deviceId: deviceId, timeoutInterval: timeoutInterval)
+    public static func pollSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
+        sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "GET", accessToken: accessToken, deviceId: deviceId, timeoutInterval: timeoutInterval, headers: headers)
     }
 
     public static func stopSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, timeoutInterval: TimeInterval = 15) -> URLRequest? {
@@ -202,9 +206,9 @@ public enum CloudMatchRequestFactory {
         sessionRequest(baseURLString: baseURLString, sessionId: "", method: "GET", accessToken: accessToken, deviceId: deviceId, timeoutInterval: timeoutInterval)
     }
 
-    public static func claimSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+    public static func claimSessionRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, keyboardLayout: String, languageCode: String, body: Data?, timeoutInterval: TimeInterval = 15, headers: CloudMatchClientHeaders = .nativeGFNPC) -> URLRequest? {
         let queryItems = [URLQueryItem(name: "keyboardLayout", value: keyboardLayout), URLQueryItem(name: "languageCode", value: languageCode)]
-        return sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "PUT", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: true, timeoutInterval: timeoutInterval)
+        return sessionRequest(baseURLString: baseURLString, sessionId: sessionId, method: "PUT", accessToken: accessToken, deviceId: deviceId, queryItems: queryItems, body: body, includeOrigin: true, timeoutInterval: timeoutInterval, headers: headers)
     }
 
     public static func adUpdateRequest(baseURLString: String, sessionId: String, accessToken: String, deviceId: String, body: Data?, timeoutInterval: TimeInterval = 15) -> URLRequest? {
