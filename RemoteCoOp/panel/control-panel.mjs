@@ -79,8 +79,9 @@ async function route(request, response) {
     await sendFile(response, join(panelRoot, "login.html"));
     return;
   }
-  if (request.method === "GET" && url.pathname === "/admin.css") {
-    await sendFile(response, join(panelRoot, "admin.css"));
+  const publicAsset = panelAssetPath(url.pathname);
+  if (request.method === "GET" && publicAsset) {
+    await sendFile(response, publicAsset);
     return;
   }
   if (request.method === "POST" && url.pathname === "/admin/login") {
@@ -102,10 +103,6 @@ async function route(request, response) {
 
   if (request.method === "GET" && url.pathname === "/admin") {
     await sendFile(response, join(panelRoot, "admin.html"));
-    return;
-  }
-  if (request.method === "GET" && ["/admin.css", "/admin.js"].includes(url.pathname)) {
-    await sendFile(response, join(panelRoot, url.pathname.slice(1)));
     return;
   }
   if (request.method === "POST" && url.pathname === "/admin/api/logout") {
@@ -157,6 +154,12 @@ async function route(request, response) {
   }
 
   sendJSON(response, 404, { error: "not_found" });
+}
+
+function panelAssetPath(pathname) {
+  if (pathname === "/admin.css" || pathname === "/admin/admin.css") return join(panelRoot, "admin.css");
+  if (pathname === "/admin.js" || pathname === "/admin/admin.js") return join(panelRoot, "admin.js");
+  return "";
 }
 
 async function handleLogin(request, response) {

@@ -25,17 +25,26 @@ document.querySelector("#refresh-logs").addEventListener("click", refreshLogs);
 document.querySelector("#check-update").addEventListener("click", refreshUpdateStatus);
 document.querySelector("#apply-update").addEventListener("click", applyUpdate);
 
-await refreshStatus();
-await refreshLogs();
-await refreshUpdateStatus();
-setInterval(refreshStatus, 5000);
-setInterval(refreshLogs, 5000);
+start();
 
-const events = new EventSource("/admin/api/events");
-events.addEventListener("message", () => {
-  refreshStatus();
-  refreshLogs();
-});
+function start() {
+  refreshStatus().catch(showStatusError);
+  refreshLogs().catch(() => {});
+  refreshUpdateStatus().catch(() => {});
+  setInterval(refreshStatus, 5000);
+  setInterval(refreshLogs, 5000);
+
+  const events = new EventSource("/admin/api/events");
+  events.addEventListener("message", () => {
+    refreshStatus();
+    refreshLogs();
+  });
+}
+
+function showStatusError(error) {
+  elements.serviceState.textContent = "Status Unavailable";
+  elements.serviceDetail.textContent = `Could not load panel status: ${error.message}`;
+}
 
 async function action(path, redirectOnSuccess = false) {
   setBusy(true);
